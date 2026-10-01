@@ -1,7 +1,7 @@
 ---
 id: T02
 title: Palette and theme tokens
-status: in-progress
+status: review
 wave: 1
 branch: task/T02-palette
 depends_on: [T00]
@@ -55,10 +55,31 @@ Runtime theme switching, colour pickers.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec — `docs(T02): specify palette acceptance criteria` (2c1a347)
+- [x] tests — `test(T02): add failing tests for palette and theme tokens` (6235f04)
+- [x] models — `feat(T02): add Rgba, ColorId, Theme and palette signatures` (ba5e338)
+- [x] behaviour — `feat(T02): implement palette lookup and Kanagawa Dragon values` (63abab6)
+- [x] quality — `chore(T02): pass clippy and rustfmt` (69ac311)
+- [x] docs — `docs(T02): add feature note and tutorial`
 
 ## Learning path
 
-Step 2 — requires step 0.
+Step 2 — requires step 0. Tutorial: [[02 Palettes and design tokens]].
 
 ## Log
+
+- Red phase confirmed: tests commit failed to compile (36 errors, E0425/E0433:
+  no `Rgba`, `ColorId`, `palette`, `THEME`, …); models commit built and all 12
+  tests failed on `todo!()`; behaviour commit turned all 12 green.
+- Added beyond the original spec (stated in the refined *Spec*):
+  `ColorId::index()`, public `PALETTE` array, `from_hex` ignores bits above 24,
+  `from_key_digit` returns `None` outside `1..=6`.
+- Float checks in tests use a local tolerance helper instead of
+  `geom::approx_eq`: T01 owns `geom` and is not a dependency of T02.
+- Quality: `clippy::mistyped_literal_suffixes` (deny) read `0x18_16_16` as an
+  `i16` suffix, and pedantic `unreadable_literal` wants `0x0018_1616`. Colours
+  are written as plain `0xRRGGBB` to match [[Theme]], with a module-level
+  `allow(clippy::unreadable_literal, reason = …)`.
+- No new ADR: values and model are exactly ADR-0012 + ADR-0015.
+- Integrator: [[Learning Path]] row 2 and [[Feature Index]] need
+  [[02 Palettes and design tokens]] and [[Theme and palette]].
