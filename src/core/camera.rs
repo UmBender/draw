@@ -38,7 +38,10 @@ pub struct Camera {
 impl Default for Camera {
     /// Offset `(0, 0)`, zoom `1`: world and screen coordinates coincide.
     fn default() -> Self {
-        todo!()
+        Self {
+            offset: Vec2::ZERO,
+            zoom: 1.0,
+        }
     }
 }
 
@@ -48,44 +51,50 @@ impl Camera {
     /// becomes `1.0`.
     #[must_use]
     pub fn new(offset: Vec2, zoom: f32) -> Self {
-        let _ = (offset, zoom);
-        todo!()
+        Self {
+            offset: offset.sanitize().unwrap_or(Vec2::ZERO),
+            zoom: if zoom.is_finite() {
+                clamp_zoom(zoom)
+            } else {
+                1.0
+            },
+        }
     }
 
     /// World point shown at the screen origin.
     #[must_use]
     pub fn offset(&self) -> Vec2 {
-        todo!()
+        self.offset
     }
 
     /// Pixels per world unit, within [`ZOOM_MIN`]`..=`[`ZOOM_MAX`].
     #[must_use]
     pub fn zoom(&self) -> f32 {
-        todo!()
+        self.zoom
     }
 
     /// Maps a world point to screen pixels. Non-finite input gives a
     /// non-finite result.
     #[must_use]
     pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
-        let _ = world;
-        todo!()
+        (world - self.offset) * self.zoom
     }
 
     /// Maps screen pixels to a world point. Non-finite input gives a
     /// non-finite result.
     #[must_use]
     pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
-        let _ = screen;
-        todo!()
+        screen / self.zoom + self.offset
     }
 
     /// Pans so that content moves by `delta` pixels on screen.
     ///
     /// Ignored if `delta` is non-finite or the new offset would overflow.
     pub fn pan_by_screen(&mut self, delta: Vec2) {
-        let _ = delta;
-        todo!()
+        let Some(delta) = delta.sanitize() else {
+            return;
+        };
+        self.set_offset(self.offset - delta / self.zoom);
     }
 
     /// Zooms by [`ZOOM_STEP`]`^notches` (positive zooms in), clamped to the
@@ -93,30 +102,38 @@ impl Camera {
     ///
     /// Ignored if any input is non-finite or the new offset would overflow.
     pub fn zoom_at(&mut self, screen_point: Vec2, notches: f32) {
-        let _ = (screen_point, notches);
-        todo!()
+        let Some(anchor) = screen_point.sanitize() else {
+            return;
+        };
+        if !notches.is_finite() {
+            return;
+        }
+        // powf may overflow to +inf or underflow to 0; clamping handles both.
+        let zoom = clamp_zoom(self.zoom * ZOOM_STEP.powf(notches));
+        let anchor_world = self.screen_to_world(anchor);
+        if self.set_offset(anchor_world - anchor / zoom) {
+            self.zoom = zoom;
+        }
     }
 
     /// World rectangle visible through a viewport of `viewport` pixels.
     /// A non-finite viewport counts as zero-sized.
     #[must_use]
     pub fn visible_world_rect(&self, viewport: Vec2) -> Aabb {
-        let _ = viewport;
-        todo!()
+        let viewport = viewport.sanitize().unwrap_or(Vec2::ZERO);
+        Aabb::from_corners(self.offset, self.screen_to_world(viewport))
     }
 
     /// Converts a screen length (pixels) to world units.
     #[must_use]
     pub fn world_len(&self, px: f32) -> f32 {
-        let _ = px;
-        todo!()
+        px / self.zoom
     }
 
     /// Converts a world length to screen pixels.
     #[must_use]
     pub fn screen_len(&self, world: f32) -> f32 {
-        let _ = world;
-        todo!()
+        world * self.zoom
     }
 
     /// Centres `bounds` in the viewport at the largest zoom (clamped) that
@@ -126,14 +143,57 @@ impl Camera {
     /// kept. A negative margin counts as 0. Ignored if any input is non-finite
     /// or a viewport component is not positive.
     pub fn fit(&mut self, bounds: Aabb, viewport: Vec2, margin_px: f32) {
-        let _ = (bounds, viewport, margin_px);
-        todo!()
+        let finite = bounds.min.is_finite()
+            && bounds.max.is_finite()
+            && viewport.is_finite()
+            && margin_px.is_finite();
+        if !finite || viewport.x <= 0.0 || viewport.y <= 0.0 {
+            return;
+        }
+        let margin = 2.0 * margin_px.max(0.0);
+        let usable = Vec2::new(
+            (viewport.x - margin).max(1.0),
+            (viewport.y - margin).max(1.0),
+        );
+        let fit_x = axis_zoom(usable.x, bounds.width());
+        let fit_y = axis_zoom(usable.y, bounds.height());
+        let zoom = match (fit_x, fit_y) {
+            (Some(x), Some(y)) => clamp_zoom(x.min(y)),
+            (Some(z), None) | (None, Some(z)) => clamp_zoom(z),
+            (None, None) => self.zoom,
+        };
+        if self.set_offset(bounds.center() - viewport * 0.5 / zoom) {
+            self.zoom = zoom;
+        }
     }
 
     /// Returns to [`Camera::default`].
     pub fn reset(&mut self) {
-        todo!()
+        *self = Self::default();
     }
+
+    /// Stores `offset` if it is finite; returns whether it was stored.
+    fn set_offset(&mut self, offset: Vec2) -> bool {
+        match offset.sanitize() {
+            Some(offset) => {
+                self.offset = offset;
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// Clamps a finite or infinite zoom to [`ZOOM_MIN`]`..=`[`ZOOM_MAX`].
+fn clamp_zoom(zoom: f32) -> f32 {
+    zoom.clamp(ZOOM_MIN, ZOOM_MAX)
+}
+
+/// Zoom at which `extent` world units fill `usable` pixels, or `None` for a
+/// zero (or non-finite) extent that does not constrain zoom.
+fn axis_zoom(usable: f32, extent: f32) -> Option<f32> {
+    let zoom = usable / extent;
+    (extent > 0.0 && zoom.is_finite()).then_some(zoom)
 }
 
 #[cfg(test)]
@@ -295,11 +355,12 @@ mod tests {
         cam.zoom_at(v(0.0, 0.0), f32::NAN);
         cam.zoom_at(v(0.0, 0.0), f32::INFINITY);
         cam.zoom_at(v(0.0, 0.0), f32::NEG_INFINITY);
-        cam.fit(
-            Aabb::from_corners(v(f32::NAN, 0.0), v(1.0, 1.0)),
-            viewport,
-            0.0,
-        );
+        // Built literally: `from_corners` would drop the NaN via `f32::min`.
+        let nan_bounds = Aabb {
+            min: v(f32::NAN, 0.0),
+            max: v(1.0, 1.0),
+        };
+        cam.fit(nan_bounds, viewport, 0.0);
         cam.fit(bounds, v(f32::INFINITY, 600.0), 0.0);
         cam.fit(bounds, viewport, f32::NAN);
 
