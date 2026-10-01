@@ -43,3 +43,5 @@ Rationale and alternatives: [[ADR-T15-1 MSAA on the cached frame]].
 - The cached frame uses about 5× the memory of a single-sampled one
   (≈ 40 MB at 2560×1600).
 - Not toggleable while running.
+- Costs more CPU while drawing (≈ 20 % vs ≈ 8 % without MSAA when spamming
+  circles). Ways to cut it: [[Rendering performance options]].

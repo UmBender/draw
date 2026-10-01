@@ -74,8 +74,13 @@ Step 15 — requires step 12.
   keeps running with `DRAW_MSAA` unset, `off` and `8`; with 4× the window
   renders correctly (orientation, toolbar). Empty canvas, so edge quality
   could not be judged automatically.
-- **AC-4 pending the user**: draw circles/diagonals at zoom 0.05, 1 and 20,
-  compare with `DRAW_MSAA=off`, check idle CPU ≈ 0 % and drawing latency.
+- **AC-4 checked by the user on the target**: edges are smooth; idle CPU ≈ 0 %.
+  Spamming circles costs ≈ 20 % CPU with 4× MSAA vs ≈ 8 % with
+  `DRAW_MSAA=off` — accepted for now. Improvement options (with and without
+  `unsafe`) are collected in [[Rendering performance options]].
+- Files owned: `docs/architecture/Rendering performance options.md` was added
+  at the user's request (new note, outside *Files owned*; nothing else edits
+  it).
 - Quality: `scripts/check.sh` was green right after the behaviour commit, so
   no quality commit.
 - For the integrator: add [[ADR-T15-1 MSAA on the cached frame]] to the
