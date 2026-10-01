@@ -14,7 +14,8 @@ use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
-    DrawTextureParams, FilterMode, RenderTarget, draw_texture_ex, render_target,
+    DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, draw_texture_ex,
+    render_target,
 };
 use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
@@ -33,6 +34,31 @@ const MARQUEE_FILL_ALPHA: f32 = 0.25;
 
 /// Viewport sizes closer than this many pixels count as unchanged.
 const RESIZE_EPS_PX: f32 = 0.5;
+
+/// MSAA samples per pixel for the cached frame unless `DRAW_MSAA` says
+/// otherwise (ADR-T15-1).
+pub const DEFAULT_MSAA_SAMPLES: i32 = 4;
+
+/// Environment variable overriding [`DEFAULT_MSAA_SAMPLES`].
+pub const MSAA_ENV: &str = "DRAW_MSAA";
+
+/// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
+/// so nearest keeps it sharp.
+const FRAME_FILTER: FilterMode = FilterMode::Nearest;
+
+/// Sample count for a `DRAW_MSAA` value: `1`, `0` or `off` disable
+/// multisampling, `2`, `4` or `8` select that count, anything else (or unset)
+/// gives [`DEFAULT_MSAA_SAMPLES`].
+#[must_use]
+pub fn msaa_samples(setting: Option<&str>) -> i32 {
+    todo!("{setting:?}")
+}
+
+/// Render-target parameters for the cached frame: `samples` per pixel and no
+/// depth buffer.
+fn frame_target_params(samples: i32) -> RenderTargetParams {
+    todo!("{samples}")
+}
 
 /// The window the app opens. `main` passes it to macroquad, which converts it
 /// into a [`Conf`] with the blocking event loop (ADR-T12-1).
