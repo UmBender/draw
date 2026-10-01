@@ -1,7 +1,7 @@
 ---
 id: T03
 title: Camera
-status: in-progress
+status: review
 wave: 2
 branch: task/T03-camera
 depends_on: [T01]
@@ -78,10 +78,38 @@ Animation/inertia, rotation.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec — `docs(T03): specify camera acceptance criteria` (6870199)
+- [x] tests — `test(T03): add failing tests for camera transform, pan and zoom` (436d14a)
+- [x] models — `feat(T03): add Camera type, zoom constants and method signatures` (75284dc)
+- [x] behaviour — `feat(T03): implement camera transform, pan, zoom at cursor and fit` (3bbde7c)
+- [x] quality — `refactor(T03): drop redundant geom imports in camera tests` (02412bf)
+- [x] docs — `docs(T03): add feature note and camera tutorial`
 
 ## Learning path
 
-Step 3 — requires step 1.
+Step 3 — requires step 1. Tutorial: [[03 Cameras - world space vs screen space]].
 
 ## Log
+
+- Spec refinements (no change of intent): `Camera` fields are private with
+  `offset()` / `zoom()` accessors and a sanitizing `Camera::new`, so the
+  invariant (finite offset, zoom in range) cannot be broken from outside;
+  zoom keeps the anchor fixed also when clamped; an input that would overflow
+  the offset is ignored like a non-finite one; `fit` ignores zero-extent axes
+  (keeps zoom for a single point), treats a negative margin as 0, keeps at
+  least 1 px usable per axis and ignores non-positive viewports;
+  `visible_world_rect` treats a non-finite viewport as zero-sized.
+- Red phase confirmed: tests commit failed to compile with 45 unresolved-name
+  errors (`Camera`, `ZOOM_*`); models commit compiled with all 24 camera
+  tests failing on `todo!()`. The `proptest-regressions/` files written by
+  the `todo!()` panics were deleted, not committed.
+- Behaviour commit: 24/24 green. One test fix in that commit:
+  `non_finite_input_is_ignored` built its NaN box with `Aabb::from_corners`,
+  which drops the NaN through `f32::min`; it now builds the `Aabb` literally.
+  Proptests also pass with `PROPTEST_CASES=20000` (3 runs); tolerances are
+  relative (16 ulps of the largest magnitude involved).
+- Quality: `scripts/check.sh` was already green after the behaviour step; the
+  quality commit only drops redundant test imports. Green again afterwards.
+- No new ADRs; no files outside *Files owned* touched besides this note, the
+  feature note and the tutorial. [[Infinite canvas, pan and zoom]] covers the
+  camera part; [[T08 Editor core and input model]] extends it with input wiring.
