@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]"]
+adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]"]
 ---
 
 # Architecture
@@ -25,6 +25,8 @@ flowchart LR
     ED --> TOOLS[tools/*]
     ED --> KM[keymap]
     TOOLS --> SM[smoothing]
+    TOOLS --> SNAP[snap]
+    TOOLS --> NUM[numbering]
     DOC --> SH[shape]
     SH --> G[geom]
     CAM --> G
@@ -47,13 +49,17 @@ flowchart LR
 | `core::palette` ([[T02 Palette and theme tokens]]) | Fixed drawing colours + UI theme tokens |
 | `core::camera` ([[T03 Camera]]) | World ↔ screen transform, pan, zoom-at-cursor, clamping |
 | `core::smoothing` ([[T04 Stroke smoothing]]) | Anti-tremor: resample, EMA, Douglas–Peucker |
-| `core::shape` ([[T05 Shape model]]) | `Shape` enum, style, bounds, hit-test, inside-test, translate |
+| `core::shape` ([[T05 Shape model]], grid + labels [[T16 Shape model v2 and helper skeleton]]) | `Shape` enum (incl. `Grid`, `Rect`/`Ellipse` labels), style, bounds, hit-test, inside-test, translate, `grid_lines` |
 | `core::document`, `core::history` ([[T06 Document and history]]) | Ordered shape store with ids; transactional undo/redo |
 | `core::input`, `core::command`, `core::editor`, `core::tools::{mod,navigate}` ([[T08 Editor core and input model]]) | Input model, command enum, editor state + dispatch, pan/zoom |
 | `core::tools::{pen,shape_tool}` ([[T09 Creation tools]]) | Pen, rectangle, ellipse, line, arrow |
 | `core::tools::{eraser,bucket,select}`, `core::clipboard` ([[T10 Editing tools]]) | Erase, fill, select/move, copy/paste/duplicate |
 | `core::keymap` ([[T11 Keymap and macros]]) | Key chords → `Command` |
-| `shell::render` ([[T07 Renderer]]) | Draw shapes and previews through the camera |
+| `core::editor::Helpers` ([[T16 Shape model v2 and helper skeleton]]) | Snap flags, numbering counter, grid size; carried in `DrawStyle` ([[ADR-T16-3 Helper settings and hooks]]) |
+| `core::snap` ([[T17 Snapping]]) | Snap dragged points; alignment guides (stub until T17) |
+| `core::tools::grid` ([[T18 Grid tool]]) | Grid tool (stub until T18) |
+| `core::numbering` ([[T19 Auto-numbering]]) | Labels for new rectangles/ellipses (stub until T19) |
+| `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels) and previews through the camera; `draw_underlay`/`draw_guides` hooks for T17 |
 | `shell::{app,input_map,toolbar}` ([[T12 App shell and toolbar]]) | Window, event loop, toolbar UI |
 | `tests/fuzz.rs` ([[T13 Fuzz harness]]) | Random input-sequence fuzzing of `Editor` |
 
@@ -67,9 +73,10 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
 2. `shell::toolbar::route` sends presses on the visible toolbar to
    `Editor::apply(command)`; everything else goes to `Editor::handle(event)`.
    Both return whether anything changed.
-3. If anything changed (or the window size did), the scene — shapes minus
-   `overlay.hidden`, overlay shapes, selection, marquee, toolbar — is
-   re-rendered into a cached, 4× multisampled render target
+3. If anything changed (or the window size did), the scene — underlay (snap
+   dot grid), shapes minus `overlay.hidden`, overlay shapes, guides,
+   selection, marquee, toolbar — is re-rendered into a cached, 4×
+   multisampled render target
    ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]]).
    Ideas to make this cheaper: [[Rendering performance options]].
 4. The cached texture is blitted to the window (one quad).
@@ -81,3 +88,5 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
 - Undo all → empty document; redo all → identical document.
 - Camera zoom stays within `[ZOOM_MIN, ZOOM_MAX]`.
 - Selection only refers to shape ids that exist.
+- Grid dimensions (of shapes and of the editor's settings) are in
+  `1..=GRID_MAX_CELLS`; labels and the numbering counter are ≥ 1.

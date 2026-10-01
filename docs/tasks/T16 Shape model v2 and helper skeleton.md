@@ -1,7 +1,7 @@
 ---
 id: T16
 title: Shape model v2 and helper skeleton
-status: in-progress
+status: review
 wave: 7
 branch: task/T16-helper-skeleton
 depends_on: [T12, T13]
@@ -47,7 +47,7 @@ Decisions: [[ADR-T16-1 Grid shape and shape labels]] (shape model),
   `label_survives_translate_and_with_fill`; property
   `translate_moves_bounds_by_delta` extended to grids and labels.
 - **AC-2** — Renderer: grids draw their lines; labels draw centred inside
-  their shape (ellipses: inside the inscribed square) in a font size fitted to
+  their shape (ellipses: inside the inscribed box, `rect / √2`) in a font size fitted to
   the box, hidden below `LABEL_MIN_PX` on screen and capped at
   `LABEL_MAX_PX`. Glyphs are rasterized at a few fixed sizes and scaled
   (`label_raster`) so zooming does not grow the glyph cache. Culling uses
@@ -56,7 +56,7 @@ Decisions: [[ADR-T16-1 Grid shape and shape labels]] (shape model),
   *Tests (`render::tests`):* `label_size_fits_box`,
   `label_size_shrinks_with_more_digits`, `label_size_hidden_when_too_small`,
   `label_size_is_capped`, `label_size_non_finite_is_none`,
-  `label_area_ellipse_is_inscribed_square`, `label_raster_quantizes`.
+  `label_area_ellipse_is_inscribed_box`, `label_raster_quantizes`.
 - **AC-3** — Input: `Key::{ArrowLeft, ArrowRight, ArrowUp, ArrowDown}` added
   and mapped by `shell::input_map`. *Test:* `input_map::tests::arrows_map`.
 - **AC-4** — Commands, editor state and keymap ([[ADR-T16-2 Helper key bindings]]):
@@ -118,10 +118,34 @@ two render hooks).
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 16 — requires steps 5, 11 and 13.
 
 ## Log
+
+- 2026-10-01 — Spec: adding the `label` field, the `Grid` variant and the
+  T17 guide/underlay plumbing needed edits outside the planned files owned
+  (clipboard testkit, `shape_tool.rs` beyond the Grid arm, one `select.rs`
+  literal, two calls in `app.rs`). Approved by the owner and listed under
+  *Files owned*. Helper settings ride in `DrawStyle` so no `ToolCtx`/
+  `ToolView` fixture (pen, clipboard, shape tool) had to change
+  ([[ADR-T16-3 Helper settings and hooks]]).
+- `grid_lines_count` moved from `render::tests` to
+  `shape::tests::grid_lines_count_and_positions`: the line geometry lives in
+  `core::shape` (shared by hit-testing and drawing), the renderer only maps
+  it. `label_area_ellipse_is_inscribed_square` was renamed
+  `…_inscribed_box`: for a non-circle the largest inscribed axis-aligned box
+  is `rect / √2`, not a square.
+- Behaviour: one label-size test case was wrong (a 40 px wide area fits a
+  5-digit label at 10.7 px); changed to 25 px. Fuzz grid drags are weighted 1
+  of 14 chunks: at weight 2 the still-inert grid tool, which stays selected,
+  pushed "sessions with shapes" to 94/200 (< 100). T18 makes grid drags
+  create shapes, which raises it again.
+- Quality: `Editor::apply` exceeded clippy's 100-line limit; helper
+  commands moved to `apply_helper`. Toolbar tool and helper buttons share
+  `draw_toggle`.
+- Not checked on screen: label legibility and grid rendering need a manual
+  look once T18/T19 can create grids and labels (nothing creates them yet).
