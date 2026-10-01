@@ -4,7 +4,7 @@ title: Performance and release validation
 status: todo
 wave: 10
 branch: task/T14-release
-depends_on: [T12, T13, T15, T16, T17, T18, T19]
+depends_on: [T12, T13, T15, T16, T17, T18, T19, T20]
 adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-0007 Anti-tremor pipeline]]"]
 feature: "[[Contest cheat sheet]]"
 tutorial: "[[14 Profiling and shipping a release build]]"

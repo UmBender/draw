@@ -41,10 +41,12 @@ flowchart TD
   T16 --> T17[T17 Snapping]
   T16 --> T18[T18 Grid tool]
   T17 --> T19[T19 Auto-numbering]
+  T17 --> T20[T20 Outline snapping]
   T15 --> T14
   T17 --> T14
   T18 --> T14
   T19 --> T14
+  T20 --> T14
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -60,7 +62,7 @@ flowchart TD
 | 6 | [[T12 App shell and toolbar]] · [[T13 Fuzz harness]] |
 | 7 | [[T15 Anti-aliasing]] · [[T16 Shape model v2 and helper skeleton]] |
 | 8 | [[T17 Snapping]] · [[T18 Grid tool]] |
-| 9 | [[T19 Auto-numbering]] |
+| 9 | [[T19 Auto-numbering]] · [[T20 Outline snapping]] |
 | 10 | [[T14 Performance and release validation]] |
 
 ## Status
@@ -86,4 +88,5 @@ flowchart TD
 | [[T17 Snapping]] | done | T16 | `task/T17-snapping` |
 | [[T18 Grid tool]] | ready | T16 | `task/T18-grid-tool` |
 | [[T19 Auto-numbering]] | ready | T16, T17 | `task/T19-numbering` |
-| [[T14 Performance and release validation]] | todo | T12, T13, T15–T19 | `task/T14-release` |
+| [[T20 Outline snapping]] | ready | T17 | `task/T20-outline-snapping` |
+| [[T14 Performance and release validation]] | todo | T12, T13, T15–T20 | `task/T14-release` |

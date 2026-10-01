@@ -29,6 +29,7 @@ flowchart LR
   s16 --> s17[17 Snapping & guides]
   s16 --> s18[18 Grid tool]
   s16 --> s19[19 Undoable counters]
+  s17 --> s20[20 Snapping to outlines]
 ```
 
 | Step | Tutorial | Task | Status |
@@ -53,3 +54,4 @@ flowchart LR
 | 17 | [[17 Snapping and alignment guides]] | [[T17 Snapping]] | done |
 | 18 | *A grid tool with live parameters* | [[T18 Grid tool]] | planned |
 | 19 | *Auto-numbering and undoable counters* | [[T19 Auto-numbering]] | planned |
+| 20 | *Snapping to outlines* | [[T20 Outline snapping]] | planned |
