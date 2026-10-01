@@ -41,11 +41,11 @@ tolerances are converted to world units by multiplying with `px_to_world`
   Non-finite points are ignored (return `false`, change nothing).
   Bad construction input never panics: a non-finite or non-positive `px_to_world`
   is treated as `1.0`; `alpha` is clamped to `(0, 1]` (non-finite → `1.0`, ≤ 0 →
-  smallest positive step); negative or non-finite `min_dist_px`/`epsilon_px` → `0`.
+  `MIN_ALPHA` = 0.01, so the stroke still moves); negative or non-finite `min_dist_px`/`epsilon_px` → `0`.
   *Tests:* `push_first_point_is_kept_unfiltered`, `push_drops_close_points`,
   `push_min_dist_scales_with_px_to_world`, `push_ignores_non_finite`,
   `push_drops_exact_duplicates`, `ema_reduces_jitter` (zig-zag input → smaller
-  perpendicular variance), `new_sanitizes_bad_parameters`.
+  perpendicular variance), `ema_moves_alpha_of_the_way`, `new_sanitizes_bad_parameters`.
 - **AC-3** — `points(&self) -> &[Vec2]` exposes the live smoothed polyline (for
   preview); it never contains the unfiltered trailing raw point.
   *Tests:* `points_exposes_live_smoothed_polyline`.
@@ -61,13 +61,14 @@ tolerances are converted to world units by multiplying with `px_to_world`
   first and last point; every removed point is within `eps` of the result polyline;
   it never returns more points than the input; a straight line → 2 points. Inputs
   of ≤ 2 points, and `eps` that is NaN or ≤ 0, return the input unchanged.
-  Iterative with an explicit stack (no recursion depth risk, 100 000-point input
-  must not overflow the stack). Finite input is assumed for the error bound;
-  non-finite points never panic.
+  Iterative with an explicit stack (no recursion depth risk: a 10 000-point
+  sawtooth, whose splits nest ~N deep, must run on a 256 KiB thread stack).
+  Finite input is assumed for the error bound; non-finite points never panic.
   *Tests:* `rdp_straight_line_returns_two_points`, `rdp_keeps_corner_beyond_eps`,
   `rdp_drops_bump_within_eps`, `rdp_short_input_is_unchanged`,
   `rdp_non_positive_eps_is_identity`, `rdp_closed_loop_keeps_shape`,
-  `rdp_huge_input_does_not_overflow_stack`, plus proptests `rdp_keeps_endpoints`,
+  `rdp_huge_input_does_not_overflow_stack`, `rdp_handles_non_finite_without_panic`,
+  plus proptests `rdp_keeps_endpoints`,
   `rdp_error_bounded`, `rdp_idempotent`, `rdp_is_subsequence_and_never_grows`.
 - **AC-6** — The `Off` level returns the input unchanged except for dropping exact
   duplicates (consecutive or later repeats of the last kept point).
