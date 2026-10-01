@@ -20,7 +20,7 @@ use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
-use proptest::test_runner::TestRunner;
+use proptest::test_runner::{FileFailurePersistence, TestRunner};
 
 /// Upper bound on events in one session.
 const MAX_SESSION_LEN: usize = 500;
@@ -192,7 +192,12 @@ fn arb_gesture() -> impl Strategy<Value = Vec<InputEvent>> {
 
 /// A burst of bound key chords: tool switches, undo/redo, clipboard, view.
 fn arb_command_burst() -> impl Strategy<Value = Vec<InputEvent>> {
-    let chord = select(BINDINGS.iter().map(|&(chord, _, _)| chord).collect::<Vec<_>>());
+    let chord = select(
+        BINDINGS
+            .iter()
+            .map(|&(chord, _, _)| chord)
+            .collect::<Vec<_>>(),
+    );
     prop::collection::vec(chord, 1..8).prop_map(|chords| {
         chords
             .into_iter()
@@ -250,6 +255,17 @@ fn arb_smoothing_params() -> impl Strategy<Value = SmoothingParams> {
             epsilon_px,
         }
     })
+}
+
+/// Default config (honours `PROPTEST_CASES`), with shrunk failures stored in
+/// `tests/fuzz.proptest-regressions` next to this file.
+fn config() -> ProptestConfig {
+    ProptestConfig {
+        failure_persistence: Some(Box::new(FileFailurePersistence::WithSource(
+            "proptest-regressions",
+        ))),
+        ..ProptestConfig::default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -312,32 +328,23 @@ fn run_session(session: &[InputEvent]) -> Result<Editor, TestCaseError> {
 // AC-1: strategy coverage
 // ---------------------------------------------------------------------------
 
-/// Which special coordinate classes a sample contained.
-#[derive(Default)]
-struct CoordClasses {
-    zero: bool,
-    nan: bool,
-    pos_inf: bool,
-    neg_inf: bool,
-    huge: bool,
-}
+/// Special coordinate classes the strategies must produce.
+const COORD_CLASSES: [&str; 5] = ["zero", "nan", "+inf", "-inf", "huge"];
 
-impl CoordClasses {
-    fn record(&mut self, v: f32) {
-        self.zero |= v == 0.0;
-        self.nan |= v.is_nan();
-        self.pos_inf |= v == f32::INFINITY;
-        self.neg_inf |= v == f32::NEG_INFINITY;
-        self.huge |= v.is_finite() && v.abs() > 1e30;
-    }
-
-    fn record_pos(&mut self, pos: Vec2) {
-        self.record(pos.x);
-        self.record(pos.y);
-    }
-
-    fn all(&self) -> bool {
-        self.zero && self.nan && self.pos_inf && self.neg_inf && self.huge
+/// The special class of `v`, if any.
+fn coord_class(v: f32) -> Option<&'static str> {
+    if v.is_nan() {
+        Some("nan")
+    } else if v == f32::INFINITY {
+        Some("+inf")
+    } else if v == f32::NEG_INFINITY {
+        Some("-inf")
+    } else if v.abs() > 1e30 {
+        Some("huge")
+    } else if v == 0.0 {
+        Some("zero")
+    } else {
+        None
     }
 }
 
@@ -350,7 +357,7 @@ fn strategies_generate_all_variants() {
     let mut keys = HashSet::new();
     let mut buttons = HashSet::new();
     let mut mods_seen = HashSet::new();
-    let mut coords = CoordClasses::default();
+    let mut coords = HashSet::new();
 
     // Act
     for _ in 0..20_000 {
@@ -374,7 +381,7 @@ fn strategies_generate_all_variants() {
                 (2, Some(pos))
             }
             InputEvent::Scroll { pos, delta } => {
-                coords.record(delta);
+                coords.extend(coord_class(delta));
                 (3, Some(pos))
             }
             InputEvent::KeyDown { key, mods } => {
@@ -391,23 +398,28 @@ fn strategies_generate_all_variants() {
         };
         variants.insert(variant);
         if let Some(pos) = pos {
-            coords.record_pos(pos);
+            coords.extend(coord_class(pos.x));
+            coords.extend(coord_class(pos.y));
         }
     }
 
     // Assert
     assert_eq!(variants.len(), 7, "event variants seen: {variants:?}");
     assert_eq!(keys.len(), ALL_KEYS.len(), "keys seen: {keys:?}");
-    assert_eq!(buttons.len(), ALL_BUTTONS.len(), "buttons seen: {buttons:?}");
-    assert_eq!(mods_seen.len(), 8, "modifier combinations seen: {mods_seen:?}");
-    assert!(
-        coords.all(),
-        "special coordinates missing: zero={} nan={} +inf={} -inf={} huge={}",
-        coords.zero,
-        coords.nan,
-        coords.pos_inf,
-        coords.neg_inf,
-        coords.huge
+    assert_eq!(
+        buttons.len(),
+        ALL_BUTTONS.len(),
+        "buttons seen: {buttons:?}"
+    );
+    assert_eq!(
+        mods_seen.len(),
+        8,
+        "modifier combinations seen: {mods_seen:?}"
+    );
+    assert_eq!(
+        coords.len(),
+        COORD_CLASSES.len(),
+        "special coordinates seen: {coords:?}"
     );
 }
 
@@ -457,8 +469,14 @@ fn sessions_reach_deep_editor_states() {
     }
 
     // Assert: a harness that never reaches these states proves nothing.
-    assert!(with_shapes >= 100, "sessions with shapes: {with_shapes}/200");
-    assert!(with_selection >= 20, "sessions with a selection: {with_selection}/200");
+    assert!(
+        with_shapes >= 100,
+        "sessions with shapes: {with_shapes}/200"
+    );
+    assert!(
+        with_selection >= 20,
+        "sessions with a selection: {with_selection}/200"
+    );
     assert!(zoomed >= 20, "sessions that zoomed: {zoomed}/200");
     assert!(with_redo >= 20, "sessions that could redo: {with_redo}/200");
 }
@@ -468,6 +486,8 @@ fn sessions_reach_deep_editor_states() {
 // ---------------------------------------------------------------------------
 
 proptest! {
+    #![proptest_config(config())]
+
     #[test]
     fn editor_never_panics_and_keeps_invariants(session in arb_session()) {
         // Arrange / Act / Assert: invariants are checked after every event.
@@ -520,6 +540,8 @@ proptest! {
 // ---------------------------------------------------------------------------
 
 proptest! {
+    #![proptest_config(config())]
+
     #[test]
     fn smoother_never_panics_on_arbitrary_points(
         params in arb_smoothing_params(),
