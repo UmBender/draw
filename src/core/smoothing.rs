@@ -38,20 +38,40 @@ pub enum SmoothingLevel {
 impl SmoothingLevel {
     /// The next level in the cycle `Off → Low → Medium → High → Off`.
     #[must_use]
-    pub fn next(self) -> Self {
-        todo!()
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Off => Self::Low,
+            Self::Low => Self::Medium,
+            Self::Medium => Self::High,
+            Self::High => Self::Off,
+        }
     }
 
     /// Lowercase name for the UI: `"off"`, `"low"`, `"medium"` or `"high"`.
     #[must_use]
-    pub fn label(self) -> &'static str {
-        todo!()
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
     }
 
     /// Pipeline parameters for this level (the ADR-0007 table).
     #[must_use]
-    pub fn params(self) -> SmoothingParams {
-        todo!()
+    pub const fn params(self) -> SmoothingParams {
+        let (min_dist_px, alpha, epsilon_px) = match self {
+            Self::Off => (0.0, 1.0, 0.0),
+            Self::Low => (1.5, 0.6, 0.8),
+            Self::Medium => (2.5, 0.4, 1.5),
+            Self::High => (4.0, 0.25, 2.5),
+        };
+        SmoothingParams {
+            min_dist_px,
+            alpha,
+            epsilon_px,
+        }
     }
 }
 
@@ -98,8 +118,24 @@ impl Smoother {
     /// panics.
     #[must_use]
     pub fn new(params: SmoothingParams, px_to_world: f32) -> Self {
-        let _ = (params, px_to_world);
-        todo!()
+        let scale = if px_to_world.is_finite() && px_to_world > 0.0 {
+            px_to_world
+        } else {
+            1.0
+        };
+        let alpha = if params.alpha.is_finite() {
+            params.alpha.clamp(MIN_ALPHA, 1.0)
+        } else {
+            1.0
+        };
+        Self {
+            min_dist: non_negative(params.min_dist_px * scale),
+            alpha,
+            epsilon: non_negative(params.epsilon_px * scale),
+            last_kept_raw: None,
+            last_raw: None,
+            points: Vec::new(),
+        }
     }
 
     /// Offers a raw pointer position; returns `true` if it was kept.
@@ -109,14 +145,38 @@ impl Smoother {
     /// of it; the kept point is EMA-filtered before it joins
     /// [`Smoother::points`]. The first point is kept unfiltered.
     pub fn push(&mut self, raw: Vec2) -> bool {
-        let _ = raw;
-        todo!()
+        let Some(raw) = raw.sanitize() else {
+            return false;
+        };
+        self.last_raw = Some(raw);
+
+        let smoothed = match (self.last_kept_raw, self.points.last()) {
+            (Some(kept), Some(&prev)) => {
+                let d = raw.distance(kept);
+                // `d <= 0` catches exact duplicates even when min_dist is 0.
+                if d <= 0.0 || d < self.min_dist {
+                    return false;
+                }
+                if self.alpha >= 1.0 {
+                    raw
+                } else {
+                    // Same as `prev + α (raw − prev)`, but as a convex
+                    // combination it cannot overflow for finite inputs.
+                    prev * (1.0 - self.alpha) + raw * self.alpha
+                }
+            }
+            _ => raw,
+        };
+
+        self.last_kept_raw = Some(raw);
+        self.points.push(smoothed);
+        true
     }
 
     /// The live smoothed polyline, for drawing a preview while the pen is down.
     #[must_use]
     pub fn points(&self) -> &[Vec2] {
-        todo!()
+        &self.points
     }
 
     /// Ends the stroke: appends the last raw point (so the line reaches the
@@ -126,7 +186,27 @@ impl Smoother {
     /// point for a click without movement.
     #[must_use]
     pub fn finish(self) -> Vec<Vec2> {
-        todo!()
+        let Self {
+            epsilon,
+            last_raw,
+            mut points,
+            ..
+        } = self;
+        if let (Some(end), Some(&last)) = (last_raw, points.last()) {
+            if end.distance(last) > 0.0 {
+                points.push(end);
+            }
+        }
+        simplify_rdp(&points, epsilon)
+    }
+}
+
+/// Maps negative, NaN and infinite values to `0`.
+fn non_negative(value: f32) -> f32 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        0.0
     }
 }
 
@@ -141,8 +221,43 @@ impl Smoother {
 /// bound only holds for finite input.
 #[must_use]
 pub fn simplify_rdp(points: &[Vec2], eps: f32) -> Vec<Vec2> {
-    let _ = (points, eps, distance_to_segment);
-    todo!()
+    let n = points.len();
+    if n <= 2 || eps.is_nan() || eps <= 0.0 {
+        return points.to_vec();
+    }
+
+    let mut keep = vec![false; n];
+    keep[0] = true;
+    keep[n - 1] = true;
+
+    // Each entry is a span `(first, last)` whose endpoints are already kept.
+    let mut stack = vec![(0, n - 1)];
+    while let Some((first, last)) = stack.pop() {
+        if last - first < 2 {
+            continue;
+        }
+        let (a, b) = (points[first], points[last]);
+        let mut farthest = first;
+        let mut max_dist = eps;
+        for (i, &p) in points.iter().enumerate().take(last).skip(first + 1) {
+            let d = distance_to_segment(p, a, b);
+            if d > max_dist {
+                farthest = i;
+                max_dist = d;
+            }
+        }
+        if farthest != first {
+            keep[farthest] = true;
+            stack.push((first, farthest));
+            stack.push((farthest, last));
+        }
+    }
+
+    points
+        .iter()
+        .zip(&keep)
+        .filter_map(|(&p, &k)| k.then_some(p))
+        .collect()
 }
 
 #[cfg(test)]
