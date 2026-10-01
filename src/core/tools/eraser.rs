@@ -6,7 +6,7 @@
 //! tolerance apart, so fast drags do not skip thin shapes.
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::ShapeId;
+use crate::core::document::{ShapeId, tx_remove};
 use crate::core::geom::Vec2;
 
 /// Hit tolerance of the eraser in screen pixels.
@@ -28,28 +28,60 @@ pub struct State {
 /// Marks every unmarked shape hit by the segment `from → to` (screen).
 /// Returns whether anything new was marked.
 fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> bool {
-    let _ = (state, ctx, from, to, MAX_SAMPLES, Phase::Down);
-    todo!()
+    let tol = ctx.camera.world_len(ERASER_TOLERANCE_PX);
+    // `as` saturates (NaN becomes 0), and the clamp keeps at least one step.
+    let steps = ((from.distance(to) / ERASER_TOLERANCE_PX).ceil() as usize).clamp(1, MAX_SAMPLES);
+    let before = state.marked.len();
+    for step in 0..=steps {
+        let world = ctx
+            .camera
+            .screen_to_world(from.lerp(to, step as f32 / steps as f32));
+        for (id, shape) in ctx.doc.shapes() {
+            if !state.marked.contains(&id) && shape.hit(world, tol) {
+                state.marked.push(id);
+            }
+        }
+    }
+    state.marked.len() > before
 }
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer);
-    false
+    if pointer.phase == Phase::Down {
+        state.marked.clear();
+    }
+    let from = state.last.unwrap_or(pointer.pos);
+    let marked_more = mark_along(state, ctx, from, pointer.pos);
+    match pointer.phase {
+        Phase::Down | Phase::Move => {
+            state.last = Some(pointer.pos);
+            marked_more
+        }
+        Phase::Up => {
+            // A rejected removal still needs a redraw to unhide the marks.
+            let marked = std::mem::take(state).marked;
+            let tx = tx_remove(ctx.doc, &marked);
+            ctx.commit(tx) || !marked.is_empty()
+        }
+    }
 }
 
 /// What the gesture in progress draws on top of the document.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    Overlay::default()
+    let _ = view;
+    Overlay {
+        hidden: state.marked.clone(),
+        ..Overlay::default()
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed.
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    false
+    let active = state.last.is_some() || !state.marked.is_empty();
+    *state = State::default();
+    active
 }
 
 #[cfg(test)]

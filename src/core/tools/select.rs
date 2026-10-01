@@ -14,9 +14,12 @@
 //! Every entry point first drops selected ids missing from the document, so a
 //! stale selection is never acted on.
 
+use std::collections::HashSet;
+
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::{Document, ShapeId};
-use crate::core::geom::Vec2;
+use crate::core::clipboard;
+use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
+use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::Shape;
 
 /// Pointer travel (screen pixels) below which a press-release is a click.
@@ -61,50 +64,233 @@ enum Gesture {
 
 /// Drops selected ids that are not in the document.
 pub(crate) fn prune(selection: &mut Vec<ShapeId>, doc: &Document) {
-    let _ = (selection, doc);
-    todo!()
+    selection.retain(|id| doc.get(*id).is_some());
 }
 
-/// The shapes of `selection` with their ids, in z-order (bottom first).
+/// The shapes of `selection` with their ids, in z-order (bottom first);
+/// unknown ids are skipped.
 pub(crate) fn selected_shapes<'d>(
     doc: &'d Document,
     selection: &[ShapeId],
 ) -> Vec<(ShapeId, &'d Shape)> {
-    let _ = (doc, selection, Phase::Down);
-    todo!()
+    let wanted: HashSet<ShapeId> = selection.iter().copied().collect();
+    doc.shapes().filter(|(id, _)| wanted.contains(id)).collect()
+}
+
+/// Whether a press at `start` released at `end` (screen) is a click.
+fn is_click(start: Vec2, end: Vec2) -> bool {
+    start.distance(end) < CLICK_SLOP_PX
+}
+
+/// Clones of `shapes` translated by `delta`.
+fn translated(shapes: &[(ShapeId, &Shape)], delta: Vec2) -> Vec<Shape> {
+    shapes
+        .iter()
+        .map(|(_, shape)| {
+            let mut shape = (*shape).clone();
+            shape.translate(delta);
+            shape
+        })
+        .collect()
 }
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer);
-    false
+    match pointer.phase {
+        Phase::Down => press(state, ctx, pointer),
+        Phase::Move => drag_to(state, pointer.pos),
+        Phase::Up => {
+            drag_to(state, pointer.pos);
+            release(state, ctx)
+        }
+    }
+}
+
+/// Starts a gesture: picks, toggles or clears, then arms a move or marquee.
+fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
+    prune(ctx.selection, ctx.doc);
+    let before = ctx.selection.clone();
+    let pos = pointer.pos;
+    let world = ctx.camera.screen_to_world(pos);
+    let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
+    let hit = ctx.doc.topmost_where(|shape| shape.hit(world, tol));
+    state.gesture = match hit {
+        Some(id) if pointer.mods.shift => {
+            match ctx.selection.iter().position(|selected| *selected == id) {
+                Some(index) => {
+                    ctx.selection.remove(index);
+                }
+                None => ctx.selection.push(id),
+            }
+            None
+        }
+        Some(id) => {
+            if !ctx.selection.contains(&id) {
+                *ctx.selection = vec![id];
+            }
+            Some(Gesture::Move {
+                start: pos,
+                current: pos,
+                clicked: id,
+                ids: ctx.selection.clone(),
+                duplicate: pointer.mods.alt,
+            })
+        }
+        None => {
+            if !pointer.mods.shift {
+                ctx.selection.clear();
+            }
+            Some(Gesture::Marquee {
+                start: pos,
+                current: pos,
+                additive: pointer.mods.shift,
+            })
+        }
+    };
+    *ctx.selection != before
+}
+
+/// Moves the pointer of the gesture in progress. Returns whether it moved.
+fn drag_to(state: &mut State, pos: Vec2) -> bool {
+    match &mut state.gesture {
+        Some(Gesture::Marquee { current, .. } | Gesture::Move { current, .. }) => {
+            let moved = current.distance(pos) > 0.0;
+            *current = pos;
+            moved
+        }
+        None => false,
+    }
+}
+
+/// Ends the gesture: applies the marquee, the click or the move.
+fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
+    let Some(gesture) = state.gesture.take() else {
+        return false;
+    };
+    prune(ctx.selection, ctx.doc);
+    let camera = ctx.camera;
+    match gesture {
+        Gesture::Marquee { start, current, .. } => {
+            if is_click(start, current) {
+                return start.distance(current) > 0.0;
+            }
+            let rect = Aabb::from_corners(
+                camera.screen_to_world(start),
+                camera.screen_to_world(current),
+            );
+            let hits: Vec<ShapeId> = ctx
+                .doc
+                .shapes()
+                .filter(|(_, shape)| shape.bounds().intersects(&rect))
+                .map(|(id, _)| id)
+                .collect();
+            for id in hits {
+                if !ctx.selection.contains(&id) {
+                    ctx.selection.push(id);
+                }
+            }
+            true
+        }
+        Gesture::Move {
+            start,
+            current,
+            clicked,
+            ids,
+            duplicate,
+        } => {
+            if is_click(start, current) {
+                let changed = ctx.selection.as_slice() != [clicked];
+                *ctx.selection = vec![clicked];
+                prune(ctx.selection, ctx.doc);
+                return changed || start.distance(current) > 0.0;
+            }
+            let delta = camera.screen_to_world(current) - camera.screen_to_world(start);
+            let moving = selected_shapes(ctx.doc, &ids);
+            if duplicate {
+                let copies = moving.iter().map(|(_, shape)| (*shape).clone()).collect();
+                clipboard::insert_copies(ctx, copies, delta);
+            } else {
+                let after = translated(&moving, delta);
+                let edits: Vec<Edit> = moving
+                    .iter()
+                    .zip(after)
+                    .map(|((id, before), after)| Edit::Replace {
+                        id: *id,
+                        before: (*before).clone(),
+                        after,
+                    })
+                    .collect();
+                ctx.commit(Transaction::from(edits));
+            }
+            // The preview disappears even if the edit was rejected.
+            true
+        }
+    }
 }
 
 /// What the gesture in progress draws on top of the document.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    Overlay::default()
+    let camera = view.camera;
+    match &state.gesture {
+        None => Overlay::default(),
+        Some(Gesture::Marquee { start, current, .. }) => Overlay {
+            marquee: Some(Aabb::from_corners(
+                camera.screen_to_world(*start),
+                camera.screen_to_world(*current),
+            )),
+            ..Overlay::default()
+        },
+        Some(Gesture::Move {
+            start,
+            current,
+            ids,
+            duplicate,
+            ..
+        }) => {
+            if is_click(*start, *current) {
+                return Overlay::default();
+            }
+            let delta = camera.screen_to_world(*current) - camera.screen_to_world(*start);
+            let moving = selected_shapes(view.doc, ids);
+            Overlay {
+                shapes: translated(&moving, delta),
+                hidden: if *duplicate {
+                    Vec::new()
+                } else {
+                    moving.iter().map(|(id, _)| *id).collect()
+                },
+                marquee: None,
+            }
+        }
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed.
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    false
+    state.gesture.take().is_some()
 }
 
 /// Selects every shape. Returns whether the selection changed.
 pub fn select_all(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    false
+    let all: Vec<ShapeId> = ctx.doc.shapes().map(|(id, _)| id).collect();
+    let changed = *ctx.selection != all;
+    *ctx.selection = all;
+    changed
 }
 
 /// Deletes the selected shapes as one undo step and clears the selection.
 /// Returns whether the document changed.
 pub fn delete_selection(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    false
+    prune(ctx.selection, ctx.doc);
+    if ctx.selection.is_empty() {
+        return false;
+    }
+    let tx = tx_remove(ctx.doc, ctx.selection);
+    let changed = ctx.commit(tx);
+    ctx.selection.clear();
+    changed
 }
 
 #[cfg(test)]

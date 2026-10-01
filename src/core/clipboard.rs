@@ -7,21 +7,14 @@
 //! clipboard alone) [`DUPLICATE_OFFSET_PX`] right and down. Every command
 //! that changes the document is one undo step.
 
-use crate::core::document::Edit;
+use crate::core::document::{Edit, tx_insert};
 use crate::core::geom::Vec2;
 use crate::core::shape::Shape;
 use crate::core::tools::ToolCtx;
+use crate::core::tools::select::{self, prune, selected_shapes};
 
 /// Screen offset of [`duplicate`] copies, right and down, in pixels.
 pub const DUPLICATE_OFFSET_PX: f32 = 16.0;
-
-/// Inserts `shapes` translated by `delta` (world) on top as one undo step and
-/// selects the copies. Returns whether the document changed; on failure the
-/// selection is left alone.
-pub(crate) fn insert_copies(ctx: &mut ToolCtx<'_>, shapes: Vec<Shape>, delta: Vec2) -> bool {
-    let _ = (ctx, shapes, delta, std::mem::size_of::<Edit>());
-    todo!()
-}
 
 /// Shapes copied from the document.
 #[derive(Debug, Clone, Default)]
@@ -38,31 +31,78 @@ impl Clipboard {
     }
 }
 
-/// Copies the selected shapes. Returns whether a redraw is needed.
+/// Copies the selected shapes. Returns whether a redraw is needed (never: the
+/// document and selection are unchanged). An empty selection keeps the
+/// clipboard.
 pub fn copy(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
+    let shapes = selected_clones(ctx);
+    if !shapes.is_empty() {
+        ctx.clipboard.shapes = shapes;
+    }
     false
 }
 
 /// Copies, then deletes the selected shapes (one undo step). Returns whether
 /// the document changed.
 pub fn cut(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    false
+    copy(ctx);
+    select::delete_selection(ctx)
 }
 
 /// Pastes the clipboard centred at `ctx.cursor` and selects the copies (one
 /// undo step). Returns whether the document changed.
 pub fn paste(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    false
+    let shapes = ctx.clipboard.shapes.clone();
+    let Some(bounds) = shapes.iter().map(Shape::bounds).reduce(|a, b| a.union(&b)) else {
+        return false;
+    };
+    let delta = ctx.camera.screen_to_world(ctx.cursor) - bounds.center();
+    insert_copies(ctx, shapes, delta)
 }
 
-/// Duplicates the selection with a small screen offset (one undo step).
-/// Returns whether the document changed.
+/// Duplicates the selection [`DUPLICATE_OFFSET_PX`] right and down (one undo
+/// step) and selects the copies; the clipboard is untouched. Returns whether
+/// the document changed.
 pub fn duplicate(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    false
+    let shapes = selected_clones(ctx);
+    let offset = ctx.camera.world_len(DUPLICATE_OFFSET_PX);
+    insert_copies(ctx, shapes, Vec2::new(offset, offset))
+}
+
+/// Clones of the selected shapes in z-order, after dropping stale ids.
+fn selected_clones(ctx: &mut ToolCtx<'_>) -> Vec<Shape> {
+    prune(ctx.selection, ctx.doc);
+    selected_shapes(ctx.doc, ctx.selection)
+        .into_iter()
+        .map(|(_, shape)| shape.clone())
+        .collect()
+}
+
+/// Inserts `shapes` translated by `delta` (world) on top as one undo step and
+/// selects the copies. Returns whether the document changed; when nothing is
+/// inserted (no shapes, or a non-finite result) the selection is left alone.
+pub(crate) fn insert_copies(ctx: &mut ToolCtx<'_>, shapes: Vec<Shape>, delta: Vec2) -> bool {
+    if shapes.is_empty() || !delta.is_finite() {
+        return false;
+    }
+    let moved = shapes.into_iter().map(|mut shape| {
+        shape.translate(delta);
+        shape
+    });
+    let tx = tx_insert(ctx.doc, moved);
+    let ids = tx
+        .edits()
+        .iter()
+        .filter_map(|edit| match edit {
+            Edit::Insert { id, .. } => Some(*id),
+            Edit::Remove { .. } | Edit::Replace { .. } => None,
+        })
+        .collect();
+    if !ctx.commit(tx) {
+        return false;
+    }
+    *ctx.selection = ids;
+    true
 }
 
 /// Shared fixture for the editing-tool tests (eraser, bucket, select,

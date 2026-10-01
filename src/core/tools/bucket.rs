@@ -8,7 +8,8 @@
 //! [`Shape::Rect`]: crate::core::shape::Shape::Rect
 //! [`Shape::Ellipse`]: crate::core::shape::Shape::Ellipse
 
-use super::{Overlay, Pointer, ToolCtx, ToolView};
+use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::document::tx_replace;
 
 /// Gesture state of this tool: the bucket acts on press and keeps none.
 #[derive(Debug, Clone, Default)]
@@ -16,8 +17,23 @@ pub struct State;
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer);
-    false
+    let _ = state;
+    if pointer.phase != Phase::Down {
+        return false;
+    }
+    let world = ctx.camera.screen_to_world(pointer.pos);
+    let fill = Some(ctx.style.color);
+    let Some(id) = ctx
+        .doc
+        .topmost_where(|shape| shape.is_closed() && shape.contains(world))
+    else {
+        return false;
+    };
+    let Some(shape) = ctx.doc.get(id).filter(|shape| shape.fill() != fill) else {
+        return false;
+    };
+    let tx = tx_replace(ctx.doc, id, shape.clone().with_fill(fill));
+    ctx.commit(tx)
 }
 
 /// What the gesture in progress draws on top of the document.
