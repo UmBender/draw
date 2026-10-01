@@ -1,7 +1,7 @@
 ---
 id: T21
 title: Cell fill and fill eraser
-status: in-progress
+status: review
 wave: 10
 branch: task/T21-cell-fill
 depends_on: [T18]
@@ -88,7 +88,7 @@ description); new `ADR-T21-*`, feature and tutorial notes.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
@@ -103,3 +103,18 @@ Step 21 — requires steps 10 and 18.
 - spec refined before the tests: per-shape outline/inside effects would
   delete a grid whenever a drag crosses a line; the mode is now chosen on
   press (ADR-T21-2, amends ADR-T21-1).
+- tests: shape, bucket, eraser unit tests, `cell_fills_stay_valid`
+  property, fuzz invariant on fills; red as compile errors.
+- models: `CellFill`, `fills`, method signatures, eraser `Mode` and
+  `cleared` state.
+- behaviour: `hit` now delegates to `hit_outline`. All tests green; the
+  behaviour commit kept an eager clone in `clear_at` (an edit missed after
+  rustfmt reflowed the line), fixed in the quality commit.
+- quality: `clear_at` returns `Option` without cloning; `grid_cell_at`
+  uses a finite check instead of `a == b` (`clippy::float_cmp`).
+  `PROPTEST_CASES=20000` fuzz green.
+- Files touched: as owned, plus this note, two ADRs, the feature and
+  tutorial notes. `clipboard.rs` testkit untouched (tests define their own
+  grid helper). `Architecture.md` unchanged (module map row still fits).
+- Not checked on screen: cell fill rendering under lines and the eraser
+  preview need a manual look.
