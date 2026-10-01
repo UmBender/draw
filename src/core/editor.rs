@@ -19,7 +19,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
-use crate::core::numbering::FIRST_NUMBER;
+use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
@@ -255,13 +255,21 @@ impl Editor {
             }
             Command::Undo => {
                 let cancelled = self.cancel_gesture();
+                let given = self.helpers().next_number.saturating_sub(1);
+                let before = numbering::label_count(&self.doc, given);
                 let changed = self.history.undo(&mut self.doc);
+                let after = numbering::label_count(&self.doc, given);
+                let helpers = &mut self.style.helpers;
+                helpers.next_number = numbering::roll_back(helpers.next_number, before, after);
                 self.prune_selection();
                 changed || cancelled
             }
             Command::Redo => {
                 let cancelled = self.cancel_gesture();
+                let next = self.helpers().next_number;
+                let before = numbering::label_count(&self.doc, next);
                 let changed = self.history.redo(&mut self.doc);
+                self.advance_numbering(before);
                 self.prune_selection();
                 changed || cancelled
             }
@@ -486,12 +494,26 @@ impl Editor {
             }
             Some(Gesture::Tool { button: b, tool }) if b == button => {
                 self.gesture = None;
+                let numbering = self.helpers().numbering;
+                let next = self.helpers().next_number;
+                let before = numbering.then(|| numbering::label_count(&self.doc, next));
                 let changed = self.tool_pointer(tool, Phase::Up, pos, mods);
+                if let Some(before) = before {
+                    self.advance_numbering(before);
+                }
                 self.prune_selection();
                 changed
             }
             _ => false,
         }
+    }
+
+    /// Moves the numbering counter on if the shapes labelled with it grew
+    /// from `before` (ADR-T19-1).
+    fn advance_numbering(&mut self, before: usize) {
+        let helpers = &mut self.style.helpers;
+        let after = numbering::label_count(&self.doc, helpers.next_number);
+        helpers.next_number = numbering::advance(helpers.next_number, before, after);
     }
 
     /// Sends one pointer event to `tool`.
@@ -1327,6 +1349,179 @@ mod tests {
         assert!(changed);
         assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Grid)));
         assert_eq!(ed.helpers().grid_cols, 5);
+    }
+
+    // ---- T19 numbering ----------------------------------------------------
+
+    /// Editor with numbering on and the ellipse tool active.
+    fn numbering_editor() -> Editor {
+        let mut ed = Editor::new();
+        ed.apply(Command::ToggleNumbering);
+        ed.apply(Command::SetTool(Tool::Ellipse));
+        ed
+    }
+
+    /// Drags a 30 px node at screen `x`.
+    fn draw_node(ed: &mut Editor, x: f32) {
+        down(ed, PointerButton::Left, x, 0.0);
+        move_to(ed, x + 30.0, 30.0);
+        up(ed, PointerButton::Left, x + 30.0, 30.0);
+    }
+
+    fn labels(ed: &Editor) -> Vec<Option<u32>> {
+        ed.document().shapes().map(|(_, s)| s.label()).collect()
+    }
+
+    #[test]
+    fn numbered_shapes_count_up() {
+        // Arrange
+        let mut ed = numbering_editor();
+
+        // Act
+        draw_node(&mut ed, 0.0);
+        ed.apply(Command::SetTool(Tool::Rect));
+        draw_node(&mut ed, 100.0);
+        ed.apply(Command::SetTool(Tool::Line));
+        draw_node(&mut ed, 200.0);
+        ed.apply(Command::SetTool(Tool::Ellipse));
+        draw_node(&mut ed, 300.0);
+
+        // Assert
+        assert_eq!(labels(&ed), vec![Some(1), Some(2), None, Some(3)]);
+        assert_eq!(ed.helpers().next_number, 4);
+    }
+
+    #[test]
+    fn numbering_off_leaves_counter() {
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Ellipse));
+
+        draw_node(&mut ed, 0.0);
+
+        assert_eq!(labels(&ed), vec![None]);
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+    }
+
+    #[test]
+    fn stray_click_keeps_counter() {
+        let mut ed = numbering_editor();
+
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        up(&mut ed, PointerButton::Left, 10.0, 10.0);
+
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+    }
+
+    #[test]
+    fn reset_restarts_at_one() {
+        // Arrange
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+
+        // Act
+        ed.handle(InputEvent::KeyDown {
+            key: Key::N,
+            mods: Modifiers {
+                shift: true,
+                ..NONE
+            },
+        });
+        draw_node(&mut ed, 200.0);
+
+        // Assert
+        assert_eq!(labels(&ed), vec![Some(1), Some(2), Some(1)]);
+        assert_eq!(ed.helpers().next_number, 2);
+    }
+
+    #[test]
+    fn undo_rolls_counter_back() {
+        // Arrange
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+
+        // Act
+        assert!(ed.apply(Command::Undo));
+
+        // Assert: the next node reuses 2.
+        assert_eq!(ed.helpers().next_number, 2);
+        draw_node(&mut ed, 200.0);
+        assert_eq!(labels(&ed), vec![Some(1), Some(2)]);
+        assert_eq!(ed.helpers().next_number, 3);
+    }
+
+    #[test]
+    fn redo_restores_counter() {
+        // Arrange
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+        ed.apply(Command::Undo);
+        ed.apply(Command::Undo);
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+
+        // Act / Assert
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(ed.helpers().next_number, 2);
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(ed.helpers().next_number, 3);
+        assert_eq!(labels(&ed), vec![Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn undo_after_reset_rolls_back_duplicate() {
+        // Arrange: 1, 2, reset, 1 again.
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+        ed.apply(Command::ResetNumbering);
+        draw_node(&mut ed, 200.0);
+        assert_eq!(ed.helpers().next_number, 2);
+
+        // Act
+        ed.apply(Command::Undo);
+
+        // Assert
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+        assert_eq!(labels(&ed), vec![Some(1), Some(2)]);
+    }
+
+    #[test]
+    fn undo_of_unnumbered_keeps_counter() {
+        // Arrange: node 1, then an unnumbered line.
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        ed.apply(Command::SetTool(Tool::Line));
+        draw_node(&mut ed, 100.0);
+
+        // Act / Assert
+        ed.apply(Command::Undo);
+        assert_eq!(ed.helpers().next_number, 2);
+        ed.apply(Command::Redo);
+        assert_eq!(ed.helpers().next_number, 2);
+    }
+
+    #[test]
+    fn duplicate_keeps_labels_and_counter() {
+        // Arrange
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+
+        // Act
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+        ed.apply(Command::Paste);
+        ed.apply(Command::Duplicate);
+
+        // Assert
+        assert_eq!(
+            labels(&ed),
+            vec![Some(1), Some(2), Some(1), Some(2), Some(1), Some(2)]
+        );
+        assert_eq!(ed.helpers().next_number, 3);
     }
 
     // ---- AC-9 stubs -------------------------------------------------------
