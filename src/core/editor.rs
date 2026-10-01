@@ -19,7 +19,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
-use crate::core::numbering::FIRST_NUMBER;
+use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
@@ -255,13 +255,21 @@ impl Editor {
             }
             Command::Undo => {
                 let cancelled = self.cancel_gesture();
+                let given = self.helpers().next_number.saturating_sub(1);
+                let before = numbering::label_count(&self.doc, given);
                 let changed = self.history.undo(&mut self.doc);
+                let after = numbering::label_count(&self.doc, given);
+                let helpers = &mut self.style.helpers;
+                helpers.next_number = numbering::roll_back(helpers.next_number, before, after);
                 self.prune_selection();
                 changed || cancelled
             }
             Command::Redo => {
                 let cancelled = self.cancel_gesture();
+                let next = self.helpers().next_number;
+                let before = numbering::label_count(&self.doc, next);
                 let changed = self.history.redo(&mut self.doc);
+                self.advance_numbering(before);
                 self.prune_selection();
                 changed || cancelled
             }
@@ -486,12 +494,26 @@ impl Editor {
             }
             Some(Gesture::Tool { button: b, tool }) if b == button => {
                 self.gesture = None;
+                let numbering = self.helpers().numbering;
+                let next = self.helpers().next_number;
+                let before = numbering.then(|| numbering::label_count(&self.doc, next));
                 let changed = self.tool_pointer(tool, Phase::Up, pos, mods);
+                if let Some(before) = before {
+                    self.advance_numbering(before);
+                }
                 self.prune_selection();
                 changed
             }
             _ => false,
         }
+    }
+
+    /// Moves the numbering counter on if the shapes labelled with it grew
+    /// from `before` (ADR-T19-1).
+    fn advance_numbering(&mut self, before: usize) {
+        let helpers = &mut self.style.helpers;
+        let after = numbering::label_count(&self.doc, helpers.next_number);
+        helpers.next_number = numbering::advance(helpers.next_number, before, after);
     }
 
     /// Sends one pointer event to `tool`.

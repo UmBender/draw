@@ -9,11 +9,15 @@
 //! With the snap helpers on, the start and the moving end are snapped
 //! (ADR-T17-1): `Alt` turns snapping off for an event, and with `Shift`
 //! only grid snap runs before the constraint.
+//!
+//! With numbering on, rectangles and ellipses carry the next number, in the
+//! preview and when committed (ADR-T19-1); the editor moves the counter.
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::command::Tool;
 use crate::core::document::tx_insert;
 use crate::core::geom::Vec2;
+use crate::core::numbering;
 use crate::core::shape::{Shape, Style};
 use crate::core::snap::{self, DragKind, Snapped};
 
@@ -172,7 +176,7 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
             if drag_px.is_nan() || drag_px < MIN_DRAG_PX {
                 return true;
             }
-            let shape = drag.shape();
+            let shape = numbering::label_new(drag.shape(), &ctx.style.helpers);
             if shape.is_finite() {
                 let tx = tx_insert(ctx.doc, [shape]);
                 ctx.commit(tx);
@@ -183,12 +187,16 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 }
 
 /// What the gesture in progress draws on top of the document: the shape
-/// being dragged and its alignment guides, or nothing when idle.
+/// being dragged (with the number it would get) and its alignment guides,
+/// or nothing when idle.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = view;
     Overlay {
-        shapes: state.drag.iter().map(Drag::shape).collect(),
+        shapes: state
+            .drag
+            .iter()
+            .map(|drag| numbering::label_new(drag.shape(), &view.style.helpers))
+            .collect(),
         guides: state
             .drag
             .as_ref()

@@ -21,15 +21,20 @@ pub const FIRST_NUMBER: u32 = 1;
 /// is on; any other shape, or numbering off, leaves `shape` unchanged.
 #[must_use]
 pub fn label_new(shape: Shape, helpers: &Helpers) -> Shape {
-    let _ = helpers;
-    todo!()
+    match shape {
+        Shape::Rect { .. } | Shape::Ellipse { .. } if helpers.numbering => {
+            shape.with_label(Some(helpers.next_number))
+        }
+        _ => shape,
+    }
 }
 
 /// Number of shapes in `doc` labelled `label`.
 #[must_use]
 pub fn label_count(doc: &Document, label: u32) -> usize {
-    let _ = (doc, label);
-    todo!()
+    doc.shapes()
+        .filter(|(_, shape)| shape.label() == Some(label))
+        .count()
 }
 
 /// The counter after a gesture end or redo: `next + 1` (saturating) if the
@@ -37,8 +42,11 @@ pub fn label_count(doc: &Document, label: u32) -> usize {
 /// `next`.
 #[must_use]
 pub fn advance(next: u32, before: usize, after: usize) -> u32 {
-    let _ = (next, before, after);
-    todo!()
+    if after > before {
+        next.saturating_add(1)
+    } else {
+        next
+    }
 }
 
 /// The counter after an undo: `next − 1` if the number of shapes labelled
@@ -46,8 +54,12 @@ pub fn advance(next: u32, before: usize, after: usize) -> u32 {
 /// [`FIRST_NUMBER`].
 #[must_use]
 pub fn roll_back(next: u32, before: usize, after: usize) -> u32 {
-    let _ = (next, before, after);
-    todo!()
+    let next = next.max(FIRST_NUMBER);
+    if next > FIRST_NUMBER && after < before {
+        next - 1
+    } else {
+        next
+    }
 }
 
 #[cfg(test)]
