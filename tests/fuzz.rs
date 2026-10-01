@@ -78,7 +78,12 @@ const ALL_KEYS: [Key; 47] = [
 ];
 
 /// The arrow keys: grid columns and rows.
-const ARROW_KEYS: [Key; 4] = [Key::ArrowLeft, Key::ArrowRight, Key::ArrowUp, Key::ArrowDown];
+const ARROW_KEYS: [Key; 4] = [
+    Key::ArrowLeft,
+    Key::ArrowRight,
+    Key::ArrowUp,
+    Key::ArrowDown,
+];
 
 /// Every `PointerButton`.
 const ALL_BUTTONS: [PointerButton; 3] = [
@@ -243,8 +248,12 @@ fn arb_grid_drag() -> impl Strategy<Value = Vec<InputEvent>> {
         key,
         mods: Modifiers::NONE,
     });
-    (arb_gesture(), prop::collection::vec(arrow, 0..12), any::<u64>()).prop_map(
-        |(gesture, arrows, seed)| {
+    (
+        arb_gesture(),
+        prop::collection::vec(arrow, 0..12),
+        any::<u64>(),
+    )
+        .prop_map(|(gesture, arrows, seed)| {
             let mut events = vec![InputEvent::KeyDown {
                 key: Key::G,
                 mods: Modifiers::NONE,
@@ -265,8 +274,7 @@ fn arb_grid_drag() -> impl Strategy<Value = Vec<InputEvent>> {
             }
             events.extend(arrows);
             events
-        },
-    )
+        })
 }
 
 /// A session of 1..=500 events, biased towards realistic gestures.
@@ -509,7 +517,8 @@ fn grid_drags_press_arrows_while_the_grid_tool_drags() {
         for event in tree.current() {
             let during_grid_drag = editor.active_gesture()
                 == Some(draw::core::editor::ActiveGesture::Tool(Tool::Grid));
-            let is_arrow = matches!(event, InputEvent::KeyDown { key, .. } if ARROW_KEYS.contains(&key));
+            let is_arrow =
+                matches!(event, InputEvent::KeyDown { key, .. } if ARROW_KEYS.contains(&key));
             changed_live |= editor.handle(event) && during_grid_drag && is_arrow;
         }
         live += usize::from(changed_live);

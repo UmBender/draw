@@ -1185,7 +1185,13 @@ mod tests {
                 .prop_map(|(a, b, w, l)| rect(a, b, w, None).with_label(l)),
             (point(), point(), width.clone(), label())
                 .prop_map(|(a, b, w, l)| ellipse(a, b, w, None).with_label(l)),
-            (point(), point(), 1..=GRID_MAX_CELLS, 1..=GRID_MAX_CELLS, width)
+            (
+                point(),
+                point(),
+                1..=GRID_MAX_CELLS,
+                1..=GRID_MAX_CELLS,
+                width
+            )
                 .prop_map(|(a, b, cols, rows, w)| grid(a, b, cols, rows, w)),
         ]
     }

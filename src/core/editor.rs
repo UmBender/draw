@@ -315,29 +315,12 @@ impl Editor {
             }
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
-            Command::ToggleSmartSnap => {
-                let helpers = &mut self.style.helpers;
-                helpers.smart_snap = !helpers.smart_snap;
-                true
-            }
-            Command::ToggleGridSnap => {
-                let helpers = &mut self.style.helpers;
-                helpers.grid_snap = !helpers.grid_snap;
-                true
-            }
-            Command::ToggleNumbering => {
-                let helpers = &mut self.style.helpers;
-                helpers.numbering = !helpers.numbering;
-                true
-            }
-            Command::ResetNumbering => {
-                let next = &mut self.style.helpers.next_number;
-                let changed = *next != FIRST_NUMBER;
-                *next = FIRST_NUMBER;
-                changed
-            }
-            Command::GridCols(delta) => step_cells(&mut self.style.helpers.grid_cols, delta),
-            Command::GridRows(delta) => step_cells(&mut self.style.helpers.grid_rows, delta),
+            Command::ToggleSmartSnap
+            | Command::ToggleGridSnap
+            | Command::ToggleNumbering
+            | Command::ResetNumbering
+            | Command::GridCols(_)
+            | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
         }
     }
 
@@ -575,6 +558,33 @@ impl Editor {
     }
 }
 
+/// Executes a helper command on `helpers`. Returns whether anything changed;
+/// other commands change nothing.
+fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
+    match command {
+        Command::ToggleSmartSnap => {
+            helpers.smart_snap = !helpers.smart_snap;
+            true
+        }
+        Command::ToggleGridSnap => {
+            helpers.grid_snap = !helpers.grid_snap;
+            true
+        }
+        Command::ToggleNumbering => {
+            helpers.numbering = !helpers.numbering;
+            true
+        }
+        Command::ResetNumbering => {
+            let changed = helpers.next_number != FIRST_NUMBER;
+            helpers.next_number = FIRST_NUMBER;
+            changed
+        }
+        Command::GridCols(delta) => step_cells(&mut helpers.grid_cols, delta),
+        Command::GridRows(delta) => step_cells(&mut helpers.grid_rows, delta),
+        _ => false,
+    }
+}
+
 /// Adds `delta` to the grid dimension `cells`, clamped to
 /// `1..=GRID_MAX_CELLS`. Returns whether it changed.
 fn step_cells(cells: &mut u32, delta: i32) -> bool {
@@ -592,10 +602,10 @@ mod tests {
     use crate::core::document::tx_insert;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
-    use crate::core::palette::ColorId;
-    use crate::core::shape::{Shape, Style};
     use crate::core::numbering::FIRST_NUMBER;
+    use crate::core::palette::ColorId;
     use crate::core::shape::GRID_MAX_CELLS;
+    use crate::core::shape::{Shape, Style};
     use crate::core::smoothing::SmoothingLevel;
 
     const NONE: Modifiers = Modifiers::NONE;

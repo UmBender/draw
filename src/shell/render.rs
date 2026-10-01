@@ -247,7 +247,9 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             draw_segment(to_screen(*a), base, width, color);
             draw_triangle(to_mq(tip), to_mq(left), to_mq(right), color);
         }
-        Shape::Rect { a, b, fill, label, .. } => {
+        Shape::Rect {
+            a, b, fill, label, ..
+        } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             if let Some(fill) = fill {
                 draw_rectangle(
@@ -729,7 +731,10 @@ mod tests {
     fn label_size_is_capped() {
         let size = label_size(1, Vec2::new(1.0e5, 1.0e5));
 
-        assert!(size.is_some_and(|s| approx_eq(s, LABEL_MAX_PX, EPS)), "{size:?}");
+        assert!(
+            size.is_some_and(|s| approx_eq(s, LABEL_MAX_PX, EPS)),
+            "{size:?}"
+        );
     }
 
     #[test]

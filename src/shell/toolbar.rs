@@ -183,12 +183,7 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
         let rect = button.rect;
         match button.kind {
             ButtonKind::Tool(tool) => {
-                let active = editor.tool() == tool;
-                if active {
-                    fill(rect, to_mq_color(THEME.selection));
-                    outline(rect, accent);
-                }
-                draw_label(rect, tool_label(tool), if active { accent } else { text });
+                draw_toggle(rect, tool_label(tool), editor.tool() == tool, accent, text);
             }
             ButtonKind::Color(id) => {
                 fill(rect.expand(-SWATCH_INSET_PX), to_mq_color(palette(id)));
@@ -196,18 +191,14 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                     outline(rect, accent);
                 }
             }
-            ButtonKind::SmartSnap | ButtonKind::GridSnap | ButtonKind::Numbering => {
-                let helpers = editor.helpers();
-                let (on, label) = match button.kind {
-                    ButtonKind::SmartSnap => (helpers.smart_snap, "M"),
-                    ButtonKind::GridSnap => (helpers.grid_snap, "#"),
-                    _ => (helpers.numbering, "N"),
-                };
-                if on {
-                    fill(rect, to_mq_color(THEME.selection));
-                    outline(rect, accent);
-                }
-                draw_label(rect, label, if on { accent } else { text });
+            ButtonKind::SmartSnap => {
+                draw_toggle(rect, "M", editor.helpers().smart_snap, accent, text);
+            }
+            ButtonKind::GridSnap => {
+                draw_toggle(rect, "#", editor.helpers().grid_snap, accent, text);
+            }
+            ButtonKind::Numbering => {
+                draw_toggle(rect, "N", editor.helpers().numbering, accent, text);
             }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
@@ -229,6 +220,15 @@ fn tool_label(tool: Tool) -> &'static str {
         Tool::Select => "V",
         Tool::Hand => "H",
     }
+}
+
+/// Draws a labelled button, highlighted with `accent` when `on`.
+fn draw_toggle(rect: Aabb, label: &str, on: bool, accent: Color, text: Color) {
+    if on {
+        fill(rect, to_mq_color(THEME.selection));
+        outline(rect, accent);
+    }
+    draw_label(rect, label, if on { accent } else { text });
 }
 
 /// `color`, faded when not `enabled`.
