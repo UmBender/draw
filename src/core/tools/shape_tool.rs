@@ -732,6 +732,50 @@ mod tests {
         assert!(b.approx_eq(Vec2::new(253.0, 253.0), 1e-4), "{b:?}");
     }
 
+    // ---- T19 numbering ----------------------------------------------------
+
+    /// Numbering on, next number `next`.
+    fn numbering(f: &mut Fixture, next: u32) {
+        f.style.helpers.numbering = true;
+        f.style.helpers.next_number = next;
+    }
+
+    #[test]
+    fn preview_shows_next_number() {
+        // Arrange
+        let mut f = Fixture::new(Tool::Ellipse);
+        numbering(&mut f, 4);
+
+        // Act
+        f.send(Phase::Down, 0.0, 0.0);
+        f.send(Phase::Move, 30.0, 30.0);
+        let overlay = f.overlay();
+
+        // Assert
+        assert_eq!(overlay.shapes.len(), 1);
+        assert_eq!(overlay.shapes[0].label(), Some(4));
+    }
+
+    #[test]
+    fn commit_labels_ellipse() {
+        let mut f = Fixture::new(Tool::Ellipse);
+        numbering(&mut f, 9);
+
+        assert!(f.drag((0.0, 0.0), (30.0, 30.0), false));
+
+        assert_eq!(f.only_shape().label(), Some(9));
+    }
+
+    #[test]
+    fn commit_leaves_arrow_unlabelled() {
+        let mut f = Fixture::new(Tool::Arrow);
+        numbering(&mut f, 9);
+
+        assert!(f.drag((0.0, 0.0), (30.0, 30.0), false));
+
+        assert_eq!(f.only_shape().label(), None);
+    }
+
     fn shape_kind() -> impl Strategy<Value = Tool> {
         prop_oneof![
             Just(Tool::Line),
