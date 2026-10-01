@@ -3,7 +3,7 @@ title: A grid tool with live parameters
 step: 18
 requires: ["[[09 Building drawing tools]]", "[[16 Growing a data model without breaking it]]"]
 feature: "[[Grid tool]]"
-code: ["src/core/tools/grid.rs"]
+code: ["src/core/tools/grid.rs", "src/shell/toolbar.rs"]
 tags: [tutorial]
 ---
 
@@ -65,6 +65,11 @@ In `src/core/tools/grid.rs`:
 
 The arrow keys are plain editor commands (`GridCols(±1)`, `GridRows(±1)`,
 from step 16) that change `Helpers` and do not cancel the gesture.
+
+Because the parameter has one home, a second way to change it costs almost
+nothing: the toolbar's grid flyout (`src/shell/toolbar.rs`) has `-`/`+`
+buttons that send the *same* commands, and it draws the values straight from
+`Editor::helpers()`. Keys and mouse can never disagree.
 
 ## Try it
 

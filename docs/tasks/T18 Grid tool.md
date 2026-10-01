@@ -1,7 +1,7 @@
 ---
 id: T18
 title: Grid tool
-status: in-progress
+status: review
 wave: 8
 branch: task/T18-grid-tool
 depends_on: [T16]
@@ -89,7 +89,7 @@ passes whether the grid tool is active).
 ## Subtasks (one commit each)
 
 - [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
-- AC-6 flyout: [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- AC-6 flyout: [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
@@ -121,3 +121,13 @@ Step 18 — requires steps 9 and 16.
   strip has no vertical room, so a flyout next to `G` shown only with the
   grid tool ([[ADR-T18-2 Grid size flyout in the toolbar]]). Files owned
   amended with `toolbar.rs` and `app.rs`.
+- AC-6 tests: 7 new `toolbar::tests`, existing `route_*` tests pass
+  `flyout = false`; red as a compile error (missing API).
+- AC-6 models/behaviour: `ButtonKind::GridCols`/`GridRows`,
+  `flyout_panel`, `flyout_layout`, `draw_flyout`, `route(visible, flyout,
+  …)`; `app::dispatch` passes `editor.tool() == Tool::Grid`.
+- AC-6 quality: `scripts/check.sh` green with no changes, so no quality
+  commit.
+- AC-6 not checked on screen: flyout look (label fit at 16 px, alignment)
+  needs a manual look with the grid tool active. `docs/features/Toolbar.md`
+  is not owned by this task and does not mention the flyout yet.
