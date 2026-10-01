@@ -4,9 +4,12 @@
 //! gets the next number as its label (ADR-T16-1). The editor stores the
 //! switch and the counter in [`Helpers`] (ADR-T16-3).
 //!
-//! Skeleton (T16): [`label_new`] returns the shape unchanged until T19
-//! fills it in.
+//! Undo gives a number back and redo takes it again (ADR-T19-1): the editor
+//! counts the shapes carrying a label before and after each step
+//! ([`label_count`]) and moves the counter with [`advance`] and
+//! [`roll_back`].
 
+use crate::core::document::Document;
 use crate::core::editor::Helpers;
 use crate::core::shape::Shape;
 
@@ -14,13 +17,37 @@ use crate::core::shape::Shape;
 pub const FIRST_NUMBER: u32 = 1;
 
 /// `shape` with the label numbering gives a newly committed shape under
-/// `helpers`.
-///
-/// Skeleton: returns `shape` unchanged.
+/// `helpers`: `Some(next_number)` on a rectangle or ellipse while numbering
+/// is on; any other shape, or numbering off, leaves `shape` unchanged.
 #[must_use]
 pub fn label_new(shape: Shape, helpers: &Helpers) -> Shape {
     let _ = helpers;
-    shape
+    todo!()
+}
+
+/// Number of shapes in `doc` labelled `label`.
+#[must_use]
+pub fn label_count(doc: &Document, label: u32) -> usize {
+    let _ = (doc, label);
+    todo!()
+}
+
+/// The counter after a gesture end or redo: `next + 1` (saturating) if the
+/// number of shapes labelled `next` grew from `before` to `after`, else
+/// `next`.
+#[must_use]
+pub fn advance(next: u32, before: usize, after: usize) -> u32 {
+    let _ = (next, before, after);
+    todo!()
+}
+
+/// The counter after an undo: `next − 1` if the number of shapes labelled
+/// `next − 1` shrank from `before` to `after`, else `next`; never below
+/// [`FIRST_NUMBER`].
+#[must_use]
+pub fn roll_back(next: u32, before: usize, after: usize) -> u32 {
+    let _ = (next, before, after);
+    todo!()
 }
 
 #[cfg(test)]
