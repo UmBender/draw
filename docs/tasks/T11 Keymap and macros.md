@@ -1,7 +1,7 @@
 ---
 id: T11
 title: Keymap and macros
-status: todo
+status: ready
 wave: 5
 branch: task/T11-keymap
 depends_on: [T08]

@@ -1,7 +1,7 @@
 ---
 id: T10
 title: Editing tools
-status: todo
+status: ready
 wave: 5
 branch: task/T10-editing-tools
 depends_on: [T08]

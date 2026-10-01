@@ -62,10 +62,10 @@ flowchart TD
 | [[T05 Shape model]] | done | T01, T02 | `task/T05-shape` |
 | [[T06 Document and history]] | done | T05 | `task/T06-document` |
 | [[T07 Renderer]] | done | T03, T05 | `task/T07-renderer` |
-| [[T08 Editor core and input model]] | ready | T03, T06 | `task/T08-editor` |
-| [[T09 Creation tools]] | todo | T04, T08 | `task/T09-creation-tools` |
-| [[T10 Editing tools]] | todo | T08 | `task/T10-editing-tools` |
-| [[T11 Keymap and macros]] | todo | T08 | `task/T11-keymap` |
+| [[T08 Editor core and input model]] | done | T03, T06 | `task/T08-editor` |
+| [[T09 Creation tools]] | ready | T04, T08 | `task/T09-creation-tools` |
+| [[T10 Editing tools]] | ready | T08 | `task/T10-editing-tools` |
+| [[T11 Keymap and macros]] | ready | T08 | `task/T11-keymap` |
 | [[T12 App shell and toolbar]] | todo | T07, T09, T10, T11 | `task/T12-app-shell` |
 | [[T13 Fuzz harness]] | todo | T09, T10, T11 | `task/T13-fuzz` |
 | [[T14 Performance and release validation]] | todo | T12, T13 | `task/T14-release` |
