@@ -6,6 +6,8 @@
 //! world units at the zoom of the `Down` (ADR-0013).
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::document::tx_insert;
+use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, Style};
 use crate::core::smoothing::Smoother;
 
@@ -26,35 +28,82 @@ struct LiveStroke {
 }
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
+///
+/// `Down` starts a stroke (restarting any stale one), `Move` extends it and
+/// `Up` commits it as one undo step. `Move` and `Up` without a stroke are
+/// ignored.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer, Phase::Down);
-    false
+    let world = ctx.camera.screen_to_world(pointer.pos);
+    match pointer.phase {
+        Phase::Down => {
+            let mut stroke = begin(ctx);
+            stroke.smoother.push(world);
+            state.stroke = Some(stroke);
+            true
+        }
+        Phase::Move => state
+            .stroke
+            .as_mut()
+            .is_some_and(|stroke| stroke.smoother.push(world)),
+        Phase::Up => {
+            let Some(mut stroke) = state.stroke.take() else {
+                return false;
+            };
+            stroke.smoother.push(world);
+            let points = stroke.smoother.finish();
+            if points.is_empty() {
+                // Only non-finite positions were pushed: just drop the preview.
+                return true;
+            }
+            let shape = to_shape(points, stroke.style);
+            if !shape.is_finite() {
+                return true;
+            }
+            let tx = tx_insert(ctx.doc, [shape]);
+            ctx.commit(tx);
+            true
+        }
+    }
 }
 
-/// What the gesture in progress draws on top of the document.
+/// What the gesture in progress draws on top of the document: the live
+/// smoothed stroke, or nothing when idle.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    Overlay::default()
+    let _ = view;
+    let shapes = state
+        .stroke
+        .as_ref()
+        .filter(|stroke| !stroke.smoother.points().is_empty())
+        .map(|stroke| to_shape(stroke.smoother.points().to_vec(), stroke.style))
+        .into_iter()
+        .collect();
+    Overlay {
+        shapes,
+        ..Overlay::default()
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
-/// whether a redraw is needed.
+/// whether a redraw is needed (there was a stroke to discard).
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    false
+    state.stroke.take().is_some()
 }
 
 /// Starts a stroke at `ctx`'s smoothing level, scale and style.
 fn begin(ctx: &ToolCtx<'_>) -> LiveStroke {
-    let _ = ctx;
-    todo!("start the smoother")
+    LiveStroke {
+        smoother: Smoother::new(ctx.smoothing.params(), ctx.camera.world_len(1.0)),
+        style: Style {
+            color: ctx.style.color,
+            width: ctx.camera.world_len(ctx.style.width_px),
+        },
+    }
 }
 
 /// The stroke as a shape with the given points.
-fn to_shape(points: Vec<crate::core::geom::Vec2>, style: Style) -> Shape {
-    let _ = (points, style);
-    todo!("build the stroke shape")
+fn to_shape(points: Vec<Vec2>, style: Style) -> Shape {
+    Shape::Stroke { points, style }
 }
 
 #[cfg(test)]

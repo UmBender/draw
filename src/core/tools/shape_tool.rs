@@ -8,6 +8,7 @@
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::command::Tool;
+use crate::core::document::tx_insert;
 use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, Style};
 
@@ -37,8 +38,13 @@ enum Kind {
 impl Kind {
     /// The kind drawn by `tool`, `None` for tools that are not shape tools.
     fn from_tool(tool: Tool) -> Option<Self> {
-        let _ = tool;
-        todo!("map tools to shape kinds")
+        match tool {
+            Tool::Line => Some(Self::Line),
+            Tool::Arrow => Some(Self::Arrow),
+            Tool::Rect => Some(Self::Rect),
+            Tool::Ellipse => Some(Self::Ellipse),
+            Tool::Pen | Tool::Eraser | Tool::Bucket | Tool::Select | Tool::Hand => None,
+        }
     }
 }
 
@@ -60,40 +66,118 @@ struct Drag {
 impl Drag {
     /// The shape this drag currently spans, constrained if `shift` is held.
     fn shape(&self) -> Shape {
-        todo!("build the dragged shape")
+        let (a, style) = (self.start, self.style);
+        let b = match (self.shift, self.kind) {
+            (false, _) => self.end,
+            (true, Kind::Line | Kind::Arrow) => constrain_45(a, self.end),
+            (true, Kind::Rect | Kind::Ellipse) => constrain_square(a, self.end),
+        };
+        match self.kind {
+            Kind::Line => Shape::Line { a, b, style },
+            Kind::Arrow => Shape::Arrow { a, b, style },
+            Kind::Rect => Shape::Rect {
+                a,
+                b,
+                style,
+                fill: None,
+            },
+            Kind::Ellipse => Shape::Ellipse {
+                a,
+                b,
+                style,
+                fill: None,
+            },
+        }
     }
 }
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
+///
+/// `Down` starts a drag if `ctx.tool` is a shape tool, `Move` updates its end
+/// and `Shift` state, `Up` commits the shape as one undo step unless the drag
+/// is shorter than [`MIN_DRAG_PX`] on screen. Events without a drag are
+/// ignored.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer, Phase::Down);
-    false
+    let world = ctx.camera.screen_to_world(pointer.pos);
+    let shift = pointer.mods.shift;
+    match pointer.phase {
+        Phase::Down => {
+            let Some(kind) = Kind::from_tool(ctx.tool) else {
+                return cancel(state);
+            };
+            state.drag = Some(Drag {
+                kind,
+                start: world,
+                end: world,
+                shift,
+                style: Style {
+                    color: ctx.style.color,
+                    width: ctx.camera.world_len(ctx.style.width_px),
+                },
+            });
+            true
+        }
+        Phase::Move => match &mut state.drag {
+            Some(drag) => {
+                let changed = drag.end != world || drag.shift != shift;
+                drag.end = world;
+                drag.shift = shift;
+                changed
+            }
+            None => false,
+        },
+        Phase::Up => {
+            let Some(mut drag) = state.drag.take() else {
+                return false;
+            };
+            drag.end = world;
+            drag.shift = shift;
+            let drag_px = ctx.camera.screen_len(drag.start.distance(drag.end));
+            // `!(>=)` also rejects a NaN length.
+            if !(drag_px >= MIN_DRAG_PX) {
+                return true;
+            }
+            let shape = drag.shape();
+            if shape.is_finite() {
+                let tx = tx_insert(ctx.doc, [shape]);
+                ctx.commit(tx);
+            }
+            true
+        }
+    }
 }
 
-/// What the gesture in progress draws on top of the document.
+/// What the gesture in progress draws on top of the document: the shape
+/// being dragged, or nothing when idle.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    Overlay::default()
+    let _ = view;
+    Overlay {
+        shapes: state.drag.iter().map(Drag::shape).collect(),
+        ..Overlay::default()
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
-/// whether a redraw is needed.
+/// whether a redraw is needed (there was a drag to discard).
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    false
+    state.drag.take().is_some()
 }
 
 /// `end` moved so that the box from `start` is a square.
 fn constrain_square(start: Vec2, end: Vec2) -> Vec2 {
-    let _ = (start, end);
-    todo!("square constraint")
+    let d = end - start;
+    let side = d.x.abs().max(d.y.abs());
+    start + Vec2::new(side.copysign(d.x), side.copysign(d.y))
 }
 
 /// `end` projected onto the multiple of 45° from `start` nearest the drag.
 fn constrain_45(start: Vec2, end: Vec2) -> Vec2 {
-    let _ = (start, end);
-    todo!("45 degree constraint")
+    let d = end - start;
+    let step = std::f32::consts::FRAC_PI_4;
+    let angle = (d.y.atan2(d.x) / step).round() * step;
+    let dir = Vec2::new(angle.cos(), angle.sin());
+    start + dir * d.dot(dir).max(0.0)
 }
 
 #[cfg(test)]
@@ -313,10 +397,11 @@ mod tests {
         f.camera = Camera::new(Vec2::ZERO, 0.5);
 
         // Act
-        let changed = f.drag((10.0, 10.0), (11.5, 10.0), false);
+        let redraw = f.drag((10.0, 10.0), (11.5, 10.0), false);
 
-        // Assert
-        assert!(!changed);
+        // Assert: the tiny preview must still be erased, so a redraw is
+        // requested, but the document is untouched.
+        assert!(redraw);
         assert!(f.doc.is_empty());
         assert!(!f.history.can_undo());
         assert!(f.overlay().is_empty());
