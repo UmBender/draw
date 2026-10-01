@@ -11,10 +11,14 @@
 //! [`ToolView::style`], so the arrow keys change them live and the grid
 //! gets the values at release (ADR-T18-1). `Shift` makes the cells square.
 
+use crate::core::command::Tool;
+use crate::core::document::tx_insert;
+use crate::core::editor::Helpers;
 use crate::core::geom::Vec2;
-use crate::core::shape::{Shape, Style};
+use crate::core::shape::{GRID_MAX_CELLS, Shape, Style};
+use crate::core::snap::{self, DragKind, Snapped};
 use crate::core::tools::shape_tool::MIN_DRAG_PX;
-use crate::core::tools::{Overlay, Pointer, ToolCtx, ToolView};
+use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 
 /// Gesture state of the grid tool.
 #[derive(Debug, Clone, Default)]
@@ -39,11 +43,24 @@ struct Drag {
 }
 
 impl Drag {
-    /// The grid this drag spans with `cols × rows` cells (clamped), with
-    /// square cells if `shift` is held.
-    fn shape(&self, cols: u32, rows: u32) -> Shape {
-        let _ = (cols, rows);
-        todo!()
+    /// The grid this drag spans with the dimensions of `helpers` (clamped to
+    /// `1..=GRID_MAX_CELLS`), with square cells if `shift` is held.
+    fn shape(&self, helpers: &Helpers) -> Shape {
+        let cols = helpers.grid_cols.clamp(1, GRID_MAX_CELLS);
+        let rows = helpers.grid_rows.clamp(1, GRID_MAX_CELLS);
+        let a = self.start;
+        let b = if self.shift {
+            square_cells(a, self.end, cols, rows)
+        } else {
+            self.end
+        };
+        Shape::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            style: self.style,
+        }
     }
 }
 
@@ -54,8 +71,57 @@ impl Drag {
 /// drag is shorter than [`MIN_DRAG_PX`] on screen. Events without a drag
 /// are ignored.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer);
-    todo!()
+    let world = ctx.camera.screen_to_world(pointer.pos);
+    let shift = pointer.mods.shift;
+    match pointer.phase {
+        Phase::Down => {
+            if ctx.tool != Tool::Grid {
+                return cancel(state);
+            }
+            let start = snap::snap_start(world, pointer.mods, &ctx.view());
+            state.drag = Some(Drag {
+                start,
+                end: start,
+                guides: Vec::new(),
+                shift,
+                style: Style {
+                    color: ctx.style.color,
+                    width: ctx.camera.world_len(ctx.style.width_px),
+                },
+            });
+            true
+        }
+        Phase::Move => match &mut state.drag {
+            Some(drag) => {
+                let Snapped { point, guides } =
+                    snap::snap_end(drag.start, world, DragKind::Box, pointer.mods, &ctx.view());
+                let changed = drag.end != point || drag.shift != shift || drag.guides != guides;
+                drag.end = point;
+                drag.guides = guides;
+                drag.shift = shift;
+                changed
+            }
+            None => false,
+        },
+        Phase::Up => {
+            let Some(mut drag) = state.drag.take() else {
+                return false;
+            };
+            drag.end = snap::snap_end(drag.start, world, DragKind::Box, pointer.mods, &ctx.view())
+                .point;
+            drag.shift = shift;
+            let drag_px = ctx.camera.screen_len(drag.start.distance(drag.end));
+            if drag_px.is_nan() || drag_px < MIN_DRAG_PX {
+                return true;
+            }
+            let shape = drag.shape(&ctx.style.helpers);
+            if shape.is_finite() {
+                let tx = tx_insert(ctx.doc, [shape]);
+                ctx.commit(tx);
+            }
+            true
+        }
+    }
 }
 
 /// What the gesture in progress draws on top of the document: the grid
@@ -63,22 +129,31 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 /// nothing when idle.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    todo!()
+    let Some(drag) = &state.drag else {
+        return Overlay::default();
+    };
+    Overlay {
+        shapes: vec![drag.shape(&view.style.helpers)],
+        guides: drag.guides.clone(),
+        ..Overlay::default()
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed (there was a drag to discard).
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    todo!()
+    state.drag.take().is_some()
 }
 
 /// `end` moved so that the box from `start` holds `cols × rows` square
 /// cells: the side is the larger of the dragged cell width and height.
+/// The drag direction is kept; a non-finite result leaves `end` unchanged.
 fn square_cells(start: Vec2, end: Vec2, cols: u32, rows: u32) -> Vec2 {
-    let _ = (start, end, cols, rows);
-    todo!()
+    let (cols, rows) = (cols as f32, rows as f32);
+    let d = end - start;
+    let side = (d.x.abs() / cols).max(d.y.abs() / rows);
+    let squared = start + Vec2::new((side * cols).copysign(d.x), (side * rows).copysign(d.y));
+    if squared.is_finite() { squared } else { end }
 }
 
 #[cfg(test)]
