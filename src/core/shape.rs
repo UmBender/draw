@@ -103,7 +103,21 @@ pub enum Shape {
         /// Draws 0-based column and row indices outside the grid, starting
         /// at corner `a` (ADR-T18-3).
         axes: bool,
+        /// Filled cells, sorted by `(row, col)`, at most one per cell, all
+        /// inside `cols × rows` (ADR-T21-1).
+        fills: Vec<CellFill>,
     },
+}
+
+/// The fill of one grid cell; cells are counted from corner `a` toward `b`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CellFill {
+    /// 0-based column.
+    pub col: u32,
+    /// 0-based row.
+    pub row: u32,
+    /// Fill colour.
+    pub color: ColorId,
 }
 
 /// One axis index of a grid with [`Shape::Grid::axes`]: the 0-based column
@@ -308,6 +322,46 @@ impl Shape {
         self
     }
 
+    /// The cell `(col, row)` of a grid that `p` lies in (box boundary
+    /// inclusive), counted from `a`; `None` outside, for a non-finite `p` or
+    /// for other shapes.
+    #[must_use]
+    pub fn grid_cell_at(&self, p: Vec2) -> Option<(u32, u32)> {
+        let _ = p;
+        todo!()
+    }
+
+    /// The cell fills of a grid, sorted by `(row, col)`; empty for other
+    /// shapes.
+    #[must_use]
+    pub fn cell_fills(&self) -> &[CellFill] {
+        todo!()
+    }
+
+    /// The fill colour of cell `(col, row)` of a grid, if any.
+    #[must_use]
+    pub fn cell_fill(&self, col: u32, row: u32) -> Option<ColorId> {
+        let _ = (col, row);
+        todo!()
+    }
+
+    /// Returns the shape with cell `(col, row)` filled with `fill`, or
+    /// cleared for `None`. Other shapes and cells outside the grid are
+    /// returned unchanged.
+    #[must_use]
+    pub fn with_cell_fill(self, col: u32, row: u32, fill: Option<ColorId>) -> Self {
+        let _ = (col, row, fill);
+        todo!()
+    }
+
+    /// [`Shape::hit`] without the filled-interior rule: only the outline
+    /// counts.
+    #[must_use]
+    pub fn hit_outline(&self, p: Vec2, tol: f32) -> bool {
+        let _ = (p, tol);
+        todo!()
+    }
+
     /// The axis indices to draw: those of a grid with `axes` on (see
     /// [`grid_axis_labels`]), empty for every other shape.
     #[must_use]
@@ -387,6 +441,15 @@ pub fn grid_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator
         ),
     });
     columns.chain(rows)
+}
+
+/// The world box of cell `(col, row)` of a `cols × rows` grid dragged from
+/// `a` to `b`, counted from `a` like [`grid_axis_labels`]. Dimensions are
+/// clamped like [`grid_lines`].
+#[must_use]
+pub fn grid_cell_rect(a: Vec2, b: Vec2, cols: u32, rows: u32, col: u32, row: u32) -> Aabb {
+    let _ = (a, b, cols, rows, col, row);
+    todo!()
 }
 
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.

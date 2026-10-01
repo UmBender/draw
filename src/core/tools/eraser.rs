@@ -8,6 +8,7 @@
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{ShapeId, tx_remove};
 use crate::core::geom::Vec2;
+use crate::core::shape::Shape;
 
 /// Hit tolerance of the eraser in screen pixels.
 pub const ERASER_TOLERANCE_PX: f32 = 6.0;
@@ -16,13 +17,28 @@ pub const ERASER_TOLERANCE_PX: f32 = 6.0;
 /// jump; at 6 px spacing this covers over 6000 px).
 const MAX_SAMPLES: usize = 1024;
 
+/// What a drag does, chosen on `Down` (ADR-T21-2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Mode {
+    /// Removes every shape the path hits.
+    #[default]
+    Remove,
+    /// Clears the fills the path passes over; removes nothing.
+    Clear,
+}
+
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default)]
 pub struct State {
     /// Last pointer position (screen) of the drag, `None` when idle.
     last: Option<Vec2>,
+    /// What this drag does.
+    mode: Mode,
     /// Shapes marked for removal, in the order they were touched.
     marked: Vec<ShapeId>,
+    /// Shapes whose fills this drag cleared, with their new versions, in
+    /// the order they were touched.
+    cleared: Vec<(ShapeId, Shape)>,
 }
 
 /// Marks every unmarked shape hit by the segment `from → to` (screen).
