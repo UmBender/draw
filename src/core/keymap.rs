@@ -6,8 +6,9 @@
 //! modifiers match the chord's modifiers exactly (ADR-T11-1). `Space` is not
 //! bound: the editor consumes it as the pan modifier.
 
-use crate::core::command::Command;
+use crate::core::command::{Command, Tool};
 use crate::core::input::{Key, Modifiers};
+use crate::core::palette::ColorId;
 
 /// A key pressed together with an exact set of modifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -22,36 +23,151 @@ impl KeyChord {
     /// `key` with no modifier.
     #[must_use]
     pub const fn bare(key: Key) -> Self {
-        todo!()
+        Self {
+            key,
+            mods: Modifiers::NONE,
+        }
     }
 
     /// `Ctrl` + `key`.
     #[must_use]
     pub const fn ctrl(key: Key) -> Self {
-        todo!()
+        Self {
+            key,
+            mods: Modifiers {
+                shift: false,
+                ctrl: true,
+                alt: false,
+            },
+        }
     }
 
     /// `Ctrl` + `Shift` + `key`.
     #[must_use]
     pub const fn ctrl_shift(key: Key) -> Self {
-        todo!()
+        Self {
+            key,
+            mods: Modifiers {
+                shift: true,
+                ctrl: true,
+                alt: false,
+            },
+        }
+    }
+}
+
+/// Palette colour for number key `digit` (`1`–`6`), checked at compile time.
+const fn color(digit: u8) -> Command {
+    match ColorId::from_key_digit(digit) {
+        Some(id) => Command::SetColor(id),
+        None => panic!("number key has no palette colour"),
     }
 }
 
 /// Every binding: chord, command and a short human-readable description.
-pub const BINDINGS: &[(KeyChord, Command, &str)] = &[];
+///
+/// Order follows the tables of `docs/architecture/Keymap.md`: tools, style,
+/// edit, view.
+pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
+    // Tools
+    (KeyChord::bare(Key::P), Command::SetTool(Tool::Pen), "Pen"),
+    (KeyChord::bare(Key::L), Command::SetTool(Tool::Line), "Line"),
+    (KeyChord::bare(Key::A), Command::SetTool(Tool::Arrow), "Arrow"),
+    (KeyChord::bare(Key::R), Command::SetTool(Tool::Rect), "Rectangle"),
+    (
+        KeyChord::bare(Key::C),
+        Command::SetTool(Tool::Ellipse),
+        "Circle / ellipse",
+    ),
+    (KeyChord::bare(Key::E), Command::SetTool(Tool::Eraser), "Eraser"),
+    (KeyChord::bare(Key::B), Command::SetTool(Tool::Bucket), "Bucket fill"),
+    (
+        KeyChord::bare(Key::V),
+        Command::SetTool(Tool::Select),
+        "Select / move",
+    ),
+    (KeyChord::bare(Key::H), Command::SetTool(Tool::Hand), "Hand (pan)"),
+    // Style
+    (KeyChord::bare(Key::Digit1), color(1), "Colour 1 (ink)"),
+    (KeyChord::bare(Key::Digit2), color(2), "Colour 2 (red)"),
+    (KeyChord::bare(Key::Digit3), color(3), "Colour 3 (green)"),
+    (KeyChord::bare(Key::Digit4), color(4), "Colour 4 (blue)"),
+    (KeyChord::bare(Key::Digit5), color(5), "Colour 5 (yellow)"),
+    (KeyChord::bare(Key::Digit6), color(6), "Colour 6 (magenta)"),
+    (
+        KeyChord::bare(Key::BracketLeft),
+        Command::WidthDown,
+        "Thinner stroke",
+    ),
+    (
+        KeyChord::bare(Key::BracketRight),
+        Command::WidthUp,
+        "Thicker stroke",
+    ),
+    (
+        KeyChord::bare(Key::S),
+        Command::CycleSmoothing,
+        "Cycle anti-tremor strength",
+    ),
+    // Edit
+    (KeyChord::ctrl(Key::Z), Command::Undo, "Undo"),
+    (KeyChord::ctrl_shift(Key::Z), Command::Redo, "Redo"),
+    (KeyChord::ctrl(Key::Y), Command::Redo, "Redo"),
+    (KeyChord::ctrl(Key::C), Command::Copy, "Copy"),
+    (KeyChord::ctrl(Key::X), Command::Cut, "Cut"),
+    (KeyChord::ctrl(Key::V), Command::Paste, "Paste at cursor"),
+    (
+        KeyChord::ctrl(Key::D),
+        Command::Duplicate,
+        "Duplicate selection",
+    ),
+    (KeyChord::ctrl(Key::A), Command::SelectAll, "Select all"),
+    (
+        KeyChord::bare(Key::Delete),
+        Command::DeleteSelection,
+        "Delete selection",
+    ),
+    (
+        KeyChord::bare(Key::Backspace),
+        Command::DeleteSelection,
+        "Delete selection",
+    ),
+    (
+        KeyChord::ctrl(Key::Backspace),
+        Command::ClearAll,
+        "Clear canvas",
+    ),
+    (
+        KeyChord::bare(Key::Escape),
+        Command::Cancel,
+        "Cancel gesture / clear selection",
+    ),
+    // View
+    (KeyChord::bare(Key::Digit0), Command::ResetView, "Reset view"),
+    (KeyChord::bare(Key::F), Command::FitView, "Fit view to content"),
+    (
+        KeyChord::bare(Key::Tab),
+        Command::ToggleToolbar,
+        "Show / hide toolbar",
+    ),
+];
 
 /// The command bound to `key` pressed with `mods`, if any.
+///
+/// Modifiers must match exactly: `Shift+R` resolves to nothing rather than to
+/// the rectangle tool.
 #[must_use]
 pub fn resolve(key: Key, mods: Modifiers) -> Option<Command> {
-    todo!()
+    let chord = KeyChord { key, mods };
+    BINDINGS
+        .iter()
+        .find(|&&(bound, _, _)| bound == chord)
+        .map(|&(_, command, _)| command)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::command::Tool;
-    use crate::core::palette::ColorId;
     use proptest::prelude::*;
 
     const NONE: Modifiers = Modifiers::NONE;
