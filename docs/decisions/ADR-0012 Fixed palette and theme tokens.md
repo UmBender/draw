@@ -1,7 +1,7 @@
 ---
 id: ADR-0012
 title: Fixed palette and theme tokens
-status: provisional
+status: accepted
 kind: decision
 date: 2026-10-01
 task: T00

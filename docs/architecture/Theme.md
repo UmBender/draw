@@ -1,33 +1,52 @@
 ---
 tags: [architecture]
-status: pending-user-input
-adrs: ["[[ADR-0012 Fixed palette and theme tokens]]"]
+status: accepted
+adrs: ["[[ADR-0012 Fixed palette and theme tokens]]", "[[ADR-0015 Kanagawa Dragon theme]]"]
 ---
 
 # Theme
 
-> **Pending:** the user will provide the theme. Until then the values below
-> are *provisional placeholders* (see [[ADR-0012 Fixed palette and theme tokens]]).
-> When the theme arrives, record it with a new ADR that amends ADR-0012 and
-> replace this table.
+Kanagawa Dragon, taken from the user's Alacritty theme
+([[ADR-0015 Kanagawa Dragon theme]]). Implemented in `src/core/palette.rs` —
+the only place colours are defined.
 
 ## UI tokens
 
-| Token | Use | Provisional |
-|-------|-----|-------------|
-| `bg` | Canvas background | `#1e1e2e` |
-| `surface` | Toolbar background | `#181825` |
-| `border` | Toolbar / selection outline | `#45475a` |
-| `text` | Icons, labels | `#cdd6f4` |
-| `accent` | Active tool, selection | `#89b4fa` |
+| Token | Use | Value |
+|-------|-----|-------|
+| `bg` | Canvas background | `#181616` |
+| `surface` | Toolbar background | `#0d0c0c` |
+| `border` | Toolbar / button outlines | `#a6a69c` |
+| `text` | Icons, labels | `#c5c9c5` |
+| `accent` | Active tool, selection outline | `#7fa8bc` |
+| `selection` | Selection / marquee fill | `#2d4f67` |
 
 ## Drawing palette (keys `1`–`6`)
 
-| Key | Name | Provisional |
-|-----|------|-------------|
-| `1` | ink (= `text`) | `#cdd6f4` |
-| `2` | red | `#f38ba8` |
-| `3` | green | `#a6e3a1` |
-| `4` | blue | `#89b4fa` |
-| `5` | yellow | `#f9e2af` |
-| `6` | mauve | `#cba6f7` |
+| Key | Name | Value |
+|-----|------|-------|
+| `1` | ink | `#c5c9c5` |
+| `2` | red | `#d16961` |
+| `3` | green | `#8aa86e` |
+| `4` | blue | `#7fa8bc` |
+| `5` | yellow | `#ceb680` |
+| `6` | magenta | `#aa88ac` |
+
+## Source palette (reference)
+
+The original `theme.toml` was removed from the repo; its full contents are kept
+here so future theme decisions can draw from it.
+
+| Group | black | red | green | yellow | blue | magenta | cyan | white |
+|-------|-------|-----|-------|--------|------|---------|------|-------|
+| normal | `#0d0c0c` | `#d16961` | `#8aa86e` | `#ceb680` | `#7fa8bc` | `#aa88ac` | `#82b0ab` | `#d0c58b` |
+| bright | `#a6a69c` | `#ec6070` | `#7bb57b` | `#ecc57e` | `#75b8d3` | `#8e7eb5` | `#6db5a7` | `#c5c9c5` |
+
+| Other | Value |
+|-------|-------|
+| primary background | `#181616` |
+| primary foreground | `#c5c9c5` |
+| selection background | `#2d4f67` |
+| selection foreground | `#c8c093` |
+| indexed 16 | `#c28f6f` |
+| indexed 17 | `#c4886f` |

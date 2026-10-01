@@ -32,7 +32,7 @@ is a **log**, like a database transaction log: entries are only ever *added*.
 `proposed` → `accepted` → (`superseded` | `reverted`)
 
 `provisional` — accepted, but explicitly waiting for input that may replace it
-(e.g. [[ADR-0012 Fixed palette and theme tokens]] awaits the user's theme).
+(e.g. [[ADR-0012 Fixed palette and theme tokens]] was provisional until [[ADR-0015 Kanagawa Dragon theme]] supplied the theme).
 
 ## Template
 

@@ -20,6 +20,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 9 | [[ADR-0009 Fuzzing with proptest]] | accepted | decision | 0003, 0008 | — |
 | 10 | [[ADR-0010 Clippy lint policy]] | accepted | decision | 0008 | — |
 | 11 | [[ADR-0011 Git workflow]] | accepted | decision | 0001, 0008 | — |
-| 12 | [[ADR-0012 Fixed palette and theme tokens]] | provisional | decision | 0004 | awaits theme |
+| 12 | [[ADR-0012 Fixed palette and theme tokens]] | accepted | decision | 0004 | amended by 0015 |
 | 13 | [[ADR-0013 World-space widths and zoom limits]] | accepted | decision | 0004 | — |
 | 14 | [[ADR-0014 Minimal dependencies and no unsafe]] | accepted | decision | 0002, 0003 | — |
+| 15 | [[ADR-0015 Kanagawa Dragon theme]] | accepted | decision | 0012 | amends 0012 |

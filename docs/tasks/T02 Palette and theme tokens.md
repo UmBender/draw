@@ -5,7 +5,7 @@ status: todo
 wave: 1
 branch: task/T02-palette
 depends_on: [T00]
-adrs: ["[[ADR-0012 Fixed palette and theme tokens]]"]
+adrs: ["[[ADR-0012 Fixed palette and theme tokens]]", "[[ADR-0015 Kanagawa Dragon theme]]"]
 feature: "[[Theme and palette]]"
 tutorial: "[[02 Palettes and design tokens]]"
 tags: [task]
@@ -16,8 +16,8 @@ tags: [task]
 ## Goal
 
 One file holding every colour the app uses, with drawing colours addressed by
-index. Uses the user's theme if it has arrived; otherwise the provisional
-values from [[Theme]].
+index, using the Kanagawa Dragon theme from
+[[ADR-0015 Kanagawa Dragon theme]] (values in [[Theme]]).
 
 ## Spec
 
@@ -27,7 +27,7 @@ values from [[Theme]].
   `>= PALETTE_LEN` (6); `ColorId::INK` is index 0. *Tests:* `color_id_*`.
 - **AC-3** — `palette(id: ColorId) -> Rgba` total (never panics). *Test:* proptest
   `palette_lookup_total_for_valid_ids`.
-- **AC-4** — `Theme { bg, surface, border, text, accent }` and `const THEME: Theme`
+- **AC-4** — `Theme { bg, surface, border, text, accent, selection }` and `const THEME: Theme`
   match [[Theme]]. *Test:* `theme_matches_documented_tokens`.
 - **AC-5** — `ColorId::from_key_digit(1..=6)` maps keys `1`–`6` to ids 0–5. *Test:* `key_digit_mapping`.
 
@@ -37,7 +37,7 @@ Runtime theme switching, colour pickers.
 
 ## Files owned
 
-`src/core/palette.rs`, `docs/architecture/Theme.md` (only if the theme arrived).
+`src/core/palette.rs`
 
 ## Subtasks (one commit each)
 
