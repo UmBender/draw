@@ -1,6 +1,229 @@
-//! Geometry primitives: `Vec2`, `Aabb`, distance helpers.
+//! Geometry primitives: [`Vec2`], [`Aabb`], [`distance_to_segment`] and the
+//! float helper [`approx_eq`].
 //!
-//! Owned by T01; filled in by that task.
+//! Everything here is plain `f32` math with no dependencies. Floats are never
+//! compared with `==` (clippy `float_cmp` is denied); use [`approx_eq`] or
+//! [`Vec2::approx_eq`]. Non-finite input never panics: it is either rejected
+//! explicitly ([`Vec2::sanitize`], [`Aabb::from_points`]) or propagates as a
+//! non-finite result the caller can check with [`Vec2::is_finite`].
+
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
+
+/// Returns `true` when `|a − b| <= eps`.
+///
+/// Any NaN or infinite operand (including `eps`) yields `false`, so two
+/// infinities are never "approximately equal".
+#[must_use]
+pub fn approx_eq(a: f32, b: f32, eps: f32) -> bool {
+    todo!("approx_eq({a}, {b}, {eps})")
+}
+
+/// A 2D vector or point in world or screen space.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Vec2 {
+    /// Horizontal component.
+    pub x: f32,
+    /// Vertical component.
+    pub y: f32,
+}
+
+impl Vec2 {
+    /// The origin `(0, 0)`.
+    pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
+
+    /// Creates a vector from its components.
+    #[must_use]
+    pub const fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+
+    /// Euclidean length `√(x² + y²)`.
+    #[must_use]
+    pub fn length(self) -> f32 {
+        todo!()
+    }
+
+    /// Squared length `x² + y²`; cheaper than [`Vec2::length`] for comparisons.
+    #[must_use]
+    pub fn length_sq(self) -> f32 {
+        todo!()
+    }
+
+    /// Dot product `self · other`.
+    #[must_use]
+    pub fn dot(self, other: Self) -> f32 {
+        todo!("{other:?}")
+    }
+
+    /// Euclidean distance between two points.
+    #[must_use]
+    pub fn distance(self, other: Self) -> f32 {
+        todo!("{other:?}")
+    }
+
+    /// Linear interpolation: `t = 0` gives `self`, `t = 1` gives `other`.
+    /// `t` is not clamped, so values outside `[0, 1]` extrapolate.
+    #[must_use]
+    pub fn lerp(self, other: Self, t: f32) -> Self {
+        todo!("{other:?} {t}")
+    }
+
+    /// Component-wise [`approx_eq`] with tolerance `eps`.
+    #[must_use]
+    pub fn approx_eq(self, other: Self, eps: f32) -> bool {
+        todo!("{other:?} {eps}")
+    }
+
+    /// `true` when both components are finite (not NaN, not ±∞).
+    #[must_use]
+    pub fn is_finite(self) -> bool {
+        todo!()
+    }
+
+    /// Returns `Some(self)` if both components are finite, otherwise `None`.
+    #[must_use]
+    pub fn sanitize(self) -> Option<Self> {
+        todo!()
+    }
+}
+
+impl Add for Vec2 {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        todo!("{rhs:?}")
+    }
+}
+
+impl Sub for Vec2 {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        todo!("{rhs:?}")
+    }
+}
+
+impl Mul<f32> for Vec2 {
+    type Output = Self;
+
+    fn mul(self, rhs: f32) -> Self {
+        todo!("{rhs}")
+    }
+}
+
+impl Div<f32> for Vec2 {
+    type Output = Self;
+
+    fn div(self, rhs: f32) -> Self {
+        todo!("{rhs}")
+    }
+}
+
+impl Neg for Vec2 {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        todo!()
+    }
+}
+
+impl AddAssign for Vec2 {
+    fn add_assign(&mut self, rhs: Self) {
+        todo!("{rhs:?}")
+    }
+}
+
+impl SubAssign for Vec2 {
+    fn sub_assign(&mut self, rhs: Self) {
+        todo!("{rhs:?}")
+    }
+}
+
+/// Axis-aligned bounding box. Invariant: `min.x <= max.x` and `min.y <= max.y`
+/// when built through the constructors.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Aabb {
+    /// Corner with the smallest coordinates.
+    pub min: Vec2,
+    /// Corner with the largest coordinates.
+    pub max: Vec2,
+}
+
+impl Aabb {
+    /// Tightest box around the finite points in `points`.
+    ///
+    /// Non-finite points are skipped; returns `None` when no finite point
+    /// remains (including an empty slice).
+    #[must_use]
+    pub fn from_points(points: &[Vec2]) -> Option<Self> {
+        todo!("{points:?}")
+    }
+
+    /// Box spanned by two opposite corners given in any order.
+    #[must_use]
+    pub fn from_corners(a: Vec2, b: Vec2) -> Self {
+        todo!("{a:?} {b:?}")
+    }
+
+    /// Grows every side by `margin`. A negative margin shrinks the box; an axis
+    /// that would invert collapses to its centre instead.
+    #[must_use]
+    pub fn expand(self, margin: f32) -> Self {
+        todo!("{margin}")
+    }
+
+    /// `true` if `p` lies inside or on the boundary.
+    #[must_use]
+    pub fn contains(&self, p: Vec2) -> bool {
+        todo!("{p:?}")
+    }
+
+    /// `true` if the boxes overlap or touch.
+    #[must_use]
+    pub fn intersects(&self, other: &Self) -> bool {
+        todo!("{other:?}")
+    }
+
+    /// Smallest box containing both boxes.
+    #[must_use]
+    pub fn union(&self, other: &Self) -> Self {
+        todo!("{other:?}")
+    }
+
+    /// Centre point.
+    #[must_use]
+    pub fn center(&self) -> Vec2 {
+        todo!()
+    }
+
+    /// Extent along x.
+    #[must_use]
+    pub fn width(&self) -> f32 {
+        todo!()
+    }
+
+    /// Extent along y.
+    #[must_use]
+    pub fn height(&self) -> f32 {
+        todo!()
+    }
+
+    /// The same box moved by `delta`.
+    #[must_use]
+    pub fn translate(self, delta: Vec2) -> Self {
+        todo!("{delta:?}")
+    }
+}
+
+/// Euclidean distance from `p` to the closed segment `ab`.
+///
+/// Projects `p` onto the line through `a` and `b`, clamps the projection to the
+/// segment, and measures to that point. A degenerate segment (`a` and `b`
+/// coincide) is treated as the point `a`, so there is no division by zero.
+#[must_use]
+pub fn distance_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    todo!("{p:?} {a:?} {b:?}")
+}
 
 #[cfg(test)]
 mod tests {
