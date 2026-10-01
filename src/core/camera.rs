@@ -199,7 +199,7 @@ fn axis_zoom(usable: f32, extent: f32) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::geom::{Aabb, Vec2, approx_eq};
+    use crate::core::geom::approx_eq;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
