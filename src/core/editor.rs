@@ -59,6 +59,8 @@ pub struct Helpers {
     pub grid_cols: u32,
     /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_rows: u32,
+    /// New grids get axis indices (ADR-T18-3).
+    pub grid_axes: bool,
 }
 
 impl Default for Helpers {
@@ -70,6 +72,7 @@ impl Default for Helpers {
             next_number: FIRST_NUMBER,
             grid_cols: DEFAULT_GRID_CELLS,
             grid_rows: DEFAULT_GRID_CELLS,
+            grid_axes: false,
         }
     }
 }
@@ -328,7 +331,8 @@ impl Editor {
             | Command::ToggleNumbering
             | Command::ResetNumbering
             | Command::GridCols(_)
-            | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
+            | Command::GridRows(_)
+            | Command::ToggleGridAxes => apply_helper(&mut self.style.helpers, command),
         }
     }
 

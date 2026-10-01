@@ -60,6 +60,7 @@ impl Drag {
             cols,
             rows,
             style: self.style,
+            axes: false,
         }
     }
 }

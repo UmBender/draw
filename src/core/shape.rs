@@ -100,7 +100,20 @@ pub enum Shape {
         rows: u32,
         /// Outline style.
         style: Style,
+        /// Draws 0-based column and row indices outside the grid, starting
+        /// at corner `a` (ADR-T18-3).
+        axes: bool,
     },
+}
+
+/// One axis index of a grid with [`Shape::Grid::axes`]: the 0-based column
+/// or row `index` and the world box it is drawn centred in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AxisLabel {
+    /// 0-based column or row index.
+    pub index: u32,
+    /// World box outside the grid, one cell in size.
+    pub rect: Aabb,
 }
 
 impl Shape {
@@ -280,6 +293,13 @@ impl Shape {
         self
     }
 
+    /// The axis indices to draw: those of a grid with `axes` on (see
+    /// [`grid_axis_labels`]), empty for every other shape.
+    #[must_use]
+    pub fn axis_labels(&self) -> Vec<AxisLabel> {
+        todo!()
+    }
+
     /// `true` iff every coordinate and the width are finite.
     #[must_use]
     pub fn is_finite(&self) -> bool {
@@ -316,6 +336,16 @@ pub fn grid_lines(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item 
         [Vec2::new(r.min.x, y), Vec2::new(r.max.x, y)]
     });
     vertical.chain(horizontal)
+}
+
+/// The axis indices of a `cols × rows` grid dragged from `a` to `b`:
+/// columns `0..cols` counted from `a.x` toward `b.x`, in boxes one cell tall
+/// just outside the edge `y = a.y`, then rows `0..rows` counted from `a.y`
+/// toward `b.y`, in boxes one cell wide just outside `x = a.x`
+/// (ADR-T18-3). Dimensions are clamped like [`grid_lines`].
+pub fn grid_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item = AxisLabel> {
+    let _ = (a, b, cols, rows);
+    std::iter::empty::<AxisLabel>().chain(std::iter::from_fn(|| todo!()))
 }
 
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.

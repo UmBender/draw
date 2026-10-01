@@ -228,6 +228,15 @@ pub fn label_size(chars: usize, area: Vec2) -> Option<f32> {
     (size >= LABEL_MIN_PX).then_some(size)
 }
 
+/// Font size in pixels shared by every axis index of a `cols × rows` grid
+/// whose cells are `cell` pixels on screen: [`label_size`] of the longest
+/// index, `max(cols, rows) - 1` (ADR-T18-3).
+#[must_use]
+pub fn axis_label_size(cols: u32, rows: u32, cell: Vec2) -> Option<f32> {
+    let _ = (cols, rows, cell);
+    todo!()
+}
+
 /// Size in pixels of the area a label may use inside the screen rectangle
 /// `rect` of a shape: the rectangle itself, or for an ellipse the largest
 /// axis-aligned box inscribed in it (`rect` scaled by `1/√2`).

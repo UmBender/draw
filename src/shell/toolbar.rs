@@ -59,6 +59,8 @@ pub enum ButtonKind {
     GridCols(i32),
     /// Changes the grid's rows by the given step (flyout).
     GridRows(i32),
+    /// Toggles axis indices on new grids (flyout).
+    GridAxes,
     /// Undoes the last action.
     Undo,
     /// Redoes the last undone action.
@@ -77,6 +79,7 @@ impl ButtonKind {
             Self::Numbering => Command::ToggleNumbering,
             Self::GridCols(delta) => Command::GridCols(delta),
             Self::GridRows(delta) => Command::GridRows(delta),
+            Self::GridAxes => Command::ToggleGridAxes,
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
         }
@@ -259,6 +262,9 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
             }
             ButtonKind::GridCols(delta) | ButtonKind::GridRows(delta) => {
                 draw_label(rect, step_label(delta), text);
+            }
+            ButtonKind::GridAxes => {
+                draw_toggle(rect, "#", editor.helpers().grid_axes, accent, text);
             }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
