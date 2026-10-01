@@ -15,30 +15,82 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 /// The editor key for a macroquad key code, `None` for keys the editor ignores.
 #[must_use]
 pub fn map_key(code: KeyCode) -> Option<Key> {
-    let _ = code;
-    todo!()
+    let key = match code {
+        KeyCode::A => Key::A,
+        KeyCode::B => Key::B,
+        KeyCode::C => Key::C,
+        KeyCode::D => Key::D,
+        KeyCode::E => Key::E,
+        KeyCode::F => Key::F,
+        KeyCode::G => Key::G,
+        KeyCode::H => Key::H,
+        KeyCode::I => Key::I,
+        KeyCode::J => Key::J,
+        KeyCode::K => Key::K,
+        KeyCode::L => Key::L,
+        KeyCode::M => Key::M,
+        KeyCode::N => Key::N,
+        KeyCode::O => Key::O,
+        KeyCode::P => Key::P,
+        KeyCode::Q => Key::Q,
+        KeyCode::R => Key::R,
+        KeyCode::S => Key::S,
+        KeyCode::T => Key::T,
+        KeyCode::U => Key::U,
+        KeyCode::V => Key::V,
+        KeyCode::W => Key::W,
+        KeyCode::X => Key::X,
+        KeyCode::Y => Key::Y,
+        KeyCode::Z => Key::Z,
+        KeyCode::Key0 => Key::Digit0,
+        KeyCode::Key1 => Key::Digit1,
+        KeyCode::Key2 => Key::Digit2,
+        KeyCode::Key3 => Key::Digit3,
+        KeyCode::Key4 => Key::Digit4,
+        KeyCode::Key5 => Key::Digit5,
+        KeyCode::Key6 => Key::Digit6,
+        KeyCode::Key7 => Key::Digit7,
+        KeyCode::Key8 => Key::Digit8,
+        KeyCode::Key9 => Key::Digit9,
+        KeyCode::Delete => Key::Delete,
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::Escape => Key::Escape,
+        KeyCode::Space => Key::Space,
+        KeyCode::Tab => Key::Tab,
+        KeyCode::LeftBracket => Key::BracketLeft,
+        KeyCode::RightBracket => Key::BracketRight,
+        _ => return None,
+    };
+    Some(key)
 }
 
 /// The editor button for a mouse button, `None` for unknown buttons.
 #[must_use]
 pub fn map_button(button: MouseButton) -> Option<PointerButton> {
-    let _ = button;
-    todo!()
+    match button {
+        MouseButton::Left => Some(PointerButton::Left),
+        MouseButton::Middle => Some(PointerButton::Middle),
+        MouseButton::Right => Some(PointerButton::Right),
+        MouseButton::Unknown => None,
+    }
 }
 
 /// Editor modifiers for miniquad's; the logo key is dropped.
 #[must_use]
 pub fn map_mods(mods: KeyMods) -> Modifiers {
-    let _ = mods;
-    todo!()
+    Modifiers {
+        shift: mods.shift,
+        ctrl: mods.ctrl,
+        alt: mods.alt,
+    }
 }
 
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI
 /// scale that is not finite and positive counts as `1`.
 #[must_use]
 pub fn to_logical(x: f32, y: f32, dpi: f32) -> Vec2 {
-    let _ = (x, y, dpi);
-    todo!()
+    let scale = if dpi.is_finite() && dpi > 0.0 { dpi } else { 1.0 };
+    Vec2::new(x / scale, y / scale)
 }
 
 /// Modifier keys currently held, each side tracked on its own.
@@ -52,7 +104,36 @@ struct HeldMods {
     right_alt: bool,
 }
 
+impl HeldMods {
+    /// Records a modifier key going down (`true`) or up; other keys are ignored.
+    fn set(&mut self, code: KeyCode, down: bool) {
+        let slot = match code {
+            KeyCode::LeftShift => &mut self.left_shift,
+            KeyCode::RightShift => &mut self.right_shift,
+            KeyCode::LeftControl => &mut self.left_ctrl,
+            KeyCode::RightControl => &mut self.right_ctrl,
+            KeyCode::LeftAlt => &mut self.left_alt,
+            KeyCode::RightAlt => &mut self.right_alt,
+            _ => return,
+        };
+        *slot = down;
+    }
+
+    /// The held modifiers, either side counting.
+    fn modifiers(self) -> Modifiers {
+        Modifiers {
+            shift: self.left_shift || self.right_shift,
+            ctrl: self.left_ctrl || self.right_ctrl,
+            alt: self.left_alt || self.right_alt,
+        }
+    }
+}
+
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
+///
+/// Pointer events carry the modifiers whose keys are held (pointer events
+/// have none of their own); key events carry the modifiers the platform
+/// reports with them.
 #[derive(Debug, Clone)]
 pub struct Collector {
     events: Vec<InputEvent>,
@@ -73,18 +154,28 @@ impl Collector {
     /// An empty collector at DPI scale `1`.
     #[must_use]
     pub fn new() -> Self {
-        todo!()
+        Self {
+            events: Vec::new(),
+            held: HeldMods::default(),
+            pointer: Vec2::ZERO,
+            dpi: 1.0,
+        }
     }
 
     /// Sets the DPI scale used for the following pointer events.
     pub fn set_dpi(&mut self, dpi: f32) {
-        let _ = dpi;
-        todo!()
+        self.dpi = dpi;
     }
 
     /// Removes and yields the collected events, oldest first.
     pub fn drain(&mut self) -> impl Iterator<Item = InputEvent> + '_ {
         self.events.drain(..)
+    }
+
+    /// Converts a physical position and remembers it as the pointer.
+    fn track(&mut self, x: f32, y: f32) -> Vec2 {
+        self.pointer = to_logical(x, y, self.dpi);
+        self.pointer
     }
 }
 
@@ -92,6 +183,54 @@ impl EventHandler for Collector {
     fn update(&mut self) {}
 
     fn draw(&mut self) {}
+
+    fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        let pos = self.track(x, y);
+        let mods = self.held.modifiers();
+        self.events.push(InputEvent::PointerMove { pos, mods });
+    }
+
+    fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
+        if y != 0.0 {
+            self.events.push(InputEvent::Scroll {
+                pos: self.pointer,
+                delta: y,
+            });
+        }
+    }
+
+    fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        let pos = self.track(x, y);
+        if let Some(button) = map_button(button) {
+            let mods = self.held.modifiers();
+            self.events
+                .push(InputEvent::PointerDown { pos, button, mods });
+        }
+    }
+
+    fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        let pos = self.track(x, y);
+        if let Some(button) = map_button(button) {
+            let mods = self.held.modifiers();
+            self.events.push(InputEvent::PointerUp { pos, button, mods });
+        }
+    }
+
+    fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, _repeat: bool) {
+        self.held.set(code, true);
+        if let Some(key) = map_key(code) {
+            let mods = map_mods(mods);
+            self.events.push(InputEvent::KeyDown { key, mods });
+        }
+    }
+
+    fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
+        self.held.set(code, false);
+        if let Some(key) = map_key(code) {
+            let mods = map_mods(mods);
+            self.events.push(InputEvent::KeyUp { key, mods });
+        }
+    }
 }
 
 #[cfg(test)]

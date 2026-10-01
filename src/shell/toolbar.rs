@@ -5,11 +5,16 @@
 //! pure functions of the viewport; [`draw`] paints the strip with the theme
 //! tokens (ADR-0012), marking the active tool and colour with `accent`.
 
+use macroquad::color::Color;
+use macroquad::shapes::{draw_rectangle, draw_triangle};
+use macroquad::text::{draw_text, measure_text};
+
 use crate::core::command::{Command, Tool};
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
-use crate::core::palette::ColorId;
+use crate::core::palette::{ColorId, PALETTE_LEN, THEME, palette};
+use crate::shell::render::{to_mq, to_mq_color};
 
 /// Side of a square button in pixels.
 pub const BUTTON_PX: f32 = 32.0;
@@ -50,7 +55,12 @@ impl ButtonKind {
     /// The command a click on this button runs.
     #[must_use]
     pub fn command(self) -> Command {
-        todo!()
+        match self {
+            Self::Tool(tool) => Command::SetTool(tool),
+            Self::Color(id) => Command::SetColor(id),
+            Self::Undo => Command::Undo,
+            Self::Redo => Command::Redo,
+        }
     }
 }
 
@@ -74,40 +84,175 @@ pub enum Route {
     Swallow,
 }
 
+/// Width of the toolbar strip in pixels.
+pub const STRIP_PX: f32 = BUTTON_PX + 2.0 * PAD_PX;
+
+/// Width in pixels of the active-item outline.
+const OUTLINE_PX: f32 = 2.0;
+/// Inset in pixels of a colour swatch inside its button.
+const SWATCH_INSET_PX: f32 = 6.0;
+/// Size of a tool letter, in pixels.
+const LABEL_SIZE: u16 = 20;
+/// Opacity of an unavailable undo/redo button.
+const DISABLED_ALPHA: f32 = 0.3;
+
 /// The strip background for a viewport: full height at the left edge.
 #[must_use]
 pub fn panel(viewport: Vec2) -> Aabb {
-    let _ = viewport;
-    todo!()
+    Aabb::from_corners(Vec2::ZERO, Vec2::new(STRIP_PX, viewport.y))
 }
 
 /// The buttons, top to bottom: tools, colours, undo, redo.
+///
+/// The layout is fixed; the viewport is taken for symmetry with [`panel`].
 #[must_use]
-pub fn layout(viewport: Vec2) -> Vec<Button> {
-    let _ = viewport;
-    todo!()
+pub fn layout(_viewport: Vec2) -> Vec<Button> {
+    let colors = (0..PALETTE_LEN)
+        .filter_map(|i| u8::try_from(i).ok().and_then(ColorId::new))
+        .map(ButtonKind::Color);
+    let groups: [Vec<ButtonKind>; 3] = [
+        TOOLS.map(ButtonKind::Tool).to_vec(),
+        colors.collect(),
+        vec![ButtonKind::Undo, ButtonKind::Redo],
+    ];
+    let mut buttons = Vec::with_capacity(groups.iter().map(Vec::len).sum());
+    let mut y = PAD_PX;
+    for (g, group) in groups.into_iter().enumerate() {
+        if g > 0 {
+            y += GROUP_GAP_PX - GAP_PX;
+        }
+        for kind in group {
+            let min = Vec2::new(PAD_PX, y);
+            let rect = Aabb::from_corners(min, min + Vec2::new(BUTTON_PX, BUTTON_PX));
+            buttons.push(Button { rect, kind });
+            y += BUTTON_PX + GAP_PX;
+        }
+    }
+    buttons
 }
 
 /// The command of the button under `pos`, `None` if there is none or `pos`
 /// is not finite.
 #[must_use]
 pub fn hit(buttons: &[Button], pos: Vec2) -> Option<Command> {
-    let _ = (buttons, pos);
-    todo!()
+    let pos = pos.sanitize()?;
+    buttons
+        .iter()
+        .find(|b| b.rect.contains(pos))
+        .map(|b| b.kind.command())
 }
 
 /// Routes `event`: pointer presses on the visible toolbar never reach the
 /// canvas; everything else is forwarded.
 #[must_use]
 pub fn route(visible: bool, viewport: Vec2, event: InputEvent) -> Route {
-    let _ = (visible, viewport, event);
-    todo!()
+    match event {
+        InputEvent::PointerDown { pos, .. } if visible && panel(viewport).contains(pos) => {
+            hit(&layout(viewport), pos).map_or(Route::Swallow, Route::Apply)
+        }
+        _ => Route::Forward(event),
+    }
 }
 
 /// Draws the toolbar for `editor` in a viewport of `viewport` pixels.
 pub fn draw(editor: &Editor, viewport: Vec2) {
-    let _ = (editor, viewport);
-    todo!()
+    let strip = panel(viewport);
+    fill(strip, to_mq_color(THEME.surface));
+    let border = to_mq_color(THEME.border);
+    draw_rectangle(strip.max.x - 1.0, 0.0, 1.0, strip.height(), border);
+
+    let accent = to_mq_color(THEME.accent);
+    let text = to_mq_color(THEME.text);
+    for button in layout(viewport) {
+        let rect = button.rect;
+        match button.kind {
+            ButtonKind::Tool(tool) => {
+                let active = editor.tool() == tool;
+                if active {
+                    fill(rect, to_mq_color(THEME.selection));
+                    outline(rect, accent);
+                }
+                draw_label(rect, tool_label(tool), if active { accent } else { text });
+            }
+            ButtonKind::Color(id) => {
+                fill(rect.expand(-SWATCH_INSET_PX), to_mq_color(palette(id)));
+                if editor.style().color == id {
+                    outline(rect, accent);
+                }
+            }
+            ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
+            ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
+        }
+    }
+}
+
+/// The key that selects `tool`, shown as its label (see `core::keymap`).
+fn tool_label(tool: Tool) -> &'static str {
+    match tool {
+        Tool::Pen => "P",
+        Tool::Line => "L",
+        Tool::Arrow => "A",
+        Tool::Rect => "R",
+        Tool::Ellipse => "C",
+        Tool::Eraser => "E",
+        Tool::Bucket => "B",
+        Tool::Select => "V",
+        Tool::Hand => "H",
+    }
+}
+
+/// `color`, faded when not `enabled`.
+fn enabled(color: Color, enabled: bool) -> Color {
+    if enabled {
+        color
+    } else {
+        Color {
+            a: color.a * DISABLED_ALPHA,
+            ..color
+        }
+    }
+}
+
+/// Fills a screen rectangle.
+fn fill(rect: Aabb, color: Color) {
+    draw_rectangle(rect.min.x, rect.min.y, rect.width(), rect.height(), color);
+}
+
+/// Draws an [`OUTLINE_PX`] outline just inside a screen rectangle.
+fn outline(rect: Aabb, color: Color) {
+    let (x, y, w, h) = (rect.min.x, rect.min.y, rect.width(), rect.height());
+    let t = OUTLINE_PX;
+    draw_rectangle(x, y, w, t, color);
+    draw_rectangle(x, y + h - t, w, t, color);
+    draw_rectangle(x, y, t, h, color);
+    draw_rectangle(x + w - t, y, t, h, color);
+}
+
+/// Draws `label` centred in `rect`.
+fn draw_label(rect: Aabb, label: &str, color: Color) {
+    let size = measure_text(label, None, LABEL_SIZE, 1.0);
+    let c = rect.center();
+    let x = c.x - size.width * 0.5;
+    let y = c.y + size.offset_y * 0.5;
+    draw_text(label, x, y, f32::from(LABEL_SIZE), color);
+}
+
+/// Draws a horizontal arrow in `rect`, pointing left (`dir < 0`) or right.
+fn draw_history_arrow(rect: Aabb, dir: f32, color: Color) {
+    let c = rect.center();
+    let half = BUTTON_PX * 0.25;
+    let head = BUTTON_PX * 0.2;
+    let tip = Vec2::new(c.x + dir * half, c.y);
+    let base = Vec2::new(tip.x - dir * head, c.y);
+    let tail = c.x - dir * half;
+    let bar = 2.0;
+    draw_rectangle(base.x.min(tail), c.y - bar * 0.5, (base.x - tail).abs(), bar, color);
+    draw_triangle(
+        to_mq(tip),
+        to_mq(Vec2::new(base.x, c.y - head)),
+        to_mq(Vec2::new(base.x, c.y + head)),
+        color,
+    );
 }
 
 #[cfg(test)]
