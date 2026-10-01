@@ -342,6 +342,18 @@ mod tests {
     }
 
     #[test]
+    fn arrows_map() {
+        for (code, key) in [
+            (KeyCode::Left, Key::ArrowLeft),
+            (KeyCode::Right, Key::ArrowRight),
+            (KeyCode::Up, Key::ArrowUp),
+            (KeyCode::Down, Key::ArrowDown),
+        ] {
+            assert_eq!(map_key(code), Some(key), "{code:?}");
+        }
+    }
+
+    #[test]
     fn map_key_unbound_is_none() {
         for code in [
             KeyCode::LeftShift,

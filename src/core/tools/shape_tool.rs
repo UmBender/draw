@@ -283,7 +283,9 @@ mod tests {
             | Shape::Arrow { a, b, .. }
             | Shape::Rect { a, b, .. }
             | Shape::Ellipse { a, b, .. } => (*a, *b),
-            Shape::Stroke { .. } => panic!("expected a two-point shape, got a stroke"),
+            Shape::Stroke { .. } | Shape::Grid { .. } => {
+                panic!("expected a two-point shape, got {shape:?}")
+            }
         }
     }
 

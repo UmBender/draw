@@ -220,7 +220,7 @@ mod tests {
         alt: true,
     };
 
-    const ALL_KEYS: [Key; 43] = [
+    const ALL_KEYS: [Key; 47] = [
         Key::A,
         Key::B,
         Key::C,
@@ -264,6 +264,10 @@ mod tests {
         Key::Tab,
         Key::BracketLeft,
         Key::BracketRight,
+        Key::ArrowLeft,
+        Key::ArrowRight,
+        Key::ArrowUp,
+        Key::ArrowDown,
     ];
 
     fn color(digit: u8) -> Command {
@@ -287,6 +291,7 @@ mod tests {
             (Key::B, NONE, Command::SetTool(Tool::Bucket)),
             (Key::V, NONE, Command::SetTool(Tool::Select)),
             (Key::H, NONE, Command::SetTool(Tool::Hand)),
+            (Key::G, NONE, Command::SetTool(Tool::Grid)),
             // Style
             (Key::Digit1, NONE, color(1)),
             (Key::Digit2, NONE, color(2)),
@@ -314,6 +319,15 @@ mod tests {
             (Key::Digit0, NONE, Command::ResetView),
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
+            // Helpers
+            (Key::M, NONE, Command::ToggleSmartSnap),
+            (Key::G, SHIFT, Command::ToggleGridSnap),
+            (Key::N, NONE, Command::ToggleNumbering),
+            (Key::N, SHIFT, Command::ResetNumbering),
+            (Key::ArrowRight, NONE, Command::GridCols(1)),
+            (Key::ArrowLeft, NONE, Command::GridCols(-1)),
+            (Key::ArrowDown, NONE, Command::GridRows(1)),
+            (Key::ArrowUp, NONE, Command::GridRows(-1)),
         ]
     }
 
@@ -363,6 +377,28 @@ mod tests {
         assert_eq!(resolve(Key::Digit1, ALT), None);
         assert_eq!(resolve(Key::Z, NONE), None);
         assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn helper_bindings() {
+        assert_eq!(resolve(Key::G, NONE), Some(Command::SetTool(Tool::Grid)));
+        assert_eq!(resolve(Key::M, NONE), Some(Command::ToggleSmartSnap));
+        assert_eq!(resolve(Key::G, SHIFT), Some(Command::ToggleGridSnap));
+        assert_eq!(resolve(Key::N, NONE), Some(Command::ToggleNumbering));
+        assert_eq!(resolve(Key::N, SHIFT), Some(Command::ResetNumbering));
+        assert_eq!(resolve(Key::ArrowRight, NONE), Some(Command::GridCols(1)));
+        assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
+        assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
+        assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn shift_chords_are_exact() {
+        assert_eq!(KeyChord::shift(Key::G).mods, SHIFT);
+        assert_eq!(resolve(Key::G, CTRL_SHIFT), None);
+        assert_eq!(resolve(Key::N, CTRL), None);
+        assert_eq!(resolve(Key::M, SHIFT), None);
+        assert_eq!(resolve(Key::ArrowLeft, SHIFT), None);
     }
 
     #[test]

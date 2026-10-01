@@ -366,6 +366,7 @@ mod tests {
             b,
             style: style(width),
             fill,
+            label: None,
         }
     }
 
@@ -375,6 +376,17 @@ mod tests {
             b,
             style: style(width),
             fill,
+            label: None,
+        }
+    }
+
+    fn grid(a: Vec2, b: Vec2, cols: u32, rows: u32, width: f32) -> Shape {
+        Shape::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            style: style(width),
         }
     }
 
@@ -913,6 +925,145 @@ mod tests {
         assert!(!rect(v(0.0, 0.0), v(1.0, 1.0), f32::INFINITY, None).is_finite());
     }
 
+    // ---- T16 AC-1: grid ----
+
+    #[test]
+    fn grid_bounds_include_half_width() {
+        let g = grid(v(30.0, 20.0), v(0.0, 0.0), 3, 2, 2.0);
+
+        assert_aabb_eq(g.bounds(), v(-1.0, -1.0), v(31.0, 21.0));
+    }
+
+    #[test]
+    fn grid_hit_on_inner_line() {
+        // 3 × 2 cells of 10 × 10; width 2 gives reach 1 at tol 0.
+        let g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 2.0);
+
+        assert!(g.hit(v(10.0, 5.0), 0.0), "inner vertical line");
+        assert!(g.hit(v(20.9, 15.0), 0.0), "within reach of x = 20");
+        assert!(g.hit(v(5.0, 10.0), 0.0), "inner horizontal line");
+        assert!(g.hit(v(30.0, 3.0), 0.0), "outer edge");
+    }
+
+    #[test]
+    fn grid_hit_between_lines_is_false() {
+        let g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 2.0);
+
+        assert!(!g.hit(v(15.0, 5.0), 0.0), "cell centre");
+        assert!(!g.hit(v(12.5, 15.0), 0.5), "beyond reach");
+        assert!(!g.hit(v(40.0, 5.0), 0.5), "outside");
+        assert!(!g.hit(v(f32::NAN, 5.0), 1.0), "non-finite");
+    }
+
+    #[test]
+    fn grid_contains_nothing_and_is_open() {
+        let g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 2.0);
+
+        assert!(!g.contains(v(15.0, 5.0)));
+        assert!(!g.is_closed());
+        assert_eq!(g.fill(), None);
+        assert_eq!(g.label(), None);
+    }
+
+    #[test]
+    fn grid_with_fill_is_noop() {
+        let g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 2.0);
+
+        assert_eq!(g.clone().with_fill(Some(color(2))), g);
+    }
+
+    #[test]
+    fn grid_translate_moves_corners() {
+        let mut g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 2.0);
+
+        g.translate(v(5.0, -5.0));
+
+        assert_eq!(g, grid(v(5.0, -5.0), v(35.0, 15.0), 3, 2, 2.0));
+    }
+
+    #[test]
+    fn grid_is_finite_checks_corners() {
+        assert!(grid(v(0.0, 0.0), v(1.0, 1.0), 4, 4, 1.0).is_finite());
+        assert!(!grid(v(f32::NAN, 0.0), v(1.0, 1.0), 4, 4, 1.0).is_finite());
+        assert!(!grid(v(0.0, 0.0), v(1.0, f32::INFINITY), 4, 4, 1.0).is_finite());
+        assert!(!grid(v(0.0, 0.0), v(1.0, 1.0), 4, 4, f32::NAN).is_finite());
+    }
+
+    #[test]
+    fn grid_lines_count_and_positions() {
+        // Corners in reverse order: lines follow the normalised box.
+        let lines: Vec<[Vec2; 2]> = grid_lines(v(30.0, 20.0), v(0.0, 0.0), 3, 2).collect();
+
+        assert_eq!(lines.len(), 4 + 3, "cols + 1 vertical, rows + 1 horizontal");
+        for (i, [p, q]) in lines[..4].iter().enumerate() {
+            let x = 10.0 * i as f32;
+            assert_vec_eq(*p, v(x, 0.0));
+            assert_vec_eq(*q, v(x, 20.0));
+        }
+        for (j, [p, q]) in lines[4..].iter().enumerate() {
+            let y = 10.0 * j as f32;
+            assert_vec_eq(*p, v(0.0, y));
+            assert_vec_eq(*q, v(30.0, y));
+        }
+    }
+
+    #[test]
+    fn grid_lines_clamps_dims() {
+        let (a, b) = (v(0.0, 0.0), v(10.0, 10.0));
+
+        assert_eq!(grid_lines(a, b, 0, 0).count(), 2 + 2);
+        assert_eq!(
+            grid_lines(a, b, u32::MAX, 1000).count(),
+            2 * (GRID_MAX_CELLS as usize + 1)
+        );
+    }
+
+    // ---- T16 AC-1: labels ----
+
+    #[test]
+    fn label_accessor_and_with_label() {
+        let r = rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None);
+        let e = ellipse(v(0.0, 0.0), v(10.0, 10.0), 1.0, None);
+
+        assert_eq!(r.label(), None);
+        let r7 = r.with_label(Some(7));
+        let e3 = e.with_label(Some(3));
+
+        assert_eq!(r7.label(), Some(7));
+        assert_eq!(e3.label(), Some(3));
+        assert!(matches!(r7, Shape::Rect { label: Some(7), .. }));
+        assert_eq!(e3.with_label(None).label(), None);
+    }
+
+    #[test]
+    fn label_with_label_on_open_shape_is_noop() {
+        let line = Shape::Line {
+            a: v(0.0, 0.0),
+            b: v(1.0, 0.0),
+            style: style(1.0),
+        };
+        let g = grid(v(0.0, 0.0), v(10.0, 10.0), 2, 2, 1.0);
+        let s = stroke(&[v(0.0, 0.0)], 1.0);
+
+        for shape in [line, g, s] {
+            assert_eq!(shape.clone().with_label(Some(4)), shape);
+            assert_eq!(shape.label(), None);
+        }
+    }
+
+    #[test]
+    fn label_survives_translate_and_with_fill() {
+        let mut r = rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None).with_label(Some(2));
+        let e = ellipse(v(0.0, 0.0), v(10.0, 10.0), 1.0, None).with_label(Some(9));
+
+        r.translate(v(1.0, 1.0));
+        let filled = e.with_fill(Some(color(4)));
+
+        assert_eq!(r.label(), Some(2));
+        assert_eq!(filled.label(), Some(9));
+        assert_eq!(filled.fill(), Some(color(4)));
+    }
+
     // ---- properties ----
 
     fn coord() -> impl Strategy<Value = f32> {
@@ -921,6 +1072,10 @@ mod tests {
 
     fn point() -> impl Strategy<Value = Vec2> {
         (coord(), coord()).prop_map(|(x, y)| Vec2::new(x, y))
+    }
+
+    fn label() -> impl Strategy<Value = Option<u32>> {
+        prop::option::of(1_u32..1000)
     }
 
     fn any_shape() -> impl Strategy<Value = Shape> {
@@ -942,8 +1097,12 @@ mod tests {
                 b,
                 style: style(w)
             }),
-            (point(), point(), width.clone()).prop_map(|(a, b, w)| rect(a, b, w, None)),
-            (point(), point(), width).prop_map(|(a, b, w)| ellipse(a, b, w, None)),
+            (point(), point(), width.clone(), label())
+                .prop_map(|(a, b, w, l)| rect(a, b, w, None).with_label(l)),
+            (point(), point(), width.clone(), label())
+                .prop_map(|(a, b, w, l)| ellipse(a, b, w, None).with_label(l)),
+            (point(), point(), 1..=GRID_MAX_CELLS, 1..=GRID_MAX_CELLS, width)
+                .prop_map(|(a, b, cols, rows, w)| grid(a, b, cols, rows, w)),
         ]
     }
 
@@ -953,8 +1112,10 @@ mod tests {
             let before = shape.bounds();
             let mut moved = shape;
 
+            let label = moved.label();
             moved.translate(delta);
 
+            prop_assert_eq!(moved.label(), label);
             let expected = before.translate(delta);
             let after = moved.bounds();
             // Coordinates up to 2e3 in f32: rounding stays well below 1e-2.

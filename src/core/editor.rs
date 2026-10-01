@@ -514,6 +514,8 @@ mod tests {
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::palette::ColorId;
     use crate::core::shape::{Shape, Style};
+    use crate::core::numbering::FIRST_NUMBER;
+    use crate::core::shape::GRID_MAX_CELLS;
     use crate::core::smoothing::SmoothingLevel;
 
     const NONE: Modifiers = Modifiers::NONE;
@@ -527,6 +529,7 @@ mod tests {
                 width: 1.0,
             },
             fill: None,
+            label: None,
         }
     }
 
@@ -1126,6 +1129,114 @@ mod tests {
         assert!(!ed.toolbar_visible());
         ed.apply(Command::ToggleToolbar);
         assert!(ed.toolbar_visible());
+    }
+
+    // ---- T16 AC-4 helpers -------------------------------------------------
+
+    #[test]
+    fn helpers_default_off_and_4x4() {
+        // Arrange / Act
+        let ed = Editor::new();
+        let helpers = ed.helpers();
+
+        // Assert
+        assert!(!helpers.smart_snap && !helpers.grid_snap && !helpers.numbering);
+        assert_eq!(helpers.next_number, FIRST_NUMBER);
+        assert_eq!((helpers.grid_cols, helpers.grid_rows), (4, 4));
+        assert_eq!(ed.style().helpers, helpers);
+    }
+
+    #[test]
+    fn toggle_smart_snap_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleSmartSnap));
+        assert!(ed.helpers().smart_snap);
+        assert!(ed.apply(Command::ToggleSmartSnap));
+        assert!(!ed.helpers().smart_snap);
+    }
+
+    #[test]
+    fn toggle_grid_snap_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleGridSnap));
+        assert!(ed.helpers().grid_snap);
+        assert!(!ed.helpers().smart_snap, "independent flags");
+        assert!(ed.apply(Command::ToggleGridSnap));
+        assert!(!ed.helpers().grid_snap);
+    }
+
+    #[test]
+    fn toggle_numbering_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleNumbering));
+        assert!(ed.helpers().numbering);
+        assert!(ed.apply(Command::ToggleNumbering));
+        assert!(!ed.helpers().numbering);
+    }
+
+    #[test]
+    fn reset_numbering_restarts_at_one() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.style.helpers.next_number = 5;
+
+        // Act / Assert
+        assert!(ed.apply(Command::ResetNumbering));
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+        assert!(!ed.apply(Command::ResetNumbering), "already at the start");
+    }
+
+    #[test]
+    fn grid_dims_step_by_one() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::GridCols(1)));
+        assert!(ed.apply(Command::GridRows(-1)));
+
+        assert_eq!((ed.helpers().grid_cols, ed.helpers().grid_rows), (5, 3));
+    }
+
+    #[test]
+    fn grid_dims_clamped() {
+        // Arrange
+        let mut ed = Editor::new();
+
+        // Act / Assert: the floor.
+        for _ in 0..3 {
+            ed.apply(Command::GridCols(-1));
+        }
+        assert_eq!(ed.helpers().grid_cols, 1);
+        assert!(!ed.apply(Command::GridCols(-1)), "no change at the floor");
+        assert!(!ed.apply(Command::GridCols(i32::MIN)));
+        assert_eq!(ed.helpers().grid_cols, 1);
+
+        // The ceiling.
+        assert!(ed.apply(Command::GridRows(1000)));
+        assert_eq!(ed.helpers().grid_rows, GRID_MAX_CELLS);
+        assert!(!ed.apply(Command::GridRows(1)), "no change at the ceiling");
+        assert!(ed.apply(Command::GridCols(i32::MAX)));
+        assert_eq!(ed.helpers().grid_cols, GRID_MAX_CELLS);
+    }
+
+    #[test]
+    fn grid_dims_change_keeps_gesture() {
+        // Arrange: a grid drag in progress.
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Grid));
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+
+        // Act
+        let changed = ed.apply(Command::GridCols(1))
+            && ed.apply(Command::ToggleSmartSnap)
+            && ed.apply(Command::ToggleNumbering);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Grid)));
+        assert_eq!(ed.helpers().grid_cols, 5);
     }
 
     // ---- AC-9 stubs -------------------------------------------------------

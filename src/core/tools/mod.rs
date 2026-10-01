@@ -196,3 +196,21 @@ impl ToolStates {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_with_guides_is_not_empty() {
+        // Arrange
+        let overlay = Overlay {
+            guides: vec![[Vec2::ZERO, Vec2::new(10.0, 0.0)]],
+            ..Overlay::default()
+        };
+
+        // Act / Assert
+        assert!(!overlay.is_empty());
+        assert!(Overlay::default().is_empty());
+    }
+}

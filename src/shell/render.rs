@@ -551,4 +551,85 @@ mod tests {
             aabb(4.0 - p, 8.0 - p, 12.0 + p, 20.0 + p)
         ));
     }
+
+    // T16 AC-2: labels
+
+    #[test]
+    fn label_size_fits_box() {
+        // Arrange
+        let area = Vec2::new(100.0, 100.0);
+        // Act
+        let size = label_size(1, area);
+        // Assert: limited by the height, and the text fits the width.
+        let Some(size) = size else {
+            panic!("a 100 px box shows its label");
+        };
+        assert!(approx_eq(size, 100.0 * LABEL_HEIGHT_RATIO, EPS));
+        assert!(size * LABEL_CHAR_ASPECT <= area.x * LABEL_WIDTH_RATIO + EPS);
+    }
+
+    #[test]
+    fn label_size_shrinks_with_more_digits() {
+        let area = Vec2::new(100.0, 100.0);
+
+        let (Some(one), Some(three)) = (label_size(1, area), label_size(3, area)) else {
+            panic!("both labels fit");
+        };
+
+        assert!(three < one);
+        assert!(3.0 * three * LABEL_CHAR_ASPECT <= area.x * LABEL_WIDTH_RATIO + EPS);
+    }
+
+    #[test]
+    fn label_size_hidden_when_too_small() {
+        assert_eq!(label_size(1, Vec2::new(10.0, 10.0)), None);
+        assert_eq!(label_size(5, Vec2::new(40.0, 400.0)), None);
+        assert_eq!(label_size(1, Vec2::new(-50.0, 50.0)), None);
+    }
+
+    #[test]
+    fn label_size_is_capped() {
+        let size = label_size(1, Vec2::new(1.0e5, 1.0e5));
+
+        assert!(size.is_some_and(|s| approx_eq(s, LABEL_MAX_PX, EPS)), "{size:?}");
+    }
+
+    #[test]
+    fn label_size_non_finite_is_none() {
+        for area in [
+            Vec2::new(f32::NAN, 100.0),
+            Vec2::new(100.0, f32::INFINITY),
+            Vec2::new(f32::NEG_INFINITY, f32::NAN),
+        ] {
+            assert_eq!(label_size(1, area), None, "{area:?}");
+        }
+    }
+
+    #[test]
+    fn label_area_ellipse_is_inscribed_box() {
+        let rect = aabb(0.0, 0.0, 100.0, 50.0);
+
+        let boxed = label_area(rect, false);
+        let round = label_area(rect, true);
+
+        assert!(boxed.approx_eq(Vec2::new(100.0, 50.0), EPS));
+        let k = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(round.approx_eq(Vec2::new(100.0 * k, 50.0 * k), EPS));
+    }
+
+    #[test]
+    fn label_raster_quantizes() {
+        let cases = [
+            (10.0, 16, 10.0 / 16.0),
+            (16.0, 16, 1.0),
+            (17.0, 32, 17.0 / 32.0),
+            (100.0, 128, 100.0 / 128.0),
+            (200.0, 128, 200.0 / 128.0),
+        ];
+        for (size, raster, scale) in cases {
+            let (got_raster, got_scale) = label_raster(size);
+            assert_eq!(got_raster, raster, "size {size}");
+            assert!(approx_eq(got_scale, scale, EPS), "size {size}: {got_scale}");
+        }
+    }
 }

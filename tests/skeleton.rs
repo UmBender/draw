@@ -15,11 +15,14 @@ fn all_modules_are_reachable() {
     use draw::core::history as _;
     use draw::core::input as _;
     use draw::core::keymap as _;
+    use draw::core::numbering as _;
     use draw::core::palette as _;
     use draw::core::shape as _;
     use draw::core::smoothing as _;
+    use draw::core::snap as _;
     use draw::core::tools::bucket as _;
     use draw::core::tools::eraser as _;
+    use draw::core::tools::grid as _;
     use draw::core::tools::navigate as _;
     use draw::core::tools::pen as _;
     use draw::core::tools::select as _;

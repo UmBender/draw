@@ -280,6 +280,7 @@ mod tests {
             Tool::Arrow,
             Tool::Rect,
             Tool::Ellipse,
+            Tool::Grid,
             Tool::Eraser,
             Tool::Bucket,
             Tool::Select,
@@ -292,6 +293,11 @@ mod tests {
         tools
             .into_iter()
             .chain(colors)
+            .chain([
+                ButtonKind::SmartSnap,
+                ButtonKind::GridSnap,
+                ButtonKind::Numbering,
+            ])
             .chain([ButtonKind::Undo, ButtonKind::Redo])
             .collect()
     }
@@ -313,7 +319,7 @@ mod tests {
         // Assert
         let kinds: Vec<ButtonKind> = buttons.iter().map(|b| b.kind).collect();
         assert_eq!(kinds, expected_kinds());
-        assert_eq!(buttons.len(), 17);
+        assert_eq!(buttons.len(), 21);
     }
 
     #[test]
@@ -340,10 +346,20 @@ mod tests {
                 "stacked top to bottom with a gap: {pair:?}"
             );
         }
-        // Groups (tools | colours | history) get a larger gap.
+        // Groups (tools | colours | helpers | history) get a larger gap.
         let gap = |i: usize| buttons[i + 1].rect.min.y - buttons[i].rect.max.y;
-        assert!(gap(8) > gap(7), "gap after the tools");
-        assert!(gap(14) > gap(13), "gap after the colours");
+        assert!(gap(9) > gap(8), "gap after the tools");
+        assert!(gap(15) > gap(14), "gap after the colours");
+        assert!(gap(18) > gap(17), "gap after the helpers");
+    }
+
+    #[test]
+    fn layout_fits_default_window() {
+        let buttons = layout(VIEWPORT);
+        let Some(last) = buttons.last() else {
+            panic!("toolbar has buttons");
+        };
+        assert!(last.rect.max.y <= VIEWPORT.y, "{last:?}");
     }
 
     #[test]
@@ -371,6 +387,9 @@ mod tests {
             let expected = match b.kind {
                 ButtonKind::Tool(tool) => Command::SetTool(tool),
                 ButtonKind::Color(id) => Command::SetColor(id),
+                ButtonKind::SmartSnap => Command::ToggleSmartSnap,
+                ButtonKind::GridSnap => Command::ToggleGridSnap,
+                ButtonKind::Numbering => Command::ToggleNumbering,
                 ButtonKind::Undo => Command::Undo,
                 ButtonKind::Redo => Command::Redo,
             };
