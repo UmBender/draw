@@ -1,7 +1,7 @@
 ---
 id: T19
 title: Auto-numbering
-status: in-progress
+status: review
 wave: 9
 branch: task/T19-numbering
 depends_on: [T16, T17]
@@ -74,10 +74,27 @@ grid cells.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 19 — requires steps 6 and 16.
 
 ## Log
+
+- 2026-10-01 — spec: AC-1…AC-5 with test names; ADR-T19-1 records the
+  counter rule (label counts before/after a gesture end, undo or redo;
+  `History` untouched).
+- tests: `numbering` unit tests, shape tool `preview_shows_next_number`,
+  `commit_labels_ellipse`, `commit_leaves_arrow_unlabelled`, editor tests
+  for counting up, reset, undo/redo and clipboard.
+- models: `label_count`, `advance`, `roll_back` signatures.
+- behaviour: shape tool labels preview and commit via `label_new`; editor
+  hooks in `pointer_up`, `Undo`, `Redo` (`advance_numbering`).
+- quality: `scripts/check.sh` green with no changes, so no quality commit;
+  `PROPTEST_CASES=20000 cargo test --release --test fuzz` green.
+- AC-5 needed no new test: the T16 fuzz invariant (labels and counter ≥ 1,
+  labels only on Rect/Ellipse) already runs with random `N`/`Shift+N`.
+- Files touched: `src/core/numbering.rs`, `src/core/tools/shape_tool.rs`,
+  `src/core/editor.rs`, plus this note, ADR-T19-1, the feature and tutorial
+  notes and `Architecture.md` (module map row for `numbering`).
