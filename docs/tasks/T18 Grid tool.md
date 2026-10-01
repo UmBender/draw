@@ -1,11 +1,11 @@
 ---
 id: T18
 title: Grid tool
-status: review
+status: in-progress
 wave: 8
 branch: task/T18-grid-tool
 depends_on: [T16]
-adrs: ["[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]"]
+adrs: ["[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]"]
 feature: "[[Grid tool]]"
 tutorial: "[[18 A grid tool with live parameters]]"
 tags: [task]
@@ -74,9 +74,26 @@ are read from `Helpers` at preview and release, never stored in the drag.
   `route_flyout_gap_is_swallowed`, `route_without_flyout_forwards`;
   existing `route_*` tests updated for the new parameter.
 
+- **AC-7** (added on owner request, [[ADR-T18-3 Grid axis indices]]) —
+  With axes on (`I` or the flyout's `axes` row; off by default), new grids
+  get `axes = true`: 0-based column indices along x and row indices along
+  y, drawn outside the grid next to the start corner, index 0 at the drag
+  start and growing toward the drag end. Bounds include the label bands.
+  The preview follows the setting live.
+  *Tests:* `shape::tests::grid_axis_labels_top_left_drag`,
+  `grid_axis_labels_follow_drag_direction`, `grid_axis_labels_none_without_axes`,
+  `grid_bounds_include_axis_labels`, `grid_axes_survive_translate`;
+  `editor::tests::toggle_grid_axes_flips`;
+  `keymap::tests::every_documented_binding` (table extended with `I`);
+  `grid::tests::axes_setting_reaches_grid`, `grid::tests::axes_off_by_default`;
+  `toolbar::tests::flyout_has_five_buttons_in_order` (replaces the
+  four-button test), `flyout_buttons_return_their_commands`;
+  `render::tests::axis_label_size_fits_longest_index`.
+
 ## Out of scope
 
-Per-cell fill or numbering, merged cells, resizing a committed grid.
+Per-cell fill, numbering inside cells or any other numbering scheme than
+AC-7's, merged cells, resizing a committed grid.
 
 ## Files owned
 
@@ -86,10 +103,18 @@ Amended for AC-6 (approved by the owner): `src/shell/toolbar.rs` (flyout
 layout, routing, drawing) and `src/shell/app.rs` (the `dispatch` call
 passes whether the grid tool is active).
 
+Amended for AC-7 (approved by the owner): `src/core/shape.rs` (`axes`
+field, `grid_axis_labels`, bounds), `src/core/command.rs`
+(`ToggleGridAxes`), `src/core/editor.rs` (`Helpers::grid_axes`),
+`src/core/keymap.rs` and `docs/architecture/Keymap.md` (`I`),
+`src/shell/render.rs` (draw indices), `src/core/snap.rs` and
+`tests/fuzz.rs` (only `axes` in `Shape::Grid` literals, if any).
+
 ## Subtasks (one commit each)
 
 - [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 - AC-6 flyout: [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
+- AC-7 axes: [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
 
 ## Learning path
 
@@ -131,3 +156,7 @@ Step 18 — requires steps 9 and 16.
 - AC-6 not checked on screen: flyout look (label fit at 16 px, alignment)
   needs a manual look with the grid tool active. `docs/features/Toolbar.md`
   is not owned by this task and does not mention the flyout yet.
+- AC-7 spec: owner asked for 0-based x/y indices outside the grid,
+  oriented by the drag; one scheme only. `axes: bool` on `Shape::Grid`,
+  `I` key and a flyout row ([[ADR-T18-3 Grid axis indices]]). Files owned
+  amended (shape model, command, editor helpers, keymap, renderer).
