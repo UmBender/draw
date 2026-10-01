@@ -1,7 +1,7 @@
 ---
 id: T15
 title: Anti-aliasing
-status: in-progress
+status: review
 wave: 7
 branch: task/T15-antialiasing
 depends_on: [T12]
@@ -56,10 +56,28 @@ Text anti-aliasing (handled by the font rasterizer), per-shape AA toggles.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality (no changes needed) · [x] docs
 
 ## Learning path
 
 Step 15 — requires step 12.
 
 ## Log
+
+- 2026-10-01 — Spec: miniquad's MSAA support flag
+  (`features.resolve_attachments`) is only reachable via `unsafe fn
+  get_internal_gl`, which ADR-0014 forbids. The original AC-2 ("fallback from
+  the reported capability") became a `DRAW_MSAA` override parsed by a pure
+  function; recorded in [[ADR-T15-1 MSAA on the cached frame]].
+- AC-3 tests cover the existing `physical_size` helper (it had no tests).
+- Smoke run on this machine (KDE Wayland, Mesa): the release binary starts and
+  keeps running with `DRAW_MSAA` unset, `off` and `8`; with 4× the window
+  renders correctly (orientation, toolbar). Empty canvas, so edge quality
+  could not be judged automatically.
+- **AC-4 pending the user**: draw circles/diagonals at zoom 0.05, 1 and 20,
+  compare with `DRAW_MSAA=off`, check idle CPU ≈ 0 % and drawing latency.
+- Quality: `scripts/check.sh` was green right after the behaviour commit, so
+  no quality commit.
+- For the integrator: add [[ADR-T15-1 MSAA on the cached frame]] to the
+  Decision Log (builds on ADR-0006, ADR-T12-1, ADR-0014), [[Anti-aliasing]]
+  to the Feature Index and step 15 to the Learning Path.
