@@ -1,7 +1,7 @@
 ---
 id: T09
 title: Creation tools
-status: in-progress
+status: review
 wave: 5
 branch: task/T09-creation-tools
 depends_on: [T04, T08]
@@ -78,10 +78,27 @@ Text, pressure, curve fitting.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 9 — requires steps 4 and 8.
 
 ## Log
+
+- 2026-10-01 — spec: named the tests per AC; width sampled on `Down`, drag
+  threshold measured on screen on the unconstrained drag, 45° snap by
+  projection. No new ADR (behaviour stays inside the ADR-T08-1 tool API).
+- tests: pen and shape tool unit tests plus two proptests
+  (`shape_gesture_never_panics_and_is_finite`,
+  `shift_constrained_line_angle_is_multiple_of_45_degrees`); red on the
+  missing `MIN_DRAG_PX`.
+- models: `pen::State`/`LiveStroke`, `shape_tool::State`/`Drag`/`Kind`,
+  `MIN_DRAG_PX`.
+- behaviour: all green. Deviation: a rejected (< 2 px) drag returns `true`
+  from `on_pointer` because its preview must be erased; the threshold test
+  was adjusted to assert the redraw and the unchanged document.
+- quality: clippy (`expect_used` in test helpers, negated float comparison)
+  and rustfmt fixes.
+- docs: [[Drawing tools]] feature note and [[09 Building drawing tools]]
+  tutorial (step 9).
