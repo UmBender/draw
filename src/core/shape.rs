@@ -5,7 +5,7 @@
 //! non-finite input never panics, a non-finite query point never hits and is
 //! never contained.
 
-use crate::core::geom::{Aabb, Vec2};
+use crate::core::geom::{Aabb, Vec2, distance_to_segment};
 use crate::core::palette::ColorId;
 
 /// Arrow head length per unit of stroke width.
@@ -85,19 +85,28 @@ impl Shape {
     /// The outline style.
     #[must_use]
     pub fn style(&self) -> Style {
-        todo!()
+        match self {
+            Self::Stroke { style, .. }
+            | Self::Line { style, .. }
+            | Self::Arrow { style, .. }
+            | Self::Rect { style, .. }
+            | Self::Ellipse { style, .. } => *style,
+        }
     }
 
     /// The fill colour; always `None` for open shapes.
     #[must_use]
     pub fn fill(&self) -> Option<ColorId> {
-        todo!()
+        match self {
+            Self::Rect { fill, .. } | Self::Ellipse { fill, .. } => *fill,
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } => None,
+        }
     }
 
     /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).
     #[must_use]
     pub fn is_closed(&self) -> bool {
-        todo!()
+        matches!(self, Self::Rect { .. } | Self::Ellipse { .. })
     }
 
     /// Bounding box including half the outline width (and the arrow head).
@@ -105,43 +114,128 @@ impl Shape {
     /// A stroke with no finite point gives the zero-size box at the origin.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        todo!()
+        let geometry = match self {
+            Self::Stroke { points, .. } => match Aabb::from_points(points) {
+                Some(b) => b,
+                None => return Aabb::from_corners(Vec2::ZERO, Vec2::ZERO),
+            },
+            Self::Arrow { a, b, style } => {
+                let [tip, left, right] = arrow_head(*a, *b, style.width);
+                Aabb::from_corners(*a, *b)
+                    .union(&Aabb::from_corners(left, right))
+                    .union(&Aabb::from_corners(tip, tip))
+            }
+            Self::Line { a, b, .. } | Self::Rect { a, b, .. } | Self::Ellipse { a, b, .. } => {
+                Aabb::from_corners(*a, *b)
+            }
+        };
+        geometry.expand(half_width(self.style().width))
     }
 
     /// `true` if `p` is within `tol + width / 2` of the outline, or inside a
     /// filled closed shape.
+    ///
+    /// Ellipse outlines use the gradient-normalised distance estimate, exact on
+    /// the axes and on the outline itself.
     #[must_use]
     pub fn hit(&self, p: Vec2, tol: f32) -> bool {
-        let _ = (p, tol);
-        todo!()
+        let reach = tol + half_width(self.style().width);
+        if !p.is_finite() || !reach.is_finite() || !self.bounds().expand(tol).contains(p) {
+            return false;
+        }
+        if self.fill().is_some() && self.contains(p) {
+            return true;
+        }
+        match self {
+            Self::Stroke { points, .. } => match points.as_slice() {
+                [] => false,
+                [only] => p.distance(*only) <= reach,
+                _ => points
+                    .windows(2)
+                    .any(|w| distance_to_segment(p, w[0], w[1]) <= reach),
+            },
+            Self::Line { a, b, .. } => distance_to_segment(p, *a, *b) <= reach,
+            Self::Arrow { a, b, style } => {
+                let head = arrow_head(*a, *b, style.width);
+                distance_to_segment(p, *a, *b) <= reach
+                    || point_in_triangle(p, head)
+                    || polygon_edge_distance(p, &head) <= reach
+            }
+            Self::Rect { a, b, .. } => {
+                let r = Aabb::from_corners(*a, *b);
+                let corners = [
+                    r.min,
+                    Vec2::new(r.max.x, r.min.y),
+                    r.max,
+                    Vec2::new(r.min.x, r.max.y),
+                ];
+                polygon_edge_distance(p, &corners) <= reach
+            }
+            Self::Ellipse { a, b, .. } => ellipse_outline_distance(p, *a, *b) <= reach,
+        }
     }
 
     /// `true` if `p` lies inside the geometry of a closed shape (boundary
     /// inclusive, outline width and fill ignored). Open shapes contain nothing.
     #[must_use]
     pub fn contains(&self, p: Vec2) -> bool {
-        let _ = p;
-        todo!()
+        if !p.is_finite() {
+            return false;
+        }
+        match self {
+            Self::Rect { a, b, .. } => Aabb::from_corners(*a, *b).contains(p),
+            Self::Ellipse { a, b, .. } => {
+                let (center, radii) = ellipse_frame(*a, *b);
+                if radii.x <= 0.0 || radii.y <= 0.0 {
+                    return false;
+                }
+                let q = p - center;
+                let (u, w) = (q.x / radii.x, q.y / radii.y);
+                u * u + w * w <= 1.0
+            }
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } => false,
+        }
     }
 
     /// Moves every point by `delta`.
     pub fn translate(&mut self, delta: Vec2) {
-        let _ = delta;
-        todo!()
+        match self {
+            Self::Stroke { points, .. } => {
+                for point in points {
+                    *point += delta;
+                }
+            }
+            Self::Line { a, b, .. }
+            | Self::Arrow { a, b, .. }
+            | Self::Rect { a, b, .. }
+            | Self::Ellipse { a, b, .. } => {
+                *a += delta;
+                *b += delta;
+            }
+        }
     }
 
     /// Returns the shape with its fill set to `fill`; open shapes are
     /// returned unchanged.
     #[must_use]
-    pub fn with_fill(self, fill: Option<ColorId>) -> Self {
-        let _ = fill;
-        todo!()
+    pub fn with_fill(mut self, fill: Option<ColorId>) -> Self {
+        if let Self::Rect { fill: f, .. } | Self::Ellipse { fill: f, .. } = &mut self {
+            *f = fill;
+        }
+        self
     }
 
     /// `true` iff every coordinate and the width are finite.
     #[must_use]
     pub fn is_finite(&self) -> bool {
-        todo!()
+        self.style().width.is_finite()
+            && match self {
+                Self::Stroke { points, .. } => points.iter().all(|p| p.is_finite()),
+                Self::Line { a, b, .. }
+                | Self::Arrow { a, b, .. }
+                | Self::Rect { a, b, .. }
+                | Self::Ellipse { a, b, .. } => a.is_finite() && b.is_finite(),
+            }
     }
 }
 
@@ -149,12 +243,81 @@ impl Shape {
 ///
 /// The tip is `b`; the base lies `max(ARROW_HEAD_MIN_LENGTH,
 /// ARROW_HEAD_LENGTH_PER_WIDTH * width)` back along the shaft and is
-/// `2 * ARROW_HEAD_HALF_WIDTH_RATIO` times that length wide. A degenerate
-/// arrow (`a` ≈ `b`) gives `[b, b, b]`.
+/// `2 * ARROW_HEAD_HALF_WIDTH_RATIO` times that length wide. "Left" is the
+/// side reached by turning the shaft direction a quarter turn towards +y.
+/// A degenerate arrow (`a` ≈ `b`) gives `[b, b, b]`.
 #[must_use]
 pub fn arrow_head(a: Vec2, b: Vec2, width: f32) -> [Vec2; 3] {
-    let _ = (a, b, width);
-    todo!()
+    let shaft = b - a;
+    let len = shaft.length();
+    if !(len > f32::EPSILON) {
+        return [b, b, b];
+    }
+    let dir = shaft / len;
+    let head_len = (ARROW_HEAD_LENGTH_PER_WIDTH * width).max(ARROW_HEAD_MIN_LENGTH);
+    let base = b - dir * head_len;
+    let side = Vec2::new(-dir.y, dir.x) * (ARROW_HEAD_HALF_WIDTH_RATIO * head_len);
+    [b, base + side, base - side]
+}
+
+/// Half of `width`, treating negative and NaN widths as 0.
+fn half_width(width: f32) -> f32 {
+    width.max(0.0) * 0.5
+}
+
+/// Centre and (non-negative) radii of the ellipse inscribed in the box `a`–`b`.
+fn ellipse_frame(a: Vec2, b: Vec2) -> (Vec2, Vec2) {
+    let r = Aabb::from_corners(a, b);
+    (r.center(), Vec2::new(r.width() * 0.5, r.height() * 0.5))
+}
+
+/// Approximate distance from `p` to the outline of the ellipse in box `a`–`b`.
+///
+/// Uses `k0 (k0 − 1) / k1` with `k0 = |q / r|`, `k1 = |q / r²|`: the implicit
+/// function divided by its gradient length. Exact on the axes and zero on the
+/// outline. A zero radius collapses the ellipse to a segment.
+fn ellipse_outline_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let (center, r) = ellipse_frame(a, b);
+    if r.x <= 0.0 || r.y <= 0.0 {
+        let half = Vec2::new(r.x, r.y);
+        return distance_to_segment(p, center - half, center + half);
+    }
+    let q = p - center;
+    let k0 = Vec2::new(q.x / r.x, q.y / r.y).length();
+    let k1 = Vec2::new(q.x / (r.x * r.x), q.y / (r.y * r.y)).length();
+    if !(k1 > 0.0) {
+        // At the centre the gradient vanishes; the nearest outline point is
+        // the end of the shorter axis.
+        return r.x.min(r.y);
+    }
+    (k0 * (k0 - 1.0) / k1).abs()
+}
+
+/// Smallest distance from `p` to the edges of the closed polygon `vertices`.
+fn polygon_edge_distance(p: Vec2, vertices: &[Vec2]) -> f32 {
+    let n = vertices.len();
+    (0..n)
+        .map(|i| distance_to_segment(p, vertices[i], vertices[(i + 1) % n]))
+        .fold(f32::INFINITY, f32::min)
+}
+
+/// `true` if `p` is inside or on the triangle, for either winding.
+/// A degenerate (zero-area or non-finite) triangle contains nothing.
+fn point_in_triangle(p: Vec2, [t0, t1, t2]: [Vec2; 3]) -> bool {
+    if !(cross(t1 - t0, t2 - t0).abs() > f32::EPSILON) {
+        return false;
+    }
+    let d0 = cross(t1 - t0, p - t0);
+    let d1 = cross(t2 - t1, p - t1);
+    let d2 = cross(t0 - t2, p - t2);
+    let has_neg = d0 < 0.0 || d1 < 0.0 || d2 < 0.0;
+    let has_pos = d0 > 0.0 || d1 > 0.0 || d2 > 0.0;
+    !(has_neg && has_pos)
+}
+
+/// 2D cross product (z component of the 3D cross product).
+fn cross(u: Vec2, w: Vec2) -> f32 {
+    u.x * w.y - u.y * w.x
 }
 
 #[cfg(test)]
