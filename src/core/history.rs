@@ -15,8 +15,11 @@ pub const HISTORY_LIMIT: usize = 500;
 /// Undo and redo stacks of committed transactions.
 #[derive(Debug, Clone)]
 pub struct History {
+    /// Committed transactions, oldest at the front.
     undo: VecDeque<Transaction>,
+    /// Undone transactions, most recently undone last.
     redo: Vec<Transaction>,
+    /// Maximum length of `undo` (at least 1).
     limit: usize,
 }
 
@@ -36,7 +39,11 @@ impl History {
     /// Empty history keeping up to `limit` transactions (at least 1).
     #[must_use]
     pub fn with_limit(limit: usize) -> Self {
-        todo!()
+        Self {
+            undo: VecDeque::new(),
+            redo: Vec::new(),
+            limit: limit.max(1),
+        }
     }
 
     /// Apply `tx` to `doc` and record it; clears the redo stack.
@@ -48,48 +55,81 @@ impl History {
     /// Returns the [`ApplyError`] from [`Document::apply`]; `doc` and the
     /// history are then unchanged.
     pub fn commit(&mut self, doc: &mut Document, tx: Transaction) -> Result<(), ApplyError> {
-        todo!()
+        if tx.is_empty() {
+            return Ok(());
+        }
+        doc.apply(&tx)?;
+        self.redo.clear();
+        self.push_undo(tx);
+        Ok(())
     }
 
     /// Undo the latest transaction. False if there is none, or if `doc` no
     /// longer matches it (the stacks are then unchanged).
     pub fn undo(&mut self, doc: &mut Document) -> bool {
-        todo!()
+        let Some(tx) = self.undo.pop_back() else {
+            return false;
+        };
+        if doc.apply(&tx.inverse()).is_ok() {
+            self.redo.push(tx);
+            true
+        } else {
+            self.undo.push_back(tx);
+            false
+        }
     }
 
     /// Redo the latest undone transaction. False if there is none, or if `doc`
     /// no longer matches it (the stacks are then unchanged).
     pub fn redo(&mut self, doc: &mut Document) -> bool {
-        todo!()
+        let Some(tx) = self.redo.pop() else {
+            return false;
+        };
+        if doc.apply(&tx).is_ok() {
+            self.push_undo(tx);
+            true
+        } else {
+            self.redo.push(tx);
+            false
+        }
     }
 
     /// True if [`History::undo`] has something to undo.
     #[must_use]
     pub fn can_undo(&self) -> bool {
-        todo!()
+        !self.undo.is_empty()
     }
 
     /// True if [`History::redo`] has something to redo.
     #[must_use]
     pub fn can_redo(&self) -> bool {
-        todo!()
+        !self.redo.is_empty()
     }
 
     /// Number of undoable transactions.
     #[must_use]
     pub fn undo_len(&self) -> usize {
-        todo!()
+        self.undo.len()
     }
 
     /// Number of redoable transactions.
     #[must_use]
     pub fn redo_len(&self) -> usize {
-        todo!()
+        self.redo.len()
     }
 
     /// Forget both stacks (the document is untouched).
     pub fn clear(&mut self) {
-        todo!()
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// Push onto the undo stack, dropping the oldest entries beyond the limit.
+    fn push_undo(&mut self, tx: Transaction) {
+        self.undo.push_back(tx);
+        while self.undo.len() > self.limit {
+            self.undo.pop_front();
+        }
     }
 }
 

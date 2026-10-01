@@ -60,7 +60,23 @@ impl Edit {
     /// The edit that undoes this one.
     #[must_use]
     pub fn inverse(&self) -> Self {
-        todo!()
+        match self {
+            Self::Insert { index, id, shape } => Self::Remove {
+                index: *index,
+                id: *id,
+                shape: shape.clone(),
+            },
+            Self::Remove { index, id, shape } => Self::Insert {
+                index: *index,
+                id: *id,
+                shape: shape.clone(),
+            },
+            Self::Replace { id, before, after } => Self::Replace {
+                id: *id,
+                before: after.clone(),
+                after: before.clone(),
+            },
+        }
     }
 }
 
@@ -72,25 +88,25 @@ impl Transaction {
     /// True if the transaction has no edits.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        todo!()
+        self.0.is_empty()
     }
 
     /// Number of edits.
     #[must_use]
     pub fn len(&self) -> usize {
-        todo!()
+        self.0.len()
     }
 
     /// The edits, in application order.
     #[must_use]
     pub fn edits(&self) -> &[Edit] {
-        todo!()
+        &self.0
     }
 
     /// The transaction that undoes this one: inverse edits in reverse order.
     #[must_use]
     pub fn inverse(&self) -> Self {
-        todo!()
+        Self(self.0.iter().rev().map(Edit::inverse).collect())
     }
 }
 
@@ -122,7 +138,15 @@ pub enum ApplyError {
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            Self::IndexOutOfRange { index, len } => {
+                write!(f, "edit index {index} is out of range for {len} shapes")
+            }
+            Self::UnknownId(id) => write!(f, "shape {} is not in the document", id.0),
+            Self::DuplicateId(id) => write!(f, "shape {} is already in the document", id.0),
+            Self::Mismatch(id) => write!(f, "shape {} does not match the edit", id.0),
+            Self::NonFiniteShape(id) => write!(f, "shape {} has non-finite geometry", id.0),
+        }
     }
 }
 
@@ -131,7 +155,11 @@ impl std::error::Error for ApplyError {}
 /// The ordered shape store.
 #[derive(Debug, Clone, Default)]
 pub struct Document {
+    /// Shapes in z-order, bottom first.
     shapes: Vec<(ShapeId, Shape)>,
+    /// Ids currently in `shapes`, for O(1) duplicate checks.
+    ids: HashSet<ShapeId>,
+    /// Next id to hand out; only ever grows.
     next_id: u64,
 }
 
@@ -143,8 +171,12 @@ impl Document {
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.
+    ///
+    /// The counter saturates at `u64::MAX`, which is unreachable in practice.
     pub fn next_id(&mut self) -> ShapeId {
-        todo!()
+        let id = ShapeId(self.next_id);
+        self.next_id = self.next_id.saturating_add(1);
+        id
     }
 
     /// Shapes with their ids, bottom to top.
@@ -157,30 +189,37 @@ impl Document {
     /// The shape with `id`, if present.
     #[must_use]
     pub fn get(&self, id: ShapeId) -> Option<&Shape> {
-        todo!()
+        self.index_of(id).map(|index| &self.shapes[index].1)
     }
 
     /// Z-order position of `id`, if present.
     #[must_use]
     pub fn index_of(&self, id: ShapeId) -> Option<usize> {
-        todo!()
+        if !self.ids.contains(&id) {
+            return None;
+        }
+        self.shapes.iter().position(|(stored, _)| *stored == id)
     }
 
     /// Number of shapes.
     #[must_use]
     pub fn len(&self) -> usize {
-        todo!()
+        self.shapes.len()
     }
 
     /// True if there are no shapes.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        todo!()
+        self.shapes.is_empty()
     }
 
     /// The topmost shape satisfying `pred`, searching from the top down.
-    pub fn topmost_where(&self, pred: impl FnMut(&Shape) -> bool) -> Option<ShapeId> {
-        todo!()
+    pub fn topmost_where(&self, mut pred: impl FnMut(&Shape) -> bool) -> Option<ShapeId> {
+        self.shapes
+            .iter()
+            .rev()
+            .find(|(_, shape)| pred(shape))
+            .map(|(id, _)| *id)
     }
 
     /// Apply every edit of `tx` in order, or none of them.
@@ -190,7 +229,69 @@ impl Document {
     /// Returns the [`ApplyError`] of the first invalid edit; the document
     /// (shapes and id counter) is then unchanged.
     pub fn apply(&mut self, tx: &Transaction) -> Result<(), ApplyError> {
-        todo!()
+        let saved_next_id = self.next_id;
+        for (done, edit) in tx.0.iter().enumerate() {
+            if let Err(err) = self.apply_edit(edit) {
+                self.roll_back(&tx.0[..done]);
+                self.next_id = saved_next_id;
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    /// Undo `applied` (edits that just succeeded), last first.
+    fn roll_back(&mut self, applied: &[Edit]) {
+        for edit in applied.iter().rev() {
+            // The inverse of an edit that just succeeded is valid by
+            // construction (ADR-T06-1), so this cannot fail.
+            let undone = self.apply_edit(&edit.inverse());
+            debug_assert!(undone.is_ok(), "rollback failed: {undone:?}");
+        }
+    }
+
+    /// Check and apply a single edit; on error nothing changes.
+    fn apply_edit(&mut self, edit: &Edit) -> Result<(), ApplyError> {
+        let len = self.shapes.len();
+        match edit {
+            Edit::Insert { index, id, shape } => {
+                let (index, id) = (*index, *id);
+                if index > len {
+                    return Err(ApplyError::IndexOutOfRange { index, len });
+                }
+                if !shape.is_finite() {
+                    return Err(ApplyError::NonFiniteShape(id));
+                }
+                if !self.ids.insert(id) {
+                    return Err(ApplyError::DuplicateId(id));
+                }
+                self.shapes.insert(index, (id, shape.clone()));
+                self.next_id = self.next_id.max(id.0.saturating_add(1));
+            }
+            Edit::Remove { index, id, shape } => {
+                let index = *index;
+                let Some((stored_id, stored)) = self.shapes.get(index) else {
+                    return Err(ApplyError::IndexOutOfRange { index, len });
+                };
+                if stored_id != id || stored != shape {
+                    return Err(ApplyError::Mismatch(*id));
+                }
+                self.shapes.remove(index);
+                self.ids.remove(id);
+            }
+            Edit::Replace { id, before, after } => {
+                let index = self.index_of(*id).ok_or(ApplyError::UnknownId(*id))?;
+                if !after.is_finite() {
+                    return Err(ApplyError::NonFiniteShape(*id));
+                }
+                let slot = &mut self.shapes[index].1;
+                if *slot != *before {
+                    return Err(ApplyError::Mismatch(*id));
+                }
+                slot.clone_from(after);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -199,7 +300,17 @@ impl Document {
 /// Only allocates ids; the shape list is unchanged until the transaction is
 /// applied.
 pub fn tx_insert(doc: &mut Document, shapes: impl IntoIterator<Item = Shape>) -> Transaction {
-    todo!()
+    let base = doc.len();
+    shapes
+        .into_iter()
+        .enumerate()
+        .map(|(offset, shape)| Edit::Insert {
+            index: base + offset,
+            id: doc.next_id(),
+            shape,
+        })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 /// Transaction removing the shapes `ids`; unknown and repeated ids are skipped.
@@ -207,19 +318,45 @@ pub fn tx_insert(doc: &mut Document, shapes: impl IntoIterator<Item = Shape>) ->
 /// Edits are ordered by descending index so each index stays valid.
 #[must_use]
 pub fn tx_remove(doc: &Document, ids: &[ShapeId]) -> Transaction {
-    todo!()
+    let wanted: HashSet<ShapeId> = ids.iter().copied().collect();
+    removals_top_down(doc, |id| wanted.contains(&id))
 }
 
 /// Transaction replacing shape `id` by `new`; empty if `id` is unknown.
 #[must_use]
 pub fn tx_replace(doc: &Document, id: ShapeId, new: Shape) -> Transaction {
-    todo!()
+    doc.get(id)
+        .map(|before| {
+            vec![Edit::Replace {
+                id,
+                before: before.clone(),
+                after: new,
+            }]
+        })
+        .unwrap_or_default()
+        .into()
 }
 
 /// Transaction removing every shape, top down.
 #[must_use]
 pub fn tx_clear(doc: &Document) -> Transaction {
-    todo!()
+    removals_top_down(doc, |_| true)
+}
+
+/// `Remove` edits for every shape whose id satisfies `keep`, top down.
+fn removals_top_down(doc: &Document, mut keep: impl FnMut(ShapeId) -> bool) -> Transaction {
+    doc.shapes
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, (id, _))| keep(*id))
+        .map(|(index, (id, shape))| Edit::Remove {
+            index,
+            id: *id,
+            shape: shape.clone(),
+        })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 #[cfg(test)]
