@@ -1,7 +1,7 @@
 ---
 id: T13
 title: Fuzz harness
-status: in-progress
+status: review
 wave: 6
 branch: task/T13-fuzz
 depends_on: [T09, T10, T11]
@@ -58,10 +58,29 @@ module (exception to *Files owned*, logged in the task note).
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests (strategies + invariant checks) · [ ] fixes (one commit per bug) · [ ] quality · [ ] docs
+- [x] spec · [x] tests (strategies + invariant checks) · [x] fixes (one commit per bug) — none needed · [x] quality · [x] docs
 
 ## Learning path
 
 Step 13 — requires steps 9–11.
 
 ## Log
+
+- **Spec** — named a test per AC; AC-3 now redoes leftover redo entries
+  before the snapshot (found by the first fuzz run, see below). Added a
+  reachability check (`sessions_reach_deep_editor_states`) and
+  `session_strategy_respects_length_bounds` beyond the spec.
+- **Tests** — `tests/fuzz.rs`. The harness is the deliverable, so the commit
+  went green once the harness itself was correct; there was no production code
+  to be red against.
+- **Models / Behaviour** — skipped: the task adds no types or runtime code.
+- **Fixes (AC-5)** — none. 20 000 cases (`check.sh --fuzz`) plus two
+  independent 60 000-case runs of the editor properties found no failure in
+  `src/core`. The only failure was in the harness (redo leftovers at session
+  end); its shrunk case is kept in `tests/fuzz.proptest-regressions`. No
+  `src/core` file was touched.
+- **Tuning** — left-button and no-modifier bias in `arb_gesture()` raised
+  shape-creating sessions from 72/200 to 149/200.
+- **Quality** — clippy `struct_excessive_bools` in the test; pinned the
+  regression file with `FileFailurePersistence::WithSource`.
+- **Result** — `scripts/check.sh --fuzz` green (20 000 cases, ~30 s release).
