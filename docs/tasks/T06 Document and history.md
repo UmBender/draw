@@ -1,7 +1,7 @@
 ---
 id: T06
 title: Document and history
-status: review
+status: done
 wave: 3
 branch: task/T06-document
 depends_on: [T05]

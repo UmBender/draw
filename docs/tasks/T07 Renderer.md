@@ -1,7 +1,7 @@
 ---
 id: T07
 title: Renderer
-status: review
+status: done
 wave: 3
 branch: task/T07-renderer
 depends_on: [T03, T05]

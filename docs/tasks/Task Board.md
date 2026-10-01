@@ -60,9 +60,9 @@ flowchart TD
 | [[T03 Camera]] | done | T01 | `task/T03-camera` |
 | [[T04 Stroke smoothing]] | done | T01 | `task/T04-smoothing` |
 | [[T05 Shape model]] | done | T01, T02 | `task/T05-shape` |
-| [[T06 Document and history]] | ready | T05 | `task/T06-document` |
-| [[T07 Renderer]] | ready | T03, T05 | `task/T07-renderer` |
-| [[T08 Editor core and input model]] | todo | T03, T06 | `task/T08-editor` |
+| [[T06 Document and history]] | done | T05 | `task/T06-document` |
+| [[T07 Renderer]] | done | T03, T05 | `task/T07-renderer` |
+| [[T08 Editor core and input model]] | ready | T03, T06 | `task/T08-editor` |
 | [[T09 Creation tools]] | todo | T04, T08 | `task/T09-creation-tools` |
 | [[T10 Editing tools]] | todo | T08 | `task/T10-editing-tools` |
 | [[T11 Keymap and macros]] | todo | T08 | `task/T11-keymap` |

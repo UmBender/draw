@@ -24,3 +24,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 13 | [[ADR-0013 World-space widths and zoom limits]] | accepted | decision | 0004 | — |
 | 14 | [[ADR-0014 Minimal dependencies and no unsafe]] | accepted | decision | 0002, 0003 | — |
 | 15 | [[ADR-0015 Kanagawa Dragon theme]] | accepted | decision | 0012 | amends 0012 |
+| 16 | [[ADR-T06-1 Self-checking edits and rollback atomicity]] | accepted | decision | 0005 | — |
+| 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | — |

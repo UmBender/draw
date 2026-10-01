@@ -1,7 +1,7 @@
 ---
 id: T08
 title: Editor core and input model
-status: todo
+status: ready
 wave: 4
 branch: task/T08-editor
 depends_on: [T03, T06]

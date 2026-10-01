@@ -34,8 +34,8 @@ flowchart LR
 | 3 | [[03 Cameras - world space vs screen space]] | [[T03 Camera]] | done |
 | 4 | [[04 Taming shaky input]] | [[T04 Stroke smoothing]] | done |
 | 5 | [[05 Modelling shapes and hit-testing]] | [[T05 Shape model]] | done |
-| 6 | *Undo/redo with a transaction log* | [[T06 Document and history]] | planned |
-| 7 | *Rendering with macroquad and culling* | [[T07 Renderer]] | planned |
+| 6 | [[06 Undo and redo with a transaction log]] | [[T06 Document and history]] | done |
+| 7 | [[07 Rendering with macroquad and culling]] | [[T07 Renderer]] | done |
 | 8 | *An editor as an input-driven state machine* | [[T08 Editor core and input model]] | planned |
 | 9 | *Building drawing tools* | [[T09 Creation tools]] | planned |
 | 10 | *Selection, clipboard and fill* | [[T10 Editing tools]] | planned |
