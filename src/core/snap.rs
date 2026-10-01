@@ -15,7 +15,7 @@ use crate::core::document::Document;
 use crate::core::editor::Helpers;
 use crate::core::geom::Vec2;
 use crate::core::input::Modifiers;
-use crate::core::shape::Shape;
+use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::tools::ToolView;
 
 /// A box drag snaps to round when `min(|w|,|h|) / max(|w|,|h|)` is at least
@@ -59,11 +59,14 @@ impl Snaps {
         smart: false,
     };
 
-    /// The snaps `helpers` switch on, or none while `Alt` is held.
+    /// The snaps `helpers` switch on: none while `Alt` is held, only grid
+    /// snap while `Shift` is held (its constraint must hold exactly).
     #[must_use]
     pub fn new(helpers: Helpers, mods: Modifiers) -> Self {
-        let _ = (helpers, mods);
-        todo!()
+        Self {
+            grid: helpers.grid_snap && !mods.alt,
+            smart: helpers.smart_snap && !mods.alt && !mods.shift,
+        }
     }
 }
 
@@ -96,8 +99,31 @@ impl Targets {
     /// non-finite values are skipped.
     #[must_use]
     pub fn from_shapes<'a>(shapes: impl IntoIterator<Item = &'a Shape>) -> Self {
-        let _ = shapes.into_iter();
-        todo!()
+        let mut targets = Self::default();
+        for shape in shapes {
+            match *shape {
+                Shape::Rect { a, b, .. } | Shape::Ellipse { a, b, .. } => {
+                    targets.add_box(a, b);
+                }
+                Shape::Grid {
+                    a, b, cols, rows, ..
+                } => {
+                    targets.add_box(a, b);
+                    let cols = cols.clamp(1, GRID_MAX_CELLS) as f32;
+                    let rows = rows.clamp(1, GRID_MAX_CELLS) as f32;
+                    targets.add_size((b.x - a.x).abs() / cols);
+                    targets.add_size((b.y - a.y).abs() / rows);
+                }
+                Shape::Line { a, b, .. } | Shape::Arrow { a, b, .. } => {
+                    for p in [a, b] {
+                        add_anchor(&mut targets.xs, p.x, p.y, p.y);
+                        add_anchor(&mut targets.ys, p.y, p.x, p.x);
+                    }
+                }
+                Shape::Stroke { .. } => {}
+            }
+        }
+        targets
     }
 
     /// Targets of every shape in `doc`.
@@ -105,6 +131,45 @@ impl Targets {
     pub fn from_document(doc: &Document) -> Self {
         Self::from_shapes(doc.shapes().map(|(_, shape)| shape))
     }
+
+    /// Adds the edges, centre and sides of the box spanned by `a` and `b`.
+    fn add_box(&mut self, a: Vec2, b: Vec2) {
+        let (x0, x1) = (a.x.min(b.x), a.x.max(b.x));
+        let (y0, y1) = (a.y.min(b.y), a.y.max(b.y));
+        for x in [x0, x1, midpoint(x0, x1)] {
+            add_anchor(&mut self.xs, x, y0, y1);
+        }
+        for y in [y0, y1, midpoint(y0, y1)] {
+            add_anchor(&mut self.ys, y, x0, x1);
+        }
+        self.add_size(x1 - x0);
+        self.add_size(y1 - y0);
+    }
+
+    /// Adds `size` if it is finite and positive.
+    fn add_size(&mut self, size: f32) {
+        if size.is_finite() && size > 0.0 {
+            self.sizes.push(size);
+        }
+    }
+}
+
+/// Pushes an anchor if all its numbers are finite.
+fn add_anchor(anchors: &mut Vec<Anchor>, value: f32, lo: f32, hi: f32) {
+    if value.is_finite() && lo.is_finite() && hi.is_finite() {
+        anchors.push(Anchor { value, lo, hi });
+    }
+}
+
+/// Midpoint of `a` and `b` that does not overflow for finite inputs.
+fn midpoint(a: f32, b: f32) -> f32 {
+    a * 0.5 + b * 0.5
+}
+
+/// `next` if it is finite, else `current`: a step that would leave the
+/// finite range is skipped.
+fn finite_or(next: Vec2, current: Vec2) -> Vec2 {
+    if next.is_finite() { next } else { current }
 }
 
 /// A snapped point and the guides that explain it.
@@ -120,8 +185,11 @@ pub struct Snapped {
 /// `step` is not finite and positive or the result would not be finite.
 #[must_use]
 pub fn snap_to_grid(p: Vec2, step: f32) -> Vec2 {
-    let _ = (p, step);
-    todo!()
+    if !(step.is_finite() && step > 0.0) {
+        return p;
+    }
+    let snap = |c: f32| (c / step).round() * step;
+    finite_or(Vec2::new(snap(p.x), snap(p.y)), p)
 }
 
 /// `end` moved so the box from `start` is square when it is within
@@ -129,8 +197,15 @@ pub fn snap_to_grid(p: Vec2, step: f32) -> Vec2 {
 /// drag direction is kept.
 #[must_use]
 pub fn snap_round(start: Vec2, end: Vec2) -> Vec2 {
-    let _ = (start, end);
-    todo!()
+    let d = end - start;
+    let (w, h) = (d.x.abs(), d.y.abs());
+    let side = w.max(h);
+    if side > 0.0 && w.min(h) >= (1.0 - ROUND_TOLERANCE) * side {
+        let next = start + Vec2::new(side.copysign(d.x), side.copysign(d.y));
+        finite_or(next, end)
+    } else {
+        end
+    }
 }
 
 /// `end` moved so each side of the box from `start` is `k · c` for a size
@@ -138,15 +213,50 @@ pub fn snap_round(start: Vec2, end: Vec2) -> Vec2 {
 /// `tolerance` (world units). The nearest wins, the smaller `k` on ties.
 #[must_use]
 pub fn snap_size(start: Vec2, end: Vec2, sizes: &[f32], tolerance: f32) -> Vec2 {
-    let _ = (start, end, sizes, tolerance);
-    todo!()
+    let d = end - start;
+    let next = start
+        + Vec2::new(
+            snap_len(d.x, sizes, tolerance),
+            snap_len(d.y, sizes, tolerance),
+        );
+    finite_or(next, end)
+}
+
+/// The signed length `d` with its magnitude snapped to the nearest
+/// multiple of a size within `tolerance`. Multiples not longer than the
+/// tolerance are ignored, so a degenerate side never grows.
+fn snap_len(d: f32, sizes: &[f32], tolerance: f32) -> f32 {
+    let len = d.abs();
+    let mut best: Option<(f32, f32)> = None;
+    for &size in sizes {
+        for k in 1..=MAX_SIZE_MULTIPLE {
+            let target = size * f32::from(k);
+            let dist = (len - target).abs();
+            let closer = best.is_none_or(|(best_dist, _)| dist < best_dist);
+            if target > tolerance && dist <= tolerance && closer {
+                best = Some((dist, target));
+            }
+        }
+    }
+    best.map_or(d, |(_, target)| target.copysign(d))
+}
+
+/// The value of the anchor nearest `c` within `tolerance`, as
+/// `(distance, value)`.
+fn nearest(anchors: &[Anchor], c: f32, tolerance: f32) -> Option<(f32, f32)> {
+    anchors
+        .iter()
+        .map(|anchor| ((c - anchor.value).abs(), anchor.value))
+        .filter(|&(dist, _)| dist <= tolerance)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
 }
 
 /// `p` moved per axis onto the nearest target line within `tolerance`.
 #[must_use]
 pub fn align_point(p: Vec2, targets: &Targets, tolerance: f32) -> Vec2 {
-    let _ = (p, targets, tolerance);
-    todo!()
+    let x = nearest(&targets.xs, p.x, tolerance).map_or(p.x, |(_, v)| v);
+    let y = nearest(&targets.ys, p.y, tolerance).map_or(p.y, |(_, v)| v);
+    Vec2::new(x, y)
 }
 
 /// `end` moved per axis onto the nearest target line within `tolerance`;
@@ -159,23 +269,85 @@ pub fn align_end(
     targets: &Targets,
     tolerance: f32,
 ) -> Vec2 {
-    let _ = (start, end, kind, targets, tolerance);
-    todo!()
+    let axis = |anchors: &[Anchor], s: f32, e: f32| {
+        let edge = nearest(anchors, e, tolerance).map(|(dist, v)| (dist, v));
+        let centre = match kind {
+            DragKind::Point => None,
+            DragKind::Box => nearest(anchors, midpoint(s, e), tolerance)
+                .map(|(dist, v)| (dist, 2.0 * v - s))
+                .filter(|(_, e)| e.is_finite()),
+        };
+        match (edge, centre) {
+            (Some(edge), Some(centre)) if centre.0 < edge.0 => centre.1,
+            (Some((_, v)), _) | (None, Some((_, v))) => v,
+            (None, None) => e,
+        }
+    };
+    let next = Vec2::new(
+        axis(&targets.xs, start.x, end.x),
+        axis(&targets.ys, start.y, end.y),
+    );
+    finite_or(next, end)
 }
 
 /// One guide for each x/y line of the drag (box edges and centre, or the
 /// two points) lying on a target line, spanning the target and the drag.
 #[must_use]
 pub fn guides(start: Vec2, end: Vec2, kind: DragKind, targets: &Targets) -> Vec<[Vec2; 2]> {
-    let _ = (start, end, kind, targets);
-    todo!()
+    let lines = |s: f32, e: f32| -> Vec<f32> {
+        let mut lines = vec![s, e];
+        if kind == DragKind::Box {
+            lines.push(midpoint(s, e));
+        }
+        lines.retain(|c| c.is_finite());
+        lines.sort_by(f32::total_cmp);
+        lines.dedup_by(|a, b| on_line(*a, *b));
+        lines
+    };
+    let span = |s: f32, e: f32| (s.min(e), s.max(e));
+    let mut out = Vec::new();
+    for x in lines(start.x, end.x) {
+        if let Some((lo, hi)) = guide_span(&targets.xs, x, span(start.y, end.y)) {
+            out.push([Vec2::new(x, lo), Vec2::new(x, hi)]);
+        }
+    }
+    for y in lines(start.y, end.y) {
+        if let Some((lo, hi)) = guide_span(&targets.ys, y, span(start.x, end.x)) {
+            out.push([Vec2::new(lo, y), Vec2::new(hi, y)]);
+        }
+    }
+    out
+}
+
+/// Whether two coordinates are the same line, up to rounding.
+fn on_line(a: f32, b: f32) -> bool {
+    (a - b).abs() <= 1e-4 * a.abs().max(b.abs()).max(1.0)
+}
+
+/// The extent of a guide at `c`: the union of `drag` and every anchor
+/// lying on `c`, or `None` if no anchor does.
+fn guide_span(anchors: &[Anchor], c: f32, drag: (f32, f32)) -> Option<(f32, f32)> {
+    anchors
+        .iter()
+        .filter(|anchor| on_line(anchor.value, c))
+        .fold(None, |span: Option<(f32, f32)>, anchor| {
+            let (lo, hi) = span.unwrap_or(drag);
+            Some((lo.min(anchor.lo), hi.max(anchor.hi)))
+        })
 }
 
 /// Snaps a drag's start point: grid, then alignment. No guides.
 #[must_use]
 pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera) -> Vec2 {
-    let _ = (p, snaps, targets, camera);
-    todo!()
+    let mut p = p;
+    if snaps.grid {
+        p = snap_to_grid(p, GRID_STEP);
+    }
+    if snaps.smart {
+        let tolerance = camera.world_len(ALIGN_TOLERANCE_PX);
+        p = finite_or(align_point(p, targets, tolerance), p);
+    }
+    p
 }
 
 /// Snaps the moving `end` of a drag from `start`: grid, size, align, round
@@ -189,15 +361,48 @@ pub fn snap_drag(
     targets: &Targets,
     camera: &Camera,
 ) -> Snapped {
-    let _ = (start, end, kind, snaps, targets, camera);
-    todo!()
+    let mut point = end;
+    if snaps.grid {
+        point = snap_to_grid(point, GRID_STEP);
+    }
+    if !snaps.smart {
+        return Snapped {
+            point,
+            guides: Vec::new(),
+        };
+    }
+    if kind == DragKind::Box {
+        point = snap_size(
+            start,
+            point,
+            &targets.sizes,
+            camera.world_len(SIZE_TOLERANCE_PX),
+        );
+    }
+    point = align_end(
+        start,
+        point,
+        kind,
+        targets,
+        camera.world_len(ALIGN_TOLERANCE_PX),
+    );
+    if kind == DragKind::Box {
+        point = snap_round(start, point);
+    }
+    Snapped {
+        point,
+        guides: guides(start, point, kind, targets),
+    }
 }
 
 /// [`snap_point`] with the helpers, document and camera of `view`.
 #[must_use]
 pub fn snap_start(p: Vec2, mods: Modifiers, view: &ToolView<'_>) -> Vec2 {
-    let _ = (p, mods, view);
-    todo!()
+    let snaps = Snaps::new(view.style.helpers, mods);
+    if snaps == Snaps::NONE {
+        return p;
+    }
+    snap_point(p, snaps, &Targets::from_document(view.doc), view.camera)
 }
 
 /// [`snap_drag`] with the helpers, document and camera of `view`.
@@ -209,8 +414,13 @@ pub fn snap_end(
     mods: Modifiers,
     view: &ToolView<'_>,
 ) -> Snapped {
-    let _ = (start, end, kind, mods, view);
-    todo!()
+    let snaps = Snaps::new(view.style.helpers, mods);
+    let targets = if snaps.smart {
+        Targets::from_document(view.doc)
+    } else {
+        Targets::default()
+    };
+    snap_drag(start, end, kind, snaps, &targets, view.camera)
 }
 
 #[cfg(test)]

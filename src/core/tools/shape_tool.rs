@@ -5,12 +5,17 @@
 //! (ADR-T08-1). `Shift` constrains the shape: square, circle, or a 45° step
 //! for lines and arrows. Drags shorter than [`MIN_DRAG_PX`] on screen are
 //! treated as stray clicks and commit nothing.
+//!
+//! With the snap helpers on, the start and the moving end are snapped
+//! (ADR-T17-1): `Alt` turns snapping off for an event, and with `Shift`
+//! only grid snap runs before the constraint.
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::command::Tool;
 use crate::core::document::tx_insert;
 use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, Style};
+use crate::core::snap::{self, DragKind, Snapped};
 
 /// Shortest drag, in screen pixels, that creates a shape.
 pub const MIN_DRAG_PX: f32 = 2.0;
@@ -36,6 +41,14 @@ enum Kind {
 }
 
 impl Kind {
+    /// What a drag of this kind spans, for snapping.
+    fn drag_kind(self) -> DragKind {
+        match self {
+            Self::Line | Self::Arrow => DragKind::Point,
+            Self::Rect | Self::Ellipse => DragKind::Box,
+        }
+    }
+
     /// The kind drawn by `tool`, `None` for tools that are not shape tools.
     fn from_tool(tool: Tool) -> Option<Self> {
         match tool {
@@ -51,14 +64,16 @@ impl Kind {
 }
 
 /// A drag in progress.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Drag {
     /// Shape being created.
     kind: Kind,
-    /// World position of the `Down`.
+    /// World position of the `Down`, snapped.
     start: Vec2,
-    /// World position of the latest event.
+    /// World position of the latest event, snapped.
     end: Vec2,
+    /// Alignment guides of the latest event.
+    guides: Vec<[Vec2; 2]>,
     /// Whether `Shift` was held on the latest event.
     shift: bool,
     /// Style sampled on `Down`, width already in world units.
@@ -109,10 +124,12 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
             let Some(kind) = Kind::from_tool(ctx.tool) else {
                 return cancel(state);
             };
+            let start = snap::snap_start(world, pointer.mods, &ctx.view());
             state.drag = Some(Drag {
                 kind,
-                start: world,
-                end: world,
+                start,
+                end: start,
+                guides: Vec::new(),
                 shift,
                 style: Style {
                     color: ctx.style.color,
@@ -123,8 +140,16 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
         }
         Phase::Move => match &mut state.drag {
             Some(drag) => {
-                let changed = drag.end != world || drag.shift != shift;
-                drag.end = world;
+                let Snapped { point, guides } = snap::snap_end(
+                    drag.start,
+                    world,
+                    drag.kind.drag_kind(),
+                    pointer.mods,
+                    &ctx.view(),
+                );
+                let changed = drag.end != point || drag.shift != shift || drag.guides != guides;
+                drag.end = point;
+                drag.guides = guides;
                 drag.shift = shift;
                 changed
             }
@@ -134,7 +159,14 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
             let Some(mut drag) = state.drag.take() else {
                 return false;
             };
-            drag.end = world;
+            let snapped = snap::snap_end(
+                drag.start,
+                world,
+                drag.kind.drag_kind(),
+                pointer.mods,
+                &ctx.view(),
+            );
+            drag.end = snapped.point;
             drag.shift = shift;
             let drag_px = ctx.camera.screen_len(drag.start.distance(drag.end));
             if drag_px.is_nan() || drag_px < MIN_DRAG_PX {
@@ -151,12 +183,17 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 }
 
 /// What the gesture in progress draws on top of the document: the shape
-/// being dragged, or nothing when idle.
+/// being dragged and its alignment guides, or nothing when idle.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     let _ = view;
     Overlay {
         shapes: state.drag.iter().map(Drag::shape).collect(),
+        guides: state
+            .drag
+            .as_ref()
+            .map(|drag| drag.guides.clone())
+            .unwrap_or_default(),
         ..Overlay::default()
     }
 }

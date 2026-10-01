@@ -85,17 +85,50 @@ pub const GUIDE_WIDTH_PX: f32 = 1.0;
 /// non-finite or non-positive zoom, or one so small no spacing fits.
 #[must_use]
 pub fn dot_grid_spacing(zoom: f32) -> Option<f32> {
-    let _ = zoom;
-    todo!()
+    /// Doublings tried before giving up (2^64 covers any usable zoom).
+    const MAX_DOUBLINGS: u8 = 64;
+    if !(zoom.is_finite() && zoom > 0.0) {
+        return None;
+    }
+    let mut spacing = GRID_STEP;
+    for _ in 0..MAX_DOUBLINGS {
+        if spacing * zoom >= DOT_GRID_MIN_PX {
+            return Some(spacing);
+        }
+        spacing *= 2.0;
+    }
+    None
 }
 
 /// The multiples of `spacing` on both axes inside `view`, row by row, at
 /// most [`DOT_GRID_MAX_DOTS`]. Empty for a non-finite view or a spacing
 /// that is not finite and positive.
 pub fn dot_grid_points(view: Aabb, spacing: f32) -> impl Iterator<Item = Vec2> {
-    let _ = (view, spacing);
-    todo!();
-    std::iter::empty()
+    let valid =
+        spacing.is_finite() && spacing > 0.0 && view.min.is_finite() && view.max.is_finite();
+    // Index range of the multiples of `spacing` in `lo..=hi`; the casts
+    // saturate, and the dot cap bounds the work.
+    let range = |lo: f32, hi: f32| {
+        if valid {
+            ((lo / spacing).ceil() as i64, (hi / spacing).floor() as i64)
+        } else {
+            (0, -1)
+        }
+    };
+    let (x0, x1) = range(view.min.x, view.max.x);
+    let (y0, y1) = range(view.min.y, view.max.y);
+    let cols = usize::try_from(x1.saturating_sub(x0).saturating_add(1)).unwrap_or(0);
+    let rows = usize::try_from(y1.saturating_sub(y0).saturating_add(1)).unwrap_or(0);
+    let total = if cols.saturating_mul(rows) > DOT_GRID_MAX_DOTS {
+        0
+    } else {
+        cols * rows
+    };
+    (0..total).map(move |i| {
+        let col = x0.saturating_add(i64::try_from(i % cols).unwrap_or(0));
+        let row = y0.saturating_add(i64::try_from(i / cols).unwrap_or(0));
+        Vec2::new(col as f32 * spacing, row as f32 * spacing)
+    })
 }
 
 /// On-screen outline width in pixels for a world-space `world_width`:
@@ -222,18 +255,33 @@ pub fn label_raster(size: f32) -> (u16, f32) {
     (raster, size / f32::from(raster))
 }
 
-/// Draws what lies under the shapes, such as the snap dot grid (T17).
-///
-/// Skeleton (ADR-T16-3): draws nothing.
+/// Draws what lies under the shapes: the snap dot grid while grid snap is
+/// on (ADR-T17-1). Nothing is drawn when the view has too many dots.
 pub fn draw_underlay(editor: &Editor, viewport: Vec2) {
-    let _ = (editor, viewport);
+    if !editor.helpers().grid_snap {
+        return;
+    }
+    let camera = editor.camera();
+    let Some(spacing) = dot_grid_spacing(camera.zoom()) else {
+        return;
+    };
+    let mut color = to_mq_color(THEME.border);
+    color.a *= DOT_GRID_ALPHA;
+    let half = DOT_SIZE_PX / 2.0;
+    for dot in dot_grid_points(camera.visible_world_rect(viewport), spacing) {
+        let p = camera.world_to_screen(dot);
+        draw_rectangle(p.x - half, p.y - half, DOT_SIZE_PX, DOT_SIZE_PX, color);
+    }
 }
 
-/// Draws alignment guides, world-space segments, on top of the overlay (T17).
-///
-/// Skeleton (ADR-T16-3): draws nothing.
+/// Draws alignment guides, world-space segments, on top of the overlay,
+/// [`GUIDE_WIDTH_PX`] wide in the theme accent colour.
 pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
-    let _ = (guides, camera);
+    let color = to_mq_color(THEME.accent);
+    for [a, b] in guides {
+        let (a, b) = (camera.world_to_screen(*a), camera.world_to_screen(*b));
+        draw_line(a.x, a.y, b.x, b.y, GUIDE_WIDTH_PX, color);
+    }
 }
 
 /// Draws every shape whose bounds are visible through `camera` in a viewport
