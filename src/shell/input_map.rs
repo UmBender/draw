@@ -1,6 +1,98 @@
 //! Translates macroquad input into core input events.
 //!
-//! Owned by T12; filled in by that task.
+//! The shell registers a macroquad input subscriber and replays the raw
+//! miniquad events into a [`Collector`] every frame (ADR-T12-1). Unlike
+//! macroquad's polled state, this keeps every pointer sample and every click,
+//! in arrival order. Raw positions are physical pixels; [`to_logical`] turns
+//! them into the logical pixels used by the editor and the renderer.
+
+use macroquad::input::{KeyCode, MouseButton};
+use macroquad::miniquad::{EventHandler, KeyMods};
+
+use crate::core::geom::Vec2;
+use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+
+/// The editor key for a macroquad key code, `None` for keys the editor ignores.
+#[must_use]
+pub fn map_key(code: KeyCode) -> Option<Key> {
+    let _ = code;
+    todo!()
+}
+
+/// The editor button for a mouse button, `None` for unknown buttons.
+#[must_use]
+pub fn map_button(button: MouseButton) -> Option<PointerButton> {
+    let _ = button;
+    todo!()
+}
+
+/// Editor modifiers for miniquad's; the logo key is dropped.
+#[must_use]
+pub fn map_mods(mods: KeyMods) -> Modifiers {
+    let _ = mods;
+    todo!()
+}
+
+/// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI
+/// scale that is not finite and positive counts as `1`.
+#[must_use]
+pub fn to_logical(x: f32, y: f32, dpi: f32) -> Vec2 {
+    let _ = (x, y, dpi);
+    todo!()
+}
+
+/// Modifier keys currently held, each side tracked on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct HeldMods {
+    left_shift: bool,
+    right_shift: bool,
+    left_ctrl: bool,
+    right_ctrl: bool,
+    left_alt: bool,
+    right_alt: bool,
+}
+
+/// Collects raw miniquad events as [`InputEvent`]s in arrival order.
+#[derive(Debug, Clone)]
+pub struct Collector {
+    events: Vec<InputEvent>,
+    held: HeldMods,
+    /// Last pointer position in logical pixels (for wheel events).
+    pointer: Vec2,
+    /// Physical pixels per logical pixel.
+    dpi: f32,
+}
+
+impl Default for Collector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Collector {
+    /// An empty collector at DPI scale `1`.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    /// Sets the DPI scale used for the following pointer events.
+    pub fn set_dpi(&mut self, dpi: f32) {
+        let _ = dpi;
+        todo!()
+    }
+
+    /// Removes and yields the collected events, oldest first.
+    pub fn drain(&mut self) -> impl Iterator<Item = InputEvent> + '_ {
+        self.events.drain(..)
+    }
+}
+
+impl EventHandler for Collector {
+    fn update(&mut self) {}
+
+    fn draw(&mut self) {}
+}
 
 #[cfg(test)]
 mod tests {

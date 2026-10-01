@@ -1,6 +1,114 @@
 //! Minimal toolbar: layout, hit-testing and drawing.
 //!
-//! Owned by T12; filled in by that task.
+//! A vertical strip at the left edge: one button per tool, the six palette
+//! swatches, then undo and redo. Layout, hit-testing and event routing are
+//! pure functions of the viewport; [`draw`] paints the strip with the theme
+//! tokens (ADR-0012), marking the active tool and colour with `accent`.
+
+use crate::core::command::{Command, Tool};
+use crate::core::editor::Editor;
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::input::InputEvent;
+use crate::core::palette::ColorId;
+
+/// Side of a square button in pixels.
+pub const BUTTON_PX: f32 = 32.0;
+/// Space between the strip edges and the buttons, in pixels.
+pub const PAD_PX: f32 = 4.0;
+/// Space between buttons of one group, in pixels.
+pub const GAP_PX: f32 = 2.0;
+/// Space between groups (tools, colours, history), in pixels.
+pub const GROUP_GAP_PX: f32 = 12.0;
+
+/// Tools in toolbar order (the keymap's order).
+pub const TOOLS: [Tool; 9] = [
+    Tool::Pen,
+    Tool::Line,
+    Tool::Arrow,
+    Tool::Rect,
+    Tool::Ellipse,
+    Tool::Eraser,
+    Tool::Bucket,
+    Tool::Select,
+    Tool::Hand,
+];
+
+/// What a toolbar button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ButtonKind {
+    /// Selects a tool.
+    Tool(Tool),
+    /// Picks a palette colour.
+    Color(ColorId),
+    /// Undoes the last action.
+    Undo,
+    /// Redoes the last undone action.
+    Redo,
+}
+
+impl ButtonKind {
+    /// The command a click on this button runs.
+    #[must_use]
+    pub fn command(self) -> Command {
+        todo!()
+    }
+}
+
+/// A toolbar button and its screen rectangle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Button {
+    /// Screen rectangle in pixels.
+    pub rect: Aabb,
+    /// What the button does.
+    pub kind: ButtonKind,
+}
+
+/// Where an input event goes once the toolbar has seen it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Route {
+    /// To the editor's canvas.
+    Forward(InputEvent),
+    /// A toolbar button was pressed: run this command.
+    Apply(Command),
+    /// A press on the toolbar outside any button: drop it.
+    Swallow,
+}
+
+/// The strip background for a viewport: full height at the left edge.
+#[must_use]
+pub fn panel(viewport: Vec2) -> Aabb {
+    let _ = viewport;
+    todo!()
+}
+
+/// The buttons, top to bottom: tools, colours, undo, redo.
+#[must_use]
+pub fn layout(viewport: Vec2) -> Vec<Button> {
+    let _ = viewport;
+    todo!()
+}
+
+/// The command of the button under `pos`, `None` if there is none or `pos`
+/// is not finite.
+#[must_use]
+pub fn hit(buttons: &[Button], pos: Vec2) -> Option<Command> {
+    let _ = (buttons, pos);
+    todo!()
+}
+
+/// Routes `event`: pointer presses on the visible toolbar never reach the
+/// canvas; everything else is forwarded.
+#[must_use]
+pub fn route(visible: bool, viewport: Vec2, event: InputEvent) -> Route {
+    let _ = (visible, viewport, event);
+    todo!()
+}
+
+/// Draws the toolbar for `editor` in a viewport of `viewport` pixels.
+pub fn draw(editor: &Editor, viewport: Vec2) {
+    let _ = (editor, viewport);
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {
