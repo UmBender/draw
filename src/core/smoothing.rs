@@ -15,7 +15,7 @@
 //! at every zoom level. Everything is pure and deterministic; non-finite input
 //! never panics.
 
-use crate::core::geom::{distance_to_segment, Vec2};
+use crate::core::geom::{Vec2, distance_to_segment};
 
 /// Smallest EMA factor accepted by [`Smoother::new`]; an `alpha` of zero would
 /// freeze the stroke at its first point.
@@ -315,8 +315,7 @@ mod tests {
     /// `true` if `sub` appears in `full` in order (exact copies of input points).
     fn is_subsequence(sub: &[Vec2], full: &[Vec2]) -> bool {
         let mut rest = full.iter();
-        sub.iter()
-            .all(|s| rest.any(|f| f.approx_eq(*s, 0.0)))
+        sub.iter().all(|s| rest.any(|f| f.approx_eq(*s, 0.0)))
     }
 
     /// Population variance of the y components.
@@ -383,20 +382,16 @@ mod tests {
     #[test]
     fn push_drops_close_points() {
         // Medium: min_dist 2.5 px, px_to_world 1 → 2.5 world units.
-        let mut s = Smoother::new(medium(), 1.0);
+        let mut smoother = Smoother::new(medium(), 1.0);
 
-        let a = s.push(v(0.0, 0.0));
-        let b = s.push(v(1.0, 0.0));
-        let c = s.push(v(2.0, 0.0));
-        let d = s.push(v(3.0, 0.0));
-        let e = s.push(v(4.0, 0.0));
+        let kept: Vec<bool> = [0.0, 1.0, 2.0, 3.0, 4.0]
+            .into_iter()
+            .map(|x| smoother.push(v(x, 0.0)))
+            .collect();
 
-        assert!(a);
-        assert!(!b, "1.0 < 2.5 from last kept");
-        assert!(!c, "2.0 < 2.5 from last kept");
-        assert!(d, "3.0 >= 2.5 from last kept raw (0,0)");
-        assert!(!e, "1.0 from last kept raw (3,0)");
-        assert_eq!(s.points().len(), 2);
+        // 1 and 2 are < 2.5 from (0,0); 3 is >= 2.5 from (0,0); 4 is 1 from (3,0).
+        assert_eq!(kept, [true, false, false, true, false]);
+        assert_eq!(smoother.points().len(), 2);
     }
 
     #[test]
@@ -452,7 +447,11 @@ mod tests {
         }
 
         let smoothed = s.points();
-        assert_eq!(smoothed.len(), raw.len(), "points are 5 apart, none dropped");
+        assert_eq!(
+            smoothed.len(),
+            raw.len(),
+            "points are 5 apart, none dropped"
+        );
         // Skip the warm-up: the first point is unfiltered by design.
         let raw_var = variance_y(&raw[10..]);
         let smooth_var = variance_y(&smoothed[10..]);
@@ -605,7 +604,13 @@ mod tests {
 
     #[test]
     fn rdp_keeps_corner_beyond_eps() {
-        let l_shape = [v(0.0, 0.0), v(5.0, 0.0), v(10.0, 0.0), v(10.0, 5.0), v(10.0, 10.0)];
+        let l_shape = [
+            v(0.0, 0.0),
+            v(5.0, 0.0),
+            v(10.0, 0.0),
+            v(10.0, 5.0),
+            v(10.0, 10.0),
+        ];
 
         let out = simplify_rdp(&l_shape, 0.5);
 
@@ -671,15 +676,22 @@ mod tests {
             Err(e) => panic!("could not spawn worker thread: {e}"),
         };
 
+        // A stack overflow aborts the whole test binary, so reaching here at
+        // all proves the iteration; a panic in the worker is re-raised.
         match result {
             Ok(len) => assert_eq!(len, 10_000, "every tooth exceeds eps"),
-            Err(_) => panic!("simplify_rdp panicked or overflowed its stack"),
+            Err(payload) => std::panic::resume_unwind(payload),
         }
     }
 
     #[test]
     fn rdp_handles_non_finite_without_panic() {
-        let messy = [v(0.0, 0.0), v(f32::NAN, 1.0), v(f32::INFINITY, 0.0), v(4.0, 0.0)];
+        let messy = [
+            v(0.0, 0.0),
+            v(f32::NAN, 1.0),
+            v(f32::INFINITY, 0.0),
+            v(4.0, 0.0),
+        ];
 
         let out = simplify_rdp(&messy, 1.0);
 
