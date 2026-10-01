@@ -1,7 +1,7 @@
 ---
 id: T11
 title: Keymap and macros
-status: in-progress
+status: review
 wave: 5
 branch: task/T11-keymap
 depends_on: [T08]
@@ -52,10 +52,23 @@ are implemented by T08–T10; this task only documents them in the feature note.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 11 — requires step 8.
 
 ## Log
+
+- 2026-10-01 — Spec refined; exact modifier matching recorded as
+  [[ADR-T11-1 Exact modifier matching]]. `Space` stays out of the table (the
+  editor consumes it).
+- Tests written against an independent copy of the documented table, plus
+  exhaustive (all 344 chords) and proptest checks; red on missing `KeyChord`
+  and `BINDINGS`.
+- Models: `KeyChord` with `const` constructors, `BINDINGS` table, `resolve`.
+- Behaviour: 33 bindings; `resolve` is an exact lookup in `BINDINGS`.
+- Quality: rustfmt only; clippy clean. `scripts/check.sh` green.
+- Docs: [[Shortcuts and macros]] and [[11 Keymaps and gesture macros]].
+  [[Keymap]] still says `status: planned`; it is not owned by T11, so the
+  integrator should flip it to implemented.
