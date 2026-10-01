@@ -1,7 +1,7 @@
 ---
 id: T07
 title: Renderer
-status: in-progress
+status: review
 wave: 3
 branch: task/T07-renderer
 depends_on: [T03, T05]
@@ -93,10 +93,42 @@ Toolbar, window, input.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec — `docs(T07): specify renderer acceptance criteria` (db16369)
+- [x] tests — `test(T07): add failing tests for renderer helpers` (a5f764e)
+- [x] models — `feat(T07): add renderer constants and helper signatures` (af3568e)
+- [x] behaviour — `feat(T07): implement culling, widths and shape tessellation` (f581209)
+- [x] quality — `chore(T07): pass clippy and rustfmt` (e0ba821)
+- [x] docs — `docs(T07): add feature note and tutorial`
 
 ## Learning path
 
-Step 7 — requires step 3 (and 5).
+Step 7 — requires step 3 (and 5). Tutorial:
+[[07 Rendering with macroquad and culling]].
 
 ## Log
+
+- Red phase confirmed: tests commit failed to compile (51 errors, all E0425:
+  no `screen_width`, `is_visible`, `cull_rect`, `to_mq`, `to_mq_color`,
+  `stroke_needs_joints`, `circle_segments`, `selection_rect` or constants);
+  models commit built and all 21 renderer tests failed on `todo!()`;
+  behaviour commit turned them green (one fix during the step: an infinite
+  radius in `circle_segments` returns `MIN_SEGMENTS`, as specified).
+  `PROPTEST_CASES=20000` run of the renderer proptests passes.
+- Added beyond the original spec (stated in the refined *Spec*): pure
+  helpers `cull_rect` (AC-2), `circle_segments` (AC-8) and `selection_rect`
+  (AC-9) so culling margin, tessellation and the selection outline are
+  testable without a window; the public constants listed in *Spec*.
+- `draw_shapes` takes `impl IntoIterator<Item = &Shape>` instead of
+  `impl Iterator` (accepts `&Vec<Shape>`, slices and iterators alike); camera
+  is passed as `&Camera`, viewport as a pixel `Vec2`.
+- Selection outline is solid `THEME.accent` (not dashed), 1 px, padded 4 px.
+- AC-5/AC-6 drawing is not unit-tested (needs a window); to be checked by
+  hand in [[T12 App shell and toolbar]] / [[T14 Performance and release validation]].
+  AC-7 verified by review: no `Vec`, `collect`, `format!` or `to_owned`
+  outside tests; macroquad's own allocating `draw_circle`/`draw_ellipse` are
+  not used.
+- New ADR: [[ADR-T07-1 Screen-space tessellation in the renderer]].
+- Quality: clippy pedantic `many_single_char_names` in `to_mq_color`;
+  rustfmt reflowed tests.
+- Integrator: [[Decision Log]] needs ADR-T07-1; [[Learning Path]] row 7 and
+  [[Feature Index]] need [[07 Rendering with macroquad and culling]].
