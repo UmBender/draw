@@ -1,11 +1,154 @@
-//! Anti-tremor stroke smoothing: resampling, EMA, Douglas-Peucker.
+//! Anti-tremor stroke smoothing: resampling, EMA and Ramer–Douglas–Peucker.
 //!
-//! Owned by T04; filled in by that task.
+//! Implements the three-stage pipeline of ADR-0007 (`docs/decisions/ADR-0007
+//! Anti-tremor pipeline.md`):
+//!
+//! 1. **Resample** (live) — [`Smoother::push`] drops points closer than
+//!    `min_dist` to the last kept raw point.
+//! 2. **Exponential moving average** (live) — kept points are pulled towards
+//!    the previous smoothed point: `s = s_prev + α (raw − s_prev)`.
+//! 3. **Ramer–Douglas–Peucker** (on release) — [`Smoother::finish`] appends the
+//!    last raw point and simplifies with [`simplify_rdp`].
+//!
+//! Tolerances are given in *screen* pixels ([`SmoothingParams`]) and converted
+//! to world units with `px_to_world` (`1 / zoom`), so smoothing feels the same
+//! at every zoom level. Everything is pure and deterministic; non-finite input
+//! never panics.
+
+use crate::core::geom::{distance_to_segment, Vec2};
+
+/// Smallest EMA factor accepted by [`Smoother::new`]; an `alpha` of zero would
+/// freeze the stroke at its first point.
+pub const MIN_ALPHA: f32 = 0.01;
+
+/// User-selectable smoothing strength, cycled with `S` (see the keymap).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SmoothingLevel {
+    /// No smoothing: raw input, only exact duplicates removed.
+    Off,
+    /// Light smoothing, minimal lag.
+    Low,
+    /// Default balance between steadiness and lag.
+    #[default]
+    Medium,
+    /// Strong smoothing for a very shaky hand; most lag.
+    High,
+}
+
+impl SmoothingLevel {
+    /// The next level in the cycle `Off → Low → Medium → High → Off`.
+    #[must_use]
+    pub fn next(self) -> Self {
+        todo!()
+    }
+
+    /// Lowercase name for the UI: `"off"`, `"low"`, `"medium"` or `"high"`.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        todo!()
+    }
+
+    /// Pipeline parameters for this level (the ADR-0007 table).
+    #[must_use]
+    pub fn params(self) -> SmoothingParams {
+        todo!()
+    }
+}
+
+/// Parameters of the anti-tremor pipeline, in screen pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SmoothingParams {
+    /// Resampling distance: raw points closer than this to the last kept raw
+    /// point are dropped.
+    pub min_dist_px: f32,
+    /// EMA factor in `(0, 1]`; smaller is smoother but lags more, `1` is off.
+    pub alpha: f32,
+    /// Ramer–Douglas–Peucker tolerance applied when the stroke is finished.
+    pub epsilon_px: f32,
+}
+
+/// Streaming smoother for one freehand stroke.
+///
+/// Feed raw pointer positions (world space) with [`Smoother::push`], draw the
+/// live preview from [`Smoother::points`], and call [`Smoother::finish`] on
+/// release to get the stored polyline.
+#[derive(Debug, Clone)]
+pub struct Smoother {
+    /// Resampling distance in world units.
+    min_dist: f32,
+    /// Sanitised EMA factor in `[MIN_ALPHA, 1]`.
+    alpha: f32,
+    /// RDP tolerance in world units.
+    epsilon: f32,
+    /// Last raw point that passed resampling.
+    last_kept_raw: Option<Vec2>,
+    /// Last finite raw point pushed, kept or not: the stroke's true end.
+    last_raw: Option<Vec2>,
+    /// Smoothed polyline so far.
+    points: Vec<Vec2>,
+}
+
+impl Smoother {
+    /// Starts a stroke with `params` (screen pixels) at the given scale.
+    ///
+    /// `px_to_world` is the size of one screen pixel in world units
+    /// (`1 / zoom`). A non-finite or non-positive value is treated as `1.0`.
+    /// Out-of-range parameters are clamped: `alpha` to `[MIN_ALPHA, 1]`
+    /// (non-finite → `1`), negative or non-finite distances to `0`. Never
+    /// panics.
+    #[must_use]
+    pub fn new(params: SmoothingParams, px_to_world: f32) -> Self {
+        let _ = (params, px_to_world);
+        todo!()
+    }
+
+    /// Offers a raw pointer position; returns `true` if it was kept.
+    ///
+    /// Non-finite points are ignored. A point is kept when it is at least
+    /// `min_dist` away from the last kept raw point and not an exact duplicate
+    /// of it; the kept point is EMA-filtered before it joins
+    /// [`Smoother::points`]. The first point is kept unfiltered.
+    pub fn push(&mut self, raw: Vec2) -> bool {
+        let _ = raw;
+        todo!()
+    }
+
+    /// The live smoothed polyline, for drawing a preview while the pen is down.
+    #[must_use]
+    pub fn points(&self) -> &[Vec2] {
+        todo!()
+    }
+
+    /// Ends the stroke: appends the last raw point (so the line reaches the
+    /// cursor) and simplifies with [`simplify_rdp`].
+    ///
+    /// Returns an empty vector if no finite point was pushed and a single
+    /// point for a click without movement.
+    #[must_use]
+    pub fn finish(self) -> Vec<Vec2> {
+        todo!()
+    }
+}
+
+/// Simplifies a polyline with the Ramer–Douglas–Peucker algorithm.
+///
+/// Returns a subsequence of `points` that keeps the first and last point and
+/// leaves every removed point within `eps` of the result. Inputs of at most
+/// two points, and an `eps` that is NaN or `<= 0`, are returned unchanged.
+///
+/// Runs iteratively with an explicit stack, so deeply nested splits cannot
+/// overflow the call stack. Non-finite points do not panic, but the error
+/// bound only holds for finite input.
+#[must_use]
+pub fn simplify_rdp(points: &[Vec2], eps: f32) -> Vec<Vec2> {
+    let _ = (points, eps, distance_to_segment);
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::geom::{approx_eq, distance_to_segment, Vec2};
+    use crate::core::geom::approx_eq;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-5;
