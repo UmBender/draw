@@ -37,9 +37,9 @@ flowchart LR
 | 6 | [[06 Undo and redo with a transaction log]] | [[T06 Document and history]] | done |
 | 7 | [[07 Rendering with macroquad and culling]] | [[T07 Renderer]] | done |
 | 8 | [[08 An editor as an input-driven state machine]] | [[T08 Editor core and input model]] | done |
-| 9 | *Building drawing tools* | [[T09 Creation tools]] | planned |
-| 10 | *Selection, clipboard and fill* | [[T10 Editing tools]] | planned |
-| 11 | *Keymaps and gesture macros* | [[T11 Keymap and macros]] | planned |
+| 9 | [[09 Building drawing tools]] | [[T09 Creation tools]] | done |
+| 10 | [[10 Selection, clipboard and fill]] | [[T10 Editing tools]] | done |
+| 11 | [[11 Keymaps and gesture macros]] | [[T11 Keymap and macros]] | done |
 | 12 | *The app loop: input, idle redraw, UI* | [[T12 App shell and toolbar]] | planned |
 | 13 | *Property-based testing and fuzzing with proptest* | [[T13 Fuzz harness]] | planned |
 | 14 | *Profiling and shipping a release build* | [[T14 Performance and release validation]] | planned |

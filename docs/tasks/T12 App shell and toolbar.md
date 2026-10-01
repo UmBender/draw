@@ -1,7 +1,7 @@
 ---
 id: T12
 title: App shell and toolbar
-status: todo
+status: ready
 wave: 6
 branch: task/T12-app-shell
 depends_on: [T07, T09, T10, T11]

@@ -23,7 +23,9 @@ are bound by [[T11 Keymap and macros]] and the toolbar buttons by
 
 | Action | Shortcut / gesture |
 |--------|--------------------|
-| *(bound by T11/T12)* | — |
+| Undo | `Ctrl+Z` |
+| Redo | `Ctrl+Shift+Z` or `Ctrl+Y` |
+| *(toolbar buttons added by T12)* | — |
 
 ## How it works
 

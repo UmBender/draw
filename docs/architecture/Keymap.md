@@ -1,13 +1,13 @@
 ---
 tags: [architecture]
 task: "[[T11 Keymap and macros]]"
-status: planned
+status: implemented
 ---
 
 # Keymap
 
-Planned bindings. [[T11 Keymap and macros]] implements them; changes after that
-require an ADR.
+Bindings implemented by [[T11 Keymap and macros]] (`src/core/keymap.rs`); modifiers
+match exactly ([[ADR-T11-1 Exact modifier matching]]). Changes require an ADR.
 
 ## Tools (single key, no modifier)
 
