@@ -775,4 +775,72 @@ mod tests {
             assert!(approx_eq(got_scale, scale, EPS), "size {size}: {got_scale}");
         }
     }
+
+    #[test]
+    fn dot_grid_spacing_at_unit_zoom_is_grid_step() {
+        let spacing = dot_grid_spacing(1.0);
+
+        assert!(spacing.is_some_and(|s| approx_eq(s, crate::core::snap::GRID_STEP, EPS)));
+    }
+
+    #[test]
+    fn dot_grid_spacing_coarsens_when_zoomed_out() {
+        // Arrange: at zoom 0.05 a grid step is 1 px on screen.
+        let zoom = 0.05;
+
+        // Act
+        let spacing = dot_grid_spacing(zoom);
+
+        // Assert: a power-of-two multiple of the step, the first at least
+        // DOT_GRID_MIN_PX apart on screen.
+        let Some(spacing) = spacing else {
+            panic!("finite zoom has a spacing");
+        };
+        let ratio = spacing / crate::core::snap::GRID_STEP;
+        assert!(
+            approx_eq(ratio.log2().round().exp2(), ratio, EPS),
+            "{ratio}"
+        );
+        assert!(spacing * zoom >= DOT_GRID_MIN_PX);
+        assert!(spacing * zoom / 2.0 < DOT_GRID_MIN_PX);
+    }
+
+    #[test]
+    fn dot_grid_spacing_non_finite_is_none() {
+        assert!(dot_grid_spacing(f32::NAN).is_none());
+        assert!(dot_grid_spacing(f32::INFINITY).is_none());
+        assert!(dot_grid_spacing(0.0).is_none());
+        assert!(dot_grid_spacing(-1.0).is_none());
+        assert!(dot_grid_spacing(1e-30).is_none());
+    }
+
+    #[test]
+    fn dot_grid_points_cover_view_on_multiples() {
+        // Arrange
+        let view = aabb(-25.0, -5.0, 45.0, 30.0);
+
+        // Act
+        let points: Vec<Vec2> = dot_grid_points(view, 20.0).collect();
+
+        // Assert: x in {-20, 0, 20, 40}, y in {0, 20}.
+        assert_eq!(points.len(), 8, "{points:?}");
+        for p in &points {
+            assert!(view.contains(*p), "{p:?}");
+            assert!(approx_eq(p.x / 20.0, (p.x / 20.0).round(), EPS));
+            assert!(approx_eq(p.y / 20.0, (p.y / 20.0).round(), EPS));
+        }
+    }
+
+    #[test]
+    fn dot_grid_points_are_capped_and_total() {
+        let huge = aabb(-1.0e30, -1.0e30, 1.0e30, 1.0e30);
+        let nan = Aabb {
+            min: Vec2::new(f32::NAN, 0.0),
+            max: Vec2::new(10.0, 10.0),
+        };
+
+        assert!(dot_grid_points(huge, 20.0).count() <= DOT_GRID_MAX_DOTS);
+        assert_eq!(dot_grid_points(nan, 20.0).count(), 0);
+        assert_eq!(dot_grid_points(aabb(0.0, 0.0, 10.0, 10.0), 0.0).count(), 0);
+    }
 }

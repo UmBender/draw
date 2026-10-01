@@ -226,6 +226,14 @@ mod tests {
         }
 
         fn send_mods(&mut self, phase: Phase, x: f32, y: f32, shift: bool) -> bool {
+            let mods = Modifiers {
+                shift,
+                ..Modifiers::NONE
+            };
+            self.send_with(phase, x, y, mods)
+        }
+
+        fn send_with(&mut self, phase: Phase, x: f32, y: f32, mods: Modifiers) -> bool {
             let pos = Vec2::new(x, y);
             let mut ctx = ToolCtx {
                 doc: &mut self.doc,
@@ -237,10 +245,6 @@ mod tests {
                 style: self.style,
                 smoothing: SmoothingLevel::Medium,
                 cursor: pos,
-            };
-            let mods = Modifiers {
-                shift,
-                ..Modifiers::NONE
             };
             on_pointer(&mut self.state, &mut ctx, Pointer { phase, pos, mods })
         }
@@ -254,6 +258,27 @@ mod tests {
             self.send_mods(Phase::Down, from.0, from.1, shift);
             self.send_mods(Phase::Move, to.0, to.1, shift);
             self.send_mods(Phase::Up, to.0, to.1, shift)
+        }
+
+        /// A full drag with `mods` held throughout.
+        fn drag_with(&mut self, from: (f32, f32), to: (f32, f32), mods: Modifiers) -> bool {
+            self.send_with(Phase::Down, from.0, from.1, mods);
+            self.send_with(Phase::Move, to.0, to.1, mods);
+            self.send_with(Phase::Up, to.0, to.1, mods)
+        }
+
+        /// Puts `shape` in the document as one undo step.
+        fn insert(&mut self, shape: Shape) {
+            let tx = tx_insert(&mut self.doc, [shape]);
+            assert!(self.history.commit(&mut self.doc, tx).is_ok());
+        }
+
+        /// The shape added last.
+        fn last_shape(&self) -> &Shape {
+            match self.doc.shapes().last() {
+                Some((_, shape)) => shape,
+                None => panic!("document is empty"),
+            }
         }
 
         fn overlay(&self) -> Overlay {
@@ -551,6 +576,125 @@ mod tests {
         assert!(f.doc.is_empty());
     }
 
+    const STYLE: crate::core::shape::Style = crate::core::shape::Style {
+        color: crate::core::palette::ColorId::INK,
+        width: 1.0,
+    };
+
+    /// A 50 × 30 rectangle at the origin.
+    fn box_50x30() -> Shape {
+        Shape::Rect {
+            a: Vec2::ZERO,
+            b: Vec2::new(50.0, 30.0),
+            style: STYLE,
+            fill: None,
+            label: None,
+        }
+    }
+
+    const ALT: Modifiers = Modifiers {
+        shift: false,
+        ctrl: false,
+        alt: true,
+    };
+
+    #[test]
+    fn snap_off_by_default_is_unchanged() {
+        let mut f = Fixture::new(Tool::Rect);
+        f.insert(box_50x30());
+
+        assert!(f.drag((100.0, 101.0), (152.0, 131.0), false));
+
+        let (a, b) = ends(f.last_shape());
+        assert!(a.approx_eq(Vec2::new(100.0, 101.0), 1e-4));
+        assert!(b.approx_eq(Vec2::new(152.0, 131.0), 1e-4));
+    }
+
+    #[test]
+    fn snap_grid_applies_to_line_endpoints() {
+        let mut f = Fixture::new(Tool::Line);
+        f.style.helpers.grid_snap = true;
+
+        assert!(f.drag((11.0, 9.0), (52.0, 68.0), false));
+
+        let (a, b) = ends(f.only_shape());
+        assert!(a.approx_eq(Vec2::new(20.0, 0.0), 1e-4), "{a:?}");
+        assert!(b.approx_eq(Vec2::new(60.0, 60.0), 1e-4), "{b:?}");
+    }
+
+    #[test]
+    fn snap_smart_rect_matches_existing_size() {
+        // Arrange
+        let mut f = Fixture::new(Tool::Rect);
+        f.style.helpers.smart_snap = true;
+        f.insert(box_50x30());
+
+        // Act: start near y = 0, end near a 50 × 30 box.
+        f.send(Phase::Down, 200.0, 3.0);
+        f.send(Phase::Move, 253.0, 28.0);
+        let overlay = f.overlay();
+        f.send(Phase::Up, 253.0, 28.0);
+
+        // Assert: aligned top, matched size, guides while dragging.
+        let (a, b) = ends(f.last_shape());
+        assert!(a.approx_eq(Vec2::new(200.0, 0.0), 1e-4), "{a:?}");
+        assert!(b.approx_eq(Vec2::new(250.0, 30.0), 1e-4), "{b:?}");
+        assert!(!overlay.guides.is_empty());
+        assert!(f.overlay().is_empty(), "guides go away with the drag");
+    }
+
+    #[test]
+    fn snap_alt_disables_snapping() {
+        let mut f = Fixture::new(Tool::Rect);
+        f.style.helpers.smart_snap = true;
+        f.style.helpers.grid_snap = true;
+        f.insert(box_50x30());
+
+        f.send_with(Phase::Down, 200.0, 3.0, ALT);
+        f.send_with(Phase::Move, 253.0, 28.0, ALT);
+        let overlay = f.overlay();
+        f.send_with(Phase::Up, 253.0, 28.0, ALT);
+
+        let (a, b) = ends(f.last_shape());
+        assert!(a.approx_eq(Vec2::new(200.0, 3.0), 1e-4), "{a:?}");
+        assert!(b.approx_eq(Vec2::new(253.0, 28.0), 1e-4), "{b:?}");
+        assert!(overlay.guides.is_empty());
+    }
+
+    #[test]
+    fn snap_shift_constraint_wins() {
+        // Arrange
+        let mut f = Fixture::new(Tool::Rect);
+        f.style.helpers.smart_snap = true;
+        f.style.helpers.grid_snap = true;
+        f.insert(box_50x30());
+
+        // Act
+        f.send_mods(Phase::Down, 200.0, 0.0, true);
+        f.send_mods(Phase::Move, 233.0, 47.0, true);
+        let overlay = f.overlay();
+        f.send_mods(Phase::Up, 233.0, 47.0, true);
+
+        // Assert: grid takes the end to (240, 40), Shift squares it; no
+        // size snap to 50 × 30, no guides.
+        let (a, b) = ends(f.last_shape());
+        assert!(a.approx_eq(Vec2::new(200.0, 0.0), 1e-4), "{a:?}");
+        assert!(b.approx_eq(Vec2::new(240.0, 40.0), 1e-4), "{b:?}");
+        assert!(overlay.guides.is_empty());
+    }
+
+    #[test]
+    fn snap_line_is_not_size_snapped() {
+        let mut f = Fixture::new(Tool::Line);
+        f.style.helpers.smart_snap = true;
+        f.insert(box_50x30());
+
+        assert!(f.drag_with((200.0, 200.0), (253.0, 253.0), Modifiers::NONE));
+
+        let (_, b) = ends(f.last_shape());
+        assert!(b.approx_eq(Vec2::new(253.0, 253.0), 1e-4), "{b:?}");
+    }
+
     fn shape_kind() -> impl Strategy<Value = Tool> {
         prop_oneof![
             Just(Tool::Line),
@@ -573,17 +717,31 @@ mod tests {
             moves in proptest::collection::vec((coord(), coord(), any::<bool>()), 0..8),
             to in (coord(), coord()),
             shift in any::<bool>(),
+            alt in any::<bool>(),
+            grid_snap in any::<bool>(),
+            smart_snap in any::<bool>(),
+            neighbour in (coord(), coord(), coord(), coord()),
         ) {
             let mut f = Fixture::new(tool);
             f.camera = Camera::new(Vec2::new(13.0, -7.0), zoom);
+            f.style.helpers.grid_snap = grid_snap;
+            f.style.helpers.smart_snap = smart_snap;
+            f.insert(Shape::Rect {
+                a: Vec2::new(neighbour.0, neighbour.1),
+                b: Vec2::new(neighbour.2, neighbour.3),
+                style: STYLE,
+                fill: None,
+                label: None,
+            });
+            let mods = |shift| Modifiers { shift, ctrl: false, alt };
 
-            f.send_mods(Phase::Down, from.0, from.1, shift);
+            f.send_with(Phase::Down, from.0, from.1, mods(shift));
             for (x, y, s) in moves {
-                f.send_mods(Phase::Move, x, y, s);
+                f.send_with(Phase::Move, x, y, mods(s));
             }
-            f.send_mods(Phase::Up, to.0, to.1, shift);
+            f.send_with(Phase::Up, to.0, to.1, mods(shift));
 
-            prop_assert!(f.history.undo_len() <= 1);
+            prop_assert!(f.history.undo_len() <= 2);
             prop_assert_eq!(f.doc.len(), f.history.undo_len());
             prop_assert!(f.doc.shapes().all(|(_, s)| s.is_finite()));
             prop_assert!(f.overlay().is_empty());
