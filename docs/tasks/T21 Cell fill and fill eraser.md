@@ -5,7 +5,7 @@ status: in-progress
 wave: 10
 branch: task/T21-cell-fill
 depends_on: [T18]
-adrs: ["[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T21-1 Cell fills and a two-mode eraser]]"]
+adrs: ["[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T21-1 Cell fills and a two-mode eraser]]", "[[ADR-T21-2 Eraser mode chosen on press]]"]
 feature: "[[Cell fill]]"
 tutorial: "[[21 Per-cell fills and a two-mode eraser]]"
 tags: [task]
@@ -54,17 +54,20 @@ Decision: [[ADR-T21-1 Cell fills and a two-mode eraser]].
 - **AC-3** — Renderer: filled cells are drawn under the grid lines; axis
   indices keep the outline colour (they are outside the cells). Manual
   check; geometry covered by `grid_cell_rect_matches_lines`.
-- **AC-4** — Eraser (and right drag): a shape whose outline the path
-  touches is removed (as before). Otherwise, touching the inside of a
-  filled `Rect`/`Ellipse` clears its fill, and touching a filled grid cell
-  clears that cell; unfilled insides are untouched. Removal wins over
-  clearing for the same shape. The preview hides removed shapes and shows
-  cleared shapes without their fill; release commits everything as one
-  undo step. *Tests (`eraser::tests`):* `inside_filled_rect_clears_fill`,
-  `inside_filled_ellipse_clears_fill`, `outline_of_filled_rect_removes_it`,
+- **AC-4** — Eraser (and right drag), mode chosen on press
+  ([[ADR-T21-2 Eraser mode chosen on press]]): a press inside a filled
+  `Rect`/`Ellipse` (not on its outline) or a filled grid cell (not on a
+  line) starts **clear mode** — the drag clears every cell and closed-shape
+  fill it passes over and never removes a shape. Any other press starts
+  **remove mode**, unchanged from before. The preview hides affected shapes
+  and, in clear mode, shows them without the cleared fills; release commits
+  one undo step. *Tests (`eraser::tests`):* `inside_filled_rect_clears_fill`,
+  `inside_filled_ellipse_clears_fill`, `press_on_outline_removes_filled_rect`,
   `unfilled_inside_is_untouched`, `filled_cell_clears_only_that_cell`,
-  `drag_across_cells_clears_each`, `removal_wins_over_clear`,
-  `preview_shows_cleared_fill`, `erase_fill_is_one_undo_step`.
+  `clear_drag_crosses_lines_without_removing`,
+  `clear_drag_also_clears_shape_fills`,
+  `remove_drag_into_filled_rect_removes_it`, `preview_shows_cleared_fill`,
+  `erase_fill_is_one_undo_step`.
 - **AC-5** — Fuzz: grid fills stay inside `cols × rows`, sorted and
   unique, in every editor state.
   *Test:* `fuzz::editor_never_panics_and_keeps_invariants` (extended).
@@ -97,3 +100,6 @@ Step 21 — requires steps 10 and 18.
   the eraser to clear fills on cells, circles and rectangles; axis indices
   keep their colour. Task created on the T18 branch because it depends on
   the grid shape; `Task Board`/`Learning Path` rows are for the integrator.
+- spec refined before the tests: per-shape outline/inside effects would
+  delete a grid whenever a drag crosses a line; the mode is now chosen on
+  press (ADR-T21-2, amends ADR-T21-1).
