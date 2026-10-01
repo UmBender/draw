@@ -1,7 +1,7 @@
 ---
 title: Shapes
 task: "[[T05 Shape model]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0013 World-space widths and zoom limits]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]"]
 tutorial: "[[05 Modelling shapes and hit-testing]]"
 shortcuts: []
 tags: [feature]
@@ -50,7 +50,32 @@ note with their shortcuts.
   `bounds` so what you see is what you hit. Head length is
   `max(8, 4 × width)` world units, base half-width half of that.
 
+### Rendering
+
+`src/shell/render.rs` ([[T07 Renderer]],
+[[ADR-T07-1 Screen-space tessellation in the renderer]]) draws in screen
+pixels through the camera:
+
+- Outline width on screen is `width × zoom`, never less than 1 px
+  (`screen_width`), so zoomed-out drawings stay visible.
+- Shapes whose `bounds()` miss the visible area (plus 2 px) are skipped
+  (`cull_rect`, `is_visible`).
+- Strokes are segments, with round joints and caps only above 2 px; a
+  single-point stroke is a dot. Arrows draw a shaft to the head base and the
+  filled `arrow_head` triangle. Fills are drawn under the outline.
+- Circles and ellipses are tessellated with at most ¼ px error
+  (`circle_segments`, 8–256 segments) using `draw_triangle`, so drawing does
+  not allocate.
+- The shape being drawn is shown with `draw_preview`; the selection is a
+  1 px accent outline padded 4 px on screen (`draw_selection`).
+
+Tutorial: [[07 Rendering with macroquad and culling]].
+
 ## Limits
+
+- Very large ellipses (radius above ~3300 px on screen) hit the 256-segment
+  cap and may show facets.
+- No anti-aliasing beyond what the window's MSAA setting provides.
 
 - Ellipse outline distance is an estimate (`k0 (k0 − 1) / k1`): exact on the
   axes and on the outline, slightly off elsewhere for very flat ellipses.
