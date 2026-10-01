@@ -1,6 +1,10 @@
 //! Bootstrap checks: the module skeleton is complete and the window is configured.
 
 #[test]
+#[allow(
+    unused_imports,
+    reason = "the imports are the test: compilation fails if a module is missing"
+)]
 fn all_modules_are_reachable() {
     use draw::core::camera as _;
     use draw::core::clipboard as _;
