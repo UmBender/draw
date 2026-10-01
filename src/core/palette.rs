@@ -4,6 +4,10 @@
 //! [`ColorId`] — an index into the fixed drawing palette — so a theme change
 //! recolours every existing shape. Values come from the user's Kanagawa
 //! Dragon theme (ADR-0015) and are documented in `docs/architecture/Theme.md`.
+#![allow(
+    clippy::unreadable_literal,
+    reason = "colours are written 0xRRGGBB to match #RRGGBB in Theme.md"
+)]
 
 /// Number of drawing colours, addressable with keys `1`–`6`.
 pub const PALETTE_LEN: usize = 6;
@@ -74,12 +78,12 @@ impl ColorId {
 
 /// The drawing colours in key order: ink, red, green, blue, yellow, magenta.
 pub const PALETTE: [Rgba; PALETTE_LEN] = [
-    Rgba::from_hex(0xc5_c9_c5), // ink
-    Rgba::from_hex(0xd1_69_61), // red
-    Rgba::from_hex(0x8a_a8_6e), // green
-    Rgba::from_hex(0x7f_a8_bc), // blue
-    Rgba::from_hex(0xce_b6_80), // yellow
-    Rgba::from_hex(0xaa_88_ac), // magenta
+    Rgba::from_hex(0xc5c9c5), // ink
+    Rgba::from_hex(0xd16961), // red
+    Rgba::from_hex(0x8aa86e), // green
+    Rgba::from_hex(0x7fa8bc), // blue
+    Rgba::from_hex(0xceb680), // yellow
+    Rgba::from_hex(0xaa88ac), // magenta
 ];
 
 /// Returns the colour for `id`. Total: every `ColorId` is a valid index.
@@ -108,12 +112,12 @@ pub struct Theme {
 
 /// The application theme.
 pub const THEME: Theme = Theme {
-    bg: Rgba::from_hex(0x18_16_16),
-    surface: Rgba::from_hex(0x0d_0c_0c),
-    border: Rgba::from_hex(0xa6_a6_9c),
-    text: Rgba::from_hex(0xc5_c9_c5),
-    accent: Rgba::from_hex(0x7f_a8_bc),
-    selection: Rgba::from_hex(0x2d_4f_67),
+    bg: Rgba::from_hex(0x181616),
+    surface: Rgba::from_hex(0x0d0c0c),
+    border: Rgba::from_hex(0xa6a69c),
+    text: Rgba::from_hex(0xc5c9c5),
+    accent: Rgba::from_hex(0x7fa8bc),
+    selection: Rgba::from_hex(0x2d4f67),
 };
 
 #[cfg(test)]
@@ -136,7 +140,7 @@ mod tests {
     #[test]
     fn from_hex_splits_channels_and_is_opaque() {
         // Arrange
-        let hex = 0x12_34_56;
+        let hex = 0x123456;
 
         // Act
         let c = Rgba::from_hex(hex);
@@ -155,14 +159,14 @@ mod tests {
 
     #[test]
     fn from_hex_ignores_bits_above_24() {
-        assert_eq!(Rgba::from_hex(0xab_12_34_56), Rgba::from_hex(0x12_34_56));
+        assert_eq!(Rgba::from_hex(0xab123456), Rgba::from_hex(0x123456));
     }
 
     #[test]
     fn to_f32_maps_extremes_to_unit_range() {
         // Arrange
-        let black = Rgba::from_hex(0x00_00_00);
-        let white = Rgba::from_hex(0xff_ff_ff);
+        let black = Rgba::from_hex(0x000000);
+        let white = Rgba::from_hex(0xffffff);
 
         // Act
         let (b, w) = (black.to_f32(), white.to_f32());
@@ -237,12 +241,12 @@ mod tests {
     fn palette_matches_documented_drawing_colours() {
         // Arrange: docs/architecture/Theme.md, keys 1-6 in order.
         let expected = [
-            0xc5_c9_c5, // ink
-            0xd1_69_61, // red
-            0x8a_a8_6e, // green
-            0x7f_a8_bc, // blue
-            0xce_b6_80, // yellow
-            0xaa_88_ac, // magenta
+            0xc5c9c5, // ink
+            0xd16961, // red
+            0x8aa86e, // green
+            0x7fa8bc, // blue
+            0xceb680, // yellow
+            0xaa88ac, // magenta
         ];
 
         for (i, hex) in expected.into_iter().enumerate() {
@@ -258,12 +262,12 @@ mod tests {
 
     #[test]
     fn theme_matches_documented_tokens() {
-        assert_eq!(THEME.bg, Rgba::from_hex(0x18_16_16));
-        assert_eq!(THEME.surface, Rgba::from_hex(0x0d_0c_0c));
-        assert_eq!(THEME.border, Rgba::from_hex(0xa6_a6_9c));
-        assert_eq!(THEME.text, Rgba::from_hex(0xc5_c9_c5));
-        assert_eq!(THEME.accent, Rgba::from_hex(0x7f_a8_bc));
-        assert_eq!(THEME.selection, Rgba::from_hex(0x2d_4f_67));
+        assert_eq!(THEME.bg, Rgba::from_hex(0x181616));
+        assert_eq!(THEME.surface, Rgba::from_hex(0x0d0c0c));
+        assert_eq!(THEME.border, Rgba::from_hex(0xa6a69c));
+        assert_eq!(THEME.text, Rgba::from_hex(0xc5c9c5));
+        assert_eq!(THEME.accent, Rgba::from_hex(0x7fa8bc));
+        assert_eq!(THEME.selection, Rgba::from_hex(0x2d4f67));
     }
 
     // AC-5
