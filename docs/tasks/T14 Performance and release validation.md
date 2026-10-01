@@ -1,10 +1,10 @@
 ---
 id: T14
 title: Performance and release validation
-status: ready
-wave: 7
+status: todo
+wave: 10
 branch: task/T14-release
-depends_on: [T12, T13]
+depends_on: [T12, T13, T15, T16, T17, T18, T19]
 adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-0007 Anti-tremor pipeline]]"]
 feature: "[[Contest cheat sheet]]"
 tutorial: "[[14 Profiling and shipping a release build]]"
@@ -47,6 +47,10 @@ New features.
 
 ## Learning path
 
-Step 14 — requires steps 12–13.
+Step 14 — requires steps 12–13 (validates the features of T15–T19 too).
 
 ## Log
+
+- 2026-10-01 — Re-planned to wave 10 so release validation covers the
+  helper features (T15–T19); AC-1/AC-3 must include grids, labels, snapping
+  and MSAA.

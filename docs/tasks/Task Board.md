@@ -35,6 +35,16 @@ flowchart TD
   T11 --> T13
   T12 --> T14[T14 Perf + release validation]
   T13 --> T14
+  T12 --> T15[T15 Anti-aliasing]
+  T12 --> T16[T16 Shape model v2 + helper skeleton]
+  T13 --> T16
+  T16 --> T17[T17 Snapping]
+  T16 --> T18[T18 Grid tool]
+  T17 --> T19[T19 Auto-numbering]
+  T15 --> T14
+  T17 --> T14
+  T18 --> T14
+  T19 --> T14
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -48,7 +58,10 @@ flowchart TD
 | 4 | [[T08 Editor core and input model]] |
 | 5 | [[T09 Creation tools]] · [[T10 Editing tools]] · [[T11 Keymap and macros]] |
 | 6 | [[T12 App shell and toolbar]] · [[T13 Fuzz harness]] |
-| 7 | [[T14 Performance and release validation]] |
+| 7 | [[T15 Anti-aliasing]] · [[T16 Shape model v2 and helper skeleton]] |
+| 8 | [[T17 Snapping]] · [[T18 Grid tool]] |
+| 9 | [[T19 Auto-numbering]] |
+| 10 | [[T14 Performance and release validation]] |
 
 ## Status
 
@@ -68,4 +81,9 @@ flowchart TD
 | [[T11 Keymap and macros]] | done | T08 | `task/T11-keymap` |
 | [[T12 App shell and toolbar]] | done | T07, T09, T10, T11 | `task/T12-app-shell` |
 | [[T13 Fuzz harness]] | done | T09, T10, T11 | `task/T13-fuzz` |
-| [[T14 Performance and release validation]] | ready | T12, T13 | `task/T14-release` |
+| [[T15 Anti-aliasing]] | ready | T12 | `task/T15-antialiasing` |
+| [[T16 Shape model v2 and helper skeleton]] | ready | T12, T13 | `task/T16-helper-skeleton` |
+| [[T17 Snapping]] | todo | T16 | `task/T17-snapping` |
+| [[T18 Grid tool]] | todo | T16 | `task/T18-grid-tool` |
+| [[T19 Auto-numbering]] | todo | T16, T17 | `task/T19-numbering` |
+| [[T14 Performance and release validation]] | todo | T12, T13, T15–T19 | `task/T14-release` |

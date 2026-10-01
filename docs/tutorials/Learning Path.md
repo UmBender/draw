@@ -24,6 +24,11 @@ flowchart LR
   s7 --> s12[12 The app loop & idle redraw]
   s9 --> s13[13 Property testing & fuzzing]
   s13 --> s14[14 Profiling & release builds]
+  s12 --> s15[15 Anti-aliasing & MSAA]
+  s13 --> s16[16 Growing a data model]
+  s16 --> s17[17 Snapping & guides]
+  s16 --> s18[18 Grid tool]
+  s16 --> s19[19 Undoable counters]
 ```
 
 | Step | Tutorial | Task | Status |
@@ -43,3 +48,8 @@ flowchart LR
 | 12 | [[12 The app loop, idle redraw and UI]] | [[T12 App shell and toolbar]] | done |
 | 13 | [[13 Property-based testing and fuzzing]] | [[T13 Fuzz harness]] | done |
 | 14 | *Profiling and shipping a release build* | [[T14 Performance and release validation]] | planned |
+| 15 | *Anti-aliasing and multisampling* | [[T15 Anti-aliasing]] | planned |
+| 16 | *Growing a data model without breaking it* | [[T16 Shape model v2 and helper skeleton]] | planned |
+| 17 | *Snapping and alignment guides* | [[T17 Snapping]] | planned |
+| 18 | *A grid tool with live parameters* | [[T18 Grid tool]] | planned |
+| 19 | *Auto-numbering and undoable counters* | [[T19 Auto-numbering]] | planned |
