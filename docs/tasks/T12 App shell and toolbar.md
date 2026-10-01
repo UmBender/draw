@@ -1,7 +1,7 @@
 ---
 id: T12
 title: App shell and toolbar
-status: in-progress
+status: review
 wave: 6
 branch: task/T12-app-shell
 depends_on: [T07, T09, T10, T11]
@@ -48,7 +48,8 @@ Pure, unit-tested:
   Pointer events carry the modifiers of the modifier keys currently held
   (tracked from key down/up). *Tests:* `collector_translates_in_order`,
   `collector_scroll_uses_last_pointer`, `collector_skips_unmapped`,
-  `collector_pointer_mods_follow_modifier_keys`, `collector_scales_by_dpi`.
+  `collector_pointer_mods_follow_modifier_keys`, `collector_scales_by_dpi`,
+  `collector_key_events_carry_event_mods`.
 - **AC-2** — `toolbar::layout(viewport) -> Vec<Button>`: one button per tool (9,
   in keymap order), 6 colour swatches, then undo and redo — 17 buttons of
   32 × 32 px stacked in a vertical strip at the left edge, without overlap,
@@ -89,10 +90,37 @@ new ADR `docs/decisions/ADR-T12-1 *.md`.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec — `docs(T12): specify app shell and toolbar acceptance criteria` (e029e71)
+- [x] tests — `test(T12): add failing tests for input mapping and toolbar` (0825eec)
+- [x] models — `feat(T12): add input collector and toolbar types` (945fe43)
+- [x] behaviour — `feat(T12): implement input collection, toolbar and idle-friendly loop` (97b09e6)
+- [x] quality — `refactor(T12): pass clippy and rustfmt` (28dcf17)
+- [x] docs — `docs(T12): add feature note and tutorial`
 
 ## Learning path
 
 Step 12 — requires steps 7–11.
 
 ## Log
+
+- 2026-10-01 — Spec refined. Reading macroquad 0.4.16 showed `begin_frame`
+  always clears the window, so the blocking loop alone cannot skip drawing;
+  recorded blocking loop + cached render target as
+  [[ADR-T12-1 Blocking event loop with cached frame]]. Input comes from a
+  macroquad input subscriber so no motion sample or short click is lost.
+- Tests: 25 unit tests in `input_map` and `toolbar`; red on missing items.
+- Behaviour: `window_conf` now returns `WindowSettings` (same field names)
+  converted `Into` macroquad's `Conf`. This keeps `main.rs` and the T00-owned
+  `tests/skeleton.rs` unchanged; a plain miniquad `Conf` would have left
+  `update_on` empty and the blocking loop would never wake on input.
+- Quality: clippy asked for a bitmask instead of six bools in `HeldMods`.
+  `scripts/check.sh` green.
+- Manual checklist (Fedora 44, KDE Plasma Wayland session, release build):
+  - AC-4 — the loop blocks while idle; the scene renders correctly into the
+    cached target (screenshot: canvas `bg`, toolbar strip, not flipped).
+  - AC-5 — toolbar shows tool letters and swatches; active tool (pen) and
+    colour (ink) outlined in `accent`; undo/redo dimmed on a fresh document.
+    `Tab` hiding still to be confirmed by hand.
+  - AC-6 — runs through **XWayland** (miniquad `X11Only` default). Idle CPU
+    measured with `top`: **0.0 %** (0.15 s CPU total over ~12 s, state `S`).
+    Drawing without input loss still to be confirmed by hand.
