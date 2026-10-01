@@ -72,21 +72,41 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     // Tools
     (KeyChord::bare(Key::P), Command::SetTool(Tool::Pen), "Pen"),
     (KeyChord::bare(Key::L), Command::SetTool(Tool::Line), "Line"),
-    (KeyChord::bare(Key::A), Command::SetTool(Tool::Arrow), "Arrow"),
-    (KeyChord::bare(Key::R), Command::SetTool(Tool::Rect), "Rectangle"),
+    (
+        KeyChord::bare(Key::A),
+        Command::SetTool(Tool::Arrow),
+        "Arrow",
+    ),
+    (
+        KeyChord::bare(Key::R),
+        Command::SetTool(Tool::Rect),
+        "Rectangle",
+    ),
     (
         KeyChord::bare(Key::C),
         Command::SetTool(Tool::Ellipse),
         "Circle / ellipse",
     ),
-    (KeyChord::bare(Key::E), Command::SetTool(Tool::Eraser), "Eraser"),
-    (KeyChord::bare(Key::B), Command::SetTool(Tool::Bucket), "Bucket fill"),
+    (
+        KeyChord::bare(Key::E),
+        Command::SetTool(Tool::Eraser),
+        "Eraser",
+    ),
+    (
+        KeyChord::bare(Key::B),
+        Command::SetTool(Tool::Bucket),
+        "Bucket fill",
+    ),
     (
         KeyChord::bare(Key::V),
         Command::SetTool(Tool::Select),
         "Select / move",
     ),
-    (KeyChord::bare(Key::H), Command::SetTool(Tool::Hand), "Hand (pan)"),
+    (
+        KeyChord::bare(Key::H),
+        Command::SetTool(Tool::Hand),
+        "Hand (pan)",
+    ),
     // Style
     (KeyChord::bare(Key::Digit1), color(1), "Colour 1 (ink)"),
     (KeyChord::bare(Key::Digit2), color(2), "Colour 2 (red)"),
@@ -143,8 +163,16 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Cancel gesture / clear selection",
     ),
     // View
-    (KeyChord::bare(Key::Digit0), Command::ResetView, "Reset view"),
-    (KeyChord::bare(Key::F), Command::FitView, "Fit view to content"),
+    (
+        KeyChord::bare(Key::Digit0),
+        Command::ResetView,
+        "Reset view",
+    ),
+    (
+        KeyChord::bare(Key::F),
+        Command::FitView,
+        "Fit view to content",
+    ),
     (
         KeyChord::bare(Key::Tab),
         Command::ToggleToolbar,
@@ -321,7 +349,10 @@ mod tests {
         assert_eq!(resolve(Key::C, CTRL), Some(Command::Copy));
         assert_eq!(resolve(Key::C, NONE), Some(Command::SetTool(Tool::Ellipse)));
         assert_eq!(resolve(Key::Backspace, CTRL), Some(Command::ClearAll));
-        assert_eq!(resolve(Key::Backspace, NONE), Some(Command::DeleteSelection));
+        assert_eq!(
+            resolve(Key::Backspace, NONE),
+            Some(Command::DeleteSelection)
+        );
         assert_eq!(resolve(Key::Z, CTRL), Some(Command::Undo));
         assert_eq!(resolve(Key::Z, CTRL_SHIFT), Some(Command::Redo));
         assert_eq!(resolve(Key::V, CTRL), Some(Command::Paste));
