@@ -1,7 +1,7 @@
 ---
 id: T06
 title: Document and history
-status: in-progress
+status: review
 wave: 3
 branch: task/T06-document
 depends_on: [T05]
@@ -94,10 +94,38 @@ Selection, persistence.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 6 — requires step 5.
 
 ## Log
+
+- Red phase confirmed: tests commit failed to compile (100 errors, E0425/
+  E0432/E0433: no `Document`, `Edit`, `Transaction`, `ShapeId`, `ApplyError`,
+  `History`, `HISTORY_LIMIT`, `tx_*`); models commit built, 142 lib tests
+  passed and the 39 new ones failed on `todo!()`; behaviour commit turned all
+  181 green. The `proptest-regressions/` folder written during the red phase
+  was deleted (no real failure).
+- New decision [[ADR-T06-1 Self-checking edits and rollback atomicity]]:
+  `Remove`/`Replace` verify the stored shape; atomicity by rolling back with
+  inverses (no document copy); `Insert` of a foreign id bumps the id counter.
+- Added beyond the original spec (stated in the refined *Spec*): `ShapeId::get`,
+  `ApplyError` variants with `Display`/`Error`, `Transaction::{is_empty, len,
+  edits, inverse}` and `From<Vec<Edit>>`, `History::{with_limit, can_undo,
+  can_redo, undo_len, redo_len, clear}`, constant `HISTORY_LIMIT = 500`;
+  `undo`/`redo` return `false` (stacks unchanged) if the document was mutated
+  outside the history. `tx_insert` takes `&mut Document` (it allocates ids);
+  `tx_replace` on an unknown id returns an empty transaction.
+- `Document` keeps a `HashSet<ShapeId>` beside the vector so duplicate-id
+  checks are O(1); undoing a clear of N shapes is O(N) apart from the
+  per-edit shape comparison.
+- Quality: clippy pedantic `must_use_candidate` on `Document::shapes`;
+  rustfmt reflowed three test assertions. `PROPTEST_CASES=5000` release run of
+  `undo_all_redo_all_symmetry` passes.
+- Architecture note unchanged (already describes `core::document` and
+  `core::history`).
+- Integrator: [[Learning Path]] row 6 and [[Feature Index]] need
+  [[06 Undo and redo with a transaction log]] and [[Undo and redo]];
+  [[Decision Log]] needs [[ADR-T06-1 Self-checking edits and rollback atomicity]].
