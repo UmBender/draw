@@ -31,7 +31,8 @@ integrator (main session)
  │     prompt: "Use the implement-task skill for <ID>"
  ├─ wait for agents → each leaves its branch in status review
  ├─ verify: scripts/check.sh on each branch, review diff vs Files owned
- └─ merge in dependency order (--no-ff), run check.sh on main, update indexes
+ ├─ merge in dependency order (--no-ff), run check.sh on main, update indexes
+ └─ clear context (/clear) — resume next wave from Task Board, not from memory
 ```
 
 Agents must be told: commits are authored by Gustavo Bender only, no

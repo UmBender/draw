@@ -48,6 +48,11 @@ flowchart LR
 8. **Integrate** (done by the integrator on `main`, see [[Parallel Execution]]) —
    `git merge --no-ff`, then update [[Task Board]], [[Decision Log]],
    [[Feature Index]], [[Learning Path]].
+9. **Clear context** (integrator) — once the integration commit is on `main`,
+   clear the session context (`/clear`) before starting the next task or wave.
+   Everything needed to resume lives in the repo: [[Task Board]], task notes,
+   ADRs and git history. If the context cannot be cleared right away, the
+   integrator must remind the user to do it.
 
 Steps may be skipped only if they produce nothing (e.g. a task with no new
 models); the task note must then say *why* it was skipped.
