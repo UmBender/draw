@@ -63,7 +63,7 @@ mod tests {
     }
 
     fn click(fx: &mut Fixture, x: f32, y: f32) -> bool {
-        let mut state = State::default();
+        let mut state = State;
         let mut changed = on_pointer(
             &mut state,
             &mut fx.ctx(Tool::Bucket),
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn preview_and_cancel_are_inert() {
         let (fx, _) = Fixture::new(vec![rect(0.0, 0.0, 10.0, 10.0)]);
-        let mut state = State::default();
+        let mut state = State;
 
         assert!(preview(&state, &fx.view(Tool::Bucket)).is_empty());
         assert!(!cancel(&mut state));

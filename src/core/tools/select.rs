@@ -337,8 +337,8 @@ mod tests {
             state,
             fx,
             Phase::Move,
-            (from.0 + to.0) / 2.0,
-            (from.1 + to.1) / 2.0,
+            f32::midpoint(from.0, to.0),
+            f32::midpoint(from.1, to.1),
             mods,
         );
         send(state, fx, Phase::Move, to.0, to.1, mods);
@@ -641,8 +641,8 @@ mod tests {
         fx.selection = vec![ids[0]];
         clipboard::duplicate(&mut fx.ctx(Tool::Select));
         assert!(fx.history.undo(&mut fx.doc));
-        let stale = fx.selection.clone();
-        assert!(stale.iter().all(|id| fx.doc.get(*id).is_none()));
+        let stale_ids = fx.selection.clone();
+        assert!(stale_ids.iter().all(|id| fx.doc.get(*id).is_none()));
 
         // Act: every entry point drops stale ids before acting.
         let copied = clipboard::copy(&mut fx.ctx(Tool::Select));
@@ -655,7 +655,7 @@ mod tests {
         assert_eq!(fx.doc.len(), 3);
 
         // A drag on empty space after a stale selection selects nothing stale.
-        fx.selection = stale;
+        fx.selection = stale_ids;
         let mut state = State::default();
         drag(&mut state, &mut fx, (100.0, 100.0), (110.0, 110.0), SHIFT);
         assert!(fx.selection.iter().all(|id| fx.doc.get(*id).is_some()));
