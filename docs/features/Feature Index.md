@@ -19,6 +19,6 @@ One note per user-visible feature, created by the task that implements it
 | [[Toolbar]] | [[T12 App shell and toolbar]] | [[12 The app loop, idle redraw and UI]] | done |
 | [[Theme and palette]] | [[T02 Palette and theme tokens]] | [[02 Palettes and design tokens]] | done |
 | [[Anti-aliasing]] | [[T15 Anti-aliasing]] | [[15 Anti-aliasing and multisampling]] | done |
-| *Snapping* | [[T17 Snapping]] | step 17 | planned |
+| [[Snapping]] | [[T17 Snapping]] | [[17 Snapping and alignment guides]] | done |
 | *Grid tool* | [[T16 Shape model v2 and helper skeleton]], [[T18 Grid tool]] | step 18 | planned |
 | *Numbered nodes* | [[T16 Shape model v2 and helper skeleton]], [[T19 Auto-numbering]] | step 19 | planned |

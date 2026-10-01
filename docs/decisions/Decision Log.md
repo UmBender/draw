@@ -33,3 +33,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 22 | [[ADR-T16-1 Grid shape and shape labels]] | accepted | decision | 0013, T07-1 | amends 0004 |
 | 23 | [[ADR-T16-2 Helper key bindings]] | accepted | decision | T11-1 | — |
 | 24 | [[ADR-T16-3 Helper settings and hooks]] | accepted | decision | T08-1, T16-1 | — |
+| 25 | [[ADR-T17-1 Snapping order and tolerances]] | accepted | decision | T16-3, T16-1, 0013 | — |
