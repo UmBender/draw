@@ -34,7 +34,7 @@ All tests live in `tests/fuzz.rs` (integration test, public API only).
   (`Shape::is_finite`), zoom in `[ZOOM_MIN, ZOOM_MAX]`, camera offset finite,
   selection ⊆ document ids with no duplicates, no panic.
 - **AC-3** — `undo_all_then_redo_all_is_symmetric` (proptest): at session end,
-  apply `Cancel`, snapshot shapes (ids + shapes), undo until `!can_undo()` →
+  apply `Cancel`, redo any leftover redo entries, snapshot shapes (ids + shapes), undo until `!can_undo()` →
   document empty *if* fewer than `HISTORY_LIMIT` undos were possible (history not
   capped); redo the same number of times → `!can_redo()` and shapes equal the
   snapshot.
