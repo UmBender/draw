@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 619efdf5aa4ea888c2582f7414a79a929a7e8bc3cc99ec78aa7e181e70bc36dd # shrinks to session = [PointerDown { pos: Vec2 { x: 0.0, y: 0.0 }, button: Left, mods: Modifiers { shift: false, ctrl: false, alt: false } }, PointerUp { pos: Vec2 { x: 0.0, y: 0.0 }, button: Left, mods: Modifiers { shift: false, ctrl: false, alt: false } }, KeyDown { key: Z, mods: Modifiers { shift: false, ctrl: true, alt: false } }]
