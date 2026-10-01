@@ -31,13 +31,14 @@ selection being moved (many shapes) or a marquee rectangle.
   `#[derive(Default)] pub struct State` (owned and filled by its task); the
   editor holds one of each and never looks inside.
 - **Tools receive a `ToolCtx<'_>`** (in `tools::mod`): mutable borrows of
-  document, history, selection and clipboard; read-only camera; the active
+  document, history, selection and clipboard; read-only camera; the gesture's
   `Tool`, `DrawStyle`, `SmoothingLevel` and last cursor position (screen). Its
   helper `commit(tx)` records one undo step and returns whether anything changed.
+  Previews get the read-only twin `ToolView<'_>` (also `ToolCtx::view()`).
 - **Pointer input reaches tools as `Pointer { phase, pos, mods }`**, `pos` in
   screen pixels and always finite (filtered by the editor).
 - **Uniform tool API:** `on_pointer(&mut State, &mut ToolCtx, Pointer) -> bool`,
-  `preview(&State, &ToolCtx) -> Overlay`, `cancel(&mut State) -> bool`.
+  `preview(&State, &ToolView) -> Overlay`, `cancel(&mut State) -> bool`.
   Clipboard and select commands take `&mut ToolCtx` (plus `&mut State` where
   needed) and return `bool`.
 - **`Overlay { shapes, hidden, marquee }`** is what a gesture draws on top of the

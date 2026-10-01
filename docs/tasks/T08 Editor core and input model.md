@@ -1,7 +1,7 @@
 ---
 id: T08
 title: Editor core and input model
-status: in-progress
+status: review
 wave: 4
 branch: task/T08-editor
 depends_on: [T03, T06]
@@ -89,10 +89,28 @@ stub signatures only in `src/core/tools/{pen,shape_tool,eraser,bucket,select}.rs
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 8 — requires steps 3 and 6.
 
 ## Log
+
+- 2026-10-01 — Spec refined; tool-facing API recorded in
+  [[ADR-T08-1 Tool context and gesture overlay]]. Deviation from the original
+  AC-8/AC-9: `preview()` is kept but the full gesture output is
+  `overlay() -> Overlay { shapes, hidden, marquee }` so the eraser (hidden
+  shapes) and select (moved shapes, marquee) of T10 fit; tools take a per-tool
+  `State`, a `ToolCtx` / `ToolView` and a `Pointer`.
+- Additions beyond the spec: `Editor::with_keymap`, `active_gesture()`,
+  `viewport()`, `Tool::ALL`, `DrawStyle { color, width_px }`, width ladder
+  constants, `Clipboard` type (stub, owned by T10).
+- Selection pruning after undo/redo/clear/edit commands/tool gestures lives in
+  the editor, so T10's AC-7 holds without T10 editing `editor.rs`.
+- Behaviour commit also fixed one test expectation: `Shape::bounds` includes
+  half the outline width.
+- Quality: rustfmt + removal of one unneeded `allow`; `scripts/check.sh` green
+  (252 unit tests).
+- Next for the integrator: Keymap note says `0` resets the view — T11 must map
+  `Digit0` to `ResetView`, and `Digit1`–`Digit6` to `SetColor`.
