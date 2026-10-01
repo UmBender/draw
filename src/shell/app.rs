@@ -21,6 +21,7 @@ use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
 };
 
+use crate::core::command::Tool;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
@@ -157,7 +158,8 @@ pub async fn run() {
 /// Sends one event to the toolbar or the editor. Returns whether the view
 /// needs a redraw.
 fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
-    match toolbar::route(editor.toolbar_visible(), editor.viewport(), event) {
+    let flyout = editor.tool() == Tool::Grid;
+    match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
         Route::Forward(event) => editor.handle(event),
         Route::Apply(command) => editor.apply(command),
         Route::Swallow => false,

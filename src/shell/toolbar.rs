@@ -2,7 +2,9 @@
 //!
 //! A vertical strip at the left edge: one button per tool, the six palette
 //! swatches, the helper toggles (smart snap, grid snap, numbering), then undo
-//! and redo. Layout, hit-testing and event routing are pure functions of the
+//! and redo. While the grid tool is active, a flyout right of the `G` button
+//! shows the grid's columns and rows with `-`/`+` buttons (ADR-T18-2).
+//! Layout, hit-testing and event routing are pure functions of the
 //! viewport; [`draw`] paints the strip with the theme tokens (ADR-0012),
 //! marking the active tool, colour and the helpers that are on with `accent`.
 
@@ -53,6 +55,10 @@ pub enum ButtonKind {
     GridSnap,
     /// Toggles auto-numbering.
     Numbering,
+    /// Changes the grid's columns by the given step (flyout).
+    GridCols(i32),
+    /// Changes the grid's rows by the given step (flyout).
+    GridRows(i32),
     /// Undoes the last action.
     Undo,
     /// Redoes the last undone action.
@@ -69,6 +75,8 @@ impl ButtonKind {
             Self::SmartSnap => Command::ToggleSmartSnap,
             Self::GridSnap => Command::ToggleGridSnap,
             Self::Numbering => Command::ToggleNumbering,
+            Self::GridCols(delta) => Command::GridCols(delta),
+            Self::GridRows(delta) => Command::GridRows(delta),
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
         }
@@ -158,10 +166,27 @@ pub fn hit(buttons: &[Button], pos: Vec2) -> Option<Command> {
         .map(|b| b.kind.command())
 }
 
-/// Routes `event`: pointer presses on the visible toolbar never reach the
-/// canvas; everything else is forwarded.
+/// The grid size flyout: right of the strip, top aligned with the `G`
+/// button (ADR-T18-2).
 #[must_use]
-pub fn route(visible: bool, viewport: Vec2, event: InputEvent) -> Route {
+pub fn flyout_panel(viewport: Vec2) -> Aabb {
+    let _ = viewport;
+    todo!()
+}
+
+/// The flyout's buttons: columns `-`, `+`, then rows `-`, `+`.
+#[must_use]
+pub fn flyout_layout(viewport: Vec2) -> Vec<Button> {
+    let _ = viewport;
+    todo!()
+}
+
+/// Routes `event`: pointer presses on the visible toolbar, or on the grid
+/// size flyout when `flyout` is shown, never reach the canvas; everything
+/// else is forwarded.
+#[must_use]
+pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> Route {
+    let _ = flyout;
     match event {
         InputEvent::PointerDown { pos, .. } if visible && panel(viewport).contains(pos) => {
             hit(&layout(viewport), pos).map_or(Route::Swallow, Route::Apply)
@@ -200,10 +225,26 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
             ButtonKind::Numbering => {
                 draw_toggle(rect, "N", editor.helpers().numbering, accent, text);
             }
+            ButtonKind::GridCols(delta) | ButtonKind::GridRows(delta) => {
+                draw_label(rect, step_label(delta), text);
+            }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
         }
     }
+}
+
+/// Draws the grid size flyout with the current columns and rows of
+/// `editor`.
+fn draw_flyout(editor: &Editor, viewport: Vec2) {
+    let _ = (editor, viewport);
+    todo!()
+}
+
+/// The label of a `-`/`+` step button.
+fn step_label(delta: i32) -> &'static str {
+    let _ = delta;
+    todo!()
 }
 
 /// The key that selects `tool`, shown as its label (see `core::keymap`).
