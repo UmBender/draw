@@ -1,0 +1,45 @@
+---
+tags: [moc, tutorial]
+---
+
+# Learning Path
+
+The tutorials, read in order, teach how to build `draw` from scratch. Each task
+writes its tutorial (template: `templates/Tutorial.md`) and states which steps
+it requires. Planned order follows the task chain:
+
+```mermaid
+flowchart LR
+  s0[0 Project layout & tooling] --> s1[1 2D geometry]
+  s0 --> s2[2 Palettes & theme tokens]
+  s1 --> s3[3 Cameras: world vs screen]
+  s1 --> s4[4 Smoothing & Douglas–Peucker]
+  s1 --> s5[5 Shapes & hit-testing]
+  s5 --> s6[6 Undo with transactions]
+  s3 --> s7[7 Immediate-mode rendering]
+  s6 --> s8[8 Editors as state machines]
+  s8 --> s9[9 Drawing tools]
+  s8 --> s10[10 Editing tools]
+  s8 --> s11[11 Keymaps & macros]
+  s7 --> s12[12 The app loop & idle redraw]
+  s9 --> s13[13 Property testing & fuzzing]
+  s13 --> s14[14 Profiling & release builds]
+```
+
+| Step | Tutorial | Task | Status |
+|------|----------|------|--------|
+| 0 | *Project layout, lints and the TDD loop in Rust* | [[T00 Bootstrap]] | planned |
+| 1 | *2D vectors, AABBs and point–segment distance* | [[T01 Geometry primitives]] | planned |
+| 2 | *Palettes and design tokens* | [[T02 Palette and theme tokens]] | planned |
+| 3 | *Cameras: world space vs screen space, zoom at cursor* | [[T03 Camera]] | planned |
+| 4 | *Taming shaky input: resampling, EMA, Douglas–Peucker* | [[T04 Stroke smoothing]] | planned |
+| 5 | *Modelling shapes with enums; hit-testing* | [[T05 Shape model]] | planned |
+| 6 | *Undo/redo with a transaction log* | [[T06 Document and history]] | planned |
+| 7 | *Rendering with macroquad and culling* | [[T07 Renderer]] | planned |
+| 8 | *An editor as an input-driven state machine* | [[T08 Editor core and input model]] | planned |
+| 9 | *Building drawing tools* | [[T09 Creation tools]] | planned |
+| 10 | *Selection, clipboard and fill* | [[T10 Editing tools]] | planned |
+| 11 | *Keymaps and gesture macros* | [[T11 Keymap and macros]] | planned |
+| 12 | *The app loop: input, idle redraw, UI* | [[T12 App shell and toolbar]] | planned |
+| 13 | *Property-based testing and fuzzing with proptest* | [[T13 Fuzz harness]] | planned |
+| 14 | *Profiling and shipping a release build* | [[T14 Performance and release validation]] | planned |

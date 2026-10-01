@@ -1,0 +1,8 @@
+{
+  "newFileLocation": "folder",
+  "newFileFolderPath": "tasks",
+  "attachmentFolderPath": "assets",
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "showFrontmatter": true
+}
