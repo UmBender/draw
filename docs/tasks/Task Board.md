@@ -57,11 +57,11 @@ flowchart TD
 | [[T00 Bootstrap]] | done | — | `task/T00-bootstrap` |
 | [[T01 Geometry primitives]] | done | T00 | `task/T01-geometry` |
 | [[T02 Palette and theme tokens]] | done | T00 | `task/T02-palette` |
-| [[T03 Camera]] | ready | T01 | `task/T03-camera` |
-| [[T04 Stroke smoothing]] | ready | T01 | `task/T04-smoothing` |
-| [[T05 Shape model]] | ready | T01, T02 | `task/T05-shape` |
-| [[T06 Document and history]] | todo | T05 | `task/T06-document` |
-| [[T07 Renderer]] | todo | T03, T05 | `task/T07-renderer` |
+| [[T03 Camera]] | done | T01 | `task/T03-camera` |
+| [[T04 Stroke smoothing]] | done | T01 | `task/T04-smoothing` |
+| [[T05 Shape model]] | done | T01, T02 | `task/T05-shape` |
+| [[T06 Document and history]] | ready | T05 | `task/T06-document` |
+| [[T07 Renderer]] | ready | T03, T05 | `task/T07-renderer` |
 | [[T08 Editor core and input model]] | todo | T03, T06 | `task/T08-editor` |
 | [[T09 Creation tools]] | todo | T04, T08 | `task/T09-creation-tools` |
 | [[T10 Editing tools]] | todo | T08 | `task/T10-editing-tools` |

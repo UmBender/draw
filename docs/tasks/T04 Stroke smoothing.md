@@ -1,7 +1,7 @@
 ---
 id: T04
 title: Stroke smoothing
-status: review
+status: done
 wave: 2
 branch: task/T04-smoothing
 depends_on: [T01]

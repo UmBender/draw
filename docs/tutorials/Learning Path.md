@@ -31,9 +31,9 @@ flowchart LR
 | 0 | [[00 Project layout, lints and the TDD loop]] | [[T00 Bootstrap]] | done |
 | 1 | [[01 2D vectors, AABBs and point-segment distance]] | [[T01 Geometry primitives]] | done |
 | 2 | [[02 Palettes and design tokens]] | [[T02 Palette and theme tokens]] | done |
-| 3 | *Cameras: world space vs screen space, zoom at cursor* | [[T03 Camera]] | planned |
-| 4 | *Taming shaky input: resampling, EMA, Douglas–Peucker* | [[T04 Stroke smoothing]] | planned |
-| 5 | *Modelling shapes with enums; hit-testing* | [[T05 Shape model]] | planned |
+| 3 | [[03 Cameras - world space vs screen space]] | [[T03 Camera]] | done |
+| 4 | [[04 Taming shaky input]] | [[T04 Stroke smoothing]] | done |
+| 5 | [[05 Modelling shapes and hit-testing]] | [[T05 Shape model]] | done |
 | 6 | *Undo/redo with a transaction log* | [[T06 Document and history]] | planned |
 | 7 | *Rendering with macroquad and culling* | [[T07 Renderer]] | planned |
 | 8 | *An editor as an input-driven state machine* | [[T08 Editor core and input model]] | planned |
