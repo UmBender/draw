@@ -1,6 +1,41 @@
 //! Pan and zoom gestures.
 //!
-//! Owned by T08; filled in by that task.
+//! Panning follows the pointer exactly: content moves by the pointer delta in
+//! pixels. Zooming is anchored at the cursor (see
+//! [`Camera::zoom_at`]). Both report whether the camera actually changed so
+//! the editor can skip redraws.
+
+use crate::core::camera::Camera;
+use crate::core::geom::Vec2;
+
+/// An in-progress pan drag.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pan {
+    /// Pointer position (screen) at the previous drag step.
+    last: Vec2,
+}
+
+impl Pan {
+    /// Starts a pan with the pointer at `pos` (screen, finite).
+    #[must_use]
+    pub fn new(pos: Vec2) -> Self {
+        Self { last: pos }
+    }
+
+    /// Moves the pointer to `pos` (screen, finite), panning by the delta.
+    /// Returns whether the camera changed.
+    pub fn drag(&mut self, camera: &mut Camera, pos: Vec2) -> bool {
+        let _ = (camera, pos, self.last);
+        todo!()
+    }
+}
+
+/// Zooms by `notches` wheel steps anchored at `pos` (screen). Returns whether
+/// the camera changed; non-finite input changes nothing.
+pub fn zoom(camera: &mut Camera, pos: Vec2, notches: f32) -> bool {
+    let _ = (camera, pos, notches);
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {

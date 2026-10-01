@@ -1,6 +1,229 @@
 //! The editor: owns all state and routes input to tools.
 //!
-//! Owned by T08; filled in by that task.
+//! [`Editor`] is the single object the shell talks to: it feeds
+//! [`InputEvent`]s to [`Editor::handle`] and [`Command`]s (from the toolbar) to
+//! [`Editor::apply`], then reads state back for drawing. Input is filtered at
+//! the boundary: events with non-finite numbers are dropped, so tools only see
+//! finite screen positions.
+//!
+//! Routing (ADR-T08-1): a middle drag, a left drag with the hand tool or with
+//! `Space` held pans; a right drag erases from any tool; any other left drag
+//! goes to the active tool. One gesture runs at a time; other buttons are
+//! ignored until it ends. Keys go through the keymap, then [`Editor::apply`].
+
+use crate::core::camera::Camera;
+use crate::core::clipboard::{self, Clipboard};
+use crate::core::command::{Command, Tool};
+use crate::core::document::{Document, ShapeId};
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::history::History;
+use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::core::keymap;
+use crate::core::palette::ColorId;
+use crate::core::shape::Shape;
+use crate::core::smoothing::SmoothingLevel;
+use crate::core::tools::navigate::{self, Pan};
+use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
+
+/// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
+pub const WIDTH_LADDER_PX: [f32; 10] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0];
+/// Thinnest stroke width in screen pixels.
+pub const MIN_WIDTH_PX: f32 = WIDTH_LADDER_PX[0];
+/// Thickest stroke width in screen pixels.
+pub const MAX_WIDTH_PX: f32 = WIDTH_LADDER_PX[WIDTH_LADDER_PX.len() - 1];
+/// Stroke width of a new editor, in screen pixels.
+pub const DEFAULT_WIDTH_PX: f32 = 3.0;
+/// Free space kept around content by [`Command::FitView`], in pixels.
+pub const FIT_MARGIN_PX: f32 = 32.0;
+
+/// Maps a key chord to a command; [`keymap::resolve`] by default.
+pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
+
+/// Style for new shapes. The width is in screen pixels; tools convert it to
+/// world units with the zoom at creation time (ADR-0013).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DrawStyle {
+    /// Outline colour.
+    pub color: ColorId,
+    /// Outline width in screen pixels, one of [`WIDTH_LADDER_PX`].
+    pub width_px: f32,
+}
+
+impl Default for DrawStyle {
+    fn default() -> Self {
+        Self {
+            color: ColorId::INK,
+            width_px: DEFAULT_WIDTH_PX,
+        }
+    }
+}
+
+/// The gesture in progress, as seen from outside.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActiveGesture {
+    /// Panning the view.
+    Pan,
+    /// A tool gesture (`Eraser` for a right drag).
+    Tool(Tool),
+}
+
+/// The gesture in progress and the button that drives it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Gesture {
+    /// Panning the view.
+    Pan {
+        /// Button whose release ends the gesture.
+        button: PointerButton,
+        /// Pan state.
+        pan: Pan,
+    },
+    /// A tool gesture.
+    Tool {
+        /// Button whose release ends the gesture.
+        button: PointerButton,
+        /// Tool receiving the events.
+        tool: Tool,
+    },
+}
+
+/// All editor state: document, history, view, tools and settings.
+#[derive(Debug, Clone)]
+pub struct Editor {
+    doc: Document,
+    history: History,
+    camera: Camera,
+    selection: Vec<ShapeId>,
+    clipboard: Clipboard,
+    tools: ToolStates,
+    tool: Tool,
+    style: DrawStyle,
+    smoothing: SmoothingLevel,
+    toolbar_visible: bool,
+    /// Viewport size in pixels (finite, non-negative).
+    viewport: Vec2,
+    /// Last finite pointer position in screen pixels.
+    cursor: Vec2,
+    space_held: bool,
+    gesture: Option<Gesture>,
+    keymap: Keymap,
+}
+
+impl Default for Editor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Editor {
+    /// An empty document at the default view, pen tool, default style.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    /// Replaces the keymap (used by tests and alternative bindings).
+    #[must_use]
+    pub fn with_keymap(self, keymap: Keymap) -> Self {
+        let _ = keymap;
+        todo!()
+    }
+
+    /// Handles one input event. Returns whether the view needs a redraw.
+    pub fn handle(&mut self, event: InputEvent) -> bool {
+        let _ = event;
+        todo!()
+    }
+
+    /// Executes `command`. Returns whether the view needs a redraw.
+    pub fn apply(&mut self, command: Command) -> bool {
+        let _ = command;
+        todo!()
+    }
+
+    /// The document.
+    #[must_use]
+    pub fn document(&self) -> &Document {
+        &self.doc
+    }
+
+    /// The camera.
+    #[must_use]
+    pub fn camera(&self) -> &Camera {
+        &self.camera
+    }
+
+    /// The active tool (what a left drag does).
+    #[must_use]
+    pub fn tool(&self) -> Tool {
+        self.tool
+    }
+
+    /// Style for new shapes.
+    #[must_use]
+    pub fn style(&self) -> DrawStyle {
+        self.style
+    }
+
+    /// Anti-tremor level for new strokes.
+    #[must_use]
+    pub fn smoothing(&self) -> SmoothingLevel {
+        self.smoothing
+    }
+
+    /// Selected shape ids; every id exists in the document.
+    #[must_use]
+    pub fn selection(&self) -> &[ShapeId] {
+        &self.selection
+    }
+
+    /// World bounds of the selected shapes, `None` if nothing is selected.
+    #[must_use]
+    pub fn selection_bounds(&self) -> Option<Aabb> {
+        todo!()
+    }
+
+    /// The first shape of [`Editor::overlay`]: the shape being drawn, if any.
+    #[must_use]
+    pub fn preview(&self) -> Option<Shape> {
+        todo!()
+    }
+
+    /// What the gesture in progress draws on top of the document.
+    #[must_use]
+    pub fn overlay(&self) -> Overlay {
+        todo!()
+    }
+
+    /// The gesture in progress, if any.
+    #[must_use]
+    pub fn active_gesture(&self) -> Option<ActiveGesture> {
+        todo!()
+    }
+
+    /// Whether the toolbar is shown.
+    #[must_use]
+    pub fn toolbar_visible(&self) -> bool {
+        self.toolbar_visible
+    }
+
+    /// Whether there is an action to undo.
+    #[must_use]
+    pub fn can_undo(&self) -> bool {
+        self.history.can_undo()
+    }
+
+    /// Whether there is an action to redo.
+    #[must_use]
+    pub fn can_redo(&self) -> bool {
+        self.history.can_redo()
+    }
+
+    /// Viewport size in pixels, as last reported by [`InputEvent::Resize`].
+    #[must_use]
+    pub fn viewport(&self) -> Vec2 {
+        self.viewport
+    }
+}
 
 #[cfg(test)]
 mod tests {
