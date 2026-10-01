@@ -49,7 +49,7 @@ flowchart LR
 | 13 | [[13 Property-based testing and fuzzing]] | [[T13 Fuzz harness]] | done |
 | 14 | *Profiling and shipping a release build* | [[T14 Performance and release validation]] | planned |
 | 15 | [[15 Anti-aliasing and multisampling]] | [[T15 Anti-aliasing]] | done |
-| 16 | *Growing a data model without breaking it* | [[T16 Shape model v2 and helper skeleton]] | planned |
+| 16 | [[16 Growing a data model without breaking it]] | [[T16 Shape model v2 and helper skeleton]] | done |
 | 17 | *Snapping and alignment guides* | [[T17 Snapping]] | planned |
 | 18 | *A grid tool with live parameters* | [[T18 Grid tool]] | planned |
 | 19 | *Auto-numbering and undoable counters* | [[T19 Auto-numbering]] | planned |

@@ -1,7 +1,7 @@
 ---
 id: T16
 title: Shape model v2 and helper skeleton
-status: review
+status: done
 wave: 7
 branch: task/T16-helper-skeleton
 depends_on: [T12, T13]

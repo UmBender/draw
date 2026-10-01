@@ -1,7 +1,7 @@
 ---
 id: T17
 title: Snapping
-status: todo
+status: ready
 wave: 8
 branch: task/T17-snapping
 depends_on: [T16]

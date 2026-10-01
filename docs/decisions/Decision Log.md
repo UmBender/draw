@@ -12,7 +12,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 1 | [[ADR-0001 Record decisions as an append-only log]] | accepted | decision | — | — |
 | 2 | [[ADR-0002 Rust and macroquad]] | accepted | decision | 0001 | — |
 | 3 | [[ADR-0003 Headless core and thin shell]] | accepted | decision | 0002 | — |
-| 4 | [[ADR-0004 Vector object model]] | accepted | decision | 0003 | — |
+| 4 | [[ADR-0004 Vector object model]] | accepted | decision | 0003 | amended by T16-1 |
 | 5 | [[ADR-0005 Undo via transaction log]] | accepted | decision | 0004 | — |
 | 6 | [[ADR-0006 Redraw on demand]] | accepted | decision | 0002, 0003 | — |
 | 7 | [[ADR-0007 Anti-tremor pipeline]] | accepted | decision | 0004 | — |
@@ -30,3 +30,6 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 19 | [[ADR-T11-1 Exact modifier matching]] | accepted | decision | 0003 | — |
 | 20 | [[ADR-T12-1 Blocking event loop with cached frame]] | accepted | decision | 0006, 0002 | settles the open choice in 0006 |
 | 21 | [[ADR-T15-1 MSAA on the cached frame]] | accepted | decision | 0006, T12-1, 0014 | — |
+| 22 | [[ADR-T16-1 Grid shape and shape labels]] | accepted | decision | 0013, T07-1 | amends 0004 |
+| 23 | [[ADR-T16-2 Helper key bindings]] | accepted | decision | T11-1 | — |
+| 24 | [[ADR-T16-3 Helper settings and hooks]] | accepted | decision | T08-1, T16-1 | — |
