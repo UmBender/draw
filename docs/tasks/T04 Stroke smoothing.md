@@ -1,7 +1,7 @@
 ---
 id: T04
 title: Stroke smoothing
-status: in-progress
+status: review
 wave: 2
 branch: task/T04-smoothing
 depends_on: [T01]
@@ -40,8 +40,9 @@ tolerances are converted to world units by multiplying with `px_to_world`
   `α ≥ 1` the raw point is stored exactly. The first point is kept unfiltered.
   Non-finite points are ignored (return `false`, change nothing).
   Bad construction input never panics: a non-finite or non-positive `px_to_world`
-  is treated as `1.0`; `alpha` is clamped to `(0, 1]` (non-finite → `1.0`, ≤ 0 →
-  `MIN_ALPHA` = 0.01, so the stroke still moves); negative or non-finite `min_dist_px`/`epsilon_px` → `0`.
+  is treated as `1.0`; `alpha` is clamped to `[MIN_ALPHA, 1]` (`MIN_ALPHA` = 0.01,
+  so the stroke still moves; non-finite → `1.0`); negative or non-finite
+  `min_dist_px`/`epsilon_px` → `0`.
   *Tests:* `push_first_point_is_kept_unfiltered`, `push_drops_close_points`,
   `push_min_dist_scales_with_px_to_world`, `push_ignores_non_finite`,
   `push_drops_exact_duplicates`, `ema_reduces_jitter` (zig-zag input → smaller
@@ -84,10 +85,37 @@ Curve fitting, pressure.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec — `docs(T04): specify smoothing acceptance criteria` (8bc940d)
+- [x] tests — `test(T04): add failing tests for smoothing levels, Smoother and RDP` (08a2a49)
+- [x] models — `feat(T04): add SmoothingLevel, SmoothingParams, Smoother and simplify_rdp` (a2e9512)
+- [x] behaviour — `feat(T04): implement resampling, EMA and iterative RDP` (e01c85d)
+- [x] quality — `chore(T04): pass clippy and rustfmt` (32f7fb7)
+- [x] docs — `docs(T04): add feature note and tutorial`
 
 ## Learning path
 
-Step 4 — requires step 1.
+Step 4 — requires step 1. Tutorial: [[04 Taming shaky input]].
 
 ## Log
+
+- Red phase confirmed: the tests commit failed to compile (65 errors,
+  E0425/E0433/E0422: no `SmoothingLevel`, `SmoothingParams`, `Smoother`,
+  `simplify_rdp`); the models commit built and 31 of 32 tests failed on
+  `todo!()` (`level_default_is_medium` passed via the derived `Default`); the
+  behaviour commit turned all 32 green. The `proptest-regressions/` file written
+  by the `todo!()` panics was deleted; no real failure was found, also with
+  `PROPTEST_CASES=20000` in release.
+- Added beyond the original spec (stated in the refined *Spec*):
+  `SmoothingLevel::label()` for the toolbar/status text, the public `MIN_ALPHA`
+  clamp, parameter/scale sanitisation in `Smoother::new`, exact duplicates
+  dropped at every level, and `eps` NaN/≤ 0 → identity in `simplify_rdp`.
+- The spec's "100 000-point input" check became a 10 000-point sawtooth on a
+  256 KiB thread (amended in the tests commit): a deep-splitting input makes RDP
+  O(n²), so 100 000 points would be slow in debug, while the small stack proves
+  the iteration more directly.
+- EMA is computed as `prev·(1−α) + raw·α` instead of `prev + α(raw − prev)`:
+  same value, but it cannot overflow for finite coordinates near `f32::MAX`.
+- Quality: clippy pedantic `many_single_char_names` and `match_wild_err_arm` in
+  tests; fixed without allows. No new ADR: behaviour follows ADR-0007 exactly.
+- Integrator: [[Learning Path]] row 4 → [[04 Taming shaky input]];
+  [[Feature Index]] → [[Anti-tremor strokes]] (engine only; pen wiring in T09).
