@@ -68,6 +68,7 @@ Added by [[T16 Shape model v2 and helper skeleton]]
 | `Shift+N` | Restart numbering at 1 |
 | `→` / `←` | Grid: one more / one less column (1–64, live while dragging) |
 | `↓` / `↑` | Grid: one more / one less row (1–64, live while dragging) |
+| `I` | Grid: 0-based axis indices on / off ([[ADR-T18-3 Grid axis indices]]) |
 
 ## Gesture macros
 

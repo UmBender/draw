@@ -1,7 +1,7 @@
 ---
 id: T18
 title: Grid tool
-status: in-progress
+status: review
 wave: 8
 branch: task/T18-grid-tool
 depends_on: [T16]
@@ -114,7 +114,7 @@ field, `grid_axis_labels`, bounds), `src/core/command.rs`
 
 - [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 - AC-6 flyout: [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
-- AC-7 axes: [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- AC-7 axes: [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
@@ -160,3 +160,16 @@ Step 18 — requires steps 9 and 16.
   oriented by the drag; one scheme only. `axes: bool` on `Shape::Grid`,
   `I` key and a flyout row ([[ADR-T18-3 Grid axis indices]]). Files owned
   amended (shape model, command, editor helpers, keymap, renderer).
+- AC-7 tests: shape placement/orientation/bounds/translate, editor
+  toggle, `I` binding, grid tool copy, flyout fifth button, shared font
+  size; red as compile errors (missing field, command, functions).
+- AC-7 behaviour: `grid_axis_labels` uses a signed cell size so one
+  formula covers every drag direction; bounds union the corner one cell
+  beyond `a`. `render::draw_text_centered` factored out of `draw_label`
+  and reused for indices. `tests/fuzz.rs` needed no change: random keys
+  already include `I`.
+- AC-7 quality: four bools in `Helpers` trip
+  `clippy::struct_excessive_bools`; allowed locally with a reason
+  (ADR-0010). `PROPTEST_CASES=20000` fuzz green.
+- AC-7 not checked on screen: index legibility and placement need a
+  manual look.

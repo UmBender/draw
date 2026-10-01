@@ -71,11 +71,20 @@ nothing: the toolbar's grid flyout (`src/shell/toolbar.rs`) has `-`/`+`
 buttons that send the *same* commands, and it draws the values straight from
 `Editor::helpers()`. Keys and mouse can never disagree.
 
+The axis indices (`I`) are one more such parameter, but they are
+*copied into the shape* at release (`Shape::Grid::axes`), because a grid
+must keep its indices after the setting changes. Their orientation needs no
+extra state at all: the tool stores `a` = drag start and `b` = drag end,
+and `shape::grid_axis_labels` counts from `a` toward `b` with a *signed*
+cell size, so one formula covers all four drag directions.
+
 ## Try it
 
 - In `grid::tests`, write a test that drags, sets `f.dims(2, 8)` with
   `Shift` held on every event, and checks the committed box is four times
   taller than wide.
+- In `shape::tests`, drag a grid from bottom-left to top-right and predict
+  where row 0 sits before running the test.
 - Change `Drag::shape` to clamp to `1..=8` instead of `GRID_MAX_CELLS`:
   the range property `committed_grid_is_finite_and_in_range` still passes
   (8 is in range), but `dims_persist_for_next_grid` (9 rows) fails. A
