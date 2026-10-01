@@ -180,6 +180,7 @@ impl Document {
     }
 
     /// Shapes with their ids, bottom to top.
+    #[must_use]
     pub fn shapes(
         &self,
     ) -> impl DoubleEndedIterator<Item = (ShapeId, &Shape)> + ExactSizeIterator + '_ {
@@ -622,7 +623,10 @@ mod tests {
 
         assert_eq!(doc.apply(&tx), Ok(()));
 
-        assert_eq!(snapshot(&doc), vec![(new_id, line(9.0)), (ids[1], line(5.0))]);
+        assert_eq!(
+            snapshot(&doc),
+            vec![(new_id, line(9.0)), (ids[1], line(5.0))]
+        );
     }
 
     #[test]
@@ -655,7 +659,10 @@ mod tests {
 
         let result = doc.apply(&tx);
 
-        assert_eq!(result, Err(ApplyError::IndexOutOfRange { index: 10, len: 3 }));
+        assert_eq!(
+            result,
+            Err(ApplyError::IndexOutOfRange { index: 10, len: 3 })
+        );
         assert_eq!(snapshot(&doc), before);
         assert!(doc.next_id() > new_id);
     }
@@ -691,7 +698,10 @@ mod tests {
             shape: line(0.0),
         }]);
 
-        assert_eq!(doc.apply(&tx), Err(ApplyError::IndexOutOfRange { index: 2, len: 1 }));
+        assert_eq!(
+            doc.apply(&tx),
+            Err(ApplyError::IndexOutOfRange { index: 2, len: 1 })
+        );
         assert_eq!(doc.len(), 1);
     }
 
