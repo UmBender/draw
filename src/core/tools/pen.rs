@@ -1,17 +1,33 @@
 //! Freehand pen with anti-tremor smoothing.
 //!
-//! Owned by T09; the signatures are fixed by ADR-T08-1, the bodies are stubs
-//! until T09 fills them in.
+//! `Down` starts a [`Smoother`] at the current level and scale, `Move` feeds it
+//! world positions, `Up` finishes the stroke and commits it as one undo step
+//! (ADR-0007, ADR-T08-1). The width is chosen in screen pixels and stored in
+//! world units at the zoom of the `Down` (ADR-0013).
 
-use super::{Overlay, Pointer, ToolCtx, ToolView};
+use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::shape::{Shape, Style};
+use crate::core::smoothing::Smoother;
 
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default)]
-pub struct State;
+pub struct State {
+    /// The stroke being drawn, if the button is down.
+    stroke: Option<LiveStroke>,
+}
+
+/// A stroke in progress.
+#[derive(Debug, Clone)]
+struct LiveStroke {
+    /// Smoothing pipeline holding the points so far (world units).
+    smoother: Smoother,
+    /// Style sampled on `Down`, width already in world units.
+    style: Style,
+}
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer);
+    let _ = (state, ctx, pointer, Phase::Down);
     false
 }
 
@@ -27,6 +43,18 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 pub fn cancel(state: &mut State) -> bool {
     let _ = state;
     false
+}
+
+/// Starts a stroke at `ctx`'s smoothing level, scale and style.
+fn begin(ctx: &ToolCtx<'_>) -> LiveStroke {
+    let _ = ctx;
+    todo!("start the smoother")
+}
+
+/// The stroke as a shape with the given points.
+fn to_shape(points: Vec<crate::core::geom::Vec2>, style: Style) -> Shape {
+    let _ = (points, style);
+    todo!("build the stroke shape")
 }
 
 #[cfg(test)]

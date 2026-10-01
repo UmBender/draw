@@ -1,17 +1,72 @@
 //! Line, arrow, rectangle and ellipse tools (`ctx.tool` says which).
 //!
-//! Owned by T09; the signatures are fixed by ADR-T08-1, the bodies are stubs
-//! until T09 fills them in.
+//! A drag from `Down` to `Up` spans the shape; while dragging the shape is
+//! shown as a preview and on `Up` it is committed as one undo step
+//! (ADR-T08-1). `Shift` constrains the shape: square, circle, or a 45° step
+//! for lines and arrows. Drags shorter than [`MIN_DRAG_PX`] on screen are
+//! treated as stray clicks and commit nothing.
 
-use super::{Overlay, Pointer, ToolCtx, ToolView};
+use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::command::Tool;
+use crate::core::geom::Vec2;
+use crate::core::shape::{Shape, Style};
+
+/// Shortest drag, in screen pixels, that creates a shape.
+pub const MIN_DRAG_PX: f32 = 2.0;
 
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default)]
-pub struct State;
+pub struct State {
+    /// The drag in progress, if the button is down.
+    drag: Option<Drag>,
+}
+
+/// Which shape a drag creates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// [`Shape::Line`].
+    Line,
+    /// [`Shape::Arrow`].
+    Arrow,
+    /// [`Shape::Rect`].
+    Rect,
+    /// [`Shape::Ellipse`].
+    Ellipse,
+}
+
+impl Kind {
+    /// The kind drawn by `tool`, `None` for tools that are not shape tools.
+    fn from_tool(tool: Tool) -> Option<Self> {
+        let _ = tool;
+        todo!("map tools to shape kinds")
+    }
+}
+
+/// A drag in progress.
+#[derive(Debug, Clone, Copy)]
+struct Drag {
+    /// Shape being created.
+    kind: Kind,
+    /// World position of the `Down`.
+    start: Vec2,
+    /// World position of the latest event.
+    end: Vec2,
+    /// Whether `Shift` was held on the latest event.
+    shift: bool,
+    /// Style sampled on `Down`, width already in world units.
+    style: Style,
+}
+
+impl Drag {
+    /// The shape this drag currently spans, constrained if `shift` is held.
+    fn shape(&self) -> Shape {
+        todo!("build the dragged shape")
+    }
+}
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = (state, ctx, pointer);
+    let _ = (state, ctx, pointer, Phase::Down);
     false
 }
 
@@ -27,6 +82,18 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 pub fn cancel(state: &mut State) -> bool {
     let _ = state;
     false
+}
+
+/// `end` moved so that the box from `start` is a square.
+fn constrain_square(start: Vec2, end: Vec2) -> Vec2 {
+    let _ = (start, end);
+    todo!("square constraint")
+}
+
+/// `end` projected onto the multiple of 45° from `start` nearest the drag.
+fn constrain_45(start: Vec2, end: Vec2) -> Vec2 {
+    let _ = (start, end);
+    todo!("45 degree constraint")
 }
 
 #[cfg(test)]
