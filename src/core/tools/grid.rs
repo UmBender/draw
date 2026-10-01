@@ -7,7 +7,7 @@
 //! (ADR-T17-1).
 //!
 //! The dimensions are never stored in the drag: [`preview`] and the commit
-//! read them from [`Helpers`](crate::core::editor::Helpers) in
+//! read them from [`Helpers`] in
 //! [`ToolView::style`], so the arrow keys change them live and the grid
 //! gets the values at release (ADR-T18-1). `Shift` makes the cells square.
 
@@ -107,8 +107,8 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
             let Some(mut drag) = state.drag.take() else {
                 return false;
             };
-            drag.end = snap::snap_end(drag.start, world, DragKind::Box, pointer.mods, &ctx.view())
-                .point;
+            drag.end =
+                snap::snap_end(drag.start, world, DragKind::Box, pointer.mods, &ctx.view()).point;
             drag.shift = shift;
             let drag_px = ctx.camera.screen_len(drag.start.distance(drag.end));
             if drag_px.is_nan() || drag_px < MIN_DRAG_PX {
