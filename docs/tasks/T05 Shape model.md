@@ -1,7 +1,7 @@
 ---
 id: T05
 title: Shape model
-status: in-progress
+status: review
 wave: 2
 branch: task/T05-shape
 depends_on: [T01, T02]
@@ -84,10 +84,39 @@ Rendering, storage, ids.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec — `docs(T05): specify shape model acceptance criteria` (8bb8b80)
+- [x] tests — `test(T05): add failing tests for shape model` (a46fa47)
+- [x] models — `feat(T05): add Style, Shape and arrow head signatures` (3222ac9)
+- [x] behaviour — `feat(T05): implement bounds, hit-testing, contains and translate` (89c105e)
+- [x] quality — `chore(T05): pass clippy and rustfmt` (9f639bc)
+- [x] docs — `docs(T05): add feature note and tutorial`
 
 ## Learning path
 
-Step 5 — requires step 1 (and step 2 for colours).
+Step 5 — requires step 1 (and step 2 for colours). Tutorial:
+[[05 Modelling shapes and hit-testing]].
 
 ## Log
+
+- Red phase confirmed: tests commit failed to compile (52 errors, E0425/E0433/
+  E0422: no `Shape`, `Style`, `arrow_head`, `ARROW_HEAD_*`); models commit
+  built, 3 construction tests passed and 36 failed on `todo!()`; behaviour
+  commit turned all 39 green. The `proptest-regressions/` folder written
+  during the red phase was deleted (no real failure).
+- Behaviour step caught two spec points: an empty stroke's bounds must not be
+  grown by the width (zero-size box at the origin), and a degenerate
+  (zero-area or NaN) arrow head triangle must contain nothing.
+- Added beyond the original spec (stated in the refined *Spec*): accessors
+  `style()`, `fill()`, `is_closed()`; public constants
+  `ARROW_HEAD_LENGTH_PER_WIDTH = 4`, `ARROW_HEAD_MIN_LENGTH = 8`,
+  `ARROW_HEAD_HALF_WIDTH_RATIO = 0.5`; `translate` takes `&mut self`,
+  `with_fill` consumes `self`.
+- Ellipse outline distance uses the gradient-normalised estimate
+  `k0 (k0 − 1) / k1` (exact on the axes and on the outline); judged an
+  implementation detail, not an ADR.
+- Quality: clippy `neg_cmp_op_on_partial_ord` (rewritten as explicit NaN
+  checks) and pedantic `many_single_char_names`; rustfmt reflowed tests.
+  `PROPTEST_CASES=20000` run of `translate_moves_bounds_by_delta` passes.
+- No new ADR: model is exactly ADR-0004 + ADR-0013.
+- Integrator: [[Learning Path]] row 5 and [[Feature Index]] need
+  [[05 Modelling shapes and hit-testing]] and [[Shapes]].
