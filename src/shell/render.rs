@@ -18,6 +18,7 @@ use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, THEME, palette};
 use crate::core::shape::{Shape, arrow_head, grid_lines};
+use crate::core::snap::GRID_STEP;
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
 pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
@@ -63,6 +64,39 @@ pub const LABEL_CHAR_ASPECT: f32 = 0.6;
 /// Font sizes labels are rasterized at, ascending; other sizes are scaled
 /// from the nearest one at or above (or the largest).
 pub const LABEL_RASTER_SIZES: [u16; 4] = [16, 32, 64, 128];
+
+/// Smallest distance in pixels between two dots of the snap dot grid.
+pub const DOT_GRID_MIN_PX: f32 = 12.0;
+
+/// Side of one dot of the snap dot grid, in pixels.
+pub const DOT_SIZE_PX: f32 = 2.0;
+
+/// Opacity of the dot grid (the theme border colour, faded).
+pub const DOT_GRID_ALPHA: f32 = 0.35;
+
+/// Most dots drawn in one frame.
+pub const DOT_GRID_MAX_DOTS: usize = 100_000;
+
+/// Width of an alignment guide in pixels.
+pub const GUIDE_WIDTH_PX: f32 = 1.0;
+
+/// World distance between drawn dots at `zoom`: [`GRID_STEP`] doubled until
+/// the dots are at least [`DOT_GRID_MIN_PX`] apart on screen. `None` for a
+/// non-finite or non-positive zoom, or one so small no spacing fits.
+#[must_use]
+pub fn dot_grid_spacing(zoom: f32) -> Option<f32> {
+    let _ = zoom;
+    todo!()
+}
+
+/// The multiples of `spacing` on both axes inside `view`, row by row, at
+/// most [`DOT_GRID_MAX_DOTS`]. Empty for a non-finite view or a spacing
+/// that is not finite and positive.
+pub fn dot_grid_points(view: Aabb, spacing: f32) -> impl Iterator<Item = Vec2> {
+    let _ = (view, spacing);
+    todo!();
+    std::iter::empty()
+}
 
 /// On-screen outline width in pixels for a world-space `world_width`:
 /// `world_width * zoom`, at least [`MIN_SCREEN_WIDTH_PX`]. A NaN, infinite or
@@ -780,7 +814,7 @@ mod tests {
     fn dot_grid_spacing_at_unit_zoom_is_grid_step() {
         let spacing = dot_grid_spacing(1.0);
 
-        assert!(spacing.is_some_and(|s| approx_eq(s, crate::core::snap::GRID_STEP, EPS)));
+        assert!(spacing.is_some_and(|s| approx_eq(s, GRID_STEP, EPS)));
     }
 
     #[test]
@@ -796,7 +830,7 @@ mod tests {
         let Some(spacing) = spacing else {
             panic!("finite zoom has a spacing");
         };
-        let ratio = spacing / crate::core::snap::GRID_STEP;
+        let ratio = spacing / GRID_STEP;
         assert!(
             approx_eq(ratio.log2().round().exp2(), ratio, EPS),
             "{ratio}"

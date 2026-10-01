@@ -1,14 +1,111 @@
-//! Snapping of dragged points (T17).
+//! Snapping of dragged points (T17, ADR-T17-1).
 //!
 //! Smart snap (round shapes, matching sizes, alignment) and grid snap are
-//! switched by [`Helpers`](crate::core::editor::Helpers) flags, which tools
-//! read from [`ToolView::style`] (ADR-T16-3). Alignment guides go to
+//! switched by [`Helpers`] flags, which tools read from
+//! [`ToolView::style`] (ADR-T16-3). Alignment guides go to
 //! [`Overlay::guides`](crate::core::tools::Overlay::guides).
 //!
-//! Skeleton (T16): [`snap_end`] is the identity until T17 fills it in.
+//! The moving end of a drag goes grid → size → align → round
+//! ([`snap_drag`]); the start point goes grid → align ([`snap_point`]).
+//! Tolerances are screen pixels converted with the camera. Every function
+//! is pure and total: a step whose result would not be finite is skipped.
 
+use crate::core::camera::Camera;
+use crate::core::document::Document;
+use crate::core::editor::Helpers;
 use crate::core::geom::Vec2;
+use crate::core::input::Modifiers;
+use crate::core::shape::Shape;
 use crate::core::tools::ToolView;
+
+/// A box drag snaps to round when `min(|w|,|h|) / max(|w|,|h|)` is at least
+/// `1 - ROUND_TOLERANCE`.
+pub const ROUND_TOLERANCE: f32 = 0.1;
+
+/// How close, in screen pixels, a dragged size must be to a target size.
+pub const SIZE_TOLERANCE_PX: f32 = 6.0;
+
+/// How close, in screen pixels, a dragged line must be to a target line.
+pub const ALIGN_TOLERANCE_PX: f32 = 6.0;
+
+/// Largest integer multiple of a target size a drag snaps to.
+pub const MAX_SIZE_MULTIPLE: u8 = 8;
+
+/// Distance between grid lines in world units.
+pub const GRID_STEP: f32 = 20.0;
+
+/// What a drag spans.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DragKind {
+    /// Two free points: lines and arrows. Only grid and align apply.
+    Point,
+    /// A box with corners at the two points: rectangles and ellipses.
+    Box,
+}
+
+/// Which snaps are active for one event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Snaps {
+    /// Snap to the world grid.
+    pub grid: bool,
+    /// Snap sizes, alignment and round shapes.
+    pub smart: bool,
+}
+
+impl Snaps {
+    /// No snapping.
+    pub const NONE: Self = Self {
+        grid: false,
+        smart: false,
+    };
+
+    /// The snaps `helpers` switch on, or none while `Alt` is held.
+    #[must_use]
+    pub fn new(helpers: Helpers, mods: Modifiers) -> Self {
+        let _ = (helpers, mods);
+        todo!()
+    }
+}
+
+/// A line a dragged coordinate can align with: `value` on one axis, from
+/// `lo` to `hi` on the other (used to draw the guide).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Anchor {
+    /// Coordinate of the line.
+    pub value: f32,
+    /// Smallest extent of the target along the line.
+    pub lo: f32,
+    /// Largest extent of the target along the line.
+    pub hi: f32,
+}
+
+/// What a drag can snap to, collected from shapes.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Targets {
+    /// Vertical lines (`x = value`).
+    pub xs: Vec<Anchor>,
+    /// Horizontal lines (`y = value`).
+    pub ys: Vec<Anchor>,
+    /// Box widths and heights, grid cell sizes; all finite and positive.
+    pub sizes: Vec<f32>,
+}
+
+impl Targets {
+    /// Targets of `shapes`: edges and centres of rectangle, ellipse and grid
+    /// boxes, line and arrow endpoints, box and grid cell sizes. Strokes and
+    /// non-finite values are skipped.
+    #[must_use]
+    pub fn from_shapes<'a>(shapes: impl IntoIterator<Item = &'a Shape>) -> Self {
+        let _ = shapes.into_iter();
+        todo!()
+    }
+
+    /// Targets of every shape in `doc`.
+    #[must_use]
+    pub fn from_document(doc: &Document) -> Self {
+        Self::from_shapes(doc.shapes().map(|(_, shape)| shape))
+    }
+}
 
 /// A snapped point and the guides that explain it.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -19,17 +116,101 @@ pub struct Snapped {
     pub guides: Vec<[Vec2; 2]>,
 }
 
-/// Snaps the moving end `end` of a drag that started at `start` (both in
-/// world coordinates) according to the helper flags in `view`.
-///
-/// Skeleton: returns `end` unchanged with no guides.
+/// `p` moved to the nearest multiple of `step` on each axis. Unchanged if
+/// `step` is not finite and positive or the result would not be finite.
 #[must_use]
-pub fn snap_end(start: Vec2, end: Vec2, view: &ToolView<'_>) -> Snapped {
-    let _ = (start, view);
-    Snapped {
-        point: end,
-        guides: Vec::new(),
-    }
+pub fn snap_to_grid(p: Vec2, step: f32) -> Vec2 {
+    let _ = (p, step);
+    todo!()
+}
+
+/// `end` moved so the box from `start` is square when it is within
+/// [`ROUND_TOLERANCE`] of square: both sides take the larger length, the
+/// drag direction is kept.
+#[must_use]
+pub fn snap_round(start: Vec2, end: Vec2) -> Vec2 {
+    let _ = (start, end);
+    todo!()
+}
+
+/// `end` moved so each side of the box from `start` is `k · c` for a size
+/// `c` in `sizes` and `k` in `1..=MAX_SIZE_MULTIPLE`, when within
+/// `tolerance` (world units). The nearest wins, the smaller `k` on ties.
+#[must_use]
+pub fn snap_size(start: Vec2, end: Vec2, sizes: &[f32], tolerance: f32) -> Vec2 {
+    let _ = (start, end, sizes, tolerance);
+    todo!()
+}
+
+/// `p` moved per axis onto the nearest target line within `tolerance`.
+#[must_use]
+pub fn align_point(p: Vec2, targets: &Targets, tolerance: f32) -> Vec2 {
+    let _ = (p, targets, tolerance);
+    todo!()
+}
+
+/// `end` moved per axis onto the nearest target line within `tolerance`;
+/// for a [`DragKind::Box`] the box centre may land on the line instead.
+#[must_use]
+pub fn align_end(
+    start: Vec2,
+    end: Vec2,
+    kind: DragKind,
+    targets: &Targets,
+    tolerance: f32,
+) -> Vec2 {
+    let _ = (start, end, kind, targets, tolerance);
+    todo!()
+}
+
+/// One guide for each x/y line of the drag (box edges and centre, or the
+/// two points) lying on a target line, spanning the target and the drag.
+#[must_use]
+pub fn guides(start: Vec2, end: Vec2, kind: DragKind, targets: &Targets) -> Vec<[Vec2; 2]> {
+    let _ = (start, end, kind, targets);
+    todo!()
+}
+
+/// Snaps a drag's start point: grid, then alignment. No guides.
+#[must_use]
+pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera) -> Vec2 {
+    let _ = (p, snaps, targets, camera);
+    todo!()
+}
+
+/// Snaps the moving `end` of a drag from `start`: grid, size, align, round
+/// (size and round only for boxes), with guides when smart snap is on.
+#[must_use]
+pub fn snap_drag(
+    start: Vec2,
+    end: Vec2,
+    kind: DragKind,
+    snaps: Snaps,
+    targets: &Targets,
+    camera: &Camera,
+) -> Snapped {
+    let _ = (start, end, kind, snaps, targets, camera);
+    todo!()
+}
+
+/// [`snap_point`] with the helpers, document and camera of `view`.
+#[must_use]
+pub fn snap_start(p: Vec2, mods: Modifiers, view: &ToolView<'_>) -> Vec2 {
+    let _ = (p, mods, view);
+    todo!()
+}
+
+/// [`snap_drag`] with the helpers, document and camera of `view`.
+#[must_use]
+pub fn snap_end(
+    start: Vec2,
+    end: Vec2,
+    kind: DragKind,
+    mods: Modifiers,
+    view: &ToolView<'_>,
+) -> Snapped {
+    let _ = (start, end, kind, mods, view);
+    todo!()
 }
 
 #[cfg(test)]
