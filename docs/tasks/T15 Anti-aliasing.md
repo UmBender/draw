@@ -1,7 +1,7 @@
 ---
 id: T15
 title: Anti-aliasing
-status: review
+status: done
 wave: 7
 branch: task/T15-antialiasing
 depends_on: [T12]

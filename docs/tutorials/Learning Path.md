@@ -48,7 +48,7 @@ flowchart LR
 | 12 | [[12 The app loop, idle redraw and UI]] | [[T12 App shell and toolbar]] | done |
 | 13 | [[13 Property-based testing and fuzzing]] | [[T13 Fuzz harness]] | done |
 | 14 | *Profiling and shipping a release build* | [[T14 Performance and release validation]] | planned |
-| 15 | *Anti-aliasing and multisampling* | [[T15 Anti-aliasing]] | planned |
+| 15 | [[15 Anti-aliasing and multisampling]] | [[T15 Anti-aliasing]] | done |
 | 16 | *Growing a data model without breaking it* | [[T16 Shape model v2 and helper skeleton]] | planned |
 | 17 | *Snapping and alignment guides* | [[T17 Snapping]] | planned |
 | 18 | *A grid tool with live parameters* | [[T18 Grid tool]] | planned |

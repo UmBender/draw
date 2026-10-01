@@ -81,7 +81,7 @@ flowchart TD
 | [[T11 Keymap and macros]] | done | T08 | `task/T11-keymap` |
 | [[T12 App shell and toolbar]] | done | T07, T09, T10, T11 | `task/T12-app-shell` |
 | [[T13 Fuzz harness]] | done | T09, T10, T11 | `task/T13-fuzz` |
-| [[T15 Anti-aliasing]] | ready | T12 | `task/T15-antialiasing` |
+| [[T15 Anti-aliasing]] | done | T12 | `task/T15-antialiasing` |
 | [[T16 Shape model v2 and helper skeleton]] | ready | T12, T13 | `task/T16-helper-skeleton` |
 | [[T17 Snapping]] | todo | T16 | `task/T17-snapping` |
 | [[T18 Grid tool]] | todo | T16 | `task/T18-grid-tool` |

@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]"]
+adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]"]
 ---
 
 # Architecture
@@ -69,7 +69,9 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    Both return whether anything changed.
 3. If anything changed (or the window size did), the scene — shapes minus
    `overlay.hidden`, overlay shapes, selection, marquee, toolbar — is
-   re-rendered into a cached render target ([[ADR-0006 Redraw on demand]]).
+   re-rendered into a cached, 4× multisampled render target
+   ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]]).
+   Ideas to make this cheaper: [[Rendering performance options]].
 4. The cached texture is blitted to the window (one quad).
 
 ## Invariants (checked by the fuzzer)
