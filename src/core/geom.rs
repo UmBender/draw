@@ -15,7 +15,7 @@ use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 /// infinities are never "approximately equal".
 #[must_use]
 pub fn approx_eq(a: f32, b: f32, eps: f32) -> bool {
-    todo!("approx_eq({a}, {b}, {eps})")
+    eps.is_finite() && (a - b).abs() <= eps
 }
 
 /// A 2D vector or point in world or screen space.
@@ -40,50 +40,50 @@ impl Vec2 {
     /// Euclidean length `√(x² + y²)`.
     #[must_use]
     pub fn length(self) -> f32 {
-        todo!()
+        self.length_sq().sqrt()
     }
 
     /// Squared length `x² + y²`; cheaper than [`Vec2::length`] for comparisons.
     #[must_use]
     pub fn length_sq(self) -> f32 {
-        todo!()
+        self.dot(self)
     }
 
     /// Dot product `self · other`.
     #[must_use]
     pub fn dot(self, other: Self) -> f32 {
-        todo!("{other:?}")
+        self.x * other.x + self.y * other.y
     }
 
     /// Euclidean distance between two points.
     #[must_use]
     pub fn distance(self, other: Self) -> f32 {
-        todo!("{other:?}")
+        (other - self).length()
     }
 
     /// Linear interpolation: `t = 0` gives `self`, `t = 1` gives `other`.
     /// `t` is not clamped, so values outside `[0, 1]` extrapolate.
     #[must_use]
     pub fn lerp(self, other: Self, t: f32) -> Self {
-        todo!("{other:?} {t}")
+        self + (other - self) * t
     }
 
     /// Component-wise [`approx_eq`] with tolerance `eps`.
     #[must_use]
     pub fn approx_eq(self, other: Self, eps: f32) -> bool {
-        todo!("{other:?} {eps}")
+        approx_eq(self.x, other.x, eps) && approx_eq(self.y, other.y, eps)
     }
 
     /// `true` when both components are finite (not NaN, not ±∞).
     #[must_use]
     pub fn is_finite(self) -> bool {
-        todo!()
+        self.x.is_finite() && self.y.is_finite()
     }
 
     /// Returns `Some(self)` if both components are finite, otherwise `None`.
     #[must_use]
     pub fn sanitize(self) -> Option<Self> {
-        todo!()
+        if self.is_finite() { Some(self) } else { None }
     }
 }
 
@@ -91,7 +91,7 @@ impl Add for Vec2 {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self {
-        todo!("{rhs:?}")
+        Self::new(self.x + rhs.x, self.y + rhs.y)
     }
 }
 
@@ -99,7 +99,7 @@ impl Sub for Vec2 {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self {
-        todo!("{rhs:?}")
+        Self::new(self.x - rhs.x, self.y - rhs.y)
     }
 }
 
@@ -107,7 +107,7 @@ impl Mul<f32> for Vec2 {
     type Output = Self;
 
     fn mul(self, rhs: f32) -> Self {
-        todo!("{rhs}")
+        Self::new(self.x * rhs, self.y * rhs)
     }
 }
 
@@ -115,7 +115,7 @@ impl Div<f32> for Vec2 {
     type Output = Self;
 
     fn div(self, rhs: f32) -> Self {
-        todo!("{rhs}")
+        Self::new(self.x / rhs, self.y / rhs)
     }
 }
 
@@ -123,19 +123,19 @@ impl Neg for Vec2 {
     type Output = Self;
 
     fn neg(self) -> Self {
-        todo!()
+        Self::new(-self.x, -self.y)
     }
 }
 
 impl AddAssign for Vec2 {
     fn add_assign(&mut self, rhs: Self) {
-        todo!("{rhs:?}")
+        *self = *self + rhs;
     }
 }
 
 impl SubAssign for Vec2 {
     fn sub_assign(&mut self, rhs: Self) {
-        todo!("{rhs:?}")
+        *self = *self - rhs;
     }
 }
 
@@ -156,62 +156,102 @@ impl Aabb {
     /// remains (including an empty slice).
     #[must_use]
     pub fn from_points(points: &[Vec2]) -> Option<Self> {
-        todo!("{points:?}")
+        let mut finite = points.iter().copied().filter(|p| p.is_finite());
+        let first = finite.next()?;
+        Some(finite.fold(
+            Self {
+                min: first,
+                max: first,
+            },
+            |acc, p| Self {
+                min: Vec2::new(acc.min.x.min(p.x), acc.min.y.min(p.y)),
+                max: Vec2::new(acc.max.x.max(p.x), acc.max.y.max(p.y)),
+            },
+        ))
     }
 
     /// Box spanned by two opposite corners given in any order.
     #[must_use]
     pub fn from_corners(a: Vec2, b: Vec2) -> Self {
-        todo!("{a:?} {b:?}")
+        Self {
+            min: Vec2::new(a.x.min(b.x), a.y.min(b.y)),
+            max: Vec2::new(a.x.max(b.x), a.y.max(b.y)),
+        }
     }
 
     /// Grows every side by `margin`. A negative margin shrinks the box; an axis
     /// that would invert collapses to its centre instead.
     #[must_use]
     pub fn expand(self, margin: f32) -> Self {
-        todo!("{margin}")
+        let (min_x, max_x) = expand_axis(self.min.x, self.max.x, margin);
+        let (min_y, max_y) = expand_axis(self.min.y, self.max.y, margin);
+        Self {
+            min: Vec2::new(min_x, min_y),
+            max: Vec2::new(max_x, max_y),
+        }
     }
 
     /// `true` if `p` lies inside or on the boundary.
     #[must_use]
     pub fn contains(&self, p: Vec2) -> bool {
-        todo!("{p:?}")
+        (self.min.x..=self.max.x).contains(&p.x) && (self.min.y..=self.max.y).contains(&p.y)
     }
 
     /// `true` if the boxes overlap or touch.
     #[must_use]
     pub fn intersects(&self, other: &Self) -> bool {
-        todo!("{other:?}")
+        self.min.x <= other.max.x
+            && other.min.x <= self.max.x
+            && self.min.y <= other.max.y
+            && other.min.y <= self.max.y
     }
 
     /// Smallest box containing both boxes.
     #[must_use]
     pub fn union(&self, other: &Self) -> Self {
-        todo!("{other:?}")
+        Self {
+            min: Vec2::new(self.min.x.min(other.min.x), self.min.y.min(other.min.y)),
+            max: Vec2::new(self.max.x.max(other.max.x), self.max.y.max(other.max.y)),
+        }
     }
 
     /// Centre point.
     #[must_use]
     pub fn center(&self) -> Vec2 {
-        todo!()
+        self.min.lerp(self.max, 0.5)
     }
 
     /// Extent along x.
     #[must_use]
     pub fn width(&self) -> f32 {
-        todo!()
+        self.max.x - self.min.x
     }
 
     /// Extent along y.
     #[must_use]
     pub fn height(&self) -> f32 {
-        todo!()
+        self.max.y - self.min.y
     }
 
     /// The same box moved by `delta`.
     #[must_use]
     pub fn translate(self, delta: Vec2) -> Self {
-        todo!("{delta:?}")
+        Self {
+            min: self.min + delta,
+            max: self.max + delta,
+        }
+    }
+}
+
+/// Expands the interval `[min, max]` by `margin` on both ends, collapsing to
+/// its midpoint if a negative margin would invert it.
+fn expand_axis(min: f32, max: f32, margin: f32) -> (f32, f32) {
+    let (lo, hi) = (min - margin, max + margin);
+    if lo > hi {
+        let mid = (min + max) * 0.5;
+        (mid, mid)
+    } else {
+        (lo, hi)
     }
 }
 
@@ -222,7 +262,13 @@ impl Aabb {
 /// coincide) is treated as the point `a`, so there is no division by zero.
 #[must_use]
 pub fn distance_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
-    todo!("{p:?} {a:?} {b:?}")
+    let ab = b - a;
+    let len_sq = ab.length_sq();
+    if len_sq <= 0.0 {
+        return p.distance(a);
+    }
+    let t = ((p - a).dot(ab) / len_sq).clamp(0.0, 1.0);
+    p.distance(a + ab * t)
 }
 
 #[cfg(test)]
