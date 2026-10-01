@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]"]
+adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]"]
 ---
 
 # Architecture
@@ -56,10 +56,10 @@ flowchart LR
 | `core::tools::{eraser,bucket,select}`, `core::clipboard` ([[T10 Editing tools]]) | Erase, fill, select/move, copy/paste/duplicate |
 | `core::keymap` ([[T11 Keymap and macros]]) | Key chords → `Command` |
 | `core::editor::Helpers` ([[T16 Shape model v2 and helper skeleton]]) | Snap flags, numbering counter, grid size; carried in `DrawStyle` ([[ADR-T16-3 Helper settings and hooks]]) |
-| `core::snap` ([[T17 Snapping]]) | Snap dragged points; alignment guides (stub until T17) |
+| `core::snap` ([[T17 Snapping]]) | Snap dragged points: grid → size → align → round, alignment guides ([[ADR-T17-1 Snapping order and tolerances]]) |
 | `core::tools::grid` ([[T18 Grid tool]]) | Grid tool (stub until T18) |
 | `core::numbering` ([[T19 Auto-numbering]]) | Labels for new rectangles/ellipses (stub until T19) |
-| `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels) and previews through the camera; `draw_underlay`/`draw_guides` hooks for T17 |
+| `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels) and previews through the camera; snap dot grid (`draw_underlay`) and alignment guides (`draw_guides`) |
 | `shell::{app,input_map,toolbar}` ([[T12 App shell and toolbar]]) | Window, event loop, toolbar UI |
 | `tests/fuzz.rs` ([[T13 Fuzz harness]]) | Random input-sequence fuzzing of `Editor` |
 
