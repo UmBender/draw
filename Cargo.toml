@@ -1,0 +1,45 @@
+[package]
+name = "draw"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Minimal, fast, keyboard-first scratch canvas for competitive programming"
+license = "MIT"
+publish = false
+
+[dependencies]
+macroquad = "0.4"
+
+[dev-dependencies]
+proptest = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+module_name_repetitions = "allow"
+float_cmp = "deny"
+unwrap_used = "deny"
+expect_used = "warn"
+dbg_macro = "deny"
+todo = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3
