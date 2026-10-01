@@ -20,6 +20,8 @@ pub enum Tool {
     Rect,
     /// Ellipse / circle.
     Ellipse,
+    /// Table of `cols × rows` cells.
+    Grid,
     /// Removes whole shapes it touches.
     Eraser,
     /// Fills the clicked rectangle or ellipse.
@@ -32,12 +34,13 @@ pub enum Tool {
 
 impl Tool {
     /// Every tool once, in toolbar order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Pen,
         Self::Line,
         Self::Arrow,
         Self::Rect,
         Self::Ellipse,
+        Self::Grid,
         Self::Eraser,
         Self::Bucket,
         Self::Select,
@@ -84,6 +87,19 @@ pub enum Command {
     FitView,
     /// Show or hide the toolbar.
     ToggleToolbar,
+    /// Turn smart snapping (round, sizes, alignment) on or off.
+    ToggleSmartSnap,
+    /// Turn snapping to the world grid on or off.
+    ToggleGridSnap,
+    /// Turn auto-numbering of new rectangles and ellipses on or off.
+    ToggleNumbering,
+    /// Restart auto-numbering at
+    /// [`FIRST_NUMBER`](crate::core::numbering::FIRST_NUMBER).
+    ResetNumbering,
+    /// Add this many columns to new grids (clamped, live during a drag).
+    GridCols(i32),
+    /// Add this many rows to new grids (clamped, live during a drag).
+    GridRows(i32),
 }
 
 #[cfg(test)]

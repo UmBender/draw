@@ -19,6 +19,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
+use crate::core::numbering::FIRST_NUMBER;
 use crate::core::palette::ColorId;
 use crate::core::shape::Shape;
 use crate::core::smoothing::SmoothingLevel;
@@ -36,17 +37,54 @@ pub const DEFAULT_WIDTH_PX: f32 = 3.0;
 /// Free space kept around content by [`Command::FitView`], in pixels.
 pub const FIT_MARGIN_PX: f32 = 32.0;
 
+/// Columns and rows of a new editor's grids.
+pub const DEFAULT_GRID_CELLS: u32 = 4;
+
 /// Maps a key chord to a command; [`keymap::resolve`] by default.
 pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 
-/// Style for new shapes. The width is in screen pixels; tools convert it to
-/// world units with the zoom at creation time (ADR-0013).
+/// Helper settings for new shapes: snapping, grid size and numbering
+/// (ADR-T16-3). Only [`Editor::apply`] changes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Helpers {
+    /// Smart snapping (round, sizes, alignment) is on.
+    pub smart_snap: bool,
+    /// Snapping to the world grid is on.
+    pub grid_snap: bool,
+    /// New rectangles and ellipses are numbered.
+    pub numbering: bool,
+    /// The number the next numbered shape gets, at least [`FIRST_NUMBER`].
+    pub next_number: u32,
+    /// Columns of new grids, in `1..=GRID_MAX_CELLS`.
+    pub grid_cols: u32,
+    /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
+    pub grid_rows: u32,
+}
+
+impl Default for Helpers {
+    fn default() -> Self {
+        Self {
+            smart_snap: false,
+            grid_snap: false,
+            numbering: false,
+            next_number: FIRST_NUMBER,
+            grid_cols: DEFAULT_GRID_CELLS,
+            grid_rows: DEFAULT_GRID_CELLS,
+        }
+    }
+}
+
+/// Settings for new shapes. The width is in screen pixels; tools convert it
+/// to world units with the zoom at creation time (ADR-0013). The helper
+/// settings travel here so every tool sees them (ADR-T16-3).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DrawStyle {
     /// Outline colour.
     pub color: ColorId,
     /// Outline width in screen pixels, one of [`WIDTH_LADDER_PX`].
     pub width_px: f32,
+    /// Snapping, grid size and numbering.
+    pub helpers: Helpers,
 }
 
 impl Default for DrawStyle {
@@ -54,6 +92,7 @@ impl Default for DrawStyle {
         Self {
             color: ColorId::INK,
             width_px: DEFAULT_WIDTH_PX,
+            helpers: Helpers::default(),
         }
     }
 }
@@ -274,6 +313,12 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
+            Command::ToggleSmartSnap
+            | Command::ToggleGridSnap
+            | Command::ToggleNumbering
+            | Command::ResetNumbering
+            | Command::GridCols(_)
+            | Command::GridRows(_) => todo!(),
         }
     }
 
@@ -299,6 +344,12 @@ impl Editor {
     #[must_use]
     pub fn style(&self) -> DrawStyle {
         self.style
+    }
+
+    /// Snapping, grid size and numbering settings.
+    #[must_use]
+    pub fn helpers(&self) -> Helpers {
+        self.style.helpers
     }
 
     /// Anti-tremor level for new strokes.

@@ -1,7 +1,7 @@
 //! Vector shapes with bounds, hit-testing and translation.
 //!
 //! The document is an ordered list of [`Shape`]s in world coordinates
-//! (ADR-0004). Widths are world units (ADR-0013). Every query here is total:
+//! (ADR-0004, amended by ADR-T16-1 with grids and labels). Widths are world units (ADR-0013). Every query here is total:
 //! non-finite input never panics, a non-finite query point never hits and is
 //! never contained.
 
@@ -17,6 +17,9 @@ pub const ARROW_HEAD_MIN_LENGTH: f32 = 8.0;
 /// Half the width of the arrow head base, as a fraction of the head length.
 pub const ARROW_HEAD_HALF_WIDTH_RATIO: f32 = 0.5;
 
+/// Most columns or rows a [`Shape::Grid`] can have.
+pub const GRID_MAX_CELLS: u32 = 64;
+
 /// Outline style shared by every shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {
@@ -28,8 +31,8 @@ pub struct Style {
 
 /// A vector shape in world coordinates.
 ///
-/// For [`Shape::Rect`] and [`Shape::Ellipse`], `a` and `b` are opposite corners
-/// of the bounding box, in any order.
+/// For [`Shape::Rect`], [`Shape::Ellipse`] and [`Shape::Grid`], `a` and `b`
+/// are opposite corners of the bounding box, in any order.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     /// Freehand polyline.
@@ -67,6 +70,8 @@ pub enum Shape {
         style: Style,
         /// Interior colour, if filled.
         fill: Option<ColorId>,
+        /// Number drawn centred inside, if any.
+        label: Option<u32>,
     },
     /// Axis-aligned ellipse inscribed in the box spanned by `a` and `b`.
     Ellipse {
@@ -78,6 +83,23 @@ pub enum Shape {
         style: Style,
         /// Interior colour, if filled.
         fill: Option<ColorId>,
+        /// Number drawn centred inside, if any.
+        label: Option<u32>,
+    },
+    /// `cols × rows` uniform cells in the box spanned by `a` and `b`.
+    ///
+    /// An open shape: it has no interior and is never filled.
+    Grid {
+        /// One corner.
+        a: Vec2,
+        /// The opposite corner.
+        b: Vec2,
+        /// Number of columns, in `1..=GRID_MAX_CELLS`.
+        cols: u32,
+        /// Number of rows, in `1..=GRID_MAX_CELLS`.
+        rows: u32,
+        /// Outline style.
+        style: Style,
     },
 }
 
@@ -90,7 +112,8 @@ impl Shape {
             | Self::Line { style, .. }
             | Self::Arrow { style, .. }
             | Self::Rect { style, .. }
-            | Self::Ellipse { style, .. } => *style,
+            | Self::Ellipse { style, .. }
+            | Self::Grid { style, .. } => *style,
         }
     }
 
@@ -99,8 +122,17 @@ impl Shape {
     pub fn fill(&self) -> Option<ColorId> {
         match self {
             Self::Rect { fill, .. } | Self::Ellipse { fill, .. } => *fill,
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } => None,
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
+                None
+            }
         }
+    }
+
+    /// The label; always `None` for shapes other than [`Shape::Rect`] and
+    /// [`Shape::Ellipse`].
+    #[must_use]
+    pub fn label(&self) -> Option<u32> {
+        todo!()
     }
 
     /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).
@@ -128,6 +160,7 @@ impl Shape {
             Self::Line { a, b, .. } | Self::Rect { a, b, .. } | Self::Ellipse { a, b, .. } => {
                 Aabb::from_corners(*a, *b)
             }
+            Self::Grid { .. } => todo!(),
         };
         geometry.expand(half_width(self.style().width))
     }
@@ -172,6 +205,7 @@ impl Shape {
                 polygon_edge_distance(p, &corners) <= reach
             }
             Self::Ellipse { a, b, .. } => ellipse_outline_distance(p, *a, *b) <= reach,
+            Self::Grid { .. } => todo!(),
         }
     }
 
@@ -194,6 +228,7 @@ impl Shape {
                 u * u + w * w <= 1.0
             }
             Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } => false,
+            Self::Grid { .. } => todo!(),
         }
     }
 
@@ -212,6 +247,7 @@ impl Shape {
                 *a += delta;
                 *b += delta;
             }
+            Self::Grid { .. } => todo!(),
         }
     }
 
@@ -225,6 +261,14 @@ impl Shape {
         self
     }
 
+    /// Returns the shape with its label set to `label`; shapes other than
+    /// [`Shape::Rect`] and [`Shape::Ellipse`] are returned unchanged.
+    #[must_use]
+    pub fn with_label(self, label: Option<u32>) -> Self {
+        let _ = label;
+        todo!()
+    }
+
     /// `true` iff every coordinate and the width are finite.
     #[must_use]
     pub fn is_finite(&self) -> bool {
@@ -235,8 +279,20 @@ impl Shape {
                 | Self::Arrow { a, b, .. }
                 | Self::Rect { a, b, .. }
                 | Self::Ellipse { a, b, .. } => a.is_finite() && b.is_finite(),
+                Self::Grid { .. } => todo!(),
             }
     }
+}
+
+/// The lines of a `cols × rows` grid in the box `a`–`b`: `cols + 1`
+/// vertical lines left to right, then `rows + 1` horizontal lines top to
+/// bottom, each as `[start, end]`. Dimensions are clamped to
+/// `1..=GRID_MAX_CELLS`, so at most `2 * (GRID_MAX_CELLS + 1)` lines.
+pub fn grid_lines(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item = [Vec2; 2]> {
+    let _ = (a, b, cols, rows);
+    todo!();
+    #[allow(unreachable_code)]
+    std::iter::empty()
 }
 
 /// Arrow head triangle `[tip, left, right]` for an arrow from `a` to `b`.

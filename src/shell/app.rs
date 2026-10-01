@@ -248,10 +248,12 @@ fn draw_scene(editor: &Editor, viewport: Vec2) {
         .shapes()
         .filter(|(id, _)| !overlay.hidden.contains(id))
         .map(|(_, shape)| shape);
+    render::draw_underlay(editor, viewport);
     render::draw_shapes(shapes, camera, viewport);
     for shape in &overlay.shapes {
         render::draw_preview(shape, camera);
     }
+    render::draw_guides(&overlay.guides, camera);
     if editor.active_gesture().is_none() {
         if let Some(bounds) = editor.selection_bounds() {
             render::draw_selection(bounds, camera);

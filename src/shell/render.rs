@@ -12,6 +12,7 @@ use macroquad::math::Vec2 as MqVec2;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
 
 use crate::core::camera::Camera;
+use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, THEME, palette};
 use crate::core::shape::{Shape, arrow_head};
@@ -40,6 +41,26 @@ pub const SELECTION_WIDTH_PX: f32 = 1.0;
 
 /// Gap in pixels between the selected shapes' bounds and the selection outline.
 pub const SELECTION_PAD_PX: f32 = 4.0;
+
+/// Labels smaller than this many pixels on screen are not drawn.
+pub const LABEL_MIN_PX: f32 = 8.0;
+
+/// Largest label font size in pixels.
+pub const LABEL_MAX_PX: f32 = 256.0;
+
+/// Label font size as a fraction of the label area's height.
+pub const LABEL_HEIGHT_RATIO: f32 = 0.6;
+
+/// Fraction of the label area's width the text may use.
+pub const LABEL_WIDTH_RATIO: f32 = 0.8;
+
+/// Width of one digit per pixel of font size (an upper bound for the
+/// default font's digits).
+pub const LABEL_CHAR_ASPECT: f32 = 0.6;
+
+/// Font sizes labels are rasterized at, ascending; other sizes are scaled
+/// from the nearest one at or above (or the largest).
+pub const LABEL_RASTER_SIZES: [u16; 4] = [16, 32, 64, 128];
 
 /// On-screen outline width in pixels for a world-space `world_width`:
 /// `world_width * zoom`, at least [`MIN_SCREEN_WIDTH_PX`]. A NaN, infinite or
@@ -121,6 +142,49 @@ pub fn selection_rect(bounds: Aabb, camera: &Camera) -> Aabb {
     .expand(SELECTION_PAD_PX)
 }
 
+/// Font size in pixels for a label of `chars` characters inside an area of
+/// `area` pixels: as tall as [`LABEL_HEIGHT_RATIO`] of the height, narrowed
+/// so the text fits [`LABEL_WIDTH_RATIO`] of the width, capped at
+/// [`LABEL_MAX_PX`]. `None` (not drawn) below [`LABEL_MIN_PX`] or for a
+/// non-finite area.
+#[must_use]
+pub fn label_size(chars: usize, area: Vec2) -> Option<f32> {
+    let _ = (chars, area);
+    todo!()
+}
+
+/// Size in pixels of the area a label may use inside the screen rectangle
+/// `rect` of a shape: the rectangle itself, or for an ellipse the largest
+/// axis-aligned box inscribed in it (`rect` scaled by `1/√2`).
+#[must_use]
+pub fn label_area(rect: Aabb, ellipse: bool) -> Vec2 {
+    let _ = (rect, ellipse);
+    todo!()
+}
+
+/// Raster size and scale for drawing text at `size` pixels: the smallest of
+/// [`LABEL_RASTER_SIZES`] at least `size` (else the largest), and the scale
+/// mapping it to `size`.
+#[must_use]
+pub fn label_raster(size: f32) -> (u16, f32) {
+    let _ = size;
+    todo!()
+}
+
+/// Draws what lies under the shapes, such as the snap dot grid (T17).
+///
+/// Skeleton (ADR-T16-3): draws nothing.
+pub fn draw_underlay(editor: &Editor, viewport: Vec2) {
+    let _ = (editor, viewport);
+}
+
+/// Draws alignment guides, world-space segments, on top of the overlay (T17).
+///
+/// Skeleton (ADR-T16-3): draws nothing.
+pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
+    let _ = (guides, camera);
+}
+
 /// Draws every shape whose bounds are visible through `camera` in a viewport
 /// of `viewport` pixels, in iteration order (later shapes on top).
 pub fn draw_shapes<'a>(
@@ -188,6 +252,7 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             }
             draw_ellipse_ring(center, radii, width, color);
         }
+        Shape::Grid { .. } => todo!(),
     }
 }
 

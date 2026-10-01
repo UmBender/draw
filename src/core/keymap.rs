@@ -29,6 +29,13 @@ impl KeyChord {
         }
     }
 
+    /// `Shift` + `key`.
+    #[must_use]
+    pub const fn shift(key: Key) -> Self {
+        let _ = key;
+        todo!()
+    }
+
     /// `Ctrl` + `key`.
     #[must_use]
     pub const fn ctrl(key: Key) -> Self {

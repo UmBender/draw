@@ -26,12 +26,13 @@ pub const GAP_PX: f32 = 2.0;
 pub const GROUP_GAP_PX: f32 = 12.0;
 
 /// Tools in toolbar order (the keymap's order).
-pub const TOOLS: [Tool; 9] = [
+pub const TOOLS: [Tool; 10] = [
     Tool::Pen,
     Tool::Line,
     Tool::Arrow,
     Tool::Rect,
     Tool::Ellipse,
+    Tool::Grid,
     Tool::Eraser,
     Tool::Bucket,
     Tool::Select,
@@ -45,6 +46,12 @@ pub enum ButtonKind {
     Tool(Tool),
     /// Picks a palette colour.
     Color(ColorId),
+    /// Toggles smart snapping.
+    SmartSnap,
+    /// Toggles grid snapping.
+    GridSnap,
+    /// Toggles auto-numbering.
+    Numbering,
     /// Undoes the last action.
     Undo,
     /// Redoes the last undone action.
@@ -58,6 +65,7 @@ impl ButtonKind {
         match self {
             Self::Tool(tool) => Command::SetTool(tool),
             Self::Color(id) => Command::SetColor(id),
+            Self::SmartSnap | Self::GridSnap | Self::Numbering => todo!(),
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
         }
@@ -180,6 +188,7 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                     outline(rect, accent);
                 }
             }
+            ButtonKind::SmartSnap | ButtonKind::GridSnap | ButtonKind::Numbering => todo!(),
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
         }
@@ -194,6 +203,7 @@ fn tool_label(tool: Tool) -> &'static str {
         Tool::Arrow => "A",
         Tool::Rect => "R",
         Tool::Ellipse => "C",
+        Tool::Grid => "G",
         Tool::Eraser => "E",
         Tool::Bucket => "B",
         Tool::Select => "V",
