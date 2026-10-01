@@ -29,8 +29,8 @@ flowchart LR
 | Step | Tutorial | Task | Status |
 |------|----------|------|--------|
 | 0 | [[00 Project layout, lints and the TDD loop]] | [[T00 Bootstrap]] | done |
-| 1 | *2D vectors, AABBs and point–segment distance* | [[T01 Geometry primitives]] | planned |
-| 2 | *Palettes and design tokens* | [[T02 Palette and theme tokens]] | planned |
+| 1 | [[01 2D vectors, AABBs and point-segment distance]] | [[T01 Geometry primitives]] | done |
+| 2 | [[02 Palettes and design tokens]] | [[T02 Palette and theme tokens]] | done |
 | 3 | *Cameras: world space vs screen space, zoom at cursor* | [[T03 Camera]] | planned |
 | 4 | *Taming shaky input: resampling, EMA, Douglas–Peucker* | [[T04 Stroke smoothing]] | planned |
 | 5 | *Modelling shapes with enums; hit-testing* | [[T05 Shape model]] | planned |

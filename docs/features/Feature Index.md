@@ -15,4 +15,5 @@ One note per user-visible feature, created by the task that implements it
 | *Undo / redo* | [[T06 Document and history]] | step 6 | planned |
 | *Eraser, bucket, select/move, copy/paste* | [[T10 Editing tools]] | step 10 | planned |
 | *Shortcuts & macros* | [[T11 Keymap and macros]] | step 11 | planned |
-| *Toolbar & theme* | [[T02 Palette and theme tokens]], [[T12 App shell and toolbar]] | steps 2, 12 | planned |
+| *Toolbar* | [[T12 App shell and toolbar]] | step 12 | planned |
+| [[Theme and palette]] | [[T02 Palette and theme tokens]] | [[02 Palettes and design tokens]] | done |

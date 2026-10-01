@@ -1,7 +1,7 @@
 ---
 id: T02
 title: Palette and theme tokens
-status: review
+status: done
 wave: 1
 branch: task/T02-palette
 depends_on: [T00]

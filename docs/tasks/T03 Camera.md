@@ -1,7 +1,7 @@
 ---
 id: T03
 title: Camera
-status: todo
+status: ready
 wave: 2
 branch: task/T03-camera
 depends_on: [T01]

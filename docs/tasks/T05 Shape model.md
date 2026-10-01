@@ -1,7 +1,7 @@
 ---
 id: T05
 title: Shape model
-status: todo
+status: ready
 wave: 2
 branch: task/T05-shape
 depends_on: [T01, T02]
