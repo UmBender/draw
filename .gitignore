@@ -5,3 +5,6 @@ docs/.obsidian/workspace*.json
 docs/.obsidian/cache
 docs/.obsidian/plugins/
 docs/.trash/
+
+# Agent worktrees (parallel task execution)
+/.claude/worktrees/
