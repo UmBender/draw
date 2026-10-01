@@ -88,10 +88,28 @@ pub fn cancel(state: &mut State) -> bool {
 mod tests {
     use super::*;
     use crate::core::camera::Camera;
-    use crate::core::clipboard::testkit::{Fixture, line, ptr};
+    use crate::core::clipboard::testkit::{Fixture, ellipse, filled_rect, line, ptr, rect};
     use crate::core::command::Tool;
     use crate::core::geom::Vec2;
+    use crate::core::palette::ColorId;
+    use crate::core::shape::{Shape, Style};
     use crate::core::tools::Phase;
+
+    /// Unfilled `cols × rows` grid dragged from `(x, y)` to `(x + w, y + h)`.
+    fn grid(x: f32, y: f32, w: f32, h: f32, cols: u32, rows: u32) -> Shape {
+        Shape::Grid {
+            a: Vec2::new(x, y),
+            b: Vec2::new(x + w, y + h),
+            cols,
+            rows,
+            style: Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            axes: false,
+            fills: Vec::new(),
+        }
+    }
 
     fn send(state: &mut State, fx: &mut Fixture, phase: Phase, x: f32, y: f32) -> bool {
         on_pointer(state, &mut fx.ctx(Tool::Eraser), ptr(phase, x, y))
@@ -222,5 +240,165 @@ mod tests {
         // Assert
         assert_eq!(preview(&near, &fx.view(Tool::Eraser)).hidden, ids);
         assert!(preview(&far, &fx.view(Tool::Eraser)).hidden.is_empty());
+    }
+
+    // ---- T21 clearing fills -------------------------------------------------
+
+    fn red() -> ColorId {
+        ColorId::new(2).unwrap_or(ColorId::INK)
+    }
+
+    /// 4 × 4 grid of 25-unit cells with the given cells filled red.
+    fn filled_grid(cells: &[(u32, u32)]) -> Shape {
+        cells
+            .iter()
+            .fold(grid(0.0, 0.0, 100.0, 100.0, 4, 4), |g, &(c, r)| {
+                g.with_cell_fill(c, r, Some(red()))
+            })
+    }
+
+    /// A full erase gesture through `points` (screen).
+    fn rub(fx: &mut Fixture, points: &[(f32, f32)]) -> bool {
+        let mut state = State::default();
+        let mut changed = false;
+        for (i, &(x, y)) in points.iter().enumerate() {
+            let phase = if i == 0 { Phase::Down } else { Phase::Move };
+            changed |= send(&mut state, fx, phase, x, y);
+        }
+        if let Some(&(x, y)) = points.last() {
+            changed |= send(&mut state, fx, Phase::Up, x, y);
+        }
+        changed
+    }
+
+    #[test]
+    fn inside_filled_rect_clears_fill() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![filled_rect(0.0, 0.0, 100.0, 100.0)]);
+
+        // Act
+        let changed = rub(&mut fx, &[(50.0, 50.0)]);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(fx.doc.len(), 1, "the rectangle stays");
+        assert_eq!(fx.shape(ids[0]).fill(), None);
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn inside_filled_ellipse_clears_fill() {
+        let filled = ellipse(0.0, 0.0, 100.0, 100.0).with_fill(Some(red()));
+        let (mut fx, ids) = Fixture::new(vec![filled]);
+
+        assert!(rub(&mut fx, &[(50.0, 50.0)]));
+
+        assert_eq!(fx.doc.len(), 1);
+        assert_eq!(fx.shape(ids[0]).fill(), None);
+    }
+
+    #[test]
+    fn press_on_outline_removes_filled_rect() {
+        let (mut fx, _) = Fixture::new(vec![filled_rect(0.0, 0.0, 100.0, 100.0)]);
+
+        assert!(rub(&mut fx, &[(0.0, 50.0)]));
+
+        assert!(fx.doc.is_empty());
+    }
+
+    #[test]
+    fn unfilled_inside_is_untouched() {
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+
+        assert!(!rub(&mut fx, &[(50.0, 50.0), (60.0, 60.0)]));
+
+        assert_eq!(fx.shape(ids[0]), rect(0.0, 0.0, 100.0, 100.0));
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn filled_cell_clears_only_that_cell() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![filled_grid(&[(1, 1), (2, 1)])]);
+
+        // Act: the centre of cell (1, 1), 12.5 from every line.
+        rub(&mut fx, &[(37.5, 37.5)]);
+
+        // Assert
+        let g = fx.shape(ids[0]);
+        assert_eq!(g.cell_fill(1, 1), None);
+        assert_eq!(g.cell_fill(2, 1), Some(red()));
+    }
+
+    #[test]
+    fn clear_drag_crosses_lines_without_removing() {
+        // Arrange: row 0 filled in cells 0..3.
+        let (mut fx, ids) = Fixture::new(vec![filled_grid(&[(0, 0), (1, 0), (2, 0), (3, 0)])]);
+
+        // Act: start in cell 0, cross two lines, stop in cell 2.
+        rub(&mut fx, &[(12.0, 12.0), (40.0, 12.0), (62.0, 12.0)]);
+
+        // Assert
+        assert_eq!(fx.doc.len(), 1, "the grid stays");
+        let g = fx.shape(ids[0]);
+        let left: Vec<(u32, u32)> = g.cell_fills().iter().map(|f| (f.col, f.row)).collect();
+        assert_eq!(left, [(3, 0)]);
+    }
+
+    #[test]
+    fn clear_drag_also_clears_shape_fills() {
+        // Arrange: a filled cell and, to its right, a filled rectangle.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_grid(&[(3, 0)]),
+            filled_rect(120.0, 0.0, 60.0, 30.0),
+        ]);
+
+        // Act: from the cell into the rectangle, across its outline.
+        rub(&mut fx, &[(90.0, 12.0), (150.0, 12.0)]);
+
+        // Assert: both fills gone, both shapes kept.
+        assert_eq!(fx.doc.len(), 2);
+        assert!(fx.shape(ids[0]).cell_fills().is_empty());
+        assert_eq!(fx.shape(ids[1]).fill(), None);
+    }
+
+    #[test]
+    fn remove_drag_into_filled_rect_removes_it() {
+        let (mut fx, _) = Fixture::new(vec![filled_rect(100.0, 0.0, 100.0, 100.0)]);
+
+        rub(&mut fx, &[(50.0, 50.0), (150.0, 50.0)]);
+
+        assert!(fx.doc.is_empty(), "pre-T21 behaviour off a fill");
+    }
+
+    #[test]
+    fn preview_shows_cleared_fill() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![filled_rect(0.0, 0.0, 100.0, 100.0)]);
+        let mut state = State::default();
+
+        // Act
+        send(&mut state, &mut fx, Phase::Down, 50.0, 50.0);
+        let overlay = preview(&state, &fx.view(Tool::Eraser));
+
+        // Assert: original hidden, an unfilled copy drawn, document intact.
+        assert_eq!(overlay.hidden, vec![ids[0]]);
+        assert_eq!(overlay.shapes, vec![fx.shape(ids[0]).with_fill(None)]);
+        assert_eq!(fx.shape(ids[0]).fill(), Some(ColorId::INK));
+    }
+
+    #[test]
+    fn erase_fill_is_one_undo_step() {
+        // Arrange
+        let before = filled_grid(&[(0, 0), (1, 0)]);
+        let (mut fx, ids) = Fixture::new(vec![before.clone()]);
+
+        // Act
+        rub(&mut fx, &[(12.0, 12.0), (37.0, 12.0)]);
+        assert_eq!(fx.history.undo_len(), 1);
+        assert!(fx.history.undo(&mut fx.doc));
+
+        // Assert
+        assert_eq!(fx.shape(ids[0]), before);
     }
 }

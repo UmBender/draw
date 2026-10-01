@@ -343,6 +343,18 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 cells.contains(cols) && cells.contains(rows),
                 "step {step}: grid {id:?} has {cols} × {rows} cells"
             );
+            // T21: fills inside the grid, sorted by (row, col), unique.
+            let fills = shape.cell_fills();
+            prop_assert!(
+                fills.iter().all(|f| f.col < *cols && f.row < *rows),
+                "step {step}: grid {id:?} fill outside {cols} × {rows}: {fills:?}"
+            );
+            prop_assert!(
+                fills
+                    .windows(2)
+                    .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)),
+                "step {step}: grid {id:?} fills not sorted/unique: {fills:?}"
+            );
         }
         // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
         if let Some(label) = shape.label() {
