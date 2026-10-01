@@ -270,7 +270,7 @@ pub fn align_end(
     tolerance: f32,
 ) -> Vec2 {
     let axis = |anchors: &[Anchor], s: f32, e: f32| {
-        let edge = nearest(anchors, e, tolerance).map(|(dist, v)| (dist, v));
+        let edge = nearest(anchors, e, tolerance);
         let centre = match kind {
             DragKind::Point => None,
             DragKind::Box => nearest(anchors, midpoint(s, e), tolerance)
