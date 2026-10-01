@@ -9,10 +9,12 @@
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
+use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
 
 use crate::core::camera::Camera;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::shape::Shape;
+use crate::core::palette::{ColorId, Rgba, THEME, palette};
+use crate::core::shape::{Shape, arrow_head};
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
 pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
@@ -44,46 +46,48 @@ pub const SELECTION_PAD_PX: f32 = 4.0;
 /// negative product gives [`MIN_SCREEN_WIDTH_PX`].
 #[must_use]
 pub fn screen_width(world_width: f32, zoom: f32) -> f32 {
-    let _ = (world_width, zoom);
-    todo!()
+    let px = world_width * zoom;
+    if px.is_finite() && px >= MIN_SCREEN_WIDTH_PX {
+        px
+    } else {
+        MIN_SCREEN_WIDTH_PX
+    }
 }
 
 /// `true` if `bounds` overlaps or touches `view`; `false` if either box has a
-/// NaN coordinate.
+/// NaN coordinate (every comparison with NaN is false).
 #[must_use]
 pub fn is_visible(bounds: Aabb, view: Aabb) -> bool {
-    let _ = (bounds, view);
-    todo!()
+    bounds.intersects(&view)
 }
 
 /// World rectangle used for culling: the area visible through a viewport of
 /// `viewport` pixels, grown by [`CULL_MARGIN_PX`] (in world units).
 #[must_use]
 pub fn cull_rect(camera: &Camera, viewport: Vec2) -> Aabb {
-    let _ = (camera, viewport);
-    todo!()
+    camera
+        .visible_world_rect(viewport)
+        .expand(camera.world_len(CULL_MARGIN_PX))
 }
 
 /// Converts a core vector to a macroquad vector.
 #[must_use]
 pub fn to_mq(v: Vec2) -> MqVec2 {
-    let _ = v;
-    todo!()
+    MqVec2::new(v.x, v.y)
 }
 
 /// Converts a palette colour to a macroquad colour (channels in `0..=1`).
 #[must_use]
-pub fn to_mq_color(c: crate::core::palette::Rgba) -> Color {
-    let _ = c;
-    todo!()
+pub fn to_mq_color(c: Rgba) -> Color {
+    let [r, g, b, a] = c.to_f32();
+    Color::new(r, g, b, a)
 }
 
 /// `true` if a stroke `width_px` wide needs round joints, i.e. it is wider
 /// than [`JOINT_THRESHOLD_PX`]. Thinner strokes skip them to stay cheap.
 #[must_use]
 pub fn stroke_needs_joints(width_px: f32) -> bool {
-    let _ = width_px;
-    todo!()
+    width_px > JOINT_THRESHOLD_PX
 }
 
 /// Number of segments for a circle of `radius_px` pixels: the fewest whose
@@ -92,36 +96,223 @@ pub fn stroke_needs_joints(width_px: f32) -> bool {
 /// radius gives [`MIN_SEGMENTS`].
 #[must_use]
 pub fn circle_segments(radius_px: f32) -> u16 {
-    let _ = radius_px;
-    todo!()
+    if !radius_px.is_finite() || radius_px <= 0.0 {
+        return MIN_SEGMENTS;
+    }
+    let ratio = f64::from(CHORD_TOLERANCE_PX) / f64::from(radius_px);
+    if ratio >= 1.0 {
+        return MIN_SEGMENTS;
+    }
+    // r (1 − cos(π/n)) ≤ tol  ⇔  π/n ≤ acos(1 − tol/r).
+    let n = (std::f64::consts::PI / (1.0 - ratio).acos()).ceil();
+    let (lo, hi) = (f64::from(MIN_SEGMENTS), f64::from(MAX_SEGMENTS));
+    // Clamped to a u16 range, so the cast is exact.
+    n.clamp(lo, hi) as u16
 }
 
 /// Screen rectangle of the selection outline: `bounds` mapped to pixels and
 /// grown by [`SELECTION_PAD_PX`].
 #[must_use]
 pub fn selection_rect(bounds: Aabb, camera: &Camera) -> Aabb {
-    let _ = (bounds, camera);
-    todo!()
+    Aabb::from_corners(
+        camera.world_to_screen(bounds.min),
+        camera.world_to_screen(bounds.max),
+    )
+    .expand(SELECTION_PAD_PX)
 }
 
 /// Draws every shape whose bounds are visible through `camera` in a viewport
 /// of `viewport` pixels, in iteration order (later shapes on top).
-pub fn draw_shapes<'a>(shapes: impl IntoIterator<Item = &'a Shape>, camera: &Camera, viewport: Vec2) {
-    let _ = (shapes.into_iter(), camera, viewport);
-    todo!()
+pub fn draw_shapes<'a>(
+    shapes: impl IntoIterator<Item = &'a Shape>,
+    camera: &Camera,
+    viewport: Vec2,
+) {
+    let view = cull_rect(camera, viewport);
+    for shape in shapes {
+        if is_visible(shape.bounds(), view) {
+            draw_shape(shape, camera);
+        }
+    }
 }
 
 /// Draws the shape being created, without culling.
 pub fn draw_preview(shape: &Shape, camera: &Camera) {
-    let _ = (shape, camera);
-    todo!()
+    draw_shape(shape, camera);
 }
 
 /// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
 /// wide in the theme accent colour.
 pub fn draw_selection(bounds: Aabb, camera: &Camera) {
-    let _ = (bounds, camera);
-    todo!()
+    let rect = selection_rect(bounds, camera);
+    draw_rect_outline(rect, SELECTION_WIDTH_PX, to_mq_color(THEME.accent));
+}
+
+/// Draws one shape; non-finite shapes are skipped.
+fn draw_shape(shape: &Shape, camera: &Camera) {
+    if !shape.is_finite() {
+        return;
+    }
+    let style = shape.style();
+    let width = screen_width(style.width, camera.zoom());
+    let color = color_of(style.color);
+    let to_screen = |p: Vec2| camera.world_to_screen(p);
+    match shape {
+        Shape::Stroke { points, .. } => draw_polyline(points, camera, width, color),
+        Shape::Line { a, b, .. } => draw_segment(to_screen(*a), to_screen(*b), width, color),
+        Shape::Arrow { a, b, style } => {
+            let [tip, left, right] = arrow_head(*a, *b, style.width).map(to_screen);
+            let base = left.lerp(right, 0.5);
+            draw_segment(to_screen(*a), base, width, color);
+            draw_triangle(to_mq(tip), to_mq(left), to_mq(right), color);
+        }
+        Shape::Rect { a, b, fill, .. } => {
+            let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
+            if let Some(fill) = fill {
+                draw_rectangle(
+                    rect.min.x,
+                    rect.min.y,
+                    rect.width(),
+                    rect.height(),
+                    color_of(*fill),
+                );
+            }
+            draw_rect_outline(rect, width, color);
+        }
+        Shape::Ellipse { a, b, fill, .. } => {
+            let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
+            let center = rect.center();
+            let radii = Vec2::new(rect.width() * 0.5, rect.height() * 0.5);
+            if let Some(fill) = fill {
+                draw_ellipse_fill(center, radii, color_of(*fill));
+            }
+            draw_ellipse_ring(center, radii, width, color);
+        }
+    }
+}
+
+/// The macroquad colour of a palette entry.
+fn color_of(id: ColorId) -> Color {
+    to_mq_color(palette(id))
+}
+
+/// Draws a polyline of world `points`: segments, plus round joints and caps
+/// when thick. A single point is a dot; an empty polyline draws nothing.
+fn draw_polyline(points: &[Vec2], camera: &Camera, width: f32, color: Color) {
+    let radius = width * 0.5;
+    if let [only] = points {
+        draw_disc(camera.world_to_screen(*only), radius, color);
+        return;
+    }
+    let joints = stroke_needs_joints(width);
+    for pair in points.windows(2) {
+        let (a, b) = (
+            camera.world_to_screen(pair[0]),
+            camera.world_to_screen(pair[1]),
+        );
+        draw_line(a.x, a.y, b.x, b.y, width, color);
+    }
+    if joints {
+        for p in points {
+            draw_disc(camera.world_to_screen(*p), radius, color);
+        }
+    }
+}
+
+/// Draws a screen-space segment with round caps when thick.
+fn draw_segment(a: Vec2, b: Vec2, width: f32, color: Color) {
+    draw_line(a.x, a.y, b.x, b.y, width, color);
+    if stroke_needs_joints(width) {
+        let radius = width * 0.5;
+        draw_disc(a, radius, color);
+        draw_disc(b, radius, color);
+    }
+}
+
+/// Draws the outline of a screen rectangle as four opaque bands of `width`
+/// pixels centred on its edges (square corners).
+fn draw_rect_outline(rect: Aabb, width: f32, color: Color) {
+    let h = width * 0.5;
+    let (x0, y0, x1, y1) = (rect.min.x - h, rect.min.y - h, rect.max.x + h, rect.max.y + h);
+    let (w, ht) = (x1 - x0, y1 - y0);
+    draw_rectangle(x0, y0, w, width, color);
+    draw_rectangle(x0, y1 - width, w, width, color);
+    draw_rectangle(x0, y0, width, ht, color);
+    draw_rectangle(x1 - width, y0, width, ht, color);
+}
+
+/// Unit vectors around a circle in `n` equal steps, starting at `(1, 0)`,
+/// generated by repeated rotation (no trig per vertex). Yields `n + 1`
+/// items, the last equal to the first, so consecutive pairs close the loop.
+fn unit_circle(n: u16) -> impl Iterator<Item = Vec2> {
+    let step = std::f32::consts::TAU / f32::from(n);
+    let (sin, cos) = step.sin_cos();
+    let mut current = Vec2::new(1.0, 0.0);
+    (0..=n).map(move |i| {
+        let out = if i == n { Vec2::new(1.0, 0.0) } else { current };
+        current = Vec2::new(
+            current.x * cos - current.y * sin,
+            current.x * sin + current.y * cos,
+        );
+        out
+    })
+}
+
+/// Calls `f` for each consecutive pair of unit-circle points.
+fn for_each_arc(n: u16, mut f: impl FnMut(Vec2, Vec2)) {
+    let mut points = unit_circle(n);
+    let Some(mut prev) = points.next() else {
+        return;
+    };
+    for next in points {
+        f(prev, next);
+        prev = next;
+    }
+}
+
+/// Scales a unit vector by per-axis radii.
+fn scale(u: Vec2, radii: Vec2) -> Vec2 {
+    Vec2::new(u.x * radii.x, u.y * radii.y)
+}
+
+/// Draws a filled disc of `radius` pixels centred at screen `center`.
+fn draw_disc(center: Vec2, radius: f32, color: Color) {
+    draw_ellipse_fill(center, Vec2::new(radius, radius), color);
+}
+
+/// Draws a filled axis-aligned ellipse (screen space) as a triangle fan.
+fn draw_ellipse_fill(center: Vec2, radii: Vec2, color: Color) {
+    let n = circle_segments(radii.x.max(radii.y));
+    let c = to_mq(center);
+    for_each_arc(n, |u0, u1| {
+        draw_triangle(
+            c,
+            to_mq(center + scale(u0, radii)),
+            to_mq(center + scale(u1, radii)),
+            color,
+        );
+    });
+}
+
+/// Draws an ellipse outline `width` pixels wide, centred on the ellipse
+/// (screen space), as a ring of quads between the inner and outer ellipses.
+fn draw_ellipse_ring(center: Vec2, radii: Vec2, width: f32, color: Color) {
+    let h = width * 0.5;
+    let outer = Vec2::new(radii.x + h, radii.y + h);
+    let inner = Vec2::new((radii.x - h).max(0.0), (radii.y - h).max(0.0));
+    let n = circle_segments(outer.x.max(outer.y));
+    for_each_arc(n, |u0, u1| {
+        let (o0, o1) = (
+            to_mq(center + scale(u0, outer)),
+            to_mq(center + scale(u1, outer)),
+        );
+        let (i0, i1) = (
+            to_mq(center + scale(u0, inner)),
+            to_mq(center + scale(u1, inner)),
+        );
+        draw_triangle(o0, o1, i0, color);
+        draw_triangle(i0, o1, i1, color);
+    });
 }
 
 #[cfg(test)]
