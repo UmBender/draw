@@ -49,16 +49,23 @@ pub struct State {
 
 /// `shape` with the fill under the world point `p` cleared: its own fill if
 /// `p` is inside a filled closed shape, or the fill of the grid cell under
-/// `p`. Unchanged if there is no fill at `p`.
-fn clear_at(shape: &Shape, p: Vec2) -> Shape {
+/// `p`. `None` (and no clone) if there is no fill at `p`.
+fn clear_at(shape: &Shape, p: Vec2) -> Option<Shape> {
+    let own = shape.fill().is_some() && shape.contains(p);
+    let cell = shape
+        .grid_cell_at(p)
+        .filter(|&(col, row)| shape.cell_fill(col, row).is_some());
+    if !own && cell.is_none() {
+        return None;
+    }
     let mut cleared = shape.clone();
-    if cleared.fill().is_some() && cleared.contains(p) {
+    if own {
         cleared = cleared.with_fill(None);
     }
-    if let Some((col, row)) = cleared.grid_cell_at(p) {
+    if let Some((col, row)) = cell {
         cleared = cleared.with_cell_fill(col, row, None);
     }
-    cleared
+    Some(cleared)
 }
 
 /// The mode of a drag pressed at the world point `p`: [`Mode::Clear`] if
@@ -69,7 +76,7 @@ fn mode_at(ctx: &ToolCtx<'_>, p: Vec2, tol: f32) -> Mode {
         && ctx
             .doc
             .shapes()
-            .any(|(_, shape)| clear_at(shape, p) != *shape)
+            .any(|(_, shape)| clear_at(shape, p).is_some())
     {
         Mode::Clear
     } else {
@@ -108,10 +115,9 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
 fn clear_into(cleared: &mut Vec<(ShapeId, Shape)>, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
     let slot = cleared.iter().position(|(c, _)| *c == id);
     let current = slot.map_or(shape, |i| &cleared[i].1);
-    let next = clear_at(current, p);
-    if next == *current {
+    let Some(next) = clear_at(current, p) else {
         return false;
-    }
+    };
     match slot {
         Some(i) => cleared[i].1 = next,
         None => cleared.push((id, next)),

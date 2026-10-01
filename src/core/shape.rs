@@ -341,7 +341,11 @@ impl Shape {
             return None;
         }
         // Fraction of the way from `a` to `b`, in 0..=1 inside the box.
-        let along = |p: f32, a: f32, b: f32| if a == b { 0.0 } else { (p - a) / (b - a) };
+        // A zero-size side gives 0 / 0: treat it as the first cell.
+        let along = |p: f32, a: f32, b: f32| {
+            let t = (p - a) / (b - a);
+            if t.is_finite() { t } else { 0.0 }
+        };
         let index = |t: f32, n: u32| ((t * n as f32) as u32).min(n - 1);
         let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
         Some((
