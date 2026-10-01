@@ -8,14 +8,6 @@
 /// Number of drawing colours, addressable with keys `1`–`6`.
 pub const PALETTE_LEN: usize = 6;
 
-/// Placeholder until the real values are filled in.
-const UNSET: Rgba = Rgba {
-    r: 0,
-    g: 0,
-    b: 0,
-    a: 0,
-};
-
 /// An 8-bit-per-channel colour with alpha.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Rgba {
@@ -33,14 +25,18 @@ impl Rgba {
     /// Builds an opaque colour from `0xRRGGBB`; bits above the low 24 are ignored.
     #[must_use]
     pub const fn from_hex(hex: u32) -> Self {
-        let _ = hex;
-        todo!()
+        Self {
+            r: (hex >> 16) as u8,
+            g: (hex >> 8) as u8,
+            b: hex as u8,
+            a: 0xff,
+        }
     }
 
     /// Returns `[r, g, b, a]` scaled to `0.0..=1.0`, the form GPU APIs expect.
     #[must_use]
     pub fn to_f32(self) -> [f32; 4] {
-        todo!()
+        [self.r, self.g, self.b, self.a].map(|c| f32::from(c) / 255.0)
     }
 }
 
@@ -55,32 +51,42 @@ impl ColorId {
     /// Returns the id for `index`, or `None` if `index >= PALETTE_LEN`.
     #[must_use]
     pub const fn new(index: u8) -> Option<Self> {
-        let _ = index;
-        todo!()
+        if (index as usize) < PALETTE_LEN {
+            Some(Self(index))
+        } else {
+            None
+        }
     }
 
     /// Maps a number key `1`–`6` to ids 0–5; any other digit gives `None`.
     #[must_use]
     pub const fn from_key_digit(digit: u8) -> Option<Self> {
-        let _ = digit;
-        todo!()
+        // `0` wraps to 255 and is rejected by `new`.
+        Self::new(digit.wrapping_sub(1))
     }
 
     /// Returns the palette index, guaranteed `< PALETTE_LEN`.
     #[must_use]
     pub const fn index(self) -> usize {
-        todo!()
+        self.0 as usize
     }
 }
 
 /// The drawing colours in key order: ink, red, green, blue, yellow, magenta.
-pub const PALETTE: [Rgba; PALETTE_LEN] = [UNSET; PALETTE_LEN];
+pub const PALETTE: [Rgba; PALETTE_LEN] = [
+    Rgba::from_hex(0xc5_c9_c5), // ink
+    Rgba::from_hex(0xd1_69_61), // red
+    Rgba::from_hex(0x8a_a8_6e), // green
+    Rgba::from_hex(0x7f_a8_bc), // blue
+    Rgba::from_hex(0xce_b6_80), // yellow
+    Rgba::from_hex(0xaa_88_ac), // magenta
+];
 
 /// Returns the colour for `id`. Total: every `ColorId` is a valid index.
 #[must_use]
 pub const fn palette(id: ColorId) -> Rgba {
-    let _ = id;
-    todo!()
+    // In bounds: `ColorId` can only be built with an index `< PALETTE_LEN`.
+    PALETTE[id.index()]
 }
 
 /// UI colour tokens.
@@ -102,12 +108,12 @@ pub struct Theme {
 
 /// The application theme.
 pub const THEME: Theme = Theme {
-    bg: UNSET,
-    surface: UNSET,
-    border: UNSET,
-    text: UNSET,
-    accent: UNSET,
-    selection: UNSET,
+    bg: Rgba::from_hex(0x18_16_16),
+    surface: Rgba::from_hex(0x0d_0c_0c),
+    border: Rgba::from_hex(0xa6_a6_9c),
+    text: Rgba::from_hex(0xc5_c9_c5),
+    accent: Rgba::from_hex(0x7f_a8_bc),
+    selection: Rgba::from_hex(0x2d_4f_67),
 };
 
 #[cfg(test)]
