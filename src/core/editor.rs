@@ -146,10 +146,9 @@ impl Editor {
     /// Handles one input event. Returns whether the view needs a redraw.
     pub fn handle(&mut self, event: InputEvent) -> bool {
         match event {
-            InputEvent::PointerDown { pos, button, mods } => {
-                self.track_cursor(pos)
-                    .is_some_and(|pos| self.pointer_down(pos, button, mods))
-            }
+            InputEvent::PointerDown { pos, button, mods } => self
+                .track_cursor(pos)
+                .is_some_and(|pos| self.pointer_down(pos, button, mods)),
             InputEvent::PointerMove { pos, mods } => self
                 .track_cursor(pos)
                 .is_some_and(|pos| self.pointer_move(pos, mods)),
@@ -1152,6 +1151,10 @@ mod tests {
             let _ = ed.overlay();
             up(&mut ed, PointerButton::Left, 5.0, 5.0);
         }
-        assert!(ed.selection().iter().all(|id| ed.document().get(*id).is_some()));
+        assert!(
+            ed.selection()
+                .iter()
+                .all(|id| ed.document().get(*id).is_some())
+        );
     }
 }

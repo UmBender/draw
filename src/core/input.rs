@@ -9,7 +9,6 @@ use crate::core::geom::Vec2;
 
 /// Modifier keys held during an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[allow(clippy::struct_excessive_bools)] // three independent keys, not a state machine
 pub struct Modifiers {
     /// `Shift` is held.
     pub shift: bool,
