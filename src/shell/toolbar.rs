@@ -420,6 +420,8 @@ mod tests {
                 ButtonKind::SmartSnap => Command::ToggleSmartSnap,
                 ButtonKind::GridSnap => Command::ToggleGridSnap,
                 ButtonKind::Numbering => Command::ToggleNumbering,
+                ButtonKind::GridCols(d) => Command::GridCols(d),
+                ButtonKind::GridRows(d) => Command::GridRows(d),
                 ButtonKind::Undo => Command::Undo,
                 ButtonKind::Redo => Command::Redo,
             };
@@ -464,13 +466,19 @@ mod tests {
         // Act
         let routed = route(
             true,
+            false,
             VIEWPORT,
             press(rect_tool.rect.center(), PointerButton::Left),
         );
         // Assert
         assert_eq!(routed, Route::Apply(Command::SetTool(Tool::Rect)));
         for button in [PointerButton::Right, PointerButton::Middle] {
-            let routed = route(true, VIEWPORT, press(rect_tool.rect.center(), button));
+            let routed = route(
+                true,
+                false,
+                VIEWPORT,
+                press(rect_tool.rect.center(), button),
+            );
             assert!(
                 !matches!(routed, Route::Forward(_)),
                 "{button:?} press on the toolbar reached the canvas"
@@ -483,7 +491,7 @@ mod tests {
         let strip = panel(VIEWPORT);
         let bottom = Vec2::new(strip.center().x, strip.max.y - 1.0);
         assert_eq!(
-            route(true, VIEWPORT, press(bottom, PointerButton::Left)),
+            route(true, false, VIEWPORT, press(bottom, PointerButton::Left)),
             Route::Swallow
         );
     }
@@ -492,7 +500,7 @@ mod tests {
     fn route_hidden_toolbar_forwards() {
         let center = layout(VIEWPORT)[0].rect.center();
         let event = press(center, PointerButton::Left);
-        assert_eq!(route(false, VIEWPORT, event), Route::Forward(event));
+        assert_eq!(route(false, false, VIEWPORT, event), Route::Forward(event));
     }
 
     #[test]
@@ -520,7 +528,123 @@ mod tests {
             InputEvent::Resize { size: VIEWPORT },
         ];
         for event in events {
-            assert_eq!(route(true, VIEWPORT, event), Route::Forward(event));
+            assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
         }
+    }
+
+    // AC-6 (T18): grid size flyout
+
+    /// The toolbar's grid tool button.
+    fn grid_button() -> Button {
+        match layout(VIEWPORT)
+            .into_iter()
+            .find(|b| b.kind == ButtonKind::Tool(Tool::Grid))
+        {
+            Some(button) => button,
+            None => panic!("toolbar has a grid button"),
+        }
+    }
+
+    #[test]
+    fn flyout_has_four_buttons_in_order() {
+        // Act
+        let kinds: Vec<ButtonKind> = flyout_layout(VIEWPORT).iter().map(|b| b.kind).collect();
+        // Assert
+        assert_eq!(
+            kinds,
+            [
+                ButtonKind::GridCols(-1),
+                ButtonKind::GridCols(1),
+                ButtonKind::GridRows(-1),
+                ButtonKind::GridRows(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn flyout_is_right_of_strip_aligned_with_grid_button() {
+        let fly = flyout_panel(VIEWPORT);
+        let strip = panel(VIEWPORT);
+        assert!(fly.min.x >= strip.max.x, "{fly:?} overlaps the strip");
+        assert!(approx_eq(fly.min.y, grid_button().rect.min.y, EPS));
+        assert!(fly.max.x <= VIEWPORT.x && fly.max.y <= VIEWPORT.y);
+        assert!(fly.width() > 0.0 && fly.height() > 0.0);
+    }
+
+    #[test]
+    fn flyout_buttons_inside_panel_and_disjoint() {
+        let fly = flyout_panel(VIEWPORT);
+        let buttons = flyout_layout(VIEWPORT);
+        for b in &buttons {
+            assert!(
+                fly.contains(b.rect.min) && fly.contains(b.rect.max),
+                "{b:?}"
+            );
+        }
+        for (i, a) in buttons.iter().enumerate() {
+            for b in &buttons[i + 1..] {
+                assert!(!a.rect.intersects(&b.rect), "{a:?} overlaps {b:?}");
+            }
+        }
+        // Columns on the first row, rows below; minus left of plus.
+        assert!(buttons[0].rect.max.y < buttons[2].rect.min.y);
+        assert!(buttons[0].rect.max.x < buttons[1].rect.min.x);
+        assert!(buttons[2].rect.max.x < buttons[3].rect.min.x);
+    }
+
+    #[test]
+    fn flyout_buttons_return_their_commands() {
+        let buttons = flyout_layout(VIEWPORT);
+        let expected = [
+            Command::GridCols(-1),
+            Command::GridCols(1),
+            Command::GridRows(-1),
+            Command::GridRows(1),
+        ];
+        for (b, want) in buttons.iter().zip(expected) {
+            assert_eq!(hit(&buttons, b.rect.center()), Some(want), "{b:?}");
+        }
+    }
+
+    #[test]
+    fn route_flyout_click_applies() {
+        // Arrange
+        let plus_rows = flyout_layout(VIEWPORT)[3];
+        // Act
+        let routed = route(
+            true,
+            true,
+            VIEWPORT,
+            press(plus_rows.rect.center(), PointerButton::Left),
+        );
+        // Assert
+        assert_eq!(routed, Route::Apply(Command::GridRows(1)));
+        // The strip still works with the flyout shown.
+        let rect_tool = layout(VIEWPORT)[3].rect.center();
+        assert_eq!(
+            route(true, true, VIEWPORT, press(rect_tool, PointerButton::Left)),
+            Route::Apply(Command::SetTool(Tool::Rect))
+        );
+    }
+
+    #[test]
+    fn route_flyout_gap_is_swallowed() {
+        let fly = flyout_panel(VIEWPORT);
+        let corner = fly.min + Vec2::new(1.0, 1.0);
+        assert_eq!(hit(&flyout_layout(VIEWPORT), corner), None);
+        for button in [PointerButton::Left, PointerButton::Right] {
+            assert_eq!(
+                route(true, true, VIEWPORT, press(corner, button)),
+                Route::Swallow
+            );
+        }
+    }
+
+    #[test]
+    fn route_without_flyout_forwards() {
+        let minus_cols = flyout_layout(VIEWPORT)[0].rect.center();
+        let event = press(minus_cols, PointerButton::Left);
+        assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
+        assert_eq!(route(false, true, VIEWPORT, event), Route::Forward(event));
     }
 }
