@@ -1,6 +1,226 @@
 //! Ordered shape store with stable ids and atomic transactions.
 //!
-//! Owned by T06; filled in by that task.
+//! The [`Document`] is the list of shapes in z-order (index 0 is drawn first,
+//! at the bottom). It is only mutated through [`Document::apply`], which takes
+//! a [`Transaction`] of [`Edit`]s and either applies all of them or none
+//! (ADR-0005, ADR-T06-1). The `tx_*` builders create the common transactions.
+
+use std::collections::HashSet;
+use std::fmt;
+
+use crate::core::shape::Shape;
+
+/// Stable identity of a shape in a [`Document`].
+///
+/// Allocated by [`Document::next_id`]; never reused, even after undo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ShapeId(pub u64);
+
+impl ShapeId {
+    /// The raw id value.
+    #[must_use]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// One reversible change to a [`Document`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Edit {
+    /// Insert `shape` with `id` so that it ends up at `index` (`0..=len`).
+    Insert {
+        /// Z-order position after insertion.
+        index: usize,
+        /// Id of the new shape; must not be present yet.
+        id: ShapeId,
+        /// The shape to insert; must be finite.
+        shape: Shape,
+    },
+    /// Remove the shape at `index`, which must be exactly `(id, shape)`.
+    Remove {
+        /// Z-order position of the shape.
+        index: usize,
+        /// Id expected at `index`.
+        id: ShapeId,
+        /// Shape expected at `index` (kept so the edit can be inverted).
+        shape: Shape,
+    },
+    /// Replace the shape `id`, which must currently equal `before`, by `after`.
+    Replace {
+        /// Id of the shape to replace.
+        id: ShapeId,
+        /// Shape expected before the edit.
+        before: Shape,
+        /// Shape after the edit; must be finite.
+        after: Shape,
+    },
+}
+
+impl Edit {
+    /// The edit that undoes this one.
+    #[must_use]
+    pub fn inverse(&self) -> Self {
+        todo!()
+    }
+}
+
+/// An ordered group of edits applied atomically: one user action.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Transaction(pub Vec<Edit>);
+
+impl Transaction {
+    /// True if the transaction has no edits.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        todo!()
+    }
+
+    /// Number of edits.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        todo!()
+    }
+
+    /// The edits, in application order.
+    #[must_use]
+    pub fn edits(&self) -> &[Edit] {
+        todo!()
+    }
+
+    /// The transaction that undoes this one: inverse edits in reverse order.
+    #[must_use]
+    pub fn inverse(&self) -> Self {
+        todo!()
+    }
+}
+
+impl From<Vec<Edit>> for Transaction {
+    fn from(edits: Vec<Edit>) -> Self {
+        Self(edits)
+    }
+}
+
+/// Why [`Document::apply`] rejected a transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApplyError {
+    /// An `Insert` or `Remove` index is outside the document.
+    IndexOutOfRange {
+        /// The offending index.
+        index: usize,
+        /// Document length when the edit was tried.
+        len: usize,
+    },
+    /// A `Replace` names an id that is not in the document.
+    UnknownId(ShapeId),
+    /// An `Insert` uses an id that is already in the document.
+    DuplicateId(ShapeId),
+    /// The document does not hold what a `Remove` or `Replace` expects.
+    Mismatch(ShapeId),
+    /// An inserted or replacing shape has a non-finite coordinate or width.
+    NonFiniteShape(ShapeId),
+}
+
+impl fmt::Display for ApplyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for ApplyError {}
+
+/// The ordered shape store.
+#[derive(Debug, Clone, Default)]
+pub struct Document {
+    shapes: Vec<(ShapeId, Shape)>,
+    next_id: u64,
+}
+
+impl Document {
+    /// An empty document.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Allocate a fresh id, larger than every id handed out or inserted so far.
+    pub fn next_id(&mut self) -> ShapeId {
+        todo!()
+    }
+
+    /// Shapes with their ids, bottom to top.
+    pub fn shapes(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (ShapeId, &Shape)> + ExactSizeIterator + '_ {
+        self.shapes.iter().map(|(id, shape)| (*id, shape))
+    }
+
+    /// The shape with `id`, if present.
+    #[must_use]
+    pub fn get(&self, id: ShapeId) -> Option<&Shape> {
+        todo!()
+    }
+
+    /// Z-order position of `id`, if present.
+    #[must_use]
+    pub fn index_of(&self, id: ShapeId) -> Option<usize> {
+        todo!()
+    }
+
+    /// Number of shapes.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        todo!()
+    }
+
+    /// True if there are no shapes.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        todo!()
+    }
+
+    /// The topmost shape satisfying `pred`, searching from the top down.
+    pub fn topmost_where(&self, pred: impl FnMut(&Shape) -> bool) -> Option<ShapeId> {
+        todo!()
+    }
+
+    /// Apply every edit of `tx` in order, or none of them.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`ApplyError`] of the first invalid edit; the document
+    /// (shapes and id counter) is then unchanged.
+    pub fn apply(&mut self, tx: &Transaction) -> Result<(), ApplyError> {
+        todo!()
+    }
+}
+
+/// Transaction inserting `shapes` on top, in order, with freshly allocated ids.
+///
+/// Only allocates ids; the shape list is unchanged until the transaction is
+/// applied.
+pub fn tx_insert(doc: &mut Document, shapes: impl IntoIterator<Item = Shape>) -> Transaction {
+    todo!()
+}
+
+/// Transaction removing the shapes `ids`; unknown and repeated ids are skipped.
+///
+/// Edits are ordered by descending index so each index stays valid.
+#[must_use]
+pub fn tx_remove(doc: &Document, ids: &[ShapeId]) -> Transaction {
+    todo!()
+}
+
+/// Transaction replacing shape `id` by `new`; empty if `id` is unknown.
+#[must_use]
+pub fn tx_replace(doc: &Document, id: ShapeId, new: Shape) -> Transaction {
+    todo!()
+}
+
+/// Transaction removing every shape, top down.
+#[must_use]
+pub fn tx_clear(doc: &Document) -> Transaction {
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {

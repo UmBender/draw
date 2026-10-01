@@ -1,6 +1,97 @@
 //! Transactional undo/redo log.
 //!
-//! Owned by T06; filled in by that task.
+//! [`History`] commits [`Transaction`]s to a [`Document`] and keeps them on an
+//! undo stack; undo applies the inverse transaction and moves it to the redo
+//! stack (ADR-0005). The undo stack is capped at [`HISTORY_LIMIT`] entries by
+//! default; the oldest entry is dropped first.
+
+use std::collections::VecDeque;
+
+use crate::core::document::{ApplyError, Document, Transaction};
+
+/// Default maximum number of undoable transactions.
+pub const HISTORY_LIMIT: usize = 500;
+
+/// Undo and redo stacks of committed transactions.
+#[derive(Debug, Clone)]
+pub struct History {
+    undo: VecDeque<Transaction>,
+    redo: Vec<Transaction>,
+    limit: usize,
+}
+
+impl Default for History {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl History {
+    /// Empty history keeping up to [`HISTORY_LIMIT`] transactions.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_limit(HISTORY_LIMIT)
+    }
+
+    /// Empty history keeping up to `limit` transactions (at least 1).
+    #[must_use]
+    pub fn with_limit(limit: usize) -> Self {
+        todo!()
+    }
+
+    /// Apply `tx` to `doc` and record it; clears the redo stack.
+    ///
+    /// An empty transaction is ignored (nothing recorded, redo kept).
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`ApplyError`] from [`Document::apply`]; `doc` and the
+    /// history are then unchanged.
+    pub fn commit(&mut self, doc: &mut Document, tx: Transaction) -> Result<(), ApplyError> {
+        todo!()
+    }
+
+    /// Undo the latest transaction. False if there is none, or if `doc` no
+    /// longer matches it (the stacks are then unchanged).
+    pub fn undo(&mut self, doc: &mut Document) -> bool {
+        todo!()
+    }
+
+    /// Redo the latest undone transaction. False if there is none, or if `doc`
+    /// no longer matches it (the stacks are then unchanged).
+    pub fn redo(&mut self, doc: &mut Document) -> bool {
+        todo!()
+    }
+
+    /// True if [`History::undo`] has something to undo.
+    #[must_use]
+    pub fn can_undo(&self) -> bool {
+        todo!()
+    }
+
+    /// True if [`History::redo`] has something to redo.
+    #[must_use]
+    pub fn can_redo(&self) -> bool {
+        todo!()
+    }
+
+    /// Number of undoable transactions.
+    #[must_use]
+    pub fn undo_len(&self) -> usize {
+        todo!()
+    }
+
+    /// Number of redoable transactions.
+    #[must_use]
+    pub fn redo_len(&self) -> usize {
+        todo!()
+    }
+
+    /// Forget both stacks (the document is untouched).
+    pub fn clear(&mut self) {
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {
