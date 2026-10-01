@@ -1,41 +1,84 @@
 //! Grid tool (T18): drag a box, get a `cols × rows`
-//! [`Shape::Grid`](crate::core::shape::Shape::Grid).
+//! [`Shape::Grid`].
 //!
-//! The dimensions come from
-//! [`Helpers`](crate::core::editor::Helpers) in [`ToolView::style`]; arrow
-//! keys change them live during the drag (ADR-T16-2).
+//! The drag works like the rectangle tool: `Down` starts it, `Move` updates
+//! the end, `Up` commits one grid as one undo step unless the drag is
+//! shorter than [`MIN_DRAG_PX`] on screen. Corners snap like a box drag
+//! (ADR-T17-1).
 //!
-//! Skeleton (T16): every entry point does nothing until T18 fills it in.
+//! The dimensions are never stored in the drag: [`preview`] and the commit
+//! read them from [`Helpers`](crate::core::editor::Helpers) in
+//! [`ToolView::style`], so the arrow keys change them live and the grid
+//! gets the values at release (ADR-T18-1). `Shift` makes the cells square.
 
+use crate::core::geom::Vec2;
+use crate::core::shape::{Shape, Style};
+use crate::core::tools::shape_tool::MIN_DRAG_PX;
 use crate::core::tools::{Overlay, Pointer, ToolCtx, ToolView};
 
 /// Gesture state of the grid tool.
 #[derive(Debug, Clone, Default)]
-pub struct State {}
+pub struct State {
+    /// The drag in progress, if the button is down.
+    drag: Option<Drag>,
+}
+
+/// A grid drag in progress.
+#[derive(Debug, Clone)]
+struct Drag {
+    /// World position of the `Down`, snapped.
+    start: Vec2,
+    /// World position of the latest event, snapped.
+    end: Vec2,
+    /// Alignment guides of the latest event.
+    guides: Vec<[Vec2; 2]>,
+    /// Whether `Shift` was held on the latest event.
+    shift: bool,
+    /// Style sampled on `Down`, width already in world units.
+    style: Style,
+}
+
+impl Drag {
+    /// The grid this drag spans with `cols × rows` cells (clamped), with
+    /// square cells if `shift` is held.
+    fn shape(&self, cols: u32, rows: u32) -> Shape {
+        let _ = (cols, rows);
+        todo!()
+    }
+}
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 ///
-/// Skeleton: ignores the event.
+/// `Down` starts a drag, `Move` updates its end and `Shift` state, `Up`
+/// commits the grid with the current dimensions as one undo step unless the
+/// drag is shorter than [`MIN_DRAG_PX`] on screen. Events without a drag
+/// are ignored.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     let _ = (state, ctx, pointer);
-    false
+    todo!()
 }
 
-/// The overlay of the gesture in progress.
-///
-/// Skeleton: empty.
+/// What the gesture in progress draws on top of the document: the grid
+/// being dragged, with the current dimensions, and its alignment guides;
+/// nothing when idle.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     let _ = (state, view);
-    Overlay::default()
+    todo!()
 }
 
-/// Discards the gesture in progress. Returns whether a redraw is needed.
-///
-/// Skeleton: there is never a gesture.
+/// Discards the gesture in progress without changing the document. Returns
+/// whether a redraw is needed (there was a drag to discard).
 pub fn cancel(state: &mut State) -> bool {
     let _ = state;
-    false
+    todo!()
+}
+
+/// `end` moved so that the box from `start` holds `cols × rows` square
+/// cells: the side is the larger of the dragged cell width and height.
+fn square_cells(start: Vec2, end: Vec2, cols: u32, rows: u32) -> Vec2 {
+    let _ = (start, end, cols, rows);
+    todo!()
 }
 
 #[cfg(test)]
