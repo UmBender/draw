@@ -1,11 +1,11 @@
 ---
 id: T18
 title: Grid tool
-status: review
+status: in-progress
 wave: 8
 branch: task/T18-grid-tool
 depends_on: [T16]
-adrs: ["[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]"]
+adrs: ["[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]"]
 feature: "[[Grid tool]]"
 tutorial: "[[18 A grid tool with live parameters]]"
 tags: [task]
@@ -60,6 +60,20 @@ are read from `Helpers` at preview and release, never stored in the drag.
   `committed_grid_is_finite_and_in_range`;
   `fuzz::editor_never_panics_and_keeps_invariants` (existing).
 
+- **AC-6** (added on owner request, [[ADR-T18-2 Grid size flyout in the toolbar]])
+  — While the grid tool is active, the toolbar shows a flyout right of the
+  strip, aligned with the `G` button: rows `cols` and `rows`, each with
+  `-` and `+` buttons that run `GridCols(∓1)`/`GridRows(∓1)`, and the
+  current values. Presses inside the flyout never reach the canvas; with
+  another tool or a hidden toolbar it is absent and presses there are
+  forwarded.
+  *Tests (`toolbar::tests`):* `flyout_has_four_buttons_in_order`,
+  `flyout_is_right_of_strip_aligned_with_grid_button`,
+  `flyout_buttons_inside_panel_and_disjoint`,
+  `flyout_buttons_return_their_commands`, `route_flyout_click_applies`,
+  `route_flyout_gap_is_swallowed`, `route_without_flyout_forwards`;
+  existing `route_*` tests updated for the new parameter.
+
 ## Out of scope
 
 Per-cell fill or numbering, merged cells, resizing a committed grid.
@@ -68,9 +82,14 @@ Per-cell fill or numbering, merged cells, resizing a committed grid.
 
 `src/core/tools/grid.rs`, new `ADR-T18-*`.
 
+Amended for AC-6 (approved by the owner): `src/shell/toolbar.rs` (flyout
+layout, routing, drawing) and `src/shell/app.rs` (the `dispatch` call
+passes whether the grid tool is active).
+
 ## Subtasks (one commit each)
 
 - [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
+- AC-6 flyout: [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
 
 ## Learning path
 
@@ -98,3 +117,7 @@ Step 18 — requires steps 9 and 16.
   `tools::grid`, was "stub until T18").
 - Not checked on screen: grid rendering and arrow-key feel need a manual
   look in the running app.
+- AC-6 spec: owner asked for a toolbar counter of columns and rows; the
+  strip has no vertical room, so a flyout next to `G` shown only with the
+  grid tool ([[ADR-T18-2 Grid size flyout in the toolbar]]). Files owned
+  amended with `toolbar.rs` and `app.rs`.
