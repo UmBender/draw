@@ -279,6 +279,7 @@ mod tests {
                 cols,
                 rows,
                 style,
+                ..
             } => (*a, *b, *cols, *rows, *style),
             other => panic!("expected a grid, got {other:?}"),
         }
@@ -610,5 +611,38 @@ mod tests {
                 prop_assert!((cw - ch).abs() <= tol, "cell {cw} × {ch}");
             }
         }
+    }
+
+    // ---- AC-7 axis indices ------------------------------------------------
+
+    /// Whether `shape` is a grid with axis indices.
+    fn has_axes(shape: &Shape) -> bool {
+        matches!(shape, Shape::Grid { axes: true, .. })
+    }
+
+    #[test]
+    fn axes_off_by_default() {
+        let mut f = Fixture::new();
+
+        f.drag((0.0, 0.0), (40.0, 40.0), false);
+
+        assert!(!has_axes(f.last_shape()));
+    }
+
+    #[test]
+    fn axes_setting_reaches_grid() {
+        // Arrange
+        let mut f = Fixture::new();
+        f.send(Phase::Down, 0.0, 0.0);
+        f.send(Phase::Move, 40.0, 40.0);
+
+        // Act: toggled mid-drag, like the dimensions.
+        f.style.helpers.grid_axes = true;
+        let overlay = f.overlay();
+        f.send(Phase::Up, 40.0, 40.0);
+
+        // Assert
+        assert!(has_axes(previewed(&overlay)));
+        assert!(has_axes(f.last_shape()));
     }
 }

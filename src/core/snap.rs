@@ -553,6 +553,7 @@ mod tests {
             cols: 3,
             rows: 2,
             style: STYLE,
+            axes: false,
         };
         let t = targets(&[grid]);
 
@@ -802,6 +803,7 @@ mod tests {
                     cols,
                     rows,
                     style: STYLE,
+                    axes: false,
                 },
             },
         )

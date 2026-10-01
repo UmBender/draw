@@ -383,6 +383,7 @@ mod tests {
             (Key::ArrowLeft, NONE, Command::GridCols(-1)),
             (Key::ArrowDown, NONE, Command::GridRows(1)),
             (Key::ArrowUp, NONE, Command::GridRows(-1)),
+            (Key::I, NONE, Command::ToggleGridAxes),
         ]
     }
 
@@ -445,6 +446,7 @@ mod tests {
         assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
         assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
         assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+        assert_eq!(resolve(Key::I, NONE), Some(Command::ToggleGridAxes));
     }
 
     #[test]

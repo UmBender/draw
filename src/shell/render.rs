@@ -774,6 +774,23 @@ mod tests {
         ));
     }
 
+    // T18 AC-7: axis indices
+
+    #[test]
+    fn axis_label_size_fits_longest_index() {
+        // Arrange: 12 columns → indices up to "11", two characters.
+        let cell = Vec2::new(40.0, 40.0);
+
+        // Act
+        let wide = axis_label_size(12, 3, cell);
+        let narrow = axis_label_size(3, 10, cell);
+
+        // Assert
+        assert_eq!(wide, label_size(2, cell));
+        assert_eq!(narrow, label_size(1, cell), "index 9 is one digit");
+        assert_eq!(axis_label_size(1, 1, Vec2::new(2.0, 2.0)), None);
+    }
+
     // T16 AC-2: labels
 
     #[test]

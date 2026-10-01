@@ -1253,6 +1253,7 @@ mod tests {
 
         // Assert
         assert!(!helpers.smart_snap && !helpers.grid_snap && !helpers.numbering);
+        assert!(!helpers.grid_axes);
         assert_eq!(helpers.next_number, FIRST_NUMBER);
         assert_eq!((helpers.grid_cols, helpers.grid_rows), (4, 4));
         assert_eq!(ed.style().helpers, helpers);
@@ -1287,6 +1288,16 @@ mod tests {
         assert!(ed.helpers().numbering);
         assert!(ed.apply(Command::ToggleNumbering));
         assert!(!ed.helpers().numbering);
+    }
+
+    #[test]
+    fn toggle_grid_axes_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleGridAxes));
+        assert!(ed.helpers().grid_axes);
+        assert!(ed.apply(Command::ToggleGridAxes));
+        assert!(!ed.helpers().grid_axes);
     }
 
     #[test]
