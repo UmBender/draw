@@ -5,17 +5,19 @@
 //! [`screen_width`] (ADR-T07-1). Off-screen shapes are culled by their
 //! bounding box (ADR-0006). Discs and ellipses are tessellated here with
 //! `draw_triangle`, which does not allocate, instead of macroquad's
-//! `draw_circle`/`draw_ellipse`, which do.
+//! `draw_circle`/`draw_ellipse`, which do. Grids and labels follow
+//! ADR-T16-1.
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
+use macroquad::text::{TextParams, draw_text_ex, measure_text};
 
 use crate::core::camera::Camera;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, THEME, palette};
-use crate::core::shape::{Shape, arrow_head};
+use crate::core::shape::{Shape, arrow_head, grid_lines};
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
 pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
@@ -149,8 +151,14 @@ pub fn selection_rect(bounds: Aabb, camera: &Camera) -> Aabb {
 /// non-finite area.
 #[must_use]
 pub fn label_size(chars: usize, area: Vec2) -> Option<f32> {
-    let _ = (chars, area);
-    todo!()
+    if !area.is_finite() {
+        return None;
+    }
+    let text_width = chars.max(1) as f32 * LABEL_CHAR_ASPECT;
+    let size = (area.y * LABEL_HEIGHT_RATIO)
+        .min(area.x * LABEL_WIDTH_RATIO / text_width)
+        .min(LABEL_MAX_PX);
+    (size >= LABEL_MIN_PX).then_some(size)
 }
 
 /// Size in pixels of the area a label may use inside the screen rectangle
@@ -158,17 +166,26 @@ pub fn label_size(chars: usize, area: Vec2) -> Option<f32> {
 /// axis-aligned box inscribed in it (`rect` scaled by `1/√2`).
 #[must_use]
 pub fn label_area(rect: Aabb, ellipse: bool) -> Vec2 {
-    let _ = (rect, ellipse);
-    todo!()
+    let size = Vec2::new(rect.width(), rect.height());
+    if ellipse {
+        size * std::f32::consts::FRAC_1_SQRT_2
+    } else {
+        size
+    }
 }
 
 /// Raster size and scale for drawing text at `size` pixels: the smallest of
 /// [`LABEL_RASTER_SIZES`] at least `size` (else the largest), and the scale
-/// mapping it to `size`.
+/// mapping it to `size`. A NaN `size` gives the largest raster and a NaN
+/// scale; callers pass sizes from [`label_size`], which are finite.
 #[must_use]
 pub fn label_raster(size: f32) -> (u16, f32) {
-    let _ = size;
-    todo!()
+    let largest = LABEL_RASTER_SIZES[LABEL_RASTER_SIZES.len() - 1];
+    let raster = LABEL_RASTER_SIZES
+        .into_iter()
+        .find(|&r| f32::from(r) >= size)
+        .unwrap_or(largest);
+    (raster, size / f32::from(raster))
 }
 
 /// Draws what lies under the shapes, such as the snap dot grid (T17).
@@ -230,7 +247,7 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             draw_segment(to_screen(*a), base, width, color);
             draw_triangle(to_mq(tip), to_mq(left), to_mq(right), color);
         }
-        Shape::Rect { a, b, fill, .. } => {
+        Shape::Rect { a, b, fill, label, .. } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             if let Some(fill) = fill {
                 draw_rectangle(
@@ -242,8 +259,11 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
                 );
             }
             draw_rect_outline(rect, width, color);
+            draw_label(*label, rect, false, label_color(*fill, color));
         }
-        Shape::Ellipse { a, b, fill, .. } => {
+        Shape::Ellipse {
+            a, b, fill, label, ..
+        } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             let center = rect.center();
             let radii = Vec2::new(rect.width() * 0.5, rect.height() * 0.5);
@@ -251,9 +271,62 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
                 draw_ellipse_fill(center, radii, color_of(*fill));
             }
             draw_ellipse_ring(center, radii, width, color);
+            draw_label(*label, rect, true, label_color(*fill, color));
         }
-        Shape::Grid { .. } => todo!(),
+        Shape::Grid {
+            a, b, cols, rows, ..
+        } => {
+            // The camera only scales and offsets, so grid lines map to
+            // the grid lines of the mapped corners.
+            for [start, end] in grid_lines(to_screen(*a), to_screen(*b), *cols, *rows) {
+                draw_band(start, end, width, color);
+            }
+        }
     }
+}
+
+/// Text colour of a label: the outline colour, or the background colour on a
+/// filled shape so the number stays readable.
+fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
+    if fill.is_some() {
+        to_mq_color(THEME.bg)
+    } else {
+        outline
+    }
+}
+
+/// Draws `label` centred in the screen rectangle `rect` of a rectangle or
+/// (`ellipse`) an ellipse, if it is big enough on screen.
+fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
+    let Some(label) = label else {
+        return;
+    };
+    let text = label.to_string();
+    let Some(size) = label_size(text.len(), label_area(rect, ellipse)) else {
+        return;
+    };
+    let (font_size, font_scale) = label_raster(size);
+    let dims = measure_text(&text, None, font_size, font_scale);
+    let c = rect.center();
+    draw_text_ex(
+        &text,
+        c.x - dims.width * 0.5,
+        c.y + dims.offset_y * 0.5,
+        TextParams {
+            font_size,
+            font_scale,
+            color,
+            ..TextParams::default()
+        },
+    );
+}
+
+/// Draws an axis-aligned screen segment as a band `width` pixels wide that
+/// overhangs both ends by half the width, so crossing bands meet with square
+/// corners.
+fn draw_band(start: Vec2, end: Vec2, width: f32, color: Color) {
+    let band = Aabb::from_corners(start, end).expand(width * 0.5);
+    draw_rectangle(band.min.x, band.min.y, band.width(), band.height(), color);
 }
 
 /// The macroquad colour of a palette entry.
@@ -648,7 +721,7 @@ mod tests {
     #[test]
     fn label_size_hidden_when_too_small() {
         assert_eq!(label_size(1, Vec2::new(10.0, 10.0)), None);
-        assert_eq!(label_size(5, Vec2::new(40.0, 400.0)), None);
+        assert_eq!(label_size(5, Vec2::new(25.0, 400.0)), None);
         assert_eq!(label_size(1, Vec2::new(-50.0, 50.0)), None);
     }
 

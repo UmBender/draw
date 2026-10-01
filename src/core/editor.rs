@@ -21,7 +21,7 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::FIRST_NUMBER;
 use crate::core::palette::ColorId;
-use crate::core::shape::Shape;
+use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -313,12 +313,31 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
-            Command::ToggleSmartSnap
-            | Command::ToggleGridSnap
-            | Command::ToggleNumbering
-            | Command::ResetNumbering
-            | Command::GridCols(_)
-            | Command::GridRows(_) => todo!(),
+            // Helper commands never cancel the gesture, so they act live
+            // during a drag (ADR-T16-2).
+            Command::ToggleSmartSnap => {
+                let helpers = &mut self.style.helpers;
+                helpers.smart_snap = !helpers.smart_snap;
+                true
+            }
+            Command::ToggleGridSnap => {
+                let helpers = &mut self.style.helpers;
+                helpers.grid_snap = !helpers.grid_snap;
+                true
+            }
+            Command::ToggleNumbering => {
+                let helpers = &mut self.style.helpers;
+                helpers.numbering = !helpers.numbering;
+                true
+            }
+            Command::ResetNumbering => {
+                let next = &mut self.style.helpers.next_number;
+                let changed = *next != FIRST_NUMBER;
+                *next = FIRST_NUMBER;
+                changed
+            }
+            Command::GridCols(delta) => step_cells(&mut self.style.helpers.grid_cols, delta),
+            Command::GridRows(delta) => step_cells(&mut self.style.helpers.grid_rows, delta),
         }
     }
 
@@ -554,6 +573,16 @@ impl Editor {
         let doc = &self.doc;
         self.selection.retain(|id| doc.get(*id).is_some());
     }
+}
+
+/// Adds `delta` to the grid dimension `cells`, clamped to
+/// `1..=GRID_MAX_CELLS`. Returns whether it changed.
+fn step_cells(cells: &mut u32, delta: i32) -> bool {
+    let stepped = (i64::from(*cells) + i64::from(delta)).clamp(1, i64::from(GRID_MAX_CELLS));
+    let stepped = u32::try_from(stepped).unwrap_or(GRID_MAX_CELLS);
+    let changed = *cells != stepped;
+    *cells = stepped;
+    changed
 }
 
 #[cfg(test)]

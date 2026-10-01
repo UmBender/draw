@@ -25,6 +25,9 @@ pub struct Snapped {
 /// Skeleton: returns `end` unchanged with no guides.
 #[must_use]
 pub fn snap_end(start: Vec2, end: Vec2, view: &ToolView<'_>) -> Snapped {
-    let _ = (start, end, view);
-    todo!()
+    let _ = (start, view);
+    Snapped {
+        point: end,
+        guides: Vec::new(),
+    }
 }

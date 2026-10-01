@@ -19,6 +19,6 @@ pub const FIRST_NUMBER: u32 = 1;
 /// Skeleton: returns `shape` unchanged.
 #[must_use]
 pub fn label_new(shape: Shape, helpers: &Helpers) -> Shape {
-    let _ = (shape, helpers);
-    todo!()
+    let _ = helpers;
+    shape
 }

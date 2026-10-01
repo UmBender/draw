@@ -32,8 +32,14 @@ impl KeyChord {
     /// `Shift` + `key`.
     #[must_use]
     pub const fn shift(key: Key) -> Self {
-        let _ = key;
-        todo!()
+        Self {
+            key,
+            mods: Modifiers {
+                shift: true,
+                ctrl: false,
+                alt: false,
+            },
+        }
     }
 
     /// `Ctrl` + `key`.
@@ -74,7 +80,7 @@ const fn color(digit: u8) -> Command {
 /// Every binding: chord, command and a short human-readable description.
 ///
 /// Order follows the tables of `docs/architecture/Keymap.md`: tools, style,
-/// edit, view.
+/// edit, view, helpers (ADR-T16-2).
 pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     // Tools
     (KeyChord::bare(Key::P), Command::SetTool(Tool::Pen), "Pen"),
@@ -114,6 +120,7 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::SetTool(Tool::Hand),
         "Hand (pan)",
     ),
+    (KeyChord::bare(Key::G), Command::SetTool(Tool::Grid), "Grid"),
     // Style
     (KeyChord::bare(Key::Digit1), color(1), "Colour 1 (ink)"),
     (KeyChord::bare(Key::Digit2), color(2), "Colour 2 (red)"),
@@ -184,6 +191,47 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         KeyChord::bare(Key::Tab),
         Command::ToggleToolbar,
         "Show / hide toolbar",
+    ),
+    // Helpers
+    (
+        KeyChord::bare(Key::M),
+        Command::ToggleSmartSnap,
+        "Smart snap on / off",
+    ),
+    (
+        KeyChord::shift(Key::G),
+        Command::ToggleGridSnap,
+        "Grid snap on / off",
+    ),
+    (
+        KeyChord::bare(Key::N),
+        Command::ToggleNumbering,
+        "Numbering on / off",
+    ),
+    (
+        KeyChord::shift(Key::N),
+        Command::ResetNumbering,
+        "Restart numbering at 1",
+    ),
+    (
+        KeyChord::bare(Key::ArrowRight),
+        Command::GridCols(1),
+        "Grid: one more column",
+    ),
+    (
+        KeyChord::bare(Key::ArrowLeft),
+        Command::GridCols(-1),
+        "Grid: one less column",
+    ),
+    (
+        KeyChord::bare(Key::ArrowDown),
+        Command::GridRows(1),
+        "Grid: one more row",
+    ),
+    (
+        KeyChord::bare(Key::ArrowUp),
+        Command::GridRows(-1),
+        "Grid: one less row",
     ),
 ];
 

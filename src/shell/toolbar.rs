@@ -1,9 +1,10 @@
 //! Minimal toolbar: layout, hit-testing and drawing.
 //!
 //! A vertical strip at the left edge: one button per tool, the six palette
-//! swatches, then undo and redo. Layout, hit-testing and event routing are
-//! pure functions of the viewport; [`draw`] paints the strip with the theme
-//! tokens (ADR-0012), marking the active tool and colour with `accent`.
+//! swatches, the helper toggles (smart snap, grid snap, numbering), then undo
+//! and redo. Layout, hit-testing and event routing are pure functions of the
+//! viewport; [`draw`] paints the strip with the theme tokens (ADR-0012),
+//! marking the active tool, colour and the helpers that are on with `accent`.
 
 use macroquad::color::Color;
 use macroquad::shapes::{draw_rectangle, draw_triangle};
@@ -22,7 +23,7 @@ pub const BUTTON_PX: f32 = 32.0;
 pub const PAD_PX: f32 = 4.0;
 /// Space between buttons of one group, in pixels.
 pub const GAP_PX: f32 = 2.0;
-/// Space between groups (tools, colours, history), in pixels.
+/// Space between groups (tools, colours, helpers, history), in pixels.
 pub const GROUP_GAP_PX: f32 = 12.0;
 
 /// Tools in toolbar order (the keymap's order).
@@ -65,7 +66,9 @@ impl ButtonKind {
         match self {
             Self::Tool(tool) => Command::SetTool(tool),
             Self::Color(id) => Command::SetColor(id),
-            Self::SmartSnap | Self::GridSnap | Self::Numbering => todo!(),
+            Self::SmartSnap => Command::ToggleSmartSnap,
+            Self::GridSnap => Command::ToggleGridSnap,
+            Self::Numbering => Command::ToggleNumbering,
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
         }
@@ -110,7 +113,7 @@ pub fn panel(viewport: Vec2) -> Aabb {
     Aabb::from_corners(Vec2::ZERO, Vec2::new(STRIP_PX, viewport.y))
 }
 
-/// The buttons, top to bottom: tools, colours, undo, redo.
+/// The buttons, top to bottom: tools, colours, helpers, undo, redo.
 ///
 /// The layout is fixed; the viewport is taken for symmetry with [`panel`].
 #[must_use]
@@ -118,9 +121,14 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
     let colors = (0..PALETTE_LEN)
         .filter_map(|i| u8::try_from(i).ok().and_then(ColorId::new))
         .map(ButtonKind::Color);
-    let groups: [Vec<ButtonKind>; 3] = [
+    let groups: [Vec<ButtonKind>; 4] = [
         TOOLS.map(ButtonKind::Tool).to_vec(),
         colors.collect(),
+        vec![
+            ButtonKind::SmartSnap,
+            ButtonKind::GridSnap,
+            ButtonKind::Numbering,
+        ],
         vec![ButtonKind::Undo, ButtonKind::Redo],
     ];
     let mut buttons = Vec::with_capacity(groups.iter().map(Vec::len).sum());
@@ -188,7 +196,19 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                     outline(rect, accent);
                 }
             }
-            ButtonKind::SmartSnap | ButtonKind::GridSnap | ButtonKind::Numbering => todo!(),
+            ButtonKind::SmartSnap | ButtonKind::GridSnap | ButtonKind::Numbering => {
+                let helpers = editor.helpers();
+                let (on, label) = match button.kind {
+                    ButtonKind::SmartSnap => (helpers.smart_snap, "M"),
+                    ButtonKind::GridSnap => (helpers.grid_snap, "#"),
+                    _ => (helpers.numbering, "N"),
+                };
+                if on {
+                    fill(rect, to_mq_color(THEME.selection));
+                    outline(rect, accent);
+                }
+                draw_label(rect, label, if on { accent } else { text });
+            }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
         }

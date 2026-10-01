@@ -132,7 +132,12 @@ impl Shape {
     /// [`Shape::Ellipse`].
     #[must_use]
     pub fn label(&self) -> Option<u32> {
-        todo!()
+        match self {
+            Self::Rect { label, .. } | Self::Ellipse { label, .. } => *label,
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
+                None
+            }
+        }
     }
 
     /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).
@@ -157,10 +162,10 @@ impl Shape {
                     .union(&Aabb::from_corners(left, right))
                     .union(&Aabb::from_corners(tip, tip))
             }
-            Self::Line { a, b, .. } | Self::Rect { a, b, .. } | Self::Ellipse { a, b, .. } => {
-                Aabb::from_corners(*a, *b)
-            }
-            Self::Grid { .. } => todo!(),
+            Self::Line { a, b, .. }
+            | Self::Rect { a, b, .. }
+            | Self::Ellipse { a, b, .. }
+            | Self::Grid { a, b, .. } => Aabb::from_corners(*a, *b),
         };
         geometry.expand(half_width(self.style().width))
     }
@@ -205,7 +210,10 @@ impl Shape {
                 polygon_edge_distance(p, &corners) <= reach
             }
             Self::Ellipse { a, b, .. } => ellipse_outline_distance(p, *a, *b) <= reach,
-            Self::Grid { .. } => todo!(),
+            Self::Grid {
+                a, b, cols, rows, ..
+            } => grid_lines(*a, *b, *cols, *rows)
+                .any(|[start, end]| distance_to_segment(p, start, end) <= reach),
         }
     }
 
@@ -227,8 +235,9 @@ impl Shape {
                 let (u, w) = (q.x / radii.x, q.y / radii.y);
                 u * u + w * w <= 1.0
             }
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } => false,
-            Self::Grid { .. } => todo!(),
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
+                false
+            }
         }
     }
 
@@ -243,11 +252,11 @@ impl Shape {
             Self::Line { a, b, .. }
             | Self::Arrow { a, b, .. }
             | Self::Rect { a, b, .. }
-            | Self::Ellipse { a, b, .. } => {
+            | Self::Ellipse { a, b, .. }
+            | Self::Grid { a, b, .. } => {
                 *a += delta;
                 *b += delta;
             }
-            Self::Grid { .. } => todo!(),
         }
     }
 
@@ -264,9 +273,11 @@ impl Shape {
     /// Returns the shape with its label set to `label`; shapes other than
     /// [`Shape::Rect`] and [`Shape::Ellipse`] are returned unchanged.
     #[must_use]
-    pub fn with_label(self, label: Option<u32>) -> Self {
-        let _ = label;
-        todo!()
+    pub fn with_label(mut self, label: Option<u32>) -> Self {
+        if let Self::Rect { label: l, .. } | Self::Ellipse { label: l, .. } = &mut self {
+            *l = label;
+        }
+        self
     }
 
     /// `true` iff every coordinate and the width are finite.
@@ -278,8 +289,8 @@ impl Shape {
                 Self::Line { a, b, .. }
                 | Self::Arrow { a, b, .. }
                 | Self::Rect { a, b, .. }
-                | Self::Ellipse { a, b, .. } => a.is_finite() && b.is_finite(),
-                Self::Grid { .. } => todo!(),
+                | Self::Ellipse { a, b, .. }
+                | Self::Grid { a, b, .. } => a.is_finite() && b.is_finite(),
             }
     }
 }
@@ -289,10 +300,27 @@ impl Shape {
 /// bottom, each as `[start, end]`. Dimensions are clamped to
 /// `1..=GRID_MAX_CELLS`, so at most `2 * (GRID_MAX_CELLS + 1)` lines.
 pub fn grid_lines(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item = [Vec2; 2]> {
-    let _ = (a, b, cols, rows);
-    todo!();
-    #[allow(unreachable_code)]
-    std::iter::empty()
+    let r = Aabb::from_corners(a, b);
+    let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+    let (dx, dy) = (r.width() / cols as f32, r.height() / rows as f32);
+    // The last line sits exactly on the far edge, free of rounding drift.
+    let at = |min: f32, max: f32, step: f32, n: u32, i: u32| {
+        if i == n { max } else { min + step * i as f32 }
+    };
+    let vertical = (0..=cols).map(move |i| {
+        let x = at(r.min.x, r.max.x, dx, cols, i);
+        [Vec2::new(x, r.min.y), Vec2::new(x, r.max.y)]
+    });
+    let horizontal = (0..=rows).map(move |j| {
+        let y = at(r.min.y, r.max.y, dy, rows, j);
+        [Vec2::new(r.min.x, y), Vec2::new(r.max.x, y)]
+    });
+    vertical.chain(horizontal)
+}
+
+/// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.
+fn clamp_cells(n: u32) -> u32 {
+    n.clamp(1, GRID_MAX_CELLS)
 }
 
 /// Arrow head triangle `[tip, left, right]` for an arrow from `a` to `b`.

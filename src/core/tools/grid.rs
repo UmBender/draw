@@ -18,7 +18,7 @@ pub struct State {}
 /// Skeleton: ignores the event.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     let _ = (state, ctx, pointer);
-    todo!()
+    false
 }
 
 /// The overlay of the gesture in progress.
@@ -27,7 +27,7 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     let _ = (state, view);
-    todo!()
+    Overlay::default()
 }
 
 /// Discards the gesture in progress. Returns whether a redraw is needed.
@@ -35,5 +35,5 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 /// Skeleton: there is never a gesture.
 pub fn cancel(state: &mut State) -> bool {
     let _ = state;
-    todo!()
+    false
 }
