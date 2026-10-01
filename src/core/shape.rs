@@ -250,7 +250,7 @@ impl Shape {
 pub fn arrow_head(a: Vec2, b: Vec2, width: f32) -> [Vec2; 3] {
     let shaft = b - a;
     let len = shaft.length();
-    if !(len > f32::EPSILON) {
+    if len.is_nan() || len <= f32::EPSILON {
         return [b, b, b];
     }
     let dir = shaft / len;
@@ -277,18 +277,21 @@ fn ellipse_frame(a: Vec2, b: Vec2) -> (Vec2, Vec2) {
 /// function divided by its gradient length. Exact on the axes and zero on the
 /// outline. A zero radius collapses the ellipse to a segment.
 fn ellipse_outline_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
-    let (center, r) = ellipse_frame(a, b);
-    if r.x <= 0.0 || r.y <= 0.0 {
-        let half = Vec2::new(r.x, r.y);
-        return distance_to_segment(p, center - half, center + half);
+    let (center, radii) = ellipse_frame(a, b);
+    if radii.x <= 0.0 || radii.y <= 0.0 {
+        return distance_to_segment(p, center - radii, center + radii);
     }
-    let q = p - center;
-    let k0 = Vec2::new(q.x / r.x, q.y / r.y).length();
-    let k1 = Vec2::new(q.x / (r.x * r.x), q.y / (r.y * r.y)).length();
-    if !(k1 > 0.0) {
+    let offset = p - center;
+    let k0 = Vec2::new(offset.x / radii.x, offset.y / radii.y).length();
+    let k1 = Vec2::new(
+        offset.x / (radii.x * radii.x),
+        offset.y / (radii.y * radii.y),
+    )
+    .length();
+    if k1.is_nan() || k1 <= 0.0 {
         // At the centre the gradient vanishes; the nearest outline point is
         // the end of the shorter axis.
-        return r.x.min(r.y);
+        return radii.x.min(radii.y);
     }
     (k0 * (k0 - 1.0) / k1).abs()
 }
@@ -304,7 +307,8 @@ fn polygon_edge_distance(p: Vec2, vertices: &[Vec2]) -> f32 {
 /// `true` if `p` is inside or on the triangle, for either winding.
 /// A degenerate (zero-area or non-finite) triangle contains nothing.
 fn point_in_triangle(p: Vec2, [t0, t1, t2]: [Vec2; 3]) -> bool {
-    if !(cross(t1 - t0, t2 - t0).abs() > f32::EPSILON) {
+    let area = cross(t1 - t0, t2 - t0).abs();
+    if area.is_nan() || area <= f32::EPSILON {
         return false;
     }
     let d0 = cross(t1 - t0, p - t0);
@@ -688,7 +692,10 @@ mod tests {
     fn contains_rect_outside_is_false() {
         let r = rect(v(0.0, 0.0), v(10.0, 10.0), 2.0, None);
 
-        assert!(!r.contains(v(10.5, 5.0)), "within stroke but outside geometry");
+        assert!(
+            !r.contains(v(10.5, 5.0)),
+            "within stroke but outside geometry"
+        );
         assert!(!r.contains(v(-1.0, -1.0)));
         assert!(!r.contains(v(f32::NAN, 5.0)));
     }
@@ -726,7 +733,10 @@ mod tests {
             b: v(10.0, 10.0),
             style: style(2.0),
         };
-        let s = stroke(&[v(0.0, 0.0), v(10.0, 0.0), v(10.0, 10.0), v(0.0, 0.0)], 2.0);
+        let s = stroke(
+            &[v(0.0, 0.0), v(10.0, 0.0), v(10.0, 10.0), v(0.0, 0.0)],
+            2.0,
+        );
 
         assert!(!line.contains(v(5.0, 5.0)));
         assert!(!arrow.contains(v(5.0, 5.0)));
@@ -829,7 +839,11 @@ mod tests {
         let [tip, left, right] = arrow_head(v(0.0, 0.0), v(0.0, 50.0), 0.1);
 
         let base_mid = left.lerp(right, 0.5);
-        assert!(approx_eq(tip.distance(base_mid), ARROW_HEAD_MIN_LENGTH, EPS));
+        assert!(approx_eq(
+            tip.distance(base_mid),
+            ARROW_HEAD_MIN_LENGTH,
+            EPS
+        ));
         assert!(approx_eq(
             left.distance(right),
             2.0 * ARROW_HEAD_HALF_WIDTH_RATIO * ARROW_HEAD_MIN_LENGTH,
@@ -912,11 +926,12 @@ mod tests {
     fn any_shape() -> impl Strategy<Value = Shape> {
         let width = 0.0_f32..20.0;
         prop_oneof![
-            (prop::collection::vec(point(), 1..16), width.clone())
-                .prop_map(|(points, w)| Shape::Stroke {
+            (prop::collection::vec(point(), 1..16), width.clone()).prop_map(|(points, w)| {
+                Shape::Stroke {
                     points,
-                    style: style(w)
-                }),
+                    style: style(w),
+                }
+            }),
             (point(), point(), width.clone()).prop_map(|(a, b, w)| Shape::Line {
                 a,
                 b,
