@@ -25,16 +25,19 @@ impl Pan {
     /// Moves the pointer to `pos` (screen, finite), panning by the delta.
     /// Returns whether the camera changed.
     pub fn drag(&mut self, camera: &mut Camera, pos: Vec2) -> bool {
-        let _ = (camera, pos, self.last);
-        todo!()
+        let before = *camera;
+        camera.pan_by_screen(pos - self.last);
+        self.last = pos;
+        *camera != before
     }
 }
 
 /// Zooms by `notches` wheel steps anchored at `pos` (screen). Returns whether
 /// the camera changed; non-finite input changes nothing.
 pub fn zoom(camera: &mut Camera, pos: Vec2, notches: f32) -> bool {
-    let _ = (camera, pos, notches);
-    todo!()
+    let before = *camera;
+    camera.zoom_at(pos, notches);
+    *camera != before
 }
 
 #[cfg(test)]

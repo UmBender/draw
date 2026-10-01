@@ -14,7 +14,7 @@
 use crate::core::camera::Camera;
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
-use crate::core::document::{Document, ShapeId};
+use crate::core::document::{Document, ShapeId, tx_clear};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -118,26 +118,164 @@ impl Editor {
     /// An empty document at the default view, pen tool, default style.
     #[must_use]
     pub fn new() -> Self {
-        todo!()
+        Self {
+            doc: Document::new(),
+            history: History::new(),
+            camera: Camera::default(),
+            selection: Vec::new(),
+            clipboard: Clipboard::default(),
+            tools: ToolStates::default(),
+            tool: Tool::default(),
+            style: DrawStyle::default(),
+            smoothing: SmoothingLevel::default(),
+            toolbar_visible: true,
+            viewport: Vec2::ZERO,
+            cursor: Vec2::ZERO,
+            space_held: false,
+            gesture: None,
+            keymap: keymap::resolve,
+        }
     }
 
     /// Replaces the keymap (used by tests and alternative bindings).
     #[must_use]
     pub fn with_keymap(self, keymap: Keymap) -> Self {
-        let _ = keymap;
-        todo!()
+        Self { keymap, ..self }
     }
 
     /// Handles one input event. Returns whether the view needs a redraw.
     pub fn handle(&mut self, event: InputEvent) -> bool {
-        let _ = event;
-        todo!()
+        match event {
+            InputEvent::PointerDown { pos, button, mods } => {
+                self.track_cursor(pos)
+                    .is_some_and(|pos| self.pointer_down(pos, button, mods))
+            }
+            InputEvent::PointerMove { pos, mods } => self
+                .track_cursor(pos)
+                .is_some_and(|pos| self.pointer_move(pos, mods)),
+            InputEvent::PointerUp { pos, button, mods } => self
+                .track_cursor(pos)
+                .is_some_and(|pos| self.pointer_up(pos, button, mods)),
+            InputEvent::Scroll { pos, delta } => {
+                if !delta.is_finite() {
+                    return false;
+                }
+                self.track_cursor(pos)
+                    .is_some_and(|pos| navigate::zoom(&mut self.camera, pos, delta))
+            }
+            InputEvent::KeyDown {
+                key: Key::Space, ..
+            } => {
+                self.space_held = true;
+                false
+            }
+            InputEvent::KeyDown { key, mods } => {
+                (self.keymap)(key, mods).is_some_and(|command| self.apply(command))
+            }
+            InputEvent::KeyUp {
+                key: Key::Space, ..
+            } => {
+                self.space_held = false;
+                false
+            }
+            InputEvent::KeyUp { .. } => false,
+            InputEvent::Resize { size } => match size.sanitize() {
+                Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
+                    self.viewport = size;
+                    true
+                }
+                _ => false,
+            },
+        }
     }
 
     /// Executes `command`. Returns whether the view needs a redraw.
     pub fn apply(&mut self, command: Command) -> bool {
-        let _ = command;
-        todo!()
+        match command {
+            Command::SetTool(tool) => {
+                let cancelled = self.cancel_gesture();
+                let changed = self.tool != tool;
+                self.tool = tool;
+                changed || cancelled
+            }
+            Command::SetColor(color) => {
+                let changed = self.style.color != color;
+                self.style.color = color;
+                changed
+            }
+            Command::WidthUp => {
+                let current = self.style.width_px;
+                self.set_width(WIDTH_LADDER_PX.into_iter().find(|w| *w > current))
+            }
+            Command::WidthDown => {
+                let current = self.style.width_px;
+                self.set_width(WIDTH_LADDER_PX.into_iter().rev().find(|w| *w < current))
+            }
+            Command::CycleSmoothing => {
+                self.smoothing = self.smoothing.next();
+                true
+            }
+            Command::Undo => {
+                let cancelled = self.cancel_gesture();
+                let changed = self.history.undo(&mut self.doc);
+                self.prune_selection();
+                changed || cancelled
+            }
+            Command::Redo => {
+                let cancelled = self.cancel_gesture();
+                let changed = self.history.redo(&mut self.doc);
+                self.prune_selection();
+                changed || cancelled
+            }
+            Command::Copy => self.run_edit(clipboard::copy),
+            Command::Cut => self.run_edit(clipboard::cut),
+            Command::Paste => self.run_edit(clipboard::paste),
+            Command::Duplicate => self.run_edit(clipboard::duplicate),
+            Command::SelectAll => self.run_edit(select::select_all),
+            Command::DeleteSelection => self.run_edit(select::delete_selection),
+            Command::ClearAll => {
+                let cancelled = self.cancel_gesture();
+                if self.doc.is_empty() {
+                    return cancelled;
+                }
+                let tx = tx_clear(&self.doc);
+                let changed = self.history.commit(&mut self.doc, tx).is_ok();
+                self.selection.clear();
+                changed || cancelled
+            }
+            Command::Cancel => {
+                if self.cancel_gesture() {
+                    true
+                } else if self.selection.is_empty() {
+                    false
+                } else {
+                    self.selection.clear();
+                    true
+                }
+            }
+            Command::ResetView => {
+                let before = self.camera;
+                self.camera.reset();
+                self.camera != before
+            }
+            Command::FitView => {
+                let before = self.camera;
+                let content = self
+                    .doc
+                    .shapes()
+                    .map(|(_, shape)| shape.bounds())
+                    .reduce(|a, b| a.union(&b));
+                match content {
+                    Some(bounds) => self.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
+                    None => self.camera.reset(),
+                }
+                self.camera != before
+            }
+            Command::ToggleToolbar => {
+                self.toolbar_visible = !self.toolbar_visible;
+                true
+            }
+        }
     }
 
     /// The document.
@@ -179,25 +317,43 @@ impl Editor {
     /// World bounds of the selected shapes, `None` if nothing is selected.
     #[must_use]
     pub fn selection_bounds(&self) -> Option<Aabb> {
-        todo!()
+        self.selection
+            .iter()
+            .filter_map(|id| self.doc.get(*id))
+            .map(Shape::bounds)
+            .reduce(|a, b| a.union(&b))
     }
 
     /// The first shape of [`Editor::overlay`]: the shape being drawn, if any.
     #[must_use]
     pub fn preview(&self) -> Option<Shape> {
-        todo!()
+        self.overlay().shapes.into_iter().next()
     }
 
     /// What the gesture in progress draws on top of the document.
     #[must_use]
     pub fn overlay(&self) -> Overlay {
-        todo!()
+        let Some(Gesture::Tool { tool, .. }) = self.gesture else {
+            return Overlay::default();
+        };
+        self.tools.preview(&ToolView {
+            doc: &self.doc,
+            camera: &self.camera,
+            selection: &self.selection,
+            tool,
+            style: self.style,
+            smoothing: self.smoothing,
+            cursor: self.cursor,
+        })
     }
 
     /// The gesture in progress, if any.
     #[must_use]
     pub fn active_gesture(&self) -> Option<ActiveGesture> {
-        todo!()
+        self.gesture.map(|gesture| match gesture {
+            Gesture::Pan { .. } => ActiveGesture::Pan,
+            Gesture::Tool { tool, .. } => ActiveGesture::Tool(tool),
+        })
     }
 
     /// Whether the toolbar is shown.
@@ -222,6 +378,131 @@ impl Editor {
     #[must_use]
     pub fn viewport(&self) -> Vec2 {
         self.viewport
+    }
+
+    /// Records `pos` as the cursor if it is finite and returns it.
+    fn track_cursor(&mut self, pos: Vec2) -> Option<Vec2> {
+        let pos = pos.sanitize()?;
+        self.cursor = pos;
+        Some(pos)
+    }
+
+    /// Starts a gesture, unless one is already running.
+    fn pointer_down(&mut self, pos: Vec2, button: PointerButton, mods: Modifiers) -> bool {
+        if self.gesture.is_some() {
+            return false;
+        }
+        let pans = match button {
+            PointerButton::Middle => true,
+            PointerButton::Left => self.tool == Tool::Hand || self.space_held,
+            PointerButton::Right => false,
+        };
+        if pans {
+            self.gesture = Some(Gesture::Pan {
+                button,
+                pan: Pan::new(pos),
+            });
+            return false;
+        }
+        let tool = if button == PointerButton::Right {
+            Tool::Eraser
+        } else {
+            self.tool
+        };
+        self.gesture = Some(Gesture::Tool { button, tool });
+        self.tool_pointer(tool, Phase::Down, pos, mods)
+    }
+
+    /// Continues the gesture in progress, if any.
+    fn pointer_move(&mut self, pos: Vec2, mods: Modifiers) -> bool {
+        match &mut self.gesture {
+            Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.camera, pos),
+            Some(Gesture::Tool { tool, .. }) => {
+                let tool = *tool;
+                self.tool_pointer(tool, Phase::Move, pos, mods)
+            }
+            None => false,
+        }
+    }
+
+    /// Ends the gesture in progress if `button` is the one driving it.
+    fn pointer_up(&mut self, pos: Vec2, button: PointerButton, mods: Modifiers) -> bool {
+        match self.gesture {
+            Some(Gesture::Pan { button: b, mut pan }) if b == button => {
+                self.gesture = None;
+                pan.drag(&mut self.camera, pos)
+            }
+            Some(Gesture::Tool { button: b, tool }) if b == button => {
+                self.gesture = None;
+                let changed = self.tool_pointer(tool, Phase::Up, pos, mods);
+                self.prune_selection();
+                changed
+            }
+            _ => false,
+        }
+    }
+
+    /// Sends one pointer event to `tool`.
+    fn tool_pointer(&mut self, tool: Tool, phase: Phase, pos: Vec2, mods: Modifiers) -> bool {
+        let pointer = Pointer { phase, pos, mods };
+        let mut ctx = ToolCtx {
+            doc: &mut self.doc,
+            history: &mut self.history,
+            selection: &mut self.selection,
+            clipboard: &mut self.clipboard,
+            camera: &self.camera,
+            tool,
+            style: self.style,
+            smoothing: self.smoothing,
+            cursor: self.cursor,
+        };
+        self.tools.on_pointer(&mut ctx, pointer)
+    }
+
+    /// Runs an editing command (clipboard, selection) after cancelling the
+    /// gesture, then drops selected ids that no longer exist.
+    fn run_edit(&mut self, edit: fn(&mut ToolCtx<'_>) -> bool) -> bool {
+        let cancelled = self.cancel_gesture();
+        let mut ctx = ToolCtx {
+            doc: &mut self.doc,
+            history: &mut self.history,
+            selection: &mut self.selection,
+            clipboard: &mut self.clipboard,
+            camera: &self.camera,
+            tool: self.tool,
+            style: self.style,
+            smoothing: self.smoothing,
+            cursor: self.cursor,
+        };
+        let changed = edit(&mut ctx);
+        self.prune_selection();
+        changed || cancelled
+    }
+
+    /// Discards the gesture in progress. Returns whether there was one.
+    fn cancel_gesture(&mut self) -> bool {
+        match self.gesture.take() {
+            Some(Gesture::Tool { tool, .. }) => {
+                self.tools.cancel(tool);
+                true
+            }
+            Some(Gesture::Pan { .. }) => true,
+            None => false,
+        }
+    }
+
+    /// Sets the stroke width if `width` is `Some`. Returns whether it changed.
+    fn set_width(&mut self, width: Option<f32>) -> bool {
+        width.is_some_and(|width| {
+            self.style.width_px = width;
+            true
+        })
+    }
+
+    /// Removes selected ids that are no longer in the document.
+    fn prune_selection(&mut self) {
+        let doc = &self.doc;
+        self.selection.retain(|id| doc.get(*id).is_some());
     }
 }
 
@@ -330,9 +611,12 @@ mod tests {
             panic!("selection is not empty");
         };
 
-        // Assert
-        assert!(bounds.min.approx_eq(Vec2::new(0.0, 0.0), 1e-3));
-        assert!(bounds.max.approx_eq(Vec2::new(60.0, 60.0), 1e-3));
+        // Assert: bounds include half the outline width on every side.
+        let expected = rect(0.0, 0.0, 10.0, 10.0)
+            .bounds()
+            .union(&rect(50.0, 50.0, 10.0, 10.0).bounds());
+        assert!(bounds.min.approx_eq(expected.min, 1e-3));
+        assert!(bounds.max.approx_eq(expected.max, 1e-3));
     }
 
     #[test]

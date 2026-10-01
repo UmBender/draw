@@ -98,14 +98,21 @@ impl ToolCtx<'_> {
     /// Applies `tx` to the document as one undo step. Returns whether the
     /// document changed (`false` for an empty or rejected transaction).
     pub fn commit(&mut self, tx: Transaction) -> bool {
-        let _ = tx;
-        todo!()
+        !tx.is_empty() && self.history.commit(self.doc, tx).is_ok()
     }
 
     /// Read-only view of the same state.
     #[must_use]
     pub fn view(&self) -> ToolView<'_> {
-        todo!()
+        ToolView {
+            doc: self.doc,
+            camera: self.camera,
+            selection: self.selection,
+            tool: self.tool,
+            style: self.style,
+            smoothing: self.smoothing,
+            cursor: self.cursor,
+        }
     }
 }
 
@@ -147,21 +154,45 @@ impl ToolStates {
     /// Routes `pointer` to the tool `ctx.tool`. Returns whether a redraw is
     /// needed. [`Tool::Hand`] is handled by the editor and ignored here.
     pub fn on_pointer(&mut self, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-        let _ = (ctx, pointer);
-        todo!()
+        match ctx.tool {
+            Tool::Pen => pen::on_pointer(&mut self.pen, ctx, pointer),
+            Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse => {
+                shape_tool::on_pointer(&mut self.shape, ctx, pointer)
+            }
+            Tool::Eraser => eraser::on_pointer(&mut self.eraser, ctx, pointer),
+            Tool::Bucket => bucket::on_pointer(&mut self.bucket, ctx, pointer),
+            Tool::Select => select::on_pointer(&mut self.select, ctx, pointer),
+            Tool::Hand => false,
+        }
     }
 
     /// The overlay of the gesture of `view.tool`.
     #[must_use]
     pub fn preview(&self, view: &ToolView<'_>) -> Overlay {
-        let _ = view;
-        todo!()
+        match view.tool {
+            Tool::Pen => pen::preview(&self.pen, view),
+            Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse => {
+                shape_tool::preview(&self.shape, view)
+            }
+            Tool::Eraser => eraser::preview(&self.eraser, view),
+            Tool::Bucket => bucket::preview(&self.bucket, view),
+            Tool::Select => select::preview(&self.select, view),
+            Tool::Hand => Overlay::default(),
+        }
     }
 
     /// Discards the gesture of `tool` without touching the document. Returns
     /// whether a redraw is needed.
     pub fn cancel(&mut self, tool: Tool) -> bool {
-        let _ = tool;
-        todo!()
+        match tool {
+            Tool::Pen => pen::cancel(&mut self.pen),
+            Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse => {
+                shape_tool::cancel(&mut self.shape)
+            }
+            Tool::Eraser => eraser::cancel(&mut self.eraser),
+            Tool::Bucket => bucket::cancel(&mut self.bucket),
+            Tool::Select => select::cancel(&mut self.select),
+            Tool::Hand => false,
+        }
     }
 }
