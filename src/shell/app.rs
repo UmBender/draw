@@ -15,7 +15,7 @@ use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, draw_texture_ex,
-    render_target,
+    render_target_ex,
 };
 use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
@@ -51,13 +51,25 @@ const FRAME_FILTER: FilterMode = FilterMode::Nearest;
 /// gives [`DEFAULT_MSAA_SAMPLES`].
 #[must_use]
 pub fn msaa_samples(setting: Option<&str>) -> i32 {
-    todo!("{setting:?}")
+    let Some(setting) = setting else {
+        return DEFAULT_MSAA_SAMPLES;
+    };
+    match setting.trim().to_ascii_lowercase().as_str() {
+        "0" | "1" | "off" => 1,
+        "2" => 2,
+        "4" => 4,
+        "8" => 8,
+        _ => DEFAULT_MSAA_SAMPLES,
+    }
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
 /// depth buffer.
 fn frame_target_params(samples: i32) -> RenderTargetParams {
-    todo!("{samples}")
+    RenderTargetParams {
+        sample_count: samples,
+        depth: false,
+    }
 }
 
 /// The window the app opens. `main` passes it to macroquad, which converts it
@@ -123,7 +135,8 @@ pub async fn run() {
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
     let mut editor = Editor::new();
-    let mut frame = CachedFrame::default();
+    let setting = std::env::var(MSAA_ENV).ok();
+    let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()));
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -151,15 +164,26 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     }
 }
 
-/// The last rendered scene, kept in a framebuffer-sized render target.
-#[derive(Default)]
+/// The last rendered scene, kept in a framebuffer-sized, multisampled render
+/// target that macroquad resolves into a plain texture (ADR-T15-1).
 struct CachedFrame {
     target: Option<RenderTarget>,
+    /// MSAA samples per pixel for new targets.
+    samples: i32,
     /// Size of `target` in physical pixels.
     size: (u32, u32),
 }
 
 impl CachedFrame {
+    /// An empty cache whose targets use `samples` per pixel.
+    fn new(samples: i32) -> Self {
+        Self {
+            target: None,
+            samples,
+            size: (0, 0),
+        }
+    }
+
     /// Re-renders the scene if `dirty` or the framebuffer size changed, then
     /// blits it to the window.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
@@ -171,8 +195,8 @@ impl CachedFrame {
                 target
             }
             _ => {
-                let target = render_target(size.0, size.1);
-                target.texture.set_filter(FilterMode::Nearest);
+                let target = render_target_ex(size.0, size.1, frame_target_params(self.samples));
+                target.texture.set_filter(FRAME_FILTER);
                 render_into(&target, editor, viewport);
                 self.size = size;
                 self.target.insert(target)
