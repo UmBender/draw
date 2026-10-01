@@ -228,3 +228,104 @@ fn draw_scene(editor: &Editor, viewport: Vec2) {
         toolbar::draw(editor, viewport);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn frame_target_params_uses_sample_count() {
+        // Arrange / Act
+        let params = frame_target_params(4);
+
+        // Assert
+        assert_eq!(params.sample_count, 4);
+    }
+
+    #[test]
+    fn frame_target_params_has_no_depth() {
+        // Arrange / Act
+        let params = frame_target_params(DEFAULT_MSAA_SAMPLES);
+
+        // Assert
+        assert!(!params.depth);
+    }
+
+    #[test]
+    fn msaa_samples_unset_is_default() {
+        assert_eq!(msaa_samples(None), DEFAULT_MSAA_SAMPLES);
+        assert_eq!(DEFAULT_MSAA_SAMPLES, 4);
+    }
+
+    #[test]
+    fn msaa_samples_valid_counts_are_used() {
+        // Arrange
+        let cases = [("2", 2), ("4", 4), ("8", 8), (" 8 ", 8)];
+
+        for (setting, expected) in cases {
+            // Act
+            let samples = msaa_samples(Some(setting));
+
+            // Assert
+            assert_eq!(samples, expected, "setting {setting:?}");
+        }
+    }
+
+    #[test]
+    fn msaa_samples_off_values_disable() {
+        for setting in ["1", "0", "off", "OFF", " Off\n"] {
+            assert_eq!(msaa_samples(Some(setting)), 1, "setting {setting:?}");
+        }
+    }
+
+    #[test]
+    fn msaa_samples_invalid_is_default() {
+        for setting in ["", "3", "16", "-4", "four", "4x", "NaN"] {
+            assert_eq!(
+                msaa_samples(Some(setting)),
+                DEFAULT_MSAA_SAMPLES,
+                "setting {setting:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn frame_filter_is_nearest() {
+        assert_eq!(FRAME_FILTER, FilterMode::Nearest);
+    }
+
+    #[test]
+    fn physical_size_scales_by_dpi() {
+        // Arrange / Act
+        let size = physical_size(Vec2::new(640.0, 400.0), 2.0);
+
+        // Assert
+        assert_eq!(size, (1280, 800));
+    }
+
+    #[test]
+    fn physical_size_is_at_least_one_pixel() {
+        assert_eq!(physical_size(Vec2::ZERO, 1.0), (1, 1));
+        assert_eq!(physical_size(Vec2::new(f32::NAN, -5.0), 1.0), (1, 1));
+    }
+
+    #[test]
+    fn physical_size_bad_dpi_uses_one() {
+        for dpi in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(
+                physical_size(Vec2::new(300.0, 200.0), dpi),
+                (300, 200),
+                "dpi {dpi}"
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn msaa_samples_is_always_supported_count(setting in ".*") {
+            let samples = msaa_samples(Some(&setting));
+            prop_assert!([1, 2, 4, 8].contains(&samples), "{samples}");
+        }
+    }
+}
