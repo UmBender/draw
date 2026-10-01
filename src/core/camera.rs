@@ -1,6 +1,140 @@
 //! Camera: world/screen transform, pan and zoom.
 //!
-//! Owned by T03; filled in by that task.
+//! The canvas is infinite in *world space*; the window shows a rectangle of it
+//! in *screen space* (pixels, origin at the top-left of the viewport). A
+//! [`Camera`] is the affine map between the two:
+//!
+//! ```text
+//! screen = (world − offset) · zoom        world = screen / zoom + offset
+//! ```
+//!
+//! `offset` is the world point drawn at the screen origin and `zoom` is the
+//! number of pixels per world unit, always within [`ZOOM_MIN`]`..=`[`ZOOM_MAX`]
+//! (see ADR-0013). Mutating methods ignore non-finite input, so the camera
+//! state is always finite.
+
+use crate::core::geom::{Aabb, Vec2};
+
+/// Smallest allowed zoom (pixels per world unit).
+pub const ZOOM_MIN: f32 = 0.05;
+/// Largest allowed zoom (pixels per world unit).
+pub const ZOOM_MAX: f32 = 20.0;
+/// Zoom factor per scroll notch.
+pub const ZOOM_STEP: f32 = 1.15;
+
+/// World ↔ screen transform with pan and zoom.
+///
+/// Invariant: `offset` is finite and `zoom` is finite and within
+/// [`ZOOM_MIN`]`..=`[`ZOOM_MAX`]. Fields are private so every constructor and
+/// mutator can enforce it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Camera {
+    /// World point shown at the screen origin.
+    offset: Vec2,
+    /// Pixels per world unit.
+    zoom: f32,
+}
+
+impl Default for Camera {
+    /// Offset `(0, 0)`, zoom `1`: world and screen coordinates coincide.
+    fn default() -> Self {
+        todo!()
+    }
+}
+
+impl Camera {
+    /// Creates a camera, enforcing the invariant: zoom is clamped to the range,
+    /// a non-finite `offset` becomes [`Vec2::ZERO`] and a non-finite `zoom`
+    /// becomes `1.0`.
+    #[must_use]
+    pub fn new(offset: Vec2, zoom: f32) -> Self {
+        let _ = (offset, zoom);
+        todo!()
+    }
+
+    /// World point shown at the screen origin.
+    #[must_use]
+    pub fn offset(&self) -> Vec2 {
+        todo!()
+    }
+
+    /// Pixels per world unit, within [`ZOOM_MIN`]`..=`[`ZOOM_MAX`].
+    #[must_use]
+    pub fn zoom(&self) -> f32 {
+        todo!()
+    }
+
+    /// Maps a world point to screen pixels. Non-finite input gives a
+    /// non-finite result.
+    #[must_use]
+    pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
+        let _ = world;
+        todo!()
+    }
+
+    /// Maps screen pixels to a world point. Non-finite input gives a
+    /// non-finite result.
+    #[must_use]
+    pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
+        let _ = screen;
+        todo!()
+    }
+
+    /// Pans so that content moves by `delta` pixels on screen.
+    ///
+    /// Ignored if `delta` is non-finite or the new offset would overflow.
+    pub fn pan_by_screen(&mut self, delta: Vec2) {
+        let _ = delta;
+        todo!()
+    }
+
+    /// Zooms by [`ZOOM_STEP`]`^notches` (positive zooms in), clamped to the
+    /// range, keeping the world point under `screen_point` fixed.
+    ///
+    /// Ignored if any input is non-finite or the new offset would overflow.
+    pub fn zoom_at(&mut self, screen_point: Vec2, notches: f32) {
+        let _ = (screen_point, notches);
+        todo!()
+    }
+
+    /// World rectangle visible through a viewport of `viewport` pixels.
+    /// A non-finite viewport counts as zero-sized.
+    #[must_use]
+    pub fn visible_world_rect(&self, viewport: Vec2) -> Aabb {
+        let _ = viewport;
+        todo!()
+    }
+
+    /// Converts a screen length (pixels) to world units.
+    #[must_use]
+    pub fn world_len(&self, px: f32) -> f32 {
+        let _ = px;
+        todo!()
+    }
+
+    /// Converts a world length to screen pixels.
+    #[must_use]
+    pub fn screen_len(&self, world: f32) -> f32 {
+        let _ = world;
+        todo!()
+    }
+
+    /// Centres `bounds` in the viewport at the largest zoom (clamped) that
+    /// shows it with `margin_px` pixels to spare on every side.
+    ///
+    /// A zero-extent axis does not constrain zoom; if both are zero the zoom is
+    /// kept. A negative margin counts as 0. Ignored if any input is non-finite
+    /// or a viewport component is not positive.
+    pub fn fit(&mut self, bounds: Aabb, viewport: Vec2, margin_px: f32) {
+        let _ = (bounds, viewport, margin_px);
+        todo!()
+    }
+
+    /// Returns to [`Camera::default`].
+    pub fn reset(&mut self) {
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {
