@@ -1,7 +1,7 @@
 ---
 id: T01
 title: Geometry primitives
-status: in-progress
+status: review
 wave: 1
 branch: task/T01-geometry
 depends_on: [T00]
@@ -76,15 +76,34 @@ Transforms (camera owns them), curves.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T01): specify geometry acceptance criteria`
-- [ ] tests — `test(T01): add failing geometry tests`
-- [ ] models — `feat(T01): add Vec2 and Aabb types`
-- [ ] behaviour — `feat(T01): implement vector, AABB and segment math`
-- [ ] quality — `chore(T01): pass clippy and rustfmt`
-- [ ] docs — `docs(T01): add geometry tutorial`
+- [x] spec — `docs(T01): specify geometry acceptance criteria` (7cacb17)
+- [x] tests — `test(T01): add failing geometry tests` (138e714)
+- [x] models — `feat(T01): add Vec2 and Aabb types` (05d03b9)
+- [x] behaviour — `feat(T01): implement vector, AABB and segment math` (3c204ef)
+- [x] quality — `refactor(T01): share component-wise min/max in Aabb constructors` (b074ee0)
+- [x] docs — `docs(T01): add geometry tutorial`
 
 ## Learning path
 
-Step 1 — requires step 0.
+Step 1 — requires step 0. Tutorial: [[01 2D vectors, AABBs and point-segment distance]].
 
 ## Log
+
+- Spec refinements (no change of intent): `Vec2` also derives `PartialEq`,
+  `Default` and gets unary `-`, `+=`, `-=` and `Vec2::approx_eq`;
+  `Aabb::from_points` skips non-finite points; `expand` with a negative margin
+  collapses an axis to its centre instead of inverting; `contains` and
+  `intersects` are inclusive; `approx_eq` is `false` for any NaN/∞ operand.
+- Red phase confirmed: tests commit failed to compile with 56 unresolved-name
+  errors (`Vec2`, `Aabb`, `approx_eq`, `distance_to_segment`); models commit
+  compiled with all 35 tests failing on `todo!()`.
+- Behaviour commit: 35/35 tests green, including 2 proptests over
+  coordinates in `[-1000, 1000]` (tolerance `1e-2` for f32 rounding).
+- Quality: `scripts/check.sh` was already green after the behaviour step; the
+  quality commit is a no-behaviour-change refactor (private component-wise
+  min/max helpers, `then_some` in `sanitize`). Green again afterwards.
+- Degenerate segment test uses `len_sq <= 0.0` (ordering comparison, allowed
+  by `float_cmp`); non-finite `p`, `a` or `b` yield a non-finite distance
+  rather than a panic — callers sanitize input first.
+- No new ADRs; no files outside *Files owned* touched (besides this note and
+  the tutorial).
