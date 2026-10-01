@@ -1,6 +1,161 @@
 //! Vector shapes with bounds, hit-testing and translation.
 //!
-//! Owned by T05; filled in by that task.
+//! The document is an ordered list of [`Shape`]s in world coordinates
+//! (ADR-0004). Widths are world units (ADR-0013). Every query here is total:
+//! non-finite input never panics, a non-finite query point never hits and is
+//! never contained.
+
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::palette::ColorId;
+
+/// Arrow head length per unit of stroke width.
+pub const ARROW_HEAD_LENGTH_PER_WIDTH: f32 = 4.0;
+
+/// Smallest arrow head length in world units, so thin arrows keep a visible head.
+pub const ARROW_HEAD_MIN_LENGTH: f32 = 8.0;
+
+/// Half the width of the arrow head base, as a fraction of the head length.
+pub const ARROW_HEAD_HALF_WIDTH_RATIO: f32 = 0.5;
+
+/// Outline style shared by every shape.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Style {
+    /// Outline colour.
+    pub color: ColorId,
+    /// Outline width in world units.
+    pub width: f32,
+}
+
+/// A vector shape in world coordinates.
+///
+/// For [`Shape::Rect`] and [`Shape::Ellipse`], `a` and `b` are opposite corners
+/// of the bounding box, in any order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shape {
+    /// Freehand polyline.
+    Stroke {
+        /// Polyline vertices in drawing order.
+        points: Vec<Vec2>,
+        /// Outline style.
+        style: Style,
+    },
+    /// Straight segment from `a` to `b`.
+    Line {
+        /// Start point.
+        a: Vec2,
+        /// End point.
+        b: Vec2,
+        /// Outline style.
+        style: Style,
+    },
+    /// Segment from `a` to `b` with a filled head at `b`.
+    Arrow {
+        /// Tail.
+        a: Vec2,
+        /// Tip (where the head is drawn).
+        b: Vec2,
+        /// Outline style.
+        style: Style,
+    },
+    /// Axis-aligned rectangle.
+    Rect {
+        /// One corner.
+        a: Vec2,
+        /// The opposite corner.
+        b: Vec2,
+        /// Outline style.
+        style: Style,
+        /// Interior colour, if filled.
+        fill: Option<ColorId>,
+    },
+    /// Axis-aligned ellipse inscribed in the box spanned by `a` and `b`.
+    Ellipse {
+        /// One corner of the bounding box.
+        a: Vec2,
+        /// The opposite corner of the bounding box.
+        b: Vec2,
+        /// Outline style.
+        style: Style,
+        /// Interior colour, if filled.
+        fill: Option<ColorId>,
+    },
+}
+
+impl Shape {
+    /// The outline style.
+    #[must_use]
+    pub fn style(&self) -> Style {
+        todo!()
+    }
+
+    /// The fill colour; always `None` for open shapes.
+    #[must_use]
+    pub fn fill(&self) -> Option<ColorId> {
+        todo!()
+    }
+
+    /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        todo!()
+    }
+
+    /// Bounding box including half the outline width (and the arrow head).
+    ///
+    /// A stroke with no finite point gives the zero-size box at the origin.
+    #[must_use]
+    pub fn bounds(&self) -> Aabb {
+        todo!()
+    }
+
+    /// `true` if `p` is within `tol + width / 2` of the outline, or inside a
+    /// filled closed shape.
+    #[must_use]
+    pub fn hit(&self, p: Vec2, tol: f32) -> bool {
+        let _ = (p, tol);
+        todo!()
+    }
+
+    /// `true` if `p` lies inside the geometry of a closed shape (boundary
+    /// inclusive, outline width and fill ignored). Open shapes contain nothing.
+    #[must_use]
+    pub fn contains(&self, p: Vec2) -> bool {
+        let _ = p;
+        todo!()
+    }
+
+    /// Moves every point by `delta`.
+    pub fn translate(&mut self, delta: Vec2) {
+        let _ = delta;
+        todo!()
+    }
+
+    /// Returns the shape with its fill set to `fill`; open shapes are
+    /// returned unchanged.
+    #[must_use]
+    pub fn with_fill(self, fill: Option<ColorId>) -> Self {
+        let _ = fill;
+        todo!()
+    }
+
+    /// `true` iff every coordinate and the width are finite.
+    #[must_use]
+    pub fn is_finite(&self) -> bool {
+        todo!()
+    }
+}
+
+/// Arrow head triangle `[tip, left, right]` for an arrow from `a` to `b`.
+///
+/// The tip is `b`; the base lies `max(ARROW_HEAD_MIN_LENGTH,
+/// ARROW_HEAD_LENGTH_PER_WIDTH * width)` back along the shaft and is
+/// `2 * ARROW_HEAD_HALF_WIDTH_RATIO` times that length wide. A degenerate
+/// arrow (`a` ≈ `b`) gives `[b, b, b]`.
+#[must_use]
+pub fn arrow_head(a: Vec2, b: Vec2, width: f32) -> [Vec2; 3] {
+    let _ = (a, b, width);
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {
