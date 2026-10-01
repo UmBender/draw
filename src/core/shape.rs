@@ -178,7 +178,22 @@ impl Shape {
             Self::Line { a, b, .. }
             | Self::Rect { a, b, .. }
             | Self::Ellipse { a, b, .. }
-            | Self::Grid { a, b, .. } => Aabb::from_corners(*a, *b),
+            | Self::Grid {
+                a, b, axes: false, ..
+            } => Aabb::from_corners(*a, *b),
+            // The index bands lie one cell beyond `a`, away from `b`.
+            Self::Grid {
+                a,
+                b,
+                cols,
+                rows,
+                axes: true,
+                ..
+            } => {
+                let (cols, rows) = (clamp_cells(*cols) as f32, clamp_cells(*rows) as f32);
+                let cell = Vec2::new((b.x - a.x) / cols, (b.y - a.y) / rows);
+                Aabb::from_corners(*a, *b).union(&Aabb::from_corners(*a - cell, *a - cell))
+            }
         };
         geometry.expand(half_width(self.style().width))
     }
@@ -297,7 +312,17 @@ impl Shape {
     /// [`grid_axis_labels`]), empty for every other shape.
     #[must_use]
     pub fn axis_labels(&self) -> Vec<AxisLabel> {
-        todo!()
+        match *self {
+            Self::Grid {
+                a,
+                b,
+                cols,
+                rows,
+                axes: true,
+                ..
+            } => grid_axis_labels(a, b, cols, rows).collect(),
+            _ => Vec::new(),
+        }
     }
 
     /// `true` iff every coordinate and the width are finite.
@@ -344,8 +369,24 @@ pub fn grid_lines(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item 
 /// toward `b.y`, in boxes one cell wide just outside `x = a.x`
 /// (ADR-T18-3). Dimensions are clamped like [`grid_lines`].
 pub fn grid_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item = AxisLabel> {
-    let _ = (a, b, cols, rows);
-    std::iter::empty::<AxisLabel>().chain(std::iter::from_fn(|| todo!()))
+    let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+    // Signed cell size: negative when the drag went left or up.
+    let cell = Vec2::new((b.x - a.x) / cols as f32, (b.y - a.y) / rows as f32);
+    let columns = (0..cols).map(move |i| AxisLabel {
+        index: i,
+        rect: Aabb::from_corners(
+            Vec2::new(a.x + cell.x * i as f32, a.y),
+            Vec2::new(a.x + cell.x * (i + 1) as f32, a.y - cell.y),
+        ),
+    });
+    let rows = (0..rows).map(move |j| AxisLabel {
+        index: j,
+        rect: Aabb::from_corners(
+            Vec2::new(a.x, a.y + cell.y * j as f32),
+            Vec2::new(a.x - cell.x, a.y + cell.y * (j + 1) as f32),
+        ),
+    });
+    columns.chain(rows)
 }
 
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.

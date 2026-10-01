@@ -17,7 +17,7 @@ use crate::core::camera::Camera;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, THEME, palette};
-use crate::core::shape::{Shape, arrow_head, grid_lines};
+use crate::core::shape::{GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_lines};
 use crate::core::snap::GRID_STEP;
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
@@ -233,8 +233,8 @@ pub fn label_size(chars: usize, area: Vec2) -> Option<f32> {
 /// index, `max(cols, rows) - 1` (ADR-T18-3).
 #[must_use]
 pub fn axis_label_size(cols: u32, rows: u32, cell: Vec2) -> Option<f32> {
-    let _ = (cols, rows, cell);
-    todo!()
+    let longest = cols.max(rows).clamp(1, GRID_MAX_CELLS) - 1;
+    label_size(longest.to_string().len(), cell)
 }
 
 /// Size in pixels of the area a label may use inside the screen rectangle
@@ -367,12 +367,21 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             draw_label(*label, rect, true, label_color(*fill, color));
         }
         Shape::Grid {
-            a, b, cols, rows, ..
+            a,
+            b,
+            cols,
+            rows,
+            axes,
+            ..
         } => {
-            // The camera only scales and offsets, so grid lines map to
-            // the grid lines of the mapped corners.
-            for [start, end] in grid_lines(to_screen(*a), to_screen(*b), *cols, *rows) {
+            // The camera only scales and offsets, so grid lines and index
+            // boxes map to those of the mapped corners.
+            let (a, b) = (to_screen(*a), to_screen(*b));
+            for [start, end] in grid_lines(a, b, *cols, *rows) {
                 draw_band(start, end, width, color);
+            }
+            if *axes {
+                draw_axis_labels(a, b, *cols, *rows, color);
             }
         }
     }
@@ -399,10 +408,37 @@ fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
         return;
     };
     let (font_size, font_scale) = label_raster(size);
-    let dims = measure_text(&text, None, font_size, font_scale);
+    draw_text_centered(&text, rect, font_size, font_scale, color);
+}
+
+/// Draws the axis indices of a grid with screen corners `a` (drag start) and
+/// `b`, all at one size, if the cells are big enough on screen.
+fn draw_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
+    let Some(first) = grid_axis_labels(a, b, cols, rows).next() else {
+        return;
+    };
+    let cell = Vec2::new(first.rect.width(), first.rect.height());
+    let Some(size) = axis_label_size(cols, rows, cell) else {
+        return;
+    };
+    let (font_size, font_scale) = label_raster(size);
+    for label in grid_axis_labels(a, b, cols, rows) {
+        draw_text_centered(
+            &label.index.to_string(),
+            label.rect,
+            font_size,
+            font_scale,
+            color,
+        );
+    }
+}
+
+/// Draws `text` centred in the screen rectangle `rect`.
+fn draw_text_centered(text: &str, rect: Aabb, font_size: u16, font_scale: f32, color: Color) {
+    let dims = measure_text(text, None, font_size, font_scale);
     let c = rect.center();
     draw_text_ex(
-        &text,
+        text,
         c.x - dims.width * 0.5,
         c.y + dims.offset_y * 0.5,
         TextParams {

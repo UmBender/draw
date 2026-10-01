@@ -607,6 +607,10 @@ fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
         }
         Command::GridCols(delta) => step_cells(&mut helpers.grid_cols, delta),
         Command::GridRows(delta) => step_cells(&mut helpers.grid_rows, delta),
+        Command::ToggleGridAxes => {
+            helpers.grid_axes = !helpers.grid_axes;
+            true
+        }
         _ => false,
     }
 }

@@ -43,8 +43,9 @@ struct Drag {
 }
 
 impl Drag {
-    /// The grid this drag spans with the dimensions of `helpers` (clamped to
-    /// `1..=GRID_MAX_CELLS`), with square cells if `shift` is held.
+    /// The grid this drag spans with the dimensions and axes setting of
+    /// `helpers` (dimensions clamped to `1..=GRID_MAX_CELLS`), with square
+    /// cells if `shift` is held.
     fn shape(&self, helpers: &Helpers) -> Shape {
         let cols = helpers.grid_cols.clamp(1, GRID_MAX_CELLS);
         let rows = helpers.grid_rows.clamp(1, GRID_MAX_CELLS);
@@ -60,7 +61,7 @@ impl Drag {
             cols,
             rows,
             style: self.style,
-            axes: false,
+            axes: helpers.grid_axes,
         }
     }
 }

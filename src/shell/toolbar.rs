@@ -125,6 +125,8 @@ const FLY_LABEL_PX: f32 = 40.0;
 const FLY_VALUE_PX: f32 = 28.0;
 /// Size of the flyout row labels, in pixels.
 const FLY_LABEL_SIZE: u16 = 16;
+/// Label of the axis indices toggle: the first index.
+const AXES_LABEL: &str = "0";
 
 /// The strip background for a viewport: full height at the left edge.
 #[must_use]
@@ -186,12 +188,13 @@ pub fn flyout_panel(viewport: Vec2) -> Aabb {
         .find(|b| b.kind == ButtonKind::Tool(Tool::Grid))
         .map_or(PAD_PX, |b| b.rect.min.y);
     let width = 2.0 * PAD_PX + FLY_LABEL_PX + FLY_VALUE_PX + 2.0 * FLY_BUTTON_PX + 3.0 * GAP_PX;
-    let height = 2.0 * PAD_PX + 2.0 * FLY_BUTTON_PX + GAP_PX;
+    let height = 2.0 * PAD_PX + 3.0 * FLY_BUTTON_PX + 2.0 * GAP_PX;
     let min = Vec2::new(STRIP_PX + GAP_PX, top);
     Aabb::from_corners(min, min + Vec2::new(width, height))
 }
 
-/// The flyout's buttons: columns `-`, `+`, then rows `-`, `+`.
+/// The flyout's buttons: columns `-`, `+`, rows `-`, `+`, then the axis
+/// indices toggle (ADR-T18-3).
 #[must_use]
 pub fn flyout_layout(viewport: Vec2) -> Vec<Button> {
     let origin = flyout_panel(viewport).min + Vec2::new(PAD_PX, PAD_PX);
@@ -208,6 +211,7 @@ pub fn flyout_layout(viewport: Vec2) -> Vec<Button> {
         button(plus_x, 0.0, ButtonKind::GridCols(1)),
         button(minus_x, row_y, ButtonKind::GridRows(-1)),
         button(plus_x, row_y, ButtonKind::GridRows(1)),
+        button(minus_x, 2.0 * row_y, ButtonKind::GridAxes),
     ]
 }
 
@@ -264,7 +268,7 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                 draw_label(rect, step_label(delta), text);
             }
             ButtonKind::GridAxes => {
-                draw_toggle(rect, "#", editor.helpers().grid_axes, accent, text);
+                draw_toggle(rect, AXES_LABEL, editor.helpers().grid_axes, accent, text);
             }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
@@ -282,23 +286,32 @@ fn draw_flyout(editor: &Editor, viewport: Vec2) {
     fill(fly, to_mq_color(THEME.surface));
     let border = to_mq_color(THEME.border);
     let text = to_mq_color(THEME.text);
+    let accent = to_mq_color(THEME.accent);
     let helpers = editor.helpers();
+    // The row's name, left of its first button.
+    let name_box = |rect: Aabb| {
+        Aabb::from_corners(
+            Vec2::new(fly.min.x + PAD_PX, rect.min.y),
+            Vec2::new(rect.min.x - GAP_PX, rect.max.y),
+        )
+    };
     for button in flyout_layout(viewport) {
         let rect = button.rect;
         outline(rect, border);
         let (delta, name, value) = match button.kind {
             ButtonKind::GridCols(delta) => (delta, "cols", helpers.grid_cols),
             ButtonKind::GridRows(delta) => (delta, "rows", helpers.grid_rows),
+            ButtonKind::GridAxes => {
+                draw_label_sized(name_box(rect), "axes", text, FLY_LABEL_SIZE);
+                draw_toggle(rect, AXES_LABEL, helpers.grid_axes, accent, text);
+                continue;
+            }
             _ => continue,
         };
         draw_label(rect, step_label(delta), text);
         if delta < 0 {
-            // The row's name left of `-`, its value right of it.
-            let label = Aabb::from_corners(
-                Vec2::new(fly.min.x + PAD_PX, rect.min.y),
-                Vec2::new(rect.min.x - GAP_PX, rect.max.y),
-            );
-            draw_label_sized(label, name, text, FLY_LABEL_SIZE);
+            // The value right of `-`.
+            draw_label_sized(name_box(rect), name, text, FLY_LABEL_SIZE);
             let cell = Aabb::from_corners(
                 Vec2::new(rect.max.x + GAP_PX, rect.min.y),
                 Vec2::new(rect.max.x + GAP_PX + FLY_VALUE_PX, rect.max.y),

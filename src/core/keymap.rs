@@ -233,6 +233,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::GridRows(-1),
         "Grid: one less row",
     ),
+    (
+        KeyChord::bare(Key::I),
+        Command::ToggleGridAxes,
+        "Grid: axis indices on / off",
+    ),
 ];
 
 /// The command bound to `key` pressed with `mods`, if any.
