@@ -46,6 +46,7 @@ pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 /// Helper settings for new shapes: snapping, grid size and numbering
 /// (ADR-T16-3). Only [`Editor::apply`] changes them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(clippy::struct_excessive_bools)] // independent toggles, one key each
 pub struct Helpers {
     /// Smart snapping (round, sizes, alignment) is on.
     pub smart_snap: bool,
