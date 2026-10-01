@@ -1,7 +1,7 @@
 ---
 id: T10
 title: Editing tools
-status: in-progress
+status: review
 wave: 5
 branch: task/T10-editing-tools
 depends_on: [T08]
@@ -88,10 +88,30 @@ System clipboard integration, resize/rotate handles.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 10 — requires step 8.
 
 ## Log
+
+- 2026-10-01 — Spec refined: click slop (3 px), eraser path sampling, marquee
+  with `Shift`, `Alt` captured at press, `duplicate` copies the selection and
+  leaves the clipboard untouched. No new ADR: everything fits
+  [[ADR-T08-1 Tool context and gesture overlay]].
+- Tests share a `ToolCtx` fixture, `clipboard::testkit` (`#[cfg(test)]`), kept
+  inside an owned file because `tools/mod.rs` is not owned by T10.
+- Additions beyond the spec: `select::HIT_TOLERANCE_PX`, `select::CLICK_SLOP_PX`,
+  `eraser::ERASER_TOLERANCE_PX`, `clipboard::DUPLICATE_OFFSET_PX`, and the
+  crate-internal helpers `select::prune`, `select::selected_shapes`,
+  `clipboard::insert_copies` (shared by paste, duplicate and `Alt`-move).
+- A drag that starts on an unselected shape selects it and moves it (the spec
+  only required moving an existing selection).
+- AC-7: the editor already prunes after undo/redo (T08); T10 adds defensive
+  pruning at every select/clipboard entry point, tested by
+  `selection_pruned_after_undo` at the `ToolCtx` level.
+- Quality: clippy fixes in tests only; `scripts/check.sh` green (301 unit tests).
+- For the integrator: add [[Editing tools]] to the Feature Index and
+  [[10 Selection, clipboard and fill]] (step 10, requires step 8) to the
+  Learning Path.
