@@ -1,6 +1,114 @@
 //! Drawing palette and UI theme tokens (Kanagawa Dragon).
 //!
-//! Owned by T02; filled in by that task.
+//! This is the only place colours are defined (ADR-0012). Shapes store a
+//! [`ColorId`] — an index into the fixed drawing palette — so a theme change
+//! recolours every existing shape. Values come from the user's Kanagawa
+//! Dragon theme (ADR-0015) and are documented in `docs/architecture/Theme.md`.
+
+/// Number of drawing colours, addressable with keys `1`–`6`.
+pub const PALETTE_LEN: usize = 6;
+
+/// Placeholder until the real values are filled in.
+const UNSET: Rgba = Rgba {
+    r: 0,
+    g: 0,
+    b: 0,
+    a: 0,
+};
+
+/// An 8-bit-per-channel colour with alpha.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Rgba {
+    /// Red channel.
+    pub r: u8,
+    /// Green channel.
+    pub g: u8,
+    /// Blue channel.
+    pub b: u8,
+    /// Alpha channel; `0xff` is opaque.
+    pub a: u8,
+}
+
+impl Rgba {
+    /// Builds an opaque colour from `0xRRGGBB`; bits above the low 24 are ignored.
+    #[must_use]
+    pub const fn from_hex(hex: u32) -> Self {
+        let _ = hex;
+        todo!()
+    }
+
+    /// Returns `[r, g, b, a]` scaled to `0.0..=1.0`, the form GPU APIs expect.
+    #[must_use]
+    pub fn to_f32(self) -> [f32; 4] {
+        todo!()
+    }
+}
+
+/// Index of a colour in the drawing palette, always `< PALETTE_LEN`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct ColorId(u8);
+
+impl ColorId {
+    /// The default drawing colour (key `1`).
+    pub const INK: Self = Self(0);
+
+    /// Returns the id for `index`, or `None` if `index >= PALETTE_LEN`.
+    #[must_use]
+    pub const fn new(index: u8) -> Option<Self> {
+        let _ = index;
+        todo!()
+    }
+
+    /// Maps a number key `1`–`6` to ids 0–5; any other digit gives `None`.
+    #[must_use]
+    pub const fn from_key_digit(digit: u8) -> Option<Self> {
+        let _ = digit;
+        todo!()
+    }
+
+    /// Returns the palette index, guaranteed `< PALETTE_LEN`.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        todo!()
+    }
+}
+
+/// The drawing colours in key order: ink, red, green, blue, yellow, magenta.
+pub const PALETTE: [Rgba; PALETTE_LEN] = [UNSET; PALETTE_LEN];
+
+/// Returns the colour for `id`. Total: every `ColorId` is a valid index.
+#[must_use]
+pub const fn palette(id: ColorId) -> Rgba {
+    let _ = id;
+    todo!()
+}
+
+/// UI colour tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Theme {
+    /// Canvas background.
+    pub bg: Rgba,
+    /// Toolbar background.
+    pub surface: Rgba,
+    /// Toolbar and button outlines.
+    pub border: Rgba,
+    /// Icons and labels.
+    pub text: Rgba,
+    /// Active tool and selection outline.
+    pub accent: Rgba,
+    /// Selection and marquee fill.
+    pub selection: Rgba,
+}
+
+/// The application theme.
+pub const THEME: Theme = Theme {
+    bg: UNSET,
+    surface: UNSET,
+    border: UNSET,
+    text: UNSET,
+    accent: UNSET,
+    selection: UNSET,
+};
 
 #[cfg(test)]
 mod tests {
