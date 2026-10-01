@@ -1,12 +1,15 @@
 //! Bucket: fills the clicked closed shape.
 //!
 //! A press sets the fill of the topmost [`Shape::Rect`] or [`Shape::Ellipse`]
-//! containing the point to the current colour, as one undo step. Refilling
-//! with the same colour, or pressing on empty space or an open shape, changes
-//! nothing and records no step. The bucket has no gesture to preview.
+//! containing the point to the current colour, as one undo step. If the
+//! topmost candidate is a [`Shape::Grid`] whose box contains the point, only
+//! the cell under the point is filled (ADR-T21-1). Refilling with the same
+//! colour, or pressing on empty space or another open shape, changes nothing
+//! and records no step. The bucket has no gesture to preview.
 //!
 //! [`Shape::Rect`]: crate::core::shape::Shape::Rect
 //! [`Shape::Ellipse`]: crate::core::shape::Shape::Ellipse
+//! [`Shape::Grid`]: crate::core::shape::Shape::Grid
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::tx_replace;
@@ -23,16 +26,22 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     }
     let world = ctx.camera.screen_to_world(pointer.pos);
     let fill = Some(ctx.style.color);
-    let Some(id) = ctx
-        .doc
-        .topmost_where(|shape| shape.is_closed() && shape.contains(world))
-    else {
+    let Some(id) = ctx.doc.topmost_where(|shape| {
+        (shape.is_closed() && shape.contains(world)) || shape.grid_cell_at(world).is_some()
+    }) else {
         return false;
     };
-    let Some(shape) = ctx.doc.get(id).filter(|shape| shape.fill() != fill) else {
+    let Some(shape) = ctx.doc.get(id) else {
         return false;
     };
-    let tx = tx_replace(ctx.doc, id, shape.clone().with_fill(fill));
+    let filled = match shape.grid_cell_at(world) {
+        Some((col, row)) => shape.clone().with_cell_fill(col, row, fill),
+        None => shape.clone().with_fill(fill),
+    };
+    if &filled == shape {
+        return false;
+    }
+    let tx = tx_replace(ctx.doc, id, filled);
     ctx.commit(tx)
 }
 

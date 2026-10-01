@@ -1,12 +1,18 @@
-//! Eraser: removes whole shapes it touches (also right drag from any tool).
+//! Eraser: removes whole shapes or clears fills (also right drag from any
+//! tool).
 //!
-//! A drag marks every shape within [`ERASER_TOLERANCE_PX`] of the pointer
-//! path; the preview hides the marked shapes and the release removes them as
-//! one undo step. Between two pointer events the path is sampled at most one
-//! tolerance apart, so fast drags do not skip thin shapes.
+//! The mode is chosen on `Down` (ADR-T21-2). A press inside a fill — a
+//! filled rectangle or ellipse, or a filled grid cell — away from every
+//! outline starts a *clear* drag: every fill the path passes over is
+//! cleared and nothing is removed. Any other press starts a *remove* drag:
+//! every shape within [`ERASER_TOLERANCE_PX`] of the path is marked. The
+//! preview hides the affected shapes (showing cleared ones without their
+//! fills) and the release applies everything as one undo step. Between two
+//! pointer events the path is sampled at most one tolerance apart, so fast
+//! drags do not skip thin shapes.
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::{ShapeId, tx_remove};
+use crate::core::document::{ShapeId, Transaction, tx_remove, tx_replace};
 use crate::core::geom::Vec2;
 use crate::core::shape::Shape;
 
@@ -41,30 +47,84 @@ pub struct State {
     cleared: Vec<(ShapeId, Shape)>,
 }
 
-/// Marks every unmarked shape hit by the segment `from → to` (screen).
-/// Returns whether anything new was marked.
+/// `shape` with the fill under the world point `p` cleared: its own fill if
+/// `p` is inside a filled closed shape, or the fill of the grid cell under
+/// `p`. Unchanged if there is no fill at `p`.
+fn clear_at(shape: &Shape, p: Vec2) -> Shape {
+    let mut cleared = shape.clone();
+    if cleared.fill().is_some() && cleared.contains(p) {
+        cleared = cleared.with_fill(None);
+    }
+    if let Some((col, row)) = cleared.grid_cell_at(p) {
+        cleared = cleared.with_cell_fill(col, row, None);
+    }
+    cleared
+}
+
+/// The mode of a drag pressed at the world point `p`: [`Mode::Clear`] if
+/// no outline is within `tol` of `p` and some fill lies under it.
+fn mode_at(ctx: &ToolCtx<'_>, p: Vec2, tol: f32) -> Mode {
+    let on_outline = ctx.doc.shapes().any(|(_, shape)| shape.hit_outline(p, tol));
+    if !on_outline
+        && ctx
+            .doc
+            .shapes()
+            .any(|(_, shape)| clear_at(shape, p) != *shape)
+    {
+        Mode::Clear
+    } else {
+        Mode::Remove
+    }
+}
+
+/// Applies the drag's mode to every shape touched by the segment
+/// `from → to` (screen). Returns whether anything new was marked or cleared.
 fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> bool {
     let tol = ctx.camera.world_len(ERASER_TOLERANCE_PX);
     // `as` saturates (NaN becomes 0), and the clamp keeps at least one step.
     let steps = ((from.distance(to) / ERASER_TOLERANCE_PX).ceil() as usize).clamp(1, MAX_SAMPLES);
-    let before = state.marked.len();
+    let mut changed = false;
     for step in 0..=steps {
         let world = ctx
             .camera
             .screen_to_world(from.lerp(to, step as f32 / steps as f32));
         for (id, shape) in ctx.doc.shapes() {
-            if !state.marked.contains(&id) && shape.hit(world, tol) {
-                state.marked.push(id);
+            match state.mode {
+                Mode::Remove => {
+                    if !state.marked.contains(&id) && shape.hit(world, tol) {
+                        state.marked.push(id);
+                        changed = true;
+                    }
+                }
+                Mode::Clear => changed |= clear_into(&mut state.cleared, id, shape, world),
             }
         }
     }
-    state.marked.len() > before
+    changed
+}
+
+/// Clears the fill at `p` of shape `id` (its cleared version so far, or
+/// `shape`) into `cleared`. Returns whether a fill was cleared.
+fn clear_into(cleared: &mut Vec<(ShapeId, Shape)>, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
+    let slot = cleared.iter().position(|(c, _)| *c == id);
+    let current = slot.map_or(shape, |i| &cleared[i].1);
+    let next = clear_at(current, p);
+    if next == *current {
+        return false;
+    }
+    match slot {
+        Some(i) => cleared[i].1 = next,
+        None => cleared.push((id, next)),
+    }
+    true
 }
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     if pointer.phase == Phase::Down {
-        state.marked.clear();
+        *state = State::default();
+        let tol = ctx.camera.world_len(ERASER_TOLERANCE_PX);
+        state.mode = mode_at(ctx, ctx.camera.screen_to_world(pointer.pos), tol);
     }
     let from = state.last.unwrap_or(pointer.pos);
     let marked_more = mark_along(state, ctx, from, pointer.pos);
@@ -74,10 +134,17 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
             marked_more
         }
         Phase::Up => {
-            // A rejected removal still needs a redraw to unhide the marks.
-            let marked = std::mem::take(state).marked;
-            let tx = tx_remove(ctx.doc, &marked);
-            ctx.commit(tx) || !marked.is_empty()
+            // A rejected edit still needs a redraw to unhide the marks.
+            let State {
+                marked, cleared, ..
+            } = std::mem::take(state);
+            let touched = !marked.is_empty() || !cleared.is_empty();
+            let mut edits = Vec::new();
+            for (id, shape) in cleared {
+                edits.extend(tx_replace(ctx.doc, id, shape).0);
+            }
+            edits.extend(tx_remove(ctx.doc, &marked).0);
+            ctx.commit(Transaction(edits)) || touched
         }
     }
 }
@@ -87,7 +154,14 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     let _ = view;
     Overlay {
-        hidden: state.marked.clone(),
+        shapes: state
+            .cleared
+            .iter()
+            .map(|(_, shape)| shape.clone())
+            .collect(),
+        hidden: (state.marked.iter().copied())
+            .chain(state.cleared.iter().map(|(id, _)| *id))
+            .collect(),
         ..Overlay::default()
     }
 }
@@ -95,7 +169,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed.
 pub fn cancel(state: &mut State) -> bool {
-    let active = state.last.is_some() || !state.marked.is_empty();
+    let active = state.last.is_some() || !state.marked.is_empty() || !state.cleared.is_empty();
     *state = State::default();
     active
 }

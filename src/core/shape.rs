@@ -219,12 +219,16 @@ impl Shape {
     /// the axes and on the outline itself.
     #[must_use]
     pub fn hit(&self, p: Vec2, tol: f32) -> bool {
+        self.hit_outline(p, tol) || (self.fill().is_some() && self.contains(p))
+    }
+
+    /// [`Shape::hit`] without the filled-interior rule: only the outline
+    /// counts.
+    #[must_use]
+    pub fn hit_outline(&self, p: Vec2, tol: f32) -> bool {
         let reach = tol + half_width(self.style().width);
         if !p.is_finite() || !reach.is_finite() || !self.bounds().expand(tol).contains(p) {
             return false;
-        }
-        if self.fill().is_some() && self.contains(p) {
-            return true;
         }
         match self {
             Self::Stroke { points, .. } => match points.as_slice() {
@@ -327,39 +331,71 @@ impl Shape {
     /// for other shapes.
     #[must_use]
     pub fn grid_cell_at(&self, p: Vec2) -> Option<(u32, u32)> {
-        let _ = p;
-        todo!()
+        let Self::Grid {
+            a, b, cols, rows, ..
+        } = *self
+        else {
+            return None;
+        };
+        if !p.is_finite() || !Aabb::from_corners(a, b).contains(p) {
+            return None;
+        }
+        // Fraction of the way from `a` to `b`, in 0..=1 inside the box.
+        let along = |p: f32, a: f32, b: f32| if a == b { 0.0 } else { (p - a) / (b - a) };
+        let index = |t: f32, n: u32| ((t * n as f32) as u32).min(n - 1);
+        let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+        Some((
+            index(along(p.x, a.x, b.x), cols),
+            index(along(p.y, a.y, b.y), rows),
+        ))
     }
 
     /// The cell fills of a grid, sorted by `(row, col)`; empty for other
     /// shapes.
     #[must_use]
     pub fn cell_fills(&self) -> &[CellFill] {
-        todo!()
+        match self {
+            Self::Grid { fills, .. } => fills,
+            _ => &[],
+        }
     }
 
     /// The fill colour of cell `(col, row)` of a grid, if any.
     #[must_use]
     pub fn cell_fill(&self, col: u32, row: u32) -> Option<ColorId> {
-        let _ = (col, row);
-        todo!()
+        let fills = self.cell_fills();
+        fills
+            .binary_search_by_key(&(row, col), |f| (f.row, f.col))
+            .ok()
+            .map(|i| fills[i].color)
     }
 
     /// Returns the shape with cell `(col, row)` filled with `fill`, or
     /// cleared for `None`. Other shapes and cells outside the grid are
     /// returned unchanged.
     #[must_use]
-    pub fn with_cell_fill(self, col: u32, row: u32, fill: Option<ColorId>) -> Self {
-        let _ = (col, row, fill);
-        todo!()
-    }
-
-    /// [`Shape::hit`] without the filled-interior rule: only the outline
-    /// counts.
-    #[must_use]
-    pub fn hit_outline(&self, p: Vec2, tol: f32) -> bool {
-        let _ = (p, tol);
-        todo!()
+    pub fn with_cell_fill(mut self, col: u32, row: u32, fill: Option<ColorId>) -> Self {
+        let Self::Grid {
+            cols, rows, fills, ..
+        } = &mut self
+        else {
+            return self;
+        };
+        if col >= clamp_cells(*cols) || row >= clamp_cells(*rows) {
+            return self;
+        }
+        match (
+            fills.binary_search_by_key(&(row, col), |f| (f.row, f.col)),
+            fill,
+        ) {
+            (Ok(i), Some(color)) => fills[i].color = color,
+            (Ok(i), None) => {
+                fills.remove(i);
+            }
+            (Err(i), Some(color)) => fills.insert(i, CellFill { col, row, color }),
+            (Err(_), None) => {}
+        }
+        self
     }
 
     /// The axis indices to draw: those of a grid with `axes` on (see
@@ -448,8 +484,11 @@ pub fn grid_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator
 /// clamped like [`grid_lines`].
 #[must_use]
 pub fn grid_cell_rect(a: Vec2, b: Vec2, cols: u32, rows: u32, col: u32, row: u32) -> Aabb {
-    let _ = (a, b, cols, rows, col, row);
-    todo!()
+    let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+    // Signed cell size: negative when the drag went left or up.
+    let cell = Vec2::new((b.x - a.x) / cols as f32, (b.y - a.y) / rows as f32);
+    let at = |col: u32, row: u32| a + Vec2::new(cell.x * col as f32, cell.y * row as f32);
+    Aabb::from_corners(at(col, row), at(col + 1, row + 1))
 }
 
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.
