@@ -133,8 +133,7 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
             drag.end = world;
             drag.shift = shift;
             let drag_px = ctx.camera.screen_len(drag.start.distance(drag.end));
-            // `!(>=)` also rejects a NaN length.
-            if !(drag_px >= MIN_DRAG_PX) {
+            if drag_px.is_nan() || drag_px < MIN_DRAG_PX {
                 return true;
             }
             let shape = drag.shape();
@@ -270,7 +269,10 @@ mod tests {
 
         fn only_shape(&self) -> &Shape {
             assert_eq!(self.doc.len(), 1, "expected exactly one shape");
-            self.doc.shapes().next().map(|(_, s)| s).expect("one shape")
+            match self.doc.shapes().next() {
+                Some((_, shape)) => shape,
+                None => panic!("document is empty"),
+            }
         }
     }
 
@@ -309,7 +311,10 @@ mod tests {
         assert!(matches!(shape, Shape::Arrow { .. }));
         let (a, b) = ends(shape);
         assert!(a.approx_eq(Vec2::ZERO, 1e-4));
-        assert!(b.approx_eq(Vec2::new(30.0, 40.0), 1e-4), "head at the release point");
+        assert!(
+            b.approx_eq(Vec2::new(30.0, 40.0), 1e-4),
+            "head at the release point"
+        );
     }
 
     #[test]
@@ -342,7 +347,10 @@ mod tests {
     fn shape_drag_uses_world_coordinates_and_style_color() {
         let mut f = Fixture::new(Tool::Rect);
         f.camera = Camera::new(Vec2::new(-40.0, 10.0), 0.5);
-        f.style.color = crate::core::palette::ColorId::new(2).expect("colour 2");
+        let Some(color) = crate::core::palette::ColorId::new(2) else {
+            panic!("palette has colour 2");
+        };
+        f.style.color = color;
 
         assert!(f.drag((0.0, 0.0), (30.0, 40.0), false));
 

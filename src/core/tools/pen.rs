@@ -189,7 +189,10 @@ mod tests {
 
         fn only_shape(&self) -> &Shape {
             assert_eq!(self.doc.len(), 1, "expected exactly one shape");
-            self.doc.shapes().next().map(|(_, s)| s).expect("one shape")
+            match self.doc.shapes().next() {
+                Some((_, shape)) => shape,
+                None => panic!("document is empty"),
+            }
         }
     }
 
@@ -275,7 +278,9 @@ mod tests {
     #[test]
     fn pen_uses_style_color() {
         let mut f = Fixture::new();
-        let color = ColorId::new(3).expect("palette has colour 3");
+        let Some(color) = ColorId::new(3) else {
+            panic!("palette has colour 3");
+        };
         f.style.color = color;
 
         f.send(Phase::Down, 0.0, 0.0);
