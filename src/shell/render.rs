@@ -1,6 +1,128 @@
 //! Draws shapes, previews and selection with macroquad.
 //!
-//! Owned by T07; filled in by that task.
+//! Everything is drawn in **screen space** with macroquad's default camera:
+//! world points go through [`Camera::world_to_screen`] and widths through
+//! [`screen_width`] (ADR-T07-1). Off-screen shapes are culled by their
+//! bounding box (ADR-0006). Discs and ellipses are tessellated here with
+//! `draw_triangle`, which does not allocate, instead of macroquad's
+//! `draw_circle`/`draw_ellipse`, which do.
+
+use macroquad::color::Color;
+use macroquad::math::Vec2 as MqVec2;
+
+use crate::core::camera::Camera;
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::shape::Shape;
+
+/// Smallest on-screen outline width in pixels (ADR-0013).
+pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
+
+/// Strokes wider than this many pixels get round joints and caps.
+pub const JOINT_THRESHOLD_PX: f32 = 2.0;
+
+/// Extra pixels around the viewport kept when culling, covering the
+/// overhang of outlines clamped to [`MIN_SCREEN_WIDTH_PX`].
+pub const CULL_MARGIN_PX: f32 = 2.0;
+
+/// Largest allowed distance in pixels between a circle and its polygon.
+pub const CHORD_TOLERANCE_PX: f32 = 0.25;
+
+/// Fewest segments used for a disc or ellipse.
+pub const MIN_SEGMENTS: u16 = 8;
+
+/// Most segments used for a disc or ellipse.
+pub const MAX_SEGMENTS: u16 = 256;
+
+/// Width of the selection outline in pixels, independent of zoom.
+pub const SELECTION_WIDTH_PX: f32 = 1.0;
+
+/// Gap in pixels between the selected shapes' bounds and the selection outline.
+pub const SELECTION_PAD_PX: f32 = 4.0;
+
+/// On-screen outline width in pixels for a world-space `world_width`:
+/// `world_width * zoom`, at least [`MIN_SCREEN_WIDTH_PX`]. A NaN, infinite or
+/// negative product gives [`MIN_SCREEN_WIDTH_PX`].
+#[must_use]
+pub fn screen_width(world_width: f32, zoom: f32) -> f32 {
+    let _ = (world_width, zoom);
+    todo!()
+}
+
+/// `true` if `bounds` overlaps or touches `view`; `false` if either box has a
+/// NaN coordinate.
+#[must_use]
+pub fn is_visible(bounds: Aabb, view: Aabb) -> bool {
+    let _ = (bounds, view);
+    todo!()
+}
+
+/// World rectangle used for culling: the area visible through a viewport of
+/// `viewport` pixels, grown by [`CULL_MARGIN_PX`] (in world units).
+#[must_use]
+pub fn cull_rect(camera: &Camera, viewport: Vec2) -> Aabb {
+    let _ = (camera, viewport);
+    todo!()
+}
+
+/// Converts a core vector to a macroquad vector.
+#[must_use]
+pub fn to_mq(v: Vec2) -> MqVec2 {
+    let _ = v;
+    todo!()
+}
+
+/// Converts a palette colour to a macroquad colour (channels in `0..=1`).
+#[must_use]
+pub fn to_mq_color(c: crate::core::palette::Rgba) -> Color {
+    let _ = c;
+    todo!()
+}
+
+/// `true` if a stroke `width_px` wide needs round joints, i.e. it is wider
+/// than [`JOINT_THRESHOLD_PX`]. Thinner strokes skip them to stay cheap.
+#[must_use]
+pub fn stroke_needs_joints(width_px: f32) -> bool {
+    let _ = width_px;
+    todo!()
+}
+
+/// Number of segments for a circle of `radius_px` pixels: the fewest whose
+/// chord error `r (1 − cos(π/n))` is at most [`CHORD_TOLERANCE_PX`], clamped
+/// to [`MIN_SEGMENTS`]`..=`[`MAX_SEGMENTS`]. A non-finite or non-positive
+/// radius gives [`MIN_SEGMENTS`].
+#[must_use]
+pub fn circle_segments(radius_px: f32) -> u16 {
+    let _ = radius_px;
+    todo!()
+}
+
+/// Screen rectangle of the selection outline: `bounds` mapped to pixels and
+/// grown by [`SELECTION_PAD_PX`].
+#[must_use]
+pub fn selection_rect(bounds: Aabb, camera: &Camera) -> Aabb {
+    let _ = (bounds, camera);
+    todo!()
+}
+
+/// Draws every shape whose bounds are visible through `camera` in a viewport
+/// of `viewport` pixels, in iteration order (later shapes on top).
+pub fn draw_shapes<'a>(shapes: impl IntoIterator<Item = &'a Shape>, camera: &Camera, viewport: Vec2) {
+    let _ = (shapes.into_iter(), camera, viewport);
+    todo!()
+}
+
+/// Draws the shape being created, without culling.
+pub fn draw_preview(shape: &Shape, camera: &Camera) {
+    let _ = (shape, camera);
+    todo!()
+}
+
+/// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
+/// wide in the theme accent colour.
+pub fn draw_selection(bounds: Aabb, camera: &Camera) {
+    let _ = (bounds, camera);
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {
