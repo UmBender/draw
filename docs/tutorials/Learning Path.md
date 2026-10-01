@@ -40,6 +40,6 @@ flowchart LR
 | 9 | [[09 Building drawing tools]] | [[T09 Creation tools]] | done |
 | 10 | [[10 Selection, clipboard and fill]] | [[T10 Editing tools]] | done |
 | 11 | [[11 Keymaps and gesture macros]] | [[T11 Keymap and macros]] | done |
-| 12 | *The app loop: input, idle redraw, UI* | [[T12 App shell and toolbar]] | planned |
+| 12 | [[12 The app loop, idle redraw and UI]] | [[T12 App shell and toolbar]] | done |
 | 13 | *Property-based testing and fuzzing with proptest* | [[T13 Fuzz harness]] | planned |
 | 14 | *Profiling and shipping a release build* | [[T14 Performance and release validation]] | planned |

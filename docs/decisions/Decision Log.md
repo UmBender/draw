@@ -28,3 +28,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | — |
 | 18 | [[ADR-T08-1 Tool context and gesture overlay]] | accepted | decision | 0003, 0005 | — |
 | 19 | [[ADR-T11-1 Exact modifier matching]] | accepted | decision | 0003 | — |
+| 20 | [[ADR-T12-1 Blocking event loop with cached frame]] | accepted | decision | 0006, 0002 | settles the open choice in 0006 |

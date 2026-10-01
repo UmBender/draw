@@ -25,7 +25,7 @@ are bound by [[T11 Keymap and macros]] and the toolbar buttons by
 |--------|--------------------|
 | Undo | `Ctrl+Z` |
 | Redo | `Ctrl+Shift+Z` or `Ctrl+Y` |
-| *(toolbar buttons added by T12)* | — |
+| Undo / redo from the toolbar | Click the left / right arrow ([[Toolbar]]) |
 
 ## How it works
 

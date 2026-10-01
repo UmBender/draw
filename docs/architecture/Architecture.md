@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]"]
+adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]"]
 ---
 
 # Architecture
@@ -59,11 +59,18 @@ flowchart LR
 
 ## Data flow per frame
 
-1. `shell::input_map` collects macroquad events → `Vec<InputEvent>` (screen space).
-2. `Editor::handle(event)` for each; returns whether anything changed.
-3. If nothing changed and no animation is pending → skip drawing (see [[ADR-0006 Redraw on demand]]).
-4. Otherwise `shell::render` draws `editor.document()`, `editor.preview()`,
-   selection outline, and the toolbar.
+The loop sleeps in miniquad's blocking event loop and wakes only on input or
+resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
+
+1. `shell::input_map::Collector` yields every raw event since the last frame,
+   in order, as `InputEvent`s in logical screen pixels.
+2. `shell::toolbar::route` sends presses on the visible toolbar to
+   `Editor::apply(command)`; everything else goes to `Editor::handle(event)`.
+   Both return whether anything changed.
+3. If anything changed (or the window size did), the scene — shapes minus
+   `overlay.hidden`, overlay shapes, selection, marquee, toolbar — is
+   re-rendered into a cached render target ([[ADR-0006 Redraw on demand]]).
+4. The cached texture is blitted to the window (one quad).
 
 ## Invariants (checked by the fuzzer)
 

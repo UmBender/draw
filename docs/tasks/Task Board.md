@@ -66,6 +66,6 @@ flowchart TD
 | [[T09 Creation tools]] | done | T04, T08 | `task/T09-creation-tools` |
 | [[T10 Editing tools]] | done | T08 | `task/T10-editing-tools` |
 | [[T11 Keymap and macros]] | done | T08 | `task/T11-keymap` |
-| [[T12 App shell and toolbar]] | ready | T07, T09, T10, T11 | `task/T12-app-shell` |
+| [[T12 App shell and toolbar]] | done | T07, T09, T10, T11 | `task/T12-app-shell` |
 | [[T13 Fuzz harness]] | ready | T09, T10, T11 | `task/T13-fuzz` |
 | [[T14 Performance and release validation]] | todo | T12, T13 | `task/T14-release` |
