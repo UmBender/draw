@@ -216,6 +216,7 @@ pub(crate) mod testkit {
             b: Vec2::new(x + w, y + h),
             style: style(),
             fill: None,
+            label: None,
         }
     }
 
@@ -231,6 +232,7 @@ pub(crate) mod testkit {
             b: Vec2::new(x + w, y + h),
             style: style(),
             fill: None,
+            label: None,
         }
     }
 

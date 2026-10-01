@@ -8,14 +8,15 @@
 use std::collections::HashSet;
 
 use draw::core::camera::{ZOOM_MAX, ZOOM_MIN};
-use draw::core::command::Command;
+use draw::core::command::{Command, Tool};
 use draw::core::document::ShapeId;
 use draw::core::editor::Editor;
 use draw::core::geom::Vec2;
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
-use draw::core::shape::Shape;
+use draw::core::numbering::FIRST_NUMBER;
+use draw::core::shape::{GRID_MAX_CELLS, Shape};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
 use proptest::prelude::*;
 use proptest::sample::select;
@@ -26,7 +27,7 @@ use proptest::test_runner::{FileFailurePersistence, TestRunner};
 const MAX_SESSION_LEN: usize = 500;
 
 /// Every `Key`, in declaration order.
-const ALL_KEYS: [Key; 43] = [
+const ALL_KEYS: [Key; 47] = [
     Key::A,
     Key::B,
     Key::C,
@@ -70,6 +71,18 @@ const ALL_KEYS: [Key; 43] = [
     Key::Tab,
     Key::BracketLeft,
     Key::BracketRight,
+    Key::ArrowLeft,
+    Key::ArrowRight,
+    Key::ArrowUp,
+    Key::ArrowDown,
+];
+
+/// The arrow keys: grid columns and rows.
+const ARROW_KEYS: [Key; 4] = [
+    Key::ArrowLeft,
+    Key::ArrowRight,
+    Key::ArrowUp,
+    Key::ArrowDown,
 ];
 
 /// Every `PointerButton`.
@@ -229,10 +242,46 @@ fn arb_space_drag() -> impl Strategy<Value = Vec<InputEvent>> {
     })
 }
 
+/// A grid-tool drag with arrow keys pressed while the button is held.
+fn arb_grid_drag() -> impl Strategy<Value = Vec<InputEvent>> {
+    let arrow = select(ARROW_KEYS.to_vec()).prop_map(|key| InputEvent::KeyDown {
+        key,
+        mods: Modifiers::NONE,
+    });
+    (
+        arb_gesture(),
+        prop::collection::vec(arrow, 0..12),
+        any::<u64>(),
+    )
+        .prop_map(|(gesture, arrows, seed)| {
+            let mut events = vec![InputEvent::KeyDown {
+                key: Key::G,
+                mods: Modifiers::NONE,
+            }];
+            // Spread the arrows over the drag, after the press.
+            let len = gesture.len().max(1) as u64;
+            let mut at: Vec<usize> = (0..arrows.len() as u64)
+                .map(|i| (1 + (seed.wrapping_add(i * 7919) % len)) as usize)
+                .collect();
+            at.sort_unstable();
+            let mut arrows = arrows.into_iter();
+            for (i, event) in gesture.into_iter().enumerate() {
+                events.push(event);
+                while at.first() == Some(&(i + 1)) {
+                    at.remove(0);
+                    events.extend(arrows.next());
+                }
+            }
+            events.extend(arrows);
+            events
+        })
+}
+
 /// A session of 1..=500 events, biased towards realistic gestures.
 fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
     let chunk = prop_oneof![
         6 => arb_gesture(),
+        1 => arb_grid_drag(),
         3 => arb_command_burst(),
         1 => arb_space_drag(),
         3 => arb_event().prop_map(|event| vec![event]),
@@ -283,12 +332,39 @@ fn shapes_of(editor: &Editor) -> Vec<(ShapeId, Shape)> {
 
 /// Checks every editor invariant from the architecture note.
 fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
+    let cells = 1..=GRID_MAX_CELLS;
     for (id, shape) in editor.document().shapes() {
         prop_assert!(
             shape.is_finite(),
             "step {step}: shape {id:?} not finite: {shape:?}"
         );
+        if let Shape::Grid { cols, rows, .. } = shape {
+            prop_assert!(
+                cells.contains(cols) && cells.contains(rows),
+                "step {step}: grid {id:?} has {cols} × {rows} cells"
+            );
+        }
+        // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
+        if let Some(label) = shape.label() {
+            prop_assert!(
+                label >= FIRST_NUMBER,
+                "step {step}: shape {id:?} has label {label}"
+            );
+        }
     }
+
+    let helpers = editor.helpers();
+    prop_assert!(
+        cells.contains(&helpers.grid_cols) && cells.contains(&helpers.grid_rows),
+        "step {step}: editor grid dims {} × {}",
+        helpers.grid_cols,
+        helpers.grid_rows
+    );
+    prop_assert!(
+        helpers.next_number >= FIRST_NUMBER,
+        "step {step}: numbering counter {}",
+        helpers.next_number
+    );
 
     let camera = editor.camera();
     let zoom = camera.zoom();
@@ -421,6 +497,35 @@ fn strategies_generate_all_variants() {
         COORD_CLASSES.len(),
         "special coordinates seen: {coords:?}"
     );
+}
+
+#[test]
+fn grid_drags_press_arrows_while_the_grid_tool_drags() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_grid_drag();
+    let mut live = 0;
+
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_grid_drag failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        let mut changed_live = false;
+
+        // Act
+        for event in tree.current() {
+            let during_grid_drag = editor.active_gesture()
+                == Some(draw::core::editor::ActiveGesture::Tool(Tool::Grid));
+            let is_arrow =
+                matches!(event, InputEvent::KeyDown { key, .. } if ARROW_KEYS.contains(&key));
+            changed_live |= editor.handle(event) && during_grid_drag && is_arrow;
+        }
+        live += usize::from(changed_live);
+    }
+
+    // Assert: dims really change in the middle of grid drags.
+    assert!(live >= 50, "sessions resizing a grid mid-drag: {live}/200");
 }
 
 #[test]

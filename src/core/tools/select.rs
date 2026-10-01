@@ -260,7 +260,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
                 } else {
                     moving.iter().map(|(id, _)| *id).collect()
                 },
-                marquee: None,
+                ..Overlay::default()
             }
         }
     }

@@ -43,7 +43,9 @@ impl Kind {
             Tool::Arrow => Some(Self::Arrow),
             Tool::Rect => Some(Self::Rect),
             Tool::Ellipse => Some(Self::Ellipse),
-            Tool::Pen | Tool::Eraser | Tool::Bucket | Tool::Select | Tool::Hand => None,
+            Tool::Pen | Tool::Grid | Tool::Eraser | Tool::Bucket | Tool::Select | Tool::Hand => {
+                None
+            }
         }
     }
 }
@@ -80,12 +82,14 @@ impl Drag {
                 b,
                 style,
                 fill: None,
+                label: None,
             },
             Kind::Ellipse => Shape::Ellipse {
                 a,
                 b,
                 style,
                 fill: None,
+                label: None,
             },
         }
     }
@@ -283,7 +287,9 @@ mod tests {
             | Shape::Arrow { a, b, .. }
             | Shape::Rect { a, b, .. }
             | Shape::Ellipse { a, b, .. } => (*a, *b),
-            Shape::Stroke { .. } => panic!("expected a two-point shape, got a stroke"),
+            Shape::Stroke { .. } | Shape::Grid { .. } => {
+                panic!("expected a two-point shape, got {shape:?}")
+            }
         }
     }
 

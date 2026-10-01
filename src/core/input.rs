@@ -92,6 +92,14 @@ pub enum Key {
     BracketLeft,
     /// `]`.
     BracketRight,
+    /// `←`.
+    ArrowLeft,
+    /// `→`.
+    ArrowRight,
+    /// `↑`.
+    ArrowUp,
+    /// `↓`.
+    ArrowDown,
 }
 
 /// One input event, positions in screen pixels.

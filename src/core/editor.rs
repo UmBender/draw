@@ -19,8 +19,9 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
+use crate::core::numbering::FIRST_NUMBER;
 use crate::core::palette::ColorId;
-use crate::core::shape::Shape;
+use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -36,17 +37,54 @@ pub const DEFAULT_WIDTH_PX: f32 = 3.0;
 /// Free space kept around content by [`Command::FitView`], in pixels.
 pub const FIT_MARGIN_PX: f32 = 32.0;
 
+/// Columns and rows of a new editor's grids.
+pub const DEFAULT_GRID_CELLS: u32 = 4;
+
 /// Maps a key chord to a command; [`keymap::resolve`] by default.
 pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 
-/// Style for new shapes. The width is in screen pixels; tools convert it to
-/// world units with the zoom at creation time (ADR-0013).
+/// Helper settings for new shapes: snapping, grid size and numbering
+/// (ADR-T16-3). Only [`Editor::apply`] changes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Helpers {
+    /// Smart snapping (round, sizes, alignment) is on.
+    pub smart_snap: bool,
+    /// Snapping to the world grid is on.
+    pub grid_snap: bool,
+    /// New rectangles and ellipses are numbered.
+    pub numbering: bool,
+    /// The number the next numbered shape gets, at least [`FIRST_NUMBER`].
+    pub next_number: u32,
+    /// Columns of new grids, in `1..=GRID_MAX_CELLS`.
+    pub grid_cols: u32,
+    /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
+    pub grid_rows: u32,
+}
+
+impl Default for Helpers {
+    fn default() -> Self {
+        Self {
+            smart_snap: false,
+            grid_snap: false,
+            numbering: false,
+            next_number: FIRST_NUMBER,
+            grid_cols: DEFAULT_GRID_CELLS,
+            grid_rows: DEFAULT_GRID_CELLS,
+        }
+    }
+}
+
+/// Settings for new shapes. The width is in screen pixels; tools convert it
+/// to world units with the zoom at creation time (ADR-0013). The helper
+/// settings travel here so every tool sees them (ADR-T16-3).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DrawStyle {
     /// Outline colour.
     pub color: ColorId,
     /// Outline width in screen pixels, one of [`WIDTH_LADDER_PX`].
     pub width_px: f32,
+    /// Snapping, grid size and numbering.
+    pub helpers: Helpers,
 }
 
 impl Default for DrawStyle {
@@ -54,6 +92,7 @@ impl Default for DrawStyle {
         Self {
             color: ColorId::INK,
             width_px: DEFAULT_WIDTH_PX,
+            helpers: Helpers::default(),
         }
     }
 }
@@ -274,6 +313,14 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
+            // Helper commands never cancel the gesture, so they act live
+            // during a drag (ADR-T16-2).
+            Command::ToggleSmartSnap
+            | Command::ToggleGridSnap
+            | Command::ToggleNumbering
+            | Command::ResetNumbering
+            | Command::GridCols(_)
+            | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
         }
     }
 
@@ -299,6 +346,12 @@ impl Editor {
     #[must_use]
     pub fn style(&self) -> DrawStyle {
         self.style
+    }
+
+    /// Snapping, grid size and numbering settings.
+    #[must_use]
+    pub fn helpers(&self) -> Helpers {
+        self.style.helpers
     }
 
     /// Anti-tremor level for new strokes.
@@ -505,6 +558,43 @@ impl Editor {
     }
 }
 
+/// Executes a helper command on `helpers`. Returns whether anything changed;
+/// other commands change nothing.
+fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
+    match command {
+        Command::ToggleSmartSnap => {
+            helpers.smart_snap = !helpers.smart_snap;
+            true
+        }
+        Command::ToggleGridSnap => {
+            helpers.grid_snap = !helpers.grid_snap;
+            true
+        }
+        Command::ToggleNumbering => {
+            helpers.numbering = !helpers.numbering;
+            true
+        }
+        Command::ResetNumbering => {
+            let changed = helpers.next_number != FIRST_NUMBER;
+            helpers.next_number = FIRST_NUMBER;
+            changed
+        }
+        Command::GridCols(delta) => step_cells(&mut helpers.grid_cols, delta),
+        Command::GridRows(delta) => step_cells(&mut helpers.grid_rows, delta),
+        _ => false,
+    }
+}
+
+/// Adds `delta` to the grid dimension `cells`, clamped to
+/// `1..=GRID_MAX_CELLS`. Returns whether it changed.
+fn step_cells(cells: &mut u32, delta: i32) -> bool {
+    let stepped = (i64::from(*cells) + i64::from(delta)).clamp(1, i64::from(GRID_MAX_CELLS));
+    let stepped = u32::try_from(stepped).unwrap_or(GRID_MAX_CELLS);
+    let changed = *cells != stepped;
+    *cells = stepped;
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,7 +602,9 @@ mod tests {
     use crate::core::document::tx_insert;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+    use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
+    use crate::core::shape::GRID_MAX_CELLS;
     use crate::core::shape::{Shape, Style};
     use crate::core::smoothing::SmoothingLevel;
 
@@ -527,6 +619,7 @@ mod tests {
                 width: 1.0,
             },
             fill: None,
+            label: None,
         }
     }
 
@@ -1126,6 +1219,114 @@ mod tests {
         assert!(!ed.toolbar_visible());
         ed.apply(Command::ToggleToolbar);
         assert!(ed.toolbar_visible());
+    }
+
+    // ---- T16 AC-4 helpers -------------------------------------------------
+
+    #[test]
+    fn helpers_default_off_and_4x4() {
+        // Arrange / Act
+        let ed = Editor::new();
+        let helpers = ed.helpers();
+
+        // Assert
+        assert!(!helpers.smart_snap && !helpers.grid_snap && !helpers.numbering);
+        assert_eq!(helpers.next_number, FIRST_NUMBER);
+        assert_eq!((helpers.grid_cols, helpers.grid_rows), (4, 4));
+        assert_eq!(ed.style().helpers, helpers);
+    }
+
+    #[test]
+    fn toggle_smart_snap_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleSmartSnap));
+        assert!(ed.helpers().smart_snap);
+        assert!(ed.apply(Command::ToggleSmartSnap));
+        assert!(!ed.helpers().smart_snap);
+    }
+
+    #[test]
+    fn toggle_grid_snap_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleGridSnap));
+        assert!(ed.helpers().grid_snap);
+        assert!(!ed.helpers().smart_snap, "independent flags");
+        assert!(ed.apply(Command::ToggleGridSnap));
+        assert!(!ed.helpers().grid_snap);
+    }
+
+    #[test]
+    fn toggle_numbering_flips() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::ToggleNumbering));
+        assert!(ed.helpers().numbering);
+        assert!(ed.apply(Command::ToggleNumbering));
+        assert!(!ed.helpers().numbering);
+    }
+
+    #[test]
+    fn reset_numbering_restarts_at_one() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.style.helpers.next_number = 5;
+
+        // Act / Assert
+        assert!(ed.apply(Command::ResetNumbering));
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+        assert!(!ed.apply(Command::ResetNumbering), "already at the start");
+    }
+
+    #[test]
+    fn grid_dims_step_by_one() {
+        let mut ed = Editor::new();
+
+        assert!(ed.apply(Command::GridCols(1)));
+        assert!(ed.apply(Command::GridRows(-1)));
+
+        assert_eq!((ed.helpers().grid_cols, ed.helpers().grid_rows), (5, 3));
+    }
+
+    #[test]
+    fn grid_dims_clamped() {
+        // Arrange
+        let mut ed = Editor::new();
+
+        // Act / Assert: the floor.
+        for _ in 0..3 {
+            ed.apply(Command::GridCols(-1));
+        }
+        assert_eq!(ed.helpers().grid_cols, 1);
+        assert!(!ed.apply(Command::GridCols(-1)), "no change at the floor");
+        assert!(!ed.apply(Command::GridCols(i32::MIN)));
+        assert_eq!(ed.helpers().grid_cols, 1);
+
+        // The ceiling.
+        assert!(ed.apply(Command::GridRows(1000)));
+        assert_eq!(ed.helpers().grid_rows, GRID_MAX_CELLS);
+        assert!(!ed.apply(Command::GridRows(1)), "no change at the ceiling");
+        assert!(ed.apply(Command::GridCols(i32::MAX)));
+        assert_eq!(ed.helpers().grid_cols, GRID_MAX_CELLS);
+    }
+
+    #[test]
+    fn grid_dims_change_keeps_gesture() {
+        // Arrange: a grid drag in progress.
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Grid));
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+
+        // Act
+        let changed = ed.apply(Command::GridCols(1))
+            && ed.apply(Command::ToggleSmartSnap)
+            && ed.apply(Command::ToggleNumbering);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Grid)));
+        assert_eq!(ed.helpers().grid_cols, 5);
     }
 
     // ---- AC-9 stubs -------------------------------------------------------

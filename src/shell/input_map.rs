@@ -59,6 +59,10 @@ pub fn map_key(code: KeyCode) -> Option<Key> {
         KeyCode::Tab => Key::Tab,
         KeyCode::LeftBracket => Key::BracketLeft,
         KeyCode::RightBracket => Key::BracketRight,
+        KeyCode::Left => Key::ArrowLeft,
+        KeyCode::Right => Key::ArrowRight,
+        KeyCode::Up => Key::ArrowUp,
+        KeyCode::Down => Key::ArrowDown,
         _ => return None,
     };
     Some(key)
@@ -336,6 +340,18 @@ mod tests {
             (KeyCode::Tab, Key::Tab),
             (KeyCode::LeftBracket, Key::BracketLeft),
             (KeyCode::RightBracket, Key::BracketRight),
+        ] {
+            assert_eq!(map_key(code), Some(key), "{code:?}");
+        }
+    }
+
+    #[test]
+    fn arrows_map() {
+        for (code, key) in [
+            (KeyCode::Left, Key::ArrowLeft),
+            (KeyCode::Right, Key::ArrowRight),
+            (KeyCode::Up, Key::ArrowUp),
+            (KeyCode::Down, Key::ArrowDown),
         ] {
             assert_eq!(map_key(code), Some(key), "{code:?}");
         }

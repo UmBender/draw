@@ -29,6 +29,19 @@ impl KeyChord {
         }
     }
 
+    /// `Shift` + `key`.
+    #[must_use]
+    pub const fn shift(key: Key) -> Self {
+        Self {
+            key,
+            mods: Modifiers {
+                shift: true,
+                ctrl: false,
+                alt: false,
+            },
+        }
+    }
+
     /// `Ctrl` + `key`.
     #[must_use]
     pub const fn ctrl(key: Key) -> Self {
@@ -67,7 +80,7 @@ const fn color(digit: u8) -> Command {
 /// Every binding: chord, command and a short human-readable description.
 ///
 /// Order follows the tables of `docs/architecture/Keymap.md`: tools, style,
-/// edit, view.
+/// edit, view, helpers (ADR-T16-2).
 pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     // Tools
     (KeyChord::bare(Key::P), Command::SetTool(Tool::Pen), "Pen"),
@@ -107,6 +120,7 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::SetTool(Tool::Hand),
         "Hand (pan)",
     ),
+    (KeyChord::bare(Key::G), Command::SetTool(Tool::Grid), "Grid"),
     // Style
     (KeyChord::bare(Key::Digit1), color(1), "Colour 1 (ink)"),
     (KeyChord::bare(Key::Digit2), color(2), "Colour 2 (red)"),
@@ -178,6 +192,47 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ToggleToolbar,
         "Show / hide toolbar",
     ),
+    // Helpers
+    (
+        KeyChord::bare(Key::M),
+        Command::ToggleSmartSnap,
+        "Smart snap on / off",
+    ),
+    (
+        KeyChord::shift(Key::G),
+        Command::ToggleGridSnap,
+        "Grid snap on / off",
+    ),
+    (
+        KeyChord::bare(Key::N),
+        Command::ToggleNumbering,
+        "Numbering on / off",
+    ),
+    (
+        KeyChord::shift(Key::N),
+        Command::ResetNumbering,
+        "Restart numbering at 1",
+    ),
+    (
+        KeyChord::bare(Key::ArrowRight),
+        Command::GridCols(1),
+        "Grid: one more column",
+    ),
+    (
+        KeyChord::bare(Key::ArrowLeft),
+        Command::GridCols(-1),
+        "Grid: one less column",
+    ),
+    (
+        KeyChord::bare(Key::ArrowDown),
+        Command::GridRows(1),
+        "Grid: one more row",
+    ),
+    (
+        KeyChord::bare(Key::ArrowUp),
+        Command::GridRows(-1),
+        "Grid: one less row",
+    ),
 ];
 
 /// The command bound to `key` pressed with `mods`, if any.
@@ -220,7 +275,7 @@ mod tests {
         alt: true,
     };
 
-    const ALL_KEYS: [Key; 43] = [
+    const ALL_KEYS: [Key; 47] = [
         Key::A,
         Key::B,
         Key::C,
@@ -264,6 +319,10 @@ mod tests {
         Key::Tab,
         Key::BracketLeft,
         Key::BracketRight,
+        Key::ArrowLeft,
+        Key::ArrowRight,
+        Key::ArrowUp,
+        Key::ArrowDown,
     ];
 
     fn color(digit: u8) -> Command {
@@ -287,6 +346,7 @@ mod tests {
             (Key::B, NONE, Command::SetTool(Tool::Bucket)),
             (Key::V, NONE, Command::SetTool(Tool::Select)),
             (Key::H, NONE, Command::SetTool(Tool::Hand)),
+            (Key::G, NONE, Command::SetTool(Tool::Grid)),
             // Style
             (Key::Digit1, NONE, color(1)),
             (Key::Digit2, NONE, color(2)),
@@ -314,6 +374,15 @@ mod tests {
             (Key::Digit0, NONE, Command::ResetView),
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
+            // Helpers
+            (Key::M, NONE, Command::ToggleSmartSnap),
+            (Key::G, SHIFT, Command::ToggleGridSnap),
+            (Key::N, NONE, Command::ToggleNumbering),
+            (Key::N, SHIFT, Command::ResetNumbering),
+            (Key::ArrowRight, NONE, Command::GridCols(1)),
+            (Key::ArrowLeft, NONE, Command::GridCols(-1)),
+            (Key::ArrowDown, NONE, Command::GridRows(1)),
+            (Key::ArrowUp, NONE, Command::GridRows(-1)),
         ]
     }
 
@@ -363,6 +432,28 @@ mod tests {
         assert_eq!(resolve(Key::Digit1, ALT), None);
         assert_eq!(resolve(Key::Z, NONE), None);
         assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn helper_bindings() {
+        assert_eq!(resolve(Key::G, NONE), Some(Command::SetTool(Tool::Grid)));
+        assert_eq!(resolve(Key::M, NONE), Some(Command::ToggleSmartSnap));
+        assert_eq!(resolve(Key::G, SHIFT), Some(Command::ToggleGridSnap));
+        assert_eq!(resolve(Key::N, NONE), Some(Command::ToggleNumbering));
+        assert_eq!(resolve(Key::N, SHIFT), Some(Command::ResetNumbering));
+        assert_eq!(resolve(Key::ArrowRight, NONE), Some(Command::GridCols(1)));
+        assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
+        assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
+        assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn shift_chords_are_exact() {
+        assert_eq!(KeyChord::shift(Key::G).mods, SHIFT);
+        assert_eq!(resolve(Key::G, CTRL_SHIFT), None);
+        assert_eq!(resolve(Key::N, CTRL), None);
+        assert_eq!(resolve(Key::M, SHIFT), None);
+        assert_eq!(resolve(Key::ArrowLeft, SHIFT), None);
     }
 
     #[test]

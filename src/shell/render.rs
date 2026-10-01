@@ -5,16 +5,19 @@
 //! [`screen_width`] (ADR-T07-1). Off-screen shapes are culled by their
 //! bounding box (ADR-0006). Discs and ellipses are tessellated here with
 //! `draw_triangle`, which does not allocate, instead of macroquad's
-//! `draw_circle`/`draw_ellipse`, which do.
+//! `draw_circle`/`draw_ellipse`, which do. Grids and labels follow
+//! ADR-T16-1.
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
+use macroquad::text::{TextParams, draw_text_ex, measure_text};
 
 use crate::core::camera::Camera;
+use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, THEME, palette};
-use crate::core::shape::{Shape, arrow_head};
+use crate::core::shape::{Shape, arrow_head, grid_lines};
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
 pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
@@ -40,6 +43,26 @@ pub const SELECTION_WIDTH_PX: f32 = 1.0;
 
 /// Gap in pixels between the selected shapes' bounds and the selection outline.
 pub const SELECTION_PAD_PX: f32 = 4.0;
+
+/// Labels smaller than this many pixels on screen are not drawn.
+pub const LABEL_MIN_PX: f32 = 8.0;
+
+/// Largest label font size in pixels.
+pub const LABEL_MAX_PX: f32 = 256.0;
+
+/// Label font size as a fraction of the label area's height.
+pub const LABEL_HEIGHT_RATIO: f32 = 0.6;
+
+/// Fraction of the label area's width the text may use.
+pub const LABEL_WIDTH_RATIO: f32 = 0.8;
+
+/// Width of one digit per pixel of font size (an upper bound for the
+/// default font's digits).
+pub const LABEL_CHAR_ASPECT: f32 = 0.6;
+
+/// Font sizes labels are rasterized at, ascending; other sizes are scaled
+/// from the nearest one at or above (or the largest).
+pub const LABEL_RASTER_SIZES: [u16; 4] = [16, 32, 64, 128];
 
 /// On-screen outline width in pixels for a world-space `world_width`:
 /// `world_width * zoom`, at least [`MIN_SCREEN_WIDTH_PX`]. A NaN, infinite or
@@ -121,6 +144,64 @@ pub fn selection_rect(bounds: Aabb, camera: &Camera) -> Aabb {
     .expand(SELECTION_PAD_PX)
 }
 
+/// Font size in pixels for a label of `chars` characters inside an area of
+/// `area` pixels: as tall as [`LABEL_HEIGHT_RATIO`] of the height, narrowed
+/// so the text fits [`LABEL_WIDTH_RATIO`] of the width, capped at
+/// [`LABEL_MAX_PX`]. `None` (not drawn) below [`LABEL_MIN_PX`] or for a
+/// non-finite area.
+#[must_use]
+pub fn label_size(chars: usize, area: Vec2) -> Option<f32> {
+    if !area.is_finite() {
+        return None;
+    }
+    let text_width = chars.max(1) as f32 * LABEL_CHAR_ASPECT;
+    let size = (area.y * LABEL_HEIGHT_RATIO)
+        .min(area.x * LABEL_WIDTH_RATIO / text_width)
+        .min(LABEL_MAX_PX);
+    (size >= LABEL_MIN_PX).then_some(size)
+}
+
+/// Size in pixels of the area a label may use inside the screen rectangle
+/// `rect` of a shape: the rectangle itself, or for an ellipse the largest
+/// axis-aligned box inscribed in it (`rect` scaled by `1/√2`).
+#[must_use]
+pub fn label_area(rect: Aabb, ellipse: bool) -> Vec2 {
+    let size = Vec2::new(rect.width(), rect.height());
+    if ellipse {
+        size * std::f32::consts::FRAC_1_SQRT_2
+    } else {
+        size
+    }
+}
+
+/// Raster size and scale for drawing text at `size` pixels: the smallest of
+/// [`LABEL_RASTER_SIZES`] at least `size` (else the largest), and the scale
+/// mapping it to `size`. A NaN `size` gives the largest raster and a NaN
+/// scale; callers pass sizes from [`label_size`], which are finite.
+#[must_use]
+pub fn label_raster(size: f32) -> (u16, f32) {
+    let largest = LABEL_RASTER_SIZES[LABEL_RASTER_SIZES.len() - 1];
+    let raster = LABEL_RASTER_SIZES
+        .into_iter()
+        .find(|&r| f32::from(r) >= size)
+        .unwrap_or(largest);
+    (raster, size / f32::from(raster))
+}
+
+/// Draws what lies under the shapes, such as the snap dot grid (T17).
+///
+/// Skeleton (ADR-T16-3): draws nothing.
+pub fn draw_underlay(editor: &Editor, viewport: Vec2) {
+    let _ = (editor, viewport);
+}
+
+/// Draws alignment guides, world-space segments, on top of the overlay (T17).
+///
+/// Skeleton (ADR-T16-3): draws nothing.
+pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
+    let _ = (guides, camera);
+}
+
 /// Draws every shape whose bounds are visible through `camera` in a viewport
 /// of `viewport` pixels, in iteration order (later shapes on top).
 pub fn draw_shapes<'a>(
@@ -166,7 +247,9 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             draw_segment(to_screen(*a), base, width, color);
             draw_triangle(to_mq(tip), to_mq(left), to_mq(right), color);
         }
-        Shape::Rect { a, b, fill, .. } => {
+        Shape::Rect {
+            a, b, fill, label, ..
+        } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             if let Some(fill) = fill {
                 draw_rectangle(
@@ -178,8 +261,11 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
                 );
             }
             draw_rect_outline(rect, width, color);
+            draw_label(*label, rect, false, label_color(*fill, color));
         }
-        Shape::Ellipse { a, b, fill, .. } => {
+        Shape::Ellipse {
+            a, b, fill, label, ..
+        } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             let center = rect.center();
             let radii = Vec2::new(rect.width() * 0.5, rect.height() * 0.5);
@@ -187,8 +273,62 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
                 draw_ellipse_fill(center, radii, color_of(*fill));
             }
             draw_ellipse_ring(center, radii, width, color);
+            draw_label(*label, rect, true, label_color(*fill, color));
+        }
+        Shape::Grid {
+            a, b, cols, rows, ..
+        } => {
+            // The camera only scales and offsets, so grid lines map to
+            // the grid lines of the mapped corners.
+            for [start, end] in grid_lines(to_screen(*a), to_screen(*b), *cols, *rows) {
+                draw_band(start, end, width, color);
+            }
         }
     }
+}
+
+/// Text colour of a label: the outline colour, or the background colour on a
+/// filled shape so the number stays readable.
+fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
+    if fill.is_some() {
+        to_mq_color(THEME.bg)
+    } else {
+        outline
+    }
+}
+
+/// Draws `label` centred in the screen rectangle `rect` of a rectangle or
+/// (`ellipse`) an ellipse, if it is big enough on screen.
+fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
+    let Some(label) = label else {
+        return;
+    };
+    let text = label.to_string();
+    let Some(size) = label_size(text.len(), label_area(rect, ellipse)) else {
+        return;
+    };
+    let (font_size, font_scale) = label_raster(size);
+    let dims = measure_text(&text, None, font_size, font_scale);
+    let c = rect.center();
+    draw_text_ex(
+        &text,
+        c.x - dims.width * 0.5,
+        c.y + dims.offset_y * 0.5,
+        TextParams {
+            font_size,
+            font_scale,
+            color,
+            ..TextParams::default()
+        },
+    );
+}
+
+/// Draws an axis-aligned screen segment as a band `width` pixels wide that
+/// overhangs both ends by half the width, so crossing bands meet with square
+/// corners.
+fn draw_band(start: Vec2, end: Vec2, width: f32, color: Color) {
+    let band = Aabb::from_corners(start, end).expand(width * 0.5);
+    draw_rectangle(band.min.x, band.min.y, band.width(), band.height(), color);
 }
 
 /// The macroquad colour of a palette entry.
@@ -550,5 +690,89 @@ mod tests {
             rect,
             aabb(4.0 - p, 8.0 - p, 12.0 + p, 20.0 + p)
         ));
+    }
+
+    // T16 AC-2: labels
+
+    #[test]
+    fn label_size_fits_box() {
+        // Arrange
+        let area = Vec2::new(100.0, 100.0);
+        // Act
+        let size = label_size(1, area);
+        // Assert: limited by the height, and the text fits the width.
+        let Some(size) = size else {
+            panic!("a 100 px box shows its label");
+        };
+        assert!(approx_eq(size, 100.0 * LABEL_HEIGHT_RATIO, EPS));
+        assert!(size * LABEL_CHAR_ASPECT <= area.x * LABEL_WIDTH_RATIO + EPS);
+    }
+
+    #[test]
+    fn label_size_shrinks_with_more_digits() {
+        let area = Vec2::new(100.0, 100.0);
+
+        let (Some(one), Some(three)) = (label_size(1, area), label_size(3, area)) else {
+            panic!("both labels fit");
+        };
+
+        assert!(three < one);
+        assert!(3.0 * three * LABEL_CHAR_ASPECT <= area.x * LABEL_WIDTH_RATIO + EPS);
+    }
+
+    #[test]
+    fn label_size_hidden_when_too_small() {
+        assert_eq!(label_size(1, Vec2::new(10.0, 10.0)), None);
+        assert_eq!(label_size(5, Vec2::new(25.0, 400.0)), None);
+        assert_eq!(label_size(1, Vec2::new(-50.0, 50.0)), None);
+    }
+
+    #[test]
+    fn label_size_is_capped() {
+        let size = label_size(1, Vec2::new(1.0e5, 1.0e5));
+
+        assert!(
+            size.is_some_and(|s| approx_eq(s, LABEL_MAX_PX, EPS)),
+            "{size:?}"
+        );
+    }
+
+    #[test]
+    fn label_size_non_finite_is_none() {
+        for area in [
+            Vec2::new(f32::NAN, 100.0),
+            Vec2::new(100.0, f32::INFINITY),
+            Vec2::new(f32::NEG_INFINITY, f32::NAN),
+        ] {
+            assert_eq!(label_size(1, area), None, "{area:?}");
+        }
+    }
+
+    #[test]
+    fn label_area_ellipse_is_inscribed_box() {
+        let rect = aabb(0.0, 0.0, 100.0, 50.0);
+
+        let boxed = label_area(rect, false);
+        let round = label_area(rect, true);
+
+        assert!(boxed.approx_eq(Vec2::new(100.0, 50.0), EPS));
+        let k = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(round.approx_eq(Vec2::new(100.0 * k, 50.0 * k), EPS));
+    }
+
+    #[test]
+    fn label_raster_quantizes() {
+        let cases = [
+            (10.0, 16, 10.0 / 16.0),
+            (16.0, 16, 1.0),
+            (17.0, 32, 17.0 / 32.0),
+            (100.0, 128, 100.0 / 128.0),
+            (200.0, 128, 200.0 / 128.0),
+        ];
+        for (size, raster, scale) in cases {
+            let (got_raster, got_scale) = label_raster(size);
+            assert_eq!(got_raster, raster, "size {size}");
+            assert!(approx_eq(got_scale, scale, EPS), "size {size}: {got_scale}");
+        }
     }
 }

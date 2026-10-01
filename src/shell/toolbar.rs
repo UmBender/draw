@@ -1,9 +1,10 @@
 //! Minimal toolbar: layout, hit-testing and drawing.
 //!
 //! A vertical strip at the left edge: one button per tool, the six palette
-//! swatches, then undo and redo. Layout, hit-testing and event routing are
-//! pure functions of the viewport; [`draw`] paints the strip with the theme
-//! tokens (ADR-0012), marking the active tool and colour with `accent`.
+//! swatches, the helper toggles (smart snap, grid snap, numbering), then undo
+//! and redo. Layout, hit-testing and event routing are pure functions of the
+//! viewport; [`draw`] paints the strip with the theme tokens (ADR-0012),
+//! marking the active tool, colour and the helpers that are on with `accent`.
 
 use macroquad::color::Color;
 use macroquad::shapes::{draw_rectangle, draw_triangle};
@@ -22,16 +23,17 @@ pub const BUTTON_PX: f32 = 32.0;
 pub const PAD_PX: f32 = 4.0;
 /// Space between buttons of one group, in pixels.
 pub const GAP_PX: f32 = 2.0;
-/// Space between groups (tools, colours, history), in pixels.
+/// Space between groups (tools, colours, helpers, history), in pixels.
 pub const GROUP_GAP_PX: f32 = 12.0;
 
 /// Tools in toolbar order (the keymap's order).
-pub const TOOLS: [Tool; 9] = [
+pub const TOOLS: [Tool; 10] = [
     Tool::Pen,
     Tool::Line,
     Tool::Arrow,
     Tool::Rect,
     Tool::Ellipse,
+    Tool::Grid,
     Tool::Eraser,
     Tool::Bucket,
     Tool::Select,
@@ -45,6 +47,12 @@ pub enum ButtonKind {
     Tool(Tool),
     /// Picks a palette colour.
     Color(ColorId),
+    /// Toggles smart snapping.
+    SmartSnap,
+    /// Toggles grid snapping.
+    GridSnap,
+    /// Toggles auto-numbering.
+    Numbering,
     /// Undoes the last action.
     Undo,
     /// Redoes the last undone action.
@@ -58,6 +66,9 @@ impl ButtonKind {
         match self {
             Self::Tool(tool) => Command::SetTool(tool),
             Self::Color(id) => Command::SetColor(id),
+            Self::SmartSnap => Command::ToggleSmartSnap,
+            Self::GridSnap => Command::ToggleGridSnap,
+            Self::Numbering => Command::ToggleNumbering,
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
         }
@@ -102,7 +113,7 @@ pub fn panel(viewport: Vec2) -> Aabb {
     Aabb::from_corners(Vec2::ZERO, Vec2::new(STRIP_PX, viewport.y))
 }
 
-/// The buttons, top to bottom: tools, colours, undo, redo.
+/// The buttons, top to bottom: tools, colours, helpers, undo, redo.
 ///
 /// The layout is fixed; the viewport is taken for symmetry with [`panel`].
 #[must_use]
@@ -110,9 +121,14 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
     let colors = (0..PALETTE_LEN)
         .filter_map(|i| u8::try_from(i).ok().and_then(ColorId::new))
         .map(ButtonKind::Color);
-    let groups: [Vec<ButtonKind>; 3] = [
+    let groups: [Vec<ButtonKind>; 4] = [
         TOOLS.map(ButtonKind::Tool).to_vec(),
         colors.collect(),
+        vec![
+            ButtonKind::SmartSnap,
+            ButtonKind::GridSnap,
+            ButtonKind::Numbering,
+        ],
         vec![ButtonKind::Undo, ButtonKind::Redo],
     ];
     let mut buttons = Vec::with_capacity(groups.iter().map(Vec::len).sum());
@@ -167,18 +183,22 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
         let rect = button.rect;
         match button.kind {
             ButtonKind::Tool(tool) => {
-                let active = editor.tool() == tool;
-                if active {
-                    fill(rect, to_mq_color(THEME.selection));
-                    outline(rect, accent);
-                }
-                draw_label(rect, tool_label(tool), if active { accent } else { text });
+                draw_toggle(rect, tool_label(tool), editor.tool() == tool, accent, text);
             }
             ButtonKind::Color(id) => {
                 fill(rect.expand(-SWATCH_INSET_PX), to_mq_color(palette(id)));
                 if editor.style().color == id {
                     outline(rect, accent);
                 }
+            }
+            ButtonKind::SmartSnap => {
+                draw_toggle(rect, "M", editor.helpers().smart_snap, accent, text);
+            }
+            ButtonKind::GridSnap => {
+                draw_toggle(rect, "#", editor.helpers().grid_snap, accent, text);
+            }
+            ButtonKind::Numbering => {
+                draw_toggle(rect, "N", editor.helpers().numbering, accent, text);
             }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
@@ -194,11 +214,21 @@ fn tool_label(tool: Tool) -> &'static str {
         Tool::Arrow => "A",
         Tool::Rect => "R",
         Tool::Ellipse => "C",
+        Tool::Grid => "G",
         Tool::Eraser => "E",
         Tool::Bucket => "B",
         Tool::Select => "V",
         Tool::Hand => "H",
     }
+}
+
+/// Draws a labelled button, highlighted with `accent` when `on`.
+fn draw_toggle(rect: Aabb, label: &str, on: bool, accent: Color, text: Color) {
+    if on {
+        fill(rect, to_mq_color(THEME.selection));
+        outline(rect, accent);
+    }
+    draw_label(rect, label, if on { accent } else { text });
 }
 
 /// `color`, faded when not `enabled`.
@@ -280,6 +310,7 @@ mod tests {
             Tool::Arrow,
             Tool::Rect,
             Tool::Ellipse,
+            Tool::Grid,
             Tool::Eraser,
             Tool::Bucket,
             Tool::Select,
@@ -292,6 +323,11 @@ mod tests {
         tools
             .into_iter()
             .chain(colors)
+            .chain([
+                ButtonKind::SmartSnap,
+                ButtonKind::GridSnap,
+                ButtonKind::Numbering,
+            ])
             .chain([ButtonKind::Undo, ButtonKind::Redo])
             .collect()
     }
@@ -313,7 +349,7 @@ mod tests {
         // Assert
         let kinds: Vec<ButtonKind> = buttons.iter().map(|b| b.kind).collect();
         assert_eq!(kinds, expected_kinds());
-        assert_eq!(buttons.len(), 17);
+        assert_eq!(buttons.len(), 21);
     }
 
     #[test]
@@ -340,10 +376,20 @@ mod tests {
                 "stacked top to bottom with a gap: {pair:?}"
             );
         }
-        // Groups (tools | colours | history) get a larger gap.
+        // Groups (tools | colours | helpers | history) get a larger gap.
         let gap = |i: usize| buttons[i + 1].rect.min.y - buttons[i].rect.max.y;
-        assert!(gap(8) > gap(7), "gap after the tools");
-        assert!(gap(14) > gap(13), "gap after the colours");
+        assert!(gap(9) > gap(8), "gap after the tools");
+        assert!(gap(15) > gap(14), "gap after the colours");
+        assert!(gap(18) > gap(17), "gap after the helpers");
+    }
+
+    #[test]
+    fn layout_fits_default_window() {
+        let buttons = layout(VIEWPORT);
+        let Some(last) = buttons.last() else {
+            panic!("toolbar has buttons");
+        };
+        assert!(last.rect.max.y <= VIEWPORT.y, "{last:?}");
     }
 
     #[test]
@@ -371,6 +417,9 @@ mod tests {
             let expected = match b.kind {
                 ButtonKind::Tool(tool) => Command::SetTool(tool),
                 ButtonKind::Color(id) => Command::SetColor(id),
+                ButtonKind::SmartSnap => Command::ToggleSmartSnap,
+                ButtonKind::GridSnap => Command::ToggleGridSnap,
+                ButtonKind::Numbering => Command::ToggleNumbering,
                 ButtonKind::Undo => Command::Undo,
                 ButtonKind::Redo => Command::Redo,
             };

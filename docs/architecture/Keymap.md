@@ -22,6 +22,7 @@ match exactly ([[ADR-T11-1 Exact modifier matching]]). Changes require an ADR.
 | `B` | Bucket (fills the clicked rectangle/ellipse) |
 | `V` | Select / move |
 | `H` | Hand (pan) |
+| `G` | Grid (table of cells) |
 
 ## Style
 
@@ -53,6 +54,20 @@ match exactly ([[ADR-T11-1 Exact modifier matching]]). Changes require an ADR.
 | `0` | Reset view (origin, zoom 1) |
 | `F` | Fit view to all content |
 | `Tab` | Show / hide toolbar |
+
+## Helpers
+
+Added by [[T16 Shape model v2 and helper skeleton]]
+([[ADR-T16-2 Helper key bindings]]). None of these cancels a gesture.
+
+| Key | Action |
+|-----|--------|
+| `M` | Smart snap on / off |
+| `Shift+G` | Grid snap on / off |
+| `N` | Auto-numbering on / off |
+| `Shift+N` | Restart numbering at 1 |
+| `→` / `←` | Grid: one more / one less column (1–64, live while dragging) |
+| `↓` / `↑` | Grid: one more / one less row (1–64, live while dragging) |
 
 ## Gesture macros
 

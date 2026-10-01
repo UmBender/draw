@@ -14,6 +14,7 @@
 
 pub mod bucket;
 pub mod eraser;
+pub mod grid;
 pub mod navigate;
 pub mod pen;
 pub mod select;
@@ -61,13 +62,18 @@ pub struct Overlay {
     pub hidden: Vec<ShapeId>,
     /// Selection marquee in world coordinates.
     pub marquee: Option<Aabb>,
+    /// Alignment guides as world-space segments (ADR-T16-3).
+    pub guides: Vec<[Vec2; 2]>,
 }
 
 impl Overlay {
     /// Whether there is nothing to draw or hide.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.shapes.is_empty() && self.hidden.is_empty() && self.marquee.is_none()
+        self.shapes.is_empty()
+            && self.hidden.is_empty()
+            && self.marquee.is_none()
+            && self.guides.is_empty()
     }
 }
 
@@ -142,6 +148,8 @@ pub struct ToolStates {
     pub pen: pen::State,
     /// Line, arrow, rectangle and ellipse.
     pub shape: shape_tool::State,
+    /// Grid.
+    pub grid: grid::State,
     /// Eraser (also used by right drags).
     pub eraser: eraser::State,
     /// Bucket.
@@ -159,6 +167,7 @@ impl ToolStates {
             Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse => {
                 shape_tool::on_pointer(&mut self.shape, ctx, pointer)
             }
+            Tool::Grid => grid::on_pointer(&mut self.grid, ctx, pointer),
             Tool::Eraser => eraser::on_pointer(&mut self.eraser, ctx, pointer),
             Tool::Bucket => bucket::on_pointer(&mut self.bucket, ctx, pointer),
             Tool::Select => select::on_pointer(&mut self.select, ctx, pointer),
@@ -174,6 +183,7 @@ impl ToolStates {
             Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse => {
                 shape_tool::preview(&self.shape, view)
             }
+            Tool::Grid => grid::preview(&self.grid, view),
             Tool::Eraser => eraser::preview(&self.eraser, view),
             Tool::Bucket => bucket::preview(&self.bucket, view),
             Tool::Select => select::preview(&self.select, view),
@@ -189,10 +199,29 @@ impl ToolStates {
             Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse => {
                 shape_tool::cancel(&mut self.shape)
             }
+            Tool::Grid => grid::cancel(&mut self.grid),
             Tool::Eraser => eraser::cancel(&mut self.eraser),
             Tool::Bucket => bucket::cancel(&mut self.bucket),
             Tool::Select => select::cancel(&mut self.select),
             Tool::Hand => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_with_guides_is_not_empty() {
+        // Arrange
+        let overlay = Overlay {
+            guides: vec![[Vec2::ZERO, Vec2::new(10.0, 0.0)]],
+            ..Overlay::default()
+        };
+
+        // Act / Assert
+        assert!(!overlay.is_empty());
+        assert!(Overlay::default().is_empty());
     }
 }
