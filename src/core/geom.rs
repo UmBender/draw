@@ -83,7 +83,17 @@ impl Vec2 {
     /// Returns `Some(self)` if both components are finite, otherwise `None`.
     #[must_use]
     pub fn sanitize(self) -> Option<Self> {
-        if self.is_finite() { Some(self) } else { None }
+        self.is_finite().then_some(self)
+    }
+
+    /// Component-wise minimum.
+    fn component_min(self, other: Self) -> Self {
+        Self::new(self.x.min(other.x), self.y.min(other.y))
+    }
+
+    /// Component-wise maximum.
+    fn component_max(self, other: Self) -> Self {
+        Self::new(self.x.max(other.x), self.y.max(other.y))
     }
 }
 
@@ -164,8 +174,8 @@ impl Aabb {
                 max: first,
             },
             |acc, p| Self {
-                min: Vec2::new(acc.min.x.min(p.x), acc.min.y.min(p.y)),
-                max: Vec2::new(acc.max.x.max(p.x), acc.max.y.max(p.y)),
+                min: acc.min.component_min(p),
+                max: acc.max.component_max(p),
             },
         ))
     }
@@ -174,8 +184,8 @@ impl Aabb {
     #[must_use]
     pub fn from_corners(a: Vec2, b: Vec2) -> Self {
         Self {
-            min: Vec2::new(a.x.min(b.x), a.y.min(b.y)),
-            max: Vec2::new(a.x.max(b.x), a.y.max(b.y)),
+            min: a.component_min(b),
+            max: a.component_max(b),
         }
     }
 
@@ -210,8 +220,8 @@ impl Aabb {
     #[must_use]
     pub fn union(&self, other: &Self) -> Self {
         Self {
-            min: Vec2::new(self.min.x.min(other.min.x), self.min.y.min(other.min.y)),
-            max: Vec2::new(self.max.x.max(other.max.x), self.max.y.max(other.max.y)),
+            min: self.min.component_min(other.min),
+            max: self.max.component_max(other.max),
         }
     }
 
