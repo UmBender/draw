@@ -1,7 +1,7 @@
 ---
 id: T00
 title: Bootstrap
-status: in-progress
+status: review
 wave: 0
 branch: task/T00-bootstrap
 depends_on: []
@@ -60,15 +60,31 @@ Any logic. Stub modules contain only docs (and `app::run` = clear + `next_frame`
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T00): specify bootstrap acceptance criteria`
-- [ ] tests — `test(T00): add module skeleton reachability test`
-- [ ] models — `feat(T00): add crate skeleton, lints and profiles`
-- [ ] behaviour — `feat(T00): open empty window and add check script`
-- [ ] quality — `chore(T00): pass fmt, clippy and doc gates`
-- [ ] docs — `docs(T00): add bootstrap tutorial`
+- [x] spec — `docs(T00): specify bootstrap acceptance criteria` (fbd2ef9)
+- [x] tests — `test(T00): add failing module skeleton and window config tests` (60fb28b)
+- [x] models — `feat(T00): add crate skeleton, lints and profiles` (c838093)
+- [x] behaviour — `feat(T00): open empty window and add check script` (0d2512c)
+- [x] quality — `chore(T00): pass clippy gate on skeleton test` (de4e279)
+- [x] docs — `docs(T00): add bootstrap tutorial`
 
 ## Learning path
 
-Step 0 — no prerequisites.
+Step 0 — no prerequisites. Tutorial: [[00 Project layout, lints and the TDD loop]].
 
 ## Log
+
+- Red phase confirmed: tests commit failed with 23 × `E0433` (no `draw` crate);
+  models commit compiled with 1 test failing on `todo!()` in `window_conf`.
+- Locked versions: macroquad 0.4.16, proptest 1.11.0. Toolchain: rustc 1.97.0.
+- Startup window is plain black instead of the theme background: theme colours
+  may only live in `core::palette` (ADR-0012), which T02 owns. T12 wires
+  `THEME.bg` into the loop.
+- `app::run` redraws every frame for now; redraw on demand is T12 (ADR-0006).
+- Quality step: `unused_imports` fired on the import-only skeleton test under
+  `-D warnings`; allowed on that function with a `reason`.
+- AC-4 negative check: injected bad formatting → `check.sh` exit 1; unknown
+  argument → exit 2.
+- Smoke run on the target session (Wayland, `DISPLAY=:0` also set): binary
+  stayed up 3 s with no errors until killed by `timeout`. Which backend
+  miniquad picked (Wayland vs XWayland) is verified in T12 (AC-6).
+- AC-6 (`.gitignore`) was already satisfied by the vault bootstrap commit on `main`.
