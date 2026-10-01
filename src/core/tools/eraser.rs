@@ -1,13 +1,36 @@
 //! Eraser: removes whole shapes it touches (also right drag from any tool).
 //!
-//! Owned by T10; the signatures are fixed by ADR-T08-1, the bodies are stubs
-//! until T10 fills them in.
+//! A drag marks every shape within [`ERASER_TOLERANCE_PX`] of the pointer
+//! path; the preview hides the marked shapes and the release removes them as
+//! one undo step. Between two pointer events the path is sampled at most one
+//! tolerance apart, so fast drags do not skip thin shapes.
 
-use super::{Overlay, Pointer, ToolCtx, ToolView};
+use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::document::ShapeId;
+use crate::core::geom::Vec2;
+
+/// Hit tolerance of the eraser in screen pixels.
+pub const ERASER_TOLERANCE_PX: f32 = 6.0;
+
+/// Most samples taken between two pointer events (bounds the work of a huge
+/// jump; at 6 px spacing this covers over 6000 px).
+const MAX_SAMPLES: usize = 1024;
 
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default)]
-pub struct State;
+pub struct State {
+    /// Last pointer position (screen) of the drag, `None` when idle.
+    last: Option<Vec2>,
+    /// Shapes marked for removal, in the order they were touched.
+    marked: Vec<ShapeId>,
+}
+
+/// Marks every unmarked shape hit by the segment `from → to` (screen).
+/// Returns whether anything new was marked.
+fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> bool {
+    let _ = (state, ctx, from, to, MAX_SAMPLES, Phase::Down);
+    todo!()
+}
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {

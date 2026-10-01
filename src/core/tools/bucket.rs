@@ -1,11 +1,16 @@
 //! Bucket: fills the clicked closed shape.
 //!
-//! Owned by T10; the signatures are fixed by ADR-T08-1, the bodies are stubs
-//! until T10 fills them in.
+//! A press sets the fill of the topmost [`Shape::Rect`] or [`Shape::Ellipse`]
+//! containing the point to the current colour, as one undo step. Refilling
+//! with the same colour, or pressing on empty space or an open shape, changes
+//! nothing and records no step. The bucket has no gesture to preview.
+//!
+//! [`Shape::Rect`]: crate::core::shape::Shape::Rect
+//! [`Shape::Ellipse`]: crate::core::shape::Shape::Ellipse
 
 use super::{Overlay, Pointer, ToolCtx, ToolView};
 
-/// Gesture state of this tool.
+/// Gesture state of this tool: the bucket acts on press and keeps none.
 #[derive(Debug, Clone, Default)]
 pub struct State;
 

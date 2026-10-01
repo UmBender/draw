@@ -1,11 +1,27 @@
 //! Copy, cut, paste and duplicate of selected shapes.
 //!
-//! Owned by T10; the signatures are fixed by ADR-T08-1, the bodies are stubs
-//! until T10 fills them in. The clipboard is internal to the editor (no system
-//! clipboard).
+//! The clipboard is internal to the editor (no system clipboard). `copy`
+//! stores clones of the selected shapes in z-order; `paste` inserts them with
+//! new ids, their joint bounds centred at the cursor, and selects them; `cut`
+//! is copy then delete; `duplicate` copies the selection (leaving the
+//! clipboard alone) [`DUPLICATE_OFFSET_PX`] right and down. Every command
+//! that changes the document is one undo step.
 
+use crate::core::document::Edit;
+use crate::core::geom::Vec2;
 use crate::core::shape::Shape;
 use crate::core::tools::ToolCtx;
+
+/// Screen offset of [`duplicate`] copies, right and down, in pixels.
+pub const DUPLICATE_OFFSET_PX: f32 = 16.0;
+
+/// Inserts `shapes` translated by `delta` (world) on top as one undo step and
+/// selects the copies. Returns whether the document changed; on failure the
+/// selection is left alone.
+pub(crate) fn insert_copies(ctx: &mut ToolCtx<'_>, shapes: Vec<Shape>, delta: Vec2) -> bool {
+    let _ = (ctx, shapes, delta, std::mem::size_of::<Edit>());
+    todo!()
+}
 
 /// Shapes copied from the document.
 #[derive(Debug, Clone, Default)]

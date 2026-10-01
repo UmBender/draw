@@ -1,13 +1,78 @@
 //! Selection, marquee and move.
 //!
-//! Owned by T10; the signatures are fixed by ADR-T08-1, the bodies are stubs
-//! until T10 fills them in.
+//! - A press on a shape (topmost hit within [`HIT_TOLERANCE_PX`]) selects it
+//!   unless it is already selected, then a drag moves the selection: the
+//!   preview shows translated copies, the release commits one `Replace`
+//!   transaction. With `Alt` held at the press the copies are inserted
+//!   instead (duplicate-and-move) and become the selection.
+//! - A press-release closer than [`CLICK_SLOP_PX`] is a click: it selects only
+//!   the clicked shape; `Shift`-click toggles it instead.
+//! - A press on empty space clears the selection (kept with `Shift`) and a
+//!   drag draws a marquee; the release selects every shape whose bounds
+//!   intersect it.
+//!
+//! Every entry point first drops selected ids missing from the document, so a
+//! stale selection is never acted on.
 
-use super::{Overlay, Pointer, ToolCtx, ToolView};
+use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::document::{Document, ShapeId};
+use crate::core::geom::Vec2;
+use crate::core::shape::Shape;
+
+/// Pointer travel (screen pixels) below which a press-release is a click.
+pub const CLICK_SLOP_PX: f32 = 3.0;
+
+/// Hit tolerance for picking shapes, in screen pixels.
+pub const HIT_TOLERANCE_PX: f32 = 6.0;
 
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default)]
-pub struct State;
+pub struct State {
+    /// The gesture in progress, if any.
+    gesture: Option<Gesture>,
+}
+
+/// A select-tool gesture; positions are screen pixels.
+#[derive(Debug, Clone, PartialEq)]
+enum Gesture {
+    /// Rubber-band selection started on empty space.
+    Marquee {
+        /// Press position.
+        start: Vec2,
+        /// Latest pointer position.
+        current: Vec2,
+        /// `Shift` was held: add to the selection instead of replacing it.
+        additive: bool,
+    },
+    /// Dragging shapes started on a shape.
+    Move {
+        /// Press position.
+        start: Vec2,
+        /// Latest pointer position.
+        current: Vec2,
+        /// The shape under the press.
+        clicked: ShapeId,
+        /// Shapes being moved (the selection at press time).
+        ids: Vec<ShapeId>,
+        /// `Alt` was held: insert moved copies, keep the originals.
+        duplicate: bool,
+    },
+}
+
+/// Drops selected ids that are not in the document.
+pub(crate) fn prune(selection: &mut Vec<ShapeId>, doc: &Document) {
+    let _ = (selection, doc);
+    todo!()
+}
+
+/// The shapes of `selection` with their ids, in z-order (bottom first).
+pub(crate) fn selected_shapes<'d>(
+    doc: &'d Document,
+    selection: &[ShapeId],
+) -> Vec<(ShapeId, &'d Shape)> {
+    let _ = (doc, selection, Phase::Down);
+    todo!()
+}
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
