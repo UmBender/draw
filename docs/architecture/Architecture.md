@@ -57,7 +57,7 @@ flowchart LR
 | `core::keymap` ([[T11 Keymap and macros]]) | Key chords → `Command` |
 | `core::editor::Helpers` ([[T16 Shape model v2 and helper skeleton]]) | Snap flags, numbering counter, grid size; carried in `DrawStyle` ([[ADR-T16-3 Helper settings and hooks]]) |
 | `core::snap` ([[T17 Snapping]]) | Snap dragged points: grid → size → align → round, alignment guides ([[ADR-T17-1 Snapping order and tolerances]]) |
-| `core::tools::grid` ([[T18 Grid tool]]) | Grid tool (stub until T18) |
+| `core::tools::grid` ([[T18 Grid tool]]) | Grid tool: drag a box, `cols × rows` read live from `Helpers`, `Shift` = square cells ([[ADR-T18-1 Grid drag reads live dims and snaps as a box]]) |
 | `core::numbering` ([[T19 Auto-numbering]]) | Labels for new rectangles/ellipses; counter rules for gesture end, undo and redo ([[ADR-T19-1 Numbering counter and undo]]) |
 | `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels) and previews through the camera; snap dot grid (`draw_underlay`) and alignment guides (`draw_guides`) |
 | `shell::{app,input_map,toolbar}` ([[T12 App shell and toolbar]]) | Window, event loop, toolbar UI |

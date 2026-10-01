@@ -1,7 +1,7 @@
 ---
 id: T18
 title: Grid tool
-status: in-progress
+status: review
 wave: 8
 branch: task/T18-grid-tool
 depends_on: [T16]
@@ -70,7 +70,7 @@ Per-cell fill or numbering, merged cells, resizing a committed grid.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
@@ -82,3 +82,19 @@ Step 18 — requires steps 9 and 16.
   tool reads dims live from `Helpers` and snaps like a box drag. All wiring
   (routing, `G`, arrows, toolbar, fuzz) already exists from T16, so only
   `grid.rs` changes.
+- tests: 15 unit tests and 2 properties in `grid::tests`; 6 of them
+  (idle/cancel/short-drag cases and the properties) pass vacuously
+  against the stub, the other 11 fail as expected.
+- models: `Drag` and `square_cells` signatures with `todo!()` bodies.
+- behaviour: drag, snap (box), preview and commit with live dims, Shift
+  square cells, cancel. All tests green at the first run.
+- quality: rustfmt reflow of one line and a redundant rustdoc link target.
+  `PROPTEST_CASES=20000 cargo test --release --test fuzz` green.
+- AC-5 fuzz needed no new test: T16 already drives grid drags with arrow
+  keys (`grid_drags_press_arrows_while_the_grid_tool_drags`) and now they
+  create grids.
+- Files touched: `src/core/tools/grid.rs`, plus this note, ADR-T18-1, the
+  feature and tutorial notes and `Architecture.md` (module map row for
+  `tools::grid`, was "stub until T18").
+- Not checked on screen: grid rendering and arrow-key feel need a manual
+  look in the running app.
