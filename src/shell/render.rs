@@ -78,9 +78,9 @@ pub fn to_mq(v: Vec2) -> MqVec2 {
 
 /// Converts a palette colour to a macroquad colour (channels in `0..=1`).
 #[must_use]
-pub fn to_mq_color(c: Rgba) -> Color {
-    let [r, g, b, a] = c.to_f32();
-    Color::new(r, g, b, a)
+pub fn to_mq_color(rgba: Rgba) -> Color {
+    let [red, green, blue, alpha] = rgba.to_f32();
+    Color::new(red, green, blue, alpha)
 }
 
 /// `true` if a stroke `width_px` wide needs round joints, i.e. it is wider
@@ -233,7 +233,12 @@ fn draw_segment(a: Vec2, b: Vec2, width: f32, color: Color) {
 /// pixels centred on its edges (square corners).
 fn draw_rect_outline(rect: Aabb, width: f32, color: Color) {
     let h = width * 0.5;
-    let (x0, y0, x1, y1) = (rect.min.x - h, rect.min.y - h, rect.max.x + h, rect.max.y + h);
+    let (x0, y0, x1, y1) = (
+        rect.min.x - h,
+        rect.min.y - h,
+        rect.max.x + h,
+        rect.max.y + h,
+    );
     let (w, ht) = (x1 - x0, y1 - y0);
     draw_rectangle(x0, y0, w, width, color);
     draw_rectangle(x0, y1 - width, w, width, color);
@@ -381,12 +386,18 @@ mod tests {
 
     #[test]
     fn is_visible_overlapping_is_true() {
-        assert!(is_visible(aabb(5.0, 5.0, 15.0, 15.0), aabb(0.0, 0.0, 10.0, 10.0)));
+        assert!(is_visible(
+            aabb(5.0, 5.0, 15.0, 15.0),
+            aabb(0.0, 0.0, 10.0, 10.0)
+        ));
     }
 
     #[test]
     fn is_visible_touching_edge_is_true() {
-        assert!(is_visible(aabb(10.0, 0.0, 20.0, 5.0), aabb(0.0, 0.0, 10.0, 10.0)));
+        assert!(is_visible(
+            aabb(10.0, 0.0, 20.0, 5.0),
+            aabb(0.0, 0.0, 10.0, 10.0)
+        ));
     }
 
     #[test]
@@ -398,7 +409,10 @@ mod tests {
 
     #[test]
     fn is_visible_bounds_containing_view_is_true() {
-        assert!(is_visible(aabb(-100.0, -100.0, 100.0, 100.0), aabb(0.0, 0.0, 10.0, 10.0)));
+        assert!(is_visible(
+            aabb(-100.0, -100.0, 100.0, 100.0),
+            aabb(0.0, 0.0, 10.0, 10.0)
+        ));
     }
 
     #[test]
@@ -421,7 +435,10 @@ mod tests {
         let rect = cull_rect(&camera, viewport);
         // Assert
         let m = CULL_MARGIN_PX / 2.0;
-        assert!(aabb_approx_eq(rect, aabb(10.0 - m, 20.0 - m, 110.0 + m, 70.0 + m)));
+        assert!(aabb_approx_eq(
+            rect,
+            aabb(10.0 - m, 20.0 - m, 110.0 + m, 70.0 + m)
+        ));
     }
 
     // AC-3
@@ -529,6 +546,9 @@ mod tests {
         let rect = selection_rect(bounds, &camera);
         // Assert
         let p = SELECTION_PAD_PX;
-        assert!(aabb_approx_eq(rect, aabb(4.0 - p, 8.0 - p, 12.0 + p, 20.0 + p)));
+        assert!(aabb_approx_eq(
+            rect,
+            aabb(4.0 - p, 8.0 - p, 12.0 + p, 20.0 + p)
+        ));
     }
 }
