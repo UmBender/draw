@@ -1,7 +1,7 @@
 ---
 id: T02
 title: Palette and theme tokens
-status: todo
+status: ready
 wave: 1
 branch: task/T02-palette
 depends_on: [T00]

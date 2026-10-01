@@ -1,7 +1,7 @@
 ---
 id: T00
 title: Bootstrap
-status: review
+status: done
 wave: 0
 branch: task/T00-bootstrap
 depends_on: []

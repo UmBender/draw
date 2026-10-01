@@ -28,7 +28,7 @@ flowchart LR
 
 | Step | Tutorial | Task | Status |
 |------|----------|------|--------|
-| 0 | *Project layout, lints and the TDD loop in Rust* | [[T00 Bootstrap]] | planned |
+| 0 | [[00 Project layout, lints and the TDD loop]] | [[T00 Bootstrap]] | done |
 | 1 | *2D vectors, AABBs and point–segment distance* | [[T01 Geometry primitives]] | planned |
 | 2 | *Palettes and design tokens* | [[T02 Palette and theme tokens]] | planned |
 | 3 | *Cameras: world space vs screen space, zoom at cursor* | [[T03 Camera]] | planned |

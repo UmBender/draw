@@ -54,9 +54,9 @@ flowchart TD
 
 | Task | Status | Depends on | Branch |
 |------|--------|------------|--------|
-| [[T00 Bootstrap]] | ready | — | `task/T00-bootstrap` |
-| [[T01 Geometry primitives]] | todo | T00 | `task/T01-geometry` |
-| [[T02 Palette and theme tokens]] | todo | T00 | `task/T02-palette` |
+| [[T00 Bootstrap]] | done | — | `task/T00-bootstrap` |
+| [[T01 Geometry primitives]] | ready | T00 | `task/T01-geometry` |
+| [[T02 Palette and theme tokens]] | ready | T00 | `task/T02-palette` |
 | [[T03 Camera]] | todo | T01 | `task/T03-camera` |
 | [[T04 Stroke smoothing]] | todo | T01 | `task/T04-smoothing` |
 | [[T05 Shape model]] | todo | T01, T02 | `task/T05-shape` |

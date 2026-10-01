@@ -1,7 +1,7 @@
 ---
 id: T01
 title: Geometry primitives
-status: todo
+status: ready
 wave: 1
 branch: task/T01-geometry
 depends_on: [T00]
