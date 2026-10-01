@@ -1,7 +1,7 @@
 ---
 id: T17
 title: Snapping
-status: in-progress
+status: review
 wave: 8
 branch: task/T17-snapping
 depends_on: [T16]
@@ -65,9 +65,9 @@ contribute their endpoints to alignment; freehand strokes contribute nothing.
 - **AC-5** — Order and override: the end goes grid → size → align → round,
   each step only when its toggle is on (size and round only for box drags);
   the start goes grid → align. `Alt` held on an event disables all snapping
-  for that event (sampled per event, like `Shift`). With `Shift` held the end
-  only gets grid snap, then the Shift constraint, so the constraint always
-  holds exactly; no guides are shown. *Tests:*
+  for that event (sampled per event, like `Shift`). With `Shift` held the
+  start and end only get grid snap, then the Shift constraint applies to the
+  end, so the constraint always holds exactly; no guides are shown. *Tests:*
   `shape_tool::tests::snap_off_by_default_is_unchanged`,
   `shape_tool::tests::snap_grid_applies_to_line_endpoints`,
   `shape_tool::tests::snap_smart_rect_matches_existing_size`,
@@ -91,10 +91,27 @@ Snapping while moving a selection, snapping freehand strokes, rotation snaps.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 17 — requires steps 9 and 16.
 
 ## Log
+
+- 2026-10-01 — spec: refined AC-1…AC-6 with test names; ADR-T17-1 records
+  pipeline order, tolerances (6 px, ratio 0.1, multiples ≤ 8, grid step 20),
+  targets, guides-from-result, per-event `Alt`/`Shift` overrides.
+- tests: snap unit tests + proptests, shape tool `snap_*` tests (the existing
+  gesture proptest now also randomizes helpers, `Alt` and a neighbour),
+  renderer `dot_grid_*` tests.
+- models / behaviour: `Snaps`, `DragKind`, `Anchor`, `Targets` and the
+  pipeline in `snap.rs`; `snap_end` changed signature (adds `kind`, `mods`)
+  and `snap_start` was added — `shape_tool` is the only caller. Renderer
+  fills `draw_underlay`/`draw_guides`, adds `dot_grid_spacing`/`dot_grid_points`.
+- Deviation: `Shift` also disables smart snap for the start point (not only
+  the end) — one rule in `Snaps::new`; AC-5 text updated.
+- quality: one clippy fix (`map_identity`); `scripts/check.sh` green.
+- Files touched: `src/core/snap.rs`, `src/core/tools/shape_tool.rs`,
+  `src/shell/render.rs`, plus this note, ADR-T17-1, the feature and tutorial
+  notes and `Architecture.md` (module map rows for `snap`/`render`).
