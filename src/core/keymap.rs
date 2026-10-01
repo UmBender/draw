@@ -1,16 +1,50 @@
 //! Key chords mapped to editor commands.
 //!
-//! Owned by T11; the signature is fixed by T08, the body is a stub until T11
-//! implements the bindings in `docs/architecture/Keymap.md`.
+//! [`BINDINGS`] is the single table of the bindings documented in
+//! `docs/architecture/Keymap.md`; the toolbar and docs can list it, and
+//! [`resolve`] looks chords up in it. A binding fires only when the held
+//! modifiers match the chord's modifiers exactly (ADR-T11-1). `Space` is not
+//! bound: the editor consumes it as the pan modifier.
 
 use crate::core::command::Command;
 use crate::core::input::{Key, Modifiers};
 
+/// A key pressed together with an exact set of modifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyChord {
+    /// The key.
+    pub key: Key,
+    /// The modifiers that must be held, no more and no fewer.
+    pub mods: Modifiers,
+}
+
+impl KeyChord {
+    /// `key` with no modifier.
+    #[must_use]
+    pub const fn bare(key: Key) -> Self {
+        todo!()
+    }
+
+    /// `Ctrl` + `key`.
+    #[must_use]
+    pub const fn ctrl(key: Key) -> Self {
+        todo!()
+    }
+
+    /// `Ctrl` + `Shift` + `key`.
+    #[must_use]
+    pub const fn ctrl_shift(key: Key) -> Self {
+        todo!()
+    }
+}
+
+/// Every binding: chord, command and a short human-readable description.
+pub const BINDINGS: &[(KeyChord, Command, &str)] = &[];
+
 /// The command bound to `key` pressed with `mods`, if any.
 #[must_use]
 pub fn resolve(key: Key, mods: Modifiers) -> Option<Command> {
-    let _ = (key, mods);
-    None
+    todo!()
 }
 
 #[cfg(test)]
