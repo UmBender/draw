@@ -1,7 +1,7 @@
 ---
 id: T14
 title: Performance and release validation
-status: todo
+status: ready
 wave: 7
 branch: task/T14-release
 depends_on: [T12, T13]

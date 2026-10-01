@@ -1,7 +1,7 @@
 ---
 id: T13
 title: Fuzz harness
-status: review
+status: done
 wave: 6
 branch: task/T13-fuzz
 depends_on: [T09, T10, T11]
