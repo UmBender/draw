@@ -89,42 +89,54 @@ pub fn map_mods(mods: KeyMods) -> Modifiers {
 /// scale that is not finite and positive counts as `1`.
 #[must_use]
 pub fn to_logical(x: f32, y: f32, dpi: f32) -> Vec2 {
-    let scale = if dpi.is_finite() && dpi > 0.0 { dpi } else { 1.0 };
+    let scale = if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    };
     Vec2::new(x / scale, y / scale)
 }
 
-/// Modifier keys currently held, each side tracked on its own.
+/// Modifier keys currently held, one bit per key so that releasing one side
+/// keeps the other held.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct HeldMods {
-    left_shift: bool,
-    right_shift: bool,
-    left_ctrl: bool,
-    right_ctrl: bool,
-    left_alt: bool,
-    right_alt: bool,
-}
+struct HeldMods(u8);
 
 impl HeldMods {
+    const LEFT_SHIFT: u8 = 1 << 0;
+    const RIGHT_SHIFT: u8 = 1 << 1;
+    const LEFT_CTRL: u8 = 1 << 2;
+    const RIGHT_CTRL: u8 = 1 << 3;
+    const LEFT_ALT: u8 = 1 << 4;
+    const RIGHT_ALT: u8 = 1 << 5;
+    const SHIFT: u8 = Self::LEFT_SHIFT | Self::RIGHT_SHIFT;
+    const CTRL: u8 = Self::LEFT_CTRL | Self::RIGHT_CTRL;
+    const ALT: u8 = Self::LEFT_ALT | Self::RIGHT_ALT;
+
     /// Records a modifier key going down (`true`) or up; other keys are ignored.
     fn set(&mut self, code: KeyCode, down: bool) {
-        let slot = match code {
-            KeyCode::LeftShift => &mut self.left_shift,
-            KeyCode::RightShift => &mut self.right_shift,
-            KeyCode::LeftControl => &mut self.left_ctrl,
-            KeyCode::RightControl => &mut self.right_ctrl,
-            KeyCode::LeftAlt => &mut self.left_alt,
-            KeyCode::RightAlt => &mut self.right_alt,
+        let bit = match code {
+            KeyCode::LeftShift => Self::LEFT_SHIFT,
+            KeyCode::RightShift => Self::RIGHT_SHIFT,
+            KeyCode::LeftControl => Self::LEFT_CTRL,
+            KeyCode::RightControl => Self::RIGHT_CTRL,
+            KeyCode::LeftAlt => Self::LEFT_ALT,
+            KeyCode::RightAlt => Self::RIGHT_ALT,
             _ => return,
         };
-        *slot = down;
+        if down {
+            self.0 |= bit;
+        } else {
+            self.0 &= !bit;
+        }
     }
 
     /// The held modifiers, either side counting.
     fn modifiers(self) -> Modifiers {
         Modifiers {
-            shift: self.left_shift || self.right_shift,
-            ctrl: self.left_ctrl || self.right_ctrl,
-            alt: self.left_alt || self.right_alt,
+            shift: self.0 & Self::SHIFT != 0,
+            ctrl: self.0 & Self::CTRL != 0,
+            alt: self.0 & Self::ALT != 0,
         }
     }
 }
@@ -212,7 +224,8 @@ impl EventHandler for Collector {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
             let mods = self.held.modifiers();
-            self.events.push(InputEvent::PointerUp { pos, button, mods });
+            self.events
+                .push(InputEvent::PointerUp { pos, button, mods });
         }
     }
 

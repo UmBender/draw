@@ -13,8 +13,12 @@ use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_inp
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
-use macroquad::texture::{DrawTextureParams, FilterMode, RenderTarget, draw_texture_ex, render_target};
-use macroquad::window::{clear_background, next_frame, screen_dpi_scale, screen_height, screen_width};
+use macroquad::texture::{
+    DrawTextureParams, FilterMode, RenderTarget, draw_texture_ex, render_target,
+};
+use macroquad::window::{
+    clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
+};
 
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
@@ -165,7 +169,11 @@ impl CachedFrame {
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
 fn physical_size(viewport: Vec2, dpi: f32) -> (u32, u32) {
-    let scale = if dpi.is_finite() && dpi > 0.0 { dpi } else { 1.0 };
+    let scale = if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    };
     // Saturating float-to-int casts; NaN becomes 0 and is raised to 1.
     let side = |logical: f32| ((logical * scale).round() as u32).max(1);
     (side(viewport.x), side(viewport.y))

@@ -220,12 +220,13 @@ fn fill(rect: Aabb, color: Color) {
 
 /// Draws an [`OUTLINE_PX`] outline just inside a screen rectangle.
 fn outline(rect: Aabb, color: Color) {
-    let (x, y, w, h) = (rect.min.x, rect.min.y, rect.width(), rect.height());
-    let t = OUTLINE_PX;
-    draw_rectangle(x, y, w, t, color);
-    draw_rectangle(x, y + h - t, w, t, color);
-    draw_rectangle(x, y, t, h, color);
-    draw_rectangle(x + w - t, y, t, h, color);
+    let Aabb { min, max } = rect;
+    let (width, height) = (rect.width(), rect.height());
+    let band = OUTLINE_PX;
+    draw_rectangle(min.x, min.y, width, band, color);
+    draw_rectangle(min.x, max.y - band, width, band, color);
+    draw_rectangle(min.x, min.y, band, height, color);
+    draw_rectangle(max.x - band, min.y, band, height, color);
 }
 
 /// Draws `label` centred in `rect`.
@@ -246,7 +247,13 @@ fn draw_history_arrow(rect: Aabb, dir: f32, color: Color) {
     let base = Vec2::new(tip.x - dir * head, c.y);
     let tail = c.x - dir * half;
     let bar = 2.0;
-    draw_rectangle(base.x.min(tail), c.y - bar * 0.5, (base.x - tail).abs(), bar, color);
+    draw_rectangle(
+        base.x.min(tail),
+        c.y - bar * 0.5,
+        (base.x - tail).abs(),
+        bar,
+        color,
+    );
     draw_triangle(
         to_mq(tip),
         to_mq(Vec2::new(base.x, c.y - head)),
@@ -313,7 +320,10 @@ mod tests {
     fn layout_buttons_are_32px_in_left_strip() {
         let buttons = layout(VIEWPORT);
         let x0 = buttons[0].rect.min.x;
-        assert!(x0 >= 0.0 && x0 < BUTTON_PX, "strip starts at the left edge");
+        assert!(
+            (0.0..BUTTON_PX).contains(&x0),
+            "strip starts at the left edge"
+        );
         for b in &buttons {
             assert!(approx_eq(b.rect.width(), 32.0, EPS), "{b:?}");
             assert!(approx_eq(b.rect.height(), 32.0, EPS), "{b:?}");
@@ -344,7 +354,10 @@ mod tests {
         assert!(approx_eq(strip.max.y, VIEWPORT.y, EPS));
         assert!(strip.width() < 2.0 * BUTTON_PX, "narrow strip");
         for b in layout(VIEWPORT) {
-            assert!(strip.contains(b.rect.min) && strip.contains(b.rect.max), "{b:?}");
+            assert!(
+                strip.contains(b.rect.min) && strip.contains(b.rect.max),
+                "{b:?}"
+            );
         }
     }
 
@@ -373,7 +386,10 @@ mod tests {
     fn hit_outside_buttons_is_none() {
         let buttons = layout(VIEWPORT);
         let first = buttons[0].rect;
-        let between = Vec2::new(first.center().x, (first.max.y + buttons[1].rect.min.y) * 0.5);
+        let between = Vec2::new(
+            first.center().x,
+            (first.max.y + buttons[1].rect.min.y) * 0.5,
+        );
         for pos in [Vec2::new(600.0, 400.0), between, Vec2::new(-5.0, 10.0)] {
             assert_eq!(hit(&buttons, pos), None, "{pos:?}");
         }
@@ -397,7 +413,11 @@ mod tests {
         let buttons = layout(VIEWPORT);
         let rect_tool = buttons[3];
         // Act
-        let routed = route(true, VIEWPORT, press(rect_tool.rect.center(), PointerButton::Left));
+        let routed = route(
+            true,
+            VIEWPORT,
+            press(rect_tool.rect.center(), PointerButton::Left),
+        );
         // Assert
         assert_eq!(routed, Route::Apply(Command::SetTool(Tool::Rect)));
         for button in [PointerButton::Right, PointerButton::Middle] {
