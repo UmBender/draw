@@ -53,5 +53,5 @@ flowchart LR
 | 16 | [[16 Growing a data model without breaking it]] | [[T16 Shape model v2 and helper skeleton]] | done |
 | 17 | [[17 Snapping and alignment guides]] | [[T17 Snapping]] | done |
 | 18 | *A grid tool with live parameters* | [[T18 Grid tool]] | planned |
-| 19 | *Auto-numbering and undoable counters* | [[T19 Auto-numbering]] | planned |
+| 19 | [[19 Auto-numbering and undoable counters]] | [[T19 Auto-numbering]] | done |
 | 20 | *Snapping to outlines* | [[T20 Outline snapping]] | planned |

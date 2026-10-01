@@ -34,3 +34,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 23 | [[ADR-T16-2 Helper key bindings]] | accepted | decision | T11-1 | — |
 | 24 | [[ADR-T16-3 Helper settings and hooks]] | accepted | decision | T08-1, T16-1 | — |
 | 25 | [[ADR-T17-1 Snapping order and tolerances]] | accepted | decision | T16-3, T16-1, 0013 | — |
+| 26 | [[ADR-T19-1 Numbering counter and undo]] | accepted | decision | T16-1, T16-3, T08-1 | — |

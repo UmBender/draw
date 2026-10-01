@@ -1,7 +1,7 @@
 ---
 id: T19
 title: Auto-numbering
-status: review
+status: done
 wave: 9
 branch: task/T19-numbering
 depends_on: [T16, T17]
