@@ -125,12 +125,11 @@ fn clear_into(state: &mut State, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
     let Some(next) = clear_at(current, p) else {
         return false;
     };
-    match slot {
-        Some(i) => state.cleared[i].1 = next,
-        None => {
-            state.cleared_at.insert(id, state.cleared.len());
-            state.cleared.push((id, next));
-        }
+    if let Some(i) = slot {
+        state.cleared[i].1 = next;
+    } else {
+        state.cleared_at.insert(id, state.cleared.len());
+        state.cleared.push((id, next));
     }
     true
 }

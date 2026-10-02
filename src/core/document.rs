@@ -343,12 +343,12 @@ impl Document {
     /// document before the run, and only the first can be out of range.
     fn apply_remove_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
         let len = self.shapes.len();
-        let mut removed = vec![false; len];
-        let removes = run.iter().filter_map(|edit| match edit {
+        let mut doomed = vec![false; len];
+        let edits = run.iter().filter_map(|edit| match edit {
             Edit::Remove { index, id, shape } => Some((index, id, shape)),
             _ => None,
         });
-        for (done, (index, id, shape)) in removes.enumerate() {
+        for (done, (index, id, shape)) in edits.enumerate() {
             let Some((stored_id, stored)) = self.shapes.get(*index) else {
                 return Err(ApplyError::IndexOutOfRange {
                     index: *index,
@@ -358,11 +358,11 @@ impl Document {
             if stored_id != id || stored != shape {
                 return Err(ApplyError::Mismatch(*id));
             }
-            removed[*index] = true;
+            doomed[*index] = true;
         }
         let mut position = 0;
         self.shapes.retain(|_| {
-            let keep = !removed[position];
+            let keep = !doomed[position];
             position += 1;
             keep
         });
