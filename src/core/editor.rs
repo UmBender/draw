@@ -1913,4 +1913,124 @@ mod tests {
         assert_eq!(ed.history.undo_len(), HISTORY_LIMIT);
         assert!(ed.document_revision() > before);
     }
+
+    // ---- T24 AC-3c base revision -------------------------------------------
+
+    /// Left drag from screen `(x, y)` to `(x + 40, y + 30)`.
+    fn drag(ed: &mut Editor, x: f32, y: f32) {
+        down(ed, PointerButton::Left, x, y);
+        move_to(ed, x + 20.0, y + 15.0);
+        move_to(ed, x + 40.0, y + 30.0);
+        up(ed, PointerButton::Left, x + 40.0, y + 30.0);
+    }
+
+    #[test]
+    fn document_base_revision_new_editor_is_zero() {
+        assert_eq!(Editor::new().document_base_revision(), 0);
+    }
+
+    #[test]
+    fn document_base_revision_creation_commits_keep_base() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let tools = [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Arrow,
+            Tool::Rect,
+            Tool::Ellipse,
+            Tool::Grid,
+        ];
+
+        for (i, tool) in tools.into_iter().enumerate() {
+            // Arrange
+            ed.apply(Command::SetTool(tool));
+            let (revision, base) = (ed.document_revision(), ed.document_base_revision());
+            let len = ed.document().len();
+
+            // Act
+            drag(&mut ed, 100.0 + 100.0 * i as f32, 50.0);
+
+            // Assert
+            assert_eq!(ed.document().len(), len + 1, "{tool:?}");
+            assert!(ed.document_revision() > revision, "{tool:?}");
+            assert_eq!(ed.document_base_revision(), base, "{tool:?}");
+        }
+    }
+
+    #[test]
+    fn document_base_revision_paste_and_duplicate_keep_base() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+        let (revision, base) = (ed.document_revision(), ed.document_base_revision());
+
+        // Act
+        ed.apply(Command::Paste);
+        ed.apply(Command::Duplicate);
+
+        // Assert
+        assert_eq!(ed.document().len(), 3);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), base);
+    }
+
+    #[test]
+    fn document_base_revision_rewrites_raise_base() {
+        let rewrites: [(&str, fn(&mut Editor)); 8] = [
+            ("undo", |ed| {
+                ed.apply(Command::Undo);
+            }),
+            ("redo", |ed| {
+                ed.apply(Command::Undo);
+                ed.apply(Command::Redo);
+            }),
+            ("delete", |ed| {
+                ed.apply(Command::SelectAll);
+                ed.apply(Command::DeleteSelection);
+            }),
+            ("cut", |ed| {
+                ed.apply(Command::SelectAll);
+                ed.apply(Command::Cut);
+            }),
+            ("clear", |ed| {
+                ed.apply(Command::ClearAll);
+            }),
+            ("move", |ed| {
+                ed.apply(Command::SetTool(Tool::Select));
+                drag(ed, 0.0, 5.0);
+            }),
+            ("bucket", |ed| {
+                ed.apply(Command::SetTool(Tool::Bucket));
+                down(ed, PointerButton::Left, 5.0, 5.0);
+                up(ed, PointerButton::Left, 5.0, 5.0);
+            }),
+            ("eraser", |ed| {
+                down(ed, PointerButton::Right, 0.0, 5.0);
+                up(ed, PointerButton::Right, 0.0, 5.0);
+            }),
+        ];
+
+        for (name, rewrite) in rewrites {
+            // Arrange: one shape committed through the editor (an append).
+            let mut ed = Editor::new();
+            ed.apply(Command::SetTool(Tool::Rect));
+            down(&mut ed, PointerButton::Left, 0.0, 0.0);
+            move_to(&mut ed, 10.0, 10.0);
+            up(&mut ed, PointerButton::Left, 10.0, 10.0);
+            let revision = ed.document_revision();
+            assert_eq!(ed.document_base_revision(), 0, "{name}");
+
+            // Act
+            rewrite(&mut ed);
+
+            // Assert
+            assert!(ed.document_revision() > revision, "{name}");
+            assert_eq!(
+                ed.document_base_revision(),
+                ed.document_revision(),
+                "{name}"
+            );
+        }
+    }
 }

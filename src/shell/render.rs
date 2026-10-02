@@ -619,6 +619,190 @@ mod tests {
         a.min.approx_eq(b.min, EPS) && a.max.approx_eq(b.max, EPS)
     }
 
+    // ---- T24 AC-3a batching ------------------------------------------------
+
+    /// Records every chunk a batch submits.
+    #[derive(Default)]
+    struct Recorder {
+        chunks: Vec<(Vec<Vertex>, Vec<u16>)>,
+    }
+
+    impl MeshSink for Recorder {
+        fn draw(&mut self, mesh: &Mesh) {
+            self.chunks
+                .push((mesh.vertices.clone(), mesh.indices.clone()));
+        }
+    }
+
+    const RED: Color = Color::new(1.0, 0.0, 0.0, 1.0);
+
+    fn position(v: &Vertex) -> Vec2 {
+        Vec2::new(v.position.x, v.position.y)
+    }
+
+    #[test]
+    fn batch_triangle_adds_three_vertices() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.triangle(Vec2::ZERO, Vec2::new(1.0, 0.0), Vec2::new(0.0, 1.0), RED);
+        let rec = batch.finish();
+
+        // Assert
+        assert_eq!(rec.chunks.len(), 1);
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!(vertices.len(), 3);
+        assert_eq!(indices, &[0, 1, 2]);
+    }
+
+    #[test]
+    fn batch_quad_shares_four_vertices() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!(vertices.len(), 4);
+        assert_eq!(indices.len(), 6);
+        let corners: Vec<Vec2> = vertices.iter().map(position).collect();
+        for corner in [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(4.0, 0.0),
+            Vec2::new(4.0, 2.0),
+            Vec2::new(0.0, 2.0),
+        ] {
+            assert!(corners.iter().any(|c| c.approx_eq(corner, EPS)), "{corner:?}");
+        }
+    }
+
+    #[test]
+    fn batch_fan_shares_the_center() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let rim: Vec<Vec2> = unit_circle(8).collect();
+
+        // Act: 9 rim points close the loop, so 8 triangles.
+        batch.fan(Vec2::ZERO, rim.into_iter(), RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!(vertices.len(), 1 + 9);
+        assert_eq!(indices.len(), 3 * 8);
+        assert!(indices.chunks(3).all(|t| t[0] == 0));
+    }
+
+    #[test]
+    fn batch_line_is_a_width_wide_quad() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!((vertices.len(), indices.len()), (4, 6));
+        for v in vertices {
+            let p = position(v);
+            assert!(approx_eq(p.y.abs(), 2.0, EPS), "{p:?}");
+            assert!(approx_eq(p.x, 0.0, EPS) || approx_eq(p.x, 10.0, EPS), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn batch_line_of_zero_length_draws_nothing() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.line(Vec2::new(3.0, 3.0), Vec2::new(3.0, 3.0), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        assert!(rec.chunks.is_empty());
+    }
+
+    #[test]
+    fn batch_flushes_before_exceeding_limits() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let quads = BATCH_MAX_INDICES; // far more than one chunk holds
+
+        // Act
+        for i in 0..quads {
+            let x = i as f32;
+            batch.rect(aabb(x, 0.0, x + 1.0, 1.0), RED);
+        }
+        let rec = batch.finish();
+
+        // Assert
+        assert!(rec.chunks.len() > 1);
+        let total: usize = rec.chunks.iter().map(|(_, i)| i.len()).sum();
+        assert_eq!(total, quads * 6);
+        for (vertices, indices) in &rec.chunks {
+            assert!(vertices.len() <= BATCH_MAX_VERTICES);
+            assert!(indices.len() <= BATCH_MAX_INDICES);
+        }
+    }
+
+    #[test]
+    fn batch_finish_draws_the_rest_once() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        batch.rect(aabb(0.0, 0.0, 1.0, 1.0), RED);
+        batch.flush();
+        batch.flush();
+
+        // Act
+        batch.rect(aabb(2.0, 0.0, 3.0, 1.0), RED);
+        let rec = batch.finish();
+
+        // Assert: one chunk per non-empty flush, none for empty ones.
+        assert_eq!(rec.chunks.len(), 2);
+    }
+
+    #[test]
+    fn batch_limits_fit_a_macroquad_draw_call() {
+        // macroquad clamps geometry at 10 000 vertices / 5 000 indices.
+        assert!(BATCH_MAX_VERTICES < 10_000);
+        assert!(BATCH_MAX_INDICES < 5_000);
+        assert_eq!(BATCH_MAX_INDICES % 6, 0);
+    }
+
+    proptest! {
+        #[test]
+        fn batch_indices_stay_inside_their_chunk(
+            shapes in prop::collection::vec((0u8..4, 0u16..300), 1..120),
+        ) {
+            let mut batch = Batch::new(Recorder::default());
+            for (kind, n) in shapes {
+                let p = Vec2::new(f32::from(n), 1.0);
+                match kind {
+                    0 => batch.triangle(Vec2::ZERO, p, Vec2::new(0.0, 5.0), RED),
+                    1 => batch.rect(aabb(0.0, 0.0, f32::from(n) + 1.0, 2.0), RED),
+                    2 => batch.line(Vec2::ZERO, p, 3.0, RED),
+                    _ => batch.fan(p, unit_circle(n.max(3))
+                        .map(|u| p + u * 10.0), RED),
+                }
+            }
+            let rec = batch.finish();
+            for (vertices, indices) in &rec.chunks {
+                prop_assert!(!indices.is_empty());
+                prop_assert_eq!(indices.len() % 3, 0);
+                prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
+                prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
+                prop_assert!(indices.len() <= BATCH_MAX_INDICES);
+            }
+        }
+    }
+
     // AC-1
 
     #[test]

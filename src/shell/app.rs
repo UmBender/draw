@@ -536,6 +536,7 @@ mod tests {
     fn key() -> LayerKey {
         LayerKey {
             revision: 3,
+            len: 10,
             camera: Camera::default(),
             size: (800, 600),
             hidden: vec![ShapeId(1)],
@@ -545,18 +546,18 @@ mod tests {
 
     #[test]
     fn plan_redraw_without_cache_is_full() {
-        assert_eq!(plan_redraw(None, &key(), false), Redraw::Full);
-        assert_eq!(plan_redraw(None, &key(), true), Redraw::Full);
+        assert_eq!(plan_redraw(None, &key(), 0, false), Redraw::Full);
+        assert_eq!(plan_redraw(None, &key(), 0, true), Redraw::Full);
     }
 
     #[test]
     fn plan_redraw_same_key_clean_is_none() {
-        assert_eq!(plan_redraw(Some(&key()), &key(), false), Redraw::None);
+        assert_eq!(plan_redraw(Some(&key()), &key(), 0, false), Redraw::None);
     }
 
     #[test]
     fn plan_redraw_same_key_dirty_is_overlay() {
-        assert_eq!(plan_redraw(Some(&key()), &key(), true), Redraw::Overlay);
+        assert_eq!(plan_redraw(Some(&key()), &key(), 0, true), Redraw::Overlay);
     }
 
     #[test]
@@ -594,12 +595,93 @@ mod tests {
         for next in changed {
             for dirty in [false, true] {
                 // Act
-                let redraw = plan_redraw(Some(&key()), &next, dirty);
+                let redraw = plan_redraw(Some(&key()), &next, 0, dirty);
 
                 // Assert
                 assert_eq!(redraw, Redraw::Full, "{next:?} dirty {dirty}");
             }
         }
+    }
+
+    // ---- T24 AC-3c append-only updates -------------------------------------
+
+    fn appended() -> LayerKey {
+        LayerKey {
+            revision: 5,
+            len: 12,
+            ..key()
+        }
+    }
+
+    #[test]
+    fn plan_redraw_appended_shapes_only_is_append() {
+        for dirty in [false, true] {
+            assert_eq!(
+                plan_redraw(Some(&key()), &appended(), 2, dirty),
+                Redraw::Append { from: 10 },
+                "dirty {dirty}"
+            );
+        }
+        assert_eq!(
+            plan_redraw(Some(&key()), &appended(), 3, true),
+            Redraw::Append { from: 10 }
+        );
+    }
+
+    #[test]
+    fn plan_redraw_append_after_rewrite_is_full() {
+        assert_eq!(
+            plan_redraw(Some(&key()), &appended(), 4, true),
+            Redraw::Full
+        );
+    }
+
+    #[test]
+    fn plan_redraw_append_with_other_change_is_full() {
+        // Arrange
+        let mut panned = Camera::default();
+        panned.pan_by_screen(Vec2::new(10.0, 0.0));
+        let changed = [
+            LayerKey {
+                camera: panned,
+                ..appended()
+            },
+            LayerKey {
+                size: (801, 600),
+                ..appended()
+            },
+            LayerKey {
+                hidden: Vec::new(),
+                ..appended()
+            },
+            LayerKey {
+                underlay: true,
+                ..appended()
+            },
+        ];
+
+        for next in changed {
+            // Act / Assert
+            assert_eq!(plan_redraw(Some(&key()), &next, 0, true), Redraw::Full, "{next:?}");
+        }
+    }
+
+    #[test]
+    fn plan_redraw_shorter_document_is_full() {
+        let next = LayerKey {
+            revision: 4,
+            len: 8,
+            ..key()
+        };
+
+        assert_eq!(plan_redraw(Some(&key()), &next, 0, true), Redraw::Full);
+    }
+
+    #[test]
+    fn frame_log_line_names_appends() {
+        let line = frame_log_line(Redraw::Append { from: 3 }, Duration::from_micros(250), 4);
+
+        assert_eq!(line, "draw: append re-render 0.250 ms, 4 shapes");
     }
 
     proptest! {
