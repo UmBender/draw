@@ -15,7 +15,7 @@ use crate::core::document::Document;
 use crate::core::editor::Helpers;
 use crate::core::geom::Vec2;
 use crate::core::input::Modifiers;
-use crate::core::shape::{GRID_MAX_CELLS, Shape};
+use crate::core::shape::{GRID_MAX_CELLS, Shape, grid_lines};
 use crate::core::tools::ToolView;
 
 /// A box drag snaps to round when `min(|w|,|h|) / max(|w|,|h|)` is at least
@@ -33,6 +33,13 @@ pub const MAX_SIZE_MULTIPLE: u8 = 8;
 
 /// Distance between grid lines in world units.
 pub const GRID_STEP: f32 = 20.0;
+
+/// How close, in screen pixels, a dragged point must be to a shape's
+/// outline (beyond the stroke offset) to snap onto it (ADR-T20-1).
+pub const OUTLINE_TOLERANCE_PX: f32 = 8.0;
+
+/// Size, in screen pixels per axis, of the × marking an outline snap.
+pub const OUTLINE_MARK_PX: f32 = 8.0;
 
 /// What a drag spans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -91,6 +98,341 @@ pub struct Targets {
     pub ys: Vec<Anchor>,
     /// Box widths and heights, grid cell sizes; all finite and positive.
     pub sizes: Vec<f32>,
+    /// Outlines of rectangles, ellipses and grids (ADR-T20-1).
+    pub outlines: Vec<Outline>,
+}
+
+/// Which outline an [`Outline`] traces in its box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OutlineKind {
+    /// The four sides of the box.
+    Rect,
+    /// The ellipse inscribed in the box.
+    Ellipse,
+    /// Every line of a `cols × rows` grid (clamped like
+    /// [`grid_lines`]).
+    Grid {
+        /// Number of columns.
+        cols: u32,
+        /// Number of rows.
+        rows: u32,
+    },
+}
+
+/// The outline of a shape, a target for outline snapping.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Outline {
+    /// What is traced.
+    pub kind: OutlineKind,
+    /// One corner of the box.
+    pub a: Vec2,
+    /// The opposite corner.
+    pub b: Vec2,
+    /// Stroke width in world units.
+    pub width: f32,
+}
+
+/// The point of an outline nearest to a query point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Nearest {
+    /// The point on the outline.
+    pub point: Vec2,
+    /// Unit normal of the outline at `point`, pointing out of the shape
+    /// (away from the box centre for grid lines).
+    pub normal: Vec2,
+}
+
+impl Outline {
+    /// The point of this outline nearest to `p`, with its normal. Finite
+    /// for finite inputs, also for degenerate boxes.
+    #[must_use]
+    pub fn nearest(&self, p: Vec2) -> Nearest {
+        let lo = Vec2::new(self.a.x.min(self.b.x), self.a.y.min(self.b.y));
+        let hi = Vec2::new(self.a.x.max(self.b.x), self.a.y.max(self.b.y));
+        let centre = P64::new(
+            midpoint64(lo.x.into(), hi.x.into()),
+            midpoint64(lo.y.into(), hi.y.into()),
+        );
+        let p64 = P64::from(p);
+        let (point, normal) = match self.kind {
+            OutlineKind::Rect => nearest_on_segments(p64, centre, box_sides(lo, hi)),
+            OutlineKind::Grid { cols, rows } => {
+                let lines = grid_lines(lo, hi, cols, rows)
+                    .filter(|[a, b]| a.is_finite() && b.is_finite())
+                    .map(|[a, b]| [P64::from(a), P64::from(b)]);
+                nearest_on_segments(p64, centre, lines.chain(box_sides(lo, hi)))
+            }
+            OutlineKind::Ellipse => {
+                let semi = P64::new(
+                    (f64::from(hi.x) - f64::from(lo.x)) * 0.5,
+                    (f64::from(hi.y) - f64::from(lo.y)) * 0.5,
+                );
+                nearest_on_ellipse(p64, centre, semi)
+            }
+        };
+        // Clamping into the box keeps f64 → f32 rounding from leaving it.
+        let point = Vec2::new(
+            (point.x as f32).clamp(lo.x, hi.x),
+            (point.y as f32).clamp(lo.y, hi.y),
+        );
+        let normal = Vec2::new(normal.x as f32, normal.y as f32);
+        if point.is_finite() && normal.is_finite() {
+            Nearest { point, normal }
+        } else {
+            Nearest {
+                point: Vec2::new(p.x.clamp(lo.x, hi.x), p.y.clamp(lo.y, hi.y)),
+                normal: FALLBACK_NORMAL,
+            }
+        }
+    }
+}
+
+/// Normal used when the outline gives none (a point-sized box).
+const FALLBACK_NORMAL: Vec2 = Vec2::new(0.0, -1.0);
+
+/// Iteration cap of the ellipse root search; bisection in `f64` needs far
+/// fewer for any sane ellipse, the cap only bounds absurd eccentricities.
+const ELLIPSE_MAX_ITERATIONS: u32 = 160;
+
+/// A point in `f64`, so outline geometry of extreme `f32` boxes neither
+/// overflows nor loses the precision Eberly's root search needs.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct P64 {
+    x: f64,
+    y: f64,
+}
+
+impl P64 {
+    const fn new(x: f64, y: f64) -> Self {
+        Self { x, y }
+    }
+
+    fn sub(self, o: Self) -> Self {
+        Self::new(self.x - o.x, self.y - o.y)
+    }
+
+    fn add(self, o: Self) -> Self {
+        Self::new(self.x + o.x, self.y + o.y)
+    }
+
+    fn scale(self, k: f64) -> Self {
+        Self::new(self.x * k, self.y * k)
+    }
+
+    fn dot(self, o: Self) -> f64 {
+        self.x * o.x + self.y * o.y
+    }
+
+    fn length(self) -> f64 {
+        self.x.hypot(self.y)
+    }
+
+    /// `self` scaled to length 1, or `None` if it has no direction.
+    fn unit(self) -> Option<Self> {
+        let len = self.length();
+        (len > 0.0 && len.is_finite()).then(|| self.scale(1.0 / len))
+    }
+}
+
+impl From<Vec2> for P64 {
+    fn from(v: Vec2) -> Self {
+        Self::new(v.x.into(), v.y.into())
+    }
+}
+
+/// [`midpoint`] in `f64`.
+fn midpoint64(a: f64, b: f64) -> f64 {
+    a * 0.5 + b * 0.5
+}
+
+/// The four sides of the box from `lo` to `hi`.
+fn box_sides(lo: Vec2, hi: Vec2) -> [[P64; 2]; 4] {
+    let (x0, y0, x1, y1) = (lo.x.into(), lo.y.into(), hi.x.into(), hi.y.into());
+    [
+        [P64::new(x0, y0), P64::new(x1, y0)],
+        [P64::new(x1, y0), P64::new(x1, y1)],
+        [P64::new(x1, y1), P64::new(x0, y1)],
+        [P64::new(x0, y1), P64::new(x0, y0)],
+    ]
+}
+
+/// The point of `segments` nearest to `p` and its normal, turned away from
+/// `centre`. The first segment wins ties; `segments` must not be empty for
+/// a meaningful result (the box sides always follow).
+fn nearest_on_segments(
+    p: P64,
+    centre: P64,
+    segments: impl IntoIterator<Item = [P64; 2]>,
+) -> (P64, P64) {
+    let mut best: Option<(f64, P64, P64)> = None;
+    for [from, to] in segments {
+        let along = to.sub(from);
+        let len_sq = along.dot(along);
+        let t = if len_sq > 0.0 {
+            (p.sub(from).dot(along) / len_sq).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let foot = from.add(along.scale(t));
+        let dist = p.sub(foot).dot(p.sub(foot));
+        if best.is_none_or(|(best_dist, ..)| dist < best_dist) {
+            best = Some((dist, foot, along));
+        }
+    }
+    let Some((_, foot, along)) = best else {
+        return (p, P64::from(FALLBACK_NORMAL));
+    };
+    let outward = foot.sub(centre);
+    let normal = match P64::new(-along.y, along.x).unit() {
+        Some(n) if n.dot(outward) < 0.0 => n.scale(-1.0),
+        Some(n) => n,
+        None => outward.unit().unwrap_or(P64::from(FALLBACK_NORMAL)),
+    };
+    (foot, normal)
+}
+
+/// The point of the ellipse with centre `c` and semi-axes `semi` nearest
+/// to `p`, with its outward normal. Circles project radially; a flat
+/// ellipse is its major-axis segment; others use [`ellipse_quadrant`].
+fn nearest_on_ellipse(p: P64, c: P64, semi: P64) -> (P64, P64) {
+    if !(semi.x > 0.0 && semi.y > 0.0) {
+        let segment = [c.sub(semi), c.add(semi)];
+        return nearest_on_segments(p, c, [segment]);
+    }
+    let d = p.sub(c);
+    // Equal up to rounding: a circle, projected exactly.
+    if (semi.x - semi.y).abs() <= f64::EPSILON * semi.x {
+        let dir = d.unit().unwrap_or(P64::new(1.0, 0.0));
+        return (c.add(dir.scale(semi.x)), dir);
+    }
+    // Solve in the first quadrant with the major axis first, then map back.
+    let swap = semi.y > semi.x;
+    let (e0, e1, y0, y1) = if swap {
+        (semi.y, semi.x, d.y.abs(), d.x.abs())
+    } else {
+        (semi.x, semi.y, d.x.abs(), d.y.abs())
+    };
+    let (x0, x1) = ellipse_quadrant(e0, e1, y0, y1);
+    let (x0, x1) = (x0.clamp(0.0, e0), x1.clamp(0.0, e1));
+    let (qx, qy) = if swap { (x1, x0) } else { (x0, x1) };
+    let q = P64::new(qx.copysign(d.x), qy.copysign(d.y));
+    let normal = P64::new(q.x / (semi.x * semi.x), q.y / (semi.y * semi.y))
+        .unit()
+        .unwrap_or(P64::from(FALLBACK_NORMAL));
+    (c.add(q), normal)
+}
+
+/// Nearest point of the ellipse `(x/e0)² + (y/e1)² = 1` to `(y0, y1)`,
+/// for `e0 ≥ e1 > 0` and `y0, y1 ≥ 0` (Eberly, "Distance from a point to
+/// an ellipse"). Inside points and points on an axis are handled exactly.
+fn ellipse_quadrant(e0: f64, e1: f64, y0: f64, y1: f64) -> (f64, f64) {
+    if y1 > 0.0 {
+        if y0 > 0.0 {
+            let (z0, z1) = (y0 / e0, y1 / e1);
+            let g = z0 * z0 + z1 * z1 - 1.0;
+            if g == 0.0 {
+                return (y0, y1);
+            }
+            let r0 = (e0 / e1) * (e0 / e1);
+            let s = ellipse_root(r0, z0, z1, g);
+            (r0 * y0 / (s + r0), y1 / (s + 1.0))
+        } else {
+            (0.0, e1)
+        }
+    } else {
+        let numer = e0 * y0;
+        let denom = e0 * e0 - e1 * e1;
+        if numer < denom {
+            let xde0 = numer / denom;
+            (e0 * xde0, e1 * (1.0 - xde0 * xde0).max(0.0).sqrt())
+        } else {
+            (e0, 0.0)
+        }
+    }
+}
+
+/// Root `s` of `(r0·z0/(s + r0))² + (z1/(s + 1))² = 1` by bisection on
+/// its bracket; `g` is the value at `s = 0`.
+fn ellipse_root(r0: f64, z0: f64, z1: f64, g: f64) -> f64 {
+    let n0 = r0 * z0;
+    let mut s0 = z1 - 1.0;
+    let mut s1 = if g < 0.0 { 0.0 } else { n0.hypot(z1) - 1.0 };
+    let mut s = s0;
+    for _ in 0..ELLIPSE_MAX_ITERATIONS {
+        s = midpoint64(s0, s1);
+        // The bracket cannot shrink any further.
+        if s <= s0 || s >= s1 {
+            break;
+        }
+        let (ratio0, ratio1) = (n0 / (s + r0), z1 / (s + 1.0));
+        let g = ratio0 * ratio0 + ratio1 * ratio1 - 1.0;
+        if g > 0.0 {
+            s0 = s;
+        } else if g < 0.0 {
+            s1 = s;
+        } else {
+            break;
+        }
+    }
+    s
+}
+
+/// `p` moved next to the nearest outline within `tolerance` (world units,
+/// beyond the stroke offset), so that a stroke `width` wide centred on the
+/// result touches the outline's stroke without overlapping it. `None` if
+/// no outline is that close or the result would not be finite.
+#[must_use]
+pub fn snap_outline(p: Vec2, outlines: &[Outline], tolerance: f32, width: f32) -> Option<Vec2> {
+    if !(tolerance.is_finite() && tolerance >= 0.0) {
+        return None;
+    }
+    let scale = p.x.abs().max(p.y.abs()).max(1.0);
+    let mut best: Option<(f32, Vec2)> = None;
+    for outline in outlines {
+        let near = outline.nearest(p);
+        let offset = half_width(outline.width) + half_width(width);
+        let dist = p.distance(near.point);
+        let within = dist <= tolerance + offset;
+        if !within || best.is_some_and(|(d, _)| d <= dist) {
+            continue;
+        }
+        // On the outline (up to rounding) the side is the shape's outside.
+        let dir = if dist > ON_OUTLINE_EPS * scale {
+            (p - near.point) * (1.0 / dist)
+        } else {
+            near.normal
+        };
+        let next = near.point + dir * offset;
+        if next.is_finite() {
+            best = Some((dist, next));
+        }
+    }
+    best.map(|(_, next)| next)
+}
+
+/// Relative distance below which a point counts as lying on an outline.
+const ON_OUTLINE_EPS: f32 = 1e-6;
+
+/// Half of a stroke `width`; 0 for non-finite or negative widths.
+fn half_width(width: f32) -> f32 {
+    if width.is_finite() && width > 0.0 {
+        width * 0.5
+    } else {
+        0.0
+    }
+}
+
+/// The × marking an outline snap at `p`: two diagonals spanning `size` on
+/// each axis. Empty if not finite.
+fn outline_mark(p: Vec2, size: f32) -> Vec<[Vec2; 2]> {
+    let h = size * 0.5;
+    [
+        [p - Vec2::new(h, h), p + Vec2::new(h, h)],
+        [p - Vec2::new(h, -h), p + Vec2::new(h, -h)],
+    ]
+    .into_iter()
+    .filter(|[a, b]| a.is_finite() && b.is_finite())
+    .collect()
 }
 
 impl Targets {
@@ -102,13 +444,24 @@ impl Targets {
         let mut targets = Self::default();
         for shape in shapes {
             match *shape {
-                Shape::Rect { a, b, .. } | Shape::Ellipse { a, b, .. } => {
+                Shape::Rect { a, b, style, .. } => {
                     targets.add_box(a, b);
+                    targets.add_outline(OutlineKind::Rect, a, b, style.width);
+                }
+                Shape::Ellipse { a, b, style, .. } => {
+                    targets.add_box(a, b);
+                    targets.add_outline(OutlineKind::Ellipse, a, b, style.width);
                 }
                 Shape::Grid {
-                    a, b, cols, rows, ..
+                    a,
+                    b,
+                    cols,
+                    rows,
+                    style,
+                    ..
                 } => {
                     targets.add_box(a, b);
+                    targets.add_outline(OutlineKind::Grid { cols, rows }, a, b, style.width);
                     let cols = cols.clamp(1, GRID_MAX_CELLS) as f32;
                     let rows = rows.clamp(1, GRID_MAX_CELLS) as f32;
                     targets.add_size((b.x - a.x).abs() / cols);
@@ -144,6 +497,19 @@ impl Targets {
         }
         self.add_size(x1 - x0);
         self.add_size(y1 - y0);
+    }
+
+    /// Adds the outline of the box spanned by `a` and `b` if both corners
+    /// are finite; a non-finite or negative `width` counts as 0.
+    fn add_outline(&mut self, kind: OutlineKind, a: Vec2, b: Vec2, width: f32) {
+        if a.is_finite() && b.is_finite() {
+            let width = if width.is_finite() {
+                width.max(0.0)
+            } else {
+                0.0
+            };
+            self.outlines.push(Outline { kind, a, b, width });
+        }
     }
 
     /// Adds `size` if it is finite and positive.
@@ -254,9 +620,15 @@ fn nearest(anchors: &[Anchor], c: f32, tolerance: f32) -> Option<(f32, f32)> {
 /// `p` moved per axis onto the nearest target line within `tolerance`.
 #[must_use]
 pub fn align_point(p: Vec2, targets: &Targets, tolerance: f32) -> Vec2 {
-    let x = nearest(&targets.xs, p.x, tolerance).map_or(p.x, |(_, v)| v);
-    let y = nearest(&targets.ys, p.y, tolerance).map_or(p.y, |(_, v)| v);
-    Vec2::new(x, y)
+    align_point_matched(p, targets, tolerance).0
+}
+
+/// [`align_point`] and whether an anchor matched on either axis.
+fn align_point_matched(p: Vec2, targets: &Targets, tolerance: f32) -> (Vec2, bool) {
+    let x = nearest(&targets.xs, p.x, tolerance).map(|(_, v)| v);
+    let y = nearest(&targets.ys, p.y, tolerance).map(|(_, v)| v);
+    let matched = x.is_some() || y.is_some();
+    (Vec2::new(x.unwrap_or(p.x), y.unwrap_or(p.y)), matched)
 }
 
 /// `end` moved per axis onto the nearest target line within `tolerance`;
@@ -269,6 +641,17 @@ pub fn align_end(
     targets: &Targets,
     tolerance: f32,
 ) -> Vec2 {
+    align_end_matched(start, end, kind, targets, tolerance).0
+}
+
+/// [`align_end`] and whether an anchor matched on either axis.
+fn align_end_matched(
+    start: Vec2,
+    end: Vec2,
+    kind: DragKind,
+    targets: &Targets,
+    tolerance: f32,
+) -> (Vec2, bool) {
     let axis = |anchors: &[Anchor], s: f32, e: f32| {
         let edge = nearest(anchors, e, tolerance);
         let centre = match kind {
@@ -278,16 +661,16 @@ pub fn align_end(
                 .filter(|(_, e)| e.is_finite()),
         };
         match (edge, centre) {
-            (Some(edge), Some(centre)) if centre.0 < edge.0 => centre.1,
-            (Some((_, v)), _) | (None, Some((_, v))) => v,
-            (None, None) => e,
+            (Some(edge), Some(centre)) if centre.0 < edge.0 => Some(centre.1),
+            (Some((_, v)), _) | (None, Some((_, v))) => Some(v),
+            (None, None) => None,
         }
     };
-    let next = Vec2::new(
-        axis(&targets.xs, start.x, end.x),
-        axis(&targets.ys, start.y, end.y),
-    );
-    finite_or(next, end)
+    let x = axis(&targets.xs, start.x, end.x);
+    let y = axis(&targets.ys, start.y, end.y);
+    let matched = x.is_some() || y.is_some();
+    let next = Vec2::new(x.unwrap_or(end.x), y.unwrap_or(end.y));
+    (finite_or(next, end), matched)
 }
 
 /// One guide for each x/y line of the drag (box edges and centre, or the
@@ -336,22 +719,30 @@ fn guide_span(anchors: &[Anchor], c: f32, drag: (f32, f32)) -> Option<(f32, f32)
         })
 }
 
-/// Snaps a drag's start point: grid, then alignment. No guides.
+/// Snaps a drag's start point: grid, alignment, then outline if nothing
+/// aligned. `width` is the dragged stroke width in world units. No guides.
 #[must_use]
-pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera) -> Vec2 {
+pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera, width: f32) -> Vec2 {
     let mut p = p;
     if snaps.grid {
         p = snap_to_grid(p, GRID_STEP);
     }
     if snaps.smart {
         let tolerance = camera.world_len(ALIGN_TOLERANCE_PX);
-        p = finite_or(align_point(p, targets, tolerance), p);
+        let (aligned, matched) = align_point_matched(p, targets, tolerance);
+        p = finite_or(aligned, p);
+        if !matched {
+            let tolerance = camera.world_len(OUTLINE_TOLERANCE_PX);
+            p = snap_outline(p, &targets.outlines, tolerance, width).unwrap_or(p);
+        }
     }
     p
 }
 
-/// Snaps the moving `end` of a drag from `start`: grid, size, align, round
-/// (size and round only for boxes), with guides when smart snap is on.
+/// Snaps the moving `end` of a drag from `start`: grid, size, align,
+/// outline (only if nothing aligned), round (only if no outline snap);
+/// size and round only for boxes. `width` is the dragged stroke width in
+/// world units. Guides and the outline mark when smart snap is on.
 #[must_use]
 pub fn snap_drag(
     start: Vec2,
@@ -360,6 +751,7 @@ pub fn snap_drag(
     snaps: Snaps,
     targets: &Targets,
     camera: &Camera,
+    width: f32,
 ) -> Snapped {
     let mut point = end;
     if snaps.grid {
@@ -379,20 +771,30 @@ pub fn snap_drag(
             camera.world_len(SIZE_TOLERANCE_PX),
         );
     }
-    point = align_end(
+    let (aligned, matched) = align_end_matched(
         start,
         point,
         kind,
         targets,
         camera.world_len(ALIGN_TOLERANCE_PX),
     );
-    if kind == DragKind::Box {
-        point = snap_round(start, point);
+    point = aligned;
+    let outline = if matched {
+        None
+    } else {
+        let tolerance = camera.world_len(OUTLINE_TOLERANCE_PX);
+        snap_outline(point, &targets.outlines, tolerance, width)
+    };
+    match outline {
+        Some(snapped) => point = snapped,
+        None if kind == DragKind::Box => point = snap_round(start, point),
+        None => {}
     }
-    Snapped {
-        point,
-        guides: guides(start, point, kind, targets),
+    let mut guides = guides(start, point, kind, targets);
+    if outline.is_some() {
+        guides.extend(outline_mark(point, camera.world_len(OUTLINE_MARK_PX)));
     }
+    Snapped { point, guides }
 }
 
 /// [`snap_point`] with the helpers, document and camera of `view`.
@@ -402,7 +804,13 @@ pub fn snap_start(p: Vec2, mods: Modifiers, view: &ToolView<'_>) -> Vec2 {
     if snaps == Snaps::NONE {
         return p;
     }
-    snap_point(p, snaps, &Targets::from_document(view.doc), view.camera)
+    snap_point(
+        p,
+        snaps,
+        &Targets::from_document(view.doc),
+        view.camera,
+        view.camera.world_len(view.style.width_px),
+    )
 }
 
 /// [`snap_drag`] with the helpers, document and camera of `view`.
@@ -420,7 +828,15 @@ pub fn snap_end(
     } else {
         Targets::default()
     };
-    snap_drag(start, end, kind, snaps, &targets, view.camera)
+    snap_drag(
+        start,
+        end,
+        kind,
+        snaps,
+        &targets,
+        view.camera,
+        view.camera.world_len(view.style.width_px),
+    )
 }
 
 #[cfg(test)]
@@ -433,13 +849,13 @@ mod tests {
     use crate::core::geom::approx_eq;
     use crate::core::history::History;
     use crate::core::input::Modifiers;
-    use crate::core::shape::Shape;
+    use crate::core::shape::{Shape, Style};
     use crate::core::smoothing::SmoothingLevel;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
 
-    const STYLE: crate::core::shape::Style = crate::core::shape::Style {
+    const STYLE: Style = Style {
         color: crate::core::palette::ColorId::INK,
         width: 1.0,
     };
@@ -497,6 +913,7 @@ mod tests {
             SMART,
             &Targets::default(),
             &Camera::default(),
+            1.0,
         );
 
         // Assert
@@ -727,8 +1144,15 @@ mod tests {
             GRID,
             &Targets::default(),
             &Camera::default(),
+            1.0,
         );
-        let start = snap_point(v(11.0, 9.0), GRID, &Targets::default(), &Camera::default());
+        let start = snap_point(
+            v(11.0, 9.0),
+            GRID,
+            &Targets::default(),
+            &Camera::default(),
+            1.0,
+        );
 
         assert!(approx_eq(GRID_STEP, 20.0, EPS));
         assert!(p.approx_eq(v(20.0, -20.0), EPS), "{p:?}");
@@ -759,6 +1183,7 @@ mod tests {
             BOTH,
             &t,
             &Camera::default(),
+            1.0,
         );
 
         // Assert: grid took 47 to 40, then size matched 45.
@@ -772,9 +1197,464 @@ mod tests {
         let zoomed = Camera::new(Vec2::ZERO, 4.0);
         let end = v(97.0, 163.0);
 
-        let snapped = snap_drag(v(0.0, 300.0), end, DragKind::Point, SMART, &t, &zoomed);
+        let snapped = snap_drag(v(0.0, 300.0), end, DragKind::Point, SMART, &t, &zoomed, 1.0);
 
         assert!(snapped.point.approx_eq(end, EPS));
+    }
+
+    // T20 — outline snapping
+
+    fn ellipse(a: Vec2, b: Vec2) -> Shape {
+        Shape::Ellipse {
+            a,
+            b,
+            style: STYLE,
+            fill: None,
+            label: None,
+        }
+    }
+
+    fn outline(kind: OutlineKind, a: Vec2, b: Vec2, width: f32) -> Outline {
+        Outline { kind, a, b, width }
+    }
+
+    /// A circle of radius `r` centred on `c`, stroke width `width`.
+    fn circle_outline(c: Vec2, r: f32, width: f32) -> Outline {
+        outline(OutlineKind::Ellipse, c - v(r, r), c + v(r, r), width)
+    }
+
+    fn on_ellipse(q: Vec2, a: f32, b: f32) -> f32 {
+        (q.x / a).powi(2) + (q.y / b).powi(2)
+    }
+
+    // T20 AC-1
+
+    #[test]
+    fn outline_rect_nearest_side() {
+        let o = outline(OutlineKind::Rect, v(100.0, 50.0), v(0.0, 0.0), 1.0);
+
+        let top = o.nearest(v(40.0, -10.0));
+        let right = o.nearest(v(110.0, 20.0));
+        let corner = o.nearest(v(-5.0, 60.0));
+
+        assert!(top.point.approx_eq(v(40.0, 0.0), EPS), "{top:?}");
+        assert!(top.normal.approx_eq(v(0.0, -1.0), EPS), "{top:?}");
+        assert!(right.point.approx_eq(v(100.0, 20.0), EPS), "{right:?}");
+        assert!(corner.point.approx_eq(v(0.0, 50.0), EPS), "{corner:?}");
+    }
+
+    #[test]
+    fn outline_rect_inside_point() {
+        let o = outline(OutlineKind::Rect, v(0.0, 0.0), v(100.0, 50.0), 1.0);
+
+        let q = o.nearest(v(95.0, 25.0));
+
+        assert!(q.point.approx_eq(v(100.0, 25.0), EPS), "{q:?}");
+        assert!(q.normal.approx_eq(v(1.0, 0.0), EPS), "{q:?}");
+    }
+
+    #[test]
+    fn outline_circle_exact() {
+        let c = v(50.0, 50.0);
+        let o = circle_outline(c, 50.0, 1.0);
+
+        let q = o.nearest(c + v(60.0, 80.0));
+        let inside = o.nearest(c + v(-3.0, 4.0));
+
+        assert!(q.point.approx_eq(v(80.0, 90.0), EPS), "{q:?}");
+        assert!(q.normal.approx_eq(v(0.6, 0.8), EPS), "{q:?}");
+        assert!(
+            inside.point.approx_eq(c + v(-30.0, 40.0), EPS),
+            "{inside:?}"
+        );
+    }
+
+    #[test]
+    fn outline_circle_centre_is_on_circle() {
+        let c = v(50.0, 50.0);
+        let o = circle_outline(c, 50.0, 1.0);
+
+        let q = o.nearest(c);
+
+        assert!(approx_eq(q.point.distance(c), 50.0, EPS), "{q:?}");
+        assert!(approx_eq(q.normal.length(), 1.0, EPS), "{q:?}");
+    }
+
+    #[test]
+    fn outline_ellipse_axis_points() {
+        let o = outline(OutlineKind::Ellipse, v(-100.0, -50.0), v(100.0, 50.0), 1.0);
+
+        let right = o.nearest(v(150.0, 0.0));
+        let below = o.nearest(v(0.0, 80.0));
+        let above = o.nearest(v(0.0, -80.0));
+        let near_tip = o.nearest(v(90.0, 0.0));
+
+        assert!(right.point.approx_eq(v(100.0, 0.0), EPS), "{right:?}");
+        assert!(right.normal.approx_eq(v(1.0, 0.0), EPS), "{right:?}");
+        assert!(below.point.approx_eq(v(0.0, 50.0), EPS), "{below:?}");
+        assert!(above.point.approx_eq(v(0.0, -50.0), EPS), "{above:?}");
+        // Inside, beyond the centre of curvature of the tip: the tip.
+        assert!(near_tip.point.approx_eq(v(100.0, 0.0), EPS), "{near_tip:?}");
+    }
+
+    #[test]
+    fn outline_ellipse_inside_and_centre() {
+        // Arrange: semi-axes 100 × 50 centred on the origin.
+        let o = outline(OutlineKind::Ellipse, v(-100.0, -50.0), v(100.0, 50.0), 1.0);
+
+        // Act
+        let centre = o.nearest(Vec2::ZERO);
+        let inside = o.nearest(v(30.0, 0.0));
+        let off_axis = o.nearest(v(40.0, 30.0));
+
+        // Assert: from the centre the nearest points are the minor-axis
+        // ends; from (30, 0) it is x = 100² · 30 / (100² − 50²) = 40.
+        assert!(approx_eq(centre.point.x, 0.0, 1e-3), "{centre:?}");
+        assert!(approx_eq(centre.point.y.abs(), 50.0, 1e-3), "{centre:?}");
+        assert!(approx_eq(inside.point.x, 40.0, 1e-2), "{inside:?}");
+        assert!(
+            approx_eq(inside.point.y.abs(), 50.0 * (1.0_f32 - 0.16).sqrt(), 1e-2),
+            "{inside:?}"
+        );
+        assert!(approx_eq(
+            on_ellipse(off_axis.point, 100.0, 50.0),
+            1.0,
+            1e-4
+        ));
+        assert!(
+            off_axis.point.x > 40.0 && off_axis.point.y > 30.0,
+            "{off_axis:?}"
+        );
+    }
+
+    #[test]
+    fn outline_ellipse_flat_is_segment() {
+        let o = outline(OutlineKind::Ellipse, v(0.0, 0.0), v(100.0, 0.0), 1.0);
+        let dot = outline(OutlineKind::Ellipse, v(7.0, 7.0), v(7.0, 7.0), 1.0);
+
+        let q = o.nearest(v(30.0, 10.0));
+        let beyond = o.nearest(v(130.0, 10.0));
+        let d = dot.nearest(v(20.0, 7.0));
+
+        assert!(q.point.approx_eq(v(30.0, 0.0), EPS), "{q:?}");
+        assert!(beyond.point.approx_eq(v(100.0, 0.0), EPS), "{beyond:?}");
+        assert!(d.point.approx_eq(v(7.0, 7.0), EPS), "{d:?}");
+        assert!(approx_eq(d.normal.length(), 1.0, EPS), "{d:?}");
+    }
+
+    #[test]
+    fn outline_grid_inner_line() {
+        let o = outline(
+            OutlineKind::Grid { cols: 3, rows: 2 },
+            v(0.0, 0.0),
+            v(90.0, 60.0),
+            1.0,
+        );
+
+        let q = o.nearest(v(32.0, 20.0));
+        let h = o.nearest(v(50.0, 28.0));
+
+        assert!(q.point.approx_eq(v(30.0, 20.0), EPS), "{q:?}");
+        assert!(h.point.approx_eq(v(50.0, 30.0), EPS), "{h:?}");
+    }
+
+    #[test]
+    fn targets_collect_outlines() {
+        let wide = Style {
+            width: 4.0,
+            ..STYLE
+        };
+        let shapes = [
+            Shape::Rect {
+                a: v(0.0, 0.0),
+                b: v(10.0, 10.0),
+                style: wide,
+                fill: None,
+                label: None,
+            },
+            ellipse(v(20.0, 0.0), v(30.0, 10.0)),
+            Shape::Grid {
+                a: v(40.0, 0.0),
+                b: v(70.0, 30.0),
+                cols: 3,
+                rows: 3,
+                style: STYLE,
+                axes: false,
+                fills: Vec::new(),
+            },
+            line(v(0.0, 50.0), v(10.0, 60.0)),
+            Shape::Stroke {
+                points: vec![v(0.0, 70.0), v(10.0, 80.0)],
+                style: STYLE,
+            },
+        ];
+
+        let t = targets(&shapes);
+
+        assert_eq!(t.outlines.len(), 3, "{t:?}");
+        assert_eq!(t.outlines[0].kind, OutlineKind::Rect);
+        assert!(approx_eq(t.outlines[0].width, 4.0, EPS));
+        assert_eq!(t.outlines[1].kind, OutlineKind::Ellipse);
+        assert_eq!(t.outlines[2].kind, OutlineKind::Grid { cols: 3, rows: 3 });
+    }
+
+    // T20 AC-2
+
+    #[test]
+    fn outline_offset_outside() {
+        // Arrange: radius 50, target stroke 4, dragged stroke 2 → offset 3.
+        let o = [circle_outline(Vec2::ZERO, 50.0, 4.0)];
+
+        // Act
+        let p = snap_outline(v(56.0, 0.0), &o, 8.0, 2.0);
+
+        // Assert: centre line of the dragged stroke at 53, so the strokes
+        // meet at 52 without overlapping.
+        assert!(p.is_some_and(|p| p.approx_eq(v(53.0, 0.0), EPS)), "{p:?}");
+    }
+
+    #[test]
+    fn outline_offset_inside() {
+        let o = [circle_outline(Vec2::ZERO, 50.0, 4.0)];
+
+        let p = snap_outline(v(0.0, -45.0), &o, 8.0, 2.0);
+
+        assert!(p.is_some_and(|p| p.approx_eq(v(0.0, -47.0), EPS)), "{p:?}");
+    }
+
+    #[test]
+    fn outline_on_line_goes_outward() {
+        let o = [outline(OutlineKind::Rect, v(0.0, 0.0), v(100.0, 50.0), 4.0)];
+
+        let p = snap_outline(v(40.0, 0.0), &o, 8.0, 2.0);
+
+        assert!(p.is_some_and(|p| p.approx_eq(v(40.0, -3.0), EPS)), "{p:?}");
+    }
+
+    #[test]
+    fn outline_out_of_tolerance_is_none() {
+        let o = [circle_outline(Vec2::ZERO, 50.0, 4.0)];
+
+        // 20 from the outline: beyond tolerance 8 + offset 3.
+        assert_eq!(snap_outline(v(70.0, 0.0), &o, 8.0, 2.0), None);
+        assert_eq!(snap_outline(v(70.0, 0.0), &[], 8.0, 2.0), None);
+    }
+
+    // T20 AC-3
+
+    /// Circle of radius 50 centred on (150, 150): anchors at 100, 150, 200.
+    fn node() -> Targets {
+        targets(&[ellipse(v(100.0, 100.0), v(200.0, 200.0))])
+    }
+
+    /// Where a point `p` near the node lands: on the radius 50 + 1 (half
+    /// of each 1-unit stroke) through `p`.
+    fn on_node(p: Vec2) -> Vec2 {
+        let c = v(150.0, 150.0);
+        let d = p - c;
+        c + d * (51.0 / d.length())
+    }
+
+    #[test]
+    fn alignment_beats_outline() {
+        // Arrange: x = 103 is 3 from the node's left anchor x = 100 and
+        // within outline reach of the circle.
+        let t = node();
+
+        // Act
+        let snapped = snap_drag(
+            v(-300.0, 400.0),
+            v(103.0, 130.0),
+            DragKind::Point,
+            SMART,
+            &t,
+            &Camera::default(),
+            1.0,
+        );
+
+        // Assert: x aligned, the outline did not pull the point.
+        assert!(snapped.point.approx_eq(v(100.0, 130.0), EPS), "{snapped:?}");
+    }
+
+    #[test]
+    fn outline_beats_round() {
+        // Arrange: a 112 × 113 box, round would make it 113 × 113.
+        let t = node();
+        let end = v(112.0, 113.0);
+
+        // Act
+        let snapped = snap_drag(
+            Vec2::ZERO,
+            end,
+            DragKind::Box,
+            SMART,
+            &t,
+            &Camera::default(),
+            1.0,
+        );
+
+        // Assert
+        assert!(
+            snapped.point.approx_eq(on_node(end), EPS),
+            "{snapped:?} vs {:?}",
+            on_node(end)
+        );
+    }
+
+    #[test]
+    fn outline_snaps_line_end_to_circle() {
+        let t = node();
+        let end = v(190.0, 190.0);
+
+        let snapped = snap_drag(
+            v(400.0, 300.0),
+            end,
+            DragKind::Point,
+            SMART,
+            &t,
+            &Camera::default(),
+            1.0,
+        );
+
+        assert!(snapped.point.approx_eq(on_node(end), EPS), "{snapped:?}");
+    }
+
+    #[test]
+    fn outline_snaps_box_corner() {
+        // Arrange: x = 93 is 7 from the side x = 100 (no alignment, within
+        // 8 + 1), y = 40 is far from 0, 25 and 50.
+        let t = targets(&[rect(v(100.0, 0.0), v(200.0, 50.0))]);
+
+        // Act
+        let snapped = snap_drag(
+            v(-100.0, 200.0),
+            v(93.0, 40.0),
+            DragKind::Box,
+            SMART,
+            &t,
+            &Camera::default(),
+            1.0,
+        );
+
+        // Assert: the corner sits just left of the side.
+        assert!(snapped.point.approx_eq(v(99.0, 40.0), EPS), "{snapped:?}");
+    }
+
+    #[test]
+    fn outline_snaps_start_point() {
+        let t = node();
+        let p = v(190.0, 190.0);
+
+        let start = snap_point(p, SMART, &t, &Camera::default(), 1.0);
+        let gridded = snap_point(p, GRID, &t, &Camera::default(), 1.0);
+
+        assert!(start.approx_eq(on_node(p), EPS), "{start:?}");
+        assert!(
+            gridded.approx_eq(snap_to_grid(p, GRID_STEP), EPS),
+            "{gridded:?}"
+        );
+    }
+
+    // T20 AC-4
+
+    #[test]
+    fn outline_snap_marks_point() {
+        // Arrange: zoom 2, so the 8 px mark is 4 world units per axis.
+        let t = node();
+        let camera = Camera::new(Vec2::ZERO, 2.0);
+        let end = v(188.0, 188.0);
+
+        // Act
+        let snapped = snap_drag(
+            v(400.0, 300.0),
+            end,
+            DragKind::Point,
+            SMART,
+            &t,
+            &camera,
+            1.0,
+        );
+        let missed = snap_drag(
+            v(400.0, 300.0),
+            v(260.0, 260.0),
+            DragKind::Point,
+            SMART,
+            &t,
+            &camera,
+            1.0,
+        );
+
+        // Assert: an × of two diagonals through the point.
+        let p = snapped.point;
+        let h = v(2.0, 2.0);
+        let mirrored = v(2.0, -2.0);
+        let has = |a: Vec2, b: Vec2| {
+            snapped.guides.iter().any(|&[ga, gb]| {
+                (ga.approx_eq(a, EPS) && gb.approx_eq(b, EPS))
+                    || (ga.approx_eq(b, EPS) && gb.approx_eq(a, EPS))
+            })
+        };
+        assert!(p.distance(v(150.0, 150.0)) > 50.0, "{snapped:?}");
+        assert!(has(p - h, p + h), "{snapped:?}");
+        assert!(has(p - mirrored, p + mirrored), "{snapped:?}");
+        assert!(missed.guides.is_empty(), "{missed:?}");
+    }
+
+    // T20 AC-5
+
+    #[test]
+    fn outline_respects_overrides() {
+        // Arrange: a node in the document, smart snap on.
+        let mut doc = Document::new();
+        let mut history = History::new();
+        let tx = tx_insert(&mut doc, [ellipse(v(100.0, 100.0), v(200.0, 200.0))]);
+        assert!(history.commit(&mut doc, tx).is_ok());
+        let camera = Camera::default();
+        let mut style = DrawStyle::default();
+        style.helpers.smart_snap = true;
+        style.width_px = 1.0;
+        let view = ToolView {
+            doc: &doc,
+            camera: &camera,
+            selection: &[],
+            tool: Tool::Arrow,
+            style,
+            smoothing: SmoothingLevel::Medium,
+            cursor: Vec2::ZERO,
+        };
+        let p = v(190.0, 190.0);
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+        let start = v(400.0, 300.0);
+
+        // Act
+        let snapped = snap_end(start, p, DragKind::Point, Modifiers::NONE, &view);
+        let raw = snap_end(start, p, DragKind::Point, alt, &view);
+        let constrained = snap_end(start, p, DragKind::Point, shift, &view);
+
+        // Assert
+        assert!(snapped.point.approx_eq(on_node(p), EPS), "{snapped:?}");
+        assert!(snap_start(p, Modifiers::NONE, &view).approx_eq(on_node(p), EPS));
+        assert!(raw.point.approx_eq(p, EPS) && raw.guides.is_empty());
+        assert!(constrained.point.approx_eq(p, EPS) && constrained.guides.is_empty());
+        assert!(snap_start(p, alt, &view).approx_eq(p, EPS));
+        assert!(snap_start(p, shift, &view).approx_eq(p, EPS));
+    }
+
+    // T20 AC-1 (properties) and AC-6
+
+    fn any_kind() -> impl Strategy<Value = OutlineKind> {
+        prop_oneof![
+            Just(OutlineKind::Rect),
+            Just(OutlineKind::Ellipse),
+            (0_u32..70, 0_u32..70).prop_map(|(cols, rows)| OutlineKind::Grid { cols, rows }),
+        ]
     }
 
     // AC-6
@@ -794,21 +1674,43 @@ mod tests {
     }
 
     fn any_shape() -> impl Strategy<Value = Shape> {
-        (any_point(), any_point(), 0_u8..3, 1_u32..70, 1_u32..70).prop_map(
-            |(a, b, kind, cols, rows)| match kind {
-                0 => rect(a, b),
-                1 => line(a, b),
-                _ => Shape::Grid {
-                    a,
-                    b,
-                    cols,
-                    rows,
-                    style: STYLE,
-                    axes: false,
-                    fills: Vec::new(),
-                },
-            },
+        (
+            any_point(),
+            any_point(),
+            0_u8..4,
+            1_u32..70,
+            1_u32..70,
+            any_coord(),
         )
+            .prop_map(|(a, b, kind, cols, rows, width)| {
+                let style = Style { width, ..STYLE };
+                match kind {
+                    0 => Shape::Rect {
+                        a,
+                        b,
+                        style,
+                        fill: None,
+                        label: None,
+                    },
+                    1 => line(a, b),
+                    2 => Shape::Ellipse {
+                        a,
+                        b,
+                        style,
+                        fill: None,
+                        label: None,
+                    },
+                    _ => Shape::Grid {
+                        a,
+                        b,
+                        cols,
+                        rows,
+                        style,
+                        axes: false,
+                        fills: Vec::new(),
+                    },
+                }
+            })
     }
 
     fn any_snaps() -> impl Strategy<Value = Snaps> {
@@ -824,13 +1726,14 @@ mod tests {
             snaps in any_snaps(),
             boxed in any::<bool>(),
             zoom in ZOOM_MIN..ZOOM_MAX,
+            width in any_coord(),
         ) {
             let t = Targets::from_shapes(&shapes);
             let camera = Camera::new(Vec2::ZERO, zoom);
             let kind = if boxed { DragKind::Box } else { DragKind::Point };
 
-            let s = snap_point(start, snaps, &t, &camera);
-            let snapped = snap_drag(s, end, kind, snaps, &t, &camera);
+            let s = snap_point(start, snaps, &t, &camera, width);
+            let snapped = snap_drag(s, end, kind, snaps, &t, &camera, width);
 
             prop_assert!(s.is_finite(), "{s:?}");
             prop_assert!(snapped.point.is_finite(), "{snapped:?}");
@@ -839,6 +1742,60 @@ mod tests {
                 prop_assert_eq!(s, start);
                 prop_assert_eq!(snapped.point, end);
             }
+        }
+
+        #[test]
+        fn outline_ellipse_point_lies_on_ellipse(
+            a in 1.0_f32..500.0,
+            b in 1.0_f32..500.0,
+            x in -1000.0_f32..1000.0,
+            y in -1000.0_f32..1000.0,
+        ) {
+            let o = outline(OutlineKind::Ellipse, v(-a, -b), v(a, b), 1.0);
+
+            let q = o.nearest(v(x, y));
+
+            prop_assert!((on_ellipse(q.point, a, b) - 1.0).abs() <= 1e-3, "{q:?}");
+            prop_assert!((q.normal.length() - 1.0).abs() <= 1e-3, "{q:?}");
+        }
+
+        #[test]
+        fn outline_ellipse_is_nearest_sampled_point(
+            a in 1.0_f32..500.0,
+            b in 1.0_f32..500.0,
+            x in -1000.0_f32..1000.0,
+            y in -1000.0_f32..1000.0,
+        ) {
+            let o = outline(OutlineKind::Ellipse, v(-a, -b), v(a, b), 1.0);
+            let p = v(x, y);
+
+            let d = o.nearest(p).point.distance(p);
+
+            let best = (0..360)
+                .map(|i| {
+                    let t = (i as f32).to_radians();
+                    v(a * t.cos(), b * t.sin()).distance(p)
+                })
+                .fold(f32::INFINITY, f32::min);
+            prop_assert!(d <= best + 1e-3 * a.max(b), "{d} > {best}");
+        }
+
+        #[test]
+        fn outline_is_finite_for_any_input(
+            kind in any_kind(),
+            a in any_point(),
+            b in any_point(),
+            p in any_point(),
+            width in any_coord(),
+            drag_width in any_coord(),
+        ) {
+            let o = outline(kind, a, b, width);
+
+            let q = o.nearest(p);
+            let snapped = snap_outline(p, &[o], 8.0, drag_width);
+
+            prop_assert!(q.point.is_finite() && q.normal.is_finite(), "{q:?}");
+            prop_assert!(snapped.is_none_or(Vec2::is_finite), "{snapped:?}");
         }
 
         #[test]

@@ -51,3 +51,23 @@ the shapes and the guides above the preview. Details and trade-offs:
   never are.
 - The snap grid step is fixed (20 world units); when zoomed out the dots are
   thinned to powers of two of the step, but points still snap to every step.
+
+## Outline snapping (T20)
+
+With smart snap on, a dragged point near the outline of a rectangle,
+ellipse or grid lands right next to it: arrows stop at a node's circle,
+box corners sit against another box or circle. The point is pushed out
+by half of both stroke widths, so the strokes touch without overlapping;
+a point inside the target stays inside. A small × marks the snap.
+
+- Reach: 8 screen pixels from the outline (beyond the stroke offset).
+- Priority: alignment beats outline, outline beats round. Outline only
+  runs when nothing aligned on either axis — near a rectangle side or a
+  circle's centre line alignment usually wins, so the point lands on the
+  line itself rather than beside the stroke.
+- Applies to the start point and the moving end of line, arrow,
+  rectangle and ellipse drags; the start point gets no ×.
+- `Alt` and `Shift` behave as above (no snap / grid only).
+- Ellipses use an exact bracketed root search; see
+  [[ADR-T20-1 Outline snapping]] and the tutorial
+  [[20 Snapping to outlines]].
