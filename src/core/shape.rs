@@ -100,7 +100,20 @@ pub enum Shape {
         rows: u32,
         /// Outline style.
         style: Style,
+        /// Draws 0-based column and row indices outside the grid, starting
+        /// at corner `a` (ADR-T18-3).
+        axes: bool,
     },
+}
+
+/// One axis index of a grid with [`Shape::Grid::axes`]: the 0-based column
+/// or row `index` and the world box it is drawn centred in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AxisLabel {
+    /// 0-based column or row index.
+    pub index: u32,
+    /// World box outside the grid, one cell in size.
+    pub rect: Aabb,
 }
 
 impl Shape {
@@ -165,7 +178,22 @@ impl Shape {
             Self::Line { a, b, .. }
             | Self::Rect { a, b, .. }
             | Self::Ellipse { a, b, .. }
-            | Self::Grid { a, b, .. } => Aabb::from_corners(*a, *b),
+            | Self::Grid {
+                a, b, axes: false, ..
+            } => Aabb::from_corners(*a, *b),
+            // The index bands lie one cell beyond `a`, away from `b`.
+            Self::Grid {
+                a,
+                b,
+                cols,
+                rows,
+                axes: true,
+                ..
+            } => {
+                let (cols, rows) = (clamp_cells(*cols) as f32, clamp_cells(*rows) as f32);
+                let cell = Vec2::new((b.x - a.x) / cols, (b.y - a.y) / rows);
+                Aabb::from_corners(*a, *b).union(&Aabb::from_corners(*a - cell, *a - cell))
+            }
         };
         geometry.expand(half_width(self.style().width))
     }
@@ -280,6 +308,23 @@ impl Shape {
         self
     }
 
+    /// The axis indices to draw: those of a grid with `axes` on (see
+    /// [`grid_axis_labels`]), empty for every other shape.
+    #[must_use]
+    pub fn axis_labels(&self) -> Vec<AxisLabel> {
+        match *self {
+            Self::Grid {
+                a,
+                b,
+                cols,
+                rows,
+                axes: true,
+                ..
+            } => grid_axis_labels(a, b, cols, rows).collect(),
+            _ => Vec::new(),
+        }
+    }
+
     /// `true` iff every coordinate and the width are finite.
     #[must_use]
     pub fn is_finite(&self) -> bool {
@@ -316,6 +361,32 @@ pub fn grid_lines(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item 
         [Vec2::new(r.min.x, y), Vec2::new(r.max.x, y)]
     });
     vertical.chain(horizontal)
+}
+
+/// The axis indices of a `cols × rows` grid dragged from `a` to `b`:
+/// columns `0..cols` counted from `a.x` toward `b.x`, in boxes one cell tall
+/// just outside the edge `y = a.y`, then rows `0..rows` counted from `a.y`
+/// toward `b.y`, in boxes one cell wide just outside `x = a.x`
+/// (ADR-T18-3). Dimensions are clamped like [`grid_lines`].
+pub fn grid_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator<Item = AxisLabel> {
+    let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+    // Signed cell size: negative when the drag went left or up.
+    let cell = Vec2::new((b.x - a.x) / cols as f32, (b.y - a.y) / rows as f32);
+    let columns = (0..cols).map(move |i| AxisLabel {
+        index: i,
+        rect: Aabb::from_corners(
+            Vec2::new(a.x + cell.x * i as f32, a.y),
+            Vec2::new(a.x + cell.x * (i + 1) as f32, a.y - cell.y),
+        ),
+    });
+    let rows = (0..rows).map(move |j| AxisLabel {
+        index: j,
+        rect: Aabb::from_corners(
+            Vec2::new(a.x, a.y + cell.y * j as f32),
+            Vec2::new(a.x - cell.x, a.y + cell.y * (j + 1) as f32),
+        ),
+    });
+    columns.chain(rows)
 }
 
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.
@@ -471,6 +542,18 @@ mod tests {
             cols,
             rows,
             style: style(width),
+            axes: false,
+        }
+    }
+
+    fn grid_with_axes(a: Vec2, b: Vec2, cols: u32, rows: u32) -> Shape {
+        Shape::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            style: style(0.0),
+            axes: true,
         }
     }
 
@@ -1211,6 +1294,132 @@ mod tests {
             // Coordinates up to 2e3 in f32: rounding stays well below 1e-2.
             prop_assert!(after.min.approx_eq(expected.min, 1e-2), "{after:?} vs {expected:?}");
             prop_assert!(after.max.approx_eq(expected.max, 1e-2), "{after:?} vs {expected:?}");
+        }
+    }
+
+    // ---- T18 AC-7 axis indices --------------------------------------------
+
+    /// `(index, rect)` of each axis label of `shape`, columns then rows.
+    fn axis(shape: &Shape) -> Vec<(u32, Aabb)> {
+        shape
+            .axis_labels()
+            .into_iter()
+            .map(|l| (l.index, l.rect))
+            .collect()
+    }
+
+    fn rect_eq(got: Aabb, min: (f32, f32), max: (f32, f32)) -> bool {
+        got.min.approx_eq(Vec2::new(min.0, min.1), 1e-4)
+            && got.max.approx_eq(Vec2::new(max.0, max.1), 1e-4)
+    }
+
+    #[test]
+    fn grid_axis_labels_top_left_drag() {
+        // Arrange: 3 × 2 cells of 10 × 20, dragged from (0, 0) to (30, 40).
+        let shape = grid_with_axes(Vec2::ZERO, Vec2::new(30.0, 40.0), 3, 2);
+
+        // Act
+        let labels = axis(&shape);
+
+        // Assert: columns 0..3 above the top edge, rows 0..2 left of it.
+        assert_eq!(labels.len(), 5);
+        let indices: Vec<u32> = labels.iter().map(|l| l.0).collect();
+        assert_eq!(indices, [0, 1, 2, 0, 1]);
+        assert!(
+            rect_eq(labels[0].1, (0.0, -20.0), (10.0, 0.0)),
+            "{:?}",
+            labels[0]
+        );
+        assert!(
+            rect_eq(labels[2].1, (20.0, -20.0), (30.0, 0.0)),
+            "{:?}",
+            labels[2]
+        );
+        assert!(
+            rect_eq(labels[3].1, (-10.0, 0.0), (0.0, 20.0)),
+            "{:?}",
+            labels[3]
+        );
+        assert!(
+            rect_eq(labels[4].1, (-10.0, 20.0), (0.0, 40.0)),
+            "{:?}",
+            labels[4]
+        );
+    }
+
+    #[test]
+    fn grid_axis_labels_follow_drag_direction() {
+        // Arrange: dragged from the bottom-right (30, 40) to the top-left.
+        let shape = grid_with_axes(Vec2::new(30.0, 40.0), Vec2::ZERO, 3, 2);
+
+        // Act
+        let labels = axis(&shape);
+
+        // Assert: column 0 is the rightmost, below the bottom edge; row 0 is
+        // the bottom row, right of the right edge.
+        assert!(
+            rect_eq(labels[0].1, (20.0, 40.0), (30.0, 60.0)),
+            "{:?}",
+            labels[0]
+        );
+        assert!(
+            rect_eq(labels[2].1, (0.0, 40.0), (10.0, 60.0)),
+            "{:?}",
+            labels[2]
+        );
+        assert!(
+            rect_eq(labels[3].1, (30.0, 20.0), (40.0, 40.0)),
+            "{:?}",
+            labels[3]
+        );
+        assert!(
+            rect_eq(labels[4].1, (30.0, 0.0), (40.0, 20.0)),
+            "{:?}",
+            labels[4]
+        );
+        let indices: Vec<u32> = labels.iter().map(|l| l.0).collect();
+        assert_eq!(indices, [0, 1, 2, 0, 1]);
+    }
+
+    #[test]
+    fn grid_axis_labels_none_without_axes() {
+        let plain = grid(Vec2::ZERO, Vec2::new(30.0, 40.0), 3, 2, 1.0);
+        let other = rect(Vec2::ZERO, Vec2::new(30.0, 40.0), 1.0, None);
+
+        assert!(plain.axis_labels().is_empty());
+        assert!(other.axis_labels().is_empty());
+    }
+
+    #[test]
+    fn grid_bounds_include_axis_labels() {
+        // Arrange
+        let shape = grid_with_axes(Vec2::ZERO, Vec2::new(30.0, 40.0), 3, 2);
+
+        // Act
+        let bounds = shape.bounds();
+
+        // Assert: one cell height above, one cell width to the left.
+        assert!(rect_eq(bounds, (-10.0, -20.0), (30.0, 40.0)), "{bounds:?}");
+        for (_, r) in axis(&shape) {
+            assert!(bounds.contains(r.min) && bounds.contains(r.max));
+        }
+    }
+
+    #[test]
+    fn grid_axes_survive_translate() {
+        // Arrange
+        let mut shape = grid_with_axes(Vec2::new(30.0, 40.0), Vec2::ZERO, 3, 2);
+        let before = axis(&shape);
+
+        // Act
+        shape.translate(Vec2::new(5.0, -7.0));
+
+        // Assert: same orientation, moved by the delta.
+        let after = axis(&shape);
+        assert_eq!(before.len(), after.len());
+        for ((i, r0), (j, r1)) in before.iter().zip(&after) {
+            assert_eq!(i, j);
+            assert!(r1.min.approx_eq(r0.min + Vec2::new(5.0, -7.0), 1e-4));
         }
     }
 }

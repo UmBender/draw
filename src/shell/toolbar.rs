@@ -2,7 +2,9 @@
 //!
 //! A vertical strip at the left edge: one button per tool, the six palette
 //! swatches, the helper toggles (smart snap, grid snap, numbering), then undo
-//! and redo. Layout, hit-testing and event routing are pure functions of the
+//! and redo. While the grid tool is active, a flyout right of the `G` button
+//! shows the grid's columns and rows with `-`/`+` buttons (ADR-T18-2).
+//! Layout, hit-testing and event routing are pure functions of the
 //! viewport; [`draw`] paints the strip with the theme tokens (ADR-0012),
 //! marking the active tool, colour and the helpers that are on with `accent`.
 
@@ -53,6 +55,12 @@ pub enum ButtonKind {
     GridSnap,
     /// Toggles auto-numbering.
     Numbering,
+    /// Changes the grid's columns by the given step (flyout).
+    GridCols(i32),
+    /// Changes the grid's rows by the given step (flyout).
+    GridRows(i32),
+    /// Toggles axis indices on new grids (flyout).
+    GridAxes,
     /// Undoes the last action.
     Undo,
     /// Redoes the last undone action.
@@ -69,6 +77,9 @@ impl ButtonKind {
             Self::SmartSnap => Command::ToggleSmartSnap,
             Self::GridSnap => Command::ToggleGridSnap,
             Self::Numbering => Command::ToggleNumbering,
+            Self::GridCols(delta) => Command::GridCols(delta),
+            Self::GridRows(delta) => Command::GridRows(delta),
+            Self::GridAxes => Command::ToggleGridAxes,
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
         }
@@ -106,6 +117,16 @@ const SWATCH_INSET_PX: f32 = 6.0;
 const LABEL_SIZE: u16 = 20;
 /// Opacity of an unavailable undo/redo button.
 const DISABLED_ALPHA: f32 = 0.3;
+/// Side of a flyout `-`/`+` button, in pixels.
+const FLY_BUTTON_PX: f32 = 24.0;
+/// Width of a flyout row label (`cols`, `rows`), in pixels.
+const FLY_LABEL_PX: f32 = 40.0;
+/// Width of a flyout value cell, in pixels.
+const FLY_VALUE_PX: f32 = 28.0;
+/// Size of the flyout row labels, in pixels.
+const FLY_LABEL_SIZE: u16 = 16;
+/// Label of the axis indices toggle: the first index.
+const AXES_LABEL: &str = "0";
 
 /// The strip background for a viewport: full height at the left edge.
 #[must_use]
@@ -158,19 +179,62 @@ pub fn hit(buttons: &[Button], pos: Vec2) -> Option<Command> {
         .map(|b| b.kind.command())
 }
 
-/// Routes `event`: pointer presses on the visible toolbar never reach the
-/// canvas; everything else is forwarded.
+/// The grid size flyout: right of the strip, top aligned with the `G`
+/// button (ADR-T18-2).
 #[must_use]
-pub fn route(visible: bool, viewport: Vec2, event: InputEvent) -> Route {
+pub fn flyout_panel(viewport: Vec2) -> Aabb {
+    let top = layout(viewport)
+        .iter()
+        .find(|b| b.kind == ButtonKind::Tool(Tool::Grid))
+        .map_or(PAD_PX, |b| b.rect.min.y);
+    let width = 2.0 * PAD_PX + FLY_LABEL_PX + FLY_VALUE_PX + 2.0 * FLY_BUTTON_PX + 3.0 * GAP_PX;
+    let height = 2.0 * PAD_PX + 3.0 * FLY_BUTTON_PX + 2.0 * GAP_PX;
+    let min = Vec2::new(STRIP_PX + GAP_PX, top);
+    Aabb::from_corners(min, min + Vec2::new(width, height))
+}
+
+/// The flyout's buttons: columns `-`, `+`, rows `-`, `+`, then the axis
+/// indices toggle (ADR-T18-3).
+#[must_use]
+pub fn flyout_layout(viewport: Vec2) -> Vec<Button> {
+    let origin = flyout_panel(viewport).min + Vec2::new(PAD_PX, PAD_PX);
+    let minus_x = FLY_LABEL_PX + GAP_PX;
+    let plus_x = minus_x + FLY_BUTTON_PX + GAP_PX + FLY_VALUE_PX + GAP_PX;
+    let row_y = FLY_BUTTON_PX + GAP_PX;
+    let button = |x: f32, y: f32, kind| {
+        let min = origin + Vec2::new(x, y);
+        let rect = Aabb::from_corners(min, min + Vec2::new(FLY_BUTTON_PX, FLY_BUTTON_PX));
+        Button { rect, kind }
+    };
+    vec![
+        button(minus_x, 0.0, ButtonKind::GridCols(-1)),
+        button(plus_x, 0.0, ButtonKind::GridCols(1)),
+        button(minus_x, row_y, ButtonKind::GridRows(-1)),
+        button(plus_x, row_y, ButtonKind::GridRows(1)),
+        button(minus_x, 2.0 * row_y, ButtonKind::GridAxes),
+    ]
+}
+
+/// Routes `event`: pointer presses on the visible toolbar, or on the grid
+/// size flyout when `flyout` is shown, never reach the canvas; everything
+/// else is forwarded.
+#[must_use]
+pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> Route {
     match event {
         InputEvent::PointerDown { pos, .. } if visible && panel(viewport).contains(pos) => {
             hit(&layout(viewport), pos).map_or(Route::Swallow, Route::Apply)
+        }
+        InputEvent::PointerDown { pos, .. }
+            if visible && flyout && flyout_panel(viewport).contains(pos) =>
+        {
+            hit(&flyout_layout(viewport), pos).map_or(Route::Swallow, Route::Apply)
         }
         _ => Route::Forward(event),
     }
 }
 
-/// Draws the toolbar for `editor` in a viewport of `viewport` pixels.
+/// Draws the toolbar for `editor` in a viewport of `viewport` pixels, with
+/// the grid size flyout while the grid tool is active.
 pub fn draw(editor: &Editor, viewport: Vec2) {
     let strip = panel(viewport);
     fill(strip, to_mq_color(THEME.surface));
@@ -200,10 +264,66 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
             ButtonKind::Numbering => {
                 draw_toggle(rect, "N", editor.helpers().numbering, accent, text);
             }
+            ButtonKind::GridCols(delta) | ButtonKind::GridRows(delta) => {
+                draw_label(rect, step_label(delta), text);
+            }
+            ButtonKind::GridAxes => {
+                draw_toggle(rect, AXES_LABEL, editor.helpers().grid_axes, accent, text);
+            }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
         }
     }
+    if editor.tool() == Tool::Grid {
+        draw_flyout(editor, viewport);
+    }
+}
+
+/// Draws the grid size flyout with the current columns and rows of
+/// `editor`.
+fn draw_flyout(editor: &Editor, viewport: Vec2) {
+    let fly = flyout_panel(viewport);
+    fill(fly, to_mq_color(THEME.surface));
+    let border = to_mq_color(THEME.border);
+    let text = to_mq_color(THEME.text);
+    let accent = to_mq_color(THEME.accent);
+    let helpers = editor.helpers();
+    // The row's name, left of its first button.
+    let name_box = |rect: Aabb| {
+        Aabb::from_corners(
+            Vec2::new(fly.min.x + PAD_PX, rect.min.y),
+            Vec2::new(rect.min.x - GAP_PX, rect.max.y),
+        )
+    };
+    for button in flyout_layout(viewport) {
+        let rect = button.rect;
+        outline(rect, border);
+        let (delta, name, value) = match button.kind {
+            ButtonKind::GridCols(delta) => (delta, "cols", helpers.grid_cols),
+            ButtonKind::GridRows(delta) => (delta, "rows", helpers.grid_rows),
+            ButtonKind::GridAxes => {
+                draw_label_sized(name_box(rect), "axes", text, FLY_LABEL_SIZE);
+                draw_toggle(rect, AXES_LABEL, helpers.grid_axes, accent, text);
+                continue;
+            }
+            _ => continue,
+        };
+        draw_label(rect, step_label(delta), text);
+        if delta < 0 {
+            // The value right of `-`.
+            draw_label_sized(name_box(rect), name, text, FLY_LABEL_SIZE);
+            let cell = Aabb::from_corners(
+                Vec2::new(rect.max.x + GAP_PX, rect.min.y),
+                Vec2::new(rect.max.x + GAP_PX + FLY_VALUE_PX, rect.max.y),
+            );
+            draw_label(cell, &value.to_string(), text);
+        }
+    }
+}
+
+/// The label of a `-`/`+` step button.
+fn step_label(delta: i32) -> &'static str {
+    if delta < 0 { "-" } else { "+" }
 }
 
 /// The key that selects `tool`, shown as its label (see `core::keymap`).
@@ -261,11 +381,16 @@ fn outline(rect: Aabb, color: Color) {
 
 /// Draws `label` centred in `rect`.
 fn draw_label(rect: Aabb, label: &str, color: Color) {
-    let size = measure_text(label, None, LABEL_SIZE, 1.0);
+    draw_label_sized(rect, label, color, LABEL_SIZE);
+}
+
+/// Draws `label` centred in `rect` at `font_size` pixels.
+fn draw_label_sized(rect: Aabb, label: &str, color: Color, font_size: u16) {
+    let size = measure_text(label, None, font_size, 1.0);
     let c = rect.center();
     let x = c.x - size.width * 0.5;
     let y = c.y + size.offset_y * 0.5;
-    draw_text(label, x, y, f32::from(LABEL_SIZE), color);
+    draw_text(label, x, y, f32::from(font_size), color);
 }
 
 /// Draws a horizontal arrow in `rect`, pointing left (`dir < 0`) or right.
@@ -420,6 +545,9 @@ mod tests {
                 ButtonKind::SmartSnap => Command::ToggleSmartSnap,
                 ButtonKind::GridSnap => Command::ToggleGridSnap,
                 ButtonKind::Numbering => Command::ToggleNumbering,
+                ButtonKind::GridCols(d) => Command::GridCols(d),
+                ButtonKind::GridRows(d) => Command::GridRows(d),
+                ButtonKind::GridAxes => Command::ToggleGridAxes,
                 ButtonKind::Undo => Command::Undo,
                 ButtonKind::Redo => Command::Redo,
             };
@@ -464,13 +592,19 @@ mod tests {
         // Act
         let routed = route(
             true,
+            false,
             VIEWPORT,
             press(rect_tool.rect.center(), PointerButton::Left),
         );
         // Assert
         assert_eq!(routed, Route::Apply(Command::SetTool(Tool::Rect)));
         for button in [PointerButton::Right, PointerButton::Middle] {
-            let routed = route(true, VIEWPORT, press(rect_tool.rect.center(), button));
+            let routed = route(
+                true,
+                false,
+                VIEWPORT,
+                press(rect_tool.rect.center(), button),
+            );
             assert!(
                 !matches!(routed, Route::Forward(_)),
                 "{button:?} press on the toolbar reached the canvas"
@@ -483,7 +617,7 @@ mod tests {
         let strip = panel(VIEWPORT);
         let bottom = Vec2::new(strip.center().x, strip.max.y - 1.0);
         assert_eq!(
-            route(true, VIEWPORT, press(bottom, PointerButton::Left)),
+            route(true, false, VIEWPORT, press(bottom, PointerButton::Left)),
             Route::Swallow
         );
     }
@@ -492,7 +626,7 @@ mod tests {
     fn route_hidden_toolbar_forwards() {
         let center = layout(VIEWPORT)[0].rect.center();
         let event = press(center, PointerButton::Left);
-        assert_eq!(route(false, VIEWPORT, event), Route::Forward(event));
+        assert_eq!(route(false, false, VIEWPORT, event), Route::Forward(event));
     }
 
     #[test]
@@ -520,7 +654,127 @@ mod tests {
             InputEvent::Resize { size: VIEWPORT },
         ];
         for event in events {
-            assert_eq!(route(true, VIEWPORT, event), Route::Forward(event));
+            assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
         }
+    }
+
+    // AC-6 (T18): grid size flyout
+
+    /// The toolbar's grid tool button.
+    fn grid_button() -> Button {
+        match layout(VIEWPORT)
+            .into_iter()
+            .find(|b| b.kind == ButtonKind::Tool(Tool::Grid))
+        {
+            Some(button) => button,
+            None => panic!("toolbar has a grid button"),
+        }
+    }
+
+    #[test]
+    fn flyout_has_five_buttons_in_order() {
+        // Act
+        let kinds: Vec<ButtonKind> = flyout_layout(VIEWPORT).iter().map(|b| b.kind).collect();
+        // Assert
+        assert_eq!(
+            kinds,
+            [
+                ButtonKind::GridCols(-1),
+                ButtonKind::GridCols(1),
+                ButtonKind::GridRows(-1),
+                ButtonKind::GridRows(1),
+                ButtonKind::GridAxes,
+            ]
+        );
+    }
+
+    #[test]
+    fn flyout_is_right_of_strip_aligned_with_grid_button() {
+        let fly = flyout_panel(VIEWPORT);
+        let strip = panel(VIEWPORT);
+        assert!(fly.min.x >= strip.max.x, "{fly:?} overlaps the strip");
+        assert!(approx_eq(fly.min.y, grid_button().rect.min.y, EPS));
+        assert!(fly.max.x <= VIEWPORT.x && fly.max.y <= VIEWPORT.y);
+        assert!(fly.width() > 0.0 && fly.height() > 0.0);
+    }
+
+    #[test]
+    fn flyout_buttons_inside_panel_and_disjoint() {
+        let fly = flyout_panel(VIEWPORT);
+        let buttons = flyout_layout(VIEWPORT);
+        for b in &buttons {
+            assert!(
+                fly.contains(b.rect.min) && fly.contains(b.rect.max),
+                "{b:?}"
+            );
+        }
+        for (i, a) in buttons.iter().enumerate() {
+            for b in &buttons[i + 1..] {
+                assert!(!a.rect.intersects(&b.rect), "{a:?} overlaps {b:?}");
+            }
+        }
+        // Columns on the first row, rows below, axes last; minus left of plus.
+        assert!(buttons[0].rect.max.y < buttons[2].rect.min.y);
+        assert!(buttons[2].rect.max.y < buttons[4].rect.min.y);
+        assert!(buttons[0].rect.max.x < buttons[1].rect.min.x);
+        assert!(buttons[2].rect.max.x < buttons[3].rect.min.x);
+    }
+
+    #[test]
+    fn flyout_buttons_return_their_commands() {
+        let buttons = flyout_layout(VIEWPORT);
+        let expected = [
+            Command::GridCols(-1),
+            Command::GridCols(1),
+            Command::GridRows(-1),
+            Command::GridRows(1),
+            Command::ToggleGridAxes,
+        ];
+        assert_eq!(buttons.len(), expected.len());
+        for (b, want) in buttons.iter().zip(expected) {
+            assert_eq!(hit(&buttons, b.rect.center()), Some(want), "{b:?}");
+        }
+    }
+
+    #[test]
+    fn route_flyout_click_applies() {
+        // Arrange
+        let plus_rows = flyout_layout(VIEWPORT)[3];
+        // Act
+        let routed = route(
+            true,
+            true,
+            VIEWPORT,
+            press(plus_rows.rect.center(), PointerButton::Left),
+        );
+        // Assert
+        assert_eq!(routed, Route::Apply(Command::GridRows(1)));
+        // The strip still works with the flyout shown.
+        let rect_tool = layout(VIEWPORT)[3].rect.center();
+        assert_eq!(
+            route(true, true, VIEWPORT, press(rect_tool, PointerButton::Left)),
+            Route::Apply(Command::SetTool(Tool::Rect))
+        );
+    }
+
+    #[test]
+    fn route_flyout_gap_is_swallowed() {
+        let fly = flyout_panel(VIEWPORT);
+        let corner = fly.min + Vec2::new(1.0, 1.0);
+        assert_eq!(hit(&flyout_layout(VIEWPORT), corner), None);
+        for button in [PointerButton::Left, PointerButton::Right] {
+            assert_eq!(
+                route(true, true, VIEWPORT, press(corner, button)),
+                Route::Swallow
+            );
+        }
+    }
+
+    #[test]
+    fn route_without_flyout_forwards() {
+        let minus_cols = flyout_layout(VIEWPORT)[0].rect.center();
+        let event = press(minus_cols, PointerButton::Left);
+        assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
+        assert_eq!(route(false, true, VIEWPORT, event), Route::Forward(event));
     }
 }
