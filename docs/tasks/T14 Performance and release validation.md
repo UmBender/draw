@@ -1,11 +1,11 @@
 ---
 id: T14
 title: Performance and release validation
-status: todo
+status: review
 wave: 10
 branch: task/T14-release
 depends_on: [T12, T13, T15, T16, T17, T18, T19, T20]
-adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-0007 Anti-tremor pipeline]]"]
+adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-0007 Anti-tremor pipeline]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T14-2 Low smoothing by default]]"]
 feature: "[[Contest cheat sheet]]"
 tutorial: "[[14 Profiling and shipping a release build]]"
 tags: [task]
@@ -20,17 +20,44 @@ user's hand, and write the contest cheat sheet.
 
 ## Spec
 
-- **AC-1** — Perf tests (`#[ignore]`, run with `cargo test --release -- --ignored perf`):
-  10 000 shapes → hit-test of one point < 1 ms; culling pass < 1 ms; 1 000-point
-  stroke finish (RDP) < 1 ms. *Tests:* `tests/perf.rs::*`.
-- **AC-2** — Release binary builds with the profile from ADR-0014; record size and
-  startup time in the log.
-- **AC-3** — Manual checklist on the target (Wayland, i5-8th gen): every
-  [[Keymap]] binding, every tool, zoom limits, 5 000-shape session stays smooth,
-  idle CPU ≈ 0 %. Results in the log.
-- **AC-4** — Smoothing levels tuned with the user; changed values go into an ADR
-  amending [[ADR-0007 Anti-tremor pipeline]].
-- **AC-5** — `features/Contest cheat sheet.md`: one-page printable shortcut list.
+Budgets, benchmark document and how to run: [[ADR-T14-1 Performance budgets]].
+Perf tests are `#[ignore]`d and run in release mode on the target:
+`cargo test --release --test perf -- --ignored --nocapture --test-threads=1`.
+The benchmark document has 10 000 shapes, an even mix of strokes, lines,
+arrows, filled + numbered rectangles and ellipses, and 8 × 8 grids with
+indices and filled cells (T16–T22 features included).
+
+- **AC-1** — Perf budgets on the target, median of 101 runs:
+  - hit-test of one point that misses everything (whole document scanned)
+    < 1 ms — `tests/perf.rs::perf_hit_test_miss_with_10k_shapes_is_under_1ms`;
+  - eraser outline scan at random points < 1 ms —
+    `perf_eraser_scan_with_10k_shapes_is_under_1ms`;
+  - culling pass (`cull_rect` + `is_visible` over every shape) < 1 ms —
+    `perf_culling_pass_with_10k_shapes_is_under_1ms`;
+  - 1 000-point stroke finish (High smoothing, RDP) < 1 ms —
+    `perf_stroke_finish_with_1000_points_is_under_1ms`; RDP on 1 000 raw
+    points < 1 ms — `perf_rdp_on_1000_raw_points_is_under_1ms`;
+  - one snapped box-drag move (grid + smart snap, targets rebuilt from the
+    document) < 4 ms — `perf_snap_drag_with_10k_shapes_is_under_4ms`.
+- **AC-2** — `cargo build --release` succeeds with the profile from
+  [[ADR-0014 Minimal dependencies and no unsafe]] (`lto = "fat"`,
+  `codegen-units = 1`, `panic = "abort"`, `strip = true`). Binary size and
+  startup time (launch → window shown) recorded in the *Log*.
+- **AC-3** — Manual checklist on the target (KDE Wayland, i5-8250U), results
+  in the *Log*: every [[Keymap]] binding; every tool (pen, line, arrow, rect,
+  ellipse, grid, select, eraser both modes, bucket on shapes and cells, pan);
+  helpers (smart snap incl. outline snap, grid snap, numbering, grid size
+  flyout, grid indices); zoom limits (0.05× and 20×) without artefacts; MSAA
+  edges look smooth; a 5 000-shape session stays smooth; idle CPU ≈ 0 %.
+- **AC-4** — Smoothing levels tried by the user on the target: Low feels
+  right, so Low becomes the default level; the per-level values are
+  unchanged ([[ADR-T14-2 Low smoothing by default]], amending
+  [[ADR-0007 Anti-tremor pipeline]]). *Tests:*
+  `core::smoothing::tests::level_default_is_low`,
+  `core::editor::tests::new_editor_defaults`,
+  `core::editor::tests::cycle_smoothing_advances`.
+- **AC-5** — `features/Contest cheat sheet.md`: one printable page listing
+  every binding of `core::keymap::BINDINGS`, grouped by purpose.
 
 ## Out of scope
 
@@ -39,11 +66,13 @@ New features.
 ## Files owned
 
 `tests/perf.rs`, `src/core/smoothing.rs` (constants only, if tuned),
+`src/core/editor.rs` (only the two tests that assume the default smoothing
+level — added 2026-10-02 for AC-4, approved by the user),
 `docs/features/Contest cheat sheet.md`, new ADRs `ADR-T14-*`.
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] behaviour (tuning) · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] behaviour (tuning) · [x] quality · [x] docs
 
 ## Learning path
 
@@ -54,3 +83,34 @@ Step 14 — requires steps 12–13 (validates the features of T15–T19 too).
 - 2026-10-01 — Re-planned to wave 10 so release validation covers the
   helper features (T15–T19); AC-1/AC-3 must include grids, labels, snapping
   and MSAA.
+- 2026-10-02 — **AC-1** (release, `--test-threads=1`, medians of 3 runs on
+  the i5-8250U): hit-test miss ≈ 0.35 ms, eraser scan ≈ 0.3 ms, culling
+  ≈ 0.23 ms, stroke finish 1 000 pts ≈ 13 µs, RDP 1 000 raw pts ≈ 65 µs —
+  all < 1 ms. Snapped drag move ≈ 0.95–1.1 ms, so it got a 4 ms budget
+  ([[ADR-T14-1 Performance budgets]]). Perf tests validate existing code, so
+  the `test` commit was green instead of red.
+- 2026-10-02 — **AC-2**: `cargo build --release` OK; binary 969 128 bytes
+  (≈ 946 KiB); launch → window shown 83–147 ms over 5 runs (polled with
+  `xprop`; macroquad runs through XWayland on KDE).
+- 2026-10-02 — **AC-3** (user, KDE Wayland): every binding, tool, helper,
+  zoom limit and MSAA check passes, with these findings:
+  - **5 000-shape session gets clunky** (fails "stays smooth"). CPU peaks at
+    ≈ 10 %, idle ≈ 0 %. Headless paths are far inside budget, so the cost is
+    the full-scene re-render per event — see
+    [[Rendering performance options]] (option 1, two layers). Needs its own
+    task; out of scope here.
+  - `[` / `]` work on the laptop keyboard; on the external (ABNT2) keyboard
+    with the system layout set to US, the key printed `]` sends `\`. Layout
+    mismatch, not an app bug.
+  - Select tool sometimes duplicates instead of moving: `Alt`+drag
+    duplicates by design, and a likely stuck `Alt` after `Alt+Tab`
+    (`shell::input_map::HeldMods` never sees the release). User chose not
+    to open a fix task now.
+- 2026-10-02 — **AC-4**: user prefers Low; Low is now the default, values
+  unchanged ([[ADR-T14-2 Low smoothing by default]]). Files owned extended
+  to the two `core::editor` tests that pin the default, approved by the
+  user.
+- 2026-10-02 — Quality step: `scripts/check.sh` green with no changes, so no
+  `chore` commit.
+- 2026-10-02 — Follow-up for integration: `features/Anti-tremor strokes.md`
+  still says "Medium (default)"; not owned by T14, left unchanged.

@@ -26,10 +26,10 @@ pub const MIN_ALPHA: f32 = 0.01;
 pub enum SmoothingLevel {
     /// No smoothing: raw input, only exact duplicates removed.
     Off,
-    /// Light smoothing, minimal lag.
-    Low,
-    /// Default balance between steadiness and lag.
+    /// Light smoothing, minimal lag; the default (ADR-T14-2).
     #[default]
+    Low,
+    /// Balance between steadiness and lag.
     Medium,
     /// Strong smoothing for a very shaky hand; most lag.
     High,
@@ -328,8 +328,8 @@ mod tests {
     // ---- AC-1: levels ----
 
     #[test]
-    fn level_default_is_medium() {
-        assert_eq!(SmoothingLevel::default(), SmoothingLevel::Medium);
+    fn level_default_is_low() {
+        assert_eq!(SmoothingLevel::default(), SmoothingLevel::Low);
     }
 
     #[test]
