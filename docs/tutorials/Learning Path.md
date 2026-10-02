@@ -32,6 +32,8 @@ flowchart LR
   s17 --> s20[20 Snapping to outlines]
   s10 --> s21[21 Cell fills & two-mode eraser]
   s18 --> s21
+  s18 --> s22[22 One toggle, two meanings]
+  s19 --> s22
 ```
 
 | Step | Tutorial | Task | Status |
@@ -58,3 +60,4 @@ flowchart LR
 | 19 | [[19 Auto-numbering and undoable counters]] | [[T19 Auto-numbering]] | done |
 | 20 | *Snapping to outlines* | [[T20 Outline snapping]] | planned |
 | 21 | [[21 Per-cell fills and a two-mode eraser]] | [[T21 Cell fill and fill eraser]] | done |
+| 22 | [[22 One toggle, two meanings]] | [[T22 Numbering drives grid indices]] | done |

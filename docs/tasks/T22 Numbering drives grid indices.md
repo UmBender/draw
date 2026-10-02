@@ -1,8 +1,8 @@
 ---
 id: T22
 title: Numbering drives grid indices
-status: review
-wave: 10
+status: done
+wave: 11
 branch: task/T22-numbered-grids
 depends_on: [T18, T19, T21]
 adrs: ["[[ADR-T18-3 Grid axis indices]]", "[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]"]

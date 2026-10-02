@@ -71,8 +71,9 @@ nothing: the toolbar's grid flyout (`src/shell/toolbar.rs`) has `-`/`+`
 buttons that send the *same* commands, and it draws the values straight from
 `Editor::helpers()`. Keys and mouse can never disagree.
 
-The axis indices (`I`) are one more such parameter, but they are
-*copied into the shape* at release (`Shape::Grid::axes`), because a grid
+The axis indices are one more such parameter — driven by the numbering
+switch `N` since [[22 One toggle, two meanings]] (it had its own `I` key at
+first) — but they are *copied into the shape* at release (`Shape::Grid::axes`), because a grid
 must keep its indices after the setting changes. Their orientation needs no
 extra state at all: the tool stores `a` = drag start and `b` = drag end,
 and `shape::grid_axis_labels` counts from `a` toward `b` with a *signed*
