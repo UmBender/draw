@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(ed.tool(), Tool::Pen);
         assert_eq!(ed.style().color, ColorId::INK);
         assert!(approx_eq(ed.style().width_px, DEFAULT_WIDTH_PX, 1e-6));
-        assert_eq!(ed.smoothing(), SmoothingLevel::Medium);
+        assert_eq!(ed.smoothing(), SmoothingLevel::Low);
         assert_eq!(*ed.camera(), Camera::default());
         assert!(ed.toolbar_visible());
         assert!(ed.document().is_empty());
@@ -1054,9 +1054,9 @@ mod tests {
         let mut ed = Editor::new();
 
         assert!(ed.apply(Command::CycleSmoothing));
-        assert_eq!(ed.smoothing(), SmoothingLevel::High);
+        assert_eq!(ed.smoothing(), SmoothingLevel::Medium);
         ed.apply(Command::CycleSmoothing);
-        assert_eq!(ed.smoothing(), SmoothingLevel::Off);
+        assert_eq!(ed.smoothing(), SmoothingLevel::High);
     }
 
     #[test]

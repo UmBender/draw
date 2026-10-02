@@ -328,8 +328,8 @@ mod tests {
     // ---- AC-1: levels ----
 
     #[test]
-    fn level_default_is_medium() {
-        assert_eq!(SmoothingLevel::default(), SmoothingLevel::Medium);
+    fn level_default_is_low() {
+        assert_eq!(SmoothingLevel::default(), SmoothingLevel::Low);
     }
 
     #[test]
