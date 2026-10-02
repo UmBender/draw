@@ -237,7 +237,8 @@ impl Editor {
     /// Executes `command`. Returns whether the view needs a redraw.
     pub fn apply(&mut self, command: Command) -> bool {
         if edits_document(command) {
-            self.track_document(|ed| ed.execute(command))
+            let appends = matches!(command, Command::Paste | Command::Duplicate);
+            self.track_document(appends, |ed| ed.execute(command))
         } else {
             self.execute(command)
         }
@@ -368,7 +369,7 @@ impl Editor {
     /// shapes from its old length on.
     #[must_use]
     pub fn document_base_revision(&self) -> u64 {
-        todo!()
+        self.doc_base_revision
     }
 
     /// The camera.
@@ -555,21 +556,28 @@ impl Editor {
         if phase == Phase::Move {
             self.send_pointer(tool, phase, pos, mods)
         } else {
-            self.track_document(|ed| ed.send_pointer(tool, phase, pos, mods))
+            let appends = phase == Phase::Up && creates_shapes(tool);
+            self.track_document(appends, |ed| ed.send_pointer(tool, phase, pos, mods))
         }
     }
 
     /// Runs `edit`, which may change the document through the history, and
     /// bumps the document revision if it did (ADR-T24-1). A commit on a full
     /// undo stack keeps both stack lengths, so there `edit`'s result decides.
-    fn track_document(&mut self, edit: impl FnOnce(&mut Self) -> bool) -> bool {
+    /// Unless `appends` (the edit only ever inserts shapes on top) and the
+    /// document grew, the base revision follows (ADR-T24-3).
+    fn track_document(&mut self, appends: bool, edit: impl FnOnce(&mut Self) -> bool) -> bool {
         let lengths = |history: &History| (history.undo_len(), history.redo_len());
         let before = lengths(&self.history);
+        let len = self.doc.len();
         let changed = edit(self);
         let after = lengths(&self.history);
         let full = after.0 >= HISTORY_LIMIT;
         if before != after || (changed && full) {
             self.doc_revision = self.doc_revision.wrapping_add(1);
+            if !(appends && self.doc.len() > len) {
+                self.doc_base_revision = self.doc_revision;
+            }
         }
         changed
     }
@@ -636,6 +644,14 @@ impl Editor {
         let doc = &self.doc;
         self.selection.retain(|id| doc.get(*id).is_some());
     }
+}
+
+/// Whether `tool` commits only new shapes on top, on pointer up.
+fn creates_shapes(tool: Tool) -> bool {
+    matches!(
+        tool,
+        Tool::Pen | Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse | Tool::Grid
+    )
 }
 
 /// Whether `command` can change the document (through the history).

@@ -2,9 +2,10 @@
 //!
 //! The loop follows ADR-T12-1: miniquad's blocking event loop sleeps until
 //! input arrives, raw events are replayed into an [`Collector`],
-//! routed past the toolbar into the [`Editor`], and the scene is re-rendered
-//! into a cached render target only when something changed. Every woken frame
-//! then blits that texture.
+//! routed past the toolbar into the [`Editor`]. The document is cached in a
+//! render target that is re-rendered (or appended to) only when its
+//! [`LayerKey`] changes (ADR-T24-1, ADR-T24-3); every woken frame blits it
+//! and draws the overlay on top (ADR-T24-2).
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::WHITE;
@@ -21,6 +22,7 @@ use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
 };
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -138,7 +140,22 @@ pub enum Redraw {
 /// input changed editor state (`dirty`).
 #[must_use]
 pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty: bool) -> Redraw {
-    todo!()
+    let Some(cached) = cached else {
+        return Redraw::Full;
+    };
+    if cached == next {
+        return if dirty { Redraw::Overlay } else { Redraw::None };
+    }
+    let same_view = cached.camera == next.camera
+        && cached.size == next.size
+        && cached.hidden == next.hidden
+        && cached.underlay == next.underlay;
+    let appended = next.revision > cached.revision && next.len > cached.len;
+    if same_view && appended && base <= cached.revision {
+        Redraw::Append { from: cached.len }
+    } else {
+        Redraw::Full
+    }
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -244,14 +261,13 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     }
 }
 
-/// The last rendered scene in two framebuffer-sized, multisampled render
-/// targets that macroquad resolves into plain textures (ADR-T15-1): the
-/// document layer and the frame drawn from it plus the overlay (ADR-T24-1).
+/// The document layer: background, underlay and document shapes in a
+/// framebuffer-sized, multisampled render target that macroquad resolves
+/// into a plain texture (ADR-T15-1, ADR-T24-1). The overlay is drawn on the
+/// window every frame (ADR-T24-2).
 struct CachedFrame {
-    /// Background, underlay and document shapes.
+    /// The document layer.
     document: Option<RenderTarget>,
-    /// The document layer plus the overlay; blitted every frame.
-    frame: Option<RenderTarget>,
     /// What `document` shows.
     key: Option<LayerKey>,
     /// MSAA samples per pixel for new targets.
@@ -266,15 +282,15 @@ impl CachedFrame {
     fn new(samples: i32, timed: bool) -> Self {
         Self {
             document: None,
-            frame: None,
             key: None,
             samples,
             timed,
         }
     }
 
-    /// Re-renders what changed ([`plan_redraw`]), then blits the frame to
-    /// the window. `dirty` says whether input changed editor state.
+    /// Updates the document layer as [`plan_redraw`] says, then blits it to
+    /// the window and draws the overlay on top. `dirty` says whether input
+    /// changed editor state.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
@@ -289,32 +305,31 @@ impl CachedFrame {
         let base = editor.document_base_revision();
         let redraw = plan_redraw(self.key.as_ref(), &key, base, dirty);
         let started = self.timed.then(Instant::now);
-        if redraw == Redraw::Full {
+        let from = match redraw {
+            Redraw::Full => Some(0),
+            Redraw::Append { from } => Some(from),
+            Redraw::Overlay | Redraw::None => None,
+        };
+        if let Some(from) = from {
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
                 self.document = Some(self.new_target(size));
-                self.frame = Some(self.new_target(size));
             }
             if let Some(document) = &self.document {
                 render_into(document, viewport, || {
-                    draw_document(editor, &overlay, viewport);
+                    draw_document(editor, &overlay, viewport, from);
                 });
             }
             self.key = Some(key);
         }
-        let (Some(document), Some(frame)) = (&self.document, &self.frame) else {
+        let Some(document) = &self.document else {
             return;
         };
-        if redraw != Redraw::None {
-            render_into(frame, viewport, || {
-                blit(&document.texture, viewport);
-                draw_overlay(editor, &overlay, viewport);
-            });
-        }
+        blit(&document.texture, viewport);
+        draw_overlay(editor, &overlay, viewport);
         if let Some(started) = started.filter(|_| redraw != Redraw::None) {
             let shapes = editor.document().len();
             eprintln!("{}", frame_log_line(redraw, started.elapsed(), shapes));
         }
-        blit(&frame.texture, viewport);
     }
 
     /// A render target of `size` physical pixels with this cache's sample
@@ -365,15 +380,20 @@ fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
 }
 
 /// Draws the document layer: background, underlay and every shape the
-/// gesture in progress does not hide.
-fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
-    clear_background(to_mq_color(THEME.bg));
+/// gesture in progress does not hide. With `from > 0` only the shapes from
+/// that index on are drawn over what the layer already holds (ADR-T24-3).
+fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize) {
+    if from == 0 {
+        clear_background(to_mq_color(THEME.bg));
+        render::draw_underlay(editor, viewport);
+    }
+    let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
     let shapes = editor
         .document()
         .shapes()
-        .filter(|(id, _)| !overlay.hidden.contains(id))
+        .skip(from)
+        .filter(|(id, _)| !hidden.contains(id))
         .map(|(_, shape)| shape);
-    render::draw_underlay(editor, viewport);
     render::draw_shapes(shapes, editor.camera(), viewport);
 }
 

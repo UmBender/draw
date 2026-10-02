@@ -3,15 +3,15 @@
 //! Everything is drawn in **screen space** with macroquad's default camera:
 //! world points go through [`Camera::world_to_screen`] and widths through
 //! [`screen_width`] (ADR-T07-1). Off-screen shapes are culled by their
-//! bounding box (ADR-0006). Discs and ellipses are tessellated here with
-//! `draw_triangle`, which does not allocate, instead of macroquad's
-//! `draw_circle`/`draw_ellipse`, which do. Grids and labels follow
+//! bounding box (ADR-0006). Shapes are tessellated here into a [`Batch`] and
+//! submitted with one `draw_mesh` per few thousand indices instead of one
+//! `draw_*` call per triangle (ADR-T24-3). Grids and labels follow
 //! ADR-T16-1.
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 use macroquad::models::{Mesh, Vertex, draw_mesh};
-use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
+use macroquad::shapes::draw_line;
 use macroquad::text::{TextParams, draw_text_ex, measure_text};
 
 use crate::core::camera::Camera;
@@ -60,30 +60,63 @@ pub struct Batch<S: MeshSink = GlSink> {
 impl<S: MeshSink> Batch<S> {
     /// An empty batch sending chunks to `sink`.
     pub fn new(sink: S) -> Self {
-        todo!()
+        Self {
+            mesh: Mesh {
+                vertices: Vec::with_capacity(BATCH_MAX_VERTICES),
+                indices: Vec::with_capacity(BATCH_MAX_INDICES),
+                texture: None,
+            },
+            sink,
+        }
     }
 
     /// Adds triangle `a b c`.
     pub fn triangle(&mut self, a: Vec2, b: Vec2, c: Vec2, color: Color) {
-        todo!()
+        let base = self.reserve(3, 3);
+        for p in [a, b, c] {
+            self.vertex(p, color);
+        }
+        self.mesh.indices.extend([base, base + 1, base + 2]);
     }
 
     /// Adds an axis-aligned rectangle as one quad.
     pub fn rect(&mut self, rect: Aabb, color: Color) {
-        todo!()
+        let (min, max) = (rect.min, rect.max);
+        self.quad(
+            [min, Vec2::new(max.x, min.y), max, Vec2::new(min.x, max.y)],
+            color,
+        );
     }
 
     /// Adds segment `a → b` as a quad `width` pixels wide with flat ends,
     /// like macroquad's `draw_line`. A zero-length segment adds nothing.
     pub fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Color) {
-        todo!()
+        let d = b - a;
+        let len = d.length();
+        // Also rejects NaN.
+        if !(len > 0.0) {
+            return;
+        }
+        let n = Vec2::new(-d.y, d.x) * (width * 0.5 / len);
+        self.quad([a + n, b + n, b - n, a - n], color);
     }
 
     /// Adds a triangle fan around `center`: one triangle per consecutive
     /// pair of `rim` points (pass the first point again at the end to close
     /// the loop).
     pub fn fan(&mut self, center: Vec2, rim: impl ExactSizeIterator<Item = Vec2>, color: Color) {
-        todo!()
+        let points = rim.len();
+        if points < 2 {
+            return;
+        }
+        let base = self.reserve(1 + points, 3 * (points - 1));
+        self.vertex(center, color);
+        for p in rim {
+            self.vertex(p, color);
+        }
+        for i in 1..points as u16 {
+            self.mesh.indices.extend([base, base + i, base + i + 1]);
+        }
     }
 
     /// Adds a strip of quads between consecutive `(outer, inner)` pairs.
@@ -92,17 +125,72 @@ impl<S: MeshSink> Batch<S> {
         pairs: impl ExactSizeIterator<Item = (Vec2, Vec2)>,
         color: Color,
     ) {
-        todo!()
+        let count = pairs.len();
+        if count < 2 {
+            return;
+        }
+        let base = self.reserve(2 * count, 6 * (count - 1));
+        for (outer, inner) in pairs {
+            self.vertex(outer, color);
+            self.vertex(inner, color);
+        }
+        for k in 0..(count - 1) as u16 {
+            let (o0, i0, o1, i1) = (
+                base + 2 * k,
+                base + 2 * k + 1,
+                base + 2 * k + 2,
+                base + 2 * k + 3,
+            );
+            self.mesh.indices.extend([o0, o1, i0, i0, o1, i1]);
+        }
     }
 
     /// Sends the current chunk to the sink, if it holds anything.
     pub fn flush(&mut self) {
-        todo!()
+        if !self.mesh.indices.is_empty() {
+            self.sink.draw(&self.mesh);
+        }
+        self.mesh.vertices.clear();
+        self.mesh.indices.clear();
     }
 
     /// Flushes and returns the sink.
-    pub fn finish(self) -> S {
-        todo!()
+    pub fn finish(mut self) -> S {
+        self.flush();
+        self.sink
+    }
+
+    /// Adds a quad with `corners` in order around it.
+    fn quad(&mut self, corners: [Vec2; 4], color: Color) {
+        let base = self.reserve(4, 6);
+        for p in corners {
+            self.vertex(p, color);
+        }
+        self.mesh
+            .indices
+            .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// Makes room for `vertices` more vertices and `indices` more indices,
+    /// flushing first if they would not fit. Returns the index the first new
+    /// vertex gets. A single primitive never exceeds a chunk: the largest is
+    /// an ellipse ring of [`MAX_SEGMENTS`] segments.
+    fn reserve(&mut self, vertices: usize, indices: usize) -> u16 {
+        let mesh = &self.mesh;
+        if mesh.vertices.len() + vertices > BATCH_MAX_VERTICES
+            || mesh.indices.len() + indices > BATCH_MAX_INDICES
+        {
+            self.flush();
+        }
+        // At most BATCH_MAX_VERTICES, which fits in u16.
+        self.mesh.vertices.len() as u16
+    }
+
+    /// Appends one untextured vertex at screen point `p`.
+    fn vertex(&mut self, p: Vec2, color: Color) {
+        self.mesh
+            .vertices
+            .push(Vertex::new(p.x, p.y, 0.0, 0.0, 0.0, color));
     }
 }
 
@@ -362,11 +450,13 @@ pub fn draw_underlay(editor: &Editor, viewport: Vec2) {
     };
     let mut color = to_mq_color(THEME.border);
     color.a *= DOT_GRID_ALPHA;
-    let half = DOT_SIZE_PX / 2.0;
+    let half = Vec2::new(DOT_SIZE_PX / 2.0, DOT_SIZE_PX / 2.0);
+    let mut batch = Batch::new(GlSink);
     for dot in dot_grid_points(camera.visible_world_rect(viewport), spacing) {
         let p = camera.world_to_screen(dot);
-        draw_rectangle(p.x - half, p.y - half, DOT_SIZE_PX, DOT_SIZE_PX, color);
+        batch.rect(Aabb::from_corners(p - half, p + half), color);
     }
+    batch.finish();
 }
 
 /// Draws alignment guides, world-space segments, on top of the overlay,
@@ -387,27 +477,34 @@ pub fn draw_shapes<'a>(
     viewport: Vec2,
 ) {
     let view = cull_rect(camera, viewport);
+    let mut batch = Batch::new(GlSink);
     for shape in shapes {
         if is_visible(shape.bounds(), view) {
-            draw_shape(shape, camera);
+            draw_shape(&mut batch, shape, camera);
         }
     }
+    batch.finish();
 }
 
 /// Draws the shape being created, without culling.
 pub fn draw_preview(shape: &Shape, camera: &Camera) {
-    draw_shape(shape, camera);
+    let mut batch = Batch::new(GlSink);
+    draw_shape(&mut batch, shape, camera);
+    batch.finish();
 }
 
 /// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
 /// wide in the theme accent colour.
 pub fn draw_selection(bounds: Aabb, camera: &Camera) {
     let rect = selection_rect(bounds, camera);
-    draw_rect_outline(rect, SELECTION_WIDTH_PX, to_mq_color(THEME.accent));
+    let mut batch = Batch::new(GlSink);
+    draw_rect_outline(&mut batch, rect, SELECTION_WIDTH_PX, to_mq_color(THEME.accent));
+    batch.finish();
 }
 
-/// Draws one shape; non-finite shapes are skipped.
-fn draw_shape(shape: &Shape, camera: &Camera) {
+/// Adds one shape to `batch` (its labels are drawn right away, after a
+/// flush); non-finite shapes are skipped.
+fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
     if !shape.is_finite() {
         return;
     }
@@ -416,29 +513,25 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
     let color = color_of(style.color);
     let to_screen = |p: Vec2| camera.world_to_screen(p);
     match shape {
-        Shape::Stroke { points, .. } => draw_polyline(points, camera, width, color),
-        Shape::Line { a, b, .. } => draw_segment(to_screen(*a), to_screen(*b), width, color),
+        Shape::Stroke { points, .. } => draw_polyline(batch, points, camera, width, color),
+        Shape::Line { a, b, .. } => {
+            draw_segment(batch, to_screen(*a), to_screen(*b), width, color);
+        }
         Shape::Arrow { a, b, style } => {
             let [tip, left, right] = arrow_head(*a, *b, style.width).map(to_screen);
             let base = left.lerp(right, 0.5);
-            draw_segment(to_screen(*a), base, width, color);
-            draw_triangle(to_mq(tip), to_mq(left), to_mq(right), color);
+            draw_segment(batch, to_screen(*a), base, width, color);
+            batch.triangle(tip, left, right, color);
         }
         Shape::Rect {
             a, b, fill, label, ..
         } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             if let Some(fill) = fill {
-                draw_rectangle(
-                    rect.min.x,
-                    rect.min.y,
-                    rect.width(),
-                    rect.height(),
-                    color_of(*fill),
-                );
+                batch.rect(rect, color_of(*fill));
             }
-            draw_rect_outline(rect, width, color);
-            draw_label(*label, rect, false, label_color(*fill, color));
+            draw_rect_outline(batch, rect, width, color);
+            draw_label(batch, *label, rect, false, label_color(*fill, color));
         }
         Shape::Ellipse {
             a, b, fill, label, ..
@@ -447,10 +540,10 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             let center = rect.center();
             let radii = Vec2::new(rect.width() * 0.5, rect.height() * 0.5);
             if let Some(fill) = fill {
-                draw_ellipse_fill(center, radii, color_of(*fill));
+                draw_ellipse_fill(batch, center, radii, color_of(*fill));
             }
-            draw_ellipse_ring(center, radii, width, color);
-            draw_label(*label, rect, true, label_color(*fill, color));
+            draw_ellipse_ring(batch, center, radii, width, color);
+            draw_label(batch, *label, rect, true, label_color(*fill, color));
         }
         Shape::Grid {
             a,
@@ -467,19 +560,13 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             // Cell fills first, so the lines stay on top (ADR-T21-1).
             for fill in fills {
                 let cell = grid_cell_rect(a, b, *cols, *rows, fill.col, fill.row);
-                draw_rectangle(
-                    cell.min.x,
-                    cell.min.y,
-                    cell.width(),
-                    cell.height(),
-                    color_of(fill.color),
-                );
+                batch.rect(cell, color_of(fill.color));
             }
             for [start, end] in grid_lines(a, b, *cols, *rows) {
-                draw_band(start, end, width, color);
+                draw_band(batch, start, end, width, color);
             }
             if *axes {
-                draw_axis_labels(a, b, *cols, *rows, color);
+                draw_axis_labels(batch, a, b, *cols, *rows, color);
             }
         }
     }
@@ -496,8 +583,9 @@ fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
 }
 
 /// Draws `label` centred in the screen rectangle `rect` of a rectangle or
-/// (`ellipse`) an ellipse, if it is big enough on screen.
-fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
+/// (`ellipse`) an ellipse, if it is big enough on screen. Flushes `batch`
+/// first so the text lands on top of the shape.
+fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
     let Some(label) = label else {
         return;
     };
@@ -506,12 +594,14 @@ fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
         return;
     };
     let (font_size, font_scale) = label_raster(size);
+    batch.flush();
     draw_text_centered(&text, rect, font_size, font_scale, color);
 }
 
 /// Draws the axis indices of a grid with screen corners `a` (drag start) and
-/// `b`, all at one size, if the cells are big enough on screen.
-fn draw_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
+/// `b`, all at one size, if the cells are big enough on screen. Flushes
+/// `batch` first so the text lands on top of the grid.
+fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
     let Some(first) = grid_axis_labels(a, b, cols, rows).next() else {
         return;
     };
@@ -520,6 +610,7 @@ fn draw_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
         return;
     };
     let (font_size, font_scale) = label_raster(size);
+    batch.flush();
     for label in grid_axis_labels(a, b, cols, rows) {
         draw_text_centered(
             &label.index.to_string(),
@@ -551,9 +642,8 @@ fn draw_text_centered(text: &str, rect: Aabb, font_size: u16, font_scale: f32, c
 /// Draws an axis-aligned screen segment as a band `width` pixels wide that
 /// overhangs both ends by half the width, so crossing bands meet with square
 /// corners.
-fn draw_band(start: Vec2, end: Vec2, width: f32, color: Color) {
-    let band = Aabb::from_corners(start, end).expand(width * 0.5);
-    draw_rectangle(band.min.x, band.min.y, band.width(), band.height(), color);
+fn draw_band(batch: &mut Batch, start: Vec2, end: Vec2, width: f32, color: Color) {
+    batch.rect(Aabb::from_corners(start, end).expand(width * 0.5), color);
 }
 
 /// The macroquad colour of a palette entry.
@@ -563,10 +653,10 @@ fn color_of(id: ColorId) -> Color {
 
 /// Draws a polyline of world `points`: segments, plus round joints and caps
 /// when thick. A single point is a dot; an empty polyline draws nothing.
-fn draw_polyline(points: &[Vec2], camera: &Camera, width: f32, color: Color) {
+fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32, color: Color) {
     let radius = width * 0.5;
     if let [only] = points {
-        draw_disc(camera.world_to_screen(*only), radius, color);
+        draw_disc(batch, camera.world_to_screen(*only), radius, color);
         return;
     }
     let joints = stroke_needs_joints(width);
@@ -575,28 +665,28 @@ fn draw_polyline(points: &[Vec2], camera: &Camera, width: f32, color: Color) {
             camera.world_to_screen(pair[0]),
             camera.world_to_screen(pair[1]),
         );
-        draw_line(a.x, a.y, b.x, b.y, width, color);
+        batch.line(a, b, width, color);
     }
     if joints {
         for p in points {
-            draw_disc(camera.world_to_screen(*p), radius, color);
+            draw_disc(batch, camera.world_to_screen(*p), radius, color);
         }
     }
 }
 
 /// Draws a screen-space segment with round caps when thick.
-fn draw_segment(a: Vec2, b: Vec2, width: f32, color: Color) {
-    draw_line(a.x, a.y, b.x, b.y, width, color);
+fn draw_segment(batch: &mut Batch, a: Vec2, b: Vec2, width: f32, color: Color) {
+    batch.line(a, b, width, color);
     if stroke_needs_joints(width) {
         let radius = width * 0.5;
-        draw_disc(a, radius, color);
-        draw_disc(b, radius, color);
+        draw_disc(batch, a, radius, color);
+        draw_disc(batch, b, radius, color);
     }
 }
 
 /// Draws the outline of a screen rectangle as four opaque bands of `width`
 /// pixels centred on its edges (square corners).
-fn draw_rect_outline(rect: Aabb, width: f32, color: Color) {
+fn draw_rect_outline(batch: &mut Batch, rect: Aabb, width: f32, color: Color) {
     let h = width * 0.5;
     let (x0, y0, x1, y1) = (
         rect.min.x - h,
@@ -604,17 +694,19 @@ fn draw_rect_outline(rect: Aabb, width: f32, color: Color) {
         rect.max.x + h,
         rect.max.y + h,
     );
-    let (w, ht) = (x1 - x0, y1 - y0);
-    draw_rectangle(x0, y0, w, width, color);
-    draw_rectangle(x0, y1 - width, w, width, color);
-    draw_rectangle(x0, y0, width, ht, color);
-    draw_rectangle(x1 - width, y0, width, ht, color);
+    let band = |ax: f32, ay: f32, bx: f32, by: f32| {
+        Aabb::from_corners(Vec2::new(ax, ay), Vec2::new(bx, by))
+    };
+    batch.rect(band(x0, y0, x1, y0 + width), color);
+    batch.rect(band(x0, y1 - width, x1, y1), color);
+    batch.rect(band(x0, y0, x0 + width, y1), color);
+    batch.rect(band(x1 - width, y0, x1, y1), color);
 }
 
 /// Unit vectors around a circle in `n` equal steps, starting at `(1, 0)`,
 /// generated by repeated rotation (no trig per vertex). Yields `n + 1`
 /// items, the last equal to the first, so consecutive pairs close the loop.
-fn unit_circle(n: u16) -> impl Iterator<Item = Vec2> {
+fn unit_circle(n: u16) -> impl ExactSizeIterator<Item = Vec2> {
     let step = std::f32::consts::TAU / f32::from(n);
     let (sin, cos) = step.sin_cos();
     let mut current = Vec2::new(1.0, 0.0);
@@ -628,61 +720,32 @@ fn unit_circle(n: u16) -> impl Iterator<Item = Vec2> {
     })
 }
 
-/// Calls `f` for each consecutive pair of unit-circle points.
-fn for_each_arc(n: u16, mut f: impl FnMut(Vec2, Vec2)) {
-    let mut points = unit_circle(n);
-    let Some(mut prev) = points.next() else {
-        return;
-    };
-    for next in points {
-        f(prev, next);
-        prev = next;
-    }
-}
-
 /// Scales a unit vector by per-axis radii.
 fn scale(u: Vec2, radii: Vec2) -> Vec2 {
     Vec2::new(u.x * radii.x, u.y * radii.y)
 }
 
 /// Draws a filled disc of `radius` pixels centred at screen `center`.
-fn draw_disc(center: Vec2, radius: f32, color: Color) {
-    draw_ellipse_fill(center, Vec2::new(radius, radius), color);
+fn draw_disc(batch: &mut Batch, center: Vec2, radius: f32, color: Color) {
+    draw_ellipse_fill(batch, center, Vec2::new(radius, radius), color);
 }
 
-/// Draws a filled axis-aligned ellipse (screen space) as a triangle fan.
-fn draw_ellipse_fill(center: Vec2, radii: Vec2, color: Color) {
+/// Adds a filled axis-aligned ellipse (screen space) as a triangle fan.
+fn draw_ellipse_fill(batch: &mut Batch, center: Vec2, radii: Vec2, color: Color) {
     let n = circle_segments(radii.x.max(radii.y));
-    let c = to_mq(center);
-    for_each_arc(n, |u0, u1| {
-        draw_triangle(
-            c,
-            to_mq(center + scale(u0, radii)),
-            to_mq(center + scale(u1, radii)),
-            color,
-        );
-    });
+    let rim = unit_circle(n).map(|u| center + scale(u, radii));
+    batch.fan(center, rim, color);
 }
 
-/// Draws an ellipse outline `width` pixels wide, centred on the ellipse
+/// Adds an ellipse outline `width` pixels wide, centred on the ellipse
 /// (screen space), as a ring of quads between the inner and outer ellipses.
-fn draw_ellipse_ring(center: Vec2, radii: Vec2, width: f32, color: Color) {
+fn draw_ellipse_ring(batch: &mut Batch, center: Vec2, radii: Vec2, width: f32, color: Color) {
     let h = width * 0.5;
     let outer = Vec2::new(radii.x + h, radii.y + h);
     let inner = Vec2::new((radii.x - h).max(0.0), (radii.y - h).max(0.0));
     let n = circle_segments(outer.x.max(outer.y));
-    for_each_arc(n, |u0, u1| {
-        let (o0, o1) = (
-            to_mq(center + scale(u0, outer)),
-            to_mq(center + scale(u1, outer)),
-        );
-        let (i0, i1) = (
-            to_mq(center + scale(u0, inner)),
-            to_mq(center + scale(u1, inner)),
-        );
-        draw_triangle(o0, o1, i0, color);
-        draw_triangle(i0, o1, i1, color);
-    });
+    let pairs = unit_circle(n).map(|u| (center + scale(u, outer), center + scale(u, inner)));
+    batch.strip(pairs, color);
 }
 
 #[cfg(test)]
