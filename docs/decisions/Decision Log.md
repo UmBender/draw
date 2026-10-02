@@ -41,3 +41,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 30 | [[ADR-T21-1 Cell fills and a two-mode eraser]] | accepted | decision | 0004, T08-1, T16-1, T18-3 | amended by T21-2 |
 | 31 | [[ADR-T21-2 Eraser mode chosen on press]] | accepted | decision | T21-1 | amends T21-1 |
 | 32 | [[ADR-T22-1 Numbering toggle drives grid indices]] | accepted | decision | T18-3, T19-1, T16-2 | amends T18-3, T18-2 |
+| 33 | [[ADR-0016 Arrow head proportional to width]] | accepted | decision | 0004, 0013 | — |
