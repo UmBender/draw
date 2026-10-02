@@ -47,6 +47,8 @@ flowchart TD
   T18 --> T14
   T19 --> T14
   T20 --> T14
+  T18 --> T21[T21 Cell fill + fill eraser]
+  T21 --> T14
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -63,7 +65,8 @@ flowchart TD
 | 7 | [[T15 Anti-aliasing]] · [[T16 Shape model v2 and helper skeleton]] |
 | 8 | [[T17 Snapping]] · [[T18 Grid tool]] |
 | 9 | [[T19 Auto-numbering]] · [[T20 Outline snapping]] |
-| 10 | [[T14 Performance and release validation]] |
+| 10 | [[T21 Cell fill and fill eraser]] |
+| 11 | [[T14 Performance and release validation]] |
 
 ## Status
 
@@ -89,4 +92,5 @@ flowchart TD
 | [[T18 Grid tool]] | done | T16 | `task/T18-grid-tool` |
 | [[T19 Auto-numbering]] | done | T16, T17 | `task/T19-numbering` |
 | [[T20 Outline snapping]] | ready | T17 | `task/T20-outline-snapping` |
-| [[T14 Performance and release validation]] | todo | T12, T13, T15–T20 | `task/T14-release` |
+| [[T21 Cell fill and fill eraser]] | done | T18 | `task/T21-cell-fill` |
+| [[T14 Performance and release validation]] | todo | T12, T13, T15–T21 | `task/T14-release` |

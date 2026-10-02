@@ -22,3 +22,4 @@ One note per user-visible feature, created by the task that implements it
 | [[Snapping]] | [[T17 Snapping]] | [[17 Snapping and alignment guides]] | done |
 | [[Grid tool]] | [[T16 Shape model v2 and helper skeleton]], [[T18 Grid tool]] | [[18 A grid tool with live parameters]] | done |
 | [[Numbered nodes]] | [[T16 Shape model v2 and helper skeleton]], [[T19 Auto-numbering]] | [[19 Auto-numbering and undoable counters]] | done |
+| [[Cell fill]] | [[T21 Cell fill and fill eraser]] | [[21 Per-cell fills and a two-mode eraser]] | done |

@@ -30,6 +30,8 @@ flowchart LR
   s16 --> s18[18 Grid tool]
   s16 --> s19[19 Undoable counters]
   s17 --> s20[20 Snapping to outlines]
+  s10 --> s21[21 Cell fills & two-mode eraser]
+  s18 --> s21
 ```
 
 | Step | Tutorial | Task | Status |
@@ -55,3 +57,4 @@ flowchart LR
 | 18 | [[18 A grid tool with live parameters]] | [[T18 Grid tool]] | done |
 | 19 | [[19 Auto-numbering and undoable counters]] | [[T19 Auto-numbering]] | done |
 | 20 | *Snapping to outlines* | [[T20 Outline snapping]] | planned |
+| 21 | [[21 Per-cell fills and a two-mode eraser]] | [[T21 Cell fill and fill eraser]] | done |

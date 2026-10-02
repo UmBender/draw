@@ -1,7 +1,7 @@
 ---
 id: T21
 title: Cell fill and fill eraser
-status: review
+status: done
 wave: 10
 branch: task/T21-cell-fill
 depends_on: [T18]
