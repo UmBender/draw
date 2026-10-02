@@ -1,11 +1,11 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: ready
+status: in-progress
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
-adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]"]
+adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]"]
 feature:
 tutorial: "[[24 Layered redraws and measuring a frame]]"
 tags: [task]
@@ -29,37 +29,63 @@ their trade-offs: [[Rendering performance options]].
 
 ## Spec
 
-Draft — refined in the spec step (each AC names its tests, ADRs added).
+How the shell decides what to redraw:
+[[ADR-T24-1 Document layer keyed by a document revision]]. Unit tests live in
+`#[cfg(test)] mod tests` of the named module.
 
-- **AC-1 — Measure first.** A frame timer in the shell (debug-only or behind
-  an env var, no new dependency) logs re-render time and shape count. Record
-  on the target, before any change: drawing a circle, dragging a selection,
-  erasing, panning and zooming with ≈ 5 000 shapes, plus where `perf record`
-  puts the time (tessellation in `shell::render`, `QuadGl` batching/upload,
-  or driver fill/MSAA resolve). Results in the *Log*; they decide which of
-  AC-2–AC-4 are needed.
-- **AC-2 — Two layers** (option 1). The committed document is rendered into
-  its own cached target; a change that only touches the overlay (preview,
-  marquee, guides, selection box, toolbar hover) blits that layer and draws
-  the overlay on top. The document layer is re-rendered only when the
-  document, the hidden set (`Overlay::hidden`), the camera or the viewport
-  changes. Core reports *what* changed — preferably additively (e.g.
-  revision counters for document and view on `Editor`) so `handle`/`apply`
-  keep their `bool` and existing callers do not change. *Tests:* core unit
-  tests that each command/gesture bumps exactly the right revision; shell
-  logic that picks the layer to re-render is a pure function with unit
-  tests.
-- **AC-3 — Cheaper full re-renders**, if AC-1 shows pan/zoom are still slow
-  (they always re-render the document layer): cheaper tessellation (option
-  4: lower ellipse segment counts, one mesh per shape via `draw_mesh`)
-  and/or capping re-renders at the display refresh (option 6). Each one
-  kept only if the AC-1 timer shows a gain.
+- **AC-1 — Measure first.** `DRAW_FRAME_TIMES` (env var, no new dependency)
+  turns on a frame timer in `shell::app`: every re-render prints one line to
+  stderr with the layers re-rendered, the CPU time spent and the shape count.
+  Off by default; `1`, `on`, `true`, `yes` (any case, trimmed) turn it on.
+  The timer measures CPU time to submit the frame (tessellation + batching +
+  GL calls); GPU fill and MSAA resolve run asynchronously and show up in
+  `perf` / CPU usage, not in the line.
+  *Tests* (`shell::app`): `frame_timing_enabled_unset_is_off`,
+  `frame_timing_enabled_on_values_enable`,
+  `frame_timing_enabled_other_values_disable`,
+  `frame_log_line_names_layers_time_and_shapes`.
+  *Owner on the target:* drawing a circle, dragging a selection, erasing,
+  panning and zooming with ≈ 5 000 shapes, plus `perf record`; results in the
+  *Log*. Pan and zoom always re-render the document layer, so their numbers
+  are also the per-event cost before this task.
+- **AC-2 — Two layers.** The committed document (underlay dot grid + visible,
+  non-hidden shapes) is rendered into its own cached MSAA target; the frame
+  target blits it and draws the overlay (preview shapes, guides, selection,
+  marquee, toolbar) on top. The document layer is re-rendered only when its
+  key changes: document revision, camera, framebuffer size, hidden ids or
+  grid snap (underlay).
+  - Core: `Editor::document_revision() -> u64` grows whenever the document
+    may have changed and stays put otherwise; `handle`/`apply` keep their
+    `bool`. *Tests* (`core::editor`):
+    `document_revision_new_editor_is_zero`,
+    `document_revision_pen_drag_moves_keep_revision`,
+    `document_revision_pen_commit_bumps_revision`,
+    `document_revision_select_click_and_marquee_keep_revision`,
+    `document_revision_select_all_and_copy_keep_revision`,
+    `document_revision_move_drag_bumps_only_on_release`,
+    `document_revision_delete_paste_duplicate_bump_revision`,
+    `document_revision_undo_redo_clear_bump_revision`,
+    `document_revision_noop_undo_keeps_revision`,
+    `document_revision_eraser_bumps_only_on_release`,
+    `document_revision_bucket_fill_bumps_revision`,
+    `document_revision_view_and_settings_keep_revision`,
+    `document_revision_commit_with_full_history_bumps_revision`.
+  - Shell: `shell::app::plan_redraw(cached, next, dirty) -> Redraw` is a pure
+    function over `LayerKey`s. *Tests* (`shell::app`):
+    `plan_redraw_without_cache_is_full`,
+    `plan_redraw_same_key_clean_is_none`,
+    `plan_redraw_same_key_dirty_is_overlay`,
+    `plan_redraw_changed_key_is_full` (each key field in turn, dirty or not).
+- **AC-3 — Cheaper full re-renders.** Conditional on AC-1: only if the
+  owner's numbers show pan/zoom still slow. Each option kept only if the
+  timer shows a gain. Decided in the *Log*.
 - **AC-4 — Budget.** With the AC-1 scenario, an overlay-only change re-renders
   in < 2 ms and a full re-render stays < 16 ms on the target; numbers in the
-  *Log*, budget in an ADR amending [[ADR-T14-1 Performance budgets]].
+  *Log*, budget in an ADR amending [[ADR-T14-1 Performance budgets]] once
+  measured.
 - **AC-5 — No regressions.** Output looks the same (MSAA, labels, grids,
-  fills, selection); manual check on the target listed in the *Log*.
-  `scripts/check.sh` and the T14 perf tests stay green.
+  fills, selection, toolbar on top); manual check on the target listed in the
+  *Log*. `scripts/check.sh` and the T14 perf tests stay green.
 
 ## Out of scope
 
@@ -84,7 +110,7 @@ Draft — refined in the spec step (each AC names its tests, ADRs added).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T24): specify layered redraw acceptance criteria`
+- [x] spec — `docs(T24): specify layered redraw acceptance criteria`
 - [ ] tests — `test(T24): add failing tests for change reporting`
 - [ ] models — `feat(T24): add change revisions and layer types`
 - [ ] behaviour — `feat(T24): render the document and overlay layers separately`
@@ -99,3 +125,4 @@ step 14 (profiling).
 ## Log
 
 - 2026-10-02 — Created from the T14 AC-3 finding; not started.
+- 2026-10-02 — Spec refined; ADR-T24-1 added.
