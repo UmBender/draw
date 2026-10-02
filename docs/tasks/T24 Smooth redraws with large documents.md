@@ -1,11 +1,11 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: review
+status: in-progress
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
-adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]"]
+adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-2 Overlay drawn straight to the window]]", "[[ADR-T24-3 Batched meshes and append-only document updates]]"]
 feature:
 tutorial: "[[24 Layered redraws and measuring a frame]]"
 tags: [task]
@@ -76,9 +76,49 @@ How the shell decides what to redraw:
     `plan_redraw_same_key_clean_is_none`,
     `plan_redraw_same_key_dirty_is_overlay`,
     `plan_redraw_changed_key_is_full` (each key field in turn, dirty or not).
-- **AC-3 — Cheaper full re-renders.** Conditional on AC-1: only if the
-  owner's numbers show pan/zoom still slow. Each option kept only if the
-  timer shows a gain. Decided in the *Log*.
+- **AC-3 — Cheaper re-renders** (decided from the owner's AC-1 numbers,
+  see *Log*): an overlay drag costs 0.15 ms CPU but feels clunky (GPU
+  bound — smoother with `DRAW_MSAA=off`); a commit costs a 34 ms full
+  re-render; `perf` puts ≈ 60 % of a pan session in per-triangle
+  submission (`memmove` from `QuadGl::geometry`, `draw_triangle`).
+  - **AC-3a — Batched meshes**
+    ([[ADR-T24-3 Batched meshes and append-only document updates]]).
+    `shell::render` collects triangles in a `Batch` (shared vertices for
+    quads and fans) and submits them with one `draw_mesh` per chunk of at
+    most `BATCH_MAX_VERTICES` / `BATCH_MAX_INDICES`, flushing before text so
+    z-order holds. *Tests* (`shell::render`, through a recording sink):
+    `batch_triangle_adds_three_vertices`,
+    `batch_quad_shares_four_vertices`,
+    `batch_fan_shares_the_center`,
+    `batch_line_is_a_width_wide_quad`,
+    `batch_line_of_zero_length_draws_nothing`,
+    `batch_flushes_before_exceeding_limits`,
+    `batch_finish_draws_the_rest_once`,
+    `batch_indices_stay_inside_their_chunk` (proptest).
+  - **AC-3b — Overlay straight to the window**
+    ([[ADR-T24-2 Overlay drawn straight to the window]]). The cached frame
+    target goes away: every woken frame blits the document layer and draws
+    the overlay on the window. Only the document layer is multisampled.
+    *Test:* covered by AC-2's plan tests (the plan no longer has a frame
+    target); manual check in AC-5.
+  - **AC-3c — Append-only updates** (ADR-T24-3). When the only document
+    change since the cached layer is shapes added on top (pen, line, arrow,
+    rect, ellipse, grid commits, paste, duplicate) and nothing else in the
+    key changed, only the new shapes are drawn onto the cached layer.
+    Core: `Editor::document_base_revision()` — the revision of the latest
+    change that was not a pure append. *Tests* (`core::editor`):
+    `document_base_revision_new_editor_is_zero`,
+    `document_base_revision_creation_commits_keep_base`,
+    `document_base_revision_paste_and_duplicate_keep_base`,
+    `document_base_revision_rewrites_raise_base`.
+    Shell: `plan_redraw` gains the base revision and returns
+    `Redraw::Append { from }`. *Tests* (`shell::app`):
+    `plan_redraw_appended_shapes_only_is_append`,
+    `plan_redraw_append_after_rewrite_is_full`,
+    `plan_redraw_append_with_other_change_is_full`,
+    `plan_redraw_shorter_document_is_full`.
+  - The document layer skips hidden shapes through a hash set
+    (`O(n + h)` instead of `O(n · h)` while moving a large selection).
 - **AC-4 — Budget.** With the AC-1 scenario, an overlay-only change re-renders
   in < 2 ms and a full re-render stays < 16 ms on the target; numbers in the
   *Log*, budget in an ADR amending [[ADR-T14-1 Performance budgets]] once
@@ -117,6 +157,15 @@ How the shell decides what to redraw:
 - [x] quality — `chore(T24): pass clippy and rustfmt`
 - [x] docs — `docs(T24): add tutorial and measurements`
 
+Second round (AC-3, after the owner's measurements):
+
+- [x] spec — `docs(T24): specify batching and append-only criteria`
+- [ ] tests — `test(T24): add failing tests for batching and appends`
+- [ ] models — `feat(T24): add the triangle batch and base revision`
+- [ ] behaviour — `feat(T24): batch meshes, append shapes, draw overlay on window`
+- [ ] quality — `chore(T24): pass clippy and rustfmt after batching`
+- [ ] docs — `docs(T24): document batching and append-only updates`
+
 ## Learning path
 
 Step 24 — requires step 12 (app loop, cached frame), step 15 (MSAA) and
@@ -140,3 +189,14 @@ step 14 (profiling).
   (amending ADR-T14-1) is written once the numbers exist. Pan and zoom
   always take the `full` path, so their lines also show the per-event cost
   before T24.
+- 2026-10-02 — Owner's AC-1 numbers on the target (≈ 5 600 shapes):
+  circle drag `overlay re-render` 0.12–0.17 ms CPU, release
+  `full re-render` 33.8 ms; still clunky while dragging, smoother with
+  `DRAW_MSAA=off` (GPU fill of the 4× MSAA frame target on every move).
+  `perf record` of a pan session (52 s, symbols on): `memmove` 38 %
+  (vertex copies in `QuadGl::geometry`, one per `draw_triangle`),
+  inlined app loop 15 %, `QuadGl::geometry` 9 %, `draw_triangle` 6 %,
+  `draw_ellipse_fill` 4 %; ≈ 13 % in `ShapeId` equality from the linear
+  `Document` lookups → split out as
+  [[T25 Linear-time selection with large documents]]. AC-3 decided:
+  AC-3a–c below; T24 stays within its files owned.
