@@ -14,14 +14,14 @@ use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
-    DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, draw_texture_ex,
+    DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
     render_target_ex,
 };
 use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
 };
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
 use crate::core::command::Tool;
@@ -30,6 +30,7 @@ use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::THEME;
+use crate::core::tools::Overlay;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, to_mq_color};
 use crate::shell::toolbar::{self, Route};
@@ -75,14 +76,25 @@ pub fn msaa_samples(setting: Option<&str>) -> i32 {
 /// `true` or `yes`, in any case and trimmed. Unset or anything else is off.
 #[must_use]
 pub fn frame_timing_enabled(setting: Option<&str>) -> bool {
-    todo!()
+    setting.is_some_and(|setting| {
+        matches!(
+            setting.trim().to_ascii_lowercase().as_str(),
+            "1" | "on" | "true" | "yes"
+        )
+    })
 }
 
 /// The frame timer's line for one re-render: which layers, CPU time in
 /// milliseconds and the number of shapes in the document.
 #[must_use]
 pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> String {
-    todo!()
+    let layers = match redraw {
+        Redraw::None => "no",
+        Redraw::Overlay => "overlay",
+        Redraw::Full => "full",
+    };
+    let ms = elapsed.as_secs_f64() * 1000.0;
+    format!("draw: {layers} re-render {ms:.3} ms, {shapes} shapes")
 }
 
 /// What the document layer shows (ADR-T24-1); it is re-rendered when this
@@ -116,7 +128,11 @@ pub enum Redraw {
 /// `next` key and whether input changed editor state (`dirty`).
 #[must_use]
 pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, dirty: bool) -> Redraw {
-    todo!()
+    match cached {
+        Some(cached) if cached == next && dirty => Redraw::Overlay,
+        Some(cached) if cached == next => Redraw::None,
+        _ => Redraw::Full,
+    }
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -192,7 +208,8 @@ pub async fn run() {
     let mut collector = Collector::new();
     let mut editor = Editor::new();
     let setting = std::env::var(MSAA_ENV).ok();
-    let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()));
+    let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
+    let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -221,57 +238,101 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     }
 }
 
-/// The last rendered scene, kept in a framebuffer-sized, multisampled render
-/// target that macroquad resolves into a plain texture (ADR-T15-1).
+/// The last rendered scene in two framebuffer-sized, multisampled render
+/// targets that macroquad resolves into plain textures (ADR-T15-1): the
+/// document layer and the frame drawn from it plus the overlay (ADR-T24-1).
 struct CachedFrame {
-    target: Option<RenderTarget>,
+    /// Background, underlay and document shapes.
+    document: Option<RenderTarget>,
+    /// The document layer plus the overlay; blitted every frame.
+    frame: Option<RenderTarget>,
+    /// What `document` shows.
+    key: Option<LayerKey>,
     /// MSAA samples per pixel for new targets.
     samples: i32,
-    /// Size of `target` in physical pixels.
-    size: (u32, u32),
+    /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
+    timed: bool,
 }
 
 impl CachedFrame {
-    /// An empty cache whose targets use `samples` per pixel.
-    fn new(samples: i32) -> Self {
+    /// An empty cache whose targets use `samples` per pixel; `timed` turns
+    /// on the frame timer.
+    fn new(samples: i32, timed: bool) -> Self {
         Self {
-            target: None,
+            document: None,
+            frame: None,
+            key: None,
             samples,
-            size: (0, 0),
+            timed,
         }
     }
 
-    /// Re-renders the scene if `dirty` or the framebuffer size changed, then
-    /// blits it to the window.
+    /// Re-renders what changed ([`plan_redraw`]), then blits the frame to
+    /// the window. `dirty` says whether input changed editor state.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
         let size = physical_size(viewport, dpi);
-        let target = match &self.target {
-            Some(target) if self.size == size && !dirty => target,
-            Some(target) if self.size == size => {
-                render_into(target, editor, viewport);
-                target
-            }
-            _ => {
-                let target = render_target_ex(size.0, size.1, frame_target_params(self.samples));
-                target.texture.set_filter(FRAME_FILTER);
-                render_into(&target, editor, viewport);
-                self.size = size;
-                self.target.insert(target)
-            }
+        let overlay = editor.overlay();
+        let key = LayerKey {
+            revision: editor.document_revision(),
+            camera: *editor.camera(),
+            size,
+            hidden: overlay.hidden.clone(),
+            underlay: editor.helpers().grid_snap,
         };
-        draw_texture_ex(
-            &target.texture,
-            0.0,
-            0.0,
-            WHITE,
-            DrawTextureParams {
-                dest_size: Some(vec2(viewport.x, viewport.y)),
-                // GL textures start at the bottom row.
-                flip_y: true,
-                ..DrawTextureParams::default()
-            },
-        );
+        let redraw = plan_redraw(self.key.as_ref(), &key, dirty);
+        let started = self.timed.then(Instant::now);
+        if redraw == Redraw::Full {
+            if self.key.as_ref().is_none_or(|cached| cached.size != size) {
+                self.document = Some(self.new_target(size));
+                self.frame = Some(self.new_target(size));
+            }
+            if let Some(document) = &self.document {
+                render_into(document, viewport, || {
+                    draw_document(editor, &overlay, viewport);
+                });
+            }
+            self.key = Some(key);
+        }
+        let (Some(document), Some(frame)) = (&self.document, &self.frame) else {
+            return;
+        };
+        if redraw != Redraw::None {
+            render_into(frame, viewport, || {
+                blit(&document.texture, viewport);
+                draw_overlay(editor, &overlay, viewport);
+            });
+        }
+        if let Some(started) = started.filter(|_| redraw != Redraw::None) {
+            let shapes = editor.document().len();
+            eprintln!("{}", frame_log_line(redraw, started.elapsed(), shapes));
+        }
+        blit(&frame.texture, viewport);
     }
+
+    /// A render target of `size` physical pixels with this cache's sample
+    /// count.
+    fn new_target(&self, size: (u32, u32)) -> RenderTarget {
+        let target = render_target_ex(size.0, size.1, frame_target_params(self.samples));
+        target.texture.set_filter(FRAME_FILTER);
+        target
+    }
+}
+
+/// Draws a resolved layer `texture` over the whole `viewport`, 1:1 in
+/// physical pixels.
+fn blit(texture: &Texture2D, viewport: Vec2) {
+    draw_texture_ex(
+        texture,
+        0.0,
+        0.0,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(viewport.x, viewport.y)),
+            // GL textures start at the bottom row.
+            flip_y: true,
+            ..DrawTextureParams::default()
+        },
+    );
 }
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
@@ -286,27 +347,32 @@ fn physical_size(viewport: Vec2, dpi: f32) -> (u32, u32) {
     (side(viewport.x), side(viewport.y))
 }
 
-/// Renders the whole scene into `target`, in logical pixels.
-fn render_into(target: &RenderTarget, editor: &Editor, viewport: Vec2) {
+/// Runs `draw` with `target` as the destination, in logical pixels.
+fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
     let mut camera = Camera2D::from_display_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y));
     camera.render_target = Some(target.clone());
     set_camera(&camera);
-    draw_scene(editor, viewport);
+    draw();
     set_default_camera();
 }
 
-/// Draws background, shapes, gesture overlay, selection and toolbar.
-fn draw_scene(editor: &Editor, viewport: Vec2) {
+/// Draws the document layer: background, underlay and every shape the
+/// gesture in progress does not hide.
+fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     clear_background(to_mq_color(THEME.bg));
-    let camera = editor.camera();
-    let overlay = editor.overlay();
     let shapes = editor
         .document()
         .shapes()
         .filter(|(id, _)| !overlay.hidden.contains(id))
         .map(|(_, shape)| shape);
     render::draw_underlay(editor, viewport);
-    render::draw_shapes(shapes, camera, viewport);
+    render::draw_shapes(shapes, editor.camera(), viewport);
+}
+
+/// Draws what lies above the document: gesture overlay, guides, selection,
+/// marquee and toolbar.
+fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
+    let camera = editor.camera();
     for shape in &overlay.shapes {
         render::draw_preview(shape, camera);
     }

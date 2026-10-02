@@ -16,7 +16,7 @@ use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear};
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::history::History;
+use crate::core::history::{HISTORY_LIMIT, History};
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
@@ -232,6 +232,15 @@ impl Editor {
 
     /// Executes `command`. Returns whether the view needs a redraw.
     pub fn apply(&mut self, command: Command) -> bool {
+        if edits_document(command) {
+            self.track_document(|ed| ed.execute(command))
+        } else {
+            self.execute(command)
+        }
+    }
+
+    /// Executes `command` without tracking document changes.
+    fn execute(&mut self, command: Command) -> bool {
         match command {
             Command::SetTool(tool) => {
                 let cancelled = self.cancel_gesture();
@@ -346,7 +355,7 @@ impl Editor {
     /// only when this, the camera, the viewport or the hidden set changes.
     #[must_use]
     pub fn document_revision(&self) -> u64 {
-        todo!()
+        self.doc_revision
     }
 
     /// The camera.
@@ -527,8 +536,33 @@ impl Editor {
         helpers.next_number = numbering::advance(helpers.next_number, before, after);
     }
 
-    /// Sends one pointer event to `tool`.
+    /// Sends one pointer event to `tool`. Tools commit only on `Down` or
+    /// `Up`, so a `Move` never touches the document revision.
     fn tool_pointer(&mut self, tool: Tool, phase: Phase, pos: Vec2, mods: Modifiers) -> bool {
+        if phase == Phase::Move {
+            self.send_pointer(tool, phase, pos, mods)
+        } else {
+            self.track_document(|ed| ed.send_pointer(tool, phase, pos, mods))
+        }
+    }
+
+    /// Runs `edit`, which may change the document through the history, and
+    /// bumps the document revision if it did (ADR-T24-1). A commit on a full
+    /// undo stack keeps both stack lengths, so there `edit`'s result decides.
+    fn track_document(&mut self, edit: impl FnOnce(&mut Self) -> bool) -> bool {
+        let lengths = |history: &History| (history.undo_len(), history.redo_len());
+        let before = lengths(&self.history);
+        let changed = edit(self);
+        let after = lengths(&self.history);
+        let full = after.0 >= HISTORY_LIMIT;
+        if before != after || (changed && full) {
+            self.doc_revision = self.doc_revision.wrapping_add(1);
+        }
+        changed
+    }
+
+    /// Delivers one pointer event to `tool`.
+    fn send_pointer(&mut self, tool: Tool, phase: Phase, pos: Vec2, mods: Modifiers) -> bool {
         let pointer = Pointer { phase, pos, mods };
         let mut ctx = ToolCtx {
             doc: &mut self.doc,
@@ -591,6 +625,20 @@ impl Editor {
     }
 }
 
+/// Whether `command` can change the document (through the history).
+fn edits_document(command: Command) -> bool {
+    matches!(
+        command,
+        Command::Undo
+            | Command::Redo
+            | Command::Cut
+            | Command::Paste
+            | Command::Duplicate
+            | Command::DeleteSelection
+            | Command::ClearAll
+    )
+}
+
 /// Executes a helper command on `helpers`. Returns whether anything changed;
 /// other commands change nothing.
 fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
@@ -634,7 +682,6 @@ mod tests {
     use crate::core::camera::{Camera, ZOOM_STEP};
     use crate::core::document::tx_insert;
     use crate::core::geom::{Vec2, approx_eq};
-    use crate::core::history::HISTORY_LIMIT;
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
