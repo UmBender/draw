@@ -34,6 +34,13 @@ pub const MAX_SIZE_MULTIPLE: u8 = 8;
 /// Distance between grid lines in world units.
 pub const GRID_STEP: f32 = 20.0;
 
+/// How close, in screen pixels, a dragged point must be to a shape's
+/// outline (beyond the stroke offset) to snap onto it (ADR-T20-1).
+pub const OUTLINE_TOLERANCE_PX: f32 = 8.0;
+
+/// Size, in screen pixels per axis, of the × marking an outline snap.
+pub const OUTLINE_MARK_PX: f32 = 8.0;
+
 /// What a drag spans.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DragKind {
@@ -91,6 +98,68 @@ pub struct Targets {
     pub ys: Vec<Anchor>,
     /// Box widths and heights, grid cell sizes; all finite and positive.
     pub sizes: Vec<f32>,
+    /// Outlines of rectangles, ellipses and grids (ADR-T20-1).
+    pub outlines: Vec<Outline>,
+}
+
+/// Which outline an [`Outline`] traces in its box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OutlineKind {
+    /// The four sides of the box.
+    Rect,
+    /// The ellipse inscribed in the box.
+    Ellipse,
+    /// Every line of a `cols × rows` grid (clamped like
+    /// [`grid_lines`](crate::core::shape::grid_lines)).
+    Grid {
+        /// Number of columns.
+        cols: u32,
+        /// Number of rows.
+        rows: u32,
+    },
+}
+
+/// The outline of a shape, a target for outline snapping.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Outline {
+    /// What is traced.
+    pub kind: OutlineKind,
+    /// One corner of the box.
+    pub a: Vec2,
+    /// The opposite corner.
+    pub b: Vec2,
+    /// Stroke width in world units.
+    pub width: f32,
+}
+
+/// The point of an outline nearest to a query point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Nearest {
+    /// The point on the outline.
+    pub point: Vec2,
+    /// Unit normal of the outline at `point`, pointing out of the shape
+    /// (away from the box centre for grid lines).
+    pub normal: Vec2,
+}
+
+impl Outline {
+    /// The point of this outline nearest to `p`, with its normal. Finite
+    /// for finite inputs, also for degenerate boxes.
+    #[must_use]
+    pub fn nearest(&self, p: Vec2) -> Nearest {
+        let _ = p;
+        todo!()
+    }
+}
+
+/// `p` moved next to the nearest outline within `tolerance` (world units,
+/// beyond the stroke offset), so that a stroke `width` wide centred on the
+/// result touches the outline's stroke without overlapping it. `None` if
+/// no outline is that close or the result would not be finite.
+#[must_use]
+pub fn snap_outline(p: Vec2, outlines: &[Outline], tolerance: f32, width: f32) -> Option<Vec2> {
+    let _ = (p, outlines, tolerance, width);
+    todo!()
 }
 
 impl Targets {
@@ -336,9 +405,11 @@ fn guide_span(anchors: &[Anchor], c: f32, drag: (f32, f32)) -> Option<(f32, f32)
         })
 }
 
-/// Snaps a drag's start point: grid, then alignment. No guides.
+/// Snaps a drag's start point: grid, alignment, then outline if nothing
+/// aligned. `width` is the dragged stroke width in world units. No guides.
 #[must_use]
-pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera) -> Vec2 {
+pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera, width: f32) -> Vec2 {
+    let _ = width;
     let mut p = p;
     if snaps.grid {
         p = snap_to_grid(p, GRID_STEP);
@@ -350,8 +421,10 @@ pub fn snap_point(p: Vec2, snaps: Snaps, targets: &Targets, camera: &Camera) -> 
     p
 }
 
-/// Snaps the moving `end` of a drag from `start`: grid, size, align, round
-/// (size and round only for boxes), with guides when smart snap is on.
+/// Snaps the moving `end` of a drag from `start`: grid, size, align,
+/// outline (only if nothing aligned), round (only if no outline snap);
+/// size and round only for boxes. `width` is the dragged stroke width in
+/// world units. Guides and the outline mark when smart snap is on.
 #[must_use]
 pub fn snap_drag(
     start: Vec2,
@@ -360,7 +433,9 @@ pub fn snap_drag(
     snaps: Snaps,
     targets: &Targets,
     camera: &Camera,
+    width: f32,
 ) -> Snapped {
+    let _ = width;
     let mut point = end;
     if snaps.grid {
         point = snap_to_grid(point, GRID_STEP);
@@ -402,7 +477,13 @@ pub fn snap_start(p: Vec2, mods: Modifiers, view: &ToolView<'_>) -> Vec2 {
     if snaps == Snaps::NONE {
         return p;
     }
-    snap_point(p, snaps, &Targets::from_document(view.doc), view.camera)
+    snap_point(
+        p,
+        snaps,
+        &Targets::from_document(view.doc),
+        view.camera,
+        view.camera.world_len(view.style.width_px),
+    )
 }
 
 /// [`snap_drag`] with the helpers, document and camera of `view`.
@@ -420,7 +501,15 @@ pub fn snap_end(
     } else {
         Targets::default()
     };
-    snap_drag(start, end, kind, snaps, &targets, view.camera)
+    snap_drag(
+        start,
+        end,
+        kind,
+        snaps,
+        &targets,
+        view.camera,
+        view.camera.world_len(view.style.width_px),
+    )
 }
 
 #[cfg(test)]
