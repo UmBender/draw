@@ -1,7 +1,7 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: in-progress
+status: review
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
@@ -160,11 +160,11 @@ How the shell decides what to redraw:
 Second round (AC-3, after the owner's measurements):
 
 - [x] spec — `docs(T24): specify batching and append-only criteria`
-- [ ] tests — `test(T24): add failing tests for batching and appends`
-- [ ] models — `feat(T24): add the triangle batch and base revision`
-- [ ] behaviour — `feat(T24): batch meshes, append shapes, draw overlay on window`
-- [ ] quality — `chore(T24): pass clippy and rustfmt after batching`
-- [ ] docs — `docs(T24): document batching and append-only updates`
+- [x] tests — `test(T24): add failing tests for batching and appends`
+- [x] models — `feat(T24): add the triangle batch and base revision`
+- [x] behaviour — `feat(T24): batch meshes, append shapes, draw overlay on window`
+- [x] quality — `chore(T24): pass clippy and rustfmt after batching`
+- [x] docs — `docs(T24): document batching and append-only updates`
 
 ## Learning path
 
@@ -200,3 +200,20 @@ step 14 (profiling).
   `Document` lookups → split out as
   [[T25 Linear-time selection with large documents]]. AC-3 decided:
   AC-3a–c below; T24 stays within its files owned.
+- 2026-10-02 — AC-3a–c implemented (ADR-T24-2, ADR-T24-3). Tests added
+  beyond the spec list: `batch_limits_fit_a_macroquad_draw_call`
+  (compile-time check of the chunk limits),
+  `frame_log_line_names_appends`. `scripts/check.sh` green (588 lib
+  tests); T14 perf tests (release) green; release smoke run starts and
+  logs its first `full` re-render. `tests/perf.rs` unchanged (the new
+  pure code is the chunking, covered by unit tests; T25 owns new
+  benchmarks).
+- 2026-10-02 — **Pending, owner on the target:**
+  - AC-4: with ≈ 5 000 shapes and `DRAW_FRAME_TIMES=1`, a circle drag
+    (`overlay` lines, and whether it now *feels* smooth), its release
+    (expect one `append` line), and pan/zoom (`full` lines vs the 33.8 ms
+    before). The budget ADR amending ADR-T14-1 is written from those
+    numbers.
+  - AC-5 visual check: committed shapes, labels, grids, fills, MSAA on
+    the document. Previews and toolbar icons are now single-sampled
+    (ADR-T24-2).

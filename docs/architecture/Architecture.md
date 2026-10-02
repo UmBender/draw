@@ -74,20 +74,24 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    `Editor::apply(command)`; everything else goes to `Editor::handle(event)`.
    Both return whether anything changed.
 3. The shell builds the document layer's key — `Editor::document_revision`,
-   camera, framebuffer size, `overlay.hidden`, grid snap — and
+   shape count, camera, framebuffer size, `overlay.hidden`, grid snap — and
    `shell::app::plan_redraw` compares it with the cached one
    ([[ADR-T24-1 Document layer keyed by a document revision]]):
-   - key changed → re-render the **document layer** (background, underlay
-     dot grid, shapes minus `overlay.hidden`) and then the frame;
-   - same key but something changed → re-render only the **frame**: blit the
-     document layer, then overlay shapes, guides, selection, marquee,
-     toolbar;
-   - nothing changed → no rendering.
-   Both layers are cached, 4× multisampled render targets
+   - only shapes added on top since the cached layer
+     (`Editor::document_base_revision` ≤ cached revision, view unchanged)
+     → draw just those onto the **document layer**
+     ([[ADR-T24-3 Batched meshes and append-only document updates]]);
+   - any other key change → re-render the document layer (background,
+     underlay dot grid, shapes minus `overlay.hidden`);
+   - otherwise → keep it.
+   The document layer is a cached, 4× multisampled render target
    ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]]).
-   `DRAW_FRAME_TIMES=1` logs each re-render. More ideas:
-   [[Rendering performance options]].
-4. The cached frame texture is blitted to the window (one quad).
+   `shell::render` tessellates shapes into a `Batch` submitted with
+   `draw_mesh` in chunks. `DRAW_FRAME_TIMES=1` logs each re-render. More
+   ideas: [[Rendering performance options]].
+4. The document layer is blitted to the window (one quad) and the overlay —
+   overlay shapes, guides, selection, marquee, toolbar — is drawn on top,
+   single-sampled ([[ADR-T24-2 Overlay drawn straight to the window]]).
 
 ## Invariants (checked by the fuzzer)
 
