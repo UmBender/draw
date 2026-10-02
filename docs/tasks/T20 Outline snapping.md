@@ -1,7 +1,7 @@
 ---
 id: T20
 title: Outline snapping
-status: in-progress
+status: review
 wave: 9
 branch: task/T20-outline-snapping
 depends_on: [T17]
@@ -92,10 +92,33 @@ coordinate rather than editing it.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
 Step 20 — requires step 17.
 
 ## Log
+
+- 2026-10-01 spec: AC-1…AC-6 name their tests; ADR-T20-1 amends
+  ADR-T17-1. Ellipses use Eberly's bisection instead of Newton (always
+  converges, also inside / at the centre). Tolerance measured as
+  `|p − q| ≤ tolerance + offset`.
+- tests: red commit (missing API). `snap_point`/`snap_drag` gained a
+  `width` argument, so T17 tests were updated to the new signatures.
+- models: `Outline`, `OutlineKind`, `Nearest`, `Targets::outlines`,
+  `snap_outline`, `OUTLINE_TOLERANCE_PX` = `OUTLINE_MARK_PX` = 8.
+- behaviour: green. Fixed one wrong test assertion
+  (`outline_snaps_start_point` assumed grid snap keeps (190, 190); it
+  rounds to (200, 200)), noted in the commit.
+- quality: clippy (`float_cmp`, single-char names, negated compare) and
+  a redundant rustdoc link. `scripts/check.sh` green; long fuzz
+  (`PROPTEST_CASES=20000`) of `snap` green.
+- `shape_tool.rs` untouched: `snap_start`/`snap_end` derive the dragged
+  width from `ToolView::style.width_px`. The start point gets no ×.
+- Observed trade-off of the specified priority: near a rectangle side
+  or a circle's centre line, alignment matches first, so the point lands
+  on the line (strokes overlap by half widths) instead of beside it.
+  Recorded in the feature note; a follow-up could let outline refine a
+  one-axis alignment.
+
