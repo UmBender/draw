@@ -802,7 +802,7 @@ mod tests {
 
         let bounds = arrow.bounds();
 
-        let half_head = ARROW_HEAD_HALF_WIDTH_RATIO * ARROW_HEAD_MIN_LENGTH;
+        let half_head = ARROW_HEAD_HALF_WIDTH_RATIO * ARROW_HEAD_LENGTH_PER_WIDTH * width;
         assert!(half_head > 1.0, "head must stick out past the half width");
         assert_aabb_eq(bounds, v(-1.0, -half_head - 1.0), v(101.0, half_head + 1.0));
         for p in head {
@@ -892,7 +892,10 @@ mod tests {
         assert!(arrow.hit(v(50.0, 0.4), 0.0), "shaft");
         assert!(!arrow.hit(v(50.0, 2.0), 0.0), "beside shaft");
         assert!(arrow.hit(left, 0.0), "head corner");
-        let inside_head = v(100.0 - ARROW_HEAD_MIN_LENGTH * 0.5, left.y * 0.4);
+        let inside_head = v(
+            100.0 - ARROW_HEAD_LENGTH_PER_WIDTH * width * 0.5,
+            left.y * 0.4,
+        );
         assert!(arrow.hit(inside_head, 0.0), "inside head");
         assert!(!arrow.hit(v(104.0, 0.0), 0.0), "beyond tip");
     }
@@ -1112,7 +1115,6 @@ mod tests {
     fn arrow_head_length_scales_with_width() {
         let width = 10.0;
         let length = ARROW_HEAD_LENGTH_PER_WIDTH * width;
-        assert!(length > ARROW_HEAD_MIN_LENGTH, "test needs a wide arrow");
 
         let [_, left, right] = arrow_head(v(0.0, 0.0), v(100.0, 0.0), width);
 
@@ -1122,20 +1124,39 @@ mod tests {
     }
 
     #[test]
-    fn arrow_head_has_min_size() {
-        let [tip, left, right] = arrow_head(v(0.0, 0.0), v(0.0, 50.0), 0.1);
+    fn arrow_head_scales_with_thin_width() {
+        // An arrow drawn zoomed in has a thin world width; its head must
+        // shrink with it, not stay at an absolute size.
+        let width = 0.25;
+        let length = ARROW_HEAD_LENGTH_PER_WIDTH * width;
+
+        let [tip, left, right] = arrow_head(v(0.0, 0.0), v(0.0, 50.0), width);
 
         let base_mid = left.lerp(right, 0.5);
-        assert!(approx_eq(
-            tip.distance(base_mid),
-            ARROW_HEAD_MIN_LENGTH,
-            EPS
-        ));
+        assert!(approx_eq(tip.distance(base_mid), length, EPS));
         assert!(approx_eq(
             left.distance(right),
-            2.0 * ARROW_HEAD_HALF_WIDTH_RATIO * ARROW_HEAD_MIN_LENGTH,
+            2.0 * ARROW_HEAD_HALF_WIDTH_RATIO * length,
             EPS
         ));
+    }
+
+    proptest! {
+        #[test]
+        fn arrow_head_is_scale_invariant(
+            (bx, by) in (-1e3f32..1e3, -1e3f32..1e3),
+            width in 0.01f32..50.0,
+            scale in 0.05f32..20.0,
+        ) {
+            let b = v(bx, by);
+            prop_assume!(b.length() > 1.0);
+            let head = arrow_head(Vec2::ZERO, b, width);
+            let scaled = arrow_head(Vec2::ZERO, b * scale, width * scale);
+            for (p, q) in head.iter().zip(scaled) {
+                let tol = 1e-3 * (1.0 + (*p * scale).length());
+                prop_assert!((*p * scale).approx_eq(q, tol), "{p:?} * {scale} != {q:?}");
+            }
+        }
     }
 
     #[test]
