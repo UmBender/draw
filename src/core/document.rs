@@ -181,13 +181,56 @@ enum Run {
 impl Run {
     /// The run that starts at `edits[0]`.
     fn at(edits: &[Edit]) -> Self {
-        todo!()
+        let remove_index = |edit: &Edit| match edit {
+            Edit::Remove { index, .. } => Some(*index),
+            _ => None,
+        };
+        let insert_index = |edit: &Edit| match edit {
+            Edit::Insert { index, .. } => Some(*index),
+            _ => None,
+        };
+        let removes = run_length(edits, remove_index, |prev, next| next < prev);
+        if removes > 1 {
+            return Self::Removes(removes);
+        }
+        let inserts = run_length(edits, insert_index, |prev, next| next > prev);
+        if inserts > 1 {
+            return Self::Inserts(inserts);
+        }
+        Self::Single
     }
 
     /// Number of edits the run covers.
     fn len(self) -> usize {
-        todo!()
+        match self {
+            Self::Removes(n) | Self::Inserts(n) => n,
+            Self::Single => 1,
+        }
     }
+}
+
+/// How many leading edits of `edits` have an index (`index_of` is `Some`)
+/// with each consecutive pair `ordered`.
+fn run_length(
+    edits: &[Edit],
+    index_of: impl Fn(&Edit) -> Option<usize>,
+    ordered: impl Fn(usize, usize) -> bool,
+) -> usize {
+    let mut indices = edits.iter().map(index_of);
+    let Some(Some(mut prev)) = indices.next() else {
+        return 0;
+    };
+    let mut len = 1;
+    for index in indices {
+        match index {
+            Some(next) if ordered(prev, next) => {
+                prev = next;
+                len += 1;
+            }
+            _ => break,
+        }
+    }
+    len
 }
 
 impl Document {
@@ -223,10 +266,7 @@ impl Document {
     /// Z-order position of `id`, if present.
     #[must_use]
     pub fn index_of(&self, id: ShapeId) -> Option<usize> {
-        if !self.ids.contains(&id) {
-            return None;
-        }
-        self.shapes.iter().position(|(stored, _)| *stored == id)
+        self.positions().get(&id).copied()
     }
 
     /// Number of shapes.
@@ -258,41 +298,142 @@ impl Document {
     /// (shapes and id counter) is then unchanged.
     pub fn apply(&mut self, tx: &Transaction) -> Result<(), ApplyError> {
         let saved_next_id = self.next_id;
-        for (done, edit) in tx.0.iter().enumerate() {
-            if let Err(err) = self.apply_edit(edit) {
-                self.roll_back(&tx.0[..done]);
-                self.next_id = saved_next_id;
-                return Err(err);
-            }
+        if let Err((done, err)) = self.apply_runs(&tx.0) {
+            self.roll_back(&tx.0[..done]);
+            self.next_id = saved_next_id;
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    /// Applies `edits` run by run ([`Run`], ADR-T25-1). On error returns
+    /// how many edits were applied before the failing run, which itself
+    /// changed nothing.
+    fn apply_runs(&mut self, edits: &[Edit]) -> Result<(), (usize, ApplyError)> {
+        let mut done = 0;
+        while done < edits.len() {
+            let rest = &edits[done..];
+            let run = Run::at(rest);
+            let result = match run {
+                Run::Removes(n) => self.apply_remove_run(&rest[..n]),
+                Run::Inserts(n) => self.apply_insert_run(&rest[..n]),
+                Run::Single => self.apply_edit(&rest[0]),
+            };
+            result.map_err(|err| (done, err))?;
+            done += run.len();
         }
         Ok(())
     }
 
     /// The id → position index, built on first use.
     fn positions(&self) -> &HashMap<ShapeId, usize> {
-        todo!()
+        self.positions.get_or_init(|| {
+            self.shapes
+                .iter()
+                .enumerate()
+                .map(|(index, (id, _))| (*id, index))
+                .collect()
+        })
     }
 
     /// Checks a [`Run::Removes`] run against the current shapes, in edit
     /// order, then removes all of it in one pass; on error nothing changes.
+    ///
+    /// Indices strictly decrease, so each one still names its shape in the
+    /// document before the run, and only the first can be out of range.
     fn apply_remove_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
-        todo!()
+        let len = self.shapes.len();
+        let mut removed = vec![false; len];
+        let removes = run.iter().filter_map(|edit| match edit {
+            Edit::Remove { index, id, shape } => Some((index, id, shape)),
+            _ => None,
+        });
+        for (done, (index, id, shape)) in removes.enumerate() {
+            let Some((stored_id, stored)) = self.shapes.get(*index) else {
+                return Err(ApplyError::IndexOutOfRange {
+                    index: *index,
+                    len: len - done,
+                });
+            };
+            if stored_id != id || stored != shape {
+                return Err(ApplyError::Mismatch(*id));
+            }
+            removed[*index] = true;
+        }
+        let mut position = 0;
+        self.shapes.retain(|_| {
+            let keep = !removed[position];
+            position += 1;
+            keep
+        });
+        for edit in run {
+            if let Edit::Remove { id, .. } = edit {
+                self.ids.remove(id);
+            }
+        }
+        self.positions.take();
+        Ok(())
     }
 
     /// Checks a [`Run::Inserts`] run, in edit order, then merges all of it
     /// in one pass; on error nothing changes.
+    ///
+    /// Indices strictly increase, so each one is the shape's final position.
     fn apply_insert_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
-        todo!()
+        let len = self.shapes.len();
+        let mut new_ids = HashSet::with_capacity(run.len());
+        let mut inserts = Vec::with_capacity(run.len());
+        let edits = run.iter().filter_map(|edit| match edit {
+            Edit::Insert { index, id, shape } => Some((index, id, shape)),
+            _ => None,
+        });
+        for (done, (index, id, shape)) in edits.enumerate() {
+            let current = len + done;
+            if *index > current {
+                return Err(ApplyError::IndexOutOfRange {
+                    index: *index,
+                    len: current,
+                });
+            }
+            if !shape.is_finite() {
+                return Err(ApplyError::NonFiniteShape(*id));
+            }
+            if self.ids.contains(id) || !new_ids.insert(*id) {
+                return Err(ApplyError::DuplicateId(*id));
+            }
+            inserts.push((*index, *id, shape));
+        }
+        let total = len + inserts.len();
+        let mut old = std::mem::take(&mut self.shapes).into_iter();
+        let mut inserts = inserts.into_iter().peekable();
+        let mut merged = Vec::with_capacity(total);
+        while merged.len() < total {
+            let next = match inserts.next_if(|(index, _, _)| *index == merged.len()) {
+                Some((_, id, shape)) => Some((id, shape.clone())),
+                None => old.next(),
+            };
+            let Some(next) = next else {
+                break;
+            };
+            merged.push(next);
+        }
+        self.shapes = merged;
+        for id in new_ids {
+            self.ids.insert(id);
+            self.next_id = self.next_id.max(id.0.saturating_add(1));
+        }
+        self.positions.take();
+        Ok(())
     }
 
-    /// Undo `applied` (edits that just succeeded), last first.
+    /// Undo `applied` (edits that just succeeded) with their inverses, last
+    /// first, through the same runs.
     fn roll_back(&mut self, applied: &[Edit]) {
-        for edit in applied.iter().rev() {
-            // The inverse of an edit that just succeeded is valid by
-            // construction (ADR-T06-1), so this cannot fail.
-            let undone = self.apply_edit(&edit.inverse());
-            debug_assert!(undone.is_ok(), "rollback failed: {undone:?}");
-        }
+        let undo: Vec<Edit> = applied.iter().rev().map(Edit::inverse).collect();
+        // The inverse of an edit that just succeeded is valid by
+        // construction (ADR-T06-1), so this cannot fail.
+        let undone = self.apply_runs(&undo);
+        debug_assert!(undone.is_ok(), "rollback failed: {undone:?}");
     }
 
     /// Check and apply a single edit; on error nothing changes.
@@ -312,6 +453,7 @@ impl Document {
                 }
                 self.shapes.insert(index, (id, shape.clone()));
                 self.next_id = self.next_id.max(id.0.saturating_add(1));
+                self.positions.take();
             }
             Edit::Remove { index, id, shape } => {
                 let index = *index;
@@ -323,6 +465,7 @@ impl Document {
                 }
                 self.shapes.remove(index);
                 self.ids.remove(id);
+                self.positions.take();
             }
             Edit::Replace { id, before, after } => {
                 let index = self.index_of(*id).ok_or(ApplyError::UnknownId(*id))?;

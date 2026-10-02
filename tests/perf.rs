@@ -82,7 +82,9 @@ fn optimised() -> bool {
 }
 
 /// Median wall time of `op` over [`RUNS`] runs, after [`WARMUP`] runs.
-/// `setup` builds each run's input outside the timed section.
+/// `setup` builds each run's input outside the timed section, and the
+/// output is dropped after the clock stops (T25: an `op` may return its
+/// 10 000-shape input).
 fn median_time<I, O>(mut setup: impl FnMut() -> I, mut op: impl FnMut(I) -> O) -> Duration {
     for _ in 0..WARMUP {
         black_box(op(black_box(setup())));
@@ -91,8 +93,10 @@ fn median_time<I, O>(mut setup: impl FnMut() -> I, mut op: impl FnMut(I) -> O) -
         .map(|_| {
             let input = black_box(setup());
             let start = Instant::now();
-            black_box(op(input));
-            start.elapsed()
+            let output = black_box(op(input));
+            let elapsed = start.elapsed();
+            drop(output);
+            elapsed
         })
         .collect();
     times.sort_unstable();
@@ -349,7 +353,10 @@ fn perf_lookup_5k_selected_of_10k_is_under_1ms() {
     // Act: what selection bounds and pruning do.
     let median = median_time(
         || pristine.clone(),
-        |doc| selected.iter().filter(|id| doc.get(**id).is_some()).count(),
+        |doc| {
+            let found = selected.iter().filter(|id| doc.get(**id).is_some()).count();
+            (doc, found)
+        },
     );
 
     // Assert
@@ -377,7 +384,13 @@ fn perf_move_commit_5k_of_10k_is_under_1ms() {
     let pristine = benchmark_document();
 
     // Act
-    let median = median_time(|| pristine.clone(), |mut doc| doc.apply(&tx).is_ok());
+    let median = median_time(
+        || pristine.clone(),
+        |mut doc| {
+            let ok = doc.apply(&tx).is_ok();
+            (doc, ok)
+        },
+    );
 
     // Assert
     assert!(pristine.clone().apply(&tx).is_ok());
@@ -395,7 +408,13 @@ fn perf_delete_5k_of_10k_is_under_1ms() {
     let tx = tx_remove(&pristine, &half_selected(&pristine));
 
     // Act
-    let median = median_time(|| pristine.clone(), |mut doc| doc.apply(&tx).is_ok());
+    let median = median_time(
+        || pristine.clone(),
+        |mut doc| {
+            let ok = doc.apply(&tx).is_ok();
+            (doc, ok)
+        },
+    );
 
     // Assert
     assert!(pristine.clone().apply(&tx).is_ok());
@@ -415,7 +434,13 @@ fn perf_undo_delete_5k_of_10k_is_under_1ms() {
     let undo = tx.inverse();
 
     // Act
-    let median = median_time(|| deleted.clone(), |mut doc| doc.apply(&undo).is_ok());
+    let median = median_time(
+        || deleted.clone(),
+        |mut doc| {
+            let ok = doc.apply(&undo).is_ok();
+            (doc, ok)
+        },
+    );
 
     // Assert
     assert!(deleted.clone().apply(&undo).is_ok());

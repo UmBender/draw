@@ -104,12 +104,13 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
         for (id, shape) in ctx.doc.shapes() {
             match state.mode {
                 Mode::Remove => {
-                    if !state.marked.contains(&id) && shape.hit(world, tol) {
+                    if !state.marked_ids.contains(&id) && shape.hit(world, tol) {
                         state.marked.push(id);
+                        state.marked_ids.insert(id);
                         changed = true;
                     }
                 }
-                Mode::Clear => changed |= clear_into(&mut state.cleared, id, shape, world),
+                Mode::Clear => changed |= clear_into(state, id, shape, world),
             }
         }
     }
@@ -117,16 +118,19 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
 }
 
 /// Clears the fill at `p` of shape `id` (its cleared version so far, or
-/// `shape`) into `cleared`. Returns whether a fill was cleared.
-fn clear_into(cleared: &mut Vec<(ShapeId, Shape)>, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
-    let slot = cleared.iter().position(|(c, _)| *c == id);
-    let current = slot.map_or(shape, |i| &cleared[i].1);
+/// `shape`) into `state.cleared`. Returns whether a fill was cleared.
+fn clear_into(state: &mut State, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
+    let slot = state.cleared_at.get(&id).copied();
+    let current = slot.map_or(shape, |i| &state.cleared[i].1);
     let Some(next) = clear_at(current, p) else {
         return false;
     };
     match slot {
-        Some(i) => cleared[i].1 = next,
-        None => cleared.push((id, next)),
+        Some(i) => state.cleared[i].1 = next,
+        None => {
+            state.cleared_at.insert(id, state.cleared.len());
+            state.cleared.push((id, next));
+        }
     }
     true
 }
