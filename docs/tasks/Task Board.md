@@ -86,7 +86,7 @@ flowchart TD
 | [[T15 Anti-aliasing]] | done | T12 | `task/T15-antialiasing` |
 | [[T16 Shape model v2 and helper skeleton]] | done | T12, T13 | `task/T16-helper-skeleton` |
 | [[T17 Snapping]] | done | T16 | `task/T17-snapping` |
-| [[T18 Grid tool]] | ready | T16 | `task/T18-grid-tool` |
+| [[T18 Grid tool]] | done | T16 | `task/T18-grid-tool` |
 | [[T19 Auto-numbering]] | done | T16, T17 | `task/T19-numbering` |
 | [[T20 Outline snapping]] | ready | T17 | `task/T20-outline-snapping` |
 | [[T14 Performance and release validation]] | todo | T12, T13, T15–T20 | `task/T14-release` |

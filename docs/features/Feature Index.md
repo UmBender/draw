@@ -20,5 +20,5 @@ One note per user-visible feature, created by the task that implements it
 | [[Theme and palette]] | [[T02 Palette and theme tokens]] | [[02 Palettes and design tokens]] | done |
 | [[Anti-aliasing]] | [[T15 Anti-aliasing]] | [[15 Anti-aliasing and multisampling]] | done |
 | [[Snapping]] | [[T17 Snapping]] | [[17 Snapping and alignment guides]] | done |
-| *Grid tool* | [[T16 Shape model v2 and helper skeleton]], [[T18 Grid tool]] | step 18 | planned |
+| [[Grid tool]] | [[T16 Shape model v2 and helper skeleton]], [[T18 Grid tool]] | [[18 A grid tool with live parameters]] | done |
 | [[Numbered nodes]] | [[T16 Shape model v2 and helper skeleton]], [[T19 Auto-numbering]] | [[19 Auto-numbering and undoable counters]] | done |

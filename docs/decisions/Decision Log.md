@@ -35,3 +35,6 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 24 | [[ADR-T16-3 Helper settings and hooks]] | accepted | decision | T08-1, T16-1 | — |
 | 25 | [[ADR-T17-1 Snapping order and tolerances]] | accepted | decision | T16-3, T16-1, 0013 | — |
 | 26 | [[ADR-T19-1 Numbering counter and undo]] | accepted | decision | T16-1, T16-3, T08-1 | — |
+| 27 | [[ADR-T18-1 Grid drag reads live dims and snaps as a box]] | accepted | decision | T08-1, T16-1, T16-2, T16-3, T17-1 | — |
+| 28 | [[ADR-T18-2 Grid size flyout in the toolbar]] | accepted | decision | T16-2, T16-3, T18-1 | — |
+| 29 | [[ADR-T18-3 Grid axis indices]] | accepted | decision | T16-1, T16-2, T16-3, T18-1, T18-2 | — |

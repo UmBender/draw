@@ -1,7 +1,7 @@
 ---
 id: T18
 title: Grid tool
-status: review
+status: done
 wave: 8
 branch: task/T18-grid-tool
 depends_on: [T16]
