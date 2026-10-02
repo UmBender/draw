@@ -33,7 +33,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 22 | [[ADR-T16-1 Grid shape and shape labels]] | accepted | decision | 0013, T07-1 | amends 0004 |
 | 23 | [[ADR-T16-2 Helper key bindings]] | accepted | decision | T11-1 | — |
 | 24 | [[ADR-T16-3 Helper settings and hooks]] | accepted | decision | T08-1, T16-1 | — |
-| 25 | [[ADR-T17-1 Snapping order and tolerances]] | accepted | decision | T16-3, T16-1, 0013 | — |
+| 25 | [[ADR-T17-1 Snapping order and tolerances]] | accepted | decision | T16-3, T16-1, 0013 | amended by T20-1 |
 | 26 | [[ADR-T19-1 Numbering counter and undo]] | accepted | decision | T16-1, T16-3, T08-1 | — |
 | 27 | [[ADR-T18-1 Grid drag reads live dims and snaps as a box]] | accepted | decision | T08-1, T16-1, T16-2, T16-3, T17-1 | — |
 | 28 | [[ADR-T18-2 Grid size flyout in the toolbar]] | accepted | decision | T16-2, T16-3, T18-1 | amended by T22-1 |
@@ -42,3 +42,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 31 | [[ADR-T21-2 Eraser mode chosen on press]] | accepted | decision | T21-1 | amends T21-1 |
 | 32 | [[ADR-T22-1 Numbering toggle drives grid indices]] | accepted | decision | T18-3, T19-1, T16-2 | amends T18-3, T18-2 |
 | 33 | [[ADR-0016 Arrow head proportional to width]] | accepted | decision | 0004, 0013 | — |
+| 34 | [[ADR-T20-1 Outline snapping]] | accepted | decision | T17-1, 0013 | amends T17-1 |

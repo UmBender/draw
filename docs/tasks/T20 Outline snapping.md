@@ -1,7 +1,7 @@
 ---
 id: T20
 title: Outline snapping
-status: review
+status: done
 wave: 9
 branch: task/T20-outline-snapping
 depends_on: [T17]

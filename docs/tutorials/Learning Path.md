@@ -58,6 +58,6 @@ flowchart LR
 | 17 | [[17 Snapping and alignment guides]] | [[T17 Snapping]] | done |
 | 18 | [[18 A grid tool with live parameters]] | [[T18 Grid tool]] | done |
 | 19 | [[19 Auto-numbering and undoable counters]] | [[T19 Auto-numbering]] | done |
-| 20 | *Snapping to outlines* | [[T20 Outline snapping]] | planned |
+| 20 | [[20 Snapping to outlines]] | [[T20 Outline snapping]] | done |
 | 21 | [[21 Per-cell fills and a two-mode eraser]] | [[T21 Cell fill and fill eraser]] | done |
 | 22 | [[22 One toggle, two meanings]] | [[T22 Numbering drives grid indices]] | done |

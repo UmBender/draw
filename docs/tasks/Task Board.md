@@ -97,7 +97,7 @@ flowchart TD
 | [[T17 Snapping]] | done | T16 | `task/T17-snapping` |
 | [[T18 Grid tool]] | done | T16 | `task/T18-grid-tool` |
 | [[T19 Auto-numbering]] | done | T16, T17 | `task/T19-numbering` |
-| [[T20 Outline snapping]] | ready | T17 | `task/T20-outline-snapping` |
+| [[T20 Outline snapping]] | done | T17 | `task/T20-outline-snapping` |
 | [[T21 Cell fill and fill eraser]] | done | T18 | `task/T21-cell-fill` |
 | [[T22 Numbering drives grid indices]] | done | T18, T19, T21 | `task/T22-numbered-grids` |
 | [[T23 Arrow head proportional to width]] | done | T05 | `fix/arrow-head-scale` |
