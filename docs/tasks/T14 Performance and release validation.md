@@ -1,7 +1,7 @@
 ---
 id: T14
 title: Performance and release validation
-status: in-progress
+status: review
 wave: 10
 branch: task/T14-release
 depends_on: [T12, T13, T15, T16, T17, T18, T19, T20]
@@ -72,7 +72,7 @@ level — added 2026-10-02 for AC-4, approved by the user),
 
 ## Subtasks (one commit each)
 
-- [ ] spec · [ ] tests · [ ] behaviour (tuning) · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] behaviour (tuning) · [x] quality · [x] docs
 
 ## Learning path
 
@@ -83,3 +83,34 @@ Step 14 — requires steps 12–13 (validates the features of T15–T19 too).
 - 2026-10-01 — Re-planned to wave 10 so release validation covers the
   helper features (T15–T19); AC-1/AC-3 must include grids, labels, snapping
   and MSAA.
+- 2026-10-02 — **AC-1** (release, `--test-threads=1`, medians of 3 runs on
+  the i5-8250U): hit-test miss ≈ 0.35 ms, eraser scan ≈ 0.3 ms, culling
+  ≈ 0.23 ms, stroke finish 1 000 pts ≈ 13 µs, RDP 1 000 raw pts ≈ 65 µs —
+  all < 1 ms. Snapped drag move ≈ 0.95–1.1 ms, so it got a 4 ms budget
+  ([[ADR-T14-1 Performance budgets]]). Perf tests validate existing code, so
+  the `test` commit was green instead of red.
+- 2026-10-02 — **AC-2**: `cargo build --release` OK; binary 969 128 bytes
+  (≈ 946 KiB); launch → window shown 83–147 ms over 5 runs (polled with
+  `xprop`; macroquad runs through XWayland on KDE).
+- 2026-10-02 — **AC-3** (user, KDE Wayland): every binding, tool, helper,
+  zoom limit and MSAA check passes, with these findings:
+  - **5 000-shape session gets clunky** (fails "stays smooth"). CPU peaks at
+    ≈ 10 %, idle ≈ 0 %. Headless paths are far inside budget, so the cost is
+    the full-scene re-render per event — see
+    [[Rendering performance options]] (option 1, two layers). Needs its own
+    task; out of scope here.
+  - `[` / `]` work on the laptop keyboard; on the external (ABNT2) keyboard
+    with the system layout set to US, the key printed `]` sends `\`. Layout
+    mismatch, not an app bug.
+  - Select tool sometimes duplicates instead of moving: `Alt`+drag
+    duplicates by design, and a likely stuck `Alt` after `Alt+Tab`
+    (`shell::input_map::HeldMods` never sees the release). User chose not
+    to open a fix task now.
+- 2026-10-02 — **AC-4**: user prefers Low; Low is now the default, values
+  unchanged ([[ADR-T14-2 Low smoothing by default]]). Files owned extended
+  to the two `core::editor` tests that pin the default, approved by the
+  user.
+- 2026-10-02 — Quality step: `scripts/check.sh` green with no changes, so no
+  `chore` commit.
+- 2026-10-02 — Follow-up for integration: `features/Anti-tremor strokes.md`
+  still says "Medium (default)"; not owned by T14, left unchanged.
