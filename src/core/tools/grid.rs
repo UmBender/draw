@@ -616,7 +616,7 @@ mod tests {
         }
     }
 
-    // ---- AC-7 axis indices ------------------------------------------------
+    // ---- AC-7 axis indices (T22: driven by numbering) ----------------------
 
     /// Whether `shape` is a grid with axis indices.
     fn has_axes(shape: &Shape) -> bool {
@@ -633,14 +633,14 @@ mod tests {
     }
 
     #[test]
-    fn axes_setting_reaches_grid() {
+    fn numbering_turns_on_axes() {
         // Arrange
         let mut f = Fixture::new();
         f.send(Phase::Down, 0.0, 0.0);
         f.send(Phase::Move, 40.0, 40.0);
 
-        // Act: toggled mid-drag, like the dimensions.
-        f.style.helpers.grid_axes = true;
+        // Act: numbering toggled mid-drag, like the dimensions (ADR-T22-1).
+        f.style.helpers.numbering = true;
         let overlay = f.overlay();
         f.send(Phase::Up, 40.0, 40.0);
 

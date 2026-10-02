@@ -547,7 +547,6 @@ mod tests {
                 ButtonKind::Numbering => Command::ToggleNumbering,
                 ButtonKind::GridCols(d) => Command::GridCols(d),
                 ButtonKind::GridRows(d) => Command::GridRows(d),
-                ButtonKind::GridAxes => Command::ToggleGridAxes,
                 ButtonKind::Undo => Command::Undo,
                 ButtonKind::Redo => Command::Redo,
             };
@@ -672,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn flyout_has_five_buttons_in_order() {
+    fn flyout_has_four_buttons_in_order() {
         // Act
         let kinds: Vec<ButtonKind> = flyout_layout(VIEWPORT).iter().map(|b| b.kind).collect();
         // Assert
@@ -683,7 +682,6 @@ mod tests {
                 ButtonKind::GridCols(1),
                 ButtonKind::GridRows(-1),
                 ButtonKind::GridRows(1),
-                ButtonKind::GridAxes,
             ]
         );
     }
@@ -713,9 +711,8 @@ mod tests {
                 assert!(!a.rect.intersects(&b.rect), "{a:?} overlaps {b:?}");
             }
         }
-        // Columns on the first row, rows below, axes last; minus left of plus.
+        // Columns on the first row, rows below; minus left of plus.
         assert!(buttons[0].rect.max.y < buttons[2].rect.min.y);
-        assert!(buttons[2].rect.max.y < buttons[4].rect.min.y);
         assert!(buttons[0].rect.max.x < buttons[1].rect.min.x);
         assert!(buttons[2].rect.max.x < buttons[3].rect.min.x);
     }
@@ -728,7 +725,6 @@ mod tests {
             Command::GridCols(1),
             Command::GridRows(-1),
             Command::GridRows(1),
-            Command::ToggleGridAxes,
         ];
         assert_eq!(buttons.len(), expected.len());
         for (b, want) in buttons.iter().zip(expected) {

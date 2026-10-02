@@ -1262,7 +1262,6 @@ mod tests {
 
         // Assert
         assert!(!helpers.smart_snap && !helpers.grid_snap && !helpers.numbering);
-        assert!(!helpers.grid_axes);
         assert_eq!(helpers.next_number, FIRST_NUMBER);
         assert_eq!((helpers.grid_cols, helpers.grid_rows), (4, 4));
         assert_eq!(ed.style().helpers, helpers);
@@ -1297,16 +1296,6 @@ mod tests {
         assert!(ed.helpers().numbering);
         assert!(ed.apply(Command::ToggleNumbering));
         assert!(!ed.helpers().numbering);
-    }
-
-    #[test]
-    fn toggle_grid_axes_flips() {
-        let mut ed = Editor::new();
-
-        assert!(ed.apply(Command::ToggleGridAxes));
-        assert!(ed.helpers().grid_axes);
-        assert!(ed.apply(Command::ToggleGridAxes));
-        assert!(!ed.helpers().grid_axes);
     }
 
     #[test]
@@ -1452,6 +1441,55 @@ mod tests {
 
         // Assert
         assert_eq!(labels(&ed), vec![Some(1), Some(2), Some(1)]);
+        assert_eq!(ed.helpers().next_number, 2);
+    }
+
+    /// Whether the shapes are grids with indices, `None` for other shapes.
+    fn grid_axes(ed: &Editor) -> Vec<Option<bool>> {
+        ed.document()
+            .shapes()
+            .map(|(_, s)| match s {
+                Shape::Grid { axes, .. } => Some(*axes),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn numbered_grid_keeps_counter() {
+        // Arrange: numbering on, counter at 5.
+        let mut ed = numbering_editor();
+        for i in 0..4 {
+            draw_node(&mut ed, 100.0 * i as f32);
+        }
+
+        // Act: circle 5, a grid, square 6.
+        draw_node(&mut ed, 400.0);
+        ed.apply(Command::SetTool(Tool::Grid));
+        draw_node(&mut ed, 500.0);
+        ed.apply(Command::SetTool(Tool::Rect));
+        draw_node(&mut ed, 600.0);
+
+        // Assert
+        let labels = labels(&ed);
+        assert_eq!(labels[4..], [Some(5), None, Some(6)]);
+        assert_eq!(grid_axes(&ed)[5], Some(true), "numbered grid has indices");
+        assert_eq!(ed.helpers().next_number, 7);
+    }
+
+    #[test]
+    fn undo_numbered_grid_keeps_counter() {
+        // Arrange
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        ed.apply(Command::SetTool(Tool::Grid));
+        draw_node(&mut ed, 100.0);
+        assert_eq!(ed.helpers().next_number, 2);
+
+        // Act / Assert
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.helpers().next_number, 2);
+        assert!(ed.apply(Command::Redo));
         assert_eq!(ed.helpers().next_number, 2);
     }
 
