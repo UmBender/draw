@@ -147,6 +147,9 @@ pub struct Editor {
     keymap: Keymap,
     /// Grows whenever the document may have changed (ADR-T24-1).
     doc_revision: u64,
+    /// `doc_revision` of the latest change that was not a pure append of
+    /// shapes on top (ADR-T24-3).
+    doc_base_revision: u64,
 }
 
 impl Default for Editor {
@@ -176,6 +179,7 @@ impl Editor {
             gesture: None,
             keymap: keymap::resolve,
             doc_revision: 0,
+            doc_base_revision: 0,
         }
     }
 
@@ -356,6 +360,15 @@ impl Editor {
     #[must_use]
     pub fn document_revision(&self) -> u64 {
         self.doc_revision
+    }
+
+    /// The [`Editor::document_revision`] of the latest document change that
+    /// was not a pure append of shapes on top (ADR-T24-3). While it stays at
+    /// or below a cached revision, the document is that cached one plus the
+    /// shapes from its old length on.
+    #[must_use]
+    pub fn document_base_revision(&self) -> u64 {
+        todo!()
     }
 
     /// The camera.

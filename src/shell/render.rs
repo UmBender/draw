@@ -10,6 +10,7 @@
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
+use macroquad::models::{Mesh, Vertex, draw_mesh};
 use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
 use macroquad::text::{TextParams, draw_text_ex, measure_text};
 
@@ -21,6 +22,89 @@ use crate::core::shape::{
     GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
 };
 use crate::core::snap::GRID_STEP;
+
+/// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
+/// capacity of 10 000 (ADR-T24-3).
+pub const BATCH_MAX_VERTICES: usize = 4_800;
+
+/// Most indices one [`Batch`] chunk holds; below macroquad's per-draw-call
+/// capacity of 5 000 and a multiple of 6, so whole quads fit (ADR-T24-3).
+pub const BATCH_MAX_INDICES: usize = 4_800;
+
+/// Where a [`Batch`] sends finished chunks.
+pub trait MeshSink {
+    /// Draws (or records) one chunk of triangles.
+    fn draw(&mut self, mesh: &Mesh);
+}
+
+/// Sends chunks to macroquad with `draw_mesh`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GlSink;
+
+impl MeshSink for GlSink {
+    fn draw(&mut self, mesh: &Mesh) {
+        draw_mesh(mesh);
+    }
+}
+
+/// Collects untextured triangles and submits them in chunks of at most
+/// [`BATCH_MAX_VERTICES`] / [`BATCH_MAX_INDICES`] (ADR-T24-3). Callers
+/// [`Batch::flush`] before drawing anything else (text) to keep z-order.
+pub struct Batch<S: MeshSink = GlSink> {
+    /// The chunk being filled.
+    mesh: Mesh,
+    /// Receives finished chunks.
+    sink: S,
+}
+
+impl<S: MeshSink> Batch<S> {
+    /// An empty batch sending chunks to `sink`.
+    pub fn new(sink: S) -> Self {
+        todo!()
+    }
+
+    /// Adds triangle `a b c`.
+    pub fn triangle(&mut self, a: Vec2, b: Vec2, c: Vec2, color: Color) {
+        todo!()
+    }
+
+    /// Adds an axis-aligned rectangle as one quad.
+    pub fn rect(&mut self, rect: Aabb, color: Color) {
+        todo!()
+    }
+
+    /// Adds segment `a → b` as a quad `width` pixels wide with flat ends,
+    /// like macroquad's `draw_line`. A zero-length segment adds nothing.
+    pub fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Color) {
+        todo!()
+    }
+
+    /// Adds a triangle fan around `center`: one triangle per consecutive
+    /// pair of `rim` points (pass the first point again at the end to close
+    /// the loop).
+    pub fn fan(&mut self, center: Vec2, rim: impl ExactSizeIterator<Item = Vec2>, color: Color) {
+        todo!()
+    }
+
+    /// Adds a strip of quads between consecutive `(outer, inner)` pairs.
+    pub fn strip(
+        &mut self,
+        pairs: impl ExactSizeIterator<Item = (Vec2, Vec2)>,
+        color: Color,
+    ) {
+        todo!()
+    }
+
+    /// Sends the current chunk to the sink, if it holds anything.
+    pub fn flush(&mut self) {
+        todo!()
+    }
+
+    /// Flushes and returns the sink.
+    pub fn finish(self) -> S {
+        todo!()
+    }
+}
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
 pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;

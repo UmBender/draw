@@ -91,6 +91,7 @@ pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> Strin
     let layers = match redraw {
         Redraw::None => "no",
         Redraw::Overlay => "overlay",
+        Redraw::Append { .. } => "append",
         Redraw::Full => "full",
     };
     let ms = elapsed.as_secs_f64() * 1000.0;
@@ -103,6 +104,8 @@ pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> Strin
 pub struct LayerKey {
     /// [`Editor::document_revision`].
     pub revision: u64,
+    /// Number of shapes in the document.
+    pub len: usize,
     /// The view.
     pub camera: Camera,
     /// Framebuffer size in physical pixels.
@@ -120,19 +123,22 @@ pub enum Redraw {
     None,
     /// The frame only: cached document layer plus the overlay.
     Overlay,
+    /// Only the shapes from index `from` on, drawn onto the cached document
+    /// layer (ADR-T24-3).
+    Append {
+        /// First new shape, in z-order.
+        from: usize,
+    },
     /// Both layers.
     Full,
 }
 
 /// Picks the work for a frame from the `cached` document layer's key, the
-/// `next` key and whether input changed editor state (`dirty`).
+/// `next` key, [`Editor::document_base_revision`] (`base`) and whether
+/// input changed editor state (`dirty`).
 #[must_use]
-pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, dirty: bool) -> Redraw {
-    match cached {
-        Some(cached) if cached == next && dirty => Redraw::Overlay,
-        Some(cached) if cached == next => Redraw::None,
-        _ => Redraw::Full,
-    }
+pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty: bool) -> Redraw {
+    todo!()
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -274,12 +280,14 @@ impl CachedFrame {
         let overlay = editor.overlay();
         let key = LayerKey {
             revision: editor.document_revision(),
+            len: editor.document().len(),
             camera: *editor.camera(),
             size,
             hidden: overlay.hidden.clone(),
             underlay: editor.helpers().grid_snap,
         };
-        let redraw = plan_redraw(self.key.as_ref(), &key, dirty);
+        let base = editor.document_base_revision();
+        let redraw = plan_redraw(self.key.as_ref(), &key, base, dirty);
         let started = self.timed.then(Instant::now);
         if redraw == Redraw::Full {
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
