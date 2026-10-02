@@ -1710,7 +1710,10 @@ mod tests {
     #[test]
     fn document_revision_select_click_and_marquee_keep_revision() {
         // Arrange
-        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0), rect(50.0, 50.0, 10.0, 10.0)]);
+        let mut ed = editor_with(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(50.0, 50.0, 10.0, 10.0),
+        ]);
         ed.apply(Command::SetTool(Tool::Select));
         let before = ed.document_revision();
 
