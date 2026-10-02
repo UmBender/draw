@@ -47,8 +47,9 @@ note with their shortcuts.
 - `translate(delta)`, `with_fill(fill)`, `is_finite()` — for move/paste,
   bucket, and the "all stored coordinates are finite" invariant.
 - `arrow_head(a, b, width)` — the head triangle, shared by renderer and
-  `bounds` so what you see is what you hit. Head length is
-  `max(8, 4 × width)` world units, base half-width half of that.
+  `bounds` so what you see is what you hit. Head length is `4 × width`
+  world units with no minimum, so it keeps its proportion at any zoom
+  ([[ADR-0016 Arrow head proportional to width]]); base half-width half of that.
 
 ### Rendering
 
