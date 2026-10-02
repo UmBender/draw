@@ -5,7 +5,8 @@
 //! a [`Transaction`] of [`Edit`]s and either applies all of them or none
 //! (ADR-0005, ADR-T06-1). The `tx_*` builders create the common transactions.
 
-use std::collections::HashSet;
+use std::cell::OnceCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use crate::core::shape::Shape;
@@ -161,6 +162,32 @@ pub struct Document {
     ids: HashSet<ShapeId>,
     /// Next id to hand out; only ever grows.
     next_id: u64,
+    /// Id → z-order position, built on the first lookup after an insert or
+    /// remove (ADR-T25-1).
+    positions: OnceCell<HashMap<ShapeId, usize>>,
+}
+
+/// A stretch of a transaction that [`Document::apply`] handles in one go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Run {
+    /// `Remove`s with strictly decreasing indices.
+    Removes(usize),
+    /// `Insert`s with strictly increasing indices.
+    Inserts(usize),
+    /// One edit applied on its own.
+    Single,
+}
+
+impl Run {
+    /// The run that starts at `edits[0]`.
+    fn at(edits: &[Edit]) -> Self {
+        todo!()
+    }
+
+    /// Number of edits the run covers.
+    fn len(self) -> usize {
+        todo!()
+    }
 }
 
 impl Document {
@@ -239,6 +266,23 @@ impl Document {
             }
         }
         Ok(())
+    }
+
+    /// The id → position index, built on first use.
+    fn positions(&self) -> &HashMap<ShapeId, usize> {
+        todo!()
+    }
+
+    /// Checks a [`Run::Removes`] run against the current shapes, in edit
+    /// order, then removes all of it in one pass; on error nothing changes.
+    fn apply_remove_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
+        todo!()
+    }
+
+    /// Checks a [`Run::Inserts`] run, in edit order, then merges all of it
+    /// in one pass; on error nothing changes.
+    fn apply_insert_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
+        todo!()
     }
 
     /// Undo `applied` (edits that just succeeded), last first.
