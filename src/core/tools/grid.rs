@@ -61,7 +61,7 @@ impl Drag {
             cols,
             rows,
             style: self.style,
-            axes: helpers.grid_axes,
+            axes: false,
             fills: Vec::new(),
         }
     }

@@ -46,7 +46,6 @@ pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 /// Helper settings for new shapes: snapping, grid size and numbering
 /// (ADR-T16-3). Only [`Editor::apply`] changes them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(clippy::struct_excessive_bools)] // independent toggles, one key each
 pub struct Helpers {
     /// Smart snapping (round, sizes, alignment) is on.
     pub smart_snap: bool,
@@ -60,8 +59,6 @@ pub struct Helpers {
     pub grid_cols: u32,
     /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_rows: u32,
-    /// New grids get axis indices (ADR-T18-3).
-    pub grid_axes: bool,
 }
 
 impl Default for Helpers {
@@ -73,7 +70,6 @@ impl Default for Helpers {
             next_number: FIRST_NUMBER,
             grid_cols: DEFAULT_GRID_CELLS,
             grid_rows: DEFAULT_GRID_CELLS,
-            grid_axes: false,
         }
     }
 }
@@ -332,8 +328,7 @@ impl Editor {
             | Command::ToggleNumbering
             | Command::ResetNumbering
             | Command::GridCols(_)
-            | Command::GridRows(_)
-            | Command::ToggleGridAxes => apply_helper(&mut self.style.helpers, command),
+            | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
         }
     }
 
@@ -608,10 +603,6 @@ fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
         }
         Command::GridCols(delta) => step_cells(&mut helpers.grid_cols, delta),
         Command::GridRows(delta) => step_cells(&mut helpers.grid_rows, delta),
-        Command::ToggleGridAxes => {
-            helpers.grid_axes = !helpers.grid_axes;
-            true
-        }
         _ => false,
     }
 }
