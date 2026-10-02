@@ -26,8 +26,8 @@ few points that matter. The line always ends exactly where the cursor was.
 | Level | Feels like |
 |-------|------------|
 | Off | Raw input; only exact duplicate points are removed |
-| Low | Light steadying, almost no lag |
-| Medium (default) | Good balance for everyday drawing |
+| Low (default) | Light steadying, almost no lag ([[ADR-T14-2 Low smoothing by default]]) |
+| Medium | Good balance for everyday drawing |
 | High | Strongest steadying for a very shaky hand; the line trails the cursor a little more |
 
 Status: this note covers the smoothing engine ([[T04 Stroke smoothing]]). The

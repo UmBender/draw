@@ -15,7 +15,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 4 | [[ADR-0004 Vector object model]] | accepted | decision | 0003 | amended by T16-1 |
 | 5 | [[ADR-0005 Undo via transaction log]] | accepted | decision | 0004 | — |
 | 6 | [[ADR-0006 Redraw on demand]] | accepted | decision | 0002, 0003 | — |
-| 7 | [[ADR-0007 Anti-tremor pipeline]] | accepted | decision | 0004 | — |
+| 7 | [[ADR-0007 Anti-tremor pipeline]] | accepted | decision | 0004 | amended by T14-2 |
 | 8 | [[ADR-0008 Testing strategy SDD and TDD]] | accepted | decision | 0003 | — |
 | 9 | [[ADR-0009 Fuzzing with proptest]] | accepted | decision | 0003, 0008 | — |
 | 10 | [[ADR-0010 Clippy lint policy]] | accepted | decision | 0008 | — |
@@ -43,3 +43,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 32 | [[ADR-T22-1 Numbering toggle drives grid indices]] | accepted | decision | T18-3, T19-1, T16-2 | amends T18-3, T18-2 |
 | 33 | [[ADR-0016 Arrow head proportional to width]] | accepted | decision | 0004, 0013 | — |
 | 34 | [[ADR-T20-1 Outline snapping]] | accepted | decision | T17-1, 0013 | amends T17-1 |
+| 35 | [[ADR-T14-1 Performance budgets]] | accepted | decision | 0006, 0007, T17-1, T20-1 | — |
+| 36 | [[ADR-T14-2 Low smoothing by default]] | accepted | decision | 0007 | amends 0007 |

@@ -1,7 +1,7 @@
 ---
 id: T14
 title: Performance and release validation
-status: review
+status: done
 wave: 10
 branch: task/T14-release
 depends_on: [T12, T13, T15, T16, T17, T18, T19, T20]

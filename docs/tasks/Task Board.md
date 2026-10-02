@@ -101,4 +101,4 @@ flowchart TD
 | [[T21 Cell fill and fill eraser]] | done | T18 | `task/T21-cell-fill` |
 | [[T22 Numbering drives grid indices]] | done | T18, T19, T21 | `task/T22-numbered-grids` |
 | [[T23 Arrow head proportional to width]] | done | T05 | `fix/arrow-head-scale` |
-| [[T14 Performance and release validation]] | todo | T12, T13, T15–T23 | `task/T14-release` |
+| [[T14 Performance and release validation]] | done | T12, T13, T15–T23 | `task/T14-release` |
