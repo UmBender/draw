@@ -110,7 +110,7 @@ pub enum OutlineKind {
     /// The ellipse inscribed in the box.
     Ellipse,
     /// Every line of a `cols × rows` grid (clamped like
-    /// [`grid_lines`](crate::core::shape::grid_lines)).
+    /// [`grid_lines`]).
     Grid {
         /// Number of columns.
         cols: u32,
@@ -264,31 +264,31 @@ fn nearest_on_segments(
     centre: P64,
     segments: impl IntoIterator<Item = [P64; 2]>,
 ) -> (P64, P64) {
-    let mut best: Option<(f64, P64, [P64; 2])> = None;
-    for [a, b] in segments {
-        let ab = b.sub(a);
-        let len_sq = ab.dot(ab);
+    let mut best: Option<(f64, P64, P64)> = None;
+    for [from, to] in segments {
+        let along = to.sub(from);
+        let len_sq = along.dot(along);
         let t = if len_sq > 0.0 {
-            (p.sub(a).dot(ab) / len_sq).clamp(0.0, 1.0)
+            (p.sub(from).dot(along) / len_sq).clamp(0.0, 1.0)
         } else {
             0.0
         };
-        let q = a.add(ab.scale(t));
-        let dist = p.sub(q).dot(p.sub(q));
+        let foot = from.add(along.scale(t));
+        let dist = p.sub(foot).dot(p.sub(foot));
         if best.is_none_or(|(best_dist, ..)| dist < best_dist) {
-            best = Some((dist, q, [a, b]));
+            best = Some((dist, foot, along));
         }
     }
-    let Some((_, q, [a, b])) = best else {
+    let Some((_, foot, along)) = best else {
         return (p, P64::from(FALLBACK_NORMAL));
     };
-    let outward = q.sub(centre);
-    let normal = match P64::new(a.y - b.y, b.x - a.x).unit() {
+    let outward = foot.sub(centre);
+    let normal = match P64::new(-along.y, along.x).unit() {
         Some(n) if n.dot(outward) < 0.0 => n.scale(-1.0),
         Some(n) => n,
         None => outward.unit().unwrap_or(P64::from(FALLBACK_NORMAL)),
     };
-    (q, normal)
+    (foot, normal)
 }
 
 /// The point of the ellipse with centre `c` and semi-axes `semi` nearest
@@ -300,7 +300,8 @@ fn nearest_on_ellipse(p: P64, c: P64, semi: P64) -> (P64, P64) {
         return nearest_on_segments(p, c, [segment]);
     }
     let d = p.sub(c);
-    if semi.x == semi.y {
+    // Equal up to rounding: a circle, projected exactly.
+    if (semi.x - semi.y).abs() <= f64::EPSILON * semi.x {
         let dir = d.unit().unwrap_or(P64::new(1.0, 0.0));
         return (c.add(dir.scale(semi.x)), dir);
     }
@@ -359,7 +360,8 @@ fn ellipse_root(r0: f64, z0: f64, z1: f64, g: f64) -> f64 {
     let mut s = s0;
     for _ in 0..ELLIPSE_MAX_ITERATIONS {
         s = midpoint64(s0, s1);
-        if s == s0 || s == s1 {
+        // The bracket cannot shrink any further.
+        if s <= s0 || s >= s1 {
             break;
         }
         let (ratio0, ratio1) = (n0 / (s + r0), z1 / (s + 1.0));
@@ -390,7 +392,8 @@ pub fn snap_outline(p: Vec2, outlines: &[Outline], tolerance: f32, width: f32) -
         let near = outline.nearest(p);
         let offset = half_width(outline.width) + half_width(width);
         let dist = p.distance(near.point);
-        if !(dist <= tolerance + offset) || best.is_some_and(|(d, _)| d <= dist) {
+        let within = dist <= tolerance + offset;
+        if !within || best.is_some_and(|(d, _)| d <= dist) {
             continue;
         }
         // On the outline (up to rounding) the side is the shape's outside.
