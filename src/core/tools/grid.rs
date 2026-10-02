@@ -10,6 +10,7 @@
 //! read them from [`Helpers`] in
 //! [`ToolView::style`], so the arrow keys change them live and the grid
 //! gets the values at release (ADR-T18-1). `Shift` makes the cells square.
+//! With numbering on, new grids show their axis indices (ADR-T22-1).
 
 use crate::core::command::Tool;
 use crate::core::document::tx_insert;
@@ -43,8 +44,8 @@ struct Drag {
 }
 
 impl Drag {
-    /// The grid this drag spans with the dimensions and axes setting of
-    /// `helpers` (dimensions clamped to `1..=GRID_MAX_CELLS`), with square
+    /// The grid this drag spans with the dimensions of `helpers` and axis
+    /// indices if numbering is on (dimensions clamped to `1..=GRID_MAX_CELLS`), with square
     /// cells if `shift` is held.
     fn shape(&self, helpers: &Helpers) -> Shape {
         let cols = helpers.grid_cols.clamp(1, GRID_MAX_CELLS);
@@ -61,7 +62,8 @@ impl Drag {
             cols,
             rows,
             style: self.style,
-            axes: false,
+            // Numbered grids show their indices (ADR-T22-1).
+            axes: helpers.numbering,
             fills: Vec::new(),
         }
     }
