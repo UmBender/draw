@@ -2004,9 +2004,12 @@ mod tests {
         assert_eq!(ed.document_base_revision(), base);
     }
 
+    /// A named edit that rewrites the document.
+    type Rewrite = (&'static str, fn(&mut Editor));
+
     #[test]
     fn document_base_revision_rewrites_raise_base() {
-        let rewrites: [(&str, fn(&mut Editor)); 8] = [
+        let rewrites: [Rewrite; 8] = [
             ("undo", |ed| {
                 ed.apply(Command::Undo);
             }),

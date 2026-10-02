@@ -93,8 +93,7 @@ impl<S: MeshSink> Batch<S> {
     pub fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Color) {
         let d = b - a;
         let len = d.length();
-        // Also rejects NaN.
-        if !(len > 0.0) {
+        if !len.is_finite() || len <= 0.0 {
             return;
         }
         let n = Vec2::new(-d.y, d.x) * (width * 0.5 / len);
@@ -120,11 +119,7 @@ impl<S: MeshSink> Batch<S> {
     }
 
     /// Adds a strip of quads between consecutive `(outer, inner)` pairs.
-    pub fn strip(
-        &mut self,
-        pairs: impl ExactSizeIterator<Item = (Vec2, Vec2)>,
-        color: Color,
-    ) {
+    pub fn strip(&mut self, pairs: impl ExactSizeIterator<Item = (Vec2, Vec2)>, color: Color) {
         let count = pairs.len();
         if count < 2 {
             return;
@@ -498,7 +493,12 @@ pub fn draw_preview(shape: &Shape, camera: &Camera) {
 pub fn draw_selection(bounds: Aabb, camera: &Camera) {
     let rect = selection_rect(bounds, camera);
     let mut batch = Batch::new(GlSink);
-    draw_rect_outline(&mut batch, rect, SELECTION_WIDTH_PX, to_mq_color(THEME.accent));
+    draw_rect_outline(
+        &mut batch,
+        rect,
+        SELECTION_WIDTH_PX,
+        to_mq_color(THEME.accent),
+    );
     batch.finish();
 }
 
@@ -823,7 +823,10 @@ mod tests {
             Vec2::new(4.0, 2.0),
             Vec2::new(0.0, 2.0),
         ] {
-            assert!(corners.iter().any(|c| c.approx_eq(corner, EPS)), "{corner:?}");
+            assert!(
+                corners.iter().any(|c| c.approx_eq(corner, EPS)),
+                "{corner:?}"
+            );
         }
     }
 
@@ -859,7 +862,10 @@ mod tests {
         for v in vertices {
             let p = position(v);
             assert!(approx_eq(p.y.abs(), 2.0, EPS), "{p:?}");
-            assert!(approx_eq(p.x, 0.0, EPS) || approx_eq(p.x, 10.0, EPS), "{p:?}");
+            assert!(
+                approx_eq(p.x, 0.0, EPS) || approx_eq(p.x, 10.0, EPS),
+                "{p:?}"
+            );
         }
     }
 
@@ -918,9 +924,11 @@ mod tests {
     #[test]
     fn batch_limits_fit_a_macroquad_draw_call() {
         // macroquad clamps geometry at 10 000 vertices / 5 000 indices.
-        assert!(BATCH_MAX_VERTICES < 10_000);
-        assert!(BATCH_MAX_INDICES < 5_000);
-        assert_eq!(BATCH_MAX_INDICES % 6, 0);
+        const {
+            assert!(BATCH_MAX_VERTICES < 10_000);
+            assert!(BATCH_MAX_INDICES < 5_000);
+            assert!(BATCH_MAX_INDICES % 6 == 0);
+        }
     }
 
     proptest! {

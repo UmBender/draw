@@ -690,7 +690,11 @@ mod tests {
 
         for next in changed {
             // Act / Assert
-            assert_eq!(plan_redraw(Some(&key()), &next, 0, true), Redraw::Full, "{next:?}");
+            assert_eq!(
+                plan_redraw(Some(&key()), &next, 0, true),
+                Redraw::Full,
+                "{next:?}"
+            );
         }
     }
 
