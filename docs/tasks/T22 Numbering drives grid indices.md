@@ -1,7 +1,7 @@
 ---
 id: T22
 title: Numbering drives grid indices
-status: in-progress
+status: review
 wave: 10
 branch: task/T22-numbered-grids
 depends_on: [T18, T19, T21]
@@ -57,7 +57,7 @@ grid's indices.
 
 ## Subtasks (one commit each)
 
-- [x] spec · [ ] tests · [ ] models · [ ] behaviour · [ ] quality · [ ] docs
+- [x] spec · [x] tests · [x] models · [x] behaviour · [x] quality · [x] docs
 
 ## Learning path
 
@@ -69,3 +69,11 @@ Step 22 — requires steps 18 and 19.
   indices too, without the grid consuming a number. The counter rule of
   ADR-T19-1 already counts only labelled shapes, so AC-2 needs tests, not
   code.
+- tests: red as a compile error (the flyout test match no longer lists
+  `GridAxes`) plus two behaviour tests.
+- models: removals only; `axes: false` until the behaviour step.
+- behaviour: one line, `axes: helpers.numbering`.
+- quality: `scripts/check.sh` green with no changes, so no quality commit.
+- docs: Keymap, Grid tool and Numbered nodes notes, tutorial 22.
+  `docs/tutorials/18 A grid tool with live parameters.md` (owned by T18)
+  still mentions the `I` key; left for the integrator or a T18 follow-up.
