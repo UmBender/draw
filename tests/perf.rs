@@ -16,7 +16,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use draw::core::camera::Camera;
-use draw::core::document::{Document, tx_insert};
+use draw::core::document::{Document, Edit, ShapeId, Transaction, tx_insert, tx_remove};
 use draw::core::geom::Vec2;
 use draw::core::palette::ColorId;
 use draw::core::shape::{CellFill, Shape, Style};
@@ -328,4 +328,96 @@ fn perf_snap_drag_with_10k_shapes_is_under_4ms() {
 
     // Assert
     assert_within_budget("snap drag move, 10k shapes", median, SNAP_BUDGET);
+}
+
+/// Every other shape of `doc`: half the document selected (T25).
+fn half_selected(doc: &Document) -> Vec<ShapeId> {
+    doc.shapes().map(|(id, _)| id).step_by(2).collect()
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_lookup_5k_selected_of_10k_is_under_1ms() {
+    // Arrange: a document never queried, so each run also builds whatever
+    // lookup structure the document keeps (worst case after an edit).
+    if !optimised() {
+        return;
+    }
+    let pristine = benchmark_document();
+    let selected = half_selected(&pristine);
+
+    // Act: what selection bounds and pruning do.
+    let median = median_time(
+        || pristine.clone(),
+        |doc| selected.iter().filter(|id| doc.get(**id).is_some()).count(),
+    );
+
+    // Assert
+    assert_within_budget("lookup 5k selected, 10k shapes", median, BUDGET);
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_move_commit_5k_of_10k_is_under_1ms() {
+    // Arrange: the Replace transaction of moving half the document.
+    if !optimised() {
+        return;
+    }
+    let pristine = benchmark_document();
+    let edits: Vec<Edit> = half_selected(&pristine)
+        .into_iter()
+        .filter_map(|id| {
+            let before = pristine.get(id)?.clone();
+            let mut after = before.clone();
+            after.translate(Vec2::new(5.0, 3.0));
+            Some(Edit::Replace { id, before, after })
+        })
+        .collect();
+    let tx = Transaction::from(edits);
+    let pristine = benchmark_document();
+
+    // Act
+    let median = median_time(|| pristine.clone(), |mut doc| doc.apply(&tx).is_ok());
+
+    // Assert
+    assert!(pristine.clone().apply(&tx).is_ok());
+    assert_within_budget("move commit 5k, 10k shapes", median, BUDGET);
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_delete_5k_of_10k_is_under_1ms() {
+    // Arrange
+    if !optimised() {
+        return;
+    }
+    let pristine = benchmark_document();
+    let tx = tx_remove(&pristine, &half_selected(&pristine));
+
+    // Act
+    let median = median_time(|| pristine.clone(), |mut doc| doc.apply(&tx).is_ok());
+
+    // Assert
+    assert!(pristine.clone().apply(&tx).is_ok());
+    assert_within_budget("delete 5k, 10k shapes", median, BUDGET);
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_undo_delete_5k_of_10k_is_under_1ms() {
+    // Arrange: the document after deleting half of it, and the undo.
+    if !optimised() {
+        return;
+    }
+    let mut deleted = benchmark_document();
+    let tx = tx_remove(&deleted, &half_selected(&deleted));
+    assert!(deleted.apply(&tx).is_ok());
+    let undo = tx.inverse();
+
+    // Act
+    let median = median_time(|| deleted.clone(), |mut doc| doc.apply(&undo).is_ok());
+
+    // Assert
+    assert!(deleted.clone().apply(&undo).is_ok());
+    assert_within_budget("undo delete 5k, 10k shapes", median, BUDGET);
 }

@@ -237,6 +237,27 @@ mod tests {
     }
 
     #[test]
+    fn long_drag_marks_each_shape_once() {
+        // Arrange
+        let (mut fx, ids) = three_lines();
+        let mut state = State::default();
+
+        // Act: sweep back and forth across the first two lines.
+        send(&mut state, &mut fx, Phase::Down, 10.0, 0.0);
+        for i in 0..20u8 {
+            let y = if i % 2 == 0 { 50.0 } else { 0.0 };
+            send(&mut state, &mut fx, Phase::Move, 10.0 + f32::from(i), y);
+        }
+
+        // Assert: marked in touch order, without repeats.
+        let hidden = preview(&state, &fx.view(Tool::Eraser)).hidden;
+        assert_eq!(hidden, vec![ids[0], ids[1]]);
+        let changed = send(&mut state, &mut fx, Phase::Up, 30.0, 0.0);
+        assert!(changed);
+        assert_eq!(fx.doc.len(), 1);
+    }
+
+    #[test]
     fn drag_marks_every_shape_touched() {
         let (mut fx, ids) = three_lines();
         let mut state = State::default();
