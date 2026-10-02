@@ -8,11 +8,9 @@
 use crate::core::geom::{Aabb, Vec2, distance_to_segment};
 use crate::core::palette::ColorId;
 
-/// Arrow head length per unit of stroke width.
+/// Arrow head length per unit of stroke width. The head has no absolute
+/// minimum, so it keeps its proportion to the shaft at any zoom.
 pub const ARROW_HEAD_LENGTH_PER_WIDTH: f32 = 4.0;
-
-/// Smallest arrow head length in world units, so thin arrows keep a visible head.
-pub const ARROW_HEAD_MIN_LENGTH: f32 = 8.0;
 
 /// Half the width of the arrow head base, as a fraction of the head length.
 pub const ARROW_HEAD_HALF_WIDTH_RATIO: f32 = 0.5;
@@ -502,8 +500,8 @@ fn clamp_cells(n: u32) -> u32 {
 
 /// Arrow head triangle `[tip, left, right]` for an arrow from `a` to `b`.
 ///
-/// The tip is `b`; the base lies `max(ARROW_HEAD_MIN_LENGTH,
-/// ARROW_HEAD_LENGTH_PER_WIDTH * width)` back along the shaft and is
+/// The tip is `b`; the base lies `ARROW_HEAD_LENGTH_PER_WIDTH * width` back
+/// along the shaft (negative or NaN widths count as 0) and is
 /// `2 * ARROW_HEAD_HALF_WIDTH_RATIO` times that length wide. "Left" is the
 /// side reached by turning the shaft direction a quarter turn towards +y.
 /// A degenerate arrow (`a` ≈ `b`) gives `[b, b, b]`.
@@ -515,7 +513,7 @@ pub fn arrow_head(a: Vec2, b: Vec2, width: f32) -> [Vec2; 3] {
         return [b, b, b];
     }
     let dir = shaft / len;
-    let head_len = (ARROW_HEAD_LENGTH_PER_WIDTH * width).max(ARROW_HEAD_MIN_LENGTH);
+    let head_len = ARROW_HEAD_LENGTH_PER_WIDTH * width.max(0.0);
     let base = b - dir * head_len;
     let side = Vec2::new(-dir.y, dir.x) * (ARROW_HEAD_HALF_WIDTH_RATIO * head_len);
     [b, base + side, base - side]

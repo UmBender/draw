@@ -80,7 +80,7 @@ In `src/core/shape.rs`:
 
 ## Try it
 
-1. Change `ARROW_HEAD_MIN_LENGTH` to `2.0` and run
+1. Change `ARROW_HEAD_LENGTH_PER_WIDTH` to `0.5` and run
    `cargo test shape::tests::bounds_arrow` — the test asserts the head sticks
    out past the half width and now fails. Put it back.
 2. Add a test `hit_rect_corner_uses_euclidean_distance`: for a 10×10 rect with
