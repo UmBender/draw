@@ -1,7 +1,7 @@
 ---
 title: Numbered nodes
 task: "[[T19 Auto-numbering]]"
-adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]"]
+adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]"]
 tutorial: "[[19 Auto-numbering and undoable counters]]"
 shortcuts: ["N", "Shift+N"]
 tags: [feature]
@@ -25,8 +25,10 @@ fixing a misdrawn node does not leave a gap.
 | Draw a numbered node | ellipse (`C`) or rectangle (`R`) tool, drag |
 | Give the last number back | undo (`Ctrl+Z`); redo takes it again |
 
-Numbering is off at start and the counter starts at 1. Lines, arrows,
-strokes and grids are never numbered. Copy, paste and duplicate keep the
+Numbering is off at start and the counter starts at 1. Lines, arrows and
+strokes are never numbered. A grid drawn with numbering on gets 0-based
+axis indices instead (see [[Grid tool]]) and does **not** use up a number:
+circle 5, a grid, then square 6. Copy, paste and duplicate keep the
 numbers of the copied shapes and do not move the counter.
 
 ## How it works
@@ -47,4 +49,4 @@ shapes labelled with the counter before and after a gesture end or redo
 - `N` and `Shift+N` are not undo steps.
 - Undoing a paste that contains a copy of the newest number also gives that
   number back, so the next node repeats it.
-- Grid cells are not numbered.
+- Grid cells are not numbered inside; grids only get axis indices.

@@ -1,9 +1,9 @@
 ---
 title: Grid tool
 task: "[[T18 Grid tool]]"
-adrs: ["[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-2 Helper key bindings]]", "[[ADR-T16-3 Helper settings and hooks]]"]
+adrs: ["[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-2 Helper key bindings]]", "[[ADR-T16-3 Helper settings and hooks]]"]
 tutorial: "[[18 A grid tool with live parameters]]"
-shortcuts: ["G", "←", "→", "↑", "↓", "I", "Shift"]
+shortcuts: ["G", "←", "→", "↑", "↓", "N", "Shift"]
 tags: [feature]
 ---
 
@@ -25,12 +25,14 @@ copy and undo it like any other.
 | One column more / fewer | `→` / `←` (also before or between drags) |
 | One row more / fewer | `↓` / `↑` |
 | Change columns / rows with the mouse | `-` / `+` in the flyout next to `G` |
-| Axis indices on / off | `I`, or the `axes` row of the flyout |
+| Axis indices on / off | numbering: `N` or the toolbar `N` button |
 | Square cells | hold `Shift` |
 | No snapping for this drag | hold `Alt` |
 | Abort the drag | `Esc` |
 
-**Axis indices.** With axes on, new grids show 0-based column indices
+**Axis indices.** With numbering on (`N`, the same switch that numbers
+circles and squares, [[ADR-T22-1 Numbering toggle drives grid indices]]),
+new grids show 0-based column indices
 along x and row indices along y, outside the grid. Index 0 is at the corner
 where the drag started and the indices grow in the direction the mouse
 moved: a top-left → bottom-right drag puts `0 1 2 …` above the grid and
@@ -60,7 +62,7 @@ are the T16 `Shape::Grid` code. See
 The flyout lives in `src/shell/toolbar.rs`: `flyout_panel` and
 `flyout_layout` are pure layout functions, its buttons are
 `ButtonKind::GridCols(±1)` / `GridRows(±1)` running the same editor commands
-as the arrow keys (plus `GridAxes` for the indices toggle), and `route` swallows presses on the panel when
+as the arrow keys, and `route` swallows presses on the panel when
 `shell::app` reports the grid tool active
 ([[ADR-T18-2 Grid size flyout in the toolbar]]).
 
@@ -79,7 +81,7 @@ to the longest index), hidden when cells are too small on screen
   redraw it.
 - Clicking an index does not select the grid; click a grid line.
 - Axes cannot be toggled on a committed grid — redraw it.
-- The flyout covers about 130 × 90 px of canvas at the left edge while the
+- The flyout covers about 130 × 60 px of canvas at the left edge while the
   grid tool is active; a drag cannot start there.
 - With smart snap on, an almost-square box snaps to exactly square even
   when `cols ≠ rows`; hold `Alt` to avoid it.

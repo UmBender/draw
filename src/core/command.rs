@@ -100,8 +100,6 @@ pub enum Command {
     GridCols(i32),
     /// Add this many rows to new grids (clamped, live during a drag).
     GridRows(i32),
-    /// Turn 0-based axis indices on new grids on or off (ADR-T18-3).
-    ToggleGridAxes,
 }
 
 #[cfg(test)]
