@@ -55,6 +55,7 @@ flowchart TD
   T05 --> T23[T23 Arrow head proportional to width]
   T23 --> T14
   T14 --> T24[T24 Smooth redraws with large documents]
+  T14 --> T25[T25 Linear-time selection with large documents]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -74,7 +75,7 @@ flowchart TD
 | 10 | [[T21 Cell fill and fill eraser]] |
 | 11 | [[T22 Numbering drives grid indices]] · [[T23 Arrow head proportional to width]] |
 | 12 | [[T14 Performance and release validation]] |
-| 13 | [[T24 Smooth redraws with large documents]] |
+| 13 | [[T24 Smooth redraws with large documents]] · [[T25 Linear-time selection with large documents]] |
 
 ## Status
 
@@ -105,3 +106,4 @@ flowchart TD
 | [[T23 Arrow head proportional to width]] | done | T05 | `fix/arrow-head-scale` |
 | [[T14 Performance and release validation]] | done | T12, T13, T15–T23 | `task/T14-release` |
 | [[T24 Smooth redraws with large documents]] | ready | T14 | `task/T24-layered-redraw` |
+| [[T25 Linear-time selection with large documents]] | ready | T14 | `task/T25-fast-lookup` |
