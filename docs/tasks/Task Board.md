@@ -52,6 +52,8 @@ flowchart TD
   T19 --> T22[T22 Numbering drives grid indices]
   T21 --> T22
   T22 --> T14
+  T05 --> T23[T23 Arrow head proportional to width]
+  T23 --> T14
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -69,7 +71,7 @@ flowchart TD
 | 8 | [[T17 Snapping]] · [[T18 Grid tool]] |
 | 9 | [[T19 Auto-numbering]] · [[T20 Outline snapping]] |
 | 10 | [[T21 Cell fill and fill eraser]] |
-| 11 | [[T22 Numbering drives grid indices]] |
+| 11 | [[T22 Numbering drives grid indices]] · [[T23 Arrow head proportional to width]] |
 | 12 | [[T14 Performance and release validation]] |
 
 ## Status
@@ -98,4 +100,5 @@ flowchart TD
 | [[T20 Outline snapping]] | ready | T17 | `task/T20-outline-snapping` |
 | [[T21 Cell fill and fill eraser]] | done | T18 | `task/T21-cell-fill` |
 | [[T22 Numbering drives grid indices]] | done | T18, T19, T21 | `task/T22-numbered-grids` |
-| [[T14 Performance and release validation]] | todo | T12, T13, T15–T22 | `task/T14-release` |
+| [[T23 Arrow head proportional to width]] | done | T05 | `fix/arrow-head-scale` |
+| [[T14 Performance and release validation]] | todo | T12, T13, T15–T23 | `task/T14-release` |
