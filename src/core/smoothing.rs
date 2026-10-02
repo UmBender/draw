@@ -26,10 +26,10 @@ pub const MIN_ALPHA: f32 = 0.01;
 pub enum SmoothingLevel {
     /// No smoothing: raw input, only exact duplicates removed.
     Off,
-    /// Light smoothing, minimal lag.
-    Low,
-    /// Default balance between steadiness and lag.
+    /// Light smoothing, minimal lag; the default (ADR-T14-2).
     #[default]
+    Low,
+    /// Balance between steadiness and lag.
     Medium,
     /// Strong smoothing for a very shaky hand; most lag.
     High,
