@@ -1,7 +1,7 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: in-progress
+status: review
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
@@ -111,11 +111,11 @@ How the shell decides what to redraw:
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T24): specify layered redraw acceptance criteria`
-- [ ] tests — `test(T24): add failing tests for change reporting`
-- [ ] models — `feat(T24): add change revisions and layer types`
-- [ ] behaviour — `feat(T24): render the document and overlay layers separately`
-- [ ] quality — `chore(T24): pass clippy and rustfmt`
-- [ ] docs — `docs(T24): add tutorial and measurements`
+- [x] tests — `test(T24): add failing tests for change reporting`
+- [x] models — `feat(T24): add change revisions and layer types`
+- [x] behaviour — `feat(T24): render the document and overlay layers separately`
+- [x] quality — `chore(T24): pass clippy and rustfmt`
+- [x] docs — `docs(T24): add tutorial and measurements`
 
 ## Learning path
 
@@ -126,3 +126,17 @@ step 14 (profiling).
 
 - 2026-10-02 — Created from the T14 AC-3 finding; not started.
 - 2026-10-02 — Spec refined; ADR-T24-1 added.
+- 2026-10-02 — AC-1 timer, AC-2 two layers and document revision
+  implemented; 13 editor + 8 shell unit tests. `scripts/check.sh` green.
+  T14 perf tests (release) green: culling 0.23 ms, eraser scan 0.34 ms,
+  hit-test 0.38 ms, RDP 83 µs, snap drag 1.13 ms, stroke finish 17 µs.
+  Smoke run with `DRAW_FRAME_TIMES=1`: the first frame logs
+  `full re-render 73.7 ms, 0 shapes` (includes creating the targets and
+  first-use GL setup).
+- 2026-10-02 — **Pending, owner on the target:** AC-1 scenario numbers
+  (circle drag, selection drag, erase, pan, zoom with ≈ 5 000 shapes;
+  `perf record`), AC-5 visual check (MSAA, labels, grids, fills, selection,
+  toolbar). AC-3 is decided from those numbers. The AC-4 budget ADR
+  (amending ADR-T14-1) is written once the numbers exist. Pan and zoom
+  always take the `full` path, so their lines also show the per-event cost
+  before T24.

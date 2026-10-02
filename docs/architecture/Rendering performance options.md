@@ -11,6 +11,20 @@ Nothing here is decided: each option that is picked up needs its own task and
 ADR. Measure first (see *How to measure*), then pick the cheapest option that
 fixes the measured problem.
 
+## Done
+
+- **Option 1, two layers** — [[T24 Smooth redraws with large documents]],
+  [[ADR-T24-1 Document layer keyed by a document revision]]. Core reports
+  document changes through `Editor::document_revision` (additive; `handle`
+  and `apply` keep their `bool`); the shell keys its document layer on
+  revision, camera, size, hidden ids and grid snap.
+- **Frame timer** (*How to measure*) — `DRAW_FRAME_TIMES=1` prints
+  `draw: <full|overlay> re-render <ms> ms, <n> shapes` to stderr for every
+  re-render. It measures CPU submission time only; GPU fill and the MSAA
+  resolve show up in `perf` and CPU usage.
+
+Options 2–8 are still open; pick them from the T24 measurements.
+
 ## Where we are
 
 Measured by the user on the target (i5-8th gen iGPU, Wayland), 2026-10-01,
