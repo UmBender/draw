@@ -103,7 +103,21 @@ pub enum Shape {
         /// Draws 0-based column and row indices outside the grid, starting
         /// at corner `a` (ADR-T18-3).
         axes: bool,
+        /// Filled cells, sorted by `(row, col)`, at most one per cell, all
+        /// inside `cols × rows` (ADR-T21-1).
+        fills: Vec<CellFill>,
     },
+}
+
+/// The fill of one grid cell; cells are counted from corner `a` toward `b`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CellFill {
+    /// 0-based column.
+    pub col: u32,
+    /// 0-based row.
+    pub row: u32,
+    /// Fill colour.
+    pub color: ColorId,
 }
 
 /// One axis index of a grid with [`Shape::Grid::axes`]: the 0-based column
@@ -205,12 +219,16 @@ impl Shape {
     /// the axes and on the outline itself.
     #[must_use]
     pub fn hit(&self, p: Vec2, tol: f32) -> bool {
+        self.hit_outline(p, tol) || (self.fill().is_some() && self.contains(p))
+    }
+
+    /// [`Shape::hit`] without the filled-interior rule: only the outline
+    /// counts.
+    #[must_use]
+    pub fn hit_outline(&self, p: Vec2, tol: f32) -> bool {
         let reach = tol + half_width(self.style().width);
         if !p.is_finite() || !reach.is_finite() || !self.bounds().expand(tol).contains(p) {
             return false;
-        }
-        if self.fill().is_some() && self.contains(p) {
-            return true;
         }
         match self {
             Self::Stroke { points, .. } => match points.as_slice() {
@@ -308,6 +326,82 @@ impl Shape {
         self
     }
 
+    /// The cell `(col, row)` of a grid that `p` lies in (box boundary
+    /// inclusive), counted from `a`; `None` outside, for a non-finite `p` or
+    /// for other shapes.
+    #[must_use]
+    pub fn grid_cell_at(&self, p: Vec2) -> Option<(u32, u32)> {
+        let Self::Grid {
+            a, b, cols, rows, ..
+        } = *self
+        else {
+            return None;
+        };
+        if !p.is_finite() || !Aabb::from_corners(a, b).contains(p) {
+            return None;
+        }
+        // Fraction of the way from `a` to `b`, in 0..=1 inside the box.
+        // A zero-size side gives 0 / 0: treat it as the first cell.
+        let along = |p: f32, a: f32, b: f32| {
+            let t = (p - a) / (b - a);
+            if t.is_finite() { t } else { 0.0 }
+        };
+        let index = |t: f32, n: u32| ((t * n as f32) as u32).min(n - 1);
+        let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+        Some((
+            index(along(p.x, a.x, b.x), cols),
+            index(along(p.y, a.y, b.y), rows),
+        ))
+    }
+
+    /// The cell fills of a grid, sorted by `(row, col)`; empty for other
+    /// shapes.
+    #[must_use]
+    pub fn cell_fills(&self) -> &[CellFill] {
+        match self {
+            Self::Grid { fills, .. } => fills,
+            _ => &[],
+        }
+    }
+
+    /// The fill colour of cell `(col, row)` of a grid, if any.
+    #[must_use]
+    pub fn cell_fill(&self, col: u32, row: u32) -> Option<ColorId> {
+        let fills = self.cell_fills();
+        fills
+            .binary_search_by_key(&(row, col), |f| (f.row, f.col))
+            .ok()
+            .map(|i| fills[i].color)
+    }
+
+    /// Returns the shape with cell `(col, row)` filled with `fill`, or
+    /// cleared for `None`. Other shapes and cells outside the grid are
+    /// returned unchanged.
+    #[must_use]
+    pub fn with_cell_fill(mut self, col: u32, row: u32, fill: Option<ColorId>) -> Self {
+        let Self::Grid {
+            cols, rows, fills, ..
+        } = &mut self
+        else {
+            return self;
+        };
+        if col >= clamp_cells(*cols) || row >= clamp_cells(*rows) {
+            return self;
+        }
+        match (
+            fills.binary_search_by_key(&(row, col), |f| (f.row, f.col)),
+            fill,
+        ) {
+            (Ok(i), Some(color)) => fills[i].color = color,
+            (Ok(i), None) => {
+                fills.remove(i);
+            }
+            (Err(i), Some(color)) => fills.insert(i, CellFill { col, row, color }),
+            (Err(_), None) => {}
+        }
+        self
+    }
+
     /// The axis indices to draw: those of a grid with `axes` on (see
     /// [`grid_axis_labels`]), empty for every other shape.
     #[must_use]
@@ -387,6 +481,18 @@ pub fn grid_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32) -> impl Iterator
         ),
     });
     columns.chain(rows)
+}
+
+/// The world box of cell `(col, row)` of a `cols × rows` grid dragged from
+/// `a` to `b`, counted from `a` like [`grid_axis_labels`]. Dimensions are
+/// clamped like [`grid_lines`].
+#[must_use]
+pub fn grid_cell_rect(a: Vec2, b: Vec2, cols: u32, rows: u32, col: u32, row: u32) -> Aabb {
+    let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+    // Signed cell size: negative when the drag went left or up.
+    let cell = Vec2::new((b.x - a.x) / cols as f32, (b.y - a.y) / rows as f32);
+    let at = |col: u32, row: u32| a + Vec2::new(cell.x * col as f32, cell.y * row as f32);
+    Aabb::from_corners(at(col, row), at(col + 1, row + 1))
 }
 
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.
@@ -543,6 +649,7 @@ mod tests {
             rows,
             style: style(width),
             axes: false,
+            fills: Vec::new(),
         }
     }
 
@@ -554,6 +661,7 @@ mod tests {
             rows,
             style: style(0.0),
             axes: true,
+            fills: Vec::new(),
         }
     }
 
@@ -1420,6 +1528,164 @@ mod tests {
         for ((i, r0), (j, r1)) in before.iter().zip(&after) {
             assert_eq!(i, j);
             assert!(r1.min.approx_eq(r0.min + Vec2::new(5.0, -7.0), 1e-4));
+        }
+    }
+
+    // ---- T21 cell fills -----------------------------------------------------
+
+    fn red() -> ColorId {
+        ColorId::new(2).unwrap_or(ColorId::INK)
+    }
+
+    fn green() -> ColorId {
+        ColorId::new(3).unwrap_or(ColorId::INK)
+    }
+
+    /// 4 × 2 cells of 10 × 10 dragged from (0, 0) to (40, 20).
+    fn grid_4x2() -> Shape {
+        grid(Vec2::ZERO, Vec2::new(40.0, 20.0), 4, 2, 1.0)
+    }
+
+    fn cells(shape: &Shape) -> Vec<(u32, u32)> {
+        shape.cell_fills().iter().map(|f| (f.col, f.row)).collect()
+    }
+
+    #[test]
+    fn grid_cell_at_counts_from_start_corner() {
+        let g = grid_4x2();
+
+        assert_eq!(g.grid_cell_at(Vec2::new(15.0, 5.0)), Some((1, 0)));
+        assert_eq!(g.grid_cell_at(Vec2::new(35.0, 15.0)), Some((3, 1)));
+        assert_eq!(
+            g.grid_cell_at(Vec2::new(40.0, 20.0)),
+            Some((3, 1)),
+            "far edge"
+        );
+        assert_eq!(g.grid_cell_at(Vec2::ZERO), Some((0, 0)));
+    }
+
+    #[test]
+    fn grid_cell_at_reversed_drag() {
+        // Dragged from (40, 20) to the origin: cell (0, 0) is bottom-right.
+        let g = grid(Vec2::new(40.0, 20.0), Vec2::ZERO, 4, 2, 1.0);
+
+        assert_eq!(g.grid_cell_at(Vec2::new(35.0, 15.0)), Some((0, 0)));
+        assert_eq!(g.grid_cell_at(Vec2::new(5.0, 5.0)), Some((3, 1)));
+    }
+
+    #[test]
+    fn grid_cell_at_outside_is_none() {
+        let g = grid_4x2();
+
+        assert_eq!(g.grid_cell_at(Vec2::new(50.0, 5.0)), None);
+        assert_eq!(g.grid_cell_at(Vec2::new(-1.0, 5.0)), None);
+        assert_eq!(g.grid_cell_at(Vec2::new(f32::NAN, 5.0)), None);
+        let other = rect(Vec2::ZERO, Vec2::new(40.0, 20.0), 1.0, None);
+        assert_eq!(other.grid_cell_at(Vec2::new(5.0, 5.0)), None);
+    }
+
+    #[test]
+    fn grid_cell_rect_matches_lines() {
+        let a = Vec2::ZERO;
+        let b = Vec2::new(40.0, 20.0);
+
+        let cell = grid_cell_rect(a, b, 4, 2, 1, 0);
+        let reversed = grid_cell_rect(b, a, 4, 2, 0, 0);
+
+        assert!(rect_eq(cell, (10.0, 0.0), (20.0, 10.0)), "{cell:?}");
+        assert!(
+            rect_eq(reversed, (30.0, 10.0), (40.0, 20.0)),
+            "{reversed:?}"
+        );
+        // Every cell edge lies on a grid line.
+        let xs: Vec<f32> = grid_lines(a, b, 4, 2).take(5).map(|l| l[0].x).collect();
+        assert!(xs.iter().any(|x| approx_eq(*x, cell.min.x, 1e-4)));
+        assert!(xs.iter().any(|x| approx_eq(*x, cell.max.x, 1e-4)));
+    }
+
+    #[test]
+    fn with_cell_fill_sets_and_replaces() {
+        let g = grid_4x2().with_cell_fill(1, 0, Some(red()));
+        assert_eq!(g.cell_fill(1, 0), Some(red()));
+        assert_eq!(g.cell_fill(0, 0), None);
+
+        let g = g.with_cell_fill(1, 0, Some(green()));
+
+        assert_eq!(g.cell_fill(1, 0), Some(green()));
+        assert_eq!(g.cell_fills().len(), 1);
+    }
+
+    #[test]
+    fn with_cell_fill_none_clears() {
+        let g = grid_4x2()
+            .with_cell_fill(1, 0, Some(red()))
+            .with_cell_fill(2, 1, Some(red()));
+
+        let g = g.with_cell_fill(1, 0, None);
+
+        assert_eq!(g.cell_fill(1, 0), None);
+        assert_eq!(cells(&g), [(2, 1)]);
+    }
+
+    #[test]
+    fn with_cell_fill_out_of_range_is_noop() {
+        let g = grid_4x2();
+        assert_eq!(g.clone().with_cell_fill(4, 0, Some(red())), g);
+        assert_eq!(g.clone().with_cell_fill(0, 2, Some(red())), g);
+
+        let r = rect(Vec2::ZERO, Vec2::new(10.0, 10.0), 1.0, None);
+        assert_eq!(r.clone().with_cell_fill(0, 0, Some(red())), r);
+        assert!(r.cell_fills().is_empty());
+    }
+
+    #[test]
+    fn with_cell_fill_keeps_sorted_unique() {
+        let g = grid_4x2()
+            .with_cell_fill(3, 1, Some(red()))
+            .with_cell_fill(0, 1, Some(red()))
+            .with_cell_fill(2, 0, Some(red()))
+            .with_cell_fill(0, 1, Some(green()));
+
+        assert_eq!(cells(&g), [(2, 0), (0, 1), (3, 1)]);
+        assert_eq!(g.cell_fill(0, 1), Some(green()));
+    }
+
+    #[test]
+    fn grid_fills_survive_translate() {
+        let mut g = grid_4x2().with_cell_fill(1, 1, Some(red()));
+
+        g.translate(Vec2::new(100.0, 50.0));
+
+        assert_eq!(g.cell_fill(1, 1), Some(red()));
+        assert_eq!(g.grid_cell_at(Vec2::new(115.0, 65.0)), Some((1, 1)));
+    }
+
+    #[test]
+    fn hit_outline_ignores_fill() {
+        let filled = rect(Vec2::ZERO, Vec2::new(100.0, 100.0), 1.0, Some(red()));
+        let inside = Vec2::new(50.0, 50.0);
+        let edge = Vec2::new(0.0, 50.0);
+
+        assert!(filled.hit(inside, 1.0));
+        assert!(!filled.hit_outline(inside, 1.0));
+        assert!(filled.hit_outline(edge, 1.0));
+    }
+
+    proptest! {
+        #[test]
+        fn cell_fills_stay_valid(
+            cols in 1_u32..8,
+            rows in 1_u32..8,
+            ops in prop::collection::vec((0_u32..10, 0_u32..10, any::<bool>()), 0..40),
+        ) {
+            let mut g = grid(Vec2::ZERO, Vec2::new(80.0, 80.0), cols, rows, 1.0);
+            for (col, row, set) in ops {
+                g = g.with_cell_fill(col, row, set.then(red));
+            }
+
+            let keys: Vec<(u32, u32)> = g.cell_fills().iter().map(|f| (f.row, f.col)).collect();
+            prop_assert!(keys.windows(2).all(|w| w[0] < w[1]), "{keys:?}");
+            prop_assert!(g.cell_fills().iter().all(|f| f.col < cols && f.row < rows));
         }
     }
 }

@@ -18,8 +18,8 @@ match exactly ([[ADR-T11-1 Exact modifier matching]]). Changes require an ADR.
 | `A` | Arrow |
 | `R` | Rectangle |
 | `C` | Circle / ellipse |
-| `E` | Eraser (removes whole objects) |
-| `B` | Bucket (fills the clicked rectangle/ellipse) |
+| `E` | Eraser (removes whole objects; pressed on a fill, clears fills instead — [[ADR-T21-2 Eraser mode chosen on press]]) |
+| `B` | Bucket (fills the clicked rectangle/ellipse, or one grid cell) |
 | `V` | Select / move |
 | `H` | Hand (pan) |
 | `G` | Grid (table of cells) |

@@ -554,6 +554,7 @@ mod tests {
             rows: 2,
             style: STYLE,
             axes: false,
+            fills: Vec::new(),
         };
         let t = targets(&[grid]);
 
@@ -804,6 +805,7 @@ mod tests {
                     rows,
                     style: STYLE,
                     axes: false,
+                    fills: Vec::new(),
                 },
             },
         )

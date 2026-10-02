@@ -17,7 +17,9 @@ use crate::core::camera::Camera;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, THEME, palette};
-use crate::core::shape::{GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_lines};
+use crate::core::shape::{
+    GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
+};
 use crate::core::snap::GRID_STEP;
 
 /// Smallest on-screen outline width in pixels (ADR-0013).
@@ -372,11 +374,23 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             cols,
             rows,
             axes,
+            fills,
             ..
         } => {
-            // The camera only scales and offsets, so grid lines and index
-            // boxes map to those of the mapped corners.
+            // The camera only scales and offsets, so grid lines, cells and
+            // index boxes map to those of the mapped corners.
             let (a, b) = (to_screen(*a), to_screen(*b));
+            // Cell fills first, so the lines stay on top (ADR-T21-1).
+            for fill in fills {
+                let cell = grid_cell_rect(a, b, *cols, *rows, fill.col, fill.row);
+                draw_rectangle(
+                    cell.min.x,
+                    cell.min.y,
+                    cell.width(),
+                    cell.height(),
+                    color_of(fill.color),
+                );
+            }
             for [start, end] in grid_lines(a, b, *cols, *rows) {
                 draw_band(start, end, width, color);
             }
