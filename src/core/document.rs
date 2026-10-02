@@ -8,6 +8,7 @@
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::core::shape::Shape;
 
@@ -24,6 +25,35 @@ impl ShapeId {
         self.0
     }
 }
+
+/// Hashes a [`ShapeId`] with one multiplication (Fibonacci hashing). Ids are
+/// small sequential integers made by this process, so there is nothing to
+/// defend against, and the default `SipHash` showed in the T25 budgets
+/// (ADR-T25-2).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_u64(u64::from(byte));
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = (self.0 ^ value).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+/// Hasher state for maps and sets keyed by [`ShapeId`].
+pub type IdBuildHasher = BuildHasherDefault<IdHasher>;
+
+/// A set of shape ids with the cheap [`IdHasher`].
+pub type IdSet = HashSet<ShapeId, IdBuildHasher>;
 
 /// One reversible change to a [`Document`].
 #[derive(Debug, Clone, PartialEq)]
@@ -159,12 +189,12 @@ pub struct Document {
     /// Shapes in z-order, bottom first.
     shapes: Vec<(ShapeId, Shape)>,
     /// Ids currently in `shapes`, for O(1) duplicate checks.
-    ids: HashSet<ShapeId>,
+    ids: IdSet,
     /// Next id to hand out; only ever grows.
     next_id: u64,
     /// Id → z-order position, built on the first lookup after an insert or
     /// remove (ADR-T25-1).
-    positions: OnceCell<HashMap<ShapeId, usize>>,
+    positions: OnceCell<HashMap<ShapeId, usize, IdBuildHasher>>,
 }
 
 /// A stretch of a transaction that [`Document::apply`] handles in one go.
@@ -326,7 +356,7 @@ impl Document {
     }
 
     /// The id → position index, built on first use.
-    fn positions(&self) -> &HashMap<ShapeId, usize> {
+    fn positions(&self) -> &HashMap<ShapeId, usize, IdBuildHasher> {
         self.positions.get_or_init(|| {
             self.shapes
                 .iter()
@@ -381,7 +411,7 @@ impl Document {
     /// Indices strictly increase, so each one is the shape's final position.
     fn apply_insert_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
         let len = self.shapes.len();
-        let mut new_ids = HashSet::with_capacity(run.len());
+        let mut new_ids = IdSet::with_capacity_and_hasher(run.len(), IdBuildHasher::default());
         let mut inserts = Vec::with_capacity(run.len());
         let edits = run.iter().filter_map(|edit| match edit {
             Edit::Insert { index, id, shape } => Some((index, id, shape)),
@@ -506,7 +536,7 @@ pub fn tx_insert(doc: &mut Document, shapes: impl IntoIterator<Item = Shape>) ->
 /// Edits are ordered by descending index so each index stays valid.
 #[must_use]
 pub fn tx_remove(doc: &Document, ids: &[ShapeId]) -> Transaction {
-    let wanted: HashSet<ShapeId> = ids.iter().copied().collect();
+    let wanted: IdSet = ids.iter().copied().collect();
     removals_top_down(doc, |id| wanted.contains(&id))
 }
 
