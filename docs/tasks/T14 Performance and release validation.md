@@ -5,7 +5,7 @@ status: in-progress
 wave: 10
 branch: task/T14-release
 depends_on: [T12, T13, T15, T16, T17, T18, T19, T20]
-adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-0007 Anti-tremor pipeline]]", "[[ADR-T14-1 Performance budgets]]"]
+adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-0007 Anti-tremor pipeline]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T14-2 Low smoothing by default]]"]
 feature: "[[Contest cheat sheet]]"
 tutorial: "[[14 Profiling and shipping a release build]]"
 tags: [task]
@@ -49,10 +49,13 @@ indices and filled cells (T16–T22 features included).
   helpers (smart snap incl. outline snap, grid snap, numbering, grid size
   flyout, grid indices); zoom limits (0.05× and 20×) without artefacts; MSAA
   edges look smooth; a 5 000-shape session stays smooth; idle CPU ≈ 0 %.
-- **AC-4** — Smoothing levels tried by the user on the target; changed
-  values go into `src/core/smoothing.rs` and an ADR `ADR-T14-2` amending
-  [[ADR-0007 Anti-tremor pipeline]]. If no value changes, the *Log* says so
-  and no ADR is written. Existing `core::smoothing` tests must stay green.
+- **AC-4** — Smoothing levels tried by the user on the target: Low feels
+  right, so Low becomes the default level; the per-level values are
+  unchanged ([[ADR-T14-2 Low smoothing by default]], amending
+  [[ADR-0007 Anti-tremor pipeline]]). *Tests:*
+  `core::smoothing::tests::level_default_is_low`,
+  `core::editor::tests::new_editor_defaults`,
+  `core::editor::tests::cycle_smoothing_advances`.
 - **AC-5** — `features/Contest cheat sheet.md`: one printable page listing
   every binding of `core::keymap::BINDINGS`, grouped by purpose.
 
@@ -63,6 +66,8 @@ New features.
 ## Files owned
 
 `tests/perf.rs`, `src/core/smoothing.rs` (constants only, if tuned),
+`src/core/editor.rs` (only the two tests that assume the default smoothing
+level — added 2026-10-02 for AC-4, approved by the user),
 `docs/features/Contest cheat sheet.md`, new ADRs `ADR-T14-*`.
 
 ## Subtasks (one commit each)
