@@ -286,7 +286,10 @@ fn draw_scene(editor: &Editor, viewport: Vec2) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::camera::Camera;
+    use crate::core::document::ShapeId;
     use proptest::prelude::*;
+    use std::time::Duration;
 
     #[test]
     fn frame_target_params_uses_sample_count() {
@@ -372,6 +375,112 @@ mod tests {
                 (300, 200),
                 "dpi {dpi}"
             );
+        }
+    }
+
+    // ---- T24 AC-1 frame timer ---------------------------------------------
+
+    #[test]
+    fn frame_timing_enabled_unset_is_off() {
+        assert!(!frame_timing_enabled(None));
+    }
+
+    #[test]
+    fn frame_timing_enabled_on_values_enable() {
+        for setting in ["1", "on", "ON", "true", "Yes", " yes\n"] {
+            assert!(frame_timing_enabled(Some(setting)), "setting {setting:?}");
+        }
+    }
+
+    #[test]
+    fn frame_timing_enabled_other_values_disable() {
+        for setting in ["", "0", "off", "false", "no", "2", "enable"] {
+            assert!(!frame_timing_enabled(Some(setting)), "setting {setting:?}");
+        }
+    }
+
+    #[test]
+    fn frame_log_line_names_layers_time_and_shapes() {
+        // Arrange
+        let elapsed = Duration::from_micros(12_345);
+
+        // Act
+        let full = frame_log_line(Redraw::Full, elapsed, 5120);
+        let overlay = frame_log_line(Redraw::Overlay, Duration::from_micros(800), 7);
+
+        // Assert
+        assert_eq!(full, "draw: full re-render 12.345 ms, 5120 shapes");
+        assert_eq!(overlay, "draw: overlay re-render 0.800 ms, 7 shapes");
+    }
+
+    // ---- T24 AC-2 layer planning -------------------------------------------
+
+    fn key() -> LayerKey {
+        LayerKey {
+            revision: 3,
+            camera: Camera::default(),
+            size: (800, 600),
+            hidden: vec![ShapeId(1)],
+            underlay: false,
+        }
+    }
+
+    #[test]
+    fn plan_redraw_without_cache_is_full() {
+        assert_eq!(plan_redraw(None, &key(), false), Redraw::Full);
+        assert_eq!(plan_redraw(None, &key(), true), Redraw::Full);
+    }
+
+    #[test]
+    fn plan_redraw_same_key_clean_is_none() {
+        assert_eq!(plan_redraw(Some(&key()), &key(), false), Redraw::None);
+    }
+
+    #[test]
+    fn plan_redraw_same_key_dirty_is_overlay() {
+        assert_eq!(plan_redraw(Some(&key()), &key(), true), Redraw::Overlay);
+    }
+
+    #[test]
+    fn plan_redraw_changed_key_is_full() {
+        // Arrange
+        let mut panned = Camera::default();
+        panned.pan_by_screen(Vec2::new(10.0, 0.0));
+        let changed = [
+            LayerKey {
+                revision: 4,
+                ..key()
+            },
+            LayerKey {
+                camera: panned,
+                ..key()
+            },
+            LayerKey {
+                size: (801, 600),
+                ..key()
+            },
+            LayerKey {
+                hidden: vec![ShapeId(1), ShapeId(2)],
+                ..key()
+            },
+            LayerKey {
+                hidden: Vec::new(),
+                ..key()
+            },
+            LayerKey {
+                underlay: true,
+                ..key()
+            },
+        ];
+
+        for next in changed {
+            for dirty in [false, true] {
+                // Act
+                let redraw = plan_redraw(Some(&key()), &next, dirty);
+
+                // Assert
+                assert_eq!(redraw, Redraw::Full, "{next:?} dirty {dirty}");
+            }
         }
     }
 

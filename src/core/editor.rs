@@ -623,6 +623,7 @@ mod tests {
     use crate::core::camera::{Camera, ZOOM_STEP};
     use crate::core::document::tx_insert;
     use crate::core::geom::{Vec2, approx_eq};
+    use crate::core::history::HISTORY_LIMIT;
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
@@ -1601,5 +1602,254 @@ mod tests {
                 .iter()
                 .all(|id| ed.document().get(*id).is_some())
         );
+    }
+
+    // ---- T24 AC-2 document revision ---------------------------------------
+
+    /// Left click (down and up without moving) at screen `(x, y)`.
+    fn click(ed: &mut Editor, x: f32, y: f32) -> bool {
+        let pressed = down(ed, PointerButton::Left, x, y);
+        up(ed, PointerButton::Left, x, y) || pressed
+    }
+
+    #[test]
+    fn document_revision_new_editor_is_zero() {
+        assert_eq!(Editor::new().document_revision(), 0);
+    }
+
+    #[test]
+    fn document_revision_pen_drag_moves_keep_revision() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 0.0, 0.0);
+        let before = ed.document_revision();
+
+        // Act
+        for i in 1..20u8 {
+            assert!(move_to(&mut ed, f32::from(i) * 3.0, f32::from(i % 4)));
+        }
+
+        // Assert
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_pen_commit_bumps_revision() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 0.0, 0.0);
+        move_to(&mut ed, 30.0, 10.0);
+        let before = ed.document_revision();
+
+        // Act
+        up(&mut ed, PointerButton::Left, 60.0, 0.0);
+
+        // Assert
+        assert_eq!(ed.document().len(), 1);
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_select_click_and_marquee_keep_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0), rect(50.0, 50.0, 10.0, 10.0)]);
+        ed.apply(Command::SetTool(Tool::Select));
+        let before = ed.document_revision();
+
+        // Act: click a shape, then marquee both from empty space.
+        assert!(click(&mut ed, 0.0, 5.0));
+        down(&mut ed, PointerButton::Left, -20.0, -20.0);
+        assert!(move_to(&mut ed, 100.0, 100.0));
+        assert!(up(&mut ed, PointerButton::Left, 100.0, 100.0));
+        assert!(ed.apply(Command::Cancel));
+
+        // Assert
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_select_all_and_copy_keep_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.document_revision();
+
+        // Act
+        assert!(ed.apply(Command::SelectAll));
+        ed.apply(Command::Copy);
+
+        // Assert
+        assert_eq!(ed.selection().len(), 1);
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_move_drag_bumps_only_on_release() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SetTool(Tool::Select));
+        let before = ed.document_revision();
+
+        // Act / Assert: pressing and dragging only change the overlay.
+        down(&mut ed, PointerButton::Left, 0.0, 5.0);
+        move_to(&mut ed, 20.0, 5.0);
+        move_to(&mut ed, 40.0, 25.0);
+        assert_eq!(ed.document_revision(), before);
+        assert!(!ed.overlay().hidden.is_empty());
+
+        // Act / Assert: releasing commits the move.
+        up(&mut ed, PointerButton::Left, 40.0, 25.0);
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_delete_paste_duplicate_bump_revision() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SelectAll);
+
+        for command in [
+            Command::Duplicate,
+            Command::Copy,
+            Command::Paste,
+            Command::DeleteSelection,
+        ] {
+            // Arrange
+            let before = ed.document_revision();
+            let len = ed.document().len();
+
+            // Act
+            ed.apply(command);
+
+            // Assert
+            if command == Command::Copy {
+                assert_eq!(ed.document_revision(), before, "{command:?}");
+            } else {
+                assert_ne!(ed.document().len(), len, "{command:?}");
+                assert!(ed.document_revision() > before, "{command:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn document_revision_undo_redo_clear_bump_revision() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+
+        for command in [Command::Undo, Command::Redo, Command::ClearAll] {
+            // Arrange
+            let before = ed.document_revision();
+
+            // Act
+            assert!(ed.apply(command), "{command:?}");
+
+            // Assert
+            assert!(ed.document_revision() > before, "{command:?}");
+        }
+    }
+
+    #[test]
+    fn document_revision_noop_undo_keeps_revision() {
+        // Arrange
+        let mut ed = Editor::new();
+
+        // Act
+        ed.apply(Command::Undo);
+        ed.apply(Command::Redo);
+        ed.apply(Command::ClearAll);
+        ed.apply(Command::DeleteSelection);
+        ed.apply(Command::Paste);
+
+        // Assert
+        assert_eq!(ed.document_revision(), 0);
+    }
+
+    #[test]
+    fn document_revision_eraser_bumps_only_on_release() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.document_revision();
+
+        // Act / Assert: marking hides the shape but keeps the document.
+        down(&mut ed, PointerButton::Right, 0.0, 5.0);
+        move_to(&mut ed, 0.0, 6.0);
+        assert_eq!(ed.overlay().hidden.len(), 1);
+        assert_eq!(ed.document_revision(), before);
+
+        // Act / Assert: releasing removes it.
+        up(&mut ed, PointerButton::Right, 0.0, 6.0);
+        assert!(ed.document().is_empty());
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_bucket_fill_bumps_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SetTool(Tool::Bucket));
+        let before = ed.document_revision();
+
+        // Act
+        assert!(click(&mut ed, 5.0, 5.0));
+
+        // Assert
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_view_and_settings_keep_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.document_revision();
+
+        // Act: resize, pan, zoom, and every setting command.
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        down(&mut ed, PointerButton::Middle, 0.0, 0.0);
+        move_to(&mut ed, 30.0, 20.0);
+        up(&mut ed, PointerButton::Middle, 30.0, 20.0);
+        ed.handle(InputEvent::Scroll {
+            pos: Vec2::new(5.0, 5.0),
+            delta: 1.0,
+        });
+        for command in [
+            Command::SetTool(Tool::Rect),
+            Command::SetColor(ColorId::INK),
+            Command::WidthUp,
+            Command::WidthDown,
+            Command::CycleSmoothing,
+            Command::ToggleToolbar,
+            Command::ToggleSmartSnap,
+            Command::ToggleGridSnap,
+            Command::ToggleNumbering,
+            Command::ResetNumbering,
+            Command::GridCols(1),
+            Command::GridRows(-1),
+            Command::FitView,
+            Command::ResetView,
+            Command::Cancel,
+        ] {
+            ed.apply(command);
+        }
+        move_to(&mut ed, 1.0, 1.0);
+
+        // Assert
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_commit_with_full_history_bumps_revision() {
+        // Arrange: fill the undo stack with pen dots.
+        let mut ed = Editor::new();
+        for i in 0..HISTORY_LIMIT {
+            click(&mut ed, i as f32, 0.0);
+        }
+        assert_eq!(ed.history.undo_len(), HISTORY_LIMIT);
+        let before = ed.document_revision();
+
+        // Act: one more commit keeps both stack lengths.
+        click(&mut ed, -10.0, -10.0);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), HISTORY_LIMIT);
+        assert!(ed.document_revision() > before);
     }
 }
