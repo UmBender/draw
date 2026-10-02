@@ -145,6 +145,8 @@ pub struct Editor {
     space_held: bool,
     gesture: Option<Gesture>,
     keymap: Keymap,
+    /// Grows whenever the document may have changed (ADR-T24-1).
+    doc_revision: u64,
 }
 
 impl Default for Editor {
@@ -173,6 +175,7 @@ impl Editor {
             space_held: false,
             gesture: None,
             keymap: keymap::resolve,
+            doc_revision: 0,
         }
     }
 
@@ -336,6 +339,14 @@ impl Editor {
     #[must_use]
     pub fn document(&self) -> &Document {
         &self.doc
+    }
+
+    /// A counter that grows whenever the document may have changed and stays
+    /// put otherwise (ADR-T24-1). The shell re-renders its document layer
+    /// only when this, the camera, the viewport or the hidden set changes.
+    #[must_use]
+    pub fn document_revision(&self) -> u64 {
+        todo!()
     }
 
     /// The camera.

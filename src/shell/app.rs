@@ -21,7 +21,11 @@ use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
 };
 
+use std::time::Duration;
+
+use crate::core::camera::Camera;
 use crate::core::command::Tool;
+use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
@@ -43,6 +47,9 @@ pub const DEFAULT_MSAA_SAMPLES: i32 = 4;
 /// Environment variable overriding [`DEFAULT_MSAA_SAMPLES`].
 pub const MSAA_ENV: &str = "DRAW_MSAA";
 
+/// Environment variable that turns on the frame timer (T24 AC-1).
+pub const FRAME_TIMES_ENV: &str = "DRAW_FRAME_TIMES";
+
 /// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
 /// so nearest keeps it sharp.
 const FRAME_FILTER: FilterMode = FilterMode::Nearest;
@@ -62,6 +69,54 @@ pub fn msaa_samples(setting: Option<&str>) -> i32 {
         "8" => 8,
         _ => DEFAULT_MSAA_SAMPLES,
     }
+}
+
+/// Whether a `DRAW_FRAME_TIMES` value turns the frame timer on: `1`, `on`,
+/// `true` or `yes`, in any case and trimmed. Unset or anything else is off.
+#[must_use]
+pub fn frame_timing_enabled(setting: Option<&str>) -> bool {
+    todo!()
+}
+
+/// The frame timer's line for one re-render: which layers, CPU time in
+/// milliseconds and the number of shapes in the document.
+#[must_use]
+pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> String {
+    todo!()
+}
+
+/// What the document layer shows (ADR-T24-1); it is re-rendered when this
+/// changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerKey {
+    /// [`Editor::document_revision`].
+    pub revision: u64,
+    /// The view.
+    pub camera: Camera,
+    /// Framebuffer size in physical pixels.
+    pub size: (u32, u32),
+    /// Shapes the gesture in progress hides (`Overlay::hidden`).
+    pub hidden: Vec<ShapeId>,
+    /// Whether the underlay dot grid is drawn (grid snap on).
+    pub underlay: bool,
+}
+
+/// What a frame re-renders before the blit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Redraw {
+    /// Nothing: blit the cached frame.
+    None,
+    /// The frame only: cached document layer plus the overlay.
+    Overlay,
+    /// Both layers.
+    Full,
+}
+
+/// Picks the work for a frame from the `cached` document layer's key, the
+/// `next` key and whether input changed editor state (`dirty`).
+#[must_use]
+pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, dirty: bool) -> Redraw {
+    todo!()
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -286,10 +341,7 @@ fn draw_scene(editor: &Editor, viewport: Vec2) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::camera::Camera;
-    use crate::core::document::ShapeId;
     use proptest::prelude::*;
-    use std::time::Duration;
 
     #[test]
     fn frame_target_params_uses_sample_count() {
