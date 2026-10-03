@@ -952,6 +952,54 @@ mod tests {
         assert_eq!(line, "draw: moved re-render 0.090 ms, 5120 shapes");
     }
 
+    // ---- T26 AC-1b only when slow -------------------------------------------
+
+    #[test]
+    fn reuse_threshold_is_8_ms() {
+        assert_eq!(REUSE_ABOVE, Duration::from_millis(8));
+    }
+
+    #[test]
+    fn reuse_if_slow_fast_last_full_is_full() {
+        for last in [Duration::ZERO, Duration::from_micros(7_999)] {
+            assert_eq!(
+                reuse_if_slow(Redraw::Moved, Some(last)),
+                Redraw::Full,
+                "{last:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn reuse_if_slow_slow_last_full_stays_moved() {
+        for last in [REUSE_ABOVE, Duration::from_millis(50)] {
+            assert_eq!(
+                reuse_if_slow(Redraw::Moved, Some(last)),
+                Redraw::Moved,
+                "{last:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn reuse_if_slow_unmeasured_is_full() {
+        assert_eq!(reuse_if_slow(Redraw::Moved, None), Redraw::Full);
+    }
+
+    #[test]
+    fn reuse_if_slow_other_redraws_are_unchanged() {
+        for redraw in [
+            Redraw::None,
+            Redraw::Overlay,
+            Redraw::Append { from: 4 },
+            Redraw::Full,
+        ] {
+            for last in [None, Some(Duration::ZERO), Some(Duration::from_secs(1))] {
+                assert_eq!(reuse_if_slow(redraw, last), redraw, "{redraw:?} {last:?}");
+            }
+        }
+    }
+
     // ---- T26 AC-2 settle ----------------------------------------------------
 
     #[test]
