@@ -1,7 +1,7 @@
 ---
 id: T26
 title: Pan and zoom without re-rendering
-status: in-progress
+status: review
 wave: 14
 branch: task/T26-gesture-redraw
 depends_on: [T24]
@@ -107,11 +107,11 @@ budget: [[ADR-T26-2 Gesture frame budget]]. Unit tests live in
 
 - [x] spec — `docs(T26): specify gesture redraw acceptance criteria`
 - [x] spec (rework) — `docs(T26): reuse the layer only when re-rendering is slow`
-- [ ] tests (rework)
-- [ ] models (rework)
-- [ ] behaviour (rework)
-- [ ] quality (rework)
-- [ ] docs (rework)
+- [x] tests (rework) — `test(T26): add failing tests for reusing the layer only when slow`
+- [x] models (rework) — `feat(T26): add REUSE_ABOVE and reuse_if_slow signature`
+- [x] behaviour (rework) — `feat(T26): reuse the layer only when the last full re-render was slow`
+- [x] quality (rework) — skipped: fmt and clippy were already clean
+- [x] docs (rework) — `docs(T26): document reusing the layer only when slow`
 - [x] tests — `test(T26): add failing tests for gesture redraw`
 - [x] models — `feat(T26): add Moved redraw, settle and layer margin signatures`
 - [x] behaviour — `feat(T26): blit the cached layer during pan and zoom`
@@ -155,3 +155,8 @@ Step 26 — requires step 24 (layered redraws) and step 12 (app loop).
   to in-progress: blit only when the last full re-render took ≥ 8 ms
   (ADR-T26-3). A visible-shape count was considered and rejected because
   the cost per shape varies with zoom.
+- 2026-10-03 — Rework done: `reuse_if_slow` with `REUSE_ABOVE` = 8 ms;
+  `present` times every `Full` re-render (`last_full`). `scripts/check.sh`
+  green; the quality step had nothing to change, so no commit.
+  **Owner:** pan a small page (every line `full`, no blur) and the
+  5 120-stroke scene (`moved` lines, then one `full` after stopping).

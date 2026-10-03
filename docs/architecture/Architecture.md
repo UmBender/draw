@@ -81,8 +81,10 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
      (`Editor::document_base_revision` ≤ cached revision, view unchanged)
      → draw just those onto the **document layer**
      ([[ADR-T24-3 Batched meshes and append-only document updates]]);
-   - only the camera changed → keep the layer and blit it moved and scaled
-     (`Redraw::Moved`); once the camera has been still for `SETTLE`
+   - only the camera changed and the last full re-render took ≥ 8 ms → keep
+     the layer and blit it moved and scaled (`Redraw::Moved`,
+     [[ADR-T26-3 Reuse the layer only when re-rendering is slow]]); a
+     cheaper scene re-renders as below; once the camera has been still for `SETTLE`
      (100 ms) re-render it, waking the loop with `schedule_update` from the
      main thread until then
      ([[ADR-T26-1 Reuse the document layer during pan and zoom]]);

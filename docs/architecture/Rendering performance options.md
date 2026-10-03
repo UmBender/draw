@@ -47,7 +47,10 @@ fixes the measured problem.
   re-rendering; the layer is re-rendered 100 ms after the camera stops,
   with the loop kept awake by main-thread `schedule_update` (a timer
   thread cannot wake miniquad's X11 loop). The layer carries a margin of
-  ⅛ of the longer window side so short pans show content.
+  ⅛ of the longer window side so short pans show content. Only used when
+  the last full re-render took ≥ 8 ms
+  ([[ADR-T26-3 Reuse the layer only when re-rendering is slow]]); cheaper
+  scenes re-render on every event.
 
 Still open: lower circle segment counts (rest of option 4), 5–8, cutting
 the settle re-render itself, and raising macroquad's draw-call capacity

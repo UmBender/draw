@@ -53,6 +53,13 @@ it. The fix that works is to keep asking for one more frame from the main
 thread while the picture is provisional. That costs a handful of cheap
 frames (one blit each) per gesture, then the loop sleeps again.
 
+**Only when it pays.** Reusing the frame trades sharpness for speed. On a
+page with a few shapes a full re-render takes a millisecond, so the trade
+is all loss: blur and missing edges for nothing. Decide from the measured
+cost, not from a guess like "more than N shapes": the same shapes cost
+several times more at one zoom than at another. The last full re-render's
+time is a cheap, honest predictor of the next one.
+
 **Margins.** Render a bit more than the window so short pans uncover real
 content instead of background. The margin costs memory and makes every
 full re-render cover more area, so it is a trade-off, not a free win.
@@ -74,6 +81,9 @@ All in `src/shell/app.rs`, as pure functions plus `CachedFrame::present`:
   | Same key, input changed something | `Overlay` |
   | Nothing changed | `None` |
 
+- `reuse_if_slow(redraw, last_full)` turns `Moved` back into `Full` while
+  the last full re-render took less than `REUSE_ABOVE` (8 ms) or was never
+  measured. `present` times every `Full` re-render into `last_full`.
 - `settle(redraw, quiet)` turns `Moved` into `Full` once the camera has
   been still for `SETTLE` (100 ms). `present` tracks `last_camera` and
   `changed_at` to compute `quiet`.
@@ -99,7 +109,11 @@ All in `src/shell/app.rs`, as pure functions plus `CachedFrame::present`:
    background until the view settles.
 4. Remove the `schedule_update()` call. Pan and stop: the picture stays
    blurry until you move the mouse, because nothing wakes the loop.
-5. Replace the call by a thread that sleeps 100 ms and then calls
+5. On a page with ten shapes, pan with `DRAW_FRAME_TIMES=1`: every line
+   is `full`, because a re-render is far below `REUSE_ABOVE`. Set
+   `REUSE_ABOVE` to `Duration::ZERO` and pan again to see the blur that
+   was not worth it.
+6. Replace the call by a thread that sleeps 100 ms and then calls
    `schedule_update()`. Does the picture sharpen without a mouse move?
    Read `miniquad`'s `linux_x11.rs` main loop to see why not.
 
@@ -107,5 +121,6 @@ All in `src/shell/app.rs`, as pure functions plus `CachedFrame::present`:
 
 - [[ADR-T26-1 Reuse the document layer during pan and zoom]] — the
   decision and the miniquad findings.
-- [[ADR-T26-2 Gesture frame budget]].
+- [[ADR-T26-2 Gesture frame budget]],
+  [[ADR-T26-3 Reuse the layer only when re-rendering is slow]].
 - [[Rendering performance options]] — what is done and what is still open.
