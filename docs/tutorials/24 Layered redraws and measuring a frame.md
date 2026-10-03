@@ -68,6 +68,15 @@ and index buffer cuts the per-call overhead to one copy per few thousand
 indices. Quads then share 4 vertices instead of 6, and fans share their
 centre.
 
+**Fewer vertices.** Once batched, the cost follows the number of vertices
+copied to the GPU. A polyline drawn as separate quads needs 4 vertices per
+segment, plus a round disc at every point to hide the gaps at the joins.
+A *triangle strip* shares the 2 vertices at each point between the
+segments on either side. Placing them on the **mitre** (the bisector of
+the two segment normals, at half-width ÷ cos(turn ⁄ 2)) closes the gaps
+without discs. At a hairpin turn the mitre grows without bound, so past a
+limit the strip breaks there and a disc rounds the corner.
+
 ## How draw implements it
 
 - `Editor::document_revision` and `document_base_revision`
@@ -97,8 +106,11 @@ centre.
   shapes from `from` on, no clear). macroquad starts render passes with
   `PassAction::Nothing`, so the target keeps its pixels. Then it `blit`s the
   layer to the window and calls `draw_overlay` on top.
-- `Batch` (`src/shell/render.rs`) offers `triangle`, `rect`, `line`, `fan`
-  and `strip`. It sends chunks of at most `BATCH_MAX_VERTICES` /
+- `Batch` (`src/shell/render.rs`) offers `triangle`, `rect`, `line`, `fan`,
+  `disc`, `strip` and `polyline`. `polyline` skips points closer than
+  `STROKE_MIN_STEP_PX`, mitres joins up to `MITER_LIMIT` half-widths and
+  breaks the strip beyond that; `strip` repeats its last pair when it
+  continues into a new chunk. It sends chunks of at most `BATCH_MAX_VERTICES` /
   `BATCH_MAX_INDICES` to a `MeshSink`: `GlSink` calls `draw_mesh`, and the
   tests use a recording sink. Labels call `batch.flush()` before drawing
   text, so they stay on top of their shape.
@@ -121,11 +133,15 @@ centre.
    on top count as appends.
 5. Set `BATCH_MAX_INDICES` to 6 and compare the `full` times: that is
    roughly the old one-call-per-quad cost.
+6. Set `MITER_LIMIT` to `1.0` and zoom in on a pen stroke: every join
+   breaks and gets a disc, which is the old vertex cost. Set it to `100.0`
+   and draw a hairpin: the mitre spikes out of the corner.
 
 ## Further reading
 
 - [[Rendering performance options]] — what is done and what is still open.
 - [[ADR-T24-1 Document layer keyed by a document revision]],
   [[ADR-T24-2 Overlay drawn straight to the window]],
-  [[ADR-T24-3 Batched meshes and append-only document updates]].
+  [[ADR-T24-3 Batched meshes and append-only document updates]],
+  [[ADR-T24-4 Strokes as one strip with sparse round joins]].
 - Brendan Gregg, *perf Examples* — reading `perf report` output.

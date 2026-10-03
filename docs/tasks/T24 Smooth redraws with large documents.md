@@ -1,7 +1,7 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: in-progress
+status: review
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
@@ -191,13 +191,13 @@ Second round (AC-3, after the owner's measurements):
 Third round (AC-3d, after the owner's pen-only measurements):
 
 - [x] spec — `docs(T24): specify strokes as strips`
-- [ ] tests — `test(T24): add failing tests for stroke strips`
-- [ ] models — skipped: no new types; `Batch::polyline` is a method on
+- [x] tests — `test(T24): add failing tests for stroke strips`
+- [x] models — skipped: no new types; `Batch::polyline` is a method on
   the existing `Batch`, added with its body in the behaviour step
   (signature-only stubs would not compile cleanly with the tests anyway)
-- [ ] behaviour — `feat(T24): draw strokes as strips with sparse joins`
-- [ ] quality — `chore(T24): pass clippy and rustfmt after strips`
-- [ ] docs — `docs(T24): document stroke strips`
+- [x] behaviour — `feat(T24): draw strokes as strips with sparse joins`
+- [x] quality — `chore(T24): pass clippy and rustfmt after strips`
+- [x] docs — `docs(T24): document stroke strips`
 
 ## Learning path
 
@@ -262,3 +262,15 @@ step 14 (profiling).
   Not in T24: drawing the cached layer moved/scaled during a gesture and
   re-rendering once input is quiet (needs a timed wake-up, amending
   ADR-T12-1) — a separate task if AC-3d is not enough.
+- 2026-10-03 — AC-3d implemented (ADR-T24-4): `Batch::polyline`,
+  `Batch::disc`, `Batch::strip` continuing across chunks. 10 new render
+  tests. The polyline proptest passes an iterator instead of a collected
+  `Vec` (it did not type-check); nothing else changed. `scripts/check.sh`
+  green (598 lib tests); T14 perf tests (release) green.
+- 2026-10-03 — **Pending, owner on the target:**
+  - AC-4: same pen-only scene, `DRAW_FRAME_TIMES=1`, `full` lines zoomed out
+    (was ≈ 26 ms) and at medium zoom (was ≈ 210 ms), once with the
+    duplicates selected and once after `Esc` (the gap is T25's lookup).
+    The budget ADR amending ADR-T14-1 is written from those numbers.
+  - AC-5 visual check, plus thick strokes zoomed in: smooth joins, round
+    ends, no gaps or spikes at sharp turns.

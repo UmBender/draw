@@ -87,7 +87,9 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    The document layer is a cached, 4× multisampled render target
    ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]]).
    `shell::render` tessellates shapes into a `Batch` submitted with
-   `draw_mesh` in chunks. `DRAW_FRAME_TIMES=1` logs each re-render. More
+   `draw_mesh` in chunks; strokes are one mitred strip each
+   ([[ADR-T24-4 Strokes as one strip with sparse round joins]]).
+   `DRAW_FRAME_TIMES=1` logs each re-render. More
    ideas: [[Rendering performance options]].
 4. The document layer is blitted to the window (one quad) and the overlay —
    overlay shapes, guides, selection, marquee, toolbar — is drawn on top,

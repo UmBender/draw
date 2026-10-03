@@ -33,8 +33,16 @@ fixes the measured problem.
   with shared quad/fan vertices and `draw_mesh` per ≤ 4 800 indices. The
   owner's `perf` run put ≈ 60 % of a pan session in per-triangle submission
   (`memmove` in `QuadGl::geometry`) before this.
+- **Option 4, part: fewer vertices per stroke** — T24,
+  [[ADR-T24-4 Strokes as one strip with sparse round joins]]: a polyline is
+  one mitred strip (2 vertices per point), points closer than ¼ px are
+  skipped, and round discs only go at the ends and at sharp turns. Before,
+  a stroke wider than 2 px on screen had a disc at every point (≈ 14
+  vertices per point). The owner's medium-zoom `perf` run had ≈ 55 % of
+  its time in copying vertices into GL buffers.
 
-Still open: lower segment counts (rest of option 4), 5–8, and raising
+Still open: lower circle segment counts (rest of option 4), 5–8, drawing the
+cached layer moved/scaled during a pan or zoom gesture, and raising
 macroquad's draw-call capacity (`Conf::draw_call_*_capacity`) with the batch
 limits.
 
