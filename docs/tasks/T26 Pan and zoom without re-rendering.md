@@ -1,11 +1,11 @@
 ---
 id: T26
 title: Pan and zoom without re-rendering
-status: ready
+status: review
 wave: 14
 branch: task/T26-gesture-redraw
 depends_on: [T24]
-adrs: ["[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-5 Redraw budgets]]"]
+adrs: ["[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-5 Redraw budgets]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T26-2 Gesture frame budget]]", "[[ADR-T26-3 Reuse the layer only when re-rendering is slow]]"]
 feature:
 tutorial: "[[26 Reusing a frame during a gesture]]"
 tags: [task]
@@ -30,31 +30,63 @@ this task skips the whole re-render during a gesture instead.
 
 ## Spec
 
-Draft — refined in the spec step (each AC names its tests, ADRs added).
+How it works: [[ADR-T26-1 Reuse the document layer during pan and zoom]];
+budget: [[ADR-T26-2 Gesture frame budget]]. Unit tests live in
+`#[cfg(test)] mod tests` of `shell::app`.
 
 - **AC-1 — Reuse during a gesture.** While only the camera changed since
-  the cached document layer, the frame draws that layer moved and scaled
-  by the camera difference (one textured quad) instead of re-rendering
-  it. The overlay is drawn as today. *Tests:* a pure function from the
-  cached and current camera to the blit rectangle (`shell::app`), and
-  `plan_redraw` returning a new `Redraw` case for camera-only changes.
-- **AC-2 — Settle.** Once no camera change has happened for
-  `SETTLE_MS` (≈ 100 ms), the layer is re-rendered at the current camera
-  with MSAA. This needs a wake-up after a quiet period. The loop sleeps
-  until an input event (ADR-T12-1). A candidate is a timer thread calling
-  `miniquad::window::schedule_update`, whose thread-safety must be checked
-  first. The choice is recorded in an ADR amending ADR-T12-1.
-- **AC-3 — Margin.** The layer is rendered with a margin around the
-  window, so short pans show shapes rather than empty edges. Size and
-  memory cost are recorded in the ADR.
+  the cached document layer, `plan_redraw` returns `Redraw::Moved` and the
+  frame draws that layer moved and scaled (one textured quad, linear
+  filter) to `blit_rect(cached, current, layer)`; the overlay is drawn as
+  today. The frame timer names these frames `moved`.
+  *Tests:* `plan_redraw_camera_only_is_moved`,
+  `blit_rect_same_camera_is_layer`, `blit_rect_pan_moves_by_screen_delta`,
+  `blit_rect_zoom_scales_about_anchor`,
+  `blit_rect_maps_corners_through_cameras` (proptest),
+  `blit_filter_moved_is_linear`, `blit_filter_at_rest_is_nearest`,
+  `frame_log_line_names_moved`.
+- **AC-1b — Only when slow.** `Moved` is used only when the last full
+  re-render took at least `REUSE_ABOVE` (8 ms); a cheaper scene re-renders
+  on every camera change as before T26
+  ([[ADR-T26-3 Reuse the layer only when re-rendering is slow]]).
+  *Tests:* `reuse_if_slow_fast_last_full_is_full`,
+  `reuse_if_slow_slow_last_full_stays_moved`,
+  `reuse_if_slow_unmeasured_is_full`,
+  `reuse_if_slow_other_redraws_are_unchanged`,
+  `reuse_threshold_is_8_ms`.
+- **AC-2 — Settle.** Once the camera has been still for `SETTLE`
+  (100 ms), `settle` turns `Moved` into `Full`: the layer is re-rendered
+  at the current camera with MSAA. While a frame is `Moved` it calls
+  `miniquad::window::schedule_update` from the main thread, so the
+  blocking loop runs again instead of sleeping (a timer thread cannot
+  wake the X11 loop, see the ADR). *Tests:*
+  `settle_moved_before_quiet_period_stays_moved`,
+  `settle_moved_after_quiet_period_is_full`,
+  `settle_other_redraws_are_unchanged`, `settle_period_is_100_ms`.
+  Wake-up: manual check on the target.
+- **AC-3 — Margin.** The layer covers the window plus `layer_margin`
+  physical pixels on each side (⅛ of the longer side, no layer side over
+  `MAX_LAYER_SIDE` = 8192), rendered through `layer_camera` (the view
+  camera shifted by the margin); `render::draw_underlay` takes the camera
+  so the dots fill the margin too. At rest the blit is 1:1 at −margin.
+  Size and memory are in the ADR. *Tests:*
+  `layer_margin_is_eighth_of_longer_side`,
+  `layer_margin_keeps_layer_within_max_side`,
+  `layer_size_adds_margin_on_both_sides`,
+  `layer_camera_shows_window_origin_at_margin`.
 - **AC-4 — Any other change wins.** A document, hidden-set, size or
-  underlay change during a gesture re-renders as today. *Tests:* the
-  existing `plan_redraw` key tests stay green.
-- **AC-5 — Budget.** With the ADR-T24-5 scene, pan and zoom frames during
-  a gesture cost < 2 ms CPU at any zoom. The settle re-render is listed
-  separately. Numbers go in the *Log*, and ADR-T24-5 is amended.
+  underlay change, alone or together with a camera change, re-renders as
+  today. *Tests:* `plan_redraw_changed_key_is_full` (the camera-only case
+  moves to AC-1), `plan_redraw_camera_and_other_change_is_full`,
+  `plan_redraw_append_with_other_change_is_full` and the other existing
+  `plan_redraw_*` tests unchanged.
+- **AC-5 — Budget.** With the ADR-T24-5 scene, `moved` frames cost < 2 ms
+  CPU at any zoom; the settle re-render is listed separately. *Owner on
+  the target* with `DRAW_FRAME_TIMES=1`; numbers in the *Log*, then
+  ADR-T26-2 becomes `accepted`.
 - **AC-6 — No regressions.** Output after settling looks the same as
-  today; `scripts/check.sh` and the T14 perf tests stay green.
+  today (1:1 nearest blit of a layer rendered with the same zoom);
+  `scripts/check.sh` and the T14 perf tests (`tests/perf.rs`) stay green.
 
 ## Out of scope
 
@@ -65,19 +97,26 @@ Draft — refined in the spec step (each AC names its tests, ADRs added).
 ## Files owned
 
 - `src/shell/app.rs`
-- `src/shell/render.rs` (blit helpers only)
+- `src/shell/render.rs` (blit helpers, and `draw_underlay` taking the
+  camera — agreed with the owner in the spec step)
 - new ADRs `ADR-T26-*`, tutorial `docs/tutorials/26 Reusing a frame during a gesture.md`
 - `docs/architecture/Rendering performance options.md`,
   `docs/architecture/Architecture.md` (record what was done)
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T26): …`
-- [ ] tests — `test(T26): …`
-- [ ] models — `feat(T26): …`
-- [ ] behaviour — `feat(T26): …`
-- [ ] quality — `chore(T26): …`
-- [ ] docs — `docs(T26): …`
+- [x] spec — `docs(T26): specify gesture redraw acceptance criteria`
+- [x] spec (rework) — `docs(T26): reuse the layer only when re-rendering is slow`
+- [x] tests (rework) — `test(T26): add failing tests for reusing the layer only when slow`
+- [x] models (rework) — `feat(T26): add REUSE_ABOVE and reuse_if_slow signature`
+- [x] behaviour (rework) — `feat(T26): reuse the layer only when the last full re-render was slow`
+- [x] quality (rework) — skipped: fmt and clippy were already clean
+- [x] docs (rework) — `docs(T26): document reusing the layer only when slow`
+- [x] tests — `test(T26): add failing tests for gesture redraw`
+- [x] models — `feat(T26): add Moved redraw, settle and layer margin signatures`
+- [x] behaviour — `feat(T26): blit the cached layer during pan and zoom`
+- [x] quality — `chore(T26): pass clippy and rustfmt`
+- [x] docs — `docs(T26): add tutorial and record gesture redraw`
 
 ## Learning path
 
@@ -88,3 +127,36 @@ Step 26 — requires step 24 (layered redraws) and step 12 (app loop).
 - 2026-10-03 — Created from T24's AC-4 result (medium zoom 40–60 ms);
   not started. Best measured after T25 lands, so the settle numbers do
   not include the selection lookups.
+- 2026-10-03 — Spec: read miniquad 0.4.11's X11 loop. `schedule_update`
+  from another thread is not seen while the loop sleeps in `XNextEvent`
+  and races the loop's `try_lock().unwrap()`, so the settle wake-up is
+  main-thread polling while `Moved` (ADR-T26-1). The margin needs
+  `render::draw_underlay` to take a camera; the owner agreed to widen
+  *Files owned* for that one signature.
+- 2026-10-03 — Implemented. `plan_redraw` gives `Moved` for camera-only
+  changes; `settle` re-renders after 100 ms; `Moved` frames clear to the
+  background, call `schedule_update` and blit through `blit_rect` with a
+  linear filter. Layer margin ⅛ of the longer side (`layer_margin`,
+  `layer_size`, `layer_camera`); `render::draw_underlay` takes the camera.
+  No feature note (`feature` is empty: no user-visible feature).
+- 2026-10-03 — Checks: `scripts/check.sh` green. T14 perf tests
+  (`cargo test --release --test perf -- --ignored --test-threads=1`):
+  10/10 pass on two reruns; one earlier run right after a build had
+  `perf_move_commit_5k_of_10k_is_under_1ms` over budget (core code, not
+  touched here; 0.49–0.69 ms on reruns). Release build starts and renders
+  its first frame (`full re-render`, 0 shapes) without errors.
+- **Owner, on the target (AC-2, AC-5, AC-6):** with `DRAW_FRAME_TIMES=1`
+  and the ADR-T24-5 scene, pan and zoom at zoomed-out and medium zoom:
+  `moved` frame times (budget < 2 ms) and the settle `full` time; check
+  the picture sharpens ≈ 100 ms after stopping without moving the mouse,
+  and looks the same as before at rest. Then set ADR-T26-2 to `accepted`.
+- 2026-10-03 — Review by the owner: on a page with few shapes, panning
+  felt laggy (blur, content past the margin only after the settle). Back
+  to in-progress: blit only when the last full re-render took ≥ 8 ms
+  (ADR-T26-3). A visible-shape count was considered and rejected because
+  the cost per shape varies with zoom.
+- 2026-10-03 — Rework done: `reuse_if_slow` with `REUSE_ABOVE` = 8 ms;
+  `present` times every `Full` re-render (`last_full`). `scripts/check.sh`
+  green; the quality step had nothing to change, so no commit.
+  **Owner:** pan a small page (every line `full`, no blur) and the
+  5 120-stroke scene (`moved` lines, then one `full` after stopping).

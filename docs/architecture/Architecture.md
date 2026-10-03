@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]"]
+adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]"]
 ---
 
 # Architecture
@@ -81,17 +81,27 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
      (`Editor::document_base_revision` ≤ cached revision, view unchanged)
      → draw just those onto the **document layer**
      ([[ADR-T24-3 Batched meshes and append-only document updates]]);
+   - only the camera changed and the last full re-render took ≥ 8 ms → keep
+     the layer and blit it moved and scaled (`Redraw::Moved`,
+     [[ADR-T26-3 Reuse the layer only when re-rendering is slow]]); a
+     cheaper scene re-renders as below; once the camera has been still for `SETTLE`
+     (100 ms) re-render it, waking the loop with `schedule_update` from the
+     main thread until then
+     ([[ADR-T26-1 Reuse the document layer during pan and zoom]]);
    - any other key change → re-render the document layer (background,
      underlay dot grid, shapes minus `overlay.hidden`);
    - otherwise → keep it.
    The document layer is a cached, 4× multisampled render target
-   ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]]).
+   ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]])
+   covering the window plus a margin of ⅛ of its longer side, rendered
+   through a camera shifted by that margin.
    `shell::render` tessellates shapes into a `Batch` submitted with
    `draw_mesh` in chunks; strokes are one mitred strip each
    ([[ADR-T24-4 Strokes as one strip with sparse round joins]]).
    `DRAW_FRAME_TIMES=1` logs each re-render. More
    ideas: [[Rendering performance options]].
-4. The document layer is blitted to the window (one quad) and the overlay —
+4. The document layer is blitted to the window (one quad, 1:1 at rest) and
+   the overlay —
    overlay shapes, guides, selection, marquee, toolbar — is drawn on top,
    single-sampled ([[ADR-T24-2 Overlay drawn straight to the window]]).
 

@@ -5,7 +5,9 @@
 //! routed past the toolbar into the [`Editor`]. The document is cached in a
 //! render target that is re-rendered (or appended to) only when its
 //! [`LayerKey`] changes (ADR-T24-1, ADR-T24-3); every woken frame blits it
-//! and draws the overlay on top (ADR-T24-2).
+//! and draws the overlay on top (ADR-T24-2). While only the camera moves,
+//! the cached layer is blitted moved and scaled and re-rendered once the
+//! camera settles (ADR-T26-1).
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::WHITE;
@@ -13,6 +15,7 @@ use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
+use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
@@ -94,6 +97,7 @@ pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> Strin
         Redraw::None => "no",
         Redraw::Overlay => "overlay",
         Redraw::Append { .. } => "append",
+        Redraw::Moved => "moved",
         Redraw::Full => "full",
     };
     let ms = elapsed.as_secs_f64() * 1000.0;
@@ -131,13 +135,17 @@ pub enum Redraw {
         /// First new shape, in z-order.
         from: usize,
     },
+    /// Only the camera changed: the cached document layer is drawn moved
+    /// and scaled to the new view, then the overlay (ADR-T26-1).
+    Moved,
     /// Both layers.
     Full,
 }
 
 /// Picks the work for a frame from the `cached` document layer's key, the
 /// `next` key, [`Editor::document_base_revision`] (`base`) and whether
-/// input changed editor state (`dirty`).
+/// input changed editor state (`dirty`). A change of the camera alone is
+/// [`Redraw::Moved`]; together with any other change it is [`Redraw::Full`].
 #[must_use]
 pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty: bool) -> Redraw {
     let Some(cached) = cached else {
@@ -145,6 +153,15 @@ pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty:
     };
     if cached == next {
         return if dirty { Redraw::Overlay } else { Redraw::None };
+    }
+    let same_layer = cached.revision == next.revision
+        && cached.len == next.len
+        && cached.size == next.size
+        && cached.hidden == next.hidden
+        && cached.underlay == next.underlay;
+    if same_layer {
+        // Only the camera differs (ADR-T26-1).
+        return Redraw::Moved;
     }
     let same_view = cached.camera == next.camera
         && cached.size == next.size
@@ -156,6 +173,90 @@ pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty:
     } else {
         Redraw::Full
     }
+}
+
+/// How long the camera must stay still before a [`Redraw::Moved`] layer is
+/// re-rendered at full quality (ADR-T26-1).
+pub const SETTLE: Duration = Duration::from_millis(100);
+
+/// Longest side, in physical pixels, that the margin may grow the document
+/// layer to (ADR-T26-1).
+pub const MAX_LAYER_SIDE: u32 = 8192;
+
+/// Shortest full re-render, in CPU time, for which a camera change blits
+/// the cached layer instead of re-rendering it (ADR-T26-3).
+pub const REUSE_ABOVE: Duration = Duration::from_millis(8);
+
+/// Turns [`Redraw::Moved`] into [`Redraw::Full`] while re-rendering is cheap:
+/// the `last_full` re-render took less than [`REUSE_ABOVE`] or was never
+/// measured. Any other plan is returned unchanged.
+#[must_use]
+pub fn reuse_if_slow(redraw: Redraw, last_full: Option<Duration>) -> Redraw {
+    let slow = last_full.is_some_and(|last| last >= REUSE_ABOVE);
+    if redraw == Redraw::Moved && !slow {
+        Redraw::Full
+    } else {
+        redraw
+    }
+}
+
+/// Turns [`Redraw::Moved`] into [`Redraw::Full`] once the camera has been
+/// still for `quiet` ≥ [`SETTLE`]; any other plan is returned unchanged.
+#[must_use]
+pub fn settle(redraw: Redraw, quiet: Duration) -> Redraw {
+    if redraw == Redraw::Moved && quiet >= SETTLE {
+        Redraw::Full
+    } else {
+        redraw
+    }
+}
+
+/// Where the cached layer goes on screen now: `layer` is its rectangle in
+/// window pixels at the `cached` camera, mapped through the `current` one.
+/// `None` if the result is not finite.
+#[must_use]
+pub fn blit_rect(cached: &Camera, current: &Camera, layer: Aabb) -> Option<Aabb> {
+    let map = |p: Vec2| current.world_to_screen(cached.screen_to_world(p));
+    let (min, max) = (map(layer.min), map(layer.max));
+    (min.is_finite() && max.is_finite()).then(|| Aabb::from_corners(min, max))
+}
+
+/// Texture filter for blitting the layer under `redraw`: linear while it is
+/// scaled during a gesture, nearest when it lands 1:1.
+#[must_use]
+pub fn blit_filter(redraw: Redraw) -> FilterMode {
+    if redraw == Redraw::Moved {
+        FilterMode::Linear
+    } else {
+        FRAME_FILTER
+    }
+}
+
+/// Margin in physical pixels around a window of `size` physical pixels: ⅛
+/// of the longer side, reduced so no layer side exceeds [`MAX_LAYER_SIDE`]
+/// (0 if the window is already wider).
+#[must_use]
+pub fn layer_margin(size: (u32, u32)) -> u32 {
+    let longest = size.0.max(size.1);
+    let room = MAX_LAYER_SIDE.saturating_sub(longest) / 2;
+    (longest / 8).min(room)
+}
+
+/// Size of the document layer: `size` plus `margin` on every side,
+/// saturating.
+#[must_use]
+pub fn layer_size(size: (u32, u32), margin: u32) -> (u32, u32) {
+    let grow = |side: u32| side.saturating_add(margin.saturating_mul(2));
+    (grow(size.0), grow(size.1))
+}
+
+/// The camera the layer is rendered with: `camera` shifted so its window
+/// origin lands `margin` logical pixels into the layer, same zoom.
+#[must_use]
+pub fn layer_camera(camera: &Camera, margin: f32) -> Camera {
+    let mut shifted = *camera;
+    shifted.pan_by_screen(Vec2::new(margin, margin));
+    shifted
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -262,14 +363,24 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
 }
 
 /// The document layer: background, underlay and document shapes in a
-/// framebuffer-sized, multisampled render target that macroquad resolves
-/// into a plain texture (ADR-T15-1, ADR-T24-1). The overlay is drawn on the
-/// window every frame (ADR-T24-2).
+/// multisampled render target the size of the framebuffer plus a margin,
+/// which macroquad resolves into a plain texture (ADR-T15-1, ADR-T24-1,
+/// ADR-T26-1). The overlay is drawn on the window every frame (ADR-T24-2).
 struct CachedFrame {
     /// The document layer.
     document: Option<RenderTarget>,
     /// What `document` shows.
     key: Option<LayerKey>,
+    /// Where `document` lies in window pixels at the camera in `key`.
+    layer: Aabb,
+    /// Filter currently set on `document`'s texture.
+    filter: FilterMode,
+    /// Camera of the last frame.
+    last_camera: Option<Camera>,
+    /// When the camera last changed.
+    changed_at: Instant,
+    /// CPU time of the last full re-render (ADR-T26-3).
+    last_full: Option<Duration>,
     /// MSAA samples per pixel for new targets.
     samples: i32,
     /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
@@ -283,48 +394,88 @@ impl CachedFrame {
         Self {
             document: None,
             key: None,
+            layer: Aabb::from_corners(Vec2::ZERO, Vec2::ZERO),
+            filter: FRAME_FILTER,
+            last_camera: None,
+            changed_at: Instant::now(),
+            last_full: None,
             samples,
             timed,
         }
     }
 
-    /// Updates the document layer as [`plan_redraw`] says, then blits it to
-    /// the window and draws the overlay on top. `dirty` says whether input
-    /// changed editor state.
+    /// Updates the document layer as [`plan_redraw`], [`reuse_if_slow`] and
+    /// [`settle`] say,
+    /// then blits it to the window and draws the overlay on top. `dirty`
+    /// says whether input changed editor state.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
+        let camera = *editor.camera();
         let key = LayerKey {
             revision: editor.document_revision(),
             len: editor.document().len(),
-            camera: *editor.camera(),
+            camera,
             size,
             hidden: overlay.hidden.clone(),
             underlay: editor.helpers().grid_snap,
         };
+        let now = Instant::now();
+        if self.last_camera != Some(camera) {
+            self.last_camera = Some(camera);
+            self.changed_at = now;
+        }
         let base = editor.document_base_revision();
-        let redraw = plan_redraw(self.key.as_ref(), &key, base, dirty);
+        let planned = plan_redraw(self.key.as_ref(), &key, base, dirty);
+        let planned = reuse_if_slow(planned, self.last_full);
+        let redraw = settle(planned, now.saturating_duration_since(self.changed_at));
         let started = self.timed.then(Instant::now);
         let from = match redraw {
             Redraw::Full => Some(0),
             Redraw::Append { from } => Some(from),
-            Redraw::Overlay | Redraw::None => None,
+            Redraw::Moved | Redraw::Overlay | Redraw::None => None,
         };
         if let Some(from) = from {
+            let margin = layer_margin(size);
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
-                self.document = Some(self.new_target(size));
+                self.document = Some(self.new_target(layer_size(size, margin)));
+                self.filter = FRAME_FILTER;
             }
+            let pad = margin as f32 / sanitize_dpi(dpi);
+            let extent = Vec2::new(viewport.x + 2.0 * pad, viewport.y + 2.0 * pad);
+            let layer_camera = layer_camera(&camera, pad);
+            let rendering = Instant::now();
             if let Some(document) = &self.document {
-                render_into(document, viewport, || {
-                    draw_document(editor, &overlay, viewport, from);
+                render_into(document, extent, || {
+                    draw_document(editor, &layer_camera, &overlay, extent, from);
                 });
             }
+            if redraw == Redraw::Full {
+                self.last_full = Some(rendering.elapsed());
+            }
+            self.layer = Aabb::from_corners(
+                Vec2::new(-pad, -pad),
+                Vec2::new(viewport.x + pad, viewport.y + pad),
+            );
             self.key = Some(key);
         }
-        let Some(document) = &self.document else {
+        let (Some(document), Some(cached)) = (&self.document, &self.key) else {
             return;
         };
-        blit(&document.texture, viewport);
+        if redraw == Redraw::Moved {
+            // The moved layer may not cover the window; wake again until the
+            // camera settles (ADR-T26-1).
+            clear_background(to_mq_color(THEME.bg));
+            schedule_update();
+        }
+        let filter = blit_filter(redraw);
+        if filter != self.filter {
+            document.texture.set_filter(filter);
+            self.filter = filter;
+        }
+        if let Some(dest) = blit_rect(&cached.camera, &camera, self.layer) {
+            blit(&document.texture, dest);
+        }
         draw_overlay(editor, &overlay, viewport);
         if let Some(started) = started.filter(|_| redraw != Redraw::None) {
             let shapes = editor.document().len();
@@ -341,16 +492,16 @@ impl CachedFrame {
     }
 }
 
-/// Draws a resolved layer `texture` over the whole `viewport`, 1:1 in
-/// physical pixels.
-fn blit(texture: &Texture2D, viewport: Vec2) {
+/// Draws a resolved layer `texture` stretched over `dest`, in window
+/// pixels.
+fn blit(texture: &Texture2D, dest: Aabb) {
     draw_texture_ex(
         texture,
-        0.0,
-        0.0,
+        dest.min.x,
+        dest.min.y,
         WHITE,
         DrawTextureParams {
-            dest_size: Some(vec2(viewport.x, viewport.y)),
+            dest_size: Some(vec2(dest.width(), dest.height())),
             // GL textures start at the bottom row.
             flip_y: true,
             ..DrawTextureParams::default()
@@ -360,14 +511,19 @@ fn blit(texture: &Texture2D, viewport: Vec2) {
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
 fn physical_size(viewport: Vec2, dpi: f32) -> (u32, u32) {
-    let scale = if dpi.is_finite() && dpi > 0.0 {
-        dpi
-    } else {
-        1.0
-    };
+    let scale = sanitize_dpi(dpi);
     // Saturating float-to-int casts; NaN becomes 0 and is raised to 1.
     let side = |logical: f32| ((logical * scale).round() as u32).max(1);
     (side(viewport.x), side(viewport.y))
+}
+
+/// `dpi` if it is finite and positive, else 1.
+fn sanitize_dpi(dpi: f32) -> f32 {
+    if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    }
 }
 
 /// Runs `draw` with `target` as the destination, in logical pixels.
@@ -379,13 +535,14 @@ fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
     set_default_camera();
 }
 
-/// Draws the document layer: background, underlay and every shape the
-/// gesture in progress does not hide. With `from > 0` only the shapes from
-/// that index on are drawn over what the layer already holds (ADR-T24-3).
-fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize) {
+/// Draws the document layer through `camera` into a target of `viewport`
+/// pixels: background, underlay and every shape the gesture in progress
+/// does not hide. With `from > 0` only the shapes from that index on are
+/// drawn over what the layer already holds (ADR-T24-3).
+fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: Vec2, from: usize) {
     if from == 0 {
         clear_background(to_mq_color(THEME.bg));
-        render::draw_underlay(editor, viewport);
+        render::draw_underlay(editor, camera, viewport);
     }
     let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
     let shapes = editor
@@ -394,7 +551,7 @@ fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize
         .skip(from)
         .filter(|(id, _)| !hidden.contains(id))
         .map(|(_, shape)| shape);
-    render::draw_shapes(shapes, editor.camera(), viewport);
+    render::draw_shapes(shapes, camera, viewport);
 }
 
 /// Draws what lies above the document: gesture overlay, guides, selection,
@@ -435,6 +592,8 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
+    use crate::core::geom::approx_eq;
     use proptest::prelude::*;
 
     #[test]
@@ -591,15 +750,9 @@ mod tests {
     #[test]
     fn plan_redraw_changed_key_is_full() {
         // Arrange
-        let mut panned = Camera::default();
-        panned.pan_by_screen(Vec2::new(10.0, 0.0));
         let changed = [
             LayerKey {
                 revision: 4,
-                ..key()
-            },
-            LayerKey {
-                camera: panned,
                 ..key()
             },
             LayerKey {
@@ -716,11 +869,326 @@ mod tests {
         assert_eq!(line, "draw: append re-render 0.250 ms, 4 shapes");
     }
 
+    // ---- T26 AC-1 reuse during a gesture -----------------------------------
+
+    fn panned_camera() -> Camera {
+        let mut camera = Camera::default();
+        camera.pan_by_screen(Vec2::new(10.0, 0.0));
+        camera
+    }
+
+    fn assert_rect_eq(actual: Aabb, expected: Aabb) {
+        assert!(
+            actual.min.approx_eq(expected.min, 1e-3) && actual.max.approx_eq(expected.max, 1e-3),
+            "{actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    fn plan_redraw_camera_only_is_moved() {
+        // Arrange
+        let next = LayerKey {
+            camera: panned_camera(),
+            ..key()
+        };
+
+        for dirty in [false, true] {
+            // Act
+            let redraw = plan_redraw(Some(&key()), &next, 0, dirty);
+
+            // Assert
+            assert_eq!(redraw, Redraw::Moved, "dirty {dirty}");
+        }
+    }
+
+    #[test]
+    fn blit_rect_same_camera_is_layer() {
+        // Arrange
+        let camera = Camera::new(Vec2::new(-30.0, 12.5), 2.5);
+        let layer = Aabb::from_corners(Vec2::new(-100.0, -100.0), Vec2::new(900.0, 700.0));
+
+        // Act
+        let Some(rect) = blit_rect(&camera, &camera, layer) else {
+            panic!("finite cameras give a finite rect");
+        };
+
+        // Assert
+        assert_rect_eq(rect, layer);
+    }
+
+    #[test]
+    fn blit_rect_pan_moves_by_screen_delta() {
+        // Arrange
+        let cached = Camera::new(Vec2::ZERO, 2.0);
+        let mut current = cached;
+        current.pan_by_screen(Vec2::new(40.0, -25.0));
+        let layer = Aabb::from_corners(Vec2::new(-50.0, -50.0), Vec2::new(850.0, 650.0));
+
+        // Act
+        let Some(rect) = blit_rect(&cached, &current, layer) else {
+            panic!("finite cameras give a finite rect");
+        };
+
+        // Assert
+        assert_rect_eq(rect, layer.translate(Vec2::new(40.0, -25.0)));
+    }
+
+    #[test]
+    fn blit_rect_zoom_scales_about_anchor() {
+        // Arrange
+        let cached = Camera::default();
+        let mut current = cached;
+        let anchor = Vec2::new(200.0, 100.0);
+        current.zoom_at(anchor, 1.0);
+        let k = current.zoom() / cached.zoom();
+        let layer = Aabb::from_corners(Vec2::ZERO, Vec2::new(800.0, 600.0));
+
+        // Act
+        let Some(rect) = blit_rect(&cached, &current, layer) else {
+            panic!("finite cameras give a finite rect");
+        };
+
+        // Assert
+        let expected = Aabb::from_corners(anchor - anchor * k, anchor + (layer.max - anchor) * k);
+        assert_rect_eq(rect, expected);
+        assert!(approx_eq(rect.width(), 800.0 * k, 1e-3));
+    }
+
+    #[test]
+    fn blit_filter_moved_is_linear() {
+        assert_eq!(blit_filter(Redraw::Moved), FilterMode::Linear);
+    }
+
+    #[test]
+    fn blit_filter_at_rest_is_nearest() {
+        for redraw in [
+            Redraw::None,
+            Redraw::Overlay,
+            Redraw::Append { from: 2 },
+            Redraw::Full,
+        ] {
+            assert_eq!(blit_filter(redraw), FRAME_FILTER, "{redraw:?}");
+        }
+    }
+
+    #[test]
+    fn frame_log_line_names_moved() {
+        let line = frame_log_line(Redraw::Moved, Duration::from_micros(90), 5120);
+
+        assert_eq!(line, "draw: moved re-render 0.090 ms, 5120 shapes");
+    }
+
+    // ---- T26 AC-1b only when slow -------------------------------------------
+
+    #[test]
+    fn reuse_threshold_is_8_ms() {
+        assert_eq!(REUSE_ABOVE, Duration::from_millis(8));
+    }
+
+    #[test]
+    fn reuse_if_slow_fast_last_full_is_full() {
+        for last in [Duration::ZERO, Duration::from_micros(7_999)] {
+            assert_eq!(
+                reuse_if_slow(Redraw::Moved, Some(last)),
+                Redraw::Full,
+                "{last:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn reuse_if_slow_slow_last_full_stays_moved() {
+        for last in [REUSE_ABOVE, Duration::from_millis(50)] {
+            assert_eq!(
+                reuse_if_slow(Redraw::Moved, Some(last)),
+                Redraw::Moved,
+                "{last:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn reuse_if_slow_unmeasured_is_full() {
+        assert_eq!(reuse_if_slow(Redraw::Moved, None), Redraw::Full);
+    }
+
+    #[test]
+    fn reuse_if_slow_other_redraws_are_unchanged() {
+        for redraw in [
+            Redraw::None,
+            Redraw::Overlay,
+            Redraw::Append { from: 4 },
+            Redraw::Full,
+        ] {
+            for last in [None, Some(Duration::ZERO), Some(Duration::from_secs(1))] {
+                assert_eq!(reuse_if_slow(redraw, last), redraw, "{redraw:?} {last:?}");
+            }
+        }
+    }
+
+    // ---- T26 AC-2 settle ----------------------------------------------------
+
+    #[test]
+    fn settle_period_is_100_ms() {
+        assert_eq!(SETTLE, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn settle_moved_before_quiet_period_stays_moved() {
+        for quiet in [Duration::ZERO, Duration::from_millis(99)] {
+            assert_eq!(settle(Redraw::Moved, quiet), Redraw::Moved, "{quiet:?}");
+        }
+    }
+
+    #[test]
+    fn settle_moved_after_quiet_period_is_full() {
+        for quiet in [SETTLE, Duration::from_secs(5)] {
+            assert_eq!(settle(Redraw::Moved, quiet), Redraw::Full, "{quiet:?}");
+        }
+    }
+
+    #[test]
+    fn settle_other_redraws_are_unchanged() {
+        for redraw in [
+            Redraw::None,
+            Redraw::Overlay,
+            Redraw::Append { from: 4 },
+            Redraw::Full,
+        ] {
+            for quiet in [Duration::ZERO, SETTLE] {
+                assert_eq!(settle(redraw, quiet), redraw, "{redraw:?} {quiet:?}");
+            }
+        }
+    }
+
+    // ---- T26 AC-3 margin ----------------------------------------------------
+
+    #[test]
+    fn layer_margin_is_eighth_of_longer_side() {
+        assert_eq!(layer_margin((2560, 1600)), 320);
+        assert_eq!(layer_margin((1280, 800)), 160);
+        assert_eq!(layer_margin((600, 1000)), 125);
+        assert_eq!(layer_margin((1, 1)), 0);
+    }
+
+    #[test]
+    fn layer_margin_keeps_layer_within_max_side() {
+        // Arrange
+        let cases = [(7680, 4320), (8000, 100), (8192, 8192), (20_000, 10)];
+
+        for size in cases {
+            // Act
+            let margin = layer_margin(size);
+            let layer = layer_size(size, margin);
+
+            // Assert
+            let longest = size.0.max(size.1);
+            assert!(
+                layer.0.max(layer.1) <= MAX_LAYER_SIDE.max(longest),
+                "{size:?} margin {margin}"
+            );
+        }
+        assert_eq!(layer_margin((7680, 4320)), 256);
+        assert_eq!(layer_margin((8192, 8192)), 0);
+    }
+
+    #[test]
+    fn layer_size_adds_margin_on_both_sides() {
+        assert_eq!(layer_size((2560, 1600), 320), (3200, 2240));
+        assert_eq!(layer_size((1, 1), 0), (1, 1));
+        assert_eq!(layer_size((u32::MAX, 5), 10), (u32::MAX, 25));
+    }
+
+    #[test]
+    fn layer_camera_shows_window_origin_at_margin() {
+        // Arrange
+        let camera = Camera::new(Vec2::new(17.0, -4.0), 2.5);
+        let margin = 64.0;
+
+        // Act
+        let shifted = layer_camera(&camera, margin);
+
+        // Assert
+        let world = camera.screen_to_world(Vec2::ZERO);
+        assert!(
+            shifted
+                .world_to_screen(world)
+                .approx_eq(Vec2::new(margin, margin), 1e-3)
+        );
+        assert!(approx_eq(shifted.zoom(), camera.zoom(), 1e-6));
+    }
+
+    // ---- T26 AC-4 any other change wins -------------------------------------
+
+    #[test]
+    fn plan_redraw_camera_and_other_change_is_full() {
+        // Arrange
+        let camera = panned_camera();
+        let changed = [
+            LayerKey {
+                camera,
+                revision: 4,
+                ..key()
+            },
+            LayerKey {
+                camera,
+                size: (801, 600),
+                ..key()
+            },
+            LayerKey {
+                camera,
+                hidden: Vec::new(),
+                ..key()
+            },
+            LayerKey {
+                camera,
+                underlay: true,
+                ..key()
+            },
+        ];
+
+        for next in changed {
+            for dirty in [false, true] {
+                // Act
+                let redraw = plan_redraw(Some(&key()), &next, 0, dirty);
+
+                // Assert
+                assert_eq!(redraw, Redraw::Full, "{next:?} dirty {dirty}");
+            }
+        }
+    }
+
     proptest! {
         #[test]
         fn msaa_samples_is_always_supported_count(setting in ".*") {
             let samples = msaa_samples(Some(&setting));
             prop_assert!([1, 2, 4, 8].contains(&samples), "{samples}");
+        }
+
+        #[test]
+        fn blit_rect_maps_corners_through_cameras(
+            ox in -1e4f32..1e4, oy in -1e4f32..1e4, z0 in ZOOM_MIN..ZOOM_MAX,
+            px in -1e4f32..1e4, py in -1e4f32..1e4, z1 in ZOOM_MIN..ZOOM_MAX,
+            w in 1.0f32..4000.0, h in 1.0f32..4000.0, m in 0.0f32..500.0,
+        ) {
+            // Arrange
+            let cached = Camera::new(Vec2::new(ox, oy), z0);
+            let current = Camera::new(Vec2::new(px, py), z1);
+            let layer = Aabb::from_corners(Vec2::new(-m, -m), Vec2::new(w + m, h + m));
+
+            // Act
+            let rect = blit_rect(&cached, &current, layer);
+
+            // Assert
+            let Some(rect) = rect else {
+                panic!("finite cameras give a finite rect");
+            };
+            let corner = current.world_to_screen(cached.screen_to_world(layer.min));
+            let tol = 1e-3 * (1.0 + corner.x.abs().max(corner.y.abs()));
+            prop_assert!(rect.min.approx_eq(corner, tol), "{rect:?} {corner:?}");
+            let scale = z1 / z0;
+            let width_tol = 1e-3 * (1.0 + layer.width() * scale);
+            prop_assert!(approx_eq(rect.width(), layer.width() * scale, width_tol));
         }
     }
 }
