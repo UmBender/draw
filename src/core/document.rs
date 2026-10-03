@@ -5,8 +5,10 @@
 //! a [`Transaction`] of [`Edit`]s and either applies all of them or none
 //! (ADR-0005, ADR-T06-1). The `tx_*` builders create the common transactions.
 
-use std::collections::HashSet;
+use std::cell::OnceCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::core::shape::Shape;
 
@@ -23,6 +25,35 @@ impl ShapeId {
         self.0
     }
 }
+
+/// Hashes a [`ShapeId`] with one multiplication (Fibonacci hashing). Ids are
+/// small sequential integers made by this process, so there is nothing to
+/// defend against, and the default `SipHash` showed in the T25 budgets
+/// (ADR-T25-2).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_u64(u64::from(byte));
+        }
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = (self.0 ^ value).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
+}
+
+/// Hasher state for maps and sets keyed by [`ShapeId`].
+pub type IdBuildHasher = BuildHasherDefault<IdHasher>;
+
+/// A set of shape ids with the cheap [`IdHasher`].
+pub type IdSet = HashSet<ShapeId, IdBuildHasher>;
 
 /// One reversible change to a [`Document`].
 #[derive(Debug, Clone, PartialEq)]
@@ -158,9 +189,78 @@ pub struct Document {
     /// Shapes in z-order, bottom first.
     shapes: Vec<(ShapeId, Shape)>,
     /// Ids currently in `shapes`, for O(1) duplicate checks.
-    ids: HashSet<ShapeId>,
+    ids: IdSet,
     /// Next id to hand out; only ever grows.
     next_id: u64,
+    /// Id → z-order position, built on the first lookup after an insert or
+    /// remove (ADR-T25-1).
+    positions: OnceCell<HashMap<ShapeId, usize, IdBuildHasher>>,
+}
+
+/// A stretch of a transaction that [`Document::apply`] handles in one go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Run {
+    /// `Remove`s with strictly decreasing indices.
+    Removes(usize),
+    /// `Insert`s with strictly increasing indices.
+    Inserts(usize),
+    /// One edit applied on its own.
+    Single,
+}
+
+impl Run {
+    /// The run that starts at `edits[0]`.
+    fn at(edits: &[Edit]) -> Self {
+        let remove_index = |edit: &Edit| match edit {
+            Edit::Remove { index, .. } => Some(*index),
+            _ => None,
+        };
+        let insert_index = |edit: &Edit| match edit {
+            Edit::Insert { index, .. } => Some(*index),
+            _ => None,
+        };
+        let removes = run_length(edits, remove_index, |prev, next| next < prev);
+        if removes > 1 {
+            return Self::Removes(removes);
+        }
+        let inserts = run_length(edits, insert_index, |prev, next| next > prev);
+        if inserts > 1 {
+            return Self::Inserts(inserts);
+        }
+        Self::Single
+    }
+
+    /// Number of edits the run covers.
+    fn len(self) -> usize {
+        match self {
+            Self::Removes(n) | Self::Inserts(n) => n,
+            Self::Single => 1,
+        }
+    }
+}
+
+/// How many leading edits of `edits` have an index (`index_of` is `Some`)
+/// with each consecutive pair `ordered`.
+fn run_length(
+    edits: &[Edit],
+    index_of: impl Fn(&Edit) -> Option<usize>,
+    ordered: impl Fn(usize, usize) -> bool,
+) -> usize {
+    let mut indices = edits.iter().map(index_of);
+    let Some(Some(mut prev)) = indices.next() else {
+        return 0;
+    };
+    let mut len = 1;
+    for index in indices {
+        match index {
+            Some(next) if ordered(prev, next) => {
+                prev = next;
+                len += 1;
+            }
+            _ => break,
+        }
+    }
+    len
 }
 
 impl Document {
@@ -196,10 +296,7 @@ impl Document {
     /// Z-order position of `id`, if present.
     #[must_use]
     pub fn index_of(&self, id: ShapeId) -> Option<usize> {
-        if !self.ids.contains(&id) {
-            return None;
-        }
-        self.shapes.iter().position(|(stored, _)| *stored == id)
+        self.positions().get(&id).copied()
     }
 
     /// Number of shapes.
@@ -231,24 +328,142 @@ impl Document {
     /// (shapes and id counter) is then unchanged.
     pub fn apply(&mut self, tx: &Transaction) -> Result<(), ApplyError> {
         let saved_next_id = self.next_id;
-        for (done, edit) in tx.0.iter().enumerate() {
-            if let Err(err) = self.apply_edit(edit) {
-                self.roll_back(&tx.0[..done]);
-                self.next_id = saved_next_id;
-                return Err(err);
-            }
+        if let Err((done, err)) = self.apply_runs(&tx.0) {
+            self.roll_back(&tx.0[..done]);
+            self.next_id = saved_next_id;
+            return Err(err);
         }
         Ok(())
     }
 
-    /// Undo `applied` (edits that just succeeded), last first.
-    fn roll_back(&mut self, applied: &[Edit]) {
-        for edit in applied.iter().rev() {
-            // The inverse of an edit that just succeeded is valid by
-            // construction (ADR-T06-1), so this cannot fail.
-            let undone = self.apply_edit(&edit.inverse());
-            debug_assert!(undone.is_ok(), "rollback failed: {undone:?}");
+    /// Applies `edits` run by run ([`Run`], ADR-T25-1). On error returns
+    /// how many edits were applied before the failing run, which itself
+    /// changed nothing.
+    fn apply_runs(&mut self, edits: &[Edit]) -> Result<(), (usize, ApplyError)> {
+        let mut done = 0;
+        while done < edits.len() {
+            let rest = &edits[done..];
+            let run = Run::at(rest);
+            let result = match run {
+                Run::Removes(n) => self.apply_remove_run(&rest[..n]),
+                Run::Inserts(n) => self.apply_insert_run(&rest[..n]),
+                Run::Single => self.apply_edit(&rest[0]),
+            };
+            result.map_err(|err| (done, err))?;
+            done += run.len();
         }
+        Ok(())
+    }
+
+    /// The id → position index, built on first use.
+    fn positions(&self) -> &HashMap<ShapeId, usize, IdBuildHasher> {
+        self.positions.get_or_init(|| {
+            self.shapes
+                .iter()
+                .enumerate()
+                .map(|(index, (id, _))| (*id, index))
+                .collect()
+        })
+    }
+
+    /// Checks a [`Run::Removes`] run against the current shapes, in edit
+    /// order, then removes all of it in one pass; on error nothing changes.
+    ///
+    /// Indices strictly decrease, so each one still names its shape in the
+    /// document before the run, and only the first can be out of range.
+    fn apply_remove_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
+        let len = self.shapes.len();
+        let mut doomed = vec![false; len];
+        let edits = run.iter().filter_map(|edit| match edit {
+            Edit::Remove { index, id, shape } => Some((index, id, shape)),
+            _ => None,
+        });
+        for (done, (index, id, shape)) in edits.enumerate() {
+            let Some((stored_id, stored)) = self.shapes.get(*index) else {
+                return Err(ApplyError::IndexOutOfRange {
+                    index: *index,
+                    len: len - done,
+                });
+            };
+            if stored_id != id || stored != shape {
+                return Err(ApplyError::Mismatch(*id));
+            }
+            doomed[*index] = true;
+        }
+        let mut position = 0;
+        self.shapes.retain(|_| {
+            let keep = !doomed[position];
+            position += 1;
+            keep
+        });
+        for edit in run {
+            if let Edit::Remove { id, .. } = edit {
+                self.ids.remove(id);
+            }
+        }
+        self.positions.take();
+        Ok(())
+    }
+
+    /// Checks a [`Run::Inserts`] run, in edit order, then merges all of it
+    /// in one pass; on error nothing changes.
+    ///
+    /// Indices strictly increase, so each one is the shape's final position.
+    fn apply_insert_run(&mut self, run: &[Edit]) -> Result<(), ApplyError> {
+        let len = self.shapes.len();
+        let mut new_ids = IdSet::with_capacity_and_hasher(run.len(), IdBuildHasher::default());
+        let mut inserts = Vec::with_capacity(run.len());
+        let edits = run.iter().filter_map(|edit| match edit {
+            Edit::Insert { index, id, shape } => Some((index, id, shape)),
+            _ => None,
+        });
+        for (done, (index, id, shape)) in edits.enumerate() {
+            let current = len + done;
+            if *index > current {
+                return Err(ApplyError::IndexOutOfRange {
+                    index: *index,
+                    len: current,
+                });
+            }
+            if !shape.is_finite() {
+                return Err(ApplyError::NonFiniteShape(*id));
+            }
+            if self.ids.contains(id) || !new_ids.insert(*id) {
+                return Err(ApplyError::DuplicateId(*id));
+            }
+            inserts.push((*index, *id, shape));
+        }
+        let total = len + inserts.len();
+        let mut old = std::mem::take(&mut self.shapes).into_iter();
+        let mut inserts = inserts.into_iter().peekable();
+        let mut merged = Vec::with_capacity(total);
+        while merged.len() < total {
+            let next = match inserts.next_if(|(index, _, _)| *index == merged.len()) {
+                Some((_, id, shape)) => Some((id, shape.clone())),
+                None => old.next(),
+            };
+            let Some(next) = next else {
+                break;
+            };
+            merged.push(next);
+        }
+        self.shapes = merged;
+        for id in new_ids {
+            self.ids.insert(id);
+            self.next_id = self.next_id.max(id.0.saturating_add(1));
+        }
+        self.positions.take();
+        Ok(())
+    }
+
+    /// Undo `applied` (edits that just succeeded) with their inverses, last
+    /// first, through the same runs.
+    fn roll_back(&mut self, applied: &[Edit]) {
+        let undo: Vec<Edit> = applied.iter().rev().map(Edit::inverse).collect();
+        // The inverse of an edit that just succeeded is valid by
+        // construction (ADR-T06-1), so this cannot fail.
+        let undone = self.apply_runs(&undo);
+        debug_assert!(undone.is_ok(), "rollback failed: {undone:?}");
     }
 
     /// Check and apply a single edit; on error nothing changes.
@@ -268,6 +483,7 @@ impl Document {
                 }
                 self.shapes.insert(index, (id, shape.clone()));
                 self.next_id = self.next_id.max(id.0.saturating_add(1));
+                self.positions.take();
             }
             Edit::Remove { index, id, shape } => {
                 let index = *index;
@@ -279,6 +495,7 @@ impl Document {
                 }
                 self.shapes.remove(index);
                 self.ids.remove(id);
+                self.positions.take();
             }
             Edit::Replace { id, before, after } => {
                 let index = self.index_of(*id).ok_or(ApplyError::UnknownId(*id))?;
@@ -319,7 +536,7 @@ pub fn tx_insert(doc: &mut Document, shapes: impl IntoIterator<Item = Shape>) ->
 /// Edits are ordered by descending index so each index stays valid.
 #[must_use]
 pub fn tx_remove(doc: &Document, ids: &[ShapeId]) -> Transaction {
-    let wanted: HashSet<ShapeId> = ids.iter().copied().collect();
+    let wanted: IdSet = ids.iter().copied().collect();
     removals_top_down(doc, |id| wanted.contains(&id))
 }
 
@@ -366,6 +583,7 @@ mod tests {
     use crate::core::geom::Vec2;
     use crate::core::palette::ColorId;
     use crate::core::shape::{Shape, Style};
+    use proptest::prelude::*;
 
     fn line(x: f32) -> Shape {
         Shape::Line {
@@ -846,5 +1064,297 @@ mod tests {
 
         assert!(doc.apply(&tx.inverse()).is_ok());
         assert_eq!(snapshot(&doc), before);
+    }
+
+    // ---- T25 AC-1: O(1) lookup ----
+
+    /// Asserts that `get` and `index_of` agree with a scan of `doc`, and that
+    /// ids `0..probe` missing from it are not found.
+    fn assert_lookups_match_scan(doc: &Document, probe: u64) {
+        let shapes = snapshot(doc);
+        for (pos, (id, shape)) in shapes.iter().enumerate() {
+            assert_eq!(doc.index_of(*id), Some(pos), "{id:?}");
+            assert_eq!(doc.get(*id), Some(shape), "{id:?}");
+        }
+        for raw in 0..probe {
+            let id = ShapeId(raw);
+            if shapes.iter().all(|(stored, _)| *stored != id) {
+                assert_eq!(doc.index_of(id), None, "{id:?}");
+                assert!(doc.get(id).is_none(), "{id:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn index_of_after_middle_remove_is_shifted() {
+        // Arrange: look up once so the index exists.
+        let (mut doc, ids) = doc_with(4);
+        assert_eq!(doc.index_of(ids[2]), Some(2));
+
+        // Act
+        assert!(doc.apply(&tx_remove(&doc, &[ids[1]])).is_ok());
+
+        // Assert
+        assert_eq!(doc.index_of(ids[1]), None);
+        assert_eq!(doc.index_of(ids[2]), Some(1));
+        assert_eq!(doc.index_of(ids[3]), Some(2));
+    }
+
+    #[test]
+    fn index_of_after_middle_insert_is_shifted() {
+        // Arrange
+        let (mut doc, ids) = doc_with(3);
+        assert_eq!(doc.index_of(ids[1]), Some(1));
+        let id = doc.next_id();
+        let tx = Transaction(vec![Edit::Insert {
+            index: 1,
+            id,
+            shape: line(9.0),
+        }]);
+
+        // Act
+        assert!(doc.apply(&tx).is_ok());
+
+        // Assert
+        assert_eq!(doc.index_of(id), Some(1));
+        assert_eq!(doc.index_of(ids[1]), Some(2));
+        assert_eq!(doc.get(id), Some(&line(9.0)));
+    }
+
+    #[test]
+    fn get_after_replace_returns_new_shape() {
+        // Arrange
+        let (mut doc, ids) = doc_with(3);
+        assert_eq!(doc.get(ids[1]), Some(&line(1.0)));
+
+        // Act
+        assert!(doc.apply(&tx_replace(&doc, ids[1], line(7.0))).is_ok());
+
+        // Assert
+        assert_eq!(doc.get(ids[1]), Some(&line(7.0)));
+        assert_eq!(doc.index_of(ids[1]), Some(1));
+    }
+
+    #[test]
+    fn failed_transaction_keeps_lookups() {
+        // Arrange: a valid removal followed by an invalid replace.
+        let (mut doc, ids) = doc_with(4);
+        assert_lookups_match_scan(&doc, 8);
+        let before = snapshot(&doc);
+        let mut edits = tx_remove(&doc, &[ids[0], ids[2]]).0;
+        edits.push(Edit::Replace {
+            id: ids[3],
+            before: line(42.0),
+            after: line(1.0),
+        });
+
+        // Act
+        let result = doc.apply(&Transaction(edits));
+
+        // Assert
+        assert_eq!(result, Err(ApplyError::Mismatch(ids[3])));
+        assert_eq!(snapshot(&doc), before);
+        assert_lookups_match_scan(&doc, 8);
+    }
+
+    // ---- T25 AC-2: linear transactions ----
+
+    /// Reference semantics: applies `tx`'s edits one by one to a plain list
+    /// with the documented checks, in their documented order.
+    fn model_apply(
+        shapes: &[(ShapeId, Shape)],
+        tx: &Transaction,
+    ) -> Result<Vec<(ShapeId, Shape)>, ApplyError> {
+        let mut shapes = shapes.to_vec();
+        for edit in tx.edits() {
+            let len = shapes.len();
+            match edit {
+                Edit::Insert { index, id, shape } => {
+                    if *index > len {
+                        return Err(ApplyError::IndexOutOfRange { index: *index, len });
+                    }
+                    if !shape.is_finite() {
+                        return Err(ApplyError::NonFiniteShape(*id));
+                    }
+                    if shapes.iter().any(|(stored, _)| stored == id) {
+                        return Err(ApplyError::DuplicateId(*id));
+                    }
+                    shapes.insert(*index, (*id, shape.clone()));
+                }
+                Edit::Remove { index, id, shape } => {
+                    let Some((stored_id, stored)) = shapes.get(*index) else {
+                        return Err(ApplyError::IndexOutOfRange { index: *index, len });
+                    };
+                    if stored_id != id || stored != shape {
+                        return Err(ApplyError::Mismatch(*id));
+                    }
+                    shapes.remove(*index);
+                }
+                Edit::Replace { id, before, after } => {
+                    let Some(pos) = shapes.iter().position(|(stored, _)| stored == id) else {
+                        return Err(ApplyError::UnknownId(*id));
+                    };
+                    if !after.is_finite() {
+                        return Err(ApplyError::NonFiniteShape(*id));
+                    }
+                    if shapes[pos].1 != *before {
+                        return Err(ApplyError::Mismatch(*id));
+                    }
+                    shapes[pos].1 = after.clone();
+                }
+            }
+        }
+        Ok(shapes)
+    }
+
+    /// An edit from small random numbers: often valid against
+    /// [`doc_with`], often not.
+    fn raw_edit((kind, index, id, x): (u8, usize, u64, u8)) -> Edit {
+        let shape = if x == 13 {
+            nan_line()
+        } else {
+            line(f32::from(x))
+        };
+        match kind {
+            0 => Edit::Insert {
+                index,
+                id: ShapeId(id),
+                shape,
+            },
+            1 => Edit::Remove {
+                index,
+                id: ShapeId(id),
+                shape,
+            },
+            _ => Edit::Replace {
+                id: ShapeId(id),
+                before: line(f32::from(x)),
+                after: line(f32::from(x) + 0.5),
+            },
+        }
+    }
+
+    #[test]
+    fn apply_remove_run_with_mismatch_changes_nothing() {
+        // Arrange: a top-down removal run whose middle edit is stale.
+        let (mut doc, ids) = doc_with(5);
+        let before = snapshot(&doc);
+        let mut tx = tx_remove(&doc, &[ids[0], ids[2], ids[4]]);
+        if let Edit::Remove { shape, .. } = &mut tx.0[1] {
+            *shape = line(99.0);
+        }
+
+        // Act
+        let result = doc.apply(&tx);
+
+        // Assert
+        assert_eq!(result, Err(ApplyError::Mismatch(ids[2])));
+        assert_eq!(snapshot(&doc), before);
+        assert_lookups_match_scan(&doc, 8);
+    }
+
+    #[test]
+    fn apply_insert_run_with_duplicate_id_changes_nothing() {
+        // Arrange: undo of a removal run, with its last insert reusing an id
+        // that is still in the document.
+        let (mut doc, ids) = doc_with(5);
+        let removal = tx_remove(&doc, &[ids[0], ids[2], ids[4]]);
+        assert!(doc.apply(&removal).is_ok());
+        let before = snapshot(&doc);
+        let mut undo = removal.inverse();
+        if let Some(Edit::Insert { id, .. }) = undo.0.last_mut() {
+            *id = ids[1];
+        }
+
+        // Act
+        let result = doc.apply(&undo);
+
+        // Assert
+        assert_eq!(result, Err(ApplyError::DuplicateId(ids[1])));
+        assert_eq!(snapshot(&doc), before);
+        assert_lookups_match_scan(&doc, 8);
+    }
+
+    proptest! {
+        #[test]
+        fn apply_matches_edit_by_edit_application(
+            n in 0usize..12,
+            mask in prop::collection::vec(any::<bool>(), 12),
+            removes_first in any::<bool>(),
+            raw in prop::collection::vec((0u8..3, 0usize..14, 0u64..16, 0u8..14), 0..8),
+        ) {
+            // Arrange: optionally a valid removal run, then random edits.
+            let (doc, ids) = doc_with(n);
+            let mut edits = Vec::new();
+            if removes_first {
+                let chosen: Vec<ShapeId> = ids
+                    .iter()
+                    .zip(&mask)
+                    .filter(|(_, keep)| **keep)
+                    .map(|(id, _)| *id)
+                    .collect();
+                edits.extend(tx_remove(&doc, &chosen).0);
+            }
+            edits.extend(raw.into_iter().map(raw_edit));
+            let tx = Transaction(edits);
+            let expected = model_apply(&snapshot(&doc), &tx);
+
+            // Act
+            let mut actual = doc.clone();
+            let result = actual.apply(&tx);
+
+            // Assert
+            match expected {
+                Ok(shapes) => {
+                    prop_assert_eq!(result, Ok(()));
+                    prop_assert_eq!(snapshot(&actual), shapes);
+                    // Undo restores the original, like the model says.
+                    prop_assert_eq!(actual.apply(&tx.inverse()), Ok(()));
+                    prop_assert_eq!(snapshot(&actual), snapshot(&doc));
+                }
+                Err(err) => {
+                    prop_assert_eq!(result, Err(err));
+                    prop_assert_eq!(snapshot(&actual), snapshot(&doc));
+                }
+            }
+            assert_lookups_match_scan(&actual, 20);
+        }
+
+        #[test]
+        fn lookups_match_a_scan_after_random_transactions(
+            steps in prop::collection::vec((0u8..4, prop::collection::vec(any::<bool>(), 16)), 1..12),
+        ) {
+            // Arrange
+            let (mut doc, _) = doc_with(6);
+            let mut undo: Vec<Transaction> = Vec::new();
+
+            for (kind, mask) in steps {
+                let ids: Vec<ShapeId> = doc.shapes().map(|(id, _)| id).collect();
+                let chosen: Vec<ShapeId> = ids
+                    .iter()
+                    .zip(&mask)
+                    .filter(|(_, keep)| **keep)
+                    .map(|(id, _)| *id)
+                    .collect();
+
+                // Act
+                let tx = match kind {
+                    0 => tx_insert(&mut doc, (0..3u8).map(|i| line(f32::from(i)))),
+                    1 => tx_remove(&doc, &chosen),
+                    2 => chosen
+                        .first()
+                        .map(|id| tx_replace(&doc, *id, line(5.5)))
+                        .unwrap_or_default(),
+                    _ => undo.pop().map(|tx| tx.inverse()).unwrap_or_default(),
+                };
+                prop_assert_eq!(doc.apply(&tx), Ok(()));
+                if kind != 3 {
+                    undo.push(tx);
+                }
+
+                // Assert
+                assert_lookups_match_scan(&doc, 64);
+            }
+        }
     }
 }

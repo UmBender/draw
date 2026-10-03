@@ -11,6 +11,8 @@
 //! pointer events the path is sampled at most one tolerance apart, so fast
 //! drags do not skip thin shapes.
 
+use std::collections::{HashMap, HashSet};
+
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{ShapeId, Transaction, tx_remove, tx_replace};
 use crate::core::geom::Vec2;
@@ -42,9 +44,13 @@ pub struct State {
     mode: Mode,
     /// Shapes marked for removal, in the order they were touched.
     marked: Vec<ShapeId>,
+    /// The ids in `marked`, for O(1) membership checks (ADR-T25-1).
+    marked_ids: HashSet<ShapeId>,
     /// Shapes whose fills this drag cleared, with their new versions, in
     /// the order they were touched.
     cleared: Vec<(ShapeId, Shape)>,
+    /// Position in `cleared` of each id it holds.
+    cleared_at: HashMap<ShapeId, usize>,
 }
 
 /// `shape` with the fill under the world point `p` cleared: its own fill if
@@ -98,12 +104,13 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
         for (id, shape) in ctx.doc.shapes() {
             match state.mode {
                 Mode::Remove => {
-                    if !state.marked.contains(&id) && shape.hit(world, tol) {
+                    if !state.marked_ids.contains(&id) && shape.hit(world, tol) {
                         state.marked.push(id);
+                        state.marked_ids.insert(id);
                         changed = true;
                     }
                 }
-                Mode::Clear => changed |= clear_into(&mut state.cleared, id, shape, world),
+                Mode::Clear => changed |= clear_into(state, id, shape, world),
             }
         }
     }
@@ -111,16 +118,18 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
 }
 
 /// Clears the fill at `p` of shape `id` (its cleared version so far, or
-/// `shape`) into `cleared`. Returns whether a fill was cleared.
-fn clear_into(cleared: &mut Vec<(ShapeId, Shape)>, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
-    let slot = cleared.iter().position(|(c, _)| *c == id);
-    let current = slot.map_or(shape, |i| &cleared[i].1);
+/// `shape`) into `state.cleared`. Returns whether a fill was cleared.
+fn clear_into(state: &mut State, id: ShapeId, shape: &Shape, p: Vec2) -> bool {
+    let slot = state.cleared_at.get(&id).copied();
+    let current = slot.map_or(shape, |i| &state.cleared[i].1);
     let Some(next) = clear_at(current, p) else {
         return false;
     };
-    match slot {
-        Some(i) => cleared[i].1 = next,
-        None => cleared.push((id, next)),
+    if let Some(i) = slot {
+        state.cleared[i].1 = next;
+    } else {
+        state.cleared_at.insert(id, state.cleared.len());
+        state.cleared.push((id, next));
     }
     true
 }
@@ -234,6 +243,27 @@ mod tests {
         assert_eq!(overlay.hidden, vec![ids[0]]);
         assert!(overlay.shapes.is_empty());
         assert_eq!(fx.doc.len(), 3);
+    }
+
+    #[test]
+    fn long_drag_marks_each_shape_once() {
+        // Arrange
+        let (mut fx, ids) = three_lines();
+        let mut state = State::default();
+
+        // Act: sweep back and forth across the first two lines.
+        send(&mut state, &mut fx, Phase::Down, 10.0, 0.0);
+        for i in 0..20u8 {
+            let y = if i % 2 == 0 { 50.0 } else { 0.0 };
+            send(&mut state, &mut fx, Phase::Move, 10.0 + f32::from(i), y);
+        }
+
+        // Assert: marked in touch order, without repeats.
+        let hidden = preview(&state, &fx.view(Tool::Eraser)).hidden;
+        assert_eq!(hidden, vec![ids[0], ids[1]]);
+        let changed = send(&mut state, &mut fx, Phase::Up, 30.0, 0.0);
+        assert!(changed);
+        assert_eq!(fx.doc.len(), 1);
     }
 
     #[test]

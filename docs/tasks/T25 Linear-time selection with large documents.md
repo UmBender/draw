@@ -1,11 +1,11 @@
 ---
 id: T25
 title: Linear-time selection with large documents
-status: ready
+status: review
 wave: 13
 branch: task/T25-fast-lookup
 depends_on: [T14]
-adrs: ["[[ADR-T06-1 Self-checking edits and rollback atomicity]]", "[[ADR-T14-1 Performance budgets]]"]
+adrs: ["[[ADR-T06-1 Self-checking edits and rollback atomicity]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T25-1 Lazy position index and batched edit runs]]", "[[ADR-T25-2 Id hasher and selection-scale budgets]]"]
 feature:
 tutorial: "[[25 Indexing a z-ordered store]]"
 tags: [task]
@@ -37,22 +37,44 @@ with 2 560 selected. A release-mode probe through `Editor` measured:
 
 ## Spec
 
-Draft — refined in the spec step (each AC names its tests, ADRs added).
+Design: [[ADR-T25-1 Lazy position index and batched edit runs]]. Unit tests
+live in `#[cfg(test)] mod tests` of the named module; perf tests in
+`tests/perf.rs` (ignored, release, [[ADR-T14-1 Performance budgets]]).
 
-- **AC-1 — O(1) lookup.** `Document::get`, `index_of` and the id checks in
-  `apply` use an id → position index instead of a scan; the public API is
-  unchanged. Inserts and removes keep the index right, including rollback
-  of a failed transaction ([[ADR-T06-1 Self-checking edits and rollback atomicity]]).
-  *Tests:* index stays consistent after insert/remove/replace/undo/rollback
-  (unit + proptest against a scan).
-- **AC-2 — Linear transactions.** Applying a transaction that removes or
-  replaces k of n shapes costs O(n + k), not O(n · k).
-- **AC-3 — Eraser bookkeeping.** The eraser's `marked` / `cleared` sets
-  give O(1) membership checks; behaviour and preview order unchanged.
-- **AC-4 — Budget.** New `tests/perf.rs` benchmarks on the 10 000-shape
-  document with half of it selected: selection bounds, prune, move commit
-  and delete each < 1 ms (median), recorded in an ADR amending
-  [[ADR-T14-1 Performance budgets]].
+- **AC-1 — O(1) lookup.** `Document::get` and `index_of` use a lazily built
+  id → position index; the public API is unchanged. Structural edits
+  (insert, remove) invalidate it, a replace keeps it, and a failed
+  transaction leaves the document and its lookups exactly as before.
+  *Tests* (`core::document`):
+  `index_of_after_middle_remove_is_shifted`,
+  `index_of_after_middle_insert_is_shifted`,
+  `get_after_replace_returns_new_shape`,
+  `failed_transaction_keeps_lookups`,
+  `lookups_match_a_scan_after_random_transactions` (proptest).
+- **AC-2 — Linear transactions.** A run of `Remove` edits with strictly
+  decreasing indices (what `tx_remove`/`tx_clear` build), and a run of
+  `Insert` edits with strictly increasing indices (their inverses, i.e.
+  undo), is applied in one O(n + k) pass. The result and the error are
+  the same as applying the edits one by one. *Tests*
+  (`core::document`):
+  `apply_matches_edit_by_edit_application` (proptest over random
+  transactions, including invalid ones),
+  `apply_remove_run_with_mismatch_changes_nothing`,
+  `apply_insert_run_with_duplicate_id_changes_nothing`.
+- **AC-3 — Eraser bookkeeping.** The eraser's marked and cleared shapes get
+  O(1) membership checks; marking order, preview and committed edits are
+  unchanged. *Tests* (`core::tools::eraser`): the existing eraser tests,
+  plus `long_drag_marks_each_shape_once`.
+- **AC-4 — Budget.** On the 10 000-shape benchmark document with every
+  other shape selected (5 000), each of these has a median < 1 ms
+  (`tests/perf.rs`), recorded in an ADR amending
+  [[ADR-T14-1 Performance budgets]]:
+  - `perf_lookup_5k_selected_of_10k_is_under_1ms` — `get` for every
+    selected id (selection bounds, prune);
+  - `perf_move_commit_5k_of_10k_is_under_1ms` — applying the `Replace`
+    transaction of a move;
+  - `perf_delete_5k_of_10k_is_under_1ms` — applying `tx_remove`;
+  - `perf_undo_delete_5k_of_10k_is_under_1ms` — applying its inverse.
 - **AC-5 — No regressions.** `scripts/check.sh`, the fuzz harness and the
   T14 perf tests stay green.
 
@@ -72,12 +94,13 @@ Draft — refined in the spec step (each AC names its tests, ADRs added).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T25): specify linear-time lookup acceptance criteria`
-- [ ] tests — `test(T25): add failing tests for indexed lookup`
-- [ ] models — `feat(T25): add the document position index`
-- [ ] behaviour — `feat(T25): look shapes up by index`
-- [ ] quality — `chore(T25): pass clippy and rustfmt`
-- [ ] docs — `docs(T25): add tutorial and measurements`
+- [x] spec — `docs(T25): specify linear-time lookup acceptance criteria`
+- [x] tests — `test(T25): add failing tests for indexed lookup`
+- [x] models — `feat(T25): add the document position index`
+- [x] behaviour — `feat(T25): look shapes up by index`
+- [x] quality — `chore(T25): pass clippy and rustfmt`, then
+  `refactor(T25): hash shape ids with a multiplicative hasher`
+- [x] docs — `docs(T25): add tutorial and measurements`
 
 ## Learning path
 
@@ -86,3 +109,25 @@ Step 25 — requires step 6 (transaction log) and step 14 (profiling).
 ## Log
 
 - 2026-10-02 — Created from the T24 measurements; not started.
+- 2026-10-02 — Spec refined; ADR-T25-1 added. `src/core/tools/select.rs`
+  needs no change: it already uses a set for the moved shapes, and its
+  `prune` becomes linear through `Document::get`.
+- 2026-10-02 — Tests: the AC-1–AC-3 correctness tests pass on the old code
+  too (they pin behaviour; the oracle `model_apply` was checked against
+  it). The red part is AC-4: 27–40 ms medians against 1 ms (busy machine).
+- 2026-10-02 — Behaviour: lazy position index, batched remove and insert
+  runs, linear roll-back through the same runs, and eraser sets. On an idle
+  target: lookup 0.29 ms, delete 0.48–1.37 ms, move commit 0.92–1.38 ms,
+  undo delete 0.94–1.20 ms — flaky at 1 ms. SipHash was half the cost →
+  `IdHasher` (ADR-T25-2). After: lookup 0.09–0.12 ms, delete 0.26 ms, move
+  commit 0.46 ms, undo 0.39 ms, three runs green. T14 budgets unchanged
+  (culling 0.23 ms, hit-test 0.39 ms, eraser scan 0.30 ms, snap 0.97 ms).
+- 2026-10-02 — Deviation: `median_time` in `tests/perf.rs` now drops the
+  op's output after stopping the clock (otherwise freeing a 10 000-shape
+  document is timed). Beyond "new benchmarks" in *Files owned*; existing
+  budgets are unaffected (their outputs are scalars). Recorded in
+  ADR-T25-2.
+- 2026-10-02 — `scripts/check.sh` green (558 lib tests);
+  `PROPTEST_CASES=20000` fuzz green; document properties green at 5 000
+  cases. Perf runs need a quiet machine: a parallel C++ build (load ≈ 10)
+  doubled every timing, T14's included.
