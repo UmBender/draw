@@ -931,6 +931,186 @@ mod tests {
         }
     }
 
+    // AC-3d
+
+    /// Vertices and indices of one disc of `radius` pixels.
+    fn disc_size(radius: f32) -> (usize, usize) {
+        let n = usize::from(circle_segments(radius));
+        (n + 2, 3 * n)
+    }
+
+    /// The single chunk a batch drew.
+    fn only_chunk(rec: &Recorder) -> &(Vec<Vertex>, Vec<u16>) {
+        assert_eq!(rec.chunks.len(), 1);
+        &rec.chunks[0]
+    }
+
+    fn points(xy: &[(f32, f32)]) -> Vec<Vec2> {
+        xy.iter().map(|&(x, y)| Vec2::new(x, y)).collect()
+    }
+
+    #[test]
+    fn batch_polyline_empty_draws_nothing() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.polyline(Vec::new(), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        assert!(rec.chunks.is_empty());
+    }
+
+    #[test]
+    fn batch_polyline_single_point_is_a_dot() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let center = Vec2::new(5.0, 5.0);
+
+        // Act
+        batch.polyline(vec![center], 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), disc_size(2.0));
+        for v in vertices {
+            assert!(position(v).distance(center) <= 2.0 + EPS);
+        }
+    }
+
+    #[test]
+    fn batch_polyline_coincident_points_are_a_dot() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.polyline(points(&[(5.0, 5.0); 3]), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), disc_size(2.0));
+    }
+
+    #[test]
+    fn batch_polyline_thin_shares_two_vertices_per_point() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let line = points(&[(0.0, 0.0), (10.0, 0.0), (20.0, 0.0), (30.0, 0.0)]);
+
+        // Act
+        batch.polyline(line, 1.0, RED);
+        let rec = batch.finish();
+
+        // Assert: one strip of 3 quads, no caps.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (8, 18));
+        for v in vertices {
+            assert!(approx_eq(position(v).y.abs(), 0.5, EPS), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn batch_polyline_thick_adds_round_caps_only_at_ends() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let line = points(&[(0.0, 0.0), (10.0, 0.0), (20.0, 0.0), (30.0, 0.0)]);
+
+        // Act
+        batch.polyline(line, 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert: the strip plus one disc per end.
+        let (vertices, indices) = only_chunk(&rec);
+        let (dv, di) = disc_size(2.0);
+        assert_eq!((vertices.len(), indices.len()), (8 + 2 * dv, 18 + 2 * di));
+    }
+
+    #[test]
+    fn batch_polyline_gentle_turn_is_mitred() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let corner = Vec2::new(10.0, 0.0);
+        let line = vec![Vec2::ZERO, corner, Vec2::new(20.0, 5.0)];
+        let half_turn = 0.5_f32.atan() / 2.0;
+
+        // Act: 2 px is not thick, so no caps.
+        batch.polyline(line, 2.0, RED);
+        let rec = batch.finish();
+
+        // Assert: the corner pair sits on the mitre, on both sides.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (6, 12));
+        let mitre = 1.0 / half_turn.cos();
+        let (a, b) = (position(&vertices[2]), position(&vertices[3]));
+        assert!(approx_eq(a.distance(corner), mitre, EPS), "{a:?}");
+        assert!(approx_eq(b.distance(corner), mitre, EPS), "{b:?}");
+        assert!(a.lerp(b, 0.5).approx_eq(corner, EPS));
+    }
+
+    #[test]
+    fn batch_polyline_sharp_turn_breaks_with_round_join() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let line = points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]);
+
+        // Act: a right angle needs a mitre of √2 half-widths.
+        batch.polyline(line, 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert: two one-quad strips, two caps and one join.
+        let (vertices, indices) = only_chunk(&rec);
+        let (dv, di) = disc_size(2.0);
+        assert_eq!((vertices.len(), indices.len()), (8 + 3 * dv, 12 + 3 * di));
+    }
+
+    #[test]
+    fn batch_polyline_skips_points_closer_than_min_step() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let step = STROKE_MIN_STEP_PX * 0.4;
+        let line = points(&[(0.0, 0.0), (step, 0.0), (2.0 * step, 0.0), (10.0, 0.0)]);
+
+        // Act
+        batch.polyline(line, 1.0, RED);
+        let rec = batch.finish();
+
+        // Assert: one quad from the first to the last point.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (4, 6));
+    }
+
+    #[test]
+    fn batch_strip_longer_than_a_chunk_continues() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let pairs = BATCH_MAX_VERTICES; // twice what one chunk holds
+
+        // Act
+        batch.strip(
+            (0..pairs).map(|i| {
+                let x = i as f32;
+                (Vec2::new(x, 0.0), Vec2::new(x, 1.0))
+            }),
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: every quad drawn once, each chunk starting where the
+        // previous one ended.
+        assert!(rec.chunks.len() > 1);
+        let total: usize = rec.chunks.iter().map(|(_, i)| i.len()).sum();
+        assert_eq!(total, 6 * (pairs - 1));
+        for pair in rec.chunks.windows(2) {
+            let (prev, next) = (&pair[0].0, &pair[1].0);
+            let tail = &prev[prev.len() - 2..];
+            assert!(position(&next[0]).approx_eq(position(&tail[0]), EPS));
+            assert!(position(&next[1]).approx_eq(position(&tail[1]), EPS));
+        }
+    }
+
     proptest! {
         #[test]
         fn batch_indices_stay_inside_their_chunk(
@@ -954,6 +1134,24 @@ mod tests {
                 prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
                 prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
                 prop_assert!(indices.len() <= BATCH_MAX_INDICES);
+            }
+        }
+
+        #[test]
+        fn batch_polyline_indices_stay_inside_their_chunk(
+            xy in prop::collection::vec((-500.0_f32..500.0, -500.0_f32..500.0), 0..3_000),
+            width in 0.5_f32..40.0,
+        ) {
+            let mut batch = Batch::new(Recorder::default());
+            batch.polyline(xy.iter().map(|&(x, y)| Vec2::new(x, y)).collect(), width, RED);
+            let rec = batch.finish();
+            for (vertices, indices) in &rec.chunks {
+                prop_assert!(!indices.is_empty());
+                prop_assert_eq!(indices.len() % 3, 0);
+                prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
+                prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
+                prop_assert!(indices.len() <= BATCH_MAX_INDICES);
+                prop_assert!(vertices.iter().all(|v| position(v).is_finite()));
             }
         }
     }
