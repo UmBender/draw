@@ -37,6 +37,8 @@ flowchart LR
   s12 --> s24[24 Layered redraws & measuring a frame]
   s14 --> s24
   s15 --> s24
+  s6 --> s25[25 Indexing a z-ordered store]
+  s14 --> s25
 ```
 
 | Step | Tutorial | Task | Status |
@@ -65,3 +67,4 @@ flowchart LR
 | 21 | [[21 Per-cell fills and a two-mode eraser]] | [[T21 Cell fill and fill eraser]] | done |
 | 22 | [[22 One toggle, two meanings]] | [[T22 Numbering drives grid indices]] | done |
 | 24 | [[24 Layered redraws and measuring a frame]] | [[T24 Smooth redraws with large documents]] | done |
+| 25 | [[25 Indexing a z-ordered store]] | [[T25 Linear-time selection with large documents]] | done |

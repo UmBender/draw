@@ -43,10 +43,12 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 32 | [[ADR-T22-1 Numbering toggle drives grid indices]] | accepted | decision | T18-3, T19-1, T16-2 | amends T18-3, T18-2 |
 | 33 | [[ADR-0016 Arrow head proportional to width]] | accepted | decision | 0004, 0013 | — |
 | 34 | [[ADR-T20-1 Outline snapping]] | accepted | decision | T17-1, 0013 | amends T17-1 |
-| 35 | [[ADR-T14-1 Performance budgets]] | accepted | decision | 0006, 0007, T17-1, T20-1 | amended by T24-5 |
+| 35 | [[ADR-T14-1 Performance budgets]] | accepted | decision | 0006, 0007, T17-1, T20-1 | amended by T24-5, T25-2 |
 | 36 | [[ADR-T14-2 Low smoothing by default]] | accepted | decision | 0007 | amends 0007 |
 | 37 | [[ADR-T24-1 Document layer keyed by a document revision]] | accepted | decision | 0006, T12-1, T15-1, T08-1 | amends T12-1; amended by T24-2, T24-3 |
 | 38 | [[ADR-T24-2 Overlay drawn straight to the window]] | accepted | decision | T24-1, T12-1 | amends T24-1, T15-1 |
 | 39 | [[ADR-T24-3 Batched meshes and append-only document updates]] | accepted | decision | T07-1, T24-1, 0014 | amends T24-1 |
 | 40 | [[ADR-T24-4 Strokes as one strip with sparse round joins]] | accepted | decision | T07-1, T24-3 | amends T07-1 |
 | 41 | [[ADR-T24-5 Redraw budgets]] | accepted | decision | T24-1, T24-2, T24-3, T24-4 | amends T14-1 |
+| 42 | [[ADR-T25-1 Lazy position index and batched edit runs]] | accepted | decision | 0004, 0005, T06-1 | — |
+| 43 | [[ADR-T25-2 Id hasher and selection-scale budgets]] | accepted | decision | T25-1, T14-1, 0014 | amends T14-1 |

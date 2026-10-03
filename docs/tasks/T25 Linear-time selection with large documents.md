@@ -1,7 +1,7 @@
 ---
 id: T25
 title: Linear-time selection with large documents
-status: review
+status: done
 wave: 13
 branch: task/T25-fast-lookup
 depends_on: [T14]
