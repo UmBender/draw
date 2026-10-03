@@ -183,6 +183,18 @@ pub const SETTLE: Duration = Duration::from_millis(100);
 /// layer to (ADR-T26-1).
 pub const MAX_LAYER_SIDE: u32 = 8192;
 
+/// Shortest full re-render, in CPU time, for which a camera change blits
+/// the cached layer instead of re-rendering it (ADR-T26-3).
+pub const REUSE_ABOVE: Duration = Duration::from_millis(8);
+
+/// Turns [`Redraw::Moved`] into [`Redraw::Full`] while re-rendering is cheap:
+/// the `last_full` re-render took less than [`REUSE_ABOVE`] or was never
+/// measured. Any other plan is returned unchanged.
+#[must_use]
+pub fn reuse_if_slow(redraw: Redraw, last_full: Option<Duration>) -> Redraw {
+    todo!("{redraw:?} {last_full:?}")
+}
+
 /// Turns [`Redraw::Moved`] into [`Redraw::Full`] once the camera has been
 /// still for `quiet` ≥ [`SETTLE`]; any other plan is returned unchanged.
 #[must_use]
