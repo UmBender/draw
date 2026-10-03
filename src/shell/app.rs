@@ -435,6 +435,8 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
+    use crate::core::geom::approx_eq;
     use proptest::prelude::*;
 
     #[test]
@@ -591,15 +593,9 @@ mod tests {
     #[test]
     fn plan_redraw_changed_key_is_full() {
         // Arrange
-        let mut panned = Camera::default();
-        panned.pan_by_screen(Vec2::new(10.0, 0.0));
         let changed = [
             LayerKey {
                 revision: 4,
-                ..key()
-            },
-            LayerKey {
-                camera: panned,
                 ..key()
             },
             LayerKey {
@@ -716,11 +712,273 @@ mod tests {
         assert_eq!(line, "draw: append re-render 0.250 ms, 4 shapes");
     }
 
+    // ---- T26 AC-1 reuse during a gesture -----------------------------------
+
+    fn panned_camera() -> Camera {
+        let mut camera = Camera::default();
+        camera.pan_by_screen(Vec2::new(10.0, 0.0));
+        camera
+    }
+
+    fn assert_rect_eq(actual: Aabb, expected: Aabb) {
+        assert!(
+            actual.min.approx_eq(expected.min, 1e-3) && actual.max.approx_eq(expected.max, 1e-3),
+            "{actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    fn plan_redraw_camera_only_is_moved() {
+        // Arrange
+        let next = LayerKey {
+            camera: panned_camera(),
+            ..key()
+        };
+
+        for dirty in [false, true] {
+            // Act
+            let redraw = plan_redraw(Some(&key()), &next, 0, dirty);
+
+            // Assert
+            assert_eq!(redraw, Redraw::Moved, "dirty {dirty}");
+        }
+    }
+
+    #[test]
+    fn blit_rect_same_camera_is_layer() {
+        // Arrange
+        let camera = Camera::new(Vec2::new(-30.0, 12.5), 2.5);
+        let layer = Aabb::from_corners(Vec2::new(-100.0, -100.0), Vec2::new(900.0, 700.0));
+
+        // Act
+        let rect = blit_rect(&camera, &camera, layer);
+
+        // Assert
+        assert_rect_eq(rect.expect("finite"), layer);
+    }
+
+    #[test]
+    fn blit_rect_pan_moves_by_screen_delta() {
+        // Arrange
+        let cached = Camera::new(Vec2::ZERO, 2.0);
+        let mut current = cached;
+        current.pan_by_screen(Vec2::new(40.0, -25.0));
+        let layer = Aabb::from_corners(Vec2::new(-50.0, -50.0), Vec2::new(850.0, 650.0));
+
+        // Act
+        let rect = blit_rect(&cached, &current, layer);
+
+        // Assert
+        assert_rect_eq(
+            rect.expect("finite"),
+            layer.translate(Vec2::new(40.0, -25.0)),
+        );
+    }
+
+    #[test]
+    fn blit_rect_zoom_scales_about_anchor() {
+        // Arrange
+        let cached = Camera::default();
+        let mut current = cached;
+        let anchor = Vec2::new(200.0, 100.0);
+        current.zoom_at(anchor, 1.0);
+        let k = current.zoom() / cached.zoom();
+        let layer = Aabb::from_corners(Vec2::ZERO, Vec2::new(800.0, 600.0));
+
+        // Act
+        let rect = blit_rect(&cached, &current, layer).expect("finite");
+
+        // Assert
+        let expected = Aabb::from_corners(anchor - anchor * k, anchor + (layer.max - anchor) * k);
+        assert_rect_eq(rect, expected);
+        assert!(approx_eq(rect.width(), 800.0 * k, 1e-3));
+    }
+
+    #[test]
+    fn blit_filter_moved_is_linear() {
+        assert_eq!(blit_filter(Redraw::Moved), FilterMode::Linear);
+    }
+
+    #[test]
+    fn blit_filter_at_rest_is_nearest() {
+        for redraw in [
+            Redraw::None,
+            Redraw::Overlay,
+            Redraw::Append { from: 2 },
+            Redraw::Full,
+        ] {
+            assert_eq!(blit_filter(redraw), FRAME_FILTER, "{redraw:?}");
+        }
+    }
+
+    #[test]
+    fn frame_log_line_names_moved() {
+        let line = frame_log_line(Redraw::Moved, Duration::from_micros(90), 5120);
+
+        assert_eq!(line, "draw: moved re-render 0.090 ms, 5120 shapes");
+    }
+
+    // ---- T26 AC-2 settle ----------------------------------------------------
+
+    #[test]
+    fn settle_period_is_100_ms() {
+        assert_eq!(SETTLE, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn settle_moved_before_quiet_period_stays_moved() {
+        for quiet in [Duration::ZERO, Duration::from_millis(99)] {
+            assert_eq!(settle(Redraw::Moved, quiet), Redraw::Moved, "{quiet:?}");
+        }
+    }
+
+    #[test]
+    fn settle_moved_after_quiet_period_is_full() {
+        for quiet in [SETTLE, Duration::from_secs(5)] {
+            assert_eq!(settle(Redraw::Moved, quiet), Redraw::Full, "{quiet:?}");
+        }
+    }
+
+    #[test]
+    fn settle_other_redraws_are_unchanged() {
+        for redraw in [
+            Redraw::None,
+            Redraw::Overlay,
+            Redraw::Append { from: 4 },
+            Redraw::Full,
+        ] {
+            for quiet in [Duration::ZERO, SETTLE] {
+                assert_eq!(settle(redraw, quiet), redraw, "{redraw:?} {quiet:?}");
+            }
+        }
+    }
+
+    // ---- T26 AC-3 margin ----------------------------------------------------
+
+    #[test]
+    fn layer_margin_is_eighth_of_longer_side() {
+        assert_eq!(layer_margin((2560, 1600)), 320);
+        assert_eq!(layer_margin((1280, 800)), 160);
+        assert_eq!(layer_margin((600, 1000)), 125);
+        assert_eq!(layer_margin((1, 1)), 0);
+    }
+
+    #[test]
+    fn layer_margin_keeps_layer_within_max_side() {
+        // Arrange
+        let cases = [(7680, 4320), (8000, 100), (8192, 8192), (20_000, 10)];
+
+        for size in cases {
+            // Act
+            let margin = layer_margin(size);
+            let layer = layer_size(size, margin);
+
+            // Assert
+            let longest = size.0.max(size.1);
+            assert!(
+                layer.0.max(layer.1) <= MAX_LAYER_SIDE.max(longest),
+                "{size:?} margin {margin}"
+            );
+        }
+        assert_eq!(layer_margin((7680, 4320)), 256);
+        assert_eq!(layer_margin((8192, 8192)), 0);
+    }
+
+    #[test]
+    fn layer_size_adds_margin_on_both_sides() {
+        assert_eq!(layer_size((2560, 1600), 320), (3200, 2240));
+        assert_eq!(layer_size((1, 1), 0), (1, 1));
+        assert_eq!(layer_size((u32::MAX, 5), 10), (u32::MAX, 25));
+    }
+
+    #[test]
+    fn layer_camera_shows_window_origin_at_margin() {
+        // Arrange
+        let camera = Camera::new(Vec2::new(17.0, -4.0), 2.5);
+        let margin = 64.0;
+
+        // Act
+        let shifted = layer_camera(&camera, margin);
+
+        // Assert
+        let world = camera.screen_to_world(Vec2::ZERO);
+        assert!(
+            shifted
+                .world_to_screen(world)
+                .approx_eq(Vec2::new(margin, margin), 1e-3)
+        );
+        assert!(approx_eq(shifted.zoom(), camera.zoom(), 1e-6));
+    }
+
+    // ---- T26 AC-4 any other change wins -------------------------------------
+
+    #[test]
+    fn plan_redraw_camera_and_other_change_is_full() {
+        // Arrange
+        let camera = panned_camera();
+        let changed = [
+            LayerKey {
+                camera,
+                revision: 4,
+                ..key()
+            },
+            LayerKey {
+                camera,
+                size: (801, 600),
+                ..key()
+            },
+            LayerKey {
+                camera,
+                hidden: Vec::new(),
+                ..key()
+            },
+            LayerKey {
+                camera,
+                underlay: true,
+                ..key()
+            },
+        ];
+
+        for next in changed {
+            for dirty in [false, true] {
+                // Act
+                let redraw = plan_redraw(Some(&key()), &next, 0, dirty);
+
+                // Assert
+                assert_eq!(redraw, Redraw::Full, "{next:?} dirty {dirty}");
+            }
+        }
+    }
+
     proptest! {
         #[test]
         fn msaa_samples_is_always_supported_count(setting in ".*") {
             let samples = msaa_samples(Some(&setting));
             prop_assert!([1, 2, 4, 8].contains(&samples), "{samples}");
+        }
+
+        #[test]
+        fn blit_rect_maps_corners_through_cameras(
+            ox in -1e4f32..1e4, oy in -1e4f32..1e4, z0 in ZOOM_MIN..ZOOM_MAX,
+            px in -1e4f32..1e4, py in -1e4f32..1e4, z1 in ZOOM_MIN..ZOOM_MAX,
+            w in 1.0f32..4000.0, h in 1.0f32..4000.0, m in 0.0f32..500.0,
+        ) {
+            // Arrange
+            let cached = Camera::new(Vec2::new(ox, oy), z0);
+            let current = Camera::new(Vec2::new(px, py), z1);
+            let layer = Aabb::from_corners(Vec2::new(-m, -m), Vec2::new(w + m, h + m));
+
+            // Act
+            let rect = blit_rect(&cached, &current, layer);
+
+            // Assert
+            let rect = rect.expect("finite cameras give a finite rect");
+            let corner = current.world_to_screen(cached.screen_to_world(layer.min));
+            let tol = 1e-3 * (1.0 + corner.x.abs().max(corner.y.abs()));
+            prop_assert!(rect.min.approx_eq(corner, tol), "{rect:?} {corner:?}");
+            let scale = z1 / z0;
+            let width_tol = 1e-3 * (1.0 + layer.width() * scale);
+            prop_assert!(approx_eq(rect.width(), layer.width() * scale, width_tol));
         }
     }
 }
