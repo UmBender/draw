@@ -1,7 +1,7 @@
 ---
 id: T26
 title: Pan and zoom without re-rendering
-status: review
+status: done
 wave: 14
 branch: task/T26-gesture-redraw
 depends_on: [T24]
@@ -160,3 +160,6 @@ Step 26 — requires step 24 (layered redraws) and step 12 (app loop).
   green; the quality step had nothing to change, so no commit.
   **Owner:** pan a small page (every line `full`, no blur) and the
   5 120-stroke scene (`moved` lines, then one `full` after stopping).
+- 2026-10-03 — Owner accepted on the target (pan and zoom feel right on
+  small and large pages); merged. ADR-T26-2 stays `proposed` until the
+  `moved` / settle numbers are recorded here.

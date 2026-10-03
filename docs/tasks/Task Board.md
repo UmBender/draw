@@ -109,4 +109,4 @@ flowchart TD
 | [[T14 Performance and release validation]] | done | T12, T13, T15–T23 | `task/T14-release` |
 | [[T24 Smooth redraws with large documents]] | done | T14 | `task/T24-layered-redraw` |
 | [[T25 Linear-time selection with large documents]] | done | T14 | `task/T25-fast-lookup` |
-| [[T26 Pan and zoom without re-rendering]] | ready | T24 | `task/T26-gesture-redraw` |
+| [[T26 Pan and zoom without re-rendering]] | done | T24 | `task/T26-gesture-redraw` |

@@ -39,6 +39,8 @@ flowchart LR
   s15 --> s24
   s6 --> s25[25 Indexing a z-ordered store]
   s14 --> s25
+  s12 --> s26[26 Reusing a frame during a gesture]
+  s24 --> s26
 ```
 
 | Step | Tutorial | Task | Status |
@@ -68,3 +70,4 @@ flowchart LR
 | 22 | [[22 One toggle, two meanings]] | [[T22 Numbering drives grid indices]] | done |
 | 24 | [[24 Layered redraws and measuring a frame]] | [[T24 Smooth redraws with large documents]] | done |
 | 25 | [[25 Indexing a z-ordered store]] | [[T25 Linear-time selection with large documents]] | done |
+| 26 | [[26 Reusing a frame during a gesture]] | [[T26 Pan and zoom without re-rendering]] | done |

@@ -28,7 +28,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | amended by T24-4 |
 | 18 | [[ADR-T08-1 Tool context and gesture overlay]] | accepted | decision | 0003, 0005 | — |
 | 19 | [[ADR-T11-1 Exact modifier matching]] | accepted | decision | 0003 | — |
-| 20 | [[ADR-T12-1 Blocking event loop with cached frame]] | accepted | decision | 0006, 0002 | settles the open choice in 0006; amended by T24-1 |
+| 20 | [[ADR-T12-1 Blocking event loop with cached frame]] | accepted | decision | 0006, 0002 | settles the open choice in 0006; amended by T24-1, T26-1 |
 | 21 | [[ADR-T15-1 MSAA on the cached frame]] | accepted | decision | 0006, T12-1, 0014 | amended by T24-2 |
 | 22 | [[ADR-T16-1 Grid shape and shape labels]] | accepted | decision | 0013, T07-1 | amends 0004 |
 | 23 | [[ADR-T16-2 Helper key bindings]] | accepted | decision | T11-1 | — |
@@ -45,10 +45,13 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 34 | [[ADR-T20-1 Outline snapping]] | accepted | decision | T17-1, 0013 | amends T17-1 |
 | 35 | [[ADR-T14-1 Performance budgets]] | accepted | decision | 0006, 0007, T17-1, T20-1 | amended by T24-5, T25-2 |
 | 36 | [[ADR-T14-2 Low smoothing by default]] | accepted | decision | 0007 | amends 0007 |
-| 37 | [[ADR-T24-1 Document layer keyed by a document revision]] | accepted | decision | 0006, T12-1, T15-1, T08-1 | amends T12-1; amended by T24-2, T24-3 |
+| 37 | [[ADR-T24-1 Document layer keyed by a document revision]] | accepted | decision | 0006, T12-1, T15-1, T08-1 | amends T12-1; amended by T24-2, T24-3, T26-1 |
 | 38 | [[ADR-T24-2 Overlay drawn straight to the window]] | accepted | decision | T24-1, T12-1 | amends T24-1, T15-1 |
 | 39 | [[ADR-T24-3 Batched meshes and append-only document updates]] | accepted | decision | T07-1, T24-1, 0014 | amends T24-1 |
 | 40 | [[ADR-T24-4 Strokes as one strip with sparse round joins]] | accepted | decision | T07-1, T24-3 | amends T07-1 |
-| 41 | [[ADR-T24-5 Redraw budgets]] | accepted | decision | T24-1, T24-2, T24-3, T24-4 | amends T14-1 |
+| 41 | [[ADR-T24-5 Redraw budgets]] | accepted | decision | T24-1, T24-2, T24-3, T24-4 | amends T14-1; amended by T26-2 |
 | 42 | [[ADR-T25-1 Lazy position index and batched edit runs]] | accepted | decision | 0004, 0005, T06-1 | — |
 | 43 | [[ADR-T25-2 Id hasher and selection-scale budgets]] | accepted | decision | T25-1, T14-1, 0014 | amends T14-1 |
+| 44 | [[ADR-T26-1 Reuse the document layer during pan and zoom]] | accepted | decision | T12-1, T15-1, T24-1, T24-2 | amends T12-1, T24-1; amended by T26-3 |
+| 45 | [[ADR-T26-2 Gesture frame budget]] | proposed | decision | T26-1 | amends T24-5 |
+| 46 | [[ADR-T26-3 Reuse the layer only when re-rendering is slow]] | accepted | decision | T26-1 | amends T26-1 |
