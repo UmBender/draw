@@ -94,6 +94,7 @@ pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> Strin
         Redraw::None => "no",
         Redraw::Overlay => "overlay",
         Redraw::Append { .. } => "append",
+        Redraw::Moved => todo!(),
         Redraw::Full => "full",
     };
     let ms = elapsed.as_secs_f64() * 1000.0;
@@ -131,6 +132,9 @@ pub enum Redraw {
         /// First new shape, in z-order.
         from: usize,
     },
+    /// Only the camera changed: the cached document layer is drawn moved
+    /// and scaled to the new view, then the overlay (ADR-T26-1).
+    Moved,
     /// Both layers.
     Full,
 }
@@ -156,6 +160,58 @@ pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty:
     } else {
         Redraw::Full
     }
+}
+
+/// How long the camera must stay still before a [`Redraw::Moved`] layer is
+/// re-rendered at full quality (ADR-T26-1).
+pub const SETTLE: Duration = Duration::from_millis(100);
+
+/// Longest side, in physical pixels, that the margin may grow the document
+/// layer to (ADR-T26-1).
+pub const MAX_LAYER_SIDE: u32 = 8192;
+
+/// Turns [`Redraw::Moved`] into [`Redraw::Full`] once the camera has been
+/// still for `quiet` ≥ [`SETTLE`]; any other plan is returned unchanged.
+#[must_use]
+pub fn settle(redraw: Redraw, quiet: Duration) -> Redraw {
+    todo!("{redraw:?} {quiet:?}")
+}
+
+/// Where the cached layer goes on screen now: `layer` is its rectangle in
+/// window pixels at the `cached` camera, mapped through the `current` one.
+/// `None` if the result is not finite.
+#[must_use]
+pub fn blit_rect(cached: &Camera, current: &Camera, layer: Aabb) -> Option<Aabb> {
+    todo!("{cached:?} {current:?} {layer:?}")
+}
+
+/// Texture filter for blitting the layer under `redraw`: linear while it is
+/// scaled during a gesture, nearest when it lands 1:1.
+#[must_use]
+pub fn blit_filter(redraw: Redraw) -> FilterMode {
+    todo!("{redraw:?}")
+}
+
+/// Margin in physical pixels around a window of `size` physical pixels: ⅛
+/// of the longer side, reduced so no layer side exceeds [`MAX_LAYER_SIDE`]
+/// (0 if the window is already wider).
+#[must_use]
+pub fn layer_margin(size: (u32, u32)) -> u32 {
+    todo!("{size:?}")
+}
+
+/// Size of the document layer: `size` plus `margin` on every side,
+/// saturating.
+#[must_use]
+pub fn layer_size(size: (u32, u32), margin: u32) -> (u32, u32) {
+    todo!("{size:?} {margin}")
+}
+
+/// The camera the layer is rendered with: `camera` shifted so its window
+/// origin lands `margin` logical pixels into the layer, same zoom.
+#[must_use]
+pub fn layer_camera(camera: &Camera, margin: f32) -> Camera {
+    todo!("{camera:?} {margin}")
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -308,7 +364,7 @@ impl CachedFrame {
         let from = match redraw {
             Redraw::Full => Some(0),
             Redraw::Append { from } => Some(from),
-            Redraw::Overlay | Redraw::None => None,
+            Redraw::Moved | Redraw::Overlay | Redraw::None => None,
         };
         if let Some(from) = from {
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
@@ -385,7 +441,7 @@ fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
 fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize) {
     if from == 0 {
         clear_background(to_mq_color(THEME.bg));
-        render::draw_underlay(editor, viewport);
+        render::draw_underlay(editor, editor.camera(), viewport);
     }
     let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
     let shapes = editor

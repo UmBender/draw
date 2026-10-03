@@ -528,12 +528,12 @@ pub fn label_raster(size: f32) -> (u16, f32) {
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
-/// on (ADR-T17-1). Nothing is drawn when the view has too many dots.
-pub fn draw_underlay(editor: &Editor, viewport: Vec2) {
+/// on (ADR-T17-1), as seen through `camera` in a viewport of `viewport`
+/// pixels. Nothing is drawn when the view has too many dots.
+pub fn draw_underlay(editor: &Editor, camera: &Camera, viewport: Vec2) {
     if !editor.helpers().grid_snap {
         return;
     }
-    let camera = editor.camera();
     let Some(spacing) = dot_grid_spacing(camera.zoom()) else {
         return;
     };
