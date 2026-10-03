@@ -1,7 +1,7 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: review
+status: done
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]

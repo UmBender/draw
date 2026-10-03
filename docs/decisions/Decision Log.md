@@ -25,11 +25,11 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 14 | [[ADR-0014 Minimal dependencies and no unsafe]] | accepted | decision | 0002, 0003 | — |
 | 15 | [[ADR-0015 Kanagawa Dragon theme]] | accepted | decision | 0012 | amends 0012 |
 | 16 | [[ADR-T06-1 Self-checking edits and rollback atomicity]] | accepted | decision | 0005 | — |
-| 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | — |
+| 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | amended by T24-4 |
 | 18 | [[ADR-T08-1 Tool context and gesture overlay]] | accepted | decision | 0003, 0005 | — |
 | 19 | [[ADR-T11-1 Exact modifier matching]] | accepted | decision | 0003 | — |
-| 20 | [[ADR-T12-1 Blocking event loop with cached frame]] | accepted | decision | 0006, 0002 | settles the open choice in 0006 |
-| 21 | [[ADR-T15-1 MSAA on the cached frame]] | accepted | decision | 0006, T12-1, 0014 | — |
+| 20 | [[ADR-T12-1 Blocking event loop with cached frame]] | accepted | decision | 0006, 0002 | settles the open choice in 0006; amended by T24-1 |
+| 21 | [[ADR-T15-1 MSAA on the cached frame]] | accepted | decision | 0006, T12-1, 0014 | amended by T24-2 |
 | 22 | [[ADR-T16-1 Grid shape and shape labels]] | accepted | decision | 0013, T07-1 | amends 0004 |
 | 23 | [[ADR-T16-2 Helper key bindings]] | accepted | decision | T11-1 | — |
 | 24 | [[ADR-T16-3 Helper settings and hooks]] | accepted | decision | T08-1, T16-1 | — |
@@ -43,5 +43,10 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 32 | [[ADR-T22-1 Numbering toggle drives grid indices]] | accepted | decision | T18-3, T19-1, T16-2 | amends T18-3, T18-2 |
 | 33 | [[ADR-0016 Arrow head proportional to width]] | accepted | decision | 0004, 0013 | — |
 | 34 | [[ADR-T20-1 Outline snapping]] | accepted | decision | T17-1, 0013 | amends T17-1 |
-| 35 | [[ADR-T14-1 Performance budgets]] | accepted | decision | 0006, 0007, T17-1, T20-1 | — |
+| 35 | [[ADR-T14-1 Performance budgets]] | accepted | decision | 0006, 0007, T17-1, T20-1 | amended by T24-5 |
 | 36 | [[ADR-T14-2 Low smoothing by default]] | accepted | decision | 0007 | amends 0007 |
+| 37 | [[ADR-T24-1 Document layer keyed by a document revision]] | accepted | decision | 0006, T12-1, T15-1, T08-1 | amends T12-1; amended by T24-2, T24-3 |
+| 38 | [[ADR-T24-2 Overlay drawn straight to the window]] | accepted | decision | T24-1, T12-1 | amends T24-1, T15-1 |
+| 39 | [[ADR-T24-3 Batched meshes and append-only document updates]] | accepted | decision | T07-1, T24-1, 0014 | amends T24-1 |
+| 40 | [[ADR-T24-4 Strokes as one strip with sparse round joins]] | accepted | decision | T07-1, T24-3 | amends T07-1 |
+| 41 | [[ADR-T24-5 Redraw budgets]] | accepted | decision | T24-1, T24-2, T24-3, T24-4 | amends T14-1 |
