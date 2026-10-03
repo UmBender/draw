@@ -1,7 +1,7 @@
 ---
 id: T26
 title: Pan and zoom without re-rendering
-status: in-progress
+status: review
 wave: 14
 branch: task/T26-gesture-redraw
 depends_on: [T24]
@@ -97,11 +97,11 @@ budget: [[ADR-T26-2 Gesture frame budget]]. Unit tests live in
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T26): specify gesture redraw acceptance criteria`
-- [ ] tests — `test(T26): …`
-- [ ] models — `feat(T26): …`
-- [ ] behaviour — `feat(T26): …`
-- [ ] quality — `chore(T26): …`
-- [ ] docs — `docs(T26): …`
+- [x] tests — `test(T26): add failing tests for gesture redraw`
+- [x] models — `feat(T26): add Moved redraw, settle and layer margin signatures`
+- [x] behaviour — `feat(T26): blit the cached layer during pan and zoom`
+- [x] quality — `chore(T26): pass clippy and rustfmt`
+- [x] docs — `docs(T26): add tutorial and record gesture redraw`
 
 ## Learning path
 
@@ -118,3 +118,20 @@ Step 26 — requires step 24 (layered redraws) and step 12 (app loop).
   main-thread polling while `Moved` (ADR-T26-1). The margin needs
   `render::draw_underlay` to take a camera; the owner agreed to widen
   *Files owned* for that one signature.
+- 2026-10-03 — Implemented. `plan_redraw` gives `Moved` for camera-only
+  changes; `settle` re-renders after 100 ms; `Moved` frames clear to the
+  background, call `schedule_update` and blit through `blit_rect` with a
+  linear filter. Layer margin ⅛ of the longer side (`layer_margin`,
+  `layer_size`, `layer_camera`); `render::draw_underlay` takes the camera.
+  No feature note (`feature` is empty: no user-visible feature).
+- 2026-10-03 — Checks: `scripts/check.sh` green. T14 perf tests
+  (`cargo test --release --test perf -- --ignored --test-threads=1`):
+  10/10 pass on two reruns; one earlier run right after a build had
+  `perf_move_commit_5k_of_10k_is_under_1ms` over budget (core code, not
+  touched here; 0.49–0.69 ms on reruns). Release build starts and renders
+  its first frame (`full re-render`, 0 shapes) without errors.
+- **Owner, on the target (AC-2, AC-5, AC-6):** with `DRAW_FRAME_TIMES=1`
+  and the ADR-T24-5 scene, pan and zoom at zoomed-out and medium zoom:
+  `moved` frame times (budget < 2 ms) and the settle `full` time; check
+  the picture sharpens ≈ 100 ms after stopping without moving the mouse,
+  and looks the same as before at rest. Then set ADR-T26-2 to `accepted`.

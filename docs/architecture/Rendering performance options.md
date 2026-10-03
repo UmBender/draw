@@ -40,11 +40,18 @@ fixes the measured problem.
   a stroke wider than 2 px on screen had a disc at every point (≈ 14
   vertices per point). The owner's medium-zoom `perf` run had ≈ 55 % of
   its time in copying vertices into GL buffers.
+- **Cached layer moved/scaled during pan and zoom** —
+  [[T26 Pan and zoom without re-rendering]],
+  [[ADR-T26-1 Reuse the document layer during pan and zoom]]: a camera-only
+  key change blits the cached layer through `blit_rect` instead of
+  re-rendering; the layer is re-rendered 100 ms after the camera stops,
+  with the loop kept awake by main-thread `schedule_update` (a timer
+  thread cannot wake miniquad's X11 loop). The layer carries a margin of
+  ⅛ of the longer window side so short pans show content.
 
-Still open: lower circle segment counts (rest of option 4), 5–8, drawing the
-cached layer moved/scaled during a pan or zoom gesture, and raising
-macroquad's draw-call capacity (`Conf::draw_call_*_capacity`) with the batch
-limits.
+Still open: lower circle segment counts (rest of option 4), 5–8, cutting
+the settle re-render itself, and raising macroquad's draw-call capacity
+(`Conf::draw_call_*_capacity`) with the batch limits.
 
 ## Where we are
 
