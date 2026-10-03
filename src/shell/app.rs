@@ -882,10 +882,12 @@ mod tests {
         let layer = Aabb::from_corners(Vec2::new(-100.0, -100.0), Vec2::new(900.0, 700.0));
 
         // Act
-        let rect = blit_rect(&camera, &camera, layer);
+        let Some(rect) = blit_rect(&camera, &camera, layer) else {
+            panic!("finite cameras give a finite rect");
+        };
 
         // Assert
-        assert_rect_eq(rect.expect("finite"), layer);
+        assert_rect_eq(rect, layer);
     }
 
     #[test]
@@ -897,13 +899,12 @@ mod tests {
         let layer = Aabb::from_corners(Vec2::new(-50.0, -50.0), Vec2::new(850.0, 650.0));
 
         // Act
-        let rect = blit_rect(&cached, &current, layer);
+        let Some(rect) = blit_rect(&cached, &current, layer) else {
+            panic!("finite cameras give a finite rect");
+        };
 
         // Assert
-        assert_rect_eq(
-            rect.expect("finite"),
-            layer.translate(Vec2::new(40.0, -25.0)),
-        );
+        assert_rect_eq(rect, layer.translate(Vec2::new(40.0, -25.0)));
     }
 
     #[test]
@@ -917,7 +918,9 @@ mod tests {
         let layer = Aabb::from_corners(Vec2::ZERO, Vec2::new(800.0, 600.0));
 
         // Act
-        let rect = blit_rect(&cached, &current, layer).expect("finite");
+        let Some(rect) = blit_rect(&cached, &current, layer) else {
+            panic!("finite cameras give a finite rect");
+        };
 
         // Assert
         let expected = Aabb::from_corners(anchor - anchor * k, anchor + (layer.max - anchor) * k);
@@ -1103,7 +1106,9 @@ mod tests {
             let rect = blit_rect(&cached, &current, layer);
 
             // Assert
-            let rect = rect.expect("finite cameras give a finite rect");
+            let Some(rect) = rect else {
+                panic!("finite cameras give a finite rect");
+            };
             let corner = current.world_to_screen(cached.screen_to_world(layer.min));
             let tol = 1e-3 * (1.0 + corner.x.abs().max(corner.y.abs()));
             prop_assert!(rect.min.approx_eq(corner, tol), "{rect:?} {corner:?}");
