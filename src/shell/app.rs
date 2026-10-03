@@ -5,7 +5,9 @@
 //! routed past the toolbar into the [`Editor`]. The document is cached in a
 //! render target that is re-rendered (or appended to) only when its
 //! [`LayerKey`] changes (ADR-T24-1, ADR-T24-3); every woken frame blits it
-//! and draws the overlay on top (ADR-T24-2).
+//! and draws the overlay on top (ADR-T24-2). While only the camera moves,
+//! the cached layer is blitted moved and scaled and re-rendered once the
+//! camera settles (ADR-T26-1).
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::WHITE;
@@ -13,6 +15,7 @@ use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
+use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
@@ -94,7 +97,7 @@ pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> Strin
         Redraw::None => "no",
         Redraw::Overlay => "overlay",
         Redraw::Append { .. } => "append",
-        Redraw::Moved => todo!(),
+        Redraw::Moved => "moved",
         Redraw::Full => "full",
     };
     let ms = elapsed.as_secs_f64() * 1000.0;
@@ -141,7 +144,8 @@ pub enum Redraw {
 
 /// Picks the work for a frame from the `cached` document layer's key, the
 /// `next` key, [`Editor::document_base_revision`] (`base`) and whether
-/// input changed editor state (`dirty`).
+/// input changed editor state (`dirty`). A change of the camera alone is
+/// [`Redraw::Moved`]; together with any other change it is [`Redraw::Full`].
 #[must_use]
 pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty: bool) -> Redraw {
     let Some(cached) = cached else {
@@ -149,6 +153,15 @@ pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty:
     };
     if cached == next {
         return if dirty { Redraw::Overlay } else { Redraw::None };
+    }
+    let same_layer = cached.revision == next.revision
+        && cached.len == next.len
+        && cached.size == next.size
+        && cached.hidden == next.hidden
+        && cached.underlay == next.underlay;
+    if same_layer {
+        // Only the camera differs (ADR-T26-1).
+        return Redraw::Moved;
     }
     let same_view = cached.camera == next.camera
         && cached.size == next.size
@@ -174,7 +187,11 @@ pub const MAX_LAYER_SIDE: u32 = 8192;
 /// still for `quiet` ≥ [`SETTLE`]; any other plan is returned unchanged.
 #[must_use]
 pub fn settle(redraw: Redraw, quiet: Duration) -> Redraw {
-    todo!("{redraw:?} {quiet:?}")
+    if redraw == Redraw::Moved && quiet >= SETTLE {
+        Redraw::Full
+    } else {
+        redraw
+    }
 }
 
 /// Where the cached layer goes on screen now: `layer` is its rectangle in
@@ -182,14 +199,20 @@ pub fn settle(redraw: Redraw, quiet: Duration) -> Redraw {
 /// `None` if the result is not finite.
 #[must_use]
 pub fn blit_rect(cached: &Camera, current: &Camera, layer: Aabb) -> Option<Aabb> {
-    todo!("{cached:?} {current:?} {layer:?}")
+    let map = |p: Vec2| current.world_to_screen(cached.screen_to_world(p));
+    let (min, max) = (map(layer.min), map(layer.max));
+    (min.is_finite() && max.is_finite()).then(|| Aabb::from_corners(min, max))
 }
 
 /// Texture filter for blitting the layer under `redraw`: linear while it is
 /// scaled during a gesture, nearest when it lands 1:1.
 #[must_use]
 pub fn blit_filter(redraw: Redraw) -> FilterMode {
-    todo!("{redraw:?}")
+    if redraw == Redraw::Moved {
+        FilterMode::Linear
+    } else {
+        FRAME_FILTER
+    }
 }
 
 /// Margin in physical pixels around a window of `size` physical pixels: ⅛
@@ -197,21 +220,26 @@ pub fn blit_filter(redraw: Redraw) -> FilterMode {
 /// (0 if the window is already wider).
 #[must_use]
 pub fn layer_margin(size: (u32, u32)) -> u32 {
-    todo!("{size:?}")
+    let longest = size.0.max(size.1);
+    let room = MAX_LAYER_SIDE.saturating_sub(longest) / 2;
+    (longest / 8).min(room)
 }
 
 /// Size of the document layer: `size` plus `margin` on every side,
 /// saturating.
 #[must_use]
 pub fn layer_size(size: (u32, u32), margin: u32) -> (u32, u32) {
-    todo!("{size:?} {margin}")
+    let grow = |side: u32| side.saturating_add(margin.saturating_mul(2));
+    (grow(size.0), grow(size.1))
 }
 
 /// The camera the layer is rendered with: `camera` shifted so its window
 /// origin lands `margin` logical pixels into the layer, same zoom.
 #[must_use]
 pub fn layer_camera(camera: &Camera, margin: f32) -> Camera {
-    todo!("{camera:?} {margin}")
+    let mut shifted = *camera;
+    shifted.pan_by_screen(Vec2::new(margin, margin));
+    shifted
 }
 
 /// Render-target parameters for the cached frame: `samples` per pixel and no
@@ -318,14 +346,22 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
 }
 
 /// The document layer: background, underlay and document shapes in a
-/// framebuffer-sized, multisampled render target that macroquad resolves
-/// into a plain texture (ADR-T15-1, ADR-T24-1). The overlay is drawn on the
-/// window every frame (ADR-T24-2).
+/// multisampled render target the size of the framebuffer plus a margin,
+/// which macroquad resolves into a plain texture (ADR-T15-1, ADR-T24-1,
+/// ADR-T26-1). The overlay is drawn on the window every frame (ADR-T24-2).
 struct CachedFrame {
     /// The document layer.
     document: Option<RenderTarget>,
     /// What `document` shows.
     key: Option<LayerKey>,
+    /// Where `document` lies in window pixels at the camera in `key`.
+    layer: Aabb,
+    /// Filter currently set on `document`'s texture.
+    filter: FilterMode,
+    /// Camera of the last frame.
+    last_camera: Option<Camera>,
+    /// When the camera last changed.
+    changed_at: Instant,
     /// MSAA samples per pixel for new targets.
     samples: i32,
     /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
@@ -339,27 +375,38 @@ impl CachedFrame {
         Self {
             document: None,
             key: None,
+            layer: Aabb::from_corners(Vec2::ZERO, Vec2::ZERO),
+            filter: FRAME_FILTER,
+            last_camera: None,
+            changed_at: Instant::now(),
             samples,
             timed,
         }
     }
 
-    /// Updates the document layer as [`plan_redraw`] says, then blits it to
-    /// the window and draws the overlay on top. `dirty` says whether input
-    /// changed editor state.
+    /// Updates the document layer as [`plan_redraw`] and [`settle`] say,
+    /// then blits it to the window and draws the overlay on top. `dirty`
+    /// says whether input changed editor state.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
+        let camera = *editor.camera();
         let key = LayerKey {
             revision: editor.document_revision(),
             len: editor.document().len(),
-            camera: *editor.camera(),
+            camera,
             size,
             hidden: overlay.hidden.clone(),
             underlay: editor.helpers().grid_snap,
         };
+        let now = Instant::now();
+        if self.last_camera != Some(camera) {
+            self.last_camera = Some(camera);
+            self.changed_at = now;
+        }
         let base = editor.document_base_revision();
-        let redraw = plan_redraw(self.key.as_ref(), &key, base, dirty);
+        let planned = plan_redraw(self.key.as_ref(), &key, base, dirty);
+        let redraw = settle(planned, now.saturating_duration_since(self.changed_at));
         let started = self.timed.then(Instant::now);
         let from = match redraw {
             Redraw::Full => Some(0),
@@ -367,20 +414,42 @@ impl CachedFrame {
             Redraw::Moved | Redraw::Overlay | Redraw::None => None,
         };
         if let Some(from) = from {
+            let margin = layer_margin(size);
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
-                self.document = Some(self.new_target(size));
+                self.document = Some(self.new_target(layer_size(size, margin)));
+                self.filter = FRAME_FILTER;
             }
+            let pad = margin as f32 / sanitize_dpi(dpi);
+            let extent = Vec2::new(viewport.x + 2.0 * pad, viewport.y + 2.0 * pad);
+            let layer_camera = layer_camera(&camera, pad);
             if let Some(document) = &self.document {
-                render_into(document, viewport, || {
-                    draw_document(editor, &overlay, viewport, from);
+                render_into(document, extent, || {
+                    draw_document(editor, &layer_camera, &overlay, extent, from);
                 });
             }
+            self.layer = Aabb::from_corners(
+                Vec2::new(-pad, -pad),
+                Vec2::new(viewport.x + pad, viewport.y + pad),
+            );
             self.key = Some(key);
         }
-        let Some(document) = &self.document else {
+        let (Some(document), Some(cached)) = (&self.document, &self.key) else {
             return;
         };
-        blit(&document.texture, viewport);
+        if redraw == Redraw::Moved {
+            // The moved layer may not cover the window; wake again until the
+            // camera settles (ADR-T26-1).
+            clear_background(to_mq_color(THEME.bg));
+            schedule_update();
+        }
+        let filter = blit_filter(redraw);
+        if filter != self.filter {
+            document.texture.set_filter(filter);
+            self.filter = filter;
+        }
+        if let Some(dest) = blit_rect(&cached.camera, &camera, self.layer) {
+            blit(&document.texture, dest);
+        }
         draw_overlay(editor, &overlay, viewport);
         if let Some(started) = started.filter(|_| redraw != Redraw::None) {
             let shapes = editor.document().len();
@@ -397,16 +466,16 @@ impl CachedFrame {
     }
 }
 
-/// Draws a resolved layer `texture` over the whole `viewport`, 1:1 in
-/// physical pixels.
-fn blit(texture: &Texture2D, viewport: Vec2) {
+/// Draws a resolved layer `texture` stretched over `dest`, in window
+/// pixels.
+fn blit(texture: &Texture2D, dest: Aabb) {
     draw_texture_ex(
         texture,
-        0.0,
-        0.0,
+        dest.min.x,
+        dest.min.y,
         WHITE,
         DrawTextureParams {
-            dest_size: Some(vec2(viewport.x, viewport.y)),
+            dest_size: Some(vec2(dest.width(), dest.height())),
             // GL textures start at the bottom row.
             flip_y: true,
             ..DrawTextureParams::default()
@@ -416,14 +485,19 @@ fn blit(texture: &Texture2D, viewport: Vec2) {
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
 fn physical_size(viewport: Vec2, dpi: f32) -> (u32, u32) {
-    let scale = if dpi.is_finite() && dpi > 0.0 {
-        dpi
-    } else {
-        1.0
-    };
+    let scale = sanitize_dpi(dpi);
     // Saturating float-to-int casts; NaN becomes 0 and is raised to 1.
     let side = |logical: f32| ((logical * scale).round() as u32).max(1);
     (side(viewport.x), side(viewport.y))
+}
+
+/// `dpi` if it is finite and positive, else 1.
+fn sanitize_dpi(dpi: f32) -> f32 {
+    if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    }
 }
 
 /// Runs `draw` with `target` as the destination, in logical pixels.
@@ -435,13 +509,14 @@ fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
     set_default_camera();
 }
 
-/// Draws the document layer: background, underlay and every shape the
-/// gesture in progress does not hide. With `from > 0` only the shapes from
-/// that index on are drawn over what the layer already holds (ADR-T24-3).
-fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize) {
+/// Draws the document layer through `camera` into a target of `viewport`
+/// pixels: background, underlay and every shape the gesture in progress
+/// does not hide. With `from > 0` only the shapes from that index on are
+/// drawn over what the layer already holds (ADR-T24-3).
+fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: Vec2, from: usize) {
     if from == 0 {
         clear_background(to_mq_color(THEME.bg));
-        render::draw_underlay(editor, editor.camera(), viewport);
+        render::draw_underlay(editor, camera, viewport);
     }
     let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
     let shapes = editor
@@ -450,7 +525,7 @@ fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize
         .skip(from)
         .filter(|(id, _)| !hidden.contains(id))
         .map(|(_, shape)| shape);
-    render::draw_shapes(shapes, editor.camera(), viewport);
+    render::draw_shapes(shapes, camera, viewport);
 }
 
 /// Draws what lies above the document: gesture overlay, guides, selection,
