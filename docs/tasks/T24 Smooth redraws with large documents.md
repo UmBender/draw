@@ -5,7 +5,7 @@ status: review
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
-adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-2 Overlay drawn straight to the window]]", "[[ADR-T24-3 Batched meshes and append-only document updates]]", "[[ADR-T24-4 Strokes as one strip with sparse round joins]]"]
+adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-2 Overlay drawn straight to the window]]", "[[ADR-T24-3 Batched meshes and append-only document updates]]", "[[ADR-T24-4 Strokes as one strip with sparse round joins]]", "[[ADR-T24-5 Redraw budgets]]"]
 feature:
 tutorial: "[[24 Layered redraws and measuring a frame]]"
 tags: [task]
@@ -274,3 +274,11 @@ step 14 (profiling).
     The budget ADR amending ADR-T14-1 is written from those numbers.
   - AC-5 visual check, plus thick strokes zoomed in: smooth joins, round
     ends, no gaps or spikes at sharp turns.
+- 2026-10-03 — Owner's numbers after AC-3d, same pen-only scene: pan/zoom
+  `full re-render` ≈ 15 ms (max 20) zoomed out, 40–60 ms at medium zoom.
+  AC-5: joins and round ends look right. AC-4 recorded in
+  [[ADR-T24-5 Redraw budgets]]: overlay < 2 ms met; full < 16 ms met
+  zoomed out, **not met at medium zoom**. That case is carried by T25 and
+  [[T26 Pan and zoom without re-rendering]]. The selected vs `Esc` split
+  was not measured. T24 adds no user-visible feature, so there is no
+  feature note.
