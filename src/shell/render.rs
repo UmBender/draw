@@ -3,14 +3,15 @@
 //! Everything is drawn in **screen space** with macroquad's default camera:
 //! world points go through [`Camera::world_to_screen`] and widths through
 //! [`screen_width`] (ADR-T07-1). Off-screen shapes are culled by their
-//! bounding box (ADR-0006). Discs and ellipses are tessellated here with
-//! `draw_triangle`, which does not allocate, instead of macroquad's
-//! `draw_circle`/`draw_ellipse`, which do. Grids and labels follow
+//! bounding box (ADR-0006). Shapes are tessellated here into a [`Batch`] and
+//! submitted with one `draw_mesh` per few thousand indices instead of one
+//! `draw_*` call per triangle (ADR-T24-3). Grids and labels follow
 //! ADR-T16-1.
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
-use macroquad::shapes::{draw_line, draw_rectangle, draw_triangle};
+use macroquad::models::{Mesh, Vertex, draw_mesh};
+use macroquad::shapes::draw_line;
 use macroquad::text::{TextParams, draw_text_ex, measure_text};
 
 use crate::core::camera::Camera;
@@ -22,11 +23,271 @@ use crate::core::shape::{
 };
 use crate::core::snap::GRID_STEP;
 
+/// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
+/// capacity of 10 000 (ADR-T24-3).
+pub const BATCH_MAX_VERTICES: usize = 4_800;
+
+/// Most indices one [`Batch`] chunk holds; below macroquad's per-draw-call
+/// capacity of 5 000 and a multiple of 6, so whole quads fit (ADR-T24-3).
+pub const BATCH_MAX_INDICES: usize = 4_800;
+
+/// Where a [`Batch`] sends finished chunks.
+pub trait MeshSink {
+    /// Draws (or records) one chunk of triangles.
+    fn draw(&mut self, mesh: &Mesh);
+}
+
+/// Sends chunks to macroquad with `draw_mesh`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GlSink;
+
+impl MeshSink for GlSink {
+    fn draw(&mut self, mesh: &Mesh) {
+        draw_mesh(mesh);
+    }
+}
+
+/// Collects untextured triangles and submits them in chunks of at most
+/// [`BATCH_MAX_VERTICES`] / [`BATCH_MAX_INDICES`] (ADR-T24-3). Callers
+/// [`Batch::flush`] before drawing anything else (text) to keep z-order.
+pub struct Batch<S: MeshSink = GlSink> {
+    /// The chunk being filled.
+    mesh: Mesh,
+    /// Receives finished chunks.
+    sink: S,
+}
+
+impl<S: MeshSink> Batch<S> {
+    /// An empty batch sending chunks to `sink`.
+    pub fn new(sink: S) -> Self {
+        Self {
+            mesh: Mesh {
+                vertices: Vec::with_capacity(BATCH_MAX_VERTICES),
+                indices: Vec::with_capacity(BATCH_MAX_INDICES),
+                texture: None,
+            },
+            sink,
+        }
+    }
+
+    /// Adds triangle `a b c`.
+    pub fn triangle(&mut self, a: Vec2, b: Vec2, c: Vec2, color: Color) {
+        let base = self.reserve(3, 3);
+        for p in [a, b, c] {
+            self.vertex(p, color);
+        }
+        self.mesh.indices.extend([base, base + 1, base + 2]);
+    }
+
+    /// Adds an axis-aligned rectangle as one quad.
+    pub fn rect(&mut self, rect: Aabb, color: Color) {
+        let (min, max) = (rect.min, rect.max);
+        self.quad(
+            [min, Vec2::new(max.x, min.y), max, Vec2::new(min.x, max.y)],
+            color,
+        );
+    }
+
+    /// Adds segment `a → b` as a quad `width` pixels wide with flat ends,
+    /// like macroquad's `draw_line`. A zero-length segment adds nothing.
+    pub fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Color) {
+        let d = b - a;
+        let len = d.length();
+        if !len.is_finite() || len <= 0.0 {
+            return;
+        }
+        let n = Vec2::new(-d.y, d.x) * (width * 0.5 / len);
+        self.quad([a + n, b + n, b - n, a - n], color);
+    }
+
+    /// Adds a triangle fan around `center`: one triangle per consecutive
+    /// pair of `rim` points (pass the first point again at the end to close
+    /// the loop).
+    pub fn fan(&mut self, center: Vec2, rim: impl ExactSizeIterator<Item = Vec2>, color: Color) {
+        let points = rim.len();
+        if points < 2 {
+            return;
+        }
+        let base = self.reserve(1 + points, 3 * (points - 1));
+        self.vertex(center, color);
+        for p in rim {
+            self.vertex(p, color);
+        }
+        for i in 1..points as u16 {
+            self.mesh.indices.extend([base, base + i, base + i + 1]);
+        }
+    }
+
+    /// Adds a strip of quads between consecutive `(outer, inner)` pairs. A
+    /// strip longer than a chunk continues in the next one (ADR-T24-4).
+    pub fn strip(&mut self, pairs: impl IntoIterator<Item = (Vec2, Vec2)>, color: Color) {
+        let mut last = None;
+        for pair in pairs {
+            last = Some(self.strip_push(last, pair, color));
+        }
+    }
+
+    /// Adds a polyline of screen `points` `width` pixels wide as one strip
+    /// with mitred joins, skipping points closer than
+    /// [`STROKE_MIN_STEP_PX`] to the last kept one. Where the mitre would
+    /// exceed [`MITER_LIMIT`] half-widths the strip breaks; thick lines
+    /// ([`stroke_needs_joints`]) get round discs at breaks and ends. A
+    /// single point is a dot (ADR-T24-4).
+    pub fn polyline(&mut self, points: impl IntoIterator<Item = Vec2>, width: f32, color: Color) {
+        let h = width * 0.5;
+        let round = stroke_needs_joints(width);
+        let mut points = points.into_iter();
+        let Some(first) = points.next() else {
+            return;
+        };
+        let (mut prev, mut prev_normal) = (first, None::<Vec2>);
+        let mut last = None;
+        for p in points {
+            let d = p - prev;
+            let len = d.length();
+            // Also skips non-finite steps.
+            if !len.is_finite() || len < STROKE_MIN_STEP_PX {
+                continue;
+            }
+            let n = Vec2::new(-d.y, d.x) * (1.0 / len);
+            match prev_normal {
+                None => {
+                    if round {
+                        self.disc(prev, h, color);
+                    }
+                    last = Some(self.strip_push(None, (prev + n * h, prev - n * h), color));
+                }
+                Some(n0) => {
+                    // cos² of half the turn; the mitre is h / cos(turn / 2).
+                    let c = n0.dot(n);
+                    if (1.0 + c) * 0.5 * MITER_LIMIT * MITER_LIMIT >= 1.0 {
+                        let offset = (n0 + n) * (h / (1.0 + c));
+                        last = Some(self.strip_push(last, (prev + offset, prev - offset), color));
+                    } else {
+                        self.strip_push(last, (prev + n0 * h, prev - n0 * h), color);
+                        if round {
+                            self.disc(prev, h, color);
+                        }
+                        last = Some(self.strip_push(None, (prev + n * h, prev - n * h), color));
+                    }
+                }
+            }
+            (prev, prev_normal) = (p, Some(n));
+        }
+        match prev_normal {
+            None => self.disc(first, h, color),
+            Some(n0) => {
+                self.strip_push(last, (prev + n0 * h, prev - n0 * h), color);
+                if round {
+                    self.disc(prev, h, color);
+                }
+            }
+        }
+    }
+
+    /// Adds a filled disc of `radius` pixels centred at `center`.
+    pub fn disc(&mut self, center: Vec2, radius: f32, color: Color) {
+        let n = circle_segments(radius);
+        self.fan(center, unit_circle(n).map(|u| center + u * radius), color);
+    }
+
+    /// Sends the current chunk to the sink, if it holds anything.
+    pub fn flush(&mut self) {
+        if !self.mesh.indices.is_empty() {
+            self.sink.draw(&self.mesh);
+        }
+        self.mesh.vertices.clear();
+        self.mesh.indices.clear();
+    }
+
+    /// Flushes and returns the sink.
+    pub fn finish(mut self) -> S {
+        self.flush();
+        self.sink
+    }
+
+    /// Adds a quad with `corners` in order around it.
+    fn quad(&mut self, corners: [Vec2; 4], color: Color) {
+        let base = self.reserve(4, 6);
+        for p in corners {
+            self.vertex(p, color);
+        }
+        self.mesh
+            .indices
+            .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// Adds `pair` to a strip whose previous pair is `last` (its first
+    /// vertex index in the current chunk, and its points), joined by a quad;
+    /// `None` starts a strip. If the quad does not fit, the chunk is flushed
+    /// and the previous pair repeated in the next one. Returns the new last.
+    fn strip_push(
+        &mut self,
+        last: Option<(u16, (Vec2, Vec2))>,
+        pair: (Vec2, Vec2),
+        color: Color,
+    ) -> (u16, (Vec2, Vec2)) {
+        let Some((mut prev_index, prev)) = last else {
+            // Room for the first quad too, so the pair is not stranded.
+            let base = self.reserve(4, 6);
+            self.vertex(pair.0, color);
+            self.vertex(pair.1, color);
+            return (base, pair);
+        };
+        let mesh = &self.mesh;
+        if mesh.vertices.len() + 2 > BATCH_MAX_VERTICES
+            || mesh.indices.len() + 6 > BATCH_MAX_INDICES
+        {
+            self.flush();
+            prev_index = 0;
+            self.vertex(prev.0, color);
+            self.vertex(prev.1, color);
+        }
+        // At most BATCH_MAX_VERTICES, which fits in u16.
+        let base = self.mesh.vertices.len() as u16;
+        self.vertex(pair.0, color);
+        self.vertex(pair.1, color);
+        let (o0, i0, o1, i1) = (prev_index, prev_index + 1, base, base + 1);
+        self.mesh.indices.extend([o0, o1, i0, i0, o1, i1]);
+        (base, pair)
+    }
+
+    /// Makes room for `vertices` more vertices and `indices` more indices,
+    /// flushing first if they would not fit. Returns the index the first new
+    /// vertex gets. A single fan or quad never exceeds a chunk: the largest
+    /// is a disc of [`MAX_SEGMENTS`] segments; strips continue across chunks.
+    fn reserve(&mut self, vertices: usize, indices: usize) -> u16 {
+        let mesh = &self.mesh;
+        if mesh.vertices.len() + vertices > BATCH_MAX_VERTICES
+            || mesh.indices.len() + indices > BATCH_MAX_INDICES
+        {
+            self.flush();
+        }
+        // At most BATCH_MAX_VERTICES, which fits in u16.
+        self.mesh.vertices.len() as u16
+    }
+
+    /// Appends one untextured vertex at screen point `p`.
+    fn vertex(&mut self, p: Vec2, color: Color) {
+        self.mesh
+            .vertices
+            .push(Vertex::new(p.x, p.y, 0.0, 0.0, 0.0, color));
+    }
+}
+
 /// Smallest on-screen outline width in pixels (ADR-0013).
 pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
 
 /// Strokes wider than this many pixels get round joints and caps.
 pub const JOINT_THRESHOLD_PX: f32 = 2.0;
+
+/// Polyline points closer than this many pixels to the last kept point are
+/// skipped (the chord tolerance, ADR-T24-4).
+pub const STROKE_MIN_STEP_PX: f32 = CHORD_TOLERANCE_PX;
+
+/// Longest polyline mitre, in half-widths, before the strip breaks
+/// (ADR-T24-4).
+pub const MITER_LIMIT: f32 = 1.2;
 
 /// Extra pixels around the viewport kept when culling, covering the
 /// overhang of outlines clamped to [`MIN_SCREEN_WIDTH_PX`].
@@ -278,11 +539,13 @@ pub fn draw_underlay(editor: &Editor, viewport: Vec2) {
     };
     let mut color = to_mq_color(THEME.border);
     color.a *= DOT_GRID_ALPHA;
-    let half = DOT_SIZE_PX / 2.0;
+    let half = Vec2::new(DOT_SIZE_PX / 2.0, DOT_SIZE_PX / 2.0);
+    let mut batch = Batch::new(GlSink);
     for dot in dot_grid_points(camera.visible_world_rect(viewport), spacing) {
         let p = camera.world_to_screen(dot);
-        draw_rectangle(p.x - half, p.y - half, DOT_SIZE_PX, DOT_SIZE_PX, color);
+        batch.rect(Aabb::from_corners(p - half, p + half), color);
     }
+    batch.finish();
 }
 
 /// Draws alignment guides, world-space segments, on top of the overlay,
@@ -303,27 +566,39 @@ pub fn draw_shapes<'a>(
     viewport: Vec2,
 ) {
     let view = cull_rect(camera, viewport);
+    let mut batch = Batch::new(GlSink);
     for shape in shapes {
         if is_visible(shape.bounds(), view) {
-            draw_shape(shape, camera);
+            draw_shape(&mut batch, shape, camera);
         }
     }
+    batch.finish();
 }
 
 /// Draws the shape being created, without culling.
 pub fn draw_preview(shape: &Shape, camera: &Camera) {
-    draw_shape(shape, camera);
+    let mut batch = Batch::new(GlSink);
+    draw_shape(&mut batch, shape, camera);
+    batch.finish();
 }
 
 /// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
 /// wide in the theme accent colour.
 pub fn draw_selection(bounds: Aabb, camera: &Camera) {
     let rect = selection_rect(bounds, camera);
-    draw_rect_outline(rect, SELECTION_WIDTH_PX, to_mq_color(THEME.accent));
+    let mut batch = Batch::new(GlSink);
+    draw_rect_outline(
+        &mut batch,
+        rect,
+        SELECTION_WIDTH_PX,
+        to_mq_color(THEME.accent),
+    );
+    batch.finish();
 }
 
-/// Draws one shape; non-finite shapes are skipped.
-fn draw_shape(shape: &Shape, camera: &Camera) {
+/// Adds one shape to `batch` (its labels are drawn right away, after a
+/// flush); non-finite shapes are skipped.
+fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
     if !shape.is_finite() {
         return;
     }
@@ -332,29 +607,25 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
     let color = color_of(style.color);
     let to_screen = |p: Vec2| camera.world_to_screen(p);
     match shape {
-        Shape::Stroke { points, .. } => draw_polyline(points, camera, width, color),
-        Shape::Line { a, b, .. } => draw_segment(to_screen(*a), to_screen(*b), width, color),
+        Shape::Stroke { points, .. } => draw_polyline(batch, points, camera, width, color),
+        Shape::Line { a, b, .. } => {
+            draw_segment(batch, to_screen(*a), to_screen(*b), width, color);
+        }
         Shape::Arrow { a, b, style } => {
             let [tip, left, right] = arrow_head(*a, *b, style.width).map(to_screen);
             let base = left.lerp(right, 0.5);
-            draw_segment(to_screen(*a), base, width, color);
-            draw_triangle(to_mq(tip), to_mq(left), to_mq(right), color);
+            draw_segment(batch, to_screen(*a), base, width, color);
+            batch.triangle(tip, left, right, color);
         }
         Shape::Rect {
             a, b, fill, label, ..
         } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             if let Some(fill) = fill {
-                draw_rectangle(
-                    rect.min.x,
-                    rect.min.y,
-                    rect.width(),
-                    rect.height(),
-                    color_of(*fill),
-                );
+                batch.rect(rect, color_of(*fill));
             }
-            draw_rect_outline(rect, width, color);
-            draw_label(*label, rect, false, label_color(*fill, color));
+            draw_rect_outline(batch, rect, width, color);
+            draw_label(batch, *label, rect, false, label_color(*fill, color));
         }
         Shape::Ellipse {
             a, b, fill, label, ..
@@ -363,10 +634,10 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             let center = rect.center();
             let radii = Vec2::new(rect.width() * 0.5, rect.height() * 0.5);
             if let Some(fill) = fill {
-                draw_ellipse_fill(center, radii, color_of(*fill));
+                draw_ellipse_fill(batch, center, radii, color_of(*fill));
             }
-            draw_ellipse_ring(center, radii, width, color);
-            draw_label(*label, rect, true, label_color(*fill, color));
+            draw_ellipse_ring(batch, center, radii, width, color);
+            draw_label(batch, *label, rect, true, label_color(*fill, color));
         }
         Shape::Grid {
             a,
@@ -383,19 +654,13 @@ fn draw_shape(shape: &Shape, camera: &Camera) {
             // Cell fills first, so the lines stay on top (ADR-T21-1).
             for fill in fills {
                 let cell = grid_cell_rect(a, b, *cols, *rows, fill.col, fill.row);
-                draw_rectangle(
-                    cell.min.x,
-                    cell.min.y,
-                    cell.width(),
-                    cell.height(),
-                    color_of(fill.color),
-                );
+                batch.rect(cell, color_of(fill.color));
             }
             for [start, end] in grid_lines(a, b, *cols, *rows) {
-                draw_band(start, end, width, color);
+                draw_band(batch, start, end, width, color);
             }
             if *axes {
-                draw_axis_labels(a, b, *cols, *rows, color);
+                draw_axis_labels(batch, a, b, *cols, *rows, color);
             }
         }
     }
@@ -412,8 +677,9 @@ fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
 }
 
 /// Draws `label` centred in the screen rectangle `rect` of a rectangle or
-/// (`ellipse`) an ellipse, if it is big enough on screen.
-fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
+/// (`ellipse`) an ellipse, if it is big enough on screen. Flushes `batch`
+/// first so the text lands on top of the shape.
+fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
     let Some(label) = label else {
         return;
     };
@@ -422,12 +688,14 @@ fn draw_label(label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
         return;
     };
     let (font_size, font_scale) = label_raster(size);
+    batch.flush();
     draw_text_centered(&text, rect, font_size, font_scale, color);
 }
 
 /// Draws the axis indices of a grid with screen corners `a` (drag start) and
-/// `b`, all at one size, if the cells are big enough on screen.
-fn draw_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
+/// `b`, all at one size, if the cells are big enough on screen. Flushes
+/// `batch` first so the text lands on top of the grid.
+fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
     let Some(first) = grid_axis_labels(a, b, cols, rows).next() else {
         return;
     };
@@ -436,6 +704,7 @@ fn draw_axis_labels(a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
         return;
     };
     let (font_size, font_scale) = label_raster(size);
+    batch.flush();
     for label in grid_axis_labels(a, b, cols, rows) {
         draw_text_centered(
             &label.index.to_string(),
@@ -467,9 +736,8 @@ fn draw_text_centered(text: &str, rect: Aabb, font_size: u16, font_scale: f32, c
 /// Draws an axis-aligned screen segment as a band `width` pixels wide that
 /// overhangs both ends by half the width, so crossing bands meet with square
 /// corners.
-fn draw_band(start: Vec2, end: Vec2, width: f32, color: Color) {
-    let band = Aabb::from_corners(start, end).expand(width * 0.5);
-    draw_rectangle(band.min.x, band.min.y, band.width(), band.height(), color);
+fn draw_band(batch: &mut Batch, start: Vec2, end: Vec2, width: f32, color: Color) {
+    batch.rect(Aabb::from_corners(start, end).expand(width * 0.5), color);
 }
 
 /// The macroquad colour of a palette entry.
@@ -477,42 +745,29 @@ fn color_of(id: ColorId) -> Color {
     to_mq_color(palette(id))
 }
 
-/// Draws a polyline of world `points`: segments, plus round joints and caps
-/// when thick. A single point is a dot; an empty polyline draws nothing.
-fn draw_polyline(points: &[Vec2], camera: &Camera, width: f32, color: Color) {
-    let radius = width * 0.5;
-    if let [only] = points {
-        draw_disc(camera.world_to_screen(*only), radius, color);
-        return;
-    }
-    let joints = stroke_needs_joints(width);
-    for pair in points.windows(2) {
-        let (a, b) = (
-            camera.world_to_screen(pair[0]),
-            camera.world_to_screen(pair[1]),
-        );
-        draw_line(a.x, a.y, b.x, b.y, width, color);
-    }
-    if joints {
-        for p in points {
-            draw_disc(camera.world_to_screen(*p), radius, color);
-        }
-    }
+/// Draws a polyline of world `points` (ADR-T24-4). A single point is a
+/// dot; an empty polyline draws nothing.
+fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32, color: Color) {
+    batch.polyline(
+        points.iter().map(|p| camera.world_to_screen(*p)),
+        width,
+        color,
+    );
 }
 
 /// Draws a screen-space segment with round caps when thick.
-fn draw_segment(a: Vec2, b: Vec2, width: f32, color: Color) {
-    draw_line(a.x, a.y, b.x, b.y, width, color);
+fn draw_segment(batch: &mut Batch, a: Vec2, b: Vec2, width: f32, color: Color) {
+    batch.line(a, b, width, color);
     if stroke_needs_joints(width) {
         let radius = width * 0.5;
-        draw_disc(a, radius, color);
-        draw_disc(b, radius, color);
+        draw_disc(batch, a, radius, color);
+        draw_disc(batch, b, radius, color);
     }
 }
 
 /// Draws the outline of a screen rectangle as four opaque bands of `width`
 /// pixels centred on its edges (square corners).
-fn draw_rect_outline(rect: Aabb, width: f32, color: Color) {
+fn draw_rect_outline(batch: &mut Batch, rect: Aabb, width: f32, color: Color) {
     let h = width * 0.5;
     let (x0, y0, x1, y1) = (
         rect.min.x - h,
@@ -520,17 +775,19 @@ fn draw_rect_outline(rect: Aabb, width: f32, color: Color) {
         rect.max.x + h,
         rect.max.y + h,
     );
-    let (w, ht) = (x1 - x0, y1 - y0);
-    draw_rectangle(x0, y0, w, width, color);
-    draw_rectangle(x0, y1 - width, w, width, color);
-    draw_rectangle(x0, y0, width, ht, color);
-    draw_rectangle(x1 - width, y0, width, ht, color);
+    let band = |ax: f32, ay: f32, bx: f32, by: f32| {
+        Aabb::from_corners(Vec2::new(ax, ay), Vec2::new(bx, by))
+    };
+    batch.rect(band(x0, y0, x1, y0 + width), color);
+    batch.rect(band(x0, y1 - width, x1, y1), color);
+    batch.rect(band(x0, y0, x0 + width, y1), color);
+    batch.rect(band(x1 - width, y0, x1, y1), color);
 }
 
 /// Unit vectors around a circle in `n` equal steps, starting at `(1, 0)`,
 /// generated by repeated rotation (no trig per vertex). Yields `n + 1`
 /// items, the last equal to the first, so consecutive pairs close the loop.
-fn unit_circle(n: u16) -> impl Iterator<Item = Vec2> {
+fn unit_circle(n: u16) -> impl ExactSizeIterator<Item = Vec2> {
     let step = std::f32::consts::TAU / f32::from(n);
     let (sin, cos) = step.sin_cos();
     let mut current = Vec2::new(1.0, 0.0);
@@ -544,61 +801,32 @@ fn unit_circle(n: u16) -> impl Iterator<Item = Vec2> {
     })
 }
 
-/// Calls `f` for each consecutive pair of unit-circle points.
-fn for_each_arc(n: u16, mut f: impl FnMut(Vec2, Vec2)) {
-    let mut points = unit_circle(n);
-    let Some(mut prev) = points.next() else {
-        return;
-    };
-    for next in points {
-        f(prev, next);
-        prev = next;
-    }
-}
-
 /// Scales a unit vector by per-axis radii.
 fn scale(u: Vec2, radii: Vec2) -> Vec2 {
     Vec2::new(u.x * radii.x, u.y * radii.y)
 }
 
 /// Draws a filled disc of `radius` pixels centred at screen `center`.
-fn draw_disc(center: Vec2, radius: f32, color: Color) {
-    draw_ellipse_fill(center, Vec2::new(radius, radius), color);
+fn draw_disc(batch: &mut Batch, center: Vec2, radius: f32, color: Color) {
+    batch.disc(center, radius, color);
 }
 
-/// Draws a filled axis-aligned ellipse (screen space) as a triangle fan.
-fn draw_ellipse_fill(center: Vec2, radii: Vec2, color: Color) {
+/// Adds a filled axis-aligned ellipse (screen space) as a triangle fan.
+fn draw_ellipse_fill(batch: &mut Batch, center: Vec2, radii: Vec2, color: Color) {
     let n = circle_segments(radii.x.max(radii.y));
-    let c = to_mq(center);
-    for_each_arc(n, |u0, u1| {
-        draw_triangle(
-            c,
-            to_mq(center + scale(u0, radii)),
-            to_mq(center + scale(u1, radii)),
-            color,
-        );
-    });
+    let rim = unit_circle(n).map(|u| center + scale(u, radii));
+    batch.fan(center, rim, color);
 }
 
-/// Draws an ellipse outline `width` pixels wide, centred on the ellipse
+/// Adds an ellipse outline `width` pixels wide, centred on the ellipse
 /// (screen space), as a ring of quads between the inner and outer ellipses.
-fn draw_ellipse_ring(center: Vec2, radii: Vec2, width: f32, color: Color) {
+fn draw_ellipse_ring(batch: &mut Batch, center: Vec2, radii: Vec2, width: f32, color: Color) {
     let h = width * 0.5;
     let outer = Vec2::new(radii.x + h, radii.y + h);
     let inner = Vec2::new((radii.x - h).max(0.0), (radii.y - h).max(0.0));
     let n = circle_segments(outer.x.max(outer.y));
-    for_each_arc(n, |u0, u1| {
-        let (o0, o1) = (
-            to_mq(center + scale(u0, outer)),
-            to_mq(center + scale(u1, outer)),
-        );
-        let (i0, i1) = (
-            to_mq(center + scale(u0, inner)),
-            to_mq(center + scale(u1, inner)),
-        );
-        draw_triangle(o0, o1, i0, color);
-        draw_triangle(i0, o1, i1, color);
-    });
+    let pairs = unit_circle(n).map(|u| (center + scale(u, outer), center + scale(u, inner)));
+    batch.strip(pairs, color);
 }
 
 #[cfg(test)]
@@ -617,6 +845,396 @@ mod tests {
 
     fn aabb_approx_eq(a: Aabb, b: Aabb) -> bool {
         a.min.approx_eq(b.min, EPS) && a.max.approx_eq(b.max, EPS)
+    }
+
+    // ---- T24 AC-3a batching ------------------------------------------------
+
+    /// Records every chunk a batch submits.
+    #[derive(Default)]
+    struct Recorder {
+        chunks: Vec<(Vec<Vertex>, Vec<u16>)>,
+    }
+
+    impl MeshSink for Recorder {
+        fn draw(&mut self, mesh: &Mesh) {
+            self.chunks
+                .push((mesh.vertices.clone(), mesh.indices.clone()));
+        }
+    }
+
+    const RED: Color = Color::new(1.0, 0.0, 0.0, 1.0);
+
+    fn position(v: &Vertex) -> Vec2 {
+        Vec2::new(v.position.x, v.position.y)
+    }
+
+    #[test]
+    fn batch_triangle_adds_three_vertices() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.triangle(Vec2::ZERO, Vec2::new(1.0, 0.0), Vec2::new(0.0, 1.0), RED);
+        let rec = batch.finish();
+
+        // Assert
+        assert_eq!(rec.chunks.len(), 1);
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!(vertices.len(), 3);
+        assert_eq!(indices, &[0, 1, 2]);
+    }
+
+    #[test]
+    fn batch_quad_shares_four_vertices() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!(vertices.len(), 4);
+        assert_eq!(indices.len(), 6);
+        let corners: Vec<Vec2> = vertices.iter().map(position).collect();
+        for corner in [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(4.0, 0.0),
+            Vec2::new(4.0, 2.0),
+            Vec2::new(0.0, 2.0),
+        ] {
+            assert!(
+                corners.iter().any(|c| c.approx_eq(corner, EPS)),
+                "{corner:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn batch_fan_shares_the_center() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let rim: Vec<Vec2> = unit_circle(8).collect();
+
+        // Act: 9 rim points close the loop, so 8 triangles.
+        batch.fan(Vec2::ZERO, rim.into_iter(), RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!(vertices.len(), 1 + 9);
+        assert_eq!(indices.len(), 3 * 8);
+        assert!(indices.chunks(3).all(|t| t[0] == 0));
+    }
+
+    #[test]
+    fn batch_line_is_a_width_wide_quad() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.line(Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = &rec.chunks[0];
+        assert_eq!((vertices.len(), indices.len()), (4, 6));
+        for v in vertices {
+            let p = position(v);
+            assert!(approx_eq(p.y.abs(), 2.0, EPS), "{p:?}");
+            assert!(
+                approx_eq(p.x, 0.0, EPS) || approx_eq(p.x, 10.0, EPS),
+                "{p:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn batch_line_of_zero_length_draws_nothing() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.line(Vec2::new(3.0, 3.0), Vec2::new(3.0, 3.0), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        assert!(rec.chunks.is_empty());
+    }
+
+    #[test]
+    fn batch_flushes_before_exceeding_limits() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let quads = BATCH_MAX_INDICES; // far more than one chunk holds
+
+        // Act
+        for i in 0..quads {
+            let x = i as f32;
+            batch.rect(aabb(x, 0.0, x + 1.0, 1.0), RED);
+        }
+        let rec = batch.finish();
+
+        // Assert
+        assert!(rec.chunks.len() > 1);
+        let total: usize = rec.chunks.iter().map(|(_, i)| i.len()).sum();
+        assert_eq!(total, quads * 6);
+        for (vertices, indices) in &rec.chunks {
+            assert!(vertices.len() <= BATCH_MAX_VERTICES);
+            assert!(indices.len() <= BATCH_MAX_INDICES);
+        }
+    }
+
+    #[test]
+    fn batch_finish_draws_the_rest_once() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        batch.rect(aabb(0.0, 0.0, 1.0, 1.0), RED);
+        batch.flush();
+        batch.flush();
+
+        // Act
+        batch.rect(aabb(2.0, 0.0, 3.0, 1.0), RED);
+        let rec = batch.finish();
+
+        // Assert: one chunk per non-empty flush, none for empty ones.
+        assert_eq!(rec.chunks.len(), 2);
+    }
+
+    #[test]
+    fn batch_limits_fit_a_macroquad_draw_call() {
+        // macroquad clamps geometry at 10 000 vertices / 5 000 indices.
+        const {
+            assert!(BATCH_MAX_VERTICES < 10_000);
+            assert!(BATCH_MAX_INDICES < 5_000);
+            assert!(BATCH_MAX_INDICES % 6 == 0);
+        }
+    }
+
+    // AC-3d
+
+    /// Vertices and indices of one disc of `radius` pixels.
+    fn disc_size(radius: f32) -> (usize, usize) {
+        let n = usize::from(circle_segments(radius));
+        (n + 2, 3 * n)
+    }
+
+    /// The single chunk a batch drew.
+    fn only_chunk(rec: &Recorder) -> &(Vec<Vertex>, Vec<u16>) {
+        assert_eq!(rec.chunks.len(), 1);
+        &rec.chunks[0]
+    }
+
+    fn points(xy: &[(f32, f32)]) -> Vec<Vec2> {
+        xy.iter().map(|&(x, y)| Vec2::new(x, y)).collect()
+    }
+
+    #[test]
+    fn batch_polyline_empty_draws_nothing() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.polyline(Vec::new(), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        assert!(rec.chunks.is_empty());
+    }
+
+    #[test]
+    fn batch_polyline_single_point_is_a_dot() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let center = Vec2::new(5.0, 5.0);
+
+        // Act
+        batch.polyline(vec![center], 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), disc_size(2.0));
+        for v in vertices {
+            assert!(position(v).distance(center) <= 2.0 + EPS);
+        }
+    }
+
+    #[test]
+    fn batch_polyline_coincident_points_are_a_dot() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.polyline(points(&[(5.0, 5.0); 3]), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), disc_size(2.0));
+    }
+
+    #[test]
+    fn batch_polyline_thin_shares_two_vertices_per_point() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let line = points(&[(0.0, 0.0), (10.0, 0.0), (20.0, 0.0), (30.0, 0.0)]);
+
+        // Act
+        batch.polyline(line, 1.0, RED);
+        let rec = batch.finish();
+
+        // Assert: one strip of 3 quads, no caps.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (8, 18));
+        for v in vertices {
+            assert!(approx_eq(position(v).y.abs(), 0.5, EPS), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn batch_polyline_thick_adds_round_caps_only_at_ends() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let line = points(&[(0.0, 0.0), (10.0, 0.0), (20.0, 0.0), (30.0, 0.0)]);
+
+        // Act
+        batch.polyline(line, 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert: the strip plus one disc per end.
+        let (vertices, indices) = only_chunk(&rec);
+        let (dv, di) = disc_size(2.0);
+        assert_eq!((vertices.len(), indices.len()), (8 + 2 * dv, 18 + 2 * di));
+    }
+
+    #[test]
+    fn batch_polyline_gentle_turn_is_mitred() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let corner = Vec2::new(10.0, 0.0);
+        let line = vec![Vec2::ZERO, corner, Vec2::new(20.0, 5.0)];
+        let half_turn = 0.5_f32.atan() / 2.0;
+
+        // Act: 2 px is not thick, so no caps.
+        batch.polyline(line, 2.0, RED);
+        let rec = batch.finish();
+
+        // Assert: the corner pair sits on the mitre, on both sides.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (6, 12));
+        let mitre = 1.0 / half_turn.cos();
+        let (a, b) = (position(&vertices[2]), position(&vertices[3]));
+        assert!(approx_eq(a.distance(corner), mitre, EPS), "{a:?}");
+        assert!(approx_eq(b.distance(corner), mitre, EPS), "{b:?}");
+        assert!(a.lerp(b, 0.5).approx_eq(corner, EPS));
+    }
+
+    #[test]
+    fn batch_polyline_sharp_turn_breaks_with_round_join() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let line = points(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]);
+
+        // Act: a right angle needs a mitre of √2 half-widths.
+        batch.polyline(line, 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert: two one-quad strips, two caps and one join.
+        let (vertices, indices) = only_chunk(&rec);
+        let (dv, di) = disc_size(2.0);
+        assert_eq!((vertices.len(), indices.len()), (8 + 3 * dv, 12 + 3 * di));
+    }
+
+    #[test]
+    fn batch_polyline_skips_points_closer_than_min_step() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let step = STROKE_MIN_STEP_PX * 0.4;
+        let line = points(&[(0.0, 0.0), (step, 0.0), (2.0 * step, 0.0), (10.0, 0.0)]);
+
+        // Act
+        batch.polyline(line, 1.0, RED);
+        let rec = batch.finish();
+
+        // Assert: one quad from the first to the last point.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (4, 6));
+    }
+
+    #[test]
+    fn batch_strip_longer_than_a_chunk_continues() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let pairs = BATCH_MAX_VERTICES; // twice what one chunk holds
+
+        // Act
+        batch.strip(
+            (0..pairs).map(|i| {
+                let x = i as f32;
+                (Vec2::new(x, 0.0), Vec2::new(x, 1.0))
+            }),
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: every quad drawn once, each chunk starting where the
+        // previous one ended.
+        assert!(rec.chunks.len() > 1);
+        let total: usize = rec.chunks.iter().map(|(_, i)| i.len()).sum();
+        assert_eq!(total, 6 * (pairs - 1));
+        for pair in rec.chunks.windows(2) {
+            let (prev, next) = (&pair[0].0, &pair[1].0);
+            let tail = &prev[prev.len() - 2..];
+            assert!(position(&next[0]).approx_eq(position(&tail[0]), EPS));
+            assert!(position(&next[1]).approx_eq(position(&tail[1]), EPS));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn batch_indices_stay_inside_their_chunk(
+            shapes in prop::collection::vec((0u8..4, 0u16..300), 1..120),
+        ) {
+            let mut batch = Batch::new(Recorder::default());
+            for (kind, n) in shapes {
+                let p = Vec2::new(f32::from(n), 1.0);
+                match kind {
+                    0 => batch.triangle(Vec2::ZERO, p, Vec2::new(0.0, 5.0), RED),
+                    1 => batch.rect(aabb(0.0, 0.0, f32::from(n) + 1.0, 2.0), RED),
+                    2 => batch.line(Vec2::ZERO, p, 3.0, RED),
+                    _ => batch.fan(p, unit_circle(n.max(3))
+                        .map(|u| p + u * 10.0), RED),
+                }
+            }
+            let rec = batch.finish();
+            for (vertices, indices) in &rec.chunks {
+                prop_assert!(!indices.is_empty());
+                prop_assert_eq!(indices.len() % 3, 0);
+                prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
+                prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
+                prop_assert!(indices.len() <= BATCH_MAX_INDICES);
+            }
+        }
+
+        #[test]
+        fn batch_polyline_indices_stay_inside_their_chunk(
+            xy in prop::collection::vec((-500.0_f32..500.0, -500.0_f32..500.0), 0..3_000),
+            width in 0.5_f32..40.0,
+        ) {
+            let mut batch = Batch::new(Recorder::default());
+            batch.polyline(xy.iter().map(|&(x, y)| Vec2::new(x, y)), width, RED);
+            let rec = batch.finish();
+            for (vertices, indices) in &rec.chunks {
+                prop_assert!(!indices.is_empty());
+                prop_assert_eq!(indices.len() % 3, 0);
+                prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
+                prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
+                prop_assert!(indices.len() <= BATCH_MAX_INDICES);
+                prop_assert!(vertices.iter().all(|v| position(v).is_finite()));
+            }
+        }
     }
 
     // AC-1

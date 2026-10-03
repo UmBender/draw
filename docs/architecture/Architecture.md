@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]"]
+adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]"]
 ---
 
 # Architecture
@@ -73,13 +73,27 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
 2. `shell::toolbar::route` sends presses on the visible toolbar to
    `Editor::apply(command)`; everything else goes to `Editor::handle(event)`.
    Both return whether anything changed.
-3. If anything changed (or the window size did), the scene — underlay (snap
-   dot grid), shapes minus `overlay.hidden`, overlay shapes, guides,
-   selection, marquee, toolbar — is re-rendered into a cached, 4×
-   multisampled render target
+3. The shell builds the document layer's key — `Editor::document_revision`,
+   shape count, camera, framebuffer size, `overlay.hidden`, grid snap — and
+   `shell::app::plan_redraw` compares it with the cached one
+   ([[ADR-T24-1 Document layer keyed by a document revision]]):
+   - only shapes added on top since the cached layer
+     (`Editor::document_base_revision` ≤ cached revision, view unchanged)
+     → draw just those onto the **document layer**
+     ([[ADR-T24-3 Batched meshes and append-only document updates]]);
+   - any other key change → re-render the document layer (background,
+     underlay dot grid, shapes minus `overlay.hidden`);
+   - otherwise → keep it.
+   The document layer is a cached, 4× multisampled render target
    ([[ADR-0006 Redraw on demand]], [[ADR-T15-1 MSAA on the cached frame]]).
-   Ideas to make this cheaper: [[Rendering performance options]].
-4. The cached texture is blitted to the window (one quad).
+   `shell::render` tessellates shapes into a `Batch` submitted with
+   `draw_mesh` in chunks; strokes are one mitred strip each
+   ([[ADR-T24-4 Strokes as one strip with sparse round joins]]).
+   `DRAW_FRAME_TIMES=1` logs each re-render. More
+   ideas: [[Rendering performance options]].
+4. The document layer is blitted to the window (one quad) and the overlay —
+   overlay shapes, guides, selection, marquee, toolbar — is drawn on top,
+   single-sampled ([[ADR-T24-2 Overlay drawn straight to the window]]).
 
 ## Invariants (checked by the fuzzer)
 

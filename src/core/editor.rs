@@ -16,7 +16,7 @@ use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear};
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::history::History;
+use crate::core::history::{HISTORY_LIMIT, History};
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
@@ -145,6 +145,11 @@ pub struct Editor {
     space_held: bool,
     gesture: Option<Gesture>,
     keymap: Keymap,
+    /// Grows whenever the document may have changed (ADR-T24-1).
+    doc_revision: u64,
+    /// `doc_revision` of the latest change that was not a pure append of
+    /// shapes on top (ADR-T24-3).
+    doc_base_revision: u64,
 }
 
 impl Default for Editor {
@@ -173,6 +178,8 @@ impl Editor {
             space_held: false,
             gesture: None,
             keymap: keymap::resolve,
+            doc_revision: 0,
+            doc_base_revision: 0,
         }
     }
 
@@ -229,6 +236,16 @@ impl Editor {
 
     /// Executes `command`. Returns whether the view needs a redraw.
     pub fn apply(&mut self, command: Command) -> bool {
+        if edits_document(command) {
+            let appends = matches!(command, Command::Paste | Command::Duplicate);
+            self.track_document(appends, |ed| ed.execute(command))
+        } else {
+            self.execute(command)
+        }
+    }
+
+    /// Executes `command` without tracking document changes.
+    fn execute(&mut self, command: Command) -> bool {
         match command {
             Command::SetTool(tool) => {
                 let cancelled = self.cancel_gesture();
@@ -336,6 +353,23 @@ impl Editor {
     #[must_use]
     pub fn document(&self) -> &Document {
         &self.doc
+    }
+
+    /// A counter that grows whenever the document may have changed and stays
+    /// put otherwise (ADR-T24-1). The shell re-renders its document layer
+    /// only when this, the camera, the viewport or the hidden set changes.
+    #[must_use]
+    pub fn document_revision(&self) -> u64 {
+        self.doc_revision
+    }
+
+    /// The [`Editor::document_revision`] of the latest document change that
+    /// was not a pure append of shapes on top (ADR-T24-3). While it stays at
+    /// or below a cached revision, the document is that cached one plus the
+    /// shapes from its old length on.
+    #[must_use]
+    pub fn document_base_revision(&self) -> u64 {
+        self.doc_base_revision
     }
 
     /// The camera.
@@ -516,8 +550,40 @@ impl Editor {
         helpers.next_number = numbering::advance(helpers.next_number, before, after);
     }
 
-    /// Sends one pointer event to `tool`.
+    /// Sends one pointer event to `tool`. Tools commit only on `Down` or
+    /// `Up`, so a `Move` never touches the document revision.
     fn tool_pointer(&mut self, tool: Tool, phase: Phase, pos: Vec2, mods: Modifiers) -> bool {
+        if phase == Phase::Move {
+            self.send_pointer(tool, phase, pos, mods)
+        } else {
+            let appends = phase == Phase::Up && creates_shapes(tool);
+            self.track_document(appends, |ed| ed.send_pointer(tool, phase, pos, mods))
+        }
+    }
+
+    /// Runs `edit`, which may change the document through the history, and
+    /// bumps the document revision if it did (ADR-T24-1). A commit on a full
+    /// undo stack keeps both stack lengths, so there `edit`'s result decides.
+    /// Unless `appends` (the edit only ever inserts shapes on top) and the
+    /// document grew, the base revision follows (ADR-T24-3).
+    fn track_document(&mut self, appends: bool, edit: impl FnOnce(&mut Self) -> bool) -> bool {
+        let lengths = |history: &History| (history.undo_len(), history.redo_len());
+        let before = lengths(&self.history);
+        let len = self.doc.len();
+        let changed = edit(self);
+        let after = lengths(&self.history);
+        let full = after.0 >= HISTORY_LIMIT;
+        if before != after || (changed && full) {
+            self.doc_revision = self.doc_revision.wrapping_add(1);
+            if !(appends && self.doc.len() > len) {
+                self.doc_base_revision = self.doc_revision;
+            }
+        }
+        changed
+    }
+
+    /// Delivers one pointer event to `tool`.
+    fn send_pointer(&mut self, tool: Tool, phase: Phase, pos: Vec2, mods: Modifiers) -> bool {
         let pointer = Pointer { phase, pos, mods };
         let mut ctx = ToolCtx {
             doc: &mut self.doc,
@@ -578,6 +644,28 @@ impl Editor {
         let doc = &self.doc;
         self.selection.retain(|id| doc.get(*id).is_some());
     }
+}
+
+/// Whether `tool` commits only new shapes on top, on pointer up.
+fn creates_shapes(tool: Tool) -> bool {
+    matches!(
+        tool,
+        Tool::Pen | Tool::Line | Tool::Arrow | Tool::Rect | Tool::Ellipse | Tool::Grid
+    )
+}
+
+/// Whether `command` can change the document (through the history).
+fn edits_document(command: Command) -> bool {
+    matches!(
+        command,
+        Command::Undo
+            | Command::Redo
+            | Command::Cut
+            | Command::Paste
+            | Command::Duplicate
+            | Command::DeleteSelection
+            | Command::ClearAll
+    )
 }
 
 /// Executes a helper command on `helpers`. Returns whether anything changed;
@@ -1601,5 +1689,380 @@ mod tests {
                 .iter()
                 .all(|id| ed.document().get(*id).is_some())
         );
+    }
+
+    // ---- T24 AC-2 document revision ---------------------------------------
+
+    /// Left click (down and up without moving) at screen `(x, y)`.
+    fn click(ed: &mut Editor, x: f32, y: f32) -> bool {
+        let pressed = down(ed, PointerButton::Left, x, y);
+        up(ed, PointerButton::Left, x, y) || pressed
+    }
+
+    #[test]
+    fn document_revision_new_editor_is_zero() {
+        assert_eq!(Editor::new().document_revision(), 0);
+    }
+
+    #[test]
+    fn document_revision_pen_drag_moves_keep_revision() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 0.0, 0.0);
+        let before = ed.document_revision();
+
+        // Act
+        for i in 1..20u8 {
+            assert!(move_to(&mut ed, f32::from(i) * 3.0, f32::from(i % 4)));
+        }
+
+        // Assert
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_pen_commit_bumps_revision() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 0.0, 0.0);
+        move_to(&mut ed, 30.0, 10.0);
+        let before = ed.document_revision();
+
+        // Act
+        up(&mut ed, PointerButton::Left, 60.0, 0.0);
+
+        // Assert
+        assert_eq!(ed.document().len(), 1);
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_select_click_and_marquee_keep_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(50.0, 50.0, 10.0, 10.0),
+        ]);
+        ed.apply(Command::SetTool(Tool::Select));
+        let before = ed.document_revision();
+
+        // Act: click a shape, then marquee both from empty space.
+        assert!(click(&mut ed, 0.0, 5.0));
+        down(&mut ed, PointerButton::Left, -20.0, -20.0);
+        assert!(move_to(&mut ed, 100.0, 100.0));
+        assert!(up(&mut ed, PointerButton::Left, 100.0, 100.0));
+        assert!(ed.apply(Command::Cancel));
+
+        // Assert
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_select_all_and_copy_keep_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.document_revision();
+
+        // Act
+        assert!(ed.apply(Command::SelectAll));
+        ed.apply(Command::Copy);
+
+        // Assert
+        assert_eq!(ed.selection().len(), 1);
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_move_drag_bumps_only_on_release() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SetTool(Tool::Select));
+        let before = ed.document_revision();
+
+        // Act / Assert: pressing and dragging only change the overlay.
+        down(&mut ed, PointerButton::Left, 0.0, 5.0);
+        move_to(&mut ed, 20.0, 5.0);
+        move_to(&mut ed, 40.0, 25.0);
+        assert_eq!(ed.document_revision(), before);
+        assert!(!ed.overlay().hidden.is_empty());
+
+        // Act / Assert: releasing commits the move.
+        up(&mut ed, PointerButton::Left, 40.0, 25.0);
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_delete_paste_duplicate_bump_revision() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SelectAll);
+
+        for command in [
+            Command::Duplicate,
+            Command::Copy,
+            Command::Paste,
+            Command::DeleteSelection,
+        ] {
+            // Arrange
+            let before = ed.document_revision();
+            let len = ed.document().len();
+
+            // Act
+            ed.apply(command);
+
+            // Assert
+            if command == Command::Copy {
+                assert_eq!(ed.document_revision(), before, "{command:?}");
+            } else {
+                assert_ne!(ed.document().len(), len, "{command:?}");
+                assert!(ed.document_revision() > before, "{command:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn document_revision_undo_redo_clear_bump_revision() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+
+        for command in [Command::Undo, Command::Redo, Command::ClearAll] {
+            // Arrange
+            let before = ed.document_revision();
+
+            // Act
+            assert!(ed.apply(command), "{command:?}");
+
+            // Assert
+            assert!(ed.document_revision() > before, "{command:?}");
+        }
+    }
+
+    #[test]
+    fn document_revision_noop_undo_keeps_revision() {
+        // Arrange
+        let mut ed = Editor::new();
+
+        // Act
+        ed.apply(Command::Undo);
+        ed.apply(Command::Redo);
+        ed.apply(Command::ClearAll);
+        ed.apply(Command::DeleteSelection);
+        ed.apply(Command::Paste);
+
+        // Assert
+        assert_eq!(ed.document_revision(), 0);
+    }
+
+    #[test]
+    fn document_revision_eraser_bumps_only_on_release() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.document_revision();
+
+        // Act / Assert: marking hides the shape but keeps the document.
+        down(&mut ed, PointerButton::Right, 0.0, 5.0);
+        move_to(&mut ed, 0.0, 6.0);
+        assert_eq!(ed.overlay().hidden.len(), 1);
+        assert_eq!(ed.document_revision(), before);
+
+        // Act / Assert: releasing removes it.
+        up(&mut ed, PointerButton::Right, 0.0, 6.0);
+        assert!(ed.document().is_empty());
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_bucket_fill_bumps_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SetTool(Tool::Bucket));
+        let before = ed.document_revision();
+
+        // Act
+        assert!(click(&mut ed, 5.0, 5.0));
+
+        // Assert
+        assert!(ed.document_revision() > before);
+    }
+
+    #[test]
+    fn document_revision_view_and_settings_keep_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.document_revision();
+
+        // Act: resize, pan, zoom, and every setting command.
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        down(&mut ed, PointerButton::Middle, 0.0, 0.0);
+        move_to(&mut ed, 30.0, 20.0);
+        up(&mut ed, PointerButton::Middle, 30.0, 20.0);
+        ed.handle(InputEvent::Scroll {
+            pos: Vec2::new(5.0, 5.0),
+            delta: 1.0,
+        });
+        for command in [
+            Command::SetTool(Tool::Rect),
+            Command::SetColor(ColorId::INK),
+            Command::WidthUp,
+            Command::WidthDown,
+            Command::CycleSmoothing,
+            Command::ToggleToolbar,
+            Command::ToggleSmartSnap,
+            Command::ToggleGridSnap,
+            Command::ToggleNumbering,
+            Command::ResetNumbering,
+            Command::GridCols(1),
+            Command::GridRows(-1),
+            Command::FitView,
+            Command::ResetView,
+            Command::Cancel,
+        ] {
+            ed.apply(command);
+        }
+        move_to(&mut ed, 1.0, 1.0);
+
+        // Assert
+        assert_eq!(ed.document_revision(), before);
+    }
+
+    #[test]
+    fn document_revision_commit_with_full_history_bumps_revision() {
+        // Arrange: fill the undo stack with pen dots.
+        let mut ed = Editor::new();
+        for i in 0..HISTORY_LIMIT {
+            click(&mut ed, i as f32, 0.0);
+        }
+        assert_eq!(ed.history.undo_len(), HISTORY_LIMIT);
+        let before = ed.document_revision();
+
+        // Act: one more commit keeps both stack lengths.
+        click(&mut ed, -10.0, -10.0);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), HISTORY_LIMIT);
+        assert!(ed.document_revision() > before);
+    }
+
+    // ---- T24 AC-3c base revision -------------------------------------------
+
+    /// Left drag from screen `(x, y)` to `(x + 40, y + 30)`.
+    fn drag(ed: &mut Editor, x: f32, y: f32) {
+        down(ed, PointerButton::Left, x, y);
+        move_to(ed, x + 20.0, y + 15.0);
+        move_to(ed, x + 40.0, y + 30.0);
+        up(ed, PointerButton::Left, x + 40.0, y + 30.0);
+    }
+
+    #[test]
+    fn document_base_revision_new_editor_is_zero() {
+        assert_eq!(Editor::new().document_base_revision(), 0);
+    }
+
+    #[test]
+    fn document_base_revision_creation_commits_keep_base() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let tools = [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Arrow,
+            Tool::Rect,
+            Tool::Ellipse,
+            Tool::Grid,
+        ];
+
+        for (i, tool) in tools.into_iter().enumerate() {
+            // Arrange
+            ed.apply(Command::SetTool(tool));
+            let (revision, base) = (ed.document_revision(), ed.document_base_revision());
+            let len = ed.document().len();
+
+            // Act
+            drag(&mut ed, 100.0 + 100.0 * i as f32, 50.0);
+
+            // Assert
+            assert_eq!(ed.document().len(), len + 1, "{tool:?}");
+            assert!(ed.document_revision() > revision, "{tool:?}");
+            assert_eq!(ed.document_base_revision(), base, "{tool:?}");
+        }
+    }
+
+    #[test]
+    fn document_base_revision_paste_and_duplicate_keep_base() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+        let (revision, base) = (ed.document_revision(), ed.document_base_revision());
+
+        // Act
+        ed.apply(Command::Paste);
+        ed.apply(Command::Duplicate);
+
+        // Assert
+        assert_eq!(ed.document().len(), 3);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), base);
+    }
+
+    /// A named edit that rewrites the document.
+    type Rewrite = (&'static str, fn(&mut Editor));
+
+    #[test]
+    fn document_base_revision_rewrites_raise_base() {
+        let rewrites: [Rewrite; 8] = [
+            ("undo", |ed| {
+                ed.apply(Command::Undo);
+            }),
+            ("redo", |ed| {
+                ed.apply(Command::Undo);
+                ed.apply(Command::Redo);
+            }),
+            ("delete", |ed| {
+                ed.apply(Command::SelectAll);
+                ed.apply(Command::DeleteSelection);
+            }),
+            ("cut", |ed| {
+                ed.apply(Command::SelectAll);
+                ed.apply(Command::Cut);
+            }),
+            ("clear", |ed| {
+                ed.apply(Command::ClearAll);
+            }),
+            ("move", |ed| {
+                ed.apply(Command::SetTool(Tool::Select));
+                drag(ed, 0.0, 5.0);
+            }),
+            ("bucket", |ed| {
+                ed.apply(Command::SetTool(Tool::Bucket));
+                down(ed, PointerButton::Left, 5.0, 5.0);
+                up(ed, PointerButton::Left, 5.0, 5.0);
+            }),
+            ("eraser", |ed| {
+                down(ed, PointerButton::Right, 0.0, 5.0);
+                up(ed, PointerButton::Right, 0.0, 5.0);
+            }),
+        ];
+
+        for (name, rewrite) in rewrites {
+            // Arrange: one shape committed through the editor (an append).
+            let mut ed = Editor::new();
+            ed.apply(Command::SetTool(Tool::Rect));
+            down(&mut ed, PointerButton::Left, 0.0, 0.0);
+            move_to(&mut ed, 10.0, 10.0);
+            up(&mut ed, PointerButton::Left, 10.0, 10.0);
+            let revision = ed.document_revision();
+            assert_eq!(ed.document_base_revision(), 0, "{name}");
+
+            // Act
+            rewrite(&mut ed);
+
+            // Assert
+            assert!(ed.document_revision() > revision, "{name}");
+            assert_eq!(
+                ed.document_base_revision(),
+                ed.document_revision(),
+                "{name}"
+            );
+        }
     }
 }

@@ -11,6 +11,41 @@ Nothing here is decided: each option that is picked up needs its own task and
 ADR. Measure first (see *How to measure*), then pick the cheapest option that
 fixes the measured problem.
 
+## Done
+
+- **Option 1, two layers** — [[T24 Smooth redraws with large documents]],
+  [[ADR-T24-1 Document layer keyed by a document revision]]. Core reports
+  document changes through `Editor::document_revision` (additive; `handle`
+  and `apply` keep their `bool`); the shell keys its document layer on
+  revision, camera, size, hidden ids and grid snap.
+- **Frame timer** (*How to measure*) — `DRAW_FRAME_TIMES=1` prints
+  `draw: <full|append|overlay> re-render <ms> ms, <n> shapes` to stderr for
+  every re-render. It measures CPU submission time only; GPU fill and the
+  MSAA resolve show up in `perf` and CPU usage.
+- **Option 2, append-only updates** — T24,
+  [[ADR-T24-3 Batched meshes and append-only document updates]]:
+  `Editor::document_base_revision` tells the shell when the only change is
+  shapes added on top.
+- **Option 3, overlay without MSAA** — T24,
+  [[ADR-T24-2 Overlay drawn straight to the window]]: no frame target; the
+  overlay is drawn single-sampled on the window.
+- **Option 4, part: one submission per chunk** — T24, ADR-T24-3: a `Batch`
+  with shared quad/fan vertices and `draw_mesh` per ≤ 4 800 indices. The
+  owner's `perf` run put ≈ 60 % of a pan session in per-triangle submission
+  (`memmove` in `QuadGl::geometry`) before this.
+- **Option 4, part: fewer vertices per stroke** — T24,
+  [[ADR-T24-4 Strokes as one strip with sparse round joins]]: a polyline is
+  one mitred strip (2 vertices per point), points closer than ¼ px are
+  skipped, and round discs only go at the ends and at sharp turns. Before,
+  a stroke wider than 2 px on screen had a disc at every point (≈ 14
+  vertices per point). The owner's medium-zoom `perf` run had ≈ 55 % of
+  its time in copying vertices into GL buffers.
+
+Still open: lower circle segment counts (rest of option 4), 5–8, drawing the
+cached layer moved/scaled during a pan or zoom gesture, and raising
+macroquad's draw-call capacity (`Conf::draw_call_*_capacity`) with the batch
+limits.
+
 ## Where we are
 
 Measured by the user on the target (i5-8th gen iGPU, Wayland), 2026-10-01,

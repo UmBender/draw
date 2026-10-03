@@ -2,9 +2,10 @@
 //!
 //! The loop follows ADR-T12-1: miniquad's blocking event loop sleeps until
 //! input arrives, raw events are replayed into an [`Collector`],
-//! routed past the toolbar into the [`Editor`], and the scene is re-rendered
-//! into a cached render target only when something changed. Every woken frame
-//! then blits that texture.
+//! routed past the toolbar into the [`Editor`]. The document is cached in a
+//! render target that is re-rendered (or appended to) only when its
+//! [`LayerKey`] changes (ADR-T24-1, ADR-T24-3); every woken frame blits it
+//! and draws the overlay on top (ADR-T24-2).
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::WHITE;
@@ -14,18 +15,24 @@ use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
-    DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, draw_texture_ex,
+    DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
     render_target_ex,
 };
 use macroquad::window::{
     clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
 };
 
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
+
+use crate::core::camera::Camera;
 use crate::core::command::Tool;
+use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::THEME;
+use crate::core::tools::Overlay;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, to_mq_color};
 use crate::shell::toolbar::{self, Route};
@@ -42,6 +49,9 @@ pub const DEFAULT_MSAA_SAMPLES: i32 = 4;
 
 /// Environment variable overriding [`DEFAULT_MSAA_SAMPLES`].
 pub const MSAA_ENV: &str = "DRAW_MSAA";
+
+/// Environment variable that turns on the frame timer (T24 AC-1).
+pub const FRAME_TIMES_ENV: &str = "DRAW_FRAME_TIMES";
 
 /// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
 /// so nearest keeps it sharp.
@@ -61,6 +71,90 @@ pub fn msaa_samples(setting: Option<&str>) -> i32 {
         "4" => 4,
         "8" => 8,
         _ => DEFAULT_MSAA_SAMPLES,
+    }
+}
+
+/// Whether a `DRAW_FRAME_TIMES` value turns the frame timer on: `1`, `on`,
+/// `true` or `yes`, in any case and trimmed. Unset or anything else is off.
+#[must_use]
+pub fn frame_timing_enabled(setting: Option<&str>) -> bool {
+    setting.is_some_and(|setting| {
+        matches!(
+            setting.trim().to_ascii_lowercase().as_str(),
+            "1" | "on" | "true" | "yes"
+        )
+    })
+}
+
+/// The frame timer's line for one re-render: which layers, CPU time in
+/// milliseconds and the number of shapes in the document.
+#[must_use]
+pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> String {
+    let layers = match redraw {
+        Redraw::None => "no",
+        Redraw::Overlay => "overlay",
+        Redraw::Append { .. } => "append",
+        Redraw::Full => "full",
+    };
+    let ms = elapsed.as_secs_f64() * 1000.0;
+    format!("draw: {layers} re-render {ms:.3} ms, {shapes} shapes")
+}
+
+/// What the document layer shows (ADR-T24-1); it is re-rendered when this
+/// changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LayerKey {
+    /// [`Editor::document_revision`].
+    pub revision: u64,
+    /// Number of shapes in the document.
+    pub len: usize,
+    /// The view.
+    pub camera: Camera,
+    /// Framebuffer size in physical pixels.
+    pub size: (u32, u32),
+    /// Shapes the gesture in progress hides (`Overlay::hidden`).
+    pub hidden: Vec<ShapeId>,
+    /// Whether the underlay dot grid is drawn (grid snap on).
+    pub underlay: bool,
+}
+
+/// What a frame re-renders before the blit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Redraw {
+    /// Nothing: blit the cached frame.
+    None,
+    /// The frame only: cached document layer plus the overlay.
+    Overlay,
+    /// Only the shapes from index `from` on, drawn onto the cached document
+    /// layer (ADR-T24-3).
+    Append {
+        /// First new shape, in z-order.
+        from: usize,
+    },
+    /// Both layers.
+    Full,
+}
+
+/// Picks the work for a frame from the `cached` document layer's key, the
+/// `next` key, [`Editor::document_base_revision`] (`base`) and whether
+/// input changed editor state (`dirty`).
+#[must_use]
+pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty: bool) -> Redraw {
+    let Some(cached) = cached else {
+        return Redraw::Full;
+    };
+    if cached == next {
+        return if dirty { Redraw::Overlay } else { Redraw::None };
+    }
+    let same_view = cached.camera == next.camera
+        && cached.size == next.size
+        && cached.hidden == next.hidden
+        && cached.underlay == next.underlay;
+    let appended = next.revision > cached.revision && next.len > cached.len;
+    if same_view && appended && base <= cached.revision {
+        Redraw::Append { from: cached.len }
+    } else {
+        Redraw::Full
     }
 }
 
@@ -137,7 +231,8 @@ pub async fn run() {
     let mut collector = Collector::new();
     let mut editor = Editor::new();
     let setting = std::env::var(MSAA_ENV).ok();
-    let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()));
+    let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
+    let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -166,57 +261,101 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     }
 }
 
-/// The last rendered scene, kept in a framebuffer-sized, multisampled render
-/// target that macroquad resolves into a plain texture (ADR-T15-1).
+/// The document layer: background, underlay and document shapes in a
+/// framebuffer-sized, multisampled render target that macroquad resolves
+/// into a plain texture (ADR-T15-1, ADR-T24-1). The overlay is drawn on the
+/// window every frame (ADR-T24-2).
 struct CachedFrame {
-    target: Option<RenderTarget>,
+    /// The document layer.
+    document: Option<RenderTarget>,
+    /// What `document` shows.
+    key: Option<LayerKey>,
     /// MSAA samples per pixel for new targets.
     samples: i32,
-    /// Size of `target` in physical pixels.
-    size: (u32, u32),
+    /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
+    timed: bool,
 }
 
 impl CachedFrame {
-    /// An empty cache whose targets use `samples` per pixel.
-    fn new(samples: i32) -> Self {
+    /// An empty cache whose targets use `samples` per pixel; `timed` turns
+    /// on the frame timer.
+    fn new(samples: i32, timed: bool) -> Self {
         Self {
-            target: None,
+            document: None,
+            key: None,
             samples,
-            size: (0, 0),
+            timed,
         }
     }
 
-    /// Re-renders the scene if `dirty` or the framebuffer size changed, then
-    /// blits it to the window.
+    /// Updates the document layer as [`plan_redraw`] says, then blits it to
+    /// the window and draws the overlay on top. `dirty` says whether input
+    /// changed editor state.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
         let size = physical_size(viewport, dpi);
-        let target = match &self.target {
-            Some(target) if self.size == size && !dirty => target,
-            Some(target) if self.size == size => {
-                render_into(target, editor, viewport);
-                target
-            }
-            _ => {
-                let target = render_target_ex(size.0, size.1, frame_target_params(self.samples));
-                target.texture.set_filter(FRAME_FILTER);
-                render_into(&target, editor, viewport);
-                self.size = size;
-                self.target.insert(target)
-            }
+        let overlay = editor.overlay();
+        let key = LayerKey {
+            revision: editor.document_revision(),
+            len: editor.document().len(),
+            camera: *editor.camera(),
+            size,
+            hidden: overlay.hidden.clone(),
+            underlay: editor.helpers().grid_snap,
         };
-        draw_texture_ex(
-            &target.texture,
-            0.0,
-            0.0,
-            WHITE,
-            DrawTextureParams {
-                dest_size: Some(vec2(viewport.x, viewport.y)),
-                // GL textures start at the bottom row.
-                flip_y: true,
-                ..DrawTextureParams::default()
-            },
-        );
+        let base = editor.document_base_revision();
+        let redraw = plan_redraw(self.key.as_ref(), &key, base, dirty);
+        let started = self.timed.then(Instant::now);
+        let from = match redraw {
+            Redraw::Full => Some(0),
+            Redraw::Append { from } => Some(from),
+            Redraw::Overlay | Redraw::None => None,
+        };
+        if let Some(from) = from {
+            if self.key.as_ref().is_none_or(|cached| cached.size != size) {
+                self.document = Some(self.new_target(size));
+            }
+            if let Some(document) = &self.document {
+                render_into(document, viewport, || {
+                    draw_document(editor, &overlay, viewport, from);
+                });
+            }
+            self.key = Some(key);
+        }
+        let Some(document) = &self.document else {
+            return;
+        };
+        blit(&document.texture, viewport);
+        draw_overlay(editor, &overlay, viewport);
+        if let Some(started) = started.filter(|_| redraw != Redraw::None) {
+            let shapes = editor.document().len();
+            eprintln!("{}", frame_log_line(redraw, started.elapsed(), shapes));
+        }
     }
+
+    /// A render target of `size` physical pixels with this cache's sample
+    /// count.
+    fn new_target(&self, size: (u32, u32)) -> RenderTarget {
+        let target = render_target_ex(size.0, size.1, frame_target_params(self.samples));
+        target.texture.set_filter(FRAME_FILTER);
+        target
+    }
+}
+
+/// Draws a resolved layer `texture` over the whole `viewport`, 1:1 in
+/// physical pixels.
+fn blit(texture: &Texture2D, viewport: Vec2) {
+    draw_texture_ex(
+        texture,
+        0.0,
+        0.0,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(viewport.x, viewport.y)),
+            // GL textures start at the bottom row.
+            flip_y: true,
+            ..DrawTextureParams::default()
+        },
+    );
 }
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
@@ -231,27 +370,37 @@ fn physical_size(viewport: Vec2, dpi: f32) -> (u32, u32) {
     (side(viewport.x), side(viewport.y))
 }
 
-/// Renders the whole scene into `target`, in logical pixels.
-fn render_into(target: &RenderTarget, editor: &Editor, viewport: Vec2) {
+/// Runs `draw` with `target` as the destination, in logical pixels.
+fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
     let mut camera = Camera2D::from_display_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y));
     camera.render_target = Some(target.clone());
     set_camera(&camera);
-    draw_scene(editor, viewport);
+    draw();
     set_default_camera();
 }
 
-/// Draws background, shapes, gesture overlay, selection and toolbar.
-fn draw_scene(editor: &Editor, viewport: Vec2) {
-    clear_background(to_mq_color(THEME.bg));
-    let camera = editor.camera();
-    let overlay = editor.overlay();
+/// Draws the document layer: background, underlay and every shape the
+/// gesture in progress does not hide. With `from > 0` only the shapes from
+/// that index on are drawn over what the layer already holds (ADR-T24-3).
+fn draw_document(editor: &Editor, overlay: &Overlay, viewport: Vec2, from: usize) {
+    if from == 0 {
+        clear_background(to_mq_color(THEME.bg));
+        render::draw_underlay(editor, viewport);
+    }
+    let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
     let shapes = editor
         .document()
         .shapes()
-        .filter(|(id, _)| !overlay.hidden.contains(id))
+        .skip(from)
+        .filter(|(id, _)| !hidden.contains(id))
         .map(|(_, shape)| shape);
-    render::draw_underlay(editor, viewport);
-    render::draw_shapes(shapes, camera, viewport);
+    render::draw_shapes(shapes, editor.camera(), viewport);
+}
+
+/// Draws what lies above the document: gesture overlay, guides, selection,
+/// marquee and toolbar.
+fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
+    let camera = editor.camera();
     for shape in &overlay.shapes {
         render::draw_preview(shape, camera);
     }
@@ -373,6 +522,198 @@ mod tests {
                 "dpi {dpi}"
             );
         }
+    }
+
+    // ---- T24 AC-1 frame timer ---------------------------------------------
+
+    #[test]
+    fn frame_timing_enabled_unset_is_off() {
+        assert!(!frame_timing_enabled(None));
+    }
+
+    #[test]
+    fn frame_timing_enabled_on_values_enable() {
+        for setting in ["1", "on", "ON", "true", "Yes", " yes\n"] {
+            assert!(frame_timing_enabled(Some(setting)), "setting {setting:?}");
+        }
+    }
+
+    #[test]
+    fn frame_timing_enabled_other_values_disable() {
+        for setting in ["", "0", "off", "false", "no", "2", "enable"] {
+            assert!(!frame_timing_enabled(Some(setting)), "setting {setting:?}");
+        }
+    }
+
+    #[test]
+    fn frame_log_line_names_layers_time_and_shapes() {
+        // Arrange
+        let elapsed = Duration::from_micros(12_345);
+
+        // Act
+        let full = frame_log_line(Redraw::Full, elapsed, 5120);
+        let overlay = frame_log_line(Redraw::Overlay, Duration::from_micros(800), 7);
+
+        // Assert
+        assert_eq!(full, "draw: full re-render 12.345 ms, 5120 shapes");
+        assert_eq!(overlay, "draw: overlay re-render 0.800 ms, 7 shapes");
+    }
+
+    // ---- T24 AC-2 layer planning -------------------------------------------
+
+    fn key() -> LayerKey {
+        LayerKey {
+            revision: 3,
+            len: 10,
+            camera: Camera::default(),
+            size: (800, 600),
+            hidden: vec![ShapeId(1)],
+            underlay: false,
+        }
+    }
+
+    #[test]
+    fn plan_redraw_without_cache_is_full() {
+        assert_eq!(plan_redraw(None, &key(), 0, false), Redraw::Full);
+        assert_eq!(plan_redraw(None, &key(), 0, true), Redraw::Full);
+    }
+
+    #[test]
+    fn plan_redraw_same_key_clean_is_none() {
+        assert_eq!(plan_redraw(Some(&key()), &key(), 0, false), Redraw::None);
+    }
+
+    #[test]
+    fn plan_redraw_same_key_dirty_is_overlay() {
+        assert_eq!(plan_redraw(Some(&key()), &key(), 0, true), Redraw::Overlay);
+    }
+
+    #[test]
+    fn plan_redraw_changed_key_is_full() {
+        // Arrange
+        let mut panned = Camera::default();
+        panned.pan_by_screen(Vec2::new(10.0, 0.0));
+        let changed = [
+            LayerKey {
+                revision: 4,
+                ..key()
+            },
+            LayerKey {
+                camera: panned,
+                ..key()
+            },
+            LayerKey {
+                size: (801, 600),
+                ..key()
+            },
+            LayerKey {
+                hidden: vec![ShapeId(1), ShapeId(2)],
+                ..key()
+            },
+            LayerKey {
+                hidden: Vec::new(),
+                ..key()
+            },
+            LayerKey {
+                underlay: true,
+                ..key()
+            },
+        ];
+
+        for next in changed {
+            for dirty in [false, true] {
+                // Act
+                let redraw = plan_redraw(Some(&key()), &next, 0, dirty);
+
+                // Assert
+                assert_eq!(redraw, Redraw::Full, "{next:?} dirty {dirty}");
+            }
+        }
+    }
+
+    // ---- T24 AC-3c append-only updates -------------------------------------
+
+    fn appended() -> LayerKey {
+        LayerKey {
+            revision: 5,
+            len: 12,
+            ..key()
+        }
+    }
+
+    #[test]
+    fn plan_redraw_appended_shapes_only_is_append() {
+        for dirty in [false, true] {
+            assert_eq!(
+                plan_redraw(Some(&key()), &appended(), 2, dirty),
+                Redraw::Append { from: 10 },
+                "dirty {dirty}"
+            );
+        }
+        assert_eq!(
+            plan_redraw(Some(&key()), &appended(), 3, true),
+            Redraw::Append { from: 10 }
+        );
+    }
+
+    #[test]
+    fn plan_redraw_append_after_rewrite_is_full() {
+        assert_eq!(
+            plan_redraw(Some(&key()), &appended(), 4, true),
+            Redraw::Full
+        );
+    }
+
+    #[test]
+    fn plan_redraw_append_with_other_change_is_full() {
+        // Arrange
+        let mut panned = Camera::default();
+        panned.pan_by_screen(Vec2::new(10.0, 0.0));
+        let changed = [
+            LayerKey {
+                camera: panned,
+                ..appended()
+            },
+            LayerKey {
+                size: (801, 600),
+                ..appended()
+            },
+            LayerKey {
+                hidden: Vec::new(),
+                ..appended()
+            },
+            LayerKey {
+                underlay: true,
+                ..appended()
+            },
+        ];
+
+        for next in changed {
+            // Act / Assert
+            assert_eq!(
+                plan_redraw(Some(&key()), &next, 0, true),
+                Redraw::Full,
+                "{next:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_redraw_shorter_document_is_full() {
+        let next = LayerKey {
+            revision: 4,
+            len: 8,
+            ..key()
+        };
+
+        assert_eq!(plan_redraw(Some(&key()), &next, 0, true), Redraw::Full);
+    }
+
+    #[test]
+    fn frame_log_line_names_appends() {
+        let line = frame_log_line(Redraw::Append { from: 3 }, Duration::from_micros(250), 4);
+
+        assert_eq!(line, "draw: append re-render 0.250 ms, 4 shapes");
     }
 
     proptest! {
