@@ -118,26 +118,77 @@ impl<S: MeshSink> Batch<S> {
         }
     }
 
-    /// Adds a strip of quads between consecutive `(outer, inner)` pairs.
-    pub fn strip(&mut self, pairs: impl ExactSizeIterator<Item = (Vec2, Vec2)>, color: Color) {
-        let count = pairs.len();
-        if count < 2 {
+    /// Adds a strip of quads between consecutive `(outer, inner)` pairs. A
+    /// strip longer than a chunk continues in the next one (ADR-T24-4).
+    pub fn strip(&mut self, pairs: impl IntoIterator<Item = (Vec2, Vec2)>, color: Color) {
+        let mut last = None;
+        for pair in pairs {
+            last = Some(self.strip_push(last, pair, color));
+        }
+    }
+
+    /// Adds a polyline of screen `points` `width` pixels wide as one strip
+    /// with mitred joins, skipping points closer than
+    /// [`STROKE_MIN_STEP_PX`] to the last kept one. Where the mitre would
+    /// exceed [`MITER_LIMIT`] half-widths the strip breaks; thick lines
+    /// ([`stroke_needs_joints`]) get round discs at breaks and ends. A
+    /// single point is a dot (ADR-T24-4).
+    pub fn polyline(&mut self, points: impl IntoIterator<Item = Vec2>, width: f32, color: Color) {
+        let h = width * 0.5;
+        let round = stroke_needs_joints(width);
+        let mut points = points.into_iter();
+        let Some(first) = points.next() else {
             return;
+        };
+        let (mut prev, mut prev_normal) = (first, None::<Vec2>);
+        let mut last = None;
+        for p in points {
+            let d = p - prev;
+            let len = d.length();
+            // Also skips non-finite steps.
+            if !(len >= STROKE_MIN_STEP_PX) {
+                continue;
+            }
+            let n = Vec2::new(-d.y, d.x) * (1.0 / len);
+            match prev_normal {
+                None => {
+                    if round {
+                        self.disc(prev, h, color);
+                    }
+                    last = Some(self.strip_push(None, (prev + n * h, prev - n * h), color));
+                }
+                Some(n0) => {
+                    // cos² of half the turn; the mitre is h / cos(turn / 2).
+                    let c = n0.dot(n);
+                    if (1.0 + c) * 0.5 * MITER_LIMIT * MITER_LIMIT >= 1.0 {
+                        let offset = (n0 + n) * (h / (1.0 + c));
+                        last = Some(self.strip_push(last, (prev + offset, prev - offset), color));
+                    } else {
+                        self.strip_push(last, (prev + n0 * h, prev - n0 * h), color);
+                        if round {
+                            self.disc(prev, h, color);
+                        }
+                        last = Some(self.strip_push(None, (prev + n * h, prev - n * h), color));
+                    }
+                }
+            }
+            (prev, prev_normal) = (p, Some(n));
         }
-        let base = self.reserve(2 * count, 6 * (count - 1));
-        for (outer, inner) in pairs {
-            self.vertex(outer, color);
-            self.vertex(inner, color);
+        match prev_normal {
+            None => self.disc(first, h, color),
+            Some(n0) => {
+                self.strip_push(last, (prev + n0 * h, prev - n0 * h), color);
+                if round {
+                    self.disc(prev, h, color);
+                }
+            }
         }
-        for k in 0..(count - 1) as u16 {
-            let (o0, i0, o1, i1) = (
-                base + 2 * k,
-                base + 2 * k + 1,
-                base + 2 * k + 2,
-                base + 2 * k + 3,
-            );
-            self.mesh.indices.extend([o0, o1, i0, i0, o1, i1]);
-        }
+    }
+
+    /// Adds a filled disc of `radius` pixels centred at `center`.
+    pub fn disc(&mut self, center: Vec2, radius: f32, color: Color) {
+        let n = circle_segments(radius);
+        self.fan(center, unit_circle(n).map(|u| center + u * radius), color);
     }
 
     /// Sends the current chunk to the sink, if it holds anything.
@@ -166,10 +217,45 @@ impl<S: MeshSink> Batch<S> {
             .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
+    /// Adds `pair` to a strip whose previous pair is `last` (its first
+    /// vertex index in the current chunk, and its points), joined by a quad;
+    /// `None` starts a strip. If the quad does not fit, the chunk is flushed
+    /// and the previous pair repeated in the next one. Returns the new last.
+    fn strip_push(
+        &mut self,
+        last: Option<(u16, (Vec2, Vec2))>,
+        pair: (Vec2, Vec2),
+        color: Color,
+    ) -> (u16, (Vec2, Vec2)) {
+        let Some((mut prev_index, prev)) = last else {
+            // Room for the first quad too, so the pair is not stranded.
+            let base = self.reserve(4, 6);
+            self.vertex(pair.0, color);
+            self.vertex(pair.1, color);
+            return (base, pair);
+        };
+        let mesh = &self.mesh;
+        if mesh.vertices.len() + 2 > BATCH_MAX_VERTICES
+            || mesh.indices.len() + 6 > BATCH_MAX_INDICES
+        {
+            self.flush();
+            prev_index = 0;
+            self.vertex(prev.0, color);
+            self.vertex(prev.1, color);
+        }
+        // At most BATCH_MAX_VERTICES, which fits in u16.
+        let base = self.mesh.vertices.len() as u16;
+        self.vertex(pair.0, color);
+        self.vertex(pair.1, color);
+        let (o0, i0, o1, i1) = (prev_index, prev_index + 1, base, base + 1);
+        self.mesh.indices.extend([o0, o1, i0, i0, o1, i1]);
+        (base, pair)
+    }
+
     /// Makes room for `vertices` more vertices and `indices` more indices,
     /// flushing first if they would not fit. Returns the index the first new
-    /// vertex gets. A single primitive never exceeds a chunk: the largest is
-    /// an ellipse ring of [`MAX_SEGMENTS`] segments.
+    /// vertex gets. A single fan or quad never exceeds a chunk: the largest
+    /// is a disc of [`MAX_SEGMENTS`] segments; strips continue across chunks.
     fn reserve(&mut self, vertices: usize, indices: usize) -> u16 {
         let mesh = &self.mesh;
         if mesh.vertices.len() + vertices > BATCH_MAX_VERTICES
@@ -194,6 +280,14 @@ pub const MIN_SCREEN_WIDTH_PX: f32 = 1.0;
 
 /// Strokes wider than this many pixels get round joints and caps.
 pub const JOINT_THRESHOLD_PX: f32 = 2.0;
+
+/// Polyline points closer than this many pixels to the last kept point are
+/// skipped (the chord tolerance, ADR-T24-4).
+pub const STROKE_MIN_STEP_PX: f32 = CHORD_TOLERANCE_PX;
+
+/// Longest polyline mitre, in half-widths, before the strip breaks
+/// (ADR-T24-4).
+pub const MITER_LIMIT: f32 = 1.2;
 
 /// Extra pixels around the viewport kept when culling, covering the
 /// overhang of outlines clamped to [`MIN_SCREEN_WIDTH_PX`].
@@ -651,27 +745,14 @@ fn color_of(id: ColorId) -> Color {
     to_mq_color(palette(id))
 }
 
-/// Draws a polyline of world `points`: segments, plus round joints and caps
-/// when thick. A single point is a dot; an empty polyline draws nothing.
+/// Draws a polyline of world `points` (ADR-T24-4). A single point is a
+/// dot; an empty polyline draws nothing.
 fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32, color: Color) {
-    let radius = width * 0.5;
-    if let [only] = points {
-        draw_disc(batch, camera.world_to_screen(*only), radius, color);
-        return;
-    }
-    let joints = stroke_needs_joints(width);
-    for pair in points.windows(2) {
-        let (a, b) = (
-            camera.world_to_screen(pair[0]),
-            camera.world_to_screen(pair[1]),
-        );
-        batch.line(a, b, width, color);
-    }
-    if joints {
-        for p in points {
-            draw_disc(batch, camera.world_to_screen(*p), radius, color);
-        }
-    }
+    batch.polyline(
+        points.iter().map(|p| camera.world_to_screen(*p)),
+        width,
+        color,
+    );
 }
 
 /// Draws a screen-space segment with round caps when thick.
@@ -727,7 +808,7 @@ fn scale(u: Vec2, radii: Vec2) -> Vec2 {
 
 /// Draws a filled disc of `radius` pixels centred at screen `center`.
 fn draw_disc(batch: &mut Batch, center: Vec2, radius: f32, color: Color) {
-    draw_ellipse_fill(batch, center, Vec2::new(radius, radius), color);
+    batch.disc(center, radius, color);
 }
 
 /// Adds a filled axis-aligned ellipse (screen space) as a triangle fan.
@@ -1143,7 +1224,7 @@ mod tests {
             width in 0.5_f32..40.0,
         ) {
             let mut batch = Batch::new(Recorder::default());
-            batch.polyline(xy.iter().map(|&(x, y)| Vec2::new(x, y)).collect(), width, RED);
+            batch.polyline(xy.iter().map(|&(x, y)| Vec2::new(x, y)), width, RED);
             let rec = batch.finish();
             for (vertices, indices) in &rec.chunks {
                 prop_assert!(!indices.is_empty());
