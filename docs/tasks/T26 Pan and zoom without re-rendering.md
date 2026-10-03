@@ -1,11 +1,11 @@
 ---
 id: T26
 title: Pan and zoom without re-rendering
-status: review
+status: in-progress
 wave: 14
 branch: task/T26-gesture-redraw
 depends_on: [T24]
-adrs: ["[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-5 Redraw budgets]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T26-2 Gesture frame budget]]"]
+adrs: ["[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-5 Redraw budgets]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T26-2 Gesture frame budget]]", "[[ADR-T26-3 Reuse the layer only when re-rendering is slow]]"]
 feature:
 tutorial: "[[26 Reusing a frame during a gesture]]"
 tags: [task]
@@ -45,6 +45,15 @@ budget: [[ADR-T26-2 Gesture frame budget]]. Unit tests live in
   `blit_rect_maps_corners_through_cameras` (proptest),
   `blit_filter_moved_is_linear`, `blit_filter_at_rest_is_nearest`,
   `frame_log_line_names_moved`.
+- **AC-1b — Only when slow.** `Moved` is used only when the last full
+  re-render took at least `REUSE_ABOVE` (8 ms); a cheaper scene re-renders
+  on every camera change as before T26
+  ([[ADR-T26-3 Reuse the layer only when re-rendering is slow]]).
+  *Tests:* `reuse_if_slow_fast_last_full_is_full`,
+  `reuse_if_slow_slow_last_full_stays_moved`,
+  `reuse_if_slow_unmeasured_is_full`,
+  `reuse_if_slow_other_redraws_are_unchanged`,
+  `reuse_threshold_is_8_ms`.
 - **AC-2 — Settle.** Once the camera has been still for `SETTLE`
   (100 ms), `settle` turns `Moved` into `Full`: the layer is re-rendered
   at the current camera with MSAA. While a frame is `Moved` it calls
@@ -97,6 +106,12 @@ budget: [[ADR-T26-2 Gesture frame budget]]. Unit tests live in
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T26): specify gesture redraw acceptance criteria`
+- [x] spec (rework) — `docs(T26): reuse the layer only when re-rendering is slow`
+- [ ] tests (rework)
+- [ ] models (rework)
+- [ ] behaviour (rework)
+- [ ] quality (rework)
+- [ ] docs (rework)
 - [x] tests — `test(T26): add failing tests for gesture redraw`
 - [x] models — `feat(T26): add Moved redraw, settle and layer margin signatures`
 - [x] behaviour — `feat(T26): blit the cached layer during pan and zoom`
@@ -135,3 +150,8 @@ Step 26 — requires step 24 (layered redraws) and step 12 (app loop).
   `moved` frame times (budget < 2 ms) and the settle `full` time; check
   the picture sharpens ≈ 100 ms after stopping without moving the mouse,
   and looks the same as before at rest. Then set ADR-T26-2 to `accepted`.
+- 2026-10-03 — Review by the owner: on a page with few shapes, panning
+  felt laggy (blur, content past the margin only after the settle). Back
+  to in-progress: blit only when the last full re-render took ≥ 8 ms
+  (ADR-T26-3). A visible-shape count was considered and rejected because
+  the cost per shape varies with zoom.
