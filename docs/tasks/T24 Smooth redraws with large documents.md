@@ -1,11 +1,11 @@
 ---
 id: T24
 title: Smooth redraws with large documents
-status: review
+status: in-progress
 wave: 13
 branch: task/T24-layered-redraw
 depends_on: [T14]
-adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-2 Overlay drawn straight to the window]]", "[[ADR-T24-3 Batched meshes and append-only document updates]]"]
+adrs: ["[[ADR-0006 Redraw on demand]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T14-1 Performance budgets]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T24-2 Overlay drawn straight to the window]]", "[[ADR-T24-3 Batched meshes and append-only document updates]]", "[[ADR-T24-4 Strokes as one strip with sparse round joins]]"]
 feature:
 tutorial: "[[24 Layered redraws and measuring a frame]]"
 tags: [task]
@@ -119,6 +119,28 @@ How the shell decides what to redraw:
     `plan_redraw_shorter_document_is_full`.
   - The document layer skips hidden shapes through a hash set
     (`O(n + h)` instead of `O(n · h)` while moving a large selection).
+  - **AC-3d — Strokes as strips**
+    ([[ADR-T24-4 Strokes as one strip with sparse round joins]]), decided
+    from the third round of numbers (pen-only scene of 5 120 strokes:
+    20–46 ms zoomed out, ≈ 210 ms at medium zoom). `Batch::polyline`
+    draws a polyline of screen points as one triangle strip, 2 vertices
+    per point, with mitred joins. Points closer than
+    `STROKE_MIN_STEP_PX` to the last kept point are skipped. Where the
+    mitre would exceed `MITER_LIMIT` half-widths the strip breaks and
+    restarts. Strokes wider than `JOINT_THRESHOLD_PX` get a round disc at
+    those breaks and at both ends only. `Batch::strip` continues across
+    chunks, so a strip may be longer than one chunk. *Tests*
+    (`shell::render`, through the recording sink):
+    `batch_polyline_empty_draws_nothing`,
+    `batch_polyline_single_point_is_a_dot`,
+    `batch_polyline_coincident_points_are_a_dot`,
+    `batch_polyline_thin_shares_two_vertices_per_point`,
+    `batch_polyline_thick_adds_round_caps_only_at_ends`,
+    `batch_polyline_gentle_turn_is_mitred`,
+    `batch_polyline_sharp_turn_breaks_with_round_join`,
+    `batch_polyline_skips_points_closer_than_min_step`,
+    `batch_strip_longer_than_a_chunk_continues`,
+    `batch_polyline_indices_stay_inside_their_chunk` (proptest).
 - **AC-4 — Budget.** With the AC-1 scenario, an overlay-only change re-renders
   in < 2 ms and a full re-render stays < 16 ms on the target; numbers in the
   *Log*, budget in an ADR amending [[ADR-T14-1 Performance budgets]] once
@@ -165,6 +187,17 @@ Second round (AC-3, after the owner's measurements):
 - [x] behaviour — `feat(T24): batch meshes, append shapes, draw overlay on window`
 - [x] quality — `chore(T24): pass clippy and rustfmt after batching`
 - [x] docs — `docs(T24): document batching and append-only updates`
+
+Third round (AC-3d, after the owner's pen-only measurements):
+
+- [x] spec — `docs(T24): specify strokes as strips`
+- [ ] tests — `test(T24): add failing tests for stroke strips`
+- [ ] models — skipped: no new types; `Batch::polyline` is a method on
+  the existing `Batch`, added with its body in the behaviour step
+  (signature-only stubs would not compile cleanly with the tests anyway)
+- [ ] behaviour — `feat(T24): draw strokes as strips with sparse joins`
+- [ ] quality — `chore(T24): pass clippy and rustfmt after strips`
+- [ ] docs — `docs(T24): document stroke strips`
 
 ## Learning path
 
@@ -217,3 +250,15 @@ step 14 (profiling).
   - AC-5 visual check: committed shapes, labels, grids, fills, MSAA on
     the document. Previews and toolbar icons are now single-sampled
     (ADR-T24-2).
+- 2026-10-03 — Owner's AC-4 numbers after AC-3a–c, pen-only scene of
+  5 120 strokes: zoomed out, pan/zoom `full re-render` 19–46 ms
+  (≈ 26 ms typical; was 33.8 ms); at medium zoom ≈ 210 ms. `perf` of the
+  medium-zoom session (symbols from an unstripped build of the same
+  commit): ≈ 55 % `glBufferSubData` copies (libc `memmove` + Mesa),
+  ≈ 10 % building vertices (`draw_ellipse_fill`, `Batch`), ≈ 11 %
+  `Document::index_of` per selected id inside `present` (T25). Strokes
+  wider than 2 px on screen get a disc at every point (≈ 14 vertices per
+  point instead of 4), which only happens once zoomed in. AC-3d added.
+  Not in T24: drawing the cached layer moved/scaled during a gesture and
+  re-rendering once input is quiet (needs a timed wake-up, amending
+  ADR-T12-1) — a separate task if AC-3d is not enough.
