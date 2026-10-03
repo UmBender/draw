@@ -192,7 +192,12 @@ pub const REUSE_ABOVE: Duration = Duration::from_millis(8);
 /// measured. Any other plan is returned unchanged.
 #[must_use]
 pub fn reuse_if_slow(redraw: Redraw, last_full: Option<Duration>) -> Redraw {
-    todo!("{redraw:?} {last_full:?}")
+    let slow = last_full.is_some_and(|last| last >= REUSE_ABOVE);
+    if redraw == Redraw::Moved && !slow {
+        Redraw::Full
+    } else {
+        redraw
+    }
 }
 
 /// Turns [`Redraw::Moved`] into [`Redraw::Full`] once the camera has been
@@ -374,6 +379,8 @@ struct CachedFrame {
     last_camera: Option<Camera>,
     /// When the camera last changed.
     changed_at: Instant,
+    /// CPU time of the last full re-render (ADR-T26-3).
+    last_full: Option<Duration>,
     /// MSAA samples per pixel for new targets.
     samples: i32,
     /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
@@ -391,12 +398,14 @@ impl CachedFrame {
             filter: FRAME_FILTER,
             last_camera: None,
             changed_at: Instant::now(),
+            last_full: None,
             samples,
             timed,
         }
     }
 
-    /// Updates the document layer as [`plan_redraw`] and [`settle`] say,
+    /// Updates the document layer as [`plan_redraw`], [`reuse_if_slow`] and
+    /// [`settle`] say,
     /// then blits it to the window and draws the overlay on top. `dirty`
     /// says whether input changed editor state.
     fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
@@ -418,6 +427,7 @@ impl CachedFrame {
         }
         let base = editor.document_base_revision();
         let planned = plan_redraw(self.key.as_ref(), &key, base, dirty);
+        let planned = reuse_if_slow(planned, self.last_full);
         let redraw = settle(planned, now.saturating_duration_since(self.changed_at));
         let started = self.timed.then(Instant::now);
         let from = match redraw {
@@ -434,10 +444,14 @@ impl CachedFrame {
             let pad = margin as f32 / sanitize_dpi(dpi);
             let extent = Vec2::new(viewport.x + 2.0 * pad, viewport.y + 2.0 * pad);
             let layer_camera = layer_camera(&camera, pad);
+            let rendering = Instant::now();
             if let Some(document) = &self.document {
                 render_into(document, extent, || {
                     draw_document(editor, &layer_camera, &overlay, extent, from);
                 });
+            }
+            if redraw == Redraw::Full {
+                self.last_full = Some(rendering.elapsed());
             }
             self.layer = Aabb::from_corners(
                 Vec2::new(-pad, -pad),
