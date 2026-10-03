@@ -146,7 +146,7 @@ impl<S: MeshSink> Batch<S> {
             let d = p - prev;
             let len = d.length();
             // Also skips non-finite steps.
-            if !(len >= STROKE_MIN_STEP_PX) {
+            if !len.is_finite() || len < STROKE_MIN_STEP_PX {
                 continue;
             }
             let n = Vec2::new(-d.y, d.x) * (1.0 / len);
