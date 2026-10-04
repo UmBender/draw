@@ -1,9 +1,7 @@
 /target
 
-# Obsidian per-user state
-docs/.obsidian/workspace*.json
-docs/.obsidian/cache
-docs/.obsidian/plugins/
+# Obsidian vault settings and state
+docs/.obsidian/
 docs/.trash/
 
 # Agent worktrees (parallel task execution)
