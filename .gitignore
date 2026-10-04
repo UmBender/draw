@@ -9,6 +9,9 @@ docs/.trash/
 # Agent worktrees (parallel task execution)
 /.claude/worktrees/
 
+# Personal Claude Code settings
+/.claude/settings.local.json
+
 # Profiler output
 perf.data
 perf.data.old
