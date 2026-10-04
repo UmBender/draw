@@ -8,3 +8,7 @@ docs/.trash/
 
 # Agent worktrees (parallel task execution)
 /.claude/worktrees/
+
+# Profiler output
+perf.data
+perf.data.old
