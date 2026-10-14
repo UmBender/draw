@@ -47,7 +47,8 @@ flowchart LR
    status → `review`, ADR status updates.
 8. **Integrate** (done by the integrator on `main`, see [[Parallel Execution]]) —
    `git merge --no-ff`, then update [[Task Board]], [[Decision Log]],
-   [[Feature Index]], [[Learning Path]].
+   [[Feature Index]], [[Learning Path]] and `CHANGELOG.md` (see
+   [[Commit Convention#Versions and changelog]]).
 9. **Clear context** (integrator) — once the integration commit is on `main`,
    clear the session context (`/clear`) before starting the next task or wave.
    Everything needed to resume lives in the repo: [[Task Board]], task notes,

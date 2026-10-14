@@ -19,8 +19,8 @@ by separate agents**, each in its own git worktree, without merge conflicts.
    same number. Order in the chain is fixed at integration time in
    [[Decision Log]].
 4. **Shared indexes are integrator-only** — [[Task Board]], [[Decision Log]],
-   [[Feature Index]] and [[Learning Path]] are updated only on `main` during
-   integration, which is serialized.
+   [[Feature Index]], [[Learning Path]] and `CHANGELOG.md` are updated only on
+   `main` during integration, which is serialized.
 
 ## Orchestration
 

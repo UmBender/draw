@@ -39,3 +39,20 @@ Refs: docs/tasks/<task-id> <Title>.md
 - `main` — integrated, always green.
 - `task/<ID>-<slug>` — one per task, e.g. `task/T04-smoothing`.
 - Merge with `--no-ff` so every task stays visible as one unit in history.
+
+## Versions and changelog
+
+Versions follow [Semantic Versioning](https://semver.org) and are tagged
+`vX.Y.Z` on `main`. `CHANGELOG.md` follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+- **At integration** the integrator adds one user-facing line per change
+  under `## [Unreleased]`, in `Added`, `Changed`, `Deprecated`, `Removed`,
+  `Fixed` or `Security`. Experimental features are marked
+  `(experimental)`. Internal-only tasks (tests, docs, refactors) add nothing.
+- **At release** the next version comes from the commit types since the last
+  tag: a `BREAKING CHANGE:` footer or `!` after the type → major;
+  any `feat` → minor; only `fix` / `perf` → patch. `[Unreleased]` becomes
+  `## [X.Y.Z] - YYYY-MM-DD`, a new empty `[Unreleased]` goes on top, the
+  compare links at the bottom are updated, `Cargo.toml` gets the version,
+  and the commit is `chore: release X.Y.Z`, tagged `vX.Y.Z`.

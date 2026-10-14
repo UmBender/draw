@@ -21,4 +21,4 @@ Minimal, fast, keyboard-first scratch canvas for competitive programming (Rust +
 - **Commits are authored by the user only: never add `Co-Authored-By` or mention any
   agent/AI in commits, PRs or docs.**
 - Parallel work: `docs/process/Parallel Execution.md`. Only the integrator edits
-  `Task Board`, `Decision Log`, `Feature Index`, `Learning Path`.
+  `Task Board`, `Decision Log`, `Feature Index`, `Learning Path`, `CHANGELOG.md`.

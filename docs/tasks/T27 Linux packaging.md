@@ -94,10 +94,13 @@ Acceptance criteria:
   scalable SVG icon plus PNGs (48, 128, 256) and an AppStream
   `metainfo.xml`. `desktop-file-validate` and
   `appstreamcli validate` pass in `scripts/package.sh`; every package
-  installs them to the standard paths. Owner: draw appears in the
+  installs them to the standard paths. `window_conf` sets miniquad's
+  `linux_wm_class` to `draw` (today `miniquad-application`) and the
+  desktop file's `StartupWMClass` matches, so the running window gets
+  the launcher icon. Owner: draw appears in the
   launcher after installing the `.rpm` on the target.
 - **AC-7 — Tarball.** `draw-<version>-x86_64-linux.tar.gz` contains the
-  binary, desktop file, icons, metainfo, LICENSE, README and an
+  binary, desktop file, icons, metainfo, LICENSE, README, CHANGELOG and an
   `install.sh` that installs to `~/.local` by default (`--prefix` to
   change) and `--uninstall` that removes exactly what it installed.
 - **AC-8 — `.deb` and `.rpm`.** Both build from `scripts/package.sh`,
@@ -124,11 +127,11 @@ Acceptance criteria:
 
 - macOS and Windows packages, signing or notarisation: users there build
   from source.
-- Native Wayland backend. Fixing blur under XWayland fractional scaling
-  needs it, but it replaces the backend choice of
-  [[ADR-T12-1 Blocking event loop with cached frame]] and the X11 wake-up
-  analysis of [[ADR-T26-1 Reuse the document layer during pan and zoom]],
-  so it is its own task.
+- Native Wayland backend: [[T28 Experimental native Wayland backend]]
+  (it changes the backend choice of
+  [[ADR-T12-1 Blocking event loop with cached frame]] and the wake-up of
+  [[ADR-T26-1 Reuse the document layer during pan and zoom]]). T27 keeps
+  `preflight` and `runtime-libs` easy for T28 to extend.
 - Publishing: Flathub submission, distro repositories, CI that builds on a
   tag, GitHub releases.
 - Version bump and the release itself.
@@ -140,7 +143,7 @@ Acceptance criteria:
   `install.sh`, Flatpak manifest)
 - `scripts/package.sh` (new)
 - `src/shell/preflight.rs`, `src/shell/crash.rs` (new), `src/shell/mod.rs`,
-  `src/main.rs`
+  `src/main.rs`, `src/shell/app.rs` (`window_conf` WM class only)
 - `Cargo.toml` (`dist` profile, `[package.metadata.deb]` and
   `[package.metadata.generate-rpm]`; no new dependencies)
 - `tests/packaging.rs` (new: desktop file and runtime-libs checks that need

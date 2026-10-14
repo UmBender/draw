@@ -58,6 +58,7 @@ flowchart TD
   T14 --> T25[T25 Linear-time selection with large documents]
   T24 --> T26[T26 Pan and zoom without re-rendering]
   T14 --> T27[T27 Linux packaging]
+  T27 --> T28[T28 Experimental native Wayland backend]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -80,6 +81,7 @@ flowchart TD
 | 13 | [[T24 Smooth redraws with large documents]] · [[T25 Linear-time selection with large documents]] |
 | 14 | [[T26 Pan and zoom without re-rendering]] |
 | 15 | [[T27 Linux packaging]] |
+| 16 | [[T28 Experimental native Wayland backend]] |
 
 ## Status
 
@@ -113,3 +115,4 @@ flowchart TD
 | [[T25 Linear-time selection with large documents]] | done | T14 | `task/T25-fast-lookup` |
 | [[T26 Pan and zoom without re-rendering]] | done | T24 | `task/T26-gesture-redraw` |
 | [[T27 Linux packaging]] | ready | T14 | `task/T27-packaging` |
+| [[T28 Experimental native Wayland backend]] | todo | T27 | `task/T28-wayland` |
