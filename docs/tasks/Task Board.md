@@ -57,6 +57,7 @@ flowchart TD
   T14 --> T24[T24 Smooth redraws with large documents]
   T14 --> T25[T25 Linear-time selection with large documents]
   T24 --> T26[T26 Pan and zoom without re-rendering]
+  T14 --> T27[T27 Linux packaging]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -78,6 +79,7 @@ flowchart TD
 | 12 | [[T14 Performance and release validation]] |
 | 13 | [[T24 Smooth redraws with large documents]] · [[T25 Linear-time selection with large documents]] |
 | 14 | [[T26 Pan and zoom without re-rendering]] |
+| 15 | [[T27 Linux packaging]] |
 
 ## Status
 
@@ -110,3 +112,4 @@ flowchart TD
 | [[T24 Smooth redraws with large documents]] | done | T14 | `task/T24-layered-redraw` |
 | [[T25 Linear-time selection with large documents]] | done | T14 | `task/T25-fast-lookup` |
 | [[T26 Pan and zoom without re-rendering]] | done | T24 | `task/T26-gesture-redraw` |
+| [[T27 Linux packaging]] | ready | T14 | `task/T27-packaging` |
