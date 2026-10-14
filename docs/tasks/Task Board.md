@@ -59,6 +59,9 @@ flowchart TD
   T24 --> T26[T26 Pan and zoom without re-rendering]
   T14 --> T27[T27 Linux packaging]
   T27 --> T28[T28 Experimental native Wayland backend]
+  T14 --> T29[T29 Text blocks]
+  T29 --> T30[T30 Basic TeX formulas]
+  T29 --> T31[T31 Text in rectangles and grid cells]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -82,6 +85,9 @@ flowchart TD
 | 14 | [[T26 Pan and zoom without re-rendering]] |
 | 15 | [[T27 Linux packaging]] |
 | 16 | [[T28 Experimental native Wayland backend]] |
+| 17 | [[T29 Text blocks]] |
+| 18 | [[T30 Basic TeX formulas]] |
+| 19 | [[T31 Text in rectangles and grid cells]] |
 
 ## Status
 
@@ -116,3 +122,6 @@ flowchart TD
 | [[T26 Pan and zoom without re-rendering]] | done | T24 | `task/T26-gesture-redraw` |
 | [[T27 Linux packaging]] | ready | T14 | `task/T27-packaging` |
 | [[T28 Experimental native Wayland backend]] | todo | T27 | `task/T28-wayland` |
+| [[T29 Text blocks]] | ready | T14 | `task/T29-text` |
+| [[T30 Basic TeX formulas]] | todo | T29 | `task/T30-tex` |
+| [[T31 Text in rectangles and grid cells]] | todo | T29 | `task/T31-shape-text` |
