@@ -2,7 +2,7 @@
 id: T30
 title: Basic TeX formulas
 status: todo
-wave: 18
+wave: 16
 branch: task/T30-tex
 depends_on: [T29]
 adrs: []
@@ -66,7 +66,8 @@ shift) and the metrics source.
 - **AC-6 — Fuzz.** The T13 harness generates formula text; invariants
   hold.
 - **AC-7 — Docs.** README section with the supported commands and an
-  example; CHANGELOG entry at integration.
+  example. At integration the integrator adds the feature under
+  `[Unreleased]` → `Added` in `CHANGELOG.md`.
 
 ## Out of scope
 

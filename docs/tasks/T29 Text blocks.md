@@ -2,7 +2,7 @@
 id: T29
 title: Text blocks
 status: ready
-wave: 17
+wave: 15
 branch: task/T29-text
 depends_on: [T14]
 adrs: []
@@ -84,8 +84,9 @@ To be refined in the spec step; every AC names its tests there.
 - **AC-8 — Budgets.** 500 text blocks of 20 characters each stay within
   [[ADR-T24-5 Redraw budgets]] and [[ADR-T26-2 Gesture frame budget]];
   new perf test in `tests/perf.rs`. Binary stays under 2 MB.
-- **AC-9 — Docs.** README tool table and quick start, CHANGELOG entry at
-  integration.
+- **AC-9 — Docs.** README tool table and quick start. At integration the
+  integrator adds the feature under `[Unreleased]` → `Added` in
+  `CHANGELOG.md`.
 
 ## Out of scope
 
@@ -124,5 +125,5 @@ step 11 (keymap) and step 24 (layered redraw).
 ## Log
 
 - 2026-10-14 — Created from the owner's proposal for text blocks and
-  formulas. Shares `README.md` and `src/shell/app.rs` with T27/T28, so it
-  runs in a later wave; it does not need them.
+  formulas.
+- 2026-10-14 — Owner moved T29–T31 ahead of T27/T28 (waves 15–17).

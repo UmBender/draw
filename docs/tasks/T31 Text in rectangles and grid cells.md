@@ -2,7 +2,7 @@
 id: T31
 title: Text in rectangles and grid cells
 status: todo
-wave: 19
+wave: 17
 branch: task/T31-shape-text
 depends_on: [T29]
 adrs: []
@@ -67,8 +67,10 @@ interaction, switch, what is measured) and, at the end,
 - **AC-5 — Trial.** Owner on the target: fill a 5 × 5 DP table and label
   a 6-node graph, with and without the feature (T29 free text only);
   note times and every misfire or annoyance in the *Log*.
-- **AC-6 — Verdict.** ADR-T31-2 records the decision from AC-5;
-  CHANGELOG marks the feature `(experimental)` if it stays.
+- **AC-6 — Verdict.** ADR-T31-2 records the decision from AC-5. At
+  integration the integrator adds it under `[Unreleased]` → `Added` in
+  `CHANGELOG.md`, marked `(experimental)`; if it is later removed, the
+  rollback adds a `Removed` line.
 
 ## Out of scope
 

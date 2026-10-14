@@ -2,7 +2,7 @@
 id: T27
 title: Linux packaging
 status: ready
-wave: 15
+wave: 18
 branch: task/T27-packaging
 depends_on: [T14]
 adrs: []
@@ -100,7 +100,8 @@ Acceptance criteria:
   the launcher icon. Owner: draw appears in the
   launcher after installing the `.rpm` on the target.
 - **AC-7 — Tarball.** `draw-<version>-x86_64-linux.tar.gz` contains the
-  binary, desktop file, icons, metainfo, LICENSE, README, CHANGELOG and an
+  binary, desktop file, icons, metainfo, LICENSE, the embedded font's
+  license (from T29), README, CHANGELOG and an
   `install.sh` that installs to `~/.local` by default (`--prefix` to
   change) and `--uninstall` that removes exactly what it installed.
 - **AC-8 — `.deb` and `.rpm`.** Both build from `scripts/package.sh`,
@@ -172,3 +173,6 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   the release binary (findings in *Goal*). Owner wants every Linux
   problem handled except native Wayland; macOS and Windows build from
   source.
+- 2026-10-14 — Moved after T29–T31 (wave 18). The binary then embeds
+  T29's font: every package ships its license, and the size budget of
+  AC-5 is re-measured with it.
