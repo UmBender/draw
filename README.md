@@ -25,6 +25,9 @@ single-key shortcut so your hands never leave the keyboard for long.
   (up to 64 × 64), with optional row and column indices.
 - **Numbered nodes** — with numbering on, every new circle or box gets the
   next number: graphs in seconds.
+- **Text blocks** — click and type notes with Greek letters and math
+  symbols (`O(n log n)`, `α ≤ β`); no shortcut fires while you type, `Esc`
+  finishes.
 - **Fill** — bucket fills a shape or a single grid cell; the eraser clears
   fills or whole objects.
 - **Snapping** — smart snap to alignment guides and shape outlines (arrows
@@ -81,7 +84,9 @@ window in well under 200 ms.
 3. Press `N`, then draw more circles: they are numbered 1, 2, 3…
 4. Press `G`, start dragging a table and tap `→` / `↓` to add columns and
    rows. Press `B` and click cells to fill them.
-5. Made a mess? `Ctrl+Z`. Starting a new problem? `Ctrl+Backspace`, then
+5. Press `T`, click next to the table and type a note; `Enter` starts a
+   new line, `Esc` finishes.
+6. Made a mess? `Ctrl+Z`. Starting a new problem? `Ctrl+Backspace`, then
    `Shift+N`.
 
 ## Keyboard reference
@@ -97,6 +102,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `A` | Arrow | `E` | Eraser (on a fill: clears fills) |
 | `R` | Rectangle | `B` | Bucket (shape or grid cell) |
 | `C` | Circle / ellipse | `H` | Hand (pan) |
+| `T` | Text | | |
 
 ### Style
 
@@ -141,6 +147,21 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Alt` + drag selection | Duplicate while moving |
 | Right drag | Temporary eraser, from any tool |
 
+### Typing in a text block
+
+While a block is open every key types; only these act:
+
+| Key | Action | Key | Action |
+|-----|--------|-----|--------|
+| `Esc`, `Ctrl+Enter` | Finish (one undo step) | `Ctrl+Z` | Throw the edit away |
+| `Enter` | New line | `Tab` | Four spaces |
+| `←` `→` `↑` `↓` | Move the caret | `Home` / `End` | Line start / end |
+| `Backspace` / `Delete` | Delete a character | Click outside | Finish |
+
+Edit a block again with the Text tool (click it) or Select (double-click
+it). Its size comes from `[` / `]` and its colour from `1`–`6` when you
+click.
+
 A printable one-page version lives in
 [`docs/features/Contest cheat sheet.md`](docs/features/Contest%20cheat%20sheet.md).
 
@@ -172,7 +193,8 @@ DRAW_MSAA=off draw
 ## Limitations
 
 - Nothing is saved or exported — by design, it is a scratch pad.
-- No text tool; shapes carry numbers only.
+- Text is one monospaced font with no wrapping, styling, or pasting from
+  other apps; no IME input.
 - Shortcuts cannot be remapped.
 
 ## Development

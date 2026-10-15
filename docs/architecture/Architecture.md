@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]"]
+adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]"]
 ---
 
 # Architecture
@@ -27,6 +27,8 @@ flowchart LR
     TOOLS --> SM[smoothing]
     TOOLS --> SNAP[snap]
     TOOLS --> NUM[numbering]
+    TOOLS --> TL[text_layout]
+    SH --> TL
     DOC --> SH[shape]
     SH --> G[geom]
     CAM --> G
@@ -59,7 +61,8 @@ flowchart LR
 | `core::snap` ([[T17 Snapping]]) | Snap dragged points: grid → size → align → round, alignment guides ([[ADR-T17-1 Snapping order and tolerances]]) |
 | `core::tools::grid` ([[T18 Grid tool]]) | Grid tool: drag a box, `cols × rows` read live from `Helpers`, `Shift` = square cells ([[ADR-T18-1 Grid drag reads live dims and snaps as a box]]) |
 | `core::numbering` ([[T19 Auto-numbering]]) | Labels for new rectangles/ellipses; counter rules for gesture end, undo and redo ([[ADR-T19-1 Numbering counter and undo]]) |
-| `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels) and previews through the camera; snap dot grid (`draw_underlay`) and alignment guides (`draw_guides`) |
+| `core::text_layout`, `core::tools::text` ([[T29 Text blocks]]) | Monospaced layout of `Shape::Text` (bounds, caret ↔ point, glyph cells — [[ADR-T29-1 Text shape with monospaced layout and an embedded font]]); the Text tool and the `TextEdit` session the editor routes `Char` events and editing keys to ([[ADR-T29-2 Text edit mode]]) |
+| `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels, text blocks in the embedded font — [[ADR-T29-1 Text shape with monospaced layout and an embedded font]]) and previews through the camera; snap dot grid (`draw_underlay`) and alignment guides (`draw_guides`) |
 | `shell::{app,input_map,toolbar}` ([[T12 App shell and toolbar]]) | Window, event loop, toolbar UI |
 | `tests/fuzz.rs` ([[T13 Fuzz harness]]) | Random input-sequence fuzzing of `Editor` |
 
@@ -69,10 +72,14 @@ The loop sleeps in miniquad's blocking event loop and wakes only on input or
 resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
 
 1. `shell::input_map::Collector` yields every raw event since the last frame,
-   in order, as `InputEvent`s in logical screen pixels.
+   in order, as `InputEvent`s in logical screen pixels — typed characters
+   as `InputEvent::Char`, just before their key.
 2. `shell::toolbar::route` sends presses on the visible toolbar to
    `Editor::apply(command)`; everything else goes to `Editor::handle(event)`.
-   Both return whether anything changed.
+   Both return whether anything changed. While a text block is open,
+   `Editor::handle` sends characters and editing keys to it instead of
+   the keymap, and `Editor::apply` commits it first
+   ([[ADR-T29-2 Text edit mode]]).
 3. The shell builds the document layer's key — `Editor::document_revision`,
    shape count, camera, framebuffer size, `overlay.hidden`, grid snap — and
    `shell::app::plan_redraw` compares it with the cached one
@@ -102,7 +109,9 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    ideas: [[Rendering performance options]].
 4. The document layer is blitted to the window (one quad, 1:1 at rest) and
    the overlay —
-   overlay shapes, guides, selection, marquee, toolbar — is drawn on top,
+   overlay shapes (including the open text block, whose original is in
+   `overlay.hidden`), its caret, guides, selection, marquee, toolbar — is
+   drawn on top,
    single-sampled ([[ADR-T24-2 Overlay drawn straight to the window]]).
 
 ## Invariants (checked by the fuzzer)
@@ -114,3 +123,4 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
 - Selection only refers to shape ids that exist.
 - Grid dimensions (of shapes and of the editor's settings) are in
   `1..=GRID_MAX_CELLS`; labels and the numbering counter are ≥ 1.
+- Text blocks have a positive size and non-blank text.

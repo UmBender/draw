@@ -1,7 +1,7 @@
 ---
 id: T29
 title: Text blocks
-status: in-progress
+status: review
 wave: 15
 branch: task/T29-text
 depends_on: [T14]
@@ -202,12 +202,12 @@ sends (`Char` then `KeyDown` for a printable key).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T29): …`
-- [ ] tests — `test(T29): …`
-- [ ] models — `feat(T29): …`
-- [ ] behaviour — `feat(T29): …`
-- [ ] quality — `chore(T29): …`
-- [ ] docs — `docs(T29): …`
+- [x] spec — `docs(T29): specify text block acceptance criteria`
+- [x] tests — `test(T29): add failing tests for text blocks`
+- [x] models — `feat(T29): add text shape, edit session and input types`
+- [x] behaviour — `feat(T29): implement text blocks and text edit mode`
+- [x] quality — `refactor(T29): simplify line lookup and caret height`
+- [x] docs — `docs(T29): add feature note and tutorial`
 
 ## Learning path
 
@@ -223,3 +223,23 @@ step 11 (keymap) and step 24 (layered redraw).
   Adwaita Mono subset) and ADR-T29-2 (edit mode). Files owned gain
   `shape_tool.rs` (test module, owner approved) and the two architecture
   notes.
+- 2026-10-14 — Models: `Kind::from_tool` in `shape_tool.rs` (non-test
+  code) is a second exhaustive `match` that must name `Tool::Text`; same
+  file and cause as the approved change, so it was included and *Files
+  owned* reworded. No other file outside the list was touched.
+- 2026-10-14 — Behaviour: `layout_has_every_button_in_order` still
+  expected 21 toolbar buttons; corrected to 22 in the behaviour commit
+  (missed in the test step).
+- 2026-10-14 — Quality: `scripts/check.sh` green; long fuzz
+  (`PROPTEST_CASES=20000 cargo test --release --test fuzz`) green in 42 s.
+  Perf (`cargo test --release --test perf -- --ignored`, this machine):
+  text layout + cull of 500 blocks 95 µs, one keystroke with 500 blocks
+  0.4 µs (budgets 1 ms); the T14 tests unchanged (delete 5k: 958 µs,
+  close to its budget as before). Release binary 1 147 896 bytes
+  (was 995 912; +152 KB, under 2 MB).
+- 2026-10-14 — Open for the owner on the target: redraw budgets with
+  `DRAW_FRAME_TIMES=1` ([[ADR-T24-5 Redraw budgets]],
+  [[ADR-T26-2 Gesture frame budget]]) with ~500 text blocks, and a visual
+  check of sharpness at 0.05×, 1× and 20× and of non-ASCII glyphs.
+  `docs/features/Contest cheat sheet.md` does not list `T` yet (not in
+  *Files owned*; for the integrator).
