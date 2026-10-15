@@ -124,10 +124,11 @@ impl TextEdit {
         }
     }
 
-    /// World box of the block.
+    /// World box of the block as typed: formulas show their source while
+    /// edited (ADR-T30-1).
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        text_layout::bounds(self.origin, &self.text, self.size)
+        text_layout::source_bounds(self.origin, &self.text, self.size)
     }
 
     /// The caret as a world segment, top to bottom of its line.
@@ -344,6 +345,15 @@ mod tests {
         assert!(approx_eq(text_size_px(3.0), 18.0, 1e-6));
         assert!(approx_eq(text_size_px(1.0), 14.0, 1e-6));
         assert!(approx_eq(text_size_px(32.0), 76.0, 1e-6));
+    }
+
+    #[test]
+    fn text_edit_bounds_are_the_source_cells() {
+        // Act: a formula that typesets far narrower than its source.
+        let b = edit("$\\frac{a}{b}$", 0).bounds();
+
+        // Assert: 13 cells of 6, one line of 12.5 (ADR-T30-1).
+        assert!(b.max.approx_eq(Vec2::new(78.0, 12.5), 1e-4), "{b:?}");
     }
 
     #[test]

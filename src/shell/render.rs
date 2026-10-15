@@ -24,12 +24,13 @@ use std::time::{Duration, Instant};
 use crate::core::camera::Camera;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::palette::{ColorId, Rgba, THEME, palette};
+use crate::core::palette::{ColorId, PALETTE, Rgba, THEME, palette};
 use crate::core::shape::{
     GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
 };
 use crate::core::snap::GRID_STEP;
-use crate::core::text_layout::glyphs;
+use crate::core::tex::Ink;
+use crate::core::text_layout::{glyphs, has_markup, typeset};
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
@@ -675,8 +676,96 @@ fn drawable(ch: char) -> bool {
 }
 
 /// Puts every glyph of a text block of world `size` seen through `camera`
-/// at `dpi` into `atlas`.
+/// at `dpi` into `atlas`: typeset glyphs at their scales when the text has
+/// formulas (ADR-T30-1).
 pub fn prepare_text_block(
+    atlas: &mut GlyphAtlas,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+) {
+    if !has_markup(text) {
+        prepare_text_source(atlas, text, size, camera, dpi);
+        return;
+    }
+    for ink in &typeset(text).ink {
+        if let Ink::Glyph { ch, scale, .. } = *ink {
+            if let Some((rpx, _)) = block_raster(size * scale, camera, dpi) {
+                if drawable(ch) {
+                    atlas.prepare(ch, rpx);
+                }
+            }
+        }
+    }
+}
+
+/// Adds the glyphs of a text block of world `size` at world `origin` to
+/// `batch`: each at its layout cell (ADR-T29-1), or typeset with its
+/// rules when the text has formulas, literal source in [`warn_color`]
+/// (ADR-T30-1). Glyphs missing from `atlas`, whitespace and text below
+/// [`TEXT_MIN_PX`] are skipped.
+#[allow(clippy::too_many_arguments)]
+pub fn push_text_block<S: MeshSink>(
+    batch: &mut Batch<S>,
+    atlas: &GlyphAtlas,
+    origin: Vec2,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+    color: Color,
+) {
+    if !has_markup(text) {
+        push_text_source(batch, atlas, origin, text, size, camera, dpi, color);
+        return;
+    }
+    let warn = warn_color(color);
+    let at = |p: Vec2| camera.world_to_screen(origin + p * size);
+    for ink in &typeset(text).ink {
+        match *ink {
+            Ink::Glyph {
+                ch,
+                pos,
+                scale,
+                warn: warned,
+            } => {
+                let Some((rpx, glyph_scale)) = block_raster(size * scale, camera, dpi) else {
+                    continue;
+                };
+                let Some(entry) = atlas.get(ch, rpx).filter(|_| drawable(ch)) else {
+                    continue;
+                };
+                if let Some(quad) = glyph_quad(at(pos), &entry, glyph_scale) {
+                    batch.glyph(&quad, entry.page, if warned { warn } else { color });
+                }
+            }
+            Ink::Rule { a, b, width } => {
+                if text_screen_px(size, camera.zoom()).is_some() {
+                    let px = screen_width(width * size, camera.zoom());
+                    batch.line(at(a), at(b), px, color);
+                }
+            }
+        }
+    }
+}
+
+/// Colour of literal source in a formula drawn in `color`: palette red,
+/// or palette yellow when `color` is already that red (ADR-T30-1).
+#[must_use]
+pub fn warn_color(color: Color) -> Color {
+    let red = to_mq_color(PALETTE[1]);
+    let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
+    if close(color.r, red.r) && close(color.g, red.g) && close(color.b, red.b) {
+        to_mq_color(PALETTE[4])
+    } else {
+        red
+    }
+}
+
+/// Puts every glyph of a text block drawn as typed (formulas as source)
+/// into `atlas`.
+pub fn prepare_text_source(
     atlas: &mut GlyphAtlas,
     text: &str,
     size: f32,
@@ -691,11 +780,10 @@ pub fn prepare_text_block(
     }
 }
 
-/// Adds the glyphs of a text block of world `size` at world `origin` to
-/// `batch`, each at its layout cell (ADR-T29-1); glyphs missing from
-/// `atlas`, whitespace and text below [`TEXT_MIN_PX`] are skipped.
+/// Adds the glyphs of a text block as typed, formulas as source, each at
+/// its cell (ADR-T29-1): how the open block is drawn.
 #[allow(clippy::too_many_arguments)]
-pub fn push_text_block<S: MeshSink>(
+pub fn push_text_source<S: MeshSink>(
     batch: &mut Batch<S>,
     atlas: &GlyphAtlas,
     origin: Vec2,
@@ -838,6 +926,35 @@ pub fn draw_shapes<'a>(
 pub fn draw_preview(shape: &Shape, camera: &Camera) {
     let mut batch = Batch::new(GlSink);
     draw_shape(&mut batch, shape, camera);
+    batch.finish();
+}
+
+/// Draws the text block being edited as typed, formulas as source
+/// (ADR-T30-1); any other shape as [`draw_preview`] does.
+pub fn draw_source_preview(shape: &Shape, camera: &Camera) {
+    let Shape::Text {
+        origin,
+        text,
+        size,
+        style,
+    } = shape
+    else {
+        draw_preview(shape, camera);
+        return;
+    };
+    if !shape.is_finite() {
+        return;
+    }
+    let dpi = screen_dpi_scale();
+    if block_raster(*size, camera, dpi).is_none() {
+        return;
+    }
+    let color = color_of(style.color);
+    let mut batch = Batch::new(GlSink);
+    with_glyphs(
+        |atlas| prepare_text_source(atlas, text, *size, camera, dpi),
+        |atlas| push_text_source(&mut batch, atlas, *origin, text, *size, camera, dpi, color),
+    );
     batch.finish();
 }
 
@@ -1106,6 +1223,7 @@ mod tests {
     use crate::core::camera::Camera;
     use crate::core::geom::{Aabb, Vec2, approx_eq};
     use crate::core::palette::{ColorId, Rgba, palette};
+    use crate::core::tex::{MINUS, SYMBOLS};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -2172,5 +2290,100 @@ mod tests {
         let top = ys.iter().copied().fold(f32::INFINITY, f32::min);
         let ink = seven.ymin + f32::from(seven.rect.h);
         assert!(approx_eq(top, 30.0 - ink / 2.0, EPS), "{top}");
+    }
+
+    // ---- T30 formulas ------------------------------------------------------
+
+    /// Every vertex `rec` submitted.
+    fn vertices(rec: &Recorder) -> Vec<Vertex> {
+        rec.chunks
+            .iter()
+            .flat_map(|(v, _)| v.iter().copied())
+            .collect()
+    }
+
+    fn same_color(a: Color, b: Color) -> bool {
+        [a.r - b.r, a.g - b.g, a.b - b.b, a.a - b.a]
+            .iter()
+            .all(|d| d.abs() < EPS)
+    }
+
+    fn vertex_color(v: &Vertex) -> Color {
+        Color::from_rgba(v.color[0], v.color[1], v.color[2], v.color[3])
+    }
+
+    #[test]
+    fn push_text_block_formula_draws_glyphs_and_rules() {
+        // Act
+        let rec = pushed("$\\frac{a}{b}$", 20.0, &Camera::default());
+
+        // Assert: two glyph quads and the fraction bar, untextured.
+        let all = vertices(&rec);
+        let bar = all.iter().filter(|v| is_white(v)).count();
+        assert_eq!(bar, 4, "one rule quad");
+        assert_eq!(all.len() - bar, 2 * 4, "two glyph quads");
+    }
+
+    #[test]
+    fn push_text_block_literal_uses_the_warning_colour() {
+        // Act
+        let rec = pushed("$\\foo$", 20.0, &Camera::default());
+
+        // Assert
+        let warn = warn_color(RED);
+        assert!(!same_color(warn, RED));
+        let all = vertices(&rec);
+        assert_eq!(all.len(), 4 * 4);
+        assert!(all.iter().all(|v| same_color(vertex_color(v), warn)));
+        // A block already in the warning colour warns in another one.
+        assert!(!same_color(warn_color(warn), warn));
+    }
+
+    #[test]
+    fn push_text_source_draws_formulas_as_typed() {
+        // Arrange
+        let text = "$x^2$";
+        let camera = Camera::default();
+        let mut atlas = atlas();
+        prepare_text_source(&mut atlas, text, 20.0, &camera, 1.0);
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        push_text_source(
+            &mut batch,
+            &atlas,
+            Vec2::ZERO,
+            text,
+            20.0,
+            &camera,
+            1.0,
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: one quad per typed character, all in the text colour.
+        let all = vertices(&rec);
+        assert_eq!(all.len(), 5 * 4);
+        assert!(all.iter().all(|v| same_color(vertex_color(v), RED)));
+    }
+
+    #[test]
+    fn tex_symbols_all_have_glyphs_in_the_embedded_font() {
+        // Arrange
+        let font = match fontdue::Font::from_bytes(TEXT_FONT, fontdue::FontSettings::default()) {
+            Ok(font) => font,
+            Err(err) => panic!("embedded font loads: {err}"),
+        };
+
+        // Act
+        let missing: Vec<char> = SYMBOLS
+            .iter()
+            .flat_map(|s| s.text.chars())
+            .chain([MINUS, '(', ')'])
+            .filter(|&ch| font.lookup_glyph_index(ch) == 0)
+            .collect();
+
+        // Assert: no second math font is needed (ADR-T30-1).
+        assert!(missing.is_empty(), "missing glyphs: {missing:?}");
     }
 }

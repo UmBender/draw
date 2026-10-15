@@ -18,6 +18,8 @@ use draw::core::keymap::BINDINGS;
 use draw::core::numbering::FIRST_NUMBER;
 use draw::core::shape::{GRID_MAX_CELLS, Shape};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
+use draw::core::tex;
+use draw::core::text_layout::typeset;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
@@ -165,6 +167,30 @@ fn arb_char() -> impl Strategy<Value = char> {
     ]
 }
 
+/// Formula-ish source (T30): TeX tokens, `$`s, braces and any `char`.
+fn arb_formula_text() -> impl Strategy<Value = String> {
+    let token = prop_oneof![
+        6 => select(vec![
+            "$", "\\$", "{", "}", "^", "_", "\\", " ", "x", "i", "2", "-", "+", "=", "(",
+            ")", ",", "|", "\\frac", "\\sqrt", "\\binom", "\\text", "\\pmod",
+            "\\alpha", "\\Omega", "\\sum", "\\prod", "\\min", "\\lim", "\\log",
+            "\\le", "\\cdot", "\\lfloor", "\\{", "\\}", "\\foo",
+        ])
+        .prop_map(str::to_owned),
+        1 => arb_char().prop_map(String::from),
+    ];
+    prop::collection::vec(token, 0..24).prop_map(|tokens| tokens.concat())
+}
+
+/// A formula typed into a block: `$…$` around formula-ish source, or
+/// the source alone.
+fn arb_formula() -> impl Strategy<Value = String> {
+    prop_oneof![
+        3 => arb_formula_text().prop_map(|src| format!("${src}$")),
+        1 => arb_formula_text(),
+    ]
+}
+
 /// A scroll delta: usually a few notches, sometimes extreme or non-finite.
 fn arb_scroll_delta() -> impl Strategy<Value = f32> {
     prop_oneof![
@@ -195,6 +221,9 @@ fn arb_text_session() -> impl Strategy<Value = Vec<InputEvent>> {
     let none = Modifiers::NONE;
     let step = prop_oneof![
         8 => arb_char().prop_map(move |ch| vec![InputEvent::Char { ch, mods: none }]),
+        2 => arb_formula().prop_map(move |src| {
+            src.chars().map(|ch| InputEvent::Char { ch, mods: none }).collect()
+        }),
         3 => select(TEXT_KEYS.to_vec()).prop_map(move |key| vec![InputEvent::KeyDown { key, mods: none }]),
         1 => (arb_key(), arb_mods()).prop_map(|(key, mods)| vec![InputEvent::KeyDown { key, mods }]),
         1 => arb_screen_pos().prop_map(move |pos| vec![
@@ -445,6 +474,27 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 !text.trim().is_empty(),
                 "step {step}: text {id:?} is blank: {text:?}"
             );
+        }
+        // T30: a text block's box is finite and holds its typeset ink.
+        if let Shape::Text {
+            origin, text, size, ..
+        } = shape
+        {
+            let b = shape.bounds();
+            prop_assert!(
+                b.min.is_finite() && b.max.is_finite(),
+                "step {step}: text {id:?} bounds {b:?}"
+            );
+            let slack = 1e-3 * size + 1e-5 * (origin.x.abs() + origin.y.abs());
+            let room = b.expand(slack);
+            for ink in &typeset(text).ink {
+                let ib = ink.bounds();
+                let (lo, hi) = (*origin + ib.min * *size, *origin + ib.max * *size);
+                prop_assert!(
+                    room.contains(lo) && room.contains(hi),
+                    "step {step}: text {id:?} ink {ink:?} outside {b:?}"
+                );
+            }
         }
         // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
         if let Some(label) = shape.label() {
@@ -726,6 +776,36 @@ fn sessions_reach_text_edit_states() {
     );
 }
 
+#[test]
+fn sessions_reach_committed_formulas() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_text_session();
+    let mut formulas = 0;
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_text_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        for event in tree.current() {
+            editor.handle(event);
+        }
+        let has_formula = editor.document().shapes().any(|(_, shape)| {
+            matches!(shape, Shape::Text { text, .. }
+                if tex::parse(text).iter().any(|s| matches!(s, tex::Segment::Math(_))))
+        });
+        formulas += usize::from(has_formula);
+    }
+
+    // Assert
+    assert!(
+        formulas >= 10,
+        "sessions with a committed formula: {formulas}/200"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // AC-2, AC-3: editor sessions
 // ---------------------------------------------------------------------------
@@ -824,6 +904,27 @@ proptest! {
         let mut rest = finite.iter();
         for p in &simplified {
             prop_assert!(rest.any(|q| q == p), "{p:?} is not from the input in order");
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    /// T30 AC-6: parsing and layout are total on formula-ish text.
+    #[test]
+    fn fuzz_tex_parse_and_layout_are_total(src in arb_formula()) {
+        // Act
+        let segments = tex::parse(&src);
+        let layout = tex::layout(&segments);
+
+        // Assert
+        prop_assert_eq!(tex::print(&segments), src);
+        prop_assert!(layout.width.is_finite() && layout.height.is_finite());
+        let room = layout.bounds().expand(1e-3);
+        for ink in &layout.ink {
+            let ib = ink.bounds();
+            prop_assert!(room.contains(ib.min) && room.contains(ib.max), "{ink:?}");
         }
     }
 }

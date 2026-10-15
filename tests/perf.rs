@@ -25,6 +25,7 @@ use draw::core::palette::ColorId;
 use draw::core::shape::{CellFill, Shape, Style};
 use draw::core::smoothing::{Smoother, SmoothingLevel, simplify_rdp};
 use draw::core::snap::{DragKind, Snaps, Targets, snap_drag};
+use draw::core::tex;
 use draw::core::text_layout::glyphs;
 use draw::shell::app::TEXT_FONT;
 use draw::shell::glyphs::GlyphAtlas;
@@ -667,4 +668,111 @@ fn perf_tessellate_10k_glyphs_is_under_1ms() {
         "one quad per glyph"
     );
     assert_within_budget("tessellate 10k glyphs", median, BUDGET);
+}
+
+/// Text blocks with formulas in the T30 tests.
+const FORMULA_BLOCKS: usize = 200;
+
+/// Budget of parsing and laying out every formula block from scratch, as
+/// after loading or when every text changes (T30 AC-5).
+const TEX_BUDGET: Duration = Duration::from_millis(2);
+
+/// `FORMULA_BLOCKS` texts built from the goal's example formulas, each
+/// numbered so no two are equal.
+fn formula_texts() -> Vec<String> {
+    const FORMULAS: [&str; 4] = [
+        "dp: $dp_{i,j} = \\min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$",
+        "$O(n \\log n)$ time",
+        "$\\sum_{k=1}^{n} k^2$\nsum of squares",
+        "$\\frac{n(n+1)}{2}$ and $\\sqrt{x} \\le \\binom{n}{k}$",
+    ];
+    (0..FORMULA_BLOCKS)
+        .map(|i| format!("{} #{i}", FORMULAS[i % FORMULAS.len()]))
+        .collect()
+}
+
+/// The formula texts as blocks scattered over a 1080p view.
+fn formula_blocks() -> Vec<Shape> {
+    let mut rng = Rng(0x7e_c0de_f00d_5eed);
+    let style = Style {
+        color: ColorId::INK,
+        width: 0.0,
+    };
+    formula_texts()
+        .into_iter()
+        .map(|text| Shape::Text {
+            origin: Vec2::new(rng.range(-200.0, 1_800.0), rng.range(-100.0, 1_000.0)),
+            text,
+            size: 18.0,
+            style,
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_tex_layout_200_blocks_is_under_2ms() {
+    // Arrange
+    if !optimised() {
+        return;
+    }
+    let texts = formula_texts();
+
+    // Act: parse and lay out every block, uncached.
+    let median = median_time(
+        || (),
+        |()| {
+            texts
+                .iter()
+                .map(|text| tex::layout(&tex::parse(text)).ink.len())
+                .sum::<usize>()
+        },
+    );
+
+    // Assert
+    assert_within_budget("tex parse + layout, 200 blocks", median, TEX_BUDGET);
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_tessellate_200_formula_blocks_is_under_1ms() {
+    // Arrange: layouts cached and glyphs in the atlas (a steady full
+    // re-render).
+    if !optimised() {
+        return;
+    }
+    let Ok(mut atlas) = GlyphAtlas::new(TEXT_FONT) else {
+        panic!("embedded font loads");
+    };
+    let blocks = formula_blocks();
+    let camera = Camera::default();
+    for shape in &blocks {
+        if let Shape::Text { text, size, .. } = shape {
+            prepare_text_block(&mut atlas, text, *size, &camera, 1.0);
+        }
+    }
+    let push_all = |mut batch: Batch<CountingSink>| {
+        for shape in &blocks {
+            if let Shape::Text {
+                origin, text, size, ..
+            } = shape
+            {
+                push_text_block(
+                    &mut batch, &atlas, *origin, text, *size, &camera, 1.0, WHITE,
+                );
+            }
+        }
+        batch.finish()
+    };
+
+    // Act
+    let median = median_time(|| Batch::new(CountingSink::default()), push_all);
+
+    // Assert
+    let sink = push_all(Batch::new(CountingSink::default()));
+    assert!(
+        sink.indices / 6 >= FORMULA_BLOCKS * 10,
+        "glyphs and rules drawn"
+    );
+    assert_within_budget("tessellate 200 formula blocks", median, BUDGET);
 }
