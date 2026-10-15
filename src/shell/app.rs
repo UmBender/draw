@@ -731,8 +731,8 @@ mod tests {
         let elapsed = Duration::from_micros(12_345);
 
         // Act
-        let full = frame_log_line(Redraw::Full, elapsed, 5120);
-        let overlay = frame_log_line(Redraw::Overlay, Duration::from_micros(800), 7);
+        let full = frame_log_line(Redraw::Full, elapsed, None, 5120);
+        let overlay = frame_log_line(Redraw::Overlay, Duration::from_micros(800), None, 7);
 
         // Assert
         assert_eq!(full, "draw: full re-render 12.345 ms, 5120 shapes");
@@ -885,7 +885,12 @@ mod tests {
 
     #[test]
     fn frame_log_line_names_appends() {
-        let line = frame_log_line(Redraw::Append { from: 3 }, Duration::from_micros(250), 4);
+        let line = frame_log_line(
+            Redraw::Append { from: 3 },
+            Duration::from_micros(250),
+            None,
+            4,
+        );
 
         assert_eq!(line, "draw: append re-render 0.250 ms, 4 shapes");
     }
@@ -994,7 +999,7 @@ mod tests {
 
     #[test]
     fn frame_log_line_names_moved() {
-        let line = frame_log_line(Redraw::Moved, Duration::from_micros(90), 5120);
+        let line = frame_log_line(Redraw::Moved, Duration::from_micros(90), None, 5120);
 
         assert_eq!(line, "draw: moved re-render 0.090 ms, 5120 shapes");
     }
@@ -1211,6 +1216,41 @@ mod tests {
             let width_tol = 1e-3 * (1.0 + layer.width() * scale);
             prop_assert!(approx_eq(rect.width(), layer.width() * scale, width_tol));
         }
+    }
+
+    // ---- T32 text stats and atlas overflow ---------------------------------
+
+    #[test]
+    fn frame_log_line_with_text_stats_names_them() {
+        // Arrange
+        let text = TextStats {
+            time: Duration::from_micros(3_210),
+            rasterized: 45,
+        };
+
+        // Act
+        let line = frame_log_line(
+            Redraw::Full,
+            Duration::from_micros(12_345),
+            Some(text),
+            5120,
+        );
+
+        // Assert
+        assert_eq!(
+            line,
+            "draw: full re-render 12.345 ms (text 3.210 ms, 45 rasterized), 5120 shapes"
+        );
+    }
+
+    #[test]
+    fn glyph_overflow_rerenders_once() {
+        // An overflow clears the atlas next frame and re-renders the layer;
+        // an overflow right after a clear is accepted (ADR-T32-1).
+        assert!(rerender_after_overflow(true, false));
+        assert!(!rerender_after_overflow(true, true));
+        assert!(!rerender_after_overflow(false, false));
+        assert!(!rerender_after_overflow(false, true));
     }
 
     // ---- T29 text font -----------------------------------------------------

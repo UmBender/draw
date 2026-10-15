@@ -948,12 +948,15 @@ mod tests {
     #[derive(Default)]
     struct Recorder {
         chunks: Vec<(Vec<Vertex>, Vec<u16>)>,
+        /// The atlas page each chunk was bound to.
+        pages: Vec<Option<u32>>,
     }
 
     impl MeshSink for Recorder {
-        fn draw(&mut self, mesh: &Mesh) {
+        fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
             self.chunks
                 .push((mesh.vertices.clone(), mesh.indices.clone()));
+            self.pages.push(page);
         }
     }
 
@@ -1757,5 +1760,241 @@ mod tests {
 
         assert_eq!(raster, largest);
         assert!(approx_eq(scale, 1024.0 / f32::from(largest), EPS));
+    }
+
+    // ---- T32 glyph batching ------------------------------------------------
+
+    use crate::shell::app::TEXT_FONT;
+    use crate::shell::glyphs::{GlyphAtlas, GlyphQuad, WHITE_UV};
+
+    fn atlas() -> GlyphAtlas {
+        match GlyphAtlas::new(TEXT_FONT) {
+            Ok(atlas) => atlas,
+            Err(err) => panic!("embedded font loads: {err}"),
+        }
+    }
+
+    fn uv(v: &Vertex) -> Vec2 {
+        Vec2::new(v.uv.x, v.uv.y)
+    }
+
+    fn is_white(v: &Vertex) -> bool {
+        uv(v).approx_eq(Vec2::new(WHITE_UV[0], WHITE_UV[1]), EPS)
+    }
+
+    fn quad() -> GlyphQuad {
+        GlyphQuad {
+            min: Vec2::new(0.0, 0.0),
+            max: Vec2::new(10.0, 20.0),
+            uv_min: Vec2::new(0.1, 0.2),
+            uv_max: Vec2::new(0.3, 0.4),
+        }
+    }
+
+    /// The chunks of a text block of `size` world units at the origin,
+    /// prepared in a fresh atlas and pushed through `camera` at DPI 1.
+    fn pushed(text: &str, size: f32, camera: &Camera) -> Recorder {
+        let mut atlas = atlas();
+        prepare_text_block(&mut atlas, text, size, camera, 1.0);
+        let mut batch = Batch::new(Recorder::default());
+        push_text_block(&mut batch, &atlas, Vec2::ZERO, text, size, camera, 1.0, RED);
+        batch.finish()
+    }
+
+    #[test]
+    fn batch_shape_vertices_use_white_uv() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.triangle(Vec2::ZERO, Vec2::new(1.0, 0.0), Vec2::new(0.0, 1.0), RED);
+        batch.polyline(points(&[(0.0, 0.0), (10.0, 0.0)]), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert: shapes alone are not bound to a page.
+        let (vertices, _) = only_chunk(&rec);
+        assert!(vertices.iter().all(is_white));
+        assert_eq!(rec.pages, vec![None]);
+    }
+
+    #[test]
+    fn batch_glyphs_and_shapes_share_a_chunk() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act: shape, glyph, shape, glyph on one page.
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.glyph(&quad(), 0, RED);
+        batch.rect(aabb(5.0, 0.0, 9.0, 2.0), RED);
+        batch.glyph(&quad(), 0, RED);
+        let rec = batch.finish();
+
+        // Assert: one draw call, in the order added.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (16, 24));
+        assert_eq!(rec.pages, vec![Some(0)]);
+        let white: Vec<bool> = vertices.iter().map(is_white).collect();
+        assert!(white[..4].iter().all(|&w| w));
+        assert!(white[4..8].iter().all(|&w| !w));
+        assert!(white[8..12].iter().all(|&w| w));
+        assert!(uv(&vertices[4]).approx_eq(Vec2::new(0.1, 0.2), EPS));
+    }
+
+    #[test]
+    fn batch_glyph_on_other_page_flushes() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.glyph(&quad(), 0, RED);
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.glyph(&quad(), 1, RED);
+        batch.glyph(&quad(), 1, RED);
+        let rec = batch.finish();
+
+        // Assert: the shape stays with the chunk it was added to.
+        assert_eq!(rec.pages, vec![Some(0), Some(1)]);
+        assert_eq!(rec.chunks[0].0.len(), 8);
+        assert_eq!(rec.chunks[1].0.len(), 8);
+    }
+
+    #[test]
+    fn push_text_block_10k_glyphs_fill_whole_chunks() {
+        // Arrange: 100 lines of 100 letters.
+        let line: String = (0..100)
+            .map(|i| char::from(b'a' + (i % 26) as u8))
+            .collect();
+        let text = vec![line; 100].join("\n");
+        let camera = Camera::default();
+
+        // Act
+        let rec = pushed(&text, 18.0, &camera);
+
+        // Assert: one quad per glyph, as few chunks as the limits allow.
+        let quads: usize = rec.chunks.iter().map(|(_, i)| i.len()).sum::<usize>() / 6;
+        assert_eq!(quads, 10_000);
+        assert_eq!(
+            rec.chunks.len(),
+            (10_000 * 6usize).div_ceil(BATCH_MAX_INDICES)
+        );
+        assert!(rec.pages.iter().all(|&p| p == Some(0)));
+    }
+
+    #[test]
+    fn push_text_block_keeps_z_order_with_shapes() {
+        // Arrange
+        let mut atlas = atlas();
+        let camera = Camera::default();
+        prepare_text_block(&mut atlas, "ab", 18.0, &camera, 1.0);
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act: shape, text, shape.
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        push_text_block(
+            &mut batch,
+            &atlas,
+            Vec2::ZERO,
+            "ab",
+            18.0,
+            &camera,
+            1.0,
+            RED,
+        );
+        batch.rect(aabb(5.0, 0.0, 9.0, 2.0), RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, _) = only_chunk(&rec);
+        let white: Vec<bool> = vertices.iter().map(is_white).collect();
+        assert_eq!(white.len(), 16);
+        assert!(white[..4].iter().all(|&w| w));
+        assert!(white[4..12].iter().all(|&w| !w));
+        assert!(white[12..].iter().all(|&w| w));
+    }
+
+    #[test]
+    fn push_text_block_skips_whitespace_and_tiny_text() {
+        // Arrange
+        let camera = Camera::default();
+        let zoomed_out = Camera::new(Vec2::ZERO, 0.05);
+
+        // Act
+        let spaced = pushed("a b\n c\t", 18.0, &camera);
+        let tiny = pushed("abc", 18.0, &zoomed_out);
+
+        // Assert
+        let quads: usize = spaced.chunks.iter().map(|(_, i)| i.len()).sum::<usize>() / 6;
+        assert_eq!(quads, 3);
+        assert!(tiny.chunks.is_empty(), "0.9 px text is not drawn");
+    }
+
+    #[test]
+    fn push_text_block_places_glyphs_at_their_cells() {
+        // Arrange: 20 px text at zoom 1 is rasterized at 20 px, scale 1.
+        let mut atlas = atlas();
+        let camera = Camera::default();
+        prepare_text_block(&mut atlas, "ab", 20.0, &camera, 1.0);
+        let Some(b) = atlas.get('b', 20) else {
+            panic!("'b' is prepared");
+        };
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        push_text_block(
+            &mut batch,
+            &atlas,
+            Vec2::new(10.0, 30.0),
+            "ab",
+            20.0,
+            &camera,
+            1.0,
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: 'b' starts one advance (0.6 em) right, on the baseline
+        // one em below the top.
+        let (vertices, _) = only_chunk(&rec);
+        let left = vertices[4..8]
+            .iter()
+            .map(|v| v.position.x)
+            .fold(f32::INFINITY, f32::min);
+        let bottom = vertices[4..8]
+            .iter()
+            .map(|v| v.position.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(approx_eq(left, 10.0 + 12.0 + b.xmin, EPS), "{left}");
+        assert!(approx_eq(bottom, 30.0 + 20.0 - b.ymin, EPS), "{bottom}");
+    }
+
+    #[test]
+    fn push_text_centered_centres_on_rect() {
+        // Arrange: a 32 px label, rasterized at 32 px, scale 1.
+        let mut atlas = atlas();
+        prepare_text_centered(&mut atlas, "7", 32.0, 1.0);
+        let Some(seven) = atlas.get('7', 32) else {
+            panic!("'7' is prepared");
+        };
+        let rect = aabb(0.0, 0.0, 100.0, 60.0);
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        push_text_centered(&mut batch, &atlas, "7", rect, 32.0, 1.0, RED);
+        let rec = batch.finish();
+
+        // Assert: the advance box is centred horizontally, the ink
+        // vertically (as macroquad's measure_text centring did).
+        let (vertices, _) = only_chunk(&rec);
+        let xs = vertices.iter().map(|v| v.position.x);
+        let ys: Vec<f32> = vertices.iter().map(|v| v.position.y).collect();
+        let left = xs.fold(f32::INFINITY, f32::min);
+        assert!(
+            approx_eq(left, 50.0 - seven.advance / 2.0 + seven.xmin, EPS),
+            "{left}"
+        );
+        let top = ys.iter().copied().fold(f32::INFINITY, f32::min);
+        let ink = seven.ymin + f32::from(seven.rect.h);
+        assert!(approx_eq(top, 30.0 - ink / 2.0, EPS), "{top}");
     }
 }

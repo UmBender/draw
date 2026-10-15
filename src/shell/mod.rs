@@ -3,6 +3,7 @@
 //! The only part of the crate that depends on macroquad.
 
 pub mod app;
+pub mod glyphs;
 pub mod input_map;
 pub mod render;
 pub mod toolbar;
