@@ -660,4 +660,50 @@ mod tests {
         drag(&mut state, &mut fx, (100.0, 100.0), (110.0, 110.0), SHIFT);
         assert!(fx.selection.iter().all(|id| fx.doc.get(*id).is_some()));
     }
+    // ---- T31 shape text ---------------------------------------------------
+
+    #[test]
+    fn shape_text_press_inside_only_selected_rect_keeps_it() {
+        // Arrange: an unfilled 100 × 100 rectangle, selected.
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.style.helpers.experimental.shape_text = true;
+        fx.selection = vec![ids[0]];
+        let mut state = State::default();
+
+        // Act: click in the middle, away from the outline.
+        click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
+
+        // Assert: still selected; a drag from inside moves it.
+        assert_eq!(fx.selection, ids);
+        drag(
+            &mut state,
+            &mut fx,
+            (50.0, 50.0),
+            (60.0, 55.0),
+            Modifiers::NONE,
+        );
+        assert_eq!(corner(&fx.shape(ids[0])), Vec2::new(10.0, 5.0));
+    }
+
+    #[test]
+    fn shape_text_off_press_inside_selected_rect_clears_selection() {
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.selection = vec![ids[0]];
+        let mut state = State::default();
+
+        click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
+
+        assert!(fx.selection.is_empty());
+    }
+
+    #[test]
+    fn shape_text_press_inside_unselected_rect_does_not_pick_it() {
+        let (mut fx, _) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.style.helpers.experimental.shape_text = true;
+        let mut state = State::default();
+
+        click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
+
+        assert!(fx.selection.is_empty());
+    }
 }

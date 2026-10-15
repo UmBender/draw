@@ -197,7 +197,7 @@ mod tests {
     use crate::core::command::Tool;
     use crate::core::geom::Vec2;
     use crate::core::palette::ColorId;
-    use crate::core::shape::{Shape, Style};
+    use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
     use crate::core::tools::Phase;
 
     /// Unfilled `cols × rows` grid dragged from `(x, y)` to `(x + w, y + h)`.
@@ -213,6 +213,7 @@ mod tests {
             },
             axes: false,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 
@@ -526,5 +527,65 @@ mod tests {
 
         // Assert
         assert_eq!(fx.shape(ids[0]), before);
+    }
+    // ---- T31 shape text ---------------------------------------------------
+
+    fn text(s: &str) -> Option<ShapeText> {
+        ShapeText::new(s.to_owned(), 10.0)
+    }
+
+    #[test]
+    fn clear_drag_clears_shape_and_cell_text() {
+        // Arrange: a filled rectangle with text, a grid with a filled cell
+        // and a text-only cell.
+        let cell = |col, row| TextSlot::Cell { col, row };
+        let r = filled_rect(0.0, 0.0, 100.0, 100.0).with_slot_text(TextSlot::Shape, text("r"));
+        let g = grid(200.0, 0.0, 100.0, 100.0, 2, 2)
+            .with_cell_fill(0, 0, Some(ColorId::INK))
+            .with_slot_text(cell(0, 0), text("a"))
+            .with_slot_text(cell(1, 0), text("b"))
+            .with_slot_text(cell(1, 1), text("c"));
+        let (mut fx, ids) = Fixture::new(vec![r, g]);
+        let mut state = State::default();
+
+        // Act: from inside the rectangle across the top row of the grid.
+        send(&mut state, &mut fx, Phase::Down, 50.0, 50.0);
+        send(&mut state, &mut fx, Phase::Move, 290.0, 25.0);
+        let changed = send(&mut state, &mut fx, Phase::Up, 290.0, 25.0);
+
+        // Assert: fill and text gone, one undo step, nothing removed.
+        assert!(changed);
+        assert_eq!(fx.ids(), ids);
+        let Some(r) = fx.doc.get(ids[0]) else {
+            panic!("kept");
+        };
+        assert_eq!((r.fill(), r.slot_text(TextSlot::Shape)), (None, None));
+        let Some(g) = fx.doc.get(ids[1]) else {
+            panic!("kept");
+        };
+        assert_eq!(g.cell_fill(0, 0), None);
+        assert_eq!(g.slot_text(cell(0, 0)), None);
+        assert_eq!(g.slot_text(cell(1, 0)), None);
+        assert_eq!(g.slot_text(cell(1, 1)), text("c").as_ref(), "not touched");
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn press_inside_text_only_shape_starts_clear_drag() {
+        // Arrange: an unfilled ellipse with text.
+        let e = ellipse(0.0, 0.0, 100.0, 100.0).with_slot_text(TextSlot::Shape, text("e"));
+        let (mut fx, ids) = Fixture::new(vec![e]);
+        let mut state = State::default();
+
+        // Act
+        send(&mut state, &mut fx, Phase::Down, 50.0, 50.0);
+
+        // Assert: the preview shows it without text; nothing is hidden for removal.
+        let overlay = preview(&state, &fx.view(Tool::Eraser));
+        assert_eq!(overlay.hidden, ids);
+        assert_eq!(overlay.shapes.len(), 1);
+        assert_eq!(overlay.shapes[0].slot_text(TextSlot::Shape), None);
+        assert!(send(&mut state, &mut fx, Phase::Up, 50.0, 50.0));
+        assert_eq!(fx.ids(), ids, "the ellipse stays");
     }
 }

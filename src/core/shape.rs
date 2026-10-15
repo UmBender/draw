@@ -658,6 +658,7 @@ mod tests {
             style: style(width),
             fill,
             label: None,
+            text: None,
         }
     }
 
@@ -668,6 +669,7 @@ mod tests {
             style: style(width),
             fill,
             label: None,
+            text: None,
         }
     }
 
@@ -680,6 +682,7 @@ mod tests {
             style: style(width),
             axes: false,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 
@@ -692,6 +695,7 @@ mod tests {
             style: style(0.0),
             axes: true,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 
@@ -1804,5 +1808,243 @@ mod tests {
             prop_assert!(keys.windows(2).all(|w| w[0] < w[1]), "{keys:?}");
             prop_assert!(g.cell_fills().iter().all(|f| f.col < cols && f.row < rows));
         }
+    }
+    // ---- T31 shape text ---------------------------------------------------
+
+    fn st(text: &str, size: f32) -> Option<ShapeText> {
+        ShapeText::new(text.to_owned(), size)
+    }
+
+    fn cell_texts_of(shape: &Shape) -> Vec<(u32, u32, String)> {
+        shape
+            .cell_texts()
+            .iter()
+            .map(|c| (c.col, c.row, c.content.text.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn shape_text_new_rejects_blank_text_and_bad_sizes() {
+        assert!(st("a", 10.0).is_some());
+        assert!(st("", 10.0).is_none());
+        assert!(st(" \n ", 10.0).is_none());
+        assert!(st("a", 0.0).is_none());
+        assert!(st("a", -1.0).is_none());
+        assert!(st("a", f32::NAN).is_none());
+        assert!(st("a", f32::INFINITY).is_none());
+    }
+
+    #[test]
+    fn with_shape_text_sets_and_clears_rect_and_ellipse_text() {
+        for shape in [
+            rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+            ellipse(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+        ] {
+            // Act
+            let with = shape.clone().with_slot_text(TextSlot::Shape, st("ab", 5.0));
+
+            // Assert
+            assert_eq!(with.slot_text(TextSlot::Shape), st("ab", 5.0).as_ref());
+            let cleared = with.with_slot_text(TextSlot::Shape, None);
+            assert_eq!(cleared, shape);
+        }
+        // Other shapes and slots are left alone.
+        let g = grid(v(0.0, 0.0), v(10.0, 10.0), 2, 2, 1.0);
+        assert_eq!(g.clone().with_slot_text(TextSlot::Shape, st("a", 1.0)), g);
+        let r = rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None);
+        let cell = TextSlot::Cell { col: 0, row: 0 };
+        assert_eq!(r.clone().with_slot_text(cell, st("a", 1.0)), r);
+        assert_eq!(r.slot_text(cell), None);
+    }
+
+    #[test]
+    fn with_cell_text_keeps_cells_sorted_unique_and_in_range() {
+        // Arrange
+        let cell = |col, row| TextSlot::Cell { col, row };
+        let g = grid(v(0.0, 0.0), v(30.0, 30.0), 3, 3, 1.0);
+
+        // Act
+        let g = g
+            .with_slot_text(cell(2, 1), st("c", 1.0))
+            .with_slot_text(cell(0, 0), st("a", 1.0))
+            .with_slot_text(cell(1, 1), st("b", 1.0))
+            .with_slot_text(cell(0, 0), st("A", 2.0))
+            .with_slot_text(cell(3, 0), st("x", 1.0))
+            .with_slot_text(cell(0, 9), st("x", 1.0));
+
+        // Assert: sorted by (row, col), one per cell, in range.
+        assert_eq!(
+            cell_texts_of(&g),
+            [
+                (0, 0, "A".to_owned()),
+                (1, 1, "b".to_owned()),
+                (2, 1, "c".to_owned())
+            ]
+        );
+        assert_eq!(g.slot_text(cell(0, 0)), st("A", 2.0).as_ref());
+        let g = g.with_slot_text(cell(1, 1), None);
+        assert_eq!(cell_texts_of(&g).len(), 2);
+        assert_eq!(g.slot_text(cell(1, 1)), None);
+    }
+
+    #[test]
+    fn text_slot_at_finds_interior_or_cell() {
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None);
+        let e = ellipse(v(0.0, 0.0), v(100.0, 100.0), 1.0, None);
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0);
+        let line = Shape::Line {
+            a: v(0.0, 0.0),
+            b: v(10.0, 10.0),
+            style: style(1.0),
+        };
+
+        assert_eq!(r.text_slot_at(v(50.0, 25.0)), Some(TextSlot::Shape));
+        assert_eq!(r.text_slot_at(v(150.0, 25.0)), None);
+        assert_eq!(e.text_slot_at(v(50.0, 50.0)), Some(TextSlot::Shape));
+        assert_eq!(e.text_slot_at(v(2.0, 2.0)), None, "outside the ellipse");
+        assert_eq!(
+            g.text_slot_at(v(30.0, 60.0)),
+            Some(TextSlot::Cell { col: 1, row: 2 })
+        );
+        assert_eq!(line.text_slot_at(v(5.0, 5.0)), None);
+        assert_eq!(r.text_slot_at(v(f32::NAN, 0.0)), None);
+    }
+
+    #[test]
+    fn text_frame_is_scaled_box_inscribed_rect_or_cell() {
+        // Rectangle: its box scaled by SHAPE_TEXT_FILL about the centre.
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None);
+        let Some(frame) = r.text_frame(TextSlot::Shape) else {
+            panic!("a rectangle has a text frame");
+        };
+        assert!(approx_eq(SHAPE_TEXT_FILL, 0.8, 1e-6));
+        assert_aabb_eq(frame, v(10.0, 5.0), v(90.0, 45.0));
+
+        // Ellipse: the inscribed rectangle (box / sqrt 2), scaled.
+        let e = ellipse(v(0.0, 0.0), v(100.0, 100.0), 1.0, None);
+        let Some(frame) = e.text_frame(TextSlot::Shape) else {
+            panic!("an ellipse has a text frame");
+        };
+        let half = 50.0 / 2.0_f32.sqrt() * 0.8;
+        assert_aabb_eq(
+            frame,
+            v(50.0 - half, 50.0 - half),
+            v(50.0 + half, 50.0 + half),
+        );
+
+        // Grid cell (1, 2) of a 4 × 4 grid over 100 × 100.
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0);
+        let Some(frame) = g.text_frame(TextSlot::Cell { col: 1, row: 2 }) else {
+            panic!("a grid cell has a text frame");
+        };
+        assert_aabb_eq(frame, v(27.5, 52.5), v(47.5, 72.5));
+
+        // Corner `a` at the bottom right: cell (0, 0) is there.
+        let flipped = grid(v(100.0, 100.0), v(0.0, 0.0), 4, 4, 1.0);
+        let Some(frame) = flipped.text_frame(TextSlot::Cell { col: 0, row: 0 }) else {
+            panic!("a grid cell has a text frame");
+        };
+        assert_aabb_eq(frame, v(77.5, 77.5), v(97.5, 97.5));
+
+        // No frame for a missing cell, a wrong slot or another shape.
+        assert!(g.text_frame(TextSlot::Cell { col: 4, row: 0 }).is_none());
+        assert!(g.text_frame(TextSlot::Shape).is_none());
+        assert!(r.text_frame(TextSlot::Cell { col: 0, row: 0 }).is_none());
+    }
+
+    #[test]
+    fn shape_texts_are_centred_and_fitted_in_their_frames() {
+        // Arrange: "ab" at size 10 is 12 × 12.5 and fits the 80 × 40 frame.
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None)
+            .with_slot_text(TextSlot::Shape, st("ab", 10.0));
+
+        // Act
+        let placed = r.placed_texts();
+
+        // Assert
+        assert_eq!(placed.len(), 1);
+        assert_eq!(placed[0].text, "ab");
+        assert!(approx_eq(placed[0].size, 10.0, EPS));
+        assert_vec_eq(placed[0].origin, v(44.0, 18.75));
+
+        // Too wide: ten cells at size 20 shrink to 80 / 6.
+        let wide = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None)
+            .with_slot_text(TextSlot::Shape, st("abcdefghij", 20.0));
+        let placed = wide.placed_texts();
+        assert!(approx_eq(placed[0].size, 80.0 / 6.0, 1e-3));
+        assert_vec_eq(placed[0].origin, v(10.0, 25.0 - 1.25 * 40.0 / 6.0));
+
+        // Grid cells, in (row, col) order.
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0)
+            .with_slot_text(TextSlot::Cell { col: 1, row: 1 }, st("b", 4.0))
+            .with_slot_text(TextSlot::Cell { col: 0, row: 0 }, st("a", 4.0));
+        let placed = g.placed_texts();
+        assert_eq!(placed.len(), 2);
+        assert_eq!(placed[0].text, "a");
+        assert_vec_eq(placed[0].origin, v(12.5 - 1.2, 12.5 - 2.5));
+        assert_eq!(placed[1].text, "b");
+
+        // A shape without text places nothing.
+        assert!(
+            rect(v(0.0, 0.0), v(9.0, 9.0), 1.0, None)
+                .placed_texts()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn grid_cell_step_follows_reading_order_on_screen() {
+        // Arrange: 3 × 2, `a` top-left.
+        let g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 1.0);
+
+        // Act / Assert
+        assert_eq!(g.grid_cell_step(0, 0, CellStep::Next), Some((1, 0)));
+        assert_eq!(g.grid_cell_step(2, 0, CellStep::Next), Some((0, 1)));
+        assert_eq!(
+            g.grid_cell_step(2, 1, CellStep::Next),
+            Some((0, 0)),
+            "wraps"
+        );
+        assert_eq!(
+            g.grid_cell_step(0, 0, CellStep::Prev),
+            Some((2, 1)),
+            "wraps"
+        );
+        assert_eq!(g.grid_cell_step(0, 1, CellStep::Prev), Some((2, 0)));
+        assert_eq!(g.grid_cell_step(1, 0, CellStep::Down), Some((1, 1)));
+        assert_eq!(g.grid_cell_step(1, 1, CellStep::Down), None, "bottom row");
+        assert_eq!(g.grid_cell_step(1, 1, CellStep::Up), Some((1, 0)));
+        assert_eq!(g.grid_cell_step(1, 0, CellStep::Up), None, "top row");
+
+        // `a` bottom-right: col 0 is the right column, row 0 the bottom row.
+        let flipped = grid(v(30.0, 20.0), v(0.0, 0.0), 3, 2, 1.0);
+        assert_eq!(flipped.grid_cell_step(2, 1, CellStep::Next), Some((1, 1)));
+        assert_eq!(flipped.grid_cell_step(0, 1, CellStep::Next), Some((2, 0)));
+        assert_eq!(flipped.grid_cell_step(2, 1, CellStep::Down), Some((2, 0)));
+        assert_eq!(flipped.grid_cell_step(2, 0, CellStep::Down), None);
+
+        // Out of range or not a grid.
+        assert_eq!(g.grid_cell_step(3, 0, CellStep::Next), None);
+        let r = rect(v(0.0, 0.0), v(9.0, 9.0), 1.0, None);
+        assert_eq!(r.grid_cell_step(0, 0, CellStep::Next), None);
+    }
+
+    #[test]
+    fn translate_keeps_shape_and_cell_text() {
+        // Arrange
+        let mut r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None)
+            .with_slot_text(TextSlot::Shape, st("ab", 10.0));
+        let mut g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0)
+            .with_slot_text(TextSlot::Cell { col: 1, row: 1 }, st("b", 4.0));
+        let (r0, g0) = (r.placed_texts()[0].origin, g.placed_texts()[0].origin);
+
+        // Act
+        r.translate(v(5.0, -3.0));
+        g.translate(v(5.0, -3.0));
+
+        // Assert
+        assert_eq!(r.slot_text(TextSlot::Shape), st("ab", 10.0).as_ref());
+        assert_vec_eq(r.placed_texts()[0].origin, r0 + v(5.0, -3.0));
+        assert_vec_eq(g.placed_texts()[0].origin, g0 + v(5.0, -3.0));
     }
 }

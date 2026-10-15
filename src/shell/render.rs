@@ -2417,4 +2417,30 @@ mod tests {
         // Assert
         assert!(missing.is_empty(), "missing glyphs: {missing:?}");
     }
+    // ---- T31 shape text -----------------------------------------------------
+
+    #[test]
+    fn label_is_hidden_by_shape_text() {
+        // Arrange
+        let numbered = Shape::Rect {
+            a: Vec2::ZERO,
+            b: Vec2::new(100.0, 100.0),
+            style: crate::core::shape::Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            fill: None,
+            label: Some(4),
+            text: None,
+        };
+        let text = crate::core::shape::ShapeText::new("A".to_owned(), 10.0);
+        let named = numbered
+            .clone()
+            .with_slot_text(crate::core::shape::TextSlot::Shape, text);
+
+        // Act / Assert
+        assert_eq!(shown_label(&numbered), Some(4));
+        assert_eq!(shown_label(&named), None);
+        assert_eq!(named.label(), Some(4), "the label is kept");
+    }
 }

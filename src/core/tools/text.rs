@@ -322,7 +322,7 @@ mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::palette::ColorId;
-    use crate::core::shape::{Shape, Style};
+    use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
     use proptest::prelude::*;
 
     const STYLE: Style = Style {
@@ -648,5 +648,102 @@ mod tests {
                 prop_assert!(e.text().is_char_boundary(e.caret()));
             }
         }
+    }
+    // ---- T31 text in shapes and cells -------------------------------------
+
+    fn host_rect() -> Shape {
+        Shape::Rect {
+            a: Vec2::ZERO,
+            b: Vec2::new(100.0, 50.0),
+            style: Style {
+                color: ColorId::new(2).unwrap_or(ColorId::INK),
+                width: 1.0,
+            },
+            fill: None,
+            label: Some(3),
+            text: None,
+        }
+    }
+
+    #[test]
+    fn hosted_edit_refits_as_text_is_typed() {
+        // Arrange: the rectangle's text frame is (10, 5)-(90, 45).
+        let id = crate::core::document::ShapeId(4);
+        let Some(mut e) = TextEdit::open_in(id, &host_rect(), TextSlot::Shape, 10.0) else {
+            panic!("a rectangle hosts text");
+        };
+        assert_eq!(e.text(), "");
+        assert_eq!(e.target(), None, "not a text block");
+        let host = e.host().copied();
+        assert_eq!(host.map(|h| (h.id, h.slot)), Some((id, TextSlot::Shape)));
+        assert_eq!(e.style.color, host_rect().style().color);
+
+        // Act: "ab" at 10 fits.
+        e.insert('a');
+        e.insert('b');
+
+        // Assert: the edit is a text block centred in the frame.
+        let Shape::Text { origin, size, .. } = e.shape() else {
+            panic!("an edit is drawn as a text block");
+        };
+        assert!(approx_eq(size, 10.0, 1e-4));
+        assert!(origin.approx_eq(Vec2::new(44.0, 18.75), 1e-4), "{origin:?}");
+        assert!(e.bounds().center().approx_eq(Vec2::new(50.0, 25.0), 1e-4));
+        let [top, _] = e.caret_line();
+        assert!(top.approx_eq(Vec2::new(56.0, 18.75), 1e-4), "{top:?}");
+
+        // Typing past the frame shrinks it; the stored size stays 10.
+        for ch in "cdefghijklmn".chars() {
+            e.insert(ch);
+        }
+        let Shape::Text { size: shown, .. } = e.shape() else {
+            panic!("an edit is drawn as a text block");
+        };
+        assert!(approx_eq(shown, 80.0 / (14.0 * 0.6), 1e-3));
+        assert_eq!(
+            e.shape_text(),
+            ShapeText::new("abcdefghijklmn".to_owned(), 10.0)
+        );
+    }
+
+    #[test]
+    fn hosted_edit_opens_existing_text_with_caret_at_end() {
+        // Arrange
+        let shape =
+            host_rect().with_slot_text(TextSlot::Shape, ShapeText::new("xy".to_owned(), 7.0));
+
+        // Act
+        let Some(e) = TextEdit::open_in(
+            crate::core::document::ShapeId(1),
+            &shape,
+            TextSlot::Shape,
+            10.0,
+        ) else {
+            panic!("a rectangle hosts text");
+        };
+
+        // Assert: its own size, not the new-text size.
+        assert_eq!(e.text(), "xy");
+        assert_eq!(e.caret(), 2);
+        assert!(approx_eq(e.size, 7.0, 1e-6));
+    }
+
+    #[test]
+    fn hosted_edit_blank_text_is_none_and_wrong_slots_do_not_open() {
+        let id = crate::core::document::ShapeId(1);
+        let Some(mut e) = TextEdit::open_in(id, &host_rect(), TextSlot::Shape, 10.0) else {
+            panic!("a rectangle hosts text");
+        };
+        e.insert(' ');
+        assert_eq!(e.shape_text(), None);
+
+        let cell = TextSlot::Cell { col: 0, row: 0 };
+        assert!(TextEdit::open_in(id, &host_rect(), cell, 10.0).is_none());
+        let line = Shape::Line {
+            a: Vec2::ZERO,
+            b: Vec2::new(1.0, 1.0),
+            style: STYLE,
+        };
+        assert!(TextEdit::open_in(id, &line, TextSlot::Shape, 10.0).is_none());
     }
 }
