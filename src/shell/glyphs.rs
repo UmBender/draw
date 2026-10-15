@@ -9,6 +9,7 @@
 //! share chunks with glyphs (ADR-T32-2).
 
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use macroquad::texture::{FilterMode, Image, Texture2D};
 
@@ -69,20 +70,46 @@ impl ShelfPacker {
     /// An empty page of `side` texels.
     #[must_use]
     pub fn new(side: u16) -> Self {
-        let _ = side;
-        todo!()
+        Self {
+            side,
+            shelf_y: GAP,
+            shelf_h: 0,
+            cursor_x: GAP,
+        }
     }
 
     /// Places a `w × h` rectangle, or `None` if the page has no room left
     /// for it.
     pub fn pack(&mut self, w: u16, h: u16) -> Option<TexelRect> {
-        let _ = (w, h);
-        todo!()
+        // u32 arithmetic: no overflow for any u16 sizes.
+        let (side, gap) = (u32::from(self.side), u32::from(GAP));
+        let fits = |x: u16, y: u16| {
+            u32::from(x) + u32::from(w) + gap <= side && u32::from(y) + u32::from(h) + gap <= side
+        };
+        if !fits(self.cursor_x, self.shelf_y) {
+            // Next shelf, below the tallest rectangle of this one.
+            let next_y = u32::from(self.shelf_y) + u32::from(self.shelf_h) + gap;
+            let next_y = u16::try_from(next_y).ok()?;
+            if !fits(GAP, next_y) {
+                return None;
+            }
+            (self.shelf_y, self.shelf_h, self.cursor_x) = (next_y, 0, GAP);
+        }
+        let rect = TexelRect {
+            x: self.cursor_x,
+            y: self.shelf_y,
+            w,
+            h,
+        };
+        // Both stay within `side` by `fits`.
+        self.cursor_x = self.cursor_x + w + GAP;
+        self.shelf_h = self.shelf_h.max(h);
+        Some(rect)
     }
 
     /// Empties the page.
     pub fn clear(&mut self) {
-        todo!()
+        *self = Self::new(self.side);
     }
 }
 
@@ -102,6 +129,42 @@ pub struct AtlasEntry {
     pub advance: f32,
 }
 
+/// A multiply-rotate hasher for the atlas's `(char, raster px)` keys: one
+/// lookup per glyph per frame, where std's SipHash dominated the
+/// tessellation time. Not DoS-resistant, which keys from our own text do
+/// not need.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KeyHasher(u64);
+
+impl KeyHasher {
+    /// Mixes one word into the state (the FxHash step).
+    fn mix(&mut self, word: u64) {
+        /// FxHash's multiplier.
+        const K: u64 = 0x51_7cc1_b727_220a_95;
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(K);
+    }
+}
+
+impl Hasher for KeyHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.mix(u64::from(b));
+        }
+    }
+
+    fn write_u16(&mut self, n: u16) {
+        self.mix(u64::from(n));
+    }
+
+    fn write_u32(&mut self, n: u32) {
+        self.mix(u64::from(n));
+    }
+}
+
 /// Texels to copy into a page texture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Upload {
@@ -119,7 +182,7 @@ pub struct GlyphAtlas {
     /// The embedded font.
     font: fontdue::Font,
     /// Every prepared `(char, raster px)`.
-    entries: HashMap<(char, u16), AtlasEntry>,
+    entries: HashMap<(char, u16), AtlasEntry, BuildHasherDefault<KeyHasher>>,
     /// One packer per page.
     pages: Vec<ShelfPacker>,
     /// Texels not yet on the GPU.
@@ -137,51 +200,148 @@ impl GlyphAtlas {
     ///
     /// fontdue's message if the font cannot be parsed.
     pub fn new(font_bytes: &[u8]) -> Result<Self, String> {
-        let _ = font_bytes;
-        todo!()
+        let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())?;
+        Ok(Self {
+            font,
+            entries: HashMap::default(),
+            pages: Vec::new(),
+            uploads: Vec::new(),
+            overflowed: false,
+            rasterized: 0,
+        })
     }
 
     /// The entry of `ch` at `px` physical pixels, rasterizing and packing
     /// it first if needed. `None` when no page has room
     /// ([`GlyphAtlas::overflowed`] then turns true).
     pub fn prepare(&mut self, ch: char, px: u16) -> Option<AtlasEntry> {
-        let _ = (ch, px);
-        todo!()
+        if let Some(entry) = self.entries.get(&(ch, px)) {
+            return Some(*entry);
+        }
+        // Size first, so a glyph that finds no room is never rasterized.
+        let metrics = self.font.metrics(ch, f32::from(px));
+        let (w, h) = (
+            u16::try_from(metrics.width).ok()?,
+            u16::try_from(metrics.height).ok()?,
+        );
+        let (page, rect) = if w == 0 || h == 0 {
+            (
+                0,
+                TexelRect {
+                    x: 0,
+                    y: 0,
+                    w: 0,
+                    h: 0,
+                },
+            )
+        } else {
+            let Some(placed) = self.pack(w, h) else {
+                self.overflowed = true;
+                return None;
+            };
+            placed
+        };
+        if rect.w > 0 {
+            let (metrics, coverage) = self.font.rasterize(ch, f32::from(px));
+            debug_assert_eq!(
+                (metrics.width, metrics.height),
+                (usize::from(w), usize::from(h))
+            );
+            self.rasterized += 1;
+            self.uploads.push(Upload {
+                page,
+                rect,
+                rgba: coverage.iter().flat_map(|&c| [255, 255, 255, c]).collect(),
+            });
+        }
+        let entry = AtlasEntry {
+            page,
+            rect,
+            xmin: metrics.xmin as f32,
+            ymin: metrics.ymin as f32,
+            advance: metrics.advance_width,
+        };
+        self.entries.insert((ch, px), entry);
+        Some(entry)
+    }
+
+    /// Packs a `w × h` bitmap into the first page with room, opening a new
+    /// page (white block first) while fewer than [`MAX_PAGES`] exist.
+    fn pack(&mut self, w: u16, h: u16) -> Option<(u32, TexelRect)> {
+        for (index, packer) in self.pages.iter_mut().enumerate() {
+            if let Some(rect) = packer.pack(w, h) {
+                return Some((u32::try_from(index).ok()?, rect));
+            }
+        }
+        if self.pages.len() >= MAX_PAGES {
+            return None;
+        }
+        let page = u32::try_from(self.pages.len()).ok()?;
+        self.pages.push(ShelfPacker::new(PAGE_SIDE));
+        self.reserve_white(page);
+        let packer = self.pages.last_mut()?;
+        packer.pack(w, h).map(|rect| (page, rect))
+    }
+
+    /// Packs and uploads the white block of `page`, which must be empty.
+    fn reserve_white(&mut self, page: u32) {
+        let Some(packer) = usize::try_from(page)
+            .ok()
+            .and_then(|i| self.pages.get_mut(i))
+        else {
+            return;
+        };
+        if let Some(rect) = packer.pack(WHITE_SIDE, WHITE_SIDE) {
+            let texels = usize::from(WHITE_SIDE) * usize::from(WHITE_SIDE);
+            self.uploads.push(Upload {
+                page,
+                rect,
+                rgba: vec![255; 4 * texels],
+            });
+        }
     }
 
     /// The entry of `ch` at `px` if it is prepared; never rasterizes.
     #[must_use]
     pub fn get(&self, ch: char, px: u16) -> Option<AtlasEntry> {
-        let _ = (ch, px);
-        todo!()
+        self.entries.get(&(ch, px)).copied()
     }
 
     /// Pages in use.
     #[must_use]
     pub fn page_count(&self) -> usize {
-        todo!()
+        self.pages.len()
     }
 
     /// Whether a glyph found no room since the last [`GlyphAtlas::clear`].
     #[must_use]
     pub fn overflowed(&self) -> bool {
-        todo!()
+        self.overflowed
     }
 
     /// Forgets every entry and empties the pages (the page count stays),
     /// reserving the white blocks again.
     pub fn clear(&mut self) {
-        todo!()
+        self.entries.clear();
+        self.overflowed = false;
+        for packer in &mut self.pages {
+            packer.clear();
+        }
+        for page in 0..self.pages.len() {
+            if let Ok(page) = u32::try_from(page) {
+                self.reserve_white(page);
+            }
+        }
     }
 
     /// The pending uploads, oldest first.
     pub fn take_uploads(&mut self) -> Vec<Upload> {
-        todo!()
+        std::mem::take(&mut self.uploads)
     }
 
     /// Glyphs rasterized since the last call.
     pub fn take_rasterized(&mut self) -> usize {
-        todo!()
+        std::mem::take(&mut self.rasterized)
     }
 }
 
@@ -196,16 +356,37 @@ impl GlyphTextures {
     /// Creates textures for new pages and applies `atlas`'s pending
     /// uploads. Needs the GL context (main thread).
     pub fn sync(&mut self, atlas: &mut GlyphAtlas) {
-        let _ = atlas;
-        let _ = (FilterMode::Linear, Image::empty());
-        todo!()
+        let side = usize::from(PAGE_SIDE);
+        while self.pages.len() < atlas.page_count() {
+            // Transparent black, like macroquad's font atlas.
+            let texture = Texture2D::from_rgba8(PAGE_SIDE, PAGE_SIDE, &vec![0; 4 * side * side]);
+            texture.set_filter(FilterMode::Linear);
+            self.pages.push(texture);
+        }
+        for upload in atlas.take_uploads() {
+            let Some(texture) = self.get(upload.page) else {
+                continue;
+            };
+            let r = upload.rect;
+            let image = Image {
+                bytes: upload.rgba,
+                width: r.w,
+                height: r.h,
+            };
+            texture.update_part(
+                &image,
+                i32::from(r.x),
+                i32::from(r.y),
+                i32::from(r.w),
+                i32::from(r.h),
+            );
+        }
     }
 
     /// The texture of `page`, if it exists.
     #[must_use]
     pub fn get(&self, page: u32) -> Option<&Texture2D> {
-        let _ = page;
-        todo!()
+        usize::try_from(page).ok().and_then(|i| self.pages.get(i))
     }
 }
 
@@ -228,8 +409,25 @@ pub struct GlyphQuad {
 /// positive.
 #[must_use]
 pub fn glyph_quad(baseline: Vec2, entry: &AtlasEntry, scale: f32) -> Option<GlyphQuad> {
-    let _ = (baseline, entry, scale);
-    todo!()
+    let r = entry.rect;
+    if r.w == 0 || r.h == 0 || !baseline.is_finite() || !(scale.is_finite() && scale > 0.0) {
+        return None;
+    }
+    let (w, h) = (f32::from(r.w), f32::from(r.h));
+    let min = Vec2::new(
+        baseline.x + entry.xmin * scale,
+        baseline.y - (entry.ymin + h) * scale,
+    );
+    let max = Vec2::new(min.x + w * scale, min.y + h * scale);
+    let side = f32::from(PAGE_SIDE);
+    let uv_min = Vec2::new(f32::from(r.x) / side, f32::from(r.y) / side);
+    let uv_max = Vec2::new((f32::from(r.x) + w) / side, (f32::from(r.y) + h) / side);
+    Some(GlyphQuad {
+        min,
+        max,
+        uv_min,
+        uv_max,
+    })
 }
 
 /// Physical em size a raster size is rasterized at: `ceil(raster × dpi)`,
@@ -237,16 +435,21 @@ pub fn glyph_quad(baseline: Vec2, entry: &AtlasEntry, scale: f32) -> Option<Glyp
 /// as 1.
 #[must_use]
 pub fn raster_px(raster: u16, dpi: f32) -> u16 {
-    let _ = (raster, dpi);
-    todo!()
+    let dpi = if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    };
+    let px = (f32::from(raster) * dpi).ceil();
+    // Clamped into the u16 range first, so the cast is exact.
+    px.clamp(1.0, f32::from(MAX_RASTER_PX)) as u16
 }
 
 /// Logical pixels per texel for text of `px` logical pixels drawn from a
 /// `raster_px` raster.
 #[must_use]
 pub fn glyph_scale(px: f32, raster_px: u16) -> f32 {
-    let _ = (px, raster_px);
-    todo!()
+    px / f32::from(raster_px.max(1))
 }
 
 #[cfg(test)]
