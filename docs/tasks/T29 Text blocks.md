@@ -1,7 +1,7 @@
 ---
 id: T29
 title: Text blocks
-status: review
+status: done
 wave: 15
 branch: task/T29-text
 depends_on: [T14]
