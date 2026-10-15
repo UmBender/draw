@@ -1,11 +1,11 @@
 ---
 id: T33
 title: Math font for formulas
-status: ready
+status: in-progress
 wave: 18
 branch: task/T33-math-font
 depends_on: [T30]
-adrs: []
+adrs: ["[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]"]
 feature: "[[TeX formulas]]"
 tutorial: "[[33 Typesetting with a proportional math font]]"
 tags: [task]
@@ -51,8 +51,66 @@ the notes they are copied from.
 
 ## Spec
 
-To be written in the spec step: ADR `ADR-T33-1` (font, faces, metrics
-table, atlas key) and acceptance criteria naming their tests.
+[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]
+records the font, the faces and character mapping, the generated metrics
+table, the atlas key and the retuned constants (amending the metrics of
+[[ADR-T30-1 TeX subset, box layout and metrics]]).
+
+Acceptance criteria and the tests that prove them:
+
+- **AC-1 — Embedded font.** `shell::app::MATH_FONT` is the Latin Modern
+  Math subset (OpenType CFF, under 200 KB); every character the layout
+  can put in the math face — every row of the metrics table, the italic
+  and script letters, every symbol of the table — has a glyph in it.
+  Tests: `math_font_is_embedded_and_small` (`src/shell/app.rs`);
+  `tex_symbols_all_have_glyphs_in_the_math_font` (`src/shell/render.rs`).
+- **AC-2 — Metrics table.** `core::math_metrics` has one row per
+  character, sorted and finite; `get` finds each row and nothing else;
+  the rows match the embedded font within 0.002 em.
+  Tests: `math_metrics_table_is_sorted_and_finite`,
+  `math_metrics_get_finds_every_row` (`src/core/math_metrics.rs`);
+  `math_metrics_match_the_embedded_font` (`src/shell/glyphs.rs`).
+- **AC-3 — Faces and mapping.** Formula letters are math italic,
+  lowercase Greek italic, capital Greek, digits, operators and function
+  names upright in the math face, `\mathcal{…}` script letters, literals
+  and plain text in the text face, a character missing from the math font
+  falls back to a text-face cell.
+  Tests (`src/core/tex.rs`): `tex_parse_mathcal_takes_one_argument`,
+  `tex_math_letters_are_italic`,
+  `tex_lowercase_greek_is_italic_and_capitals_upright`,
+  `tex_digits_operators_and_functions_are_upright_math`,
+  `tex_mathcal_maps_to_script_letters`,
+  `tex_literals_and_plain_text_use_the_text_face`,
+  `tex_char_without_math_glyph_falls_back_to_a_text_cell`.
+- **AC-4 — Proportional layout.** Glyph boxes come from the table; the
+  T30 layout tests are restated with table metrics and the T33
+  constants (`tex_layout_char_uses_its_glyph_metrics` replaces
+  `tex_layout_char_is_one_cell`; scripts, fractions, roots, binomials,
+  limits, spacing, line growth and mixed lines keep their names);
+  a superscript clears the base's italic correction; a line's box holds
+  italic overhangs at both ends.
+  New tests (`src/core/tex.rs`):
+  `tex_layout_superscript_clears_the_italic_correction`,
+  `tex_layout_subscript_top_stays_low`,
+  `tex_layout_line_holds_italic_overhangs`; proptests
+  `tex_layout_bounds_contain_every_ink` and `tex_layout_is_finite`
+  unchanged.
+- **AC-5 — Rendering.** The atlas keys glyphs by face; formula glyphs
+  are drawn from the math font, plain text and literals from the text
+  font.
+  Tests: `atlas_keeps_faces_apart`,
+  `atlas_without_math_font_draws_math_with_the_text_font`
+  (`src/shell/glyphs.rs`); `push_text_block_formula_uses_the_math_face`
+  (`src/shell/render.rs`), and the T30 render tests.
+- **AC-6 — Budgets and fuzz.** The T30 perf tests keep their thresholds
+  with both fonts loaded (`perf_tex_layout_200_blocks_is_under_2ms`,
+  `perf_tessellate_200_formula_blocks_is_under_1ms` in `tests/perf.rs`);
+  the fuzz text sessions also type `\mathcal` and italic-overhang
+  letters, and `check_invariants` / `fuzz_tex_parse_and_layout_are_total`
+  hold (`tests/fuzz.rs`).
+- **AC-7 — Docs.** README *Formulas in text blocks* mentions the font
+  and `\mathcal`; `assets/fonts/README.md` records the subset command,
+  the generator and the license.
 
 ## Out of scope
 
@@ -69,7 +127,7 @@ table, atlas key) and acceptance criteria naming their tests.
 - `src/core/tex.rs`, `src/core/text_layout.rs`, a new
   `src/core/math_metrics.rs` (generated table), `src/core/mod.rs`
 - `src/shell/glyphs.rs`, `src/shell/render.rs`, `src/shell/app.rs`
-- `assets/fonts/*`, `scripts/` (metrics generator, if any)
+- `assets/fonts/*`, `scripts/math_metrics.py` (new, metrics generator)
 - `tests/fuzz.rs`, `tests/perf.rs`, `README.md`
 - new ADRs `ADR-T33-*`, feature note `docs/features/TeX formulas.md`
   (update), tutorial
@@ -77,7 +135,7 @@ table, atlas key) and acceptance criteria naming their tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T33): specify math font acceptance criteria`
+- [x] spec — `docs(T33): specify math font acceptance criteria`
 - [ ] tests — `test(T33): add failing tests for math faces, metrics and rendering`
 - [ ] models — `feat(T33): add glyph faces and the math metrics table`
 - [ ] behaviour — `feat(T33): typeset formulas in Latin Modern Math`
