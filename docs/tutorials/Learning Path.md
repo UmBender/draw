@@ -51,6 +51,9 @@ flowchart LR
   s29 --> s30[30 Parsing and laying out a small TeX subset]
   s30 --> s33[33 Typesetting with a proportional math font]
   s32 --> s33
+  s29 --> s31[31 Prototyping an interaction behind a switch]
+  s18 --> s31
+  s19 --> s31
 ```
 
 | Step | Tutorial | Task | Status |
@@ -83,5 +86,6 @@ flowchart LR
 | 26 | [[26 Reusing a frame during a gesture]] | [[T26 Pan and zoom without re-rendering]] | done |
 | 29 | [[29 Typing on a canvas without losing the shortcuts]] | [[T29 Text blocks]] | done |
 | 30 | [[30 Parsing and laying out a small TeX subset]] | [[T30 Basic TeX formulas]] | done |
+| 31 | [[31 Prototyping an interaction behind a switch]] | [[T31 Text in rectangles and grid cells]] | done |
 | 32 | [[32 Batching glyphs into the document mesh]] | [[T32 Fast text rendering]] | done |
 | 33 | [[33 Typesetting with a proportional math font]] | [[T33 Math font for formulas]] | done |

@@ -1,7 +1,7 @@
 ---
 id: T31
 title: Text in rectangles and grid cells
-status: review
+status: done
 wave: 19
 branch: task/T31-shape-text
 depends_on: [T29]
@@ -190,3 +190,6 @@ step 19 (numbering).
 - **Pending (owner):** AC-5 trial on the target — fill a 5 × 5 DP table
   and label a 6-node graph with and without `DRAW_EXPERIMENTAL=shape-text`,
   note times and misfires here — then AC-6, ADR-T31-2 *Verdict*.
+- 2026-10-15 — Integrated into `main` as an experimental feature, off
+  by default. Status → done. AC-5 (owner trial) and AC-6 (ADR-T31-2
+  verdict) remain open; the verdict will promote, rework or remove it.

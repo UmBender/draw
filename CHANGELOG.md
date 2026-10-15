@@ -21,6 +21,11 @@ All notable changes to draw are listed here. The format follows
   Formulas are set in Latin Modern Math, the LaTeX font — italic
   variables, upright operators and functions, TeX's spacing — and
   `\mathcal{…}` gives calligraphic capitals.
+- Text in rectangles, ellipses and grid cells (experimental, off unless
+  `DRAW_EXPERIMENTAL=shape-text`): click inside a shape or cell with the
+  Text tool, or click a selected shape again, to type into it; `Tab` /
+  `Enter` walk grid cells. Text shrinks to fit, hides the shape's number,
+  moves and copies with the shape, and the fill eraser clears it.
 
 ### Changed
 
