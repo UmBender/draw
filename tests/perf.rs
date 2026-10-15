@@ -27,7 +27,7 @@ use draw::core::smoothing::{Smoother, SmoothingLevel, simplify_rdp};
 use draw::core::snap::{DragKind, Snaps, Targets, snap_drag};
 use draw::core::tex;
 use draw::core::text_layout::glyphs;
-use draw::shell::app::TEXT_FONT;
+use draw::shell::app::{MATH_FONT, TEXT_FONT};
 use draw::shell::glyphs::GlyphAtlas;
 use draw::shell::render::{
     Batch, MeshSink, cull_rect, is_visible, prepare_text_block, push_text_block,
@@ -741,8 +741,10 @@ fn perf_tessellate_200_formula_blocks_is_under_1ms() {
     if !optimised() {
         return;
     }
-    let Ok(mut atlas) = GlyphAtlas::new(TEXT_FONT) else {
-        panic!("embedded font loads");
+    // Both fonts, as the app loads them (T33).
+    let Ok(mut atlas) = GlyphAtlas::new(TEXT_FONT).and_then(|atlas| atlas.with_math(MATH_FONT))
+    else {
+        panic!("embedded fonts load");
     };
     let blocks = formula_blocks();
     let camera = Camera::default();

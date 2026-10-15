@@ -40,11 +40,11 @@ hit-testing and culling a pure function of the text.
   Latin-1 and Latin Extended-A (for `\text{…}`), Greek, general
   punctuation, letterlike symbols, arrows, mathematical operators,
   floor/ceiling, and from the Mathematical Alphanumeric Symbols block the
-  italic Latin (`U+1D434–1D467`), script Latin (`U+1D49C–1D4CF`) and
+  italic Latin (`U+1D434–1D467`), script capitals (`U+1D49C–1D4B5`) and
   italic Greek (`U+1D6E2–1D71B`) letters. The GFL asks derived files to
   be renamed, hence the `-draw-subset` name; the original name stays in
   the font's name table. The `MATH` table is dropped: its constants are
-  copied into `core` once (below). Under 200 KB.
+  copied into `core` once (below). About 140 KB, under 200 KB.
 - The shell loads it next to the text font into the one glyph atlas
   ([[ADR-T32-1 Own glyph atlas rasterized with fontdue]]): atlas keys
   become `(face, char, raster px)`, both faces share the pages and the
@@ -62,7 +62,7 @@ hit-testing and culling a pure function of the text.
 | lowercase Greek symbols (`\alpha`, `\varphi`, …) | math italic Greek `𝛼 …` | Math |
 | capital Greek, digits, operators, brackets, relations, arrows | upright, as before | Math |
 | `\log \min …`, `\bmod`, `\pmod`, `\text{…}` | upright roman | Math |
-| `\mathcal{…}` letters | script `𝒜 ℬ 𝒞 …` (holes from Letterlike Symbols); other characters as outside it | Math |
+| `\mathcal{…}` capitals | script `𝒜 ℬ 𝒞 …` (holes from Letterlike Symbols); other characters as outside it, since the font has no script lowercase (nor has TeX's `\mathcal`) | Math |
 | literal source (warning colour) | as typed | Text |
 | a character with no glyph in the math font | as typed, one 0.6 em cell | Text |
 
@@ -70,8 +70,7 @@ Plain text outside `$…$` and the open block's source stay in the text
 face and its cells ([[ADR-T29-1 Text shape with monospaced layout and an embedded font]]).
 
 `\mathcal` joins the parse as a command with one argument (braced or
-single token), like `\sqrt`; it is upright for anything that is not a
-Latin letter.
+single token), like `\sqrt`; only Latin capitals change.
 
 ### Metrics table in core
 
@@ -149,7 +148,7 @@ Text-face glyphs inside formulas keep the T30 cell metrics
 ## Consequences
 
 - Formulas look like LaTeX; plain text still lines up in cells.
-- The binary grows by the subset (about 120 KB).
+- The binary grows by the subset (about 140 KB).
 - Every formula's width changes: blocks with formulas get a new
   (usually narrower) box. Saved documents keep their text, so they only
   look different.

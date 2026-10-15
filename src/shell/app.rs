@@ -1309,4 +1309,15 @@ mod tests {
         assert_eq!(TEXT_FONT.get(..4), Some(&[0, 1, 0, 0][..]));
         assert!(TEXT_FONT.len() < 200_000, "{} bytes", TEXT_FONT.len());
     }
+
+    // ---- T33 math font -----------------------------------------------------
+
+    #[test]
+    fn math_font_is_embedded_and_small() {
+        // An OpenType font with CFF outlines starts with "OTTO".
+        assert_eq!(MATH_FONT.get(..4), Some(&b"OTTO"[..]));
+        assert!(MATH_FONT.len() < 200_000, "{} bytes", MATH_FONT.len());
+        let font = fontdue::Font::from_bytes(MATH_FONT, fontdue::FontSettings::default());
+        assert!(font.is_ok());
+    }
 }

@@ -456,7 +456,9 @@ pub fn glyph_scale(px: f32, raster_px: u16) -> f32 {
 mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
-    use crate::shell::app::TEXT_FONT;
+    use crate::core::math_metrics;
+    use crate::core::tex::Face;
+    use crate::shell::app::{MATH_FONT, TEXT_FONT};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -850,6 +852,81 @@ mod tests {
                 let r = upload.rect;
                 prop_assert_eq!(upload.rgba.len(), 4 * usize::from(r.w) * usize::from(r.h));
             }
+        }
+    }
+
+    // ---- T33 faces ----------------------------------------------------------
+
+    fn math_atlas() -> GlyphAtlas {
+        match atlas().with_math(MATH_FONT) {
+            Ok(atlas) => atlas,
+            Err(err) => panic!("embedded math font loads: {err}"),
+        }
+    }
+
+    #[test]
+    fn atlas_keeps_faces_apart() {
+        // Arrange
+        let mut atlas = math_atlas();
+
+        // Act
+        let text = atlas.prepare_in(Face::Text, 'a', 40);
+        let math = atlas.prepare_in(Face::Math, 'a', 40);
+
+        // Assert: two entries with each font's own advance.
+        let (Some(text), Some(math)) = (text, math) else {
+            panic!("both faces have an 'a'");
+        };
+        assert_ne!(text.rect, math.rect);
+        assert!(approx_eq(text.advance, 0.6 * 40.0, 0.5), "{text:?}");
+        let lm = math_metrics::get('a').map_or(0.0, |m| m.advance);
+        assert!(approx_eq(math.advance, lm * 40.0, 0.5), "{math:?}");
+        assert_eq!(atlas.get('a', 40), Some(text), "the text face is the default");
+        assert_eq!(atlas.get_in(Face::Math, 'a', 40), Some(math));
+        assert_eq!(atlas.take_rasterized(), 2);
+        assert!(atlas.with_math(b"not a font").is_err());
+    }
+
+    #[test]
+    fn atlas_without_math_font_draws_math_with_the_text_font() {
+        // Arrange
+        let mut atlas = atlas();
+
+        // Act
+        let math = atlas.prepare_in(Face::Math, 'a', 40);
+
+        // Assert
+        let Some(math) = math else {
+            panic!("the text font stands in");
+        };
+        assert!(approx_eq(math.advance, 0.6 * 40.0, 0.5), "{math:?}");
+    }
+
+    #[test]
+    fn math_metrics_match_the_embedded_font() {
+        // Arrange
+        let font = match fontdue::Font::from_bytes(MATH_FONT, fontdue::FontSettings::default()) {
+            Ok(font) => font,
+            Err(err) => panic!("math font parses: {err}"),
+        };
+        let px = 1000.0;
+        let tol = 0.002;
+
+        for (ch, m) in math_metrics::TABLE {
+            // Act
+            assert_ne!(font.lookup_glyph_index(*ch), 0, "{ch:?} is in the font");
+            let got = font.metrics(*ch, px);
+
+            // Assert
+            assert!(approx_eq(got.advance_width / px, m.advance, tol), "{ch:?}");
+            if got.width == 0 {
+                continue;
+            }
+            let b = got.bounds;
+            assert!(approx_eq(b.xmin / px, m.x_min, tol), "{ch:?} {b:?} {m:?}");
+            assert!(approx_eq((b.xmin + b.width) / px, m.x_max, tol), "{ch:?}");
+            assert!(approx_eq(b.ymin / px, m.y_min, tol), "{ch:?}");
+            assert!(approx_eq((b.ymin + b.height) / px, m.y_max, tol), "{ch:?}");
         }
     }
 }
