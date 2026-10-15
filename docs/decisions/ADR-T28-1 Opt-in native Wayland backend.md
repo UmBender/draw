@@ -1,7 +1,7 @@
 ---
 id: ADR-T28-1
 title: Opt-in native Wayland backend
-status: proposed
+status: accepted
 kind: decision
 date: 2026-10-15
 task: T28

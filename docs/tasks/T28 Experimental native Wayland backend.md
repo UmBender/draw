@@ -1,7 +1,7 @@
 ---
 id: T28
 title: Experimental native Wayland backend
-status: in-progress
+status: review
 wave: 21
 branch: task/T28-wayland
 depends_on: [T27]
@@ -152,11 +152,11 @@ back to X11 when the Wayland connection or a library fails. On Wayland
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T28): …`
-- [ ] tests — `test(T28): …`
-- [ ] models — `feat(T28): …`
-- [ ] behaviour — `feat(T28): …`
-- [ ] quality — `chore(T28): …`
-- [ ] docs — `docs(T28): …`
+- [x] tests — `test(T28): …`
+- [x] models — `feat(T28): …`
+- [x] behaviour — `feat(T28): …`
+- [x] quality — `chore(T28): …`
+- [x] docs — `docs(T28): …`
 
 ## Learning path
 
@@ -168,3 +168,24 @@ step 27 (packaging).
 - 2026-10-14 — Created as experimental at the owner's request, split out
   of T27. Risks above come from reading miniquad 0.4.11; nothing has been
   run on Wayland yet.
+- 2026-10-15 — Spec: ADR-T28-1; the Wayland branch of miniquad 0.4.11
+  loads libwayland-client, libwayland-egl, libxkbcommon, libEGL and
+  libdecor-0, not libwayland-cursor. Tests → models → behaviour →
+  quality committed; `scripts/check.sh` green. The release (LTO) binary
+  now names the Wayland libraries and libdecor; all are in
+  `packaging/runtime-libs`, and the package dependency sets are
+  unchanged.
+- 2026-10-15 — Smoke run on the development machine (Fedora 44, Wayland
+  session with Xwayland): `DRAW_BACKEND=wayland` printed the
+  experimental notice and stayed up without the "Trying X11" fallback
+  line; `DRAW_BACKEND=bogus` warned and ran on X11. No visual or input
+  checks yet.
+- 2026-10-15 — Deviations: `src/shell/mod.rs` gained `pub mod backend;`
+  (registers the owned new module; not in *Files owned*). The Flatpak
+  manifest keeps `--socket=x11` instead of `fallback-x11` (ADR-T28-1).
+  `.deb` Recommends / `.rpm` weak deps for the Wayland libraries are not
+  done: they live in `Cargo.toml`, outside T28's files — follow-up for
+  its owner.
+- Pending (owner, on the target): AC-4 sharpness at 125 %/150 %, AC-5
+  behaviour checklist (GNOME + one other compositor, title bar, launcher
+  icon via `app_id` `draw`), AC-6 `DRAW_FRAME_TIMES` numbers.
