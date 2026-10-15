@@ -29,13 +29,14 @@ pub const GAP_PX: f32 = 2.0;
 pub const GROUP_GAP_PX: f32 = 12.0;
 
 /// Tools in toolbar order (the keymap's order).
-pub const TOOLS: [Tool; 10] = [
+pub const TOOLS: [Tool; 11] = [
     Tool::Pen,
     Tool::Line,
     Tool::Arrow,
     Tool::Rect,
     Tool::Ellipse,
     Tool::Grid,
+    Tool::Text,
     Tool::Eraser,
     Tool::Bucket,
     Tool::Select,
@@ -319,6 +320,7 @@ fn tool_label(tool: Tool) -> &'static str {
         Tool::Rect => "R",
         Tool::Ellipse => "C",
         Tool::Grid => "G",
+        Tool::Text => "T",
         Tool::Eraser => "E",
         Tool::Bucket => "B",
         Tool::Select => "V",

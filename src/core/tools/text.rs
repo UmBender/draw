@@ -1,4 +1,198 @@
 //! Text tool and the text edit session (ADR-T29-2).
+//!
+//! A press with the Text tool re-opens the text block under it (caret at
+//! the press) or starts a new block whose top-left corner is the press
+//! point, snapped like a shape's start point. The block being edited is a
+//! [`TextEdit`] held in [`State`]: it is not part of the document until the
+//! editor commits it, so typing never touches the history. The editor
+//! routes typed characters and editing keys here and decides when an edit
+//! ends.
+
+use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::document::ShapeId;
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::shape::{Shape, Style};
+
+/// On-screen font size, in pixels, of a new block at stroke width 0.
+pub const TEXT_BASE_PX: f32 = 12.0;
+
+/// On-screen font size added per pixel of stroke width (`[` / `]`).
+pub const TEXT_PX_PER_WIDTH: f32 = 2.0;
+
+/// Spaces typed by `Tab`.
+pub const TAB_SPACES: usize = 4;
+
+/// On-screen font size in pixels of a new block drawn at stroke width
+/// `width_px`.
+#[must_use]
+pub fn text_size_px(width_px: f32) -> f32 {
+    todo!("T29: text size for width {width_px}")
+}
+
+/// A text block being edited: its text, caret and placement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextEdit {
+    /// Top-left corner of the block, world units.
+    pub origin: Vec2,
+    /// Font size in world units.
+    pub size: f32,
+    /// Text colour (`width` unused).
+    pub style: Style,
+    /// The document block being re-edited, `None` for a new block.
+    target: Option<ShapeId>,
+    /// The text.
+    text: String,
+    /// Byte index of the caret, always on a `char` boundary.
+    caret: usize,
+}
+
+impl TextEdit {
+    /// A new, empty block at `origin`.
+    #[must_use]
+    pub fn new(origin: Vec2, size: f32, style: Style) -> Self {
+        todo!("T29: new edit at {origin:?}, {size}, {style:?}")
+    }
+
+    /// Re-opens the text block `shape` (document id `id`) with the caret
+    /// nearest to world point `at`; `None` if `shape` is not a text block.
+    #[must_use]
+    pub fn open(id: ShapeId, shape: &Shape, at: Vec2) -> Option<Self> {
+        todo!("T29: open {id:?} {shape:?} at {at:?}")
+    }
+
+    /// The document block being re-edited, `None` for a new block.
+    #[must_use]
+    pub fn target(&self) -> Option<ShapeId> {
+        self.target
+    }
+
+    /// The text.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Byte index of the caret; always on a `char` boundary.
+    #[must_use]
+    pub fn caret(&self) -> usize {
+        self.caret
+    }
+
+    /// Whether the text is empty or only whitespace (such a block is
+    /// discarded on commit).
+    #[must_use]
+    pub fn is_blank(&self) -> bool {
+        todo!("T29: is_blank")
+    }
+
+    /// The block as a document shape.
+    #[must_use]
+    pub fn shape(&self) -> Shape {
+        todo!("T29: shape")
+    }
+
+    /// World box of the block.
+    #[must_use]
+    pub fn bounds(&self) -> Aabb {
+        todo!("T29: bounds")
+    }
+
+    /// The caret as a world segment, top to bottom of its line.
+    #[must_use]
+    pub fn caret_line(&self) -> [Vec2; 2] {
+        todo!("T29: caret_line")
+    }
+
+    /// Moves the caret to byte `index`, snapped back to a `char` boundary
+    /// and clamped to the text.
+    pub fn set_caret(&mut self, index: usize) {
+        todo!("T29: set_caret {index}")
+    }
+
+    /// Moves the caret to the cell boundary nearest to world point `p`.
+    pub fn set_caret_at(&mut self, p: Vec2) {
+        todo!("T29: set_caret_at {p:?}")
+    }
+
+    /// Inserts `ch` at the caret and moves past it. Returns `true`.
+    pub fn insert(&mut self, ch: char) -> bool {
+        todo!("T29: insert {ch:?}")
+    }
+
+    /// Inserts [`TAB_SPACES`] spaces at the caret. Returns `true`.
+    pub fn tab(&mut self) -> bool {
+        todo!("T29: tab")
+    }
+
+    /// Removes the `char` before the caret. Returns whether there was one.
+    pub fn backspace(&mut self) -> bool {
+        todo!("T29: backspace")
+    }
+
+    /// Removes the `char` after the caret. Returns whether there was one.
+    pub fn delete(&mut self) -> bool {
+        todo!("T29: delete")
+    }
+
+    /// Moves the caret one `char` back. Returns whether it moved.
+    pub fn left(&mut self) -> bool {
+        todo!("T29: left")
+    }
+
+    /// Moves the caret one `char` forward. Returns whether it moved.
+    pub fn right(&mut self) -> bool {
+        todo!("T29: right")
+    }
+
+    /// Moves the caret to the previous line, same column (clamped).
+    /// Returns whether it moved.
+    pub fn up(&mut self) -> bool {
+        todo!("T29: up")
+    }
+
+    /// Moves the caret to the next line, same column (clamped). Returns
+    /// whether it moved.
+    pub fn down(&mut self) -> bool {
+        todo!("T29: down")
+    }
+
+    /// Moves the caret to the start of its line. Returns whether it moved.
+    pub fn home(&mut self) -> bool {
+        todo!("T29: home")
+    }
+
+    /// Moves the caret to the end of its line. Returns whether it moved.
+    pub fn end(&mut self) -> bool {
+        todo!("T29: end")
+    }
+}
+
+/// State of the Text tool: the block being edited, if any.
+#[derive(Debug, Clone, Default)]
+pub struct State {
+    /// The edit session; it outlives pointer gestures.
+    pub edit: Option<TextEdit>,
+}
+
+/// Handles one pointer event of a Text-tool gesture: a `Down` opens the
+/// block under the pointer or a new one (the editor has already committed
+/// any previous edit). Returns whether a redraw is needed.
+pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
+    todo!("T29: on_pointer {state:?} {:?} {pointer:?}", ctx.tool)
+}
+
+/// What the edit session draws: the edited block, with the original
+/// hidden while re-editing.
+#[must_use]
+pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
+    todo!("T29: preview {state:?} {:?}", view.tool)
+}
+
+/// Ends the gesture. The edit session is not part of the gesture and
+/// stays open; returns `false`.
+pub fn cancel(state: &mut State) -> bool {
+    todo!("T29: cancel {state:?}")
+}
 
 #[cfg(test)]
 mod tests {

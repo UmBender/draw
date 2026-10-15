@@ -188,9 +188,10 @@ sends (`Char` then `KeyDown` for a printable key).
   `src/core/editor.rs`, `src/core/command.rs`, `src/core/tools/text.rs`
   (new), `src/core/tools/mod.rs`, `src/core/text_layout.rs` (new),
   `src/core/snap.rs`, `src/core/mod.rs`
-- `src/core/tools/shape_tool.rs` — test module only: one exhaustive
-  `match` on `Shape` gains the new variant (added with the owner's
-  approval during the spec step)
+- `src/core/tools/shape_tool.rs` — only the two exhaustive `match`es
+  that must name the new variants: `Kind::from_tool` (`Tool::Text` →
+  `None`) and the `ends` test helper (`Shape::Text` panics) (added with
+  the owner's approval during the spec step)
 - `src/shell/input_map.rs`, `src/shell/render.rs`, `src/shell/toolbar.rs`,
   `src/shell/app.rs` (font loading)
 - `assets/fonts/*` (new, with its license file)

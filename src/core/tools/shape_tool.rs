@@ -60,9 +60,13 @@ impl Kind {
             Tool::Arrow => Some(Self::Arrow),
             Tool::Rect => Some(Self::Rect),
             Tool::Ellipse => Some(Self::Ellipse),
-            Tool::Pen | Tool::Grid | Tool::Eraser | Tool::Bucket | Tool::Select | Tool::Hand => {
-                None
-            }
+            Tool::Pen
+            | Tool::Grid
+            | Tool::Text
+            | Tool::Eraser
+            | Tool::Bucket
+            | Tool::Select
+            | Tool::Hand => None,
         }
     }
 }
@@ -357,7 +361,7 @@ mod tests {
             | Shape::Arrow { a, b, .. }
             | Shape::Rect { a, b, .. }
             | Shape::Ellipse { a, b, .. } => (*a, *b),
-            Shape::Stroke { .. } | Shape::Grid { .. } => {
+            Shape::Stroke { .. } | Shape::Grid { .. } | Shape::Text { .. } => {
                 panic!("expected a two-point shape, got {shape:?}")
             }
         }

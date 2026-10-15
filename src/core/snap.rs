@@ -474,6 +474,7 @@ impl Targets {
                     }
                 }
                 Shape::Stroke { .. } => {}
+                Shape::Text { .. } => todo!("T29: text targets"),
             }
         }
         targets

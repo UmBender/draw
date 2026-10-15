@@ -1,4 +1,88 @@
 //! Monospaced text layout (ADR-T29-1).
+//!
+//! Every `char` of a text block is one cell of a grid: [`ADVANCE`] em wide
+//! and [`LINE_HEIGHT`] em tall, lines split on `\n`. Positions are world
+//! units for a block whose top-left corner is `origin` and whose font size
+//! (em height) is `size`. A size that is not finite and positive counts as
+//! 0, so every function is total. Carets are byte indices into the text;
+//! every caret returned lies on a `char` boundary.
+
+use crate::core::geom::{Aabb, Vec2};
+
+/// Width of one cell, per unit of font size: every glyph of the embedded
+/// font is 600/1000 em wide.
+pub const ADVANCE: f32 = 0.6;
+
+/// Height of one line, per unit of font size: ascent 0.965 + descent 0.215
+/// + line gap 0.07 em.
+pub const LINE_HEIGHT: f32 = 1.25;
+
+/// Distance from the top of a line to its baseline, per unit of font size:
+/// half the line gap plus the ascent.
+pub const BASELINE: f32 = 1.0;
+
+/// One character to draw, with the left end of its baseline.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Glyph {
+    /// The character.
+    pub ch: char,
+    /// Left end of its baseline, in world units.
+    pub pos: Vec2,
+}
+
+/// The lines of `text`: always at least one, possibly empty.
+pub fn lines(text: &str) -> impl Iterator<Item = &str> {
+    text.split('\n')
+}
+
+/// `(columns, lines)`: the length in `char`s of the longest line and the
+/// number of lines (at least 1).
+#[must_use]
+pub fn extent(text: &str) -> (usize, usize) {
+    todo!("T29: extent of {text:?}")
+}
+
+/// The box of a block: `origin` to `origin + (columns × ADVANCE,
+/// lines × LINE_HEIGHT) × size`.
+#[must_use]
+pub fn bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
+    todo!("T29: bounds of {text:?} at {origin:?}, {size}")
+}
+
+/// The `(line, column)` of `caret`, counted in `char`s. A caret inside a
+/// `char` counts as the start of that `char`; one past the end as the end.
+#[must_use]
+pub fn line_col(text: &str, caret: usize) -> (usize, usize) {
+    todo!("T29: line_col of {caret} in {text:?}")
+}
+
+/// The caret at `(line, col)`: the line is clamped to the last line, the
+/// column to the end of its line.
+#[must_use]
+pub fn caret_index(text: &str, line: usize, col: usize) -> usize {
+    todo!("T29: caret_index {line}:{col} in {text:?}")
+}
+
+/// Top of the caret line at `caret`, in world units.
+#[must_use]
+pub fn caret_point(origin: Vec2, text: &str, size: f32, caret: usize) -> Vec2 {
+    todo!("T29: caret_point {caret} in {text:?} at {origin:?}, {size}")
+}
+
+/// The caret nearest to world point `p`: the line under it and the nearest
+/// cell boundary on that line, clamped into the text. A non-finite `p` or
+/// size gives 0.
+#[must_use]
+pub fn caret_from_point(origin: Vec2, text: &str, size: f32, p: Vec2) -> usize {
+    todo!("T29: caret_from_point {p:?} in {text:?} at {origin:?}, {size}")
+}
+
+/// Every character to draw except line breaks, in text order, at its cell.
+pub fn glyphs(origin: Vec2, text: &str, size: f32) -> impl Iterator<Item = Glyph> + '_ {
+    todo!("T29: glyphs of {text:?} at {origin:?}, {size}");
+    #[allow(unreachable_code)]
+    std::iter::empty()
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,8 @@
 //! Vector shapes with bounds, hit-testing and translation.
 //!
 //! The document is an ordered list of [`Shape`]s in world coordinates
-//! (ADR-0004, amended by ADR-T16-1 with grids and labels). Widths are world units (ADR-0013). Every query here is total:
+//! (ADR-0004, amended by ADR-T16-1 with grids and labels and by ADR-T29-1
+//! with text blocks). Widths are world units (ADR-0013). Every query here is total:
 //! non-finite input never panics, a non-finite query point never hits and is
 //! never contained.
 
@@ -105,6 +106,21 @@ pub enum Shape {
         /// inside `cols × rows` (ADR-T21-1).
         fills: Vec<CellFill>,
     },
+    /// A block of text, laid out on a monospaced grid by
+    /// [`text_layout`](crate::core::text_layout) (ADR-T29-1).
+    ///
+    /// An open shape: it is never filled, and it is hit anywhere inside its
+    /// box.
+    Text {
+        /// Top-left corner of the block.
+        origin: Vec2,
+        /// The text; lines are separated by `\n`.
+        text: String,
+        /// Font size (em height) in world units.
+        size: f32,
+        /// `color` is the text colour; `width` is unused (0).
+        style: Style,
+    },
 }
 
 /// The fill of one grid cell; cells are counted from corner `a` toward `b`.
@@ -138,7 +154,8 @@ impl Shape {
             | Self::Arrow { style, .. }
             | Self::Rect { style, .. }
             | Self::Ellipse { style, .. }
-            | Self::Grid { style, .. } => *style,
+            | Self::Grid { style, .. }
+            | Self::Text { style, .. } => *style,
         }
     }
 
@@ -147,9 +164,11 @@ impl Shape {
     pub fn fill(&self) -> Option<ColorId> {
         match self {
             Self::Rect { fill, .. } | Self::Ellipse { fill, .. } => *fill,
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
-                None
-            }
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => None,
         }
     }
 
@@ -159,9 +178,11 @@ impl Shape {
     pub fn label(&self) -> Option<u32> {
         match self {
             Self::Rect { label, .. } | Self::Ellipse { label, .. } => *label,
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
-                None
-            }
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => None,
         }
     }
 
@@ -177,6 +198,7 @@ impl Shape {
     #[must_use]
     pub fn bounds(&self) -> Aabb {
         let geometry = match self {
+            Self::Text { .. } => todo!("T29: text bounds"),
             Self::Stroke { points, .. } => match Aabb::from_points(points) {
                 Some(b) => b,
                 None => return Aabb::from_corners(Vec2::ZERO, Vec2::ZERO),
@@ -258,6 +280,7 @@ impl Shape {
                 a, b, cols, rows, ..
             } => grid_lines(*a, *b, *cols, *rows)
                 .any(|[start, end]| distance_to_segment(p, start, end) <= reach),
+            Self::Text { .. } => todo!("T29: text hit-test"),
         }
     }
 
@@ -279,9 +302,11 @@ impl Shape {
                 let (u, w) = (q.x / radii.x, q.y / radii.y);
                 u * u + w * w <= 1.0
             }
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
-                false
-            }
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => false,
         }
     }
 
@@ -301,6 +326,7 @@ impl Shape {
                 *a += delta;
                 *b += delta;
             }
+            Self::Text { .. } => todo!("T29: translate text"),
         }
     }
 
@@ -428,6 +454,7 @@ impl Shape {
                 | Self::Rect { a, b, .. }
                 | Self::Ellipse { a, b, .. }
                 | Self::Grid { a, b, .. } => a.is_finite() && b.is_finite(),
+                Self::Text { .. } => todo!("T29: finite text"),
             }
     }
 }

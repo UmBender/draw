@@ -151,6 +151,8 @@ pub struct ToolStates {
     pub shape: shape_tool::State,
     /// Grid.
     pub grid: grid::State,
+    /// Text tool and the text edit session.
+    pub text: text::State,
     /// Eraser (also used by right drags).
     pub eraser: eraser::State,
     /// Bucket.
@@ -169,6 +171,7 @@ impl ToolStates {
                 shape_tool::on_pointer(&mut self.shape, ctx, pointer)
             }
             Tool::Grid => grid::on_pointer(&mut self.grid, ctx, pointer),
+            Tool::Text => text::on_pointer(&mut self.text, ctx, pointer),
             Tool::Eraser => eraser::on_pointer(&mut self.eraser, ctx, pointer),
             Tool::Bucket => bucket::on_pointer(&mut self.bucket, ctx, pointer),
             Tool::Select => select::on_pointer(&mut self.select, ctx, pointer),
@@ -185,6 +188,7 @@ impl ToolStates {
                 shape_tool::preview(&self.shape, view)
             }
             Tool::Grid => grid::preview(&self.grid, view),
+            Tool::Text => text::preview(&self.text, view),
             Tool::Eraser => eraser::preview(&self.eraser, view),
             Tool::Bucket => bucket::preview(&self.bucket, view),
             Tool::Select => select::preview(&self.select, view),
@@ -201,6 +205,7 @@ impl ToolStates {
                 shape_tool::cancel(&mut self.shape)
             }
             Tool::Grid => grid::cancel(&mut self.grid),
+            Tool::Text => text::cancel(&mut self.text),
             Tool::Eraser => eraser::cancel(&mut self.eraser),
             Tool::Bucket => bucket::cancel(&mut self.bucket),
             Tool::Select => select::cancel(&mut self.select),

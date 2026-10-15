@@ -527,6 +527,29 @@ pub fn label_raster(size: f32) -> (u16, f32) {
     (raster, size / f32::from(raster))
 }
 
+/// Smallest on-screen text size in pixels; smaller text is not drawn
+/// (ADR-T29-1).
+pub const TEXT_MIN_PX: f32 = 4.0;
+
+/// Font sizes text is rasterized at, ascending; text is drawn from the
+/// smallest one at least its on-screen size, scaled down (ADR-T29-1).
+pub const TEXT_RASTER_SIZES: [u16; 12] = [12, 16, 20, 24, 32, 40, 48, 64, 96, 128, 192, 256];
+
+/// On-screen size in pixels of text of world size `size` at `zoom`; `None`
+/// (not drawn) below [`TEXT_MIN_PX`] or when not finite.
+#[must_use]
+pub fn text_screen_px(size: f32, zoom: f32) -> Option<f32> {
+    todo!("T29: text px for {size} at {zoom}")
+}
+
+/// Raster size and scale for text of `px` pixels: the smallest of
+/// [`TEXT_RASTER_SIZES`] at least `px` (else the largest), and the scale
+/// mapping it to `px`.
+#[must_use]
+pub fn text_raster(px: f32) -> (u16, f32) {
+    todo!("T29: raster for {px}")
+}
+
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
 /// on (ADR-T17-1), as seen through `camera` in a viewport of `viewport`
 /// pixels. Nothing is drawn when the view has too many dots.
@@ -663,6 +686,7 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
                 draw_axis_labels(batch, a, b, *cols, *rows, color);
             }
         }
+        Shape::Text { .. } => todo!("T29: draw text"),
     }
 }
 

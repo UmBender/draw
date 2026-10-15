@@ -24,6 +24,7 @@ use crate::core::palette::ColorId;
 use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
+use crate::core::tools::text::TextEdit;
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
 
 /// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
@@ -224,6 +225,7 @@ impl Editor {
                 false
             }
             InputEvent::KeyUp { .. } => false,
+            InputEvent::Char { ch, mods } => todo!("T29: typed {ch:?} {mods:?}"),
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
                     self.viewport = size;
@@ -448,6 +450,19 @@ impl Editor {
             Gesture::Pan { .. } => ActiveGesture::Pan,
             Gesture::Tool { tool, .. } => ActiveGesture::Tool(tool),
         })
+    }
+
+    /// The text block being edited, if any (ADR-T29-2).
+    #[must_use]
+    pub fn text_edit(&self) -> Option<&TextEdit> {
+        self.tools.text.edit.as_ref()
+    }
+
+    /// The caret of the text block being edited, as a world segment from
+    /// the top to the bottom of its line; `None` when not editing.
+    #[must_use]
+    pub fn text_caret(&self) -> Option<[Vec2; 2]> {
+        todo!("T29: caret")
     }
 
     /// Whether the toolbar is shown.
