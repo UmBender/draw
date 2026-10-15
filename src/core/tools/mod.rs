@@ -19,6 +19,7 @@ pub mod navigate;
 pub mod pen;
 pub mod select;
 pub mod shape_tool;
+pub mod text;
 
 use crate::core::camera::Camera;
 use crate::core::clipboard::Clipboard;

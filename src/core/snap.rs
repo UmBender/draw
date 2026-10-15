@@ -1398,6 +1398,34 @@ mod tests {
         assert_eq!(t.outlines[2].kind, OutlineKind::Grid { cols: 3, rows: 3 });
     }
 
+    // T29 AC-6
+
+    #[test]
+    fn targets_include_text_block_edges() {
+        // Arrange: "abc" at size 10 spans x 100..118, y 0..12.5.
+        let shapes = [Shape::Text {
+            origin: v(100.0, 0.0),
+            text: "abc".to_owned(),
+            size: 10.0,
+            style: STYLE,
+        }];
+
+        // Act
+        let t = targets(&shapes);
+
+        // Assert: edges and centre on both axes, no sizes, no outline.
+        let xs: Vec<f32> = t.xs.iter().map(|a| a.value).collect();
+        let ys: Vec<f32> = t.ys.iter().map(|a| a.value).collect();
+        for x in [100.0, 118.0, 109.0] {
+            assert!(xs.iter().any(|&got| approx_eq(got, x, EPS)), "{xs:?}");
+        }
+        for y in [0.0, 12.5, 6.25] {
+            assert!(ys.iter().any(|&got| approx_eq(got, y, EPS)), "{ys:?}");
+        }
+        assert!(t.sizes.is_empty(), "{t:?}");
+        assert!(t.outlines.is_empty(), "{t:?}");
+    }
+
     // T20 AC-2
 
     #[test]

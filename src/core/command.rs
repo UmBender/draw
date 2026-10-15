@@ -120,8 +120,9 @@ mod tests {
         let unique: std::collections::HashSet<Tool> = all.iter().copied().collect();
 
         // Assert
-        assert_eq!(all.len(), 10);
+        assert_eq!(all.len(), 11);
         assert!(all.contains(&Tool::Grid));
+        assert!(all.contains(&Tool::Text));
         assert_eq!(unique.len(), all.len());
     }
 }

@@ -275,7 +275,7 @@ mod tests {
         alt: true,
     };
 
-    const ALL_KEYS: [Key; 47] = [
+    const ALL_KEYS: [Key; 50] = [
         Key::A,
         Key::B,
         Key::C,
@@ -323,6 +323,9 @@ mod tests {
         Key::ArrowRight,
         Key::ArrowUp,
         Key::ArrowDown,
+        Key::Enter,
+        Key::Home,
+        Key::End,
     ];
 
     fn color(digit: u8) -> Command {
@@ -347,6 +350,7 @@ mod tests {
             (Key::V, NONE, Command::SetTool(Tool::Select)),
             (Key::H, NONE, Command::SetTool(Tool::Hand)),
             (Key::G, NONE, Command::SetTool(Tool::Grid)),
+            (Key::T, NONE, Command::SetTool(Tool::Text)),
             // Style
             (Key::Digit1, NONE, color(1)),
             (Key::Digit2, NONE, color(2)),
@@ -445,6 +449,23 @@ mod tests {
         assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
         assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
         assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn t_selects_text_tool() {
+        assert_eq!(resolve(Key::T, NONE), Some(Command::SetTool(Tool::Text)));
+        assert_eq!(resolve(Key::T, SHIFT), None);
+        assert_eq!(resolve(Key::T, CTRL), None);
+    }
+
+    #[test]
+    fn editing_keys_are_unbound() {
+        // T29: Enter, Home and End act only inside a text block.
+        for key in [Key::Enter, Key::Home, Key::End] {
+            for mods in all_mods() {
+                assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
+            }
+        }
     }
 
     #[test]

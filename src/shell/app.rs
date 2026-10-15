@@ -1191,4 +1191,13 @@ mod tests {
             prop_assert!(approx_eq(rect.width(), layer.width() * scale, width_tol));
         }
     }
+
+    // ---- T29 text font -----------------------------------------------------
+
+    #[test]
+    fn embedded_font_is_truetype() {
+        // A TrueType file starts with the sfnt version 1.0.
+        assert_eq!(TEXT_FONT.get(..4), Some(&[0, 1, 0, 0][..]));
+        assert!(TEXT_FONT.len() < 200_000, "{} bytes", TEXT_FONT.len());
+    }
 }

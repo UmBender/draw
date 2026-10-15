@@ -14,4 +14,5 @@ pub mod palette;
 pub mod shape;
 pub mod smoothing;
 pub mod snap;
+pub mod text_layout;
 pub mod tools;

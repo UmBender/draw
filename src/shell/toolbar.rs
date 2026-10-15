@@ -420,6 +420,7 @@ mod tests {
             Tool::Rect,
             Tool::Ellipse,
             Tool::Grid,
+            Tool::Text,
             Tool::Eraser,
             Tool::Bucket,
             Tool::Select,
@@ -487,9 +488,9 @@ mod tests {
         }
         // Groups (tools | colours | helpers | history) get a larger gap.
         let gap = |i: usize| buttons[i + 1].rect.min.y - buttons[i].rect.max.y;
-        assert!(gap(9) > gap(8), "gap after the tools");
-        assert!(gap(15) > gap(14), "gap after the colours");
-        assert!(gap(18) > gap(17), "gap after the helpers");
+        assert!(gap(10) > gap(9), "gap after the tools");
+        assert!(gap(16) > gap(15), "gap after the colours");
+        assert!(gap(19) > gap(18), "gap after the helpers");
     }
 
     #[test]

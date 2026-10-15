@@ -1690,6 +1690,72 @@ mod tests {
         assert!(filled.hit_outline(edge, 1.0));
     }
 
+    // ---- T29 text blocks ---------------------------------------------------
+
+    fn text(origin: Vec2, content: &str, size: f32) -> Shape {
+        Shape::Text {
+            origin,
+            text: content.to_owned(),
+            size,
+            style: style(0.0),
+        }
+    }
+
+    #[test]
+    fn text_bounds_follow_layout() {
+        // Arrange: 3 columns × 2 lines at size 10 (cells 6 × 12.5).
+        let shape = text(v(10.0, 20.0), "abc\nd", 10.0);
+
+        // Act / Assert
+        assert_aabb_eq(shape.bounds(), v(10.0, 20.0), v(28.0, 45.0));
+    }
+
+    #[test]
+    fn text_hit_inside_box() {
+        let shape = text(v(0.0, 0.0), "abcd", 10.0);
+
+        assert!(shape.hit(v(12.0, 6.0), 0.0));
+        assert!(shape.hit_outline(v(12.0, 6.0), 0.0));
+        assert!(shape.hit(v(25.0, 6.0), 2.0), "within tolerance of the box");
+        assert!(!shape.hit(v(40.0, 6.0), 2.0));
+        assert!(!shape.hit(v(f32::NAN, 6.0), 2.0));
+    }
+
+    #[test]
+    fn text_is_open_and_never_filled() {
+        let shape = text(v(0.0, 0.0), "abcd", 10.0);
+
+        assert!(!shape.is_closed());
+        assert!(!shape.contains(v(5.0, 5.0)));
+        assert_eq!(shape.clone().with_fill(Some(red())), shape);
+        assert_eq!(shape.fill(), None);
+    }
+
+    #[test]
+    fn text_has_no_label() {
+        let shape = text(v(0.0, 0.0), "7", 10.0);
+
+        assert_eq!(shape.label(), None);
+        assert_eq!(shape.clone().with_label(Some(3)), shape);
+    }
+
+    #[test]
+    fn text_translate_moves_origin() {
+        let mut shape = text(v(1.0, 2.0), "x", 10.0);
+
+        shape.translate(v(10.0, -5.0));
+
+        assert_eq!(shape, text(v(11.0, -3.0), "x", 10.0));
+    }
+
+    #[test]
+    fn text_is_finite_checks_origin_and_size() {
+        assert!(text(v(1.0, 2.0), "x", 10.0).is_finite());
+        assert!(!text(v(f32::NAN, 2.0), "x", 10.0).is_finite());
+        assert!(!text(v(1.0, 2.0), "x", f32::INFINITY).is_finite());
+        assert_eq!(text(v(1.0, 2.0), "x", 10.0).style(), style(0.0));
+    }
+
     proptest! {
         #[test]
         fn cell_fills_stay_valid(

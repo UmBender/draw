@@ -1619,4 +1619,48 @@ mod tests {
         assert_eq!(dot_grid_points(nan, 20.0).count(), 0);
         assert_eq!(dot_grid_points(aabb(0.0, 0.0, 10.0, 10.0), 0.0).count(), 0);
     }
+
+    // ---- T29 text blocks ---------------------------------------------------
+
+    #[test]
+    fn text_screen_px_scales_with_zoom() {
+        let Some(px) = text_screen_px(18.0, 2.0) else {
+            panic!("36 px text is drawn");
+        };
+
+        assert!(approx_eq(px, 36.0, EPS));
+    }
+
+    #[test]
+    fn text_screen_px_hidden_below_min() {
+        assert_eq!(text_screen_px(18.0, 0.05), None, "0.9 px");
+        assert_eq!(text_screen_px(f32::NAN, 1.0), None);
+        assert_eq!(text_screen_px(18.0, f32::INFINITY), None);
+        assert!(text_screen_px(TEXT_MIN_PX, 1.0).is_some());
+    }
+
+    #[test]
+    fn text_raster_picks_size_at_or_above() {
+        // Arrange / Act
+        let (raster, scale) = text_raster(30.0);
+
+        // Assert: rasterized at 32 and scaled down to 30.
+        assert_eq!(raster, 32);
+        assert!(approx_eq(scale, 30.0 / 32.0, EPS));
+        assert!(TEXT_RASTER_SIZES.windows(2).all(|w| w[0] < w[1]));
+        for px in [4.0, 12.0, 17.0, 100.0, 255.0] {
+            let (raster, scale) = text_raster(px);
+            assert!(f32::from(raster) >= px && scale <= 1.0, "{px}");
+        }
+    }
+
+    #[test]
+    fn text_raster_caps_at_largest() {
+        let largest = TEXT_RASTER_SIZES[TEXT_RASTER_SIZES.len() - 1];
+
+        let (raster, scale) = text_raster(1024.0);
+
+        assert_eq!(raster, largest);
+        assert!(approx_eq(scale, 1024.0 / f32::from(largest), EPS));
+    }
 }

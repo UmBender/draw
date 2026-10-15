@@ -27,7 +27,7 @@ use proptest::test_runner::{FileFailurePersistence, TestRunner};
 const MAX_SESSION_LEN: usize = 500;
 
 /// Every `Key`, in declaration order.
-const ALL_KEYS: [Key; 47] = [
+const ALL_KEYS: [Key; 50] = [
     Key::A,
     Key::B,
     Key::C,
@@ -75,6 +75,23 @@ const ALL_KEYS: [Key; 47] = [
     Key::ArrowRight,
     Key::ArrowUp,
     Key::ArrowDown,
+    Key::Enter,
+    Key::Home,
+    Key::End,
+];
+
+/// Keys that edit a text block (T29).
+const TEXT_KEYS: [Key; 10] = [
+    Key::Enter,
+    Key::Backspace,
+    Key::Delete,
+    Key::ArrowLeft,
+    Key::ArrowRight,
+    Key::ArrowUp,
+    Key::ArrowDown,
+    Key::Home,
+    Key::End,
+    Key::Tab,
 ];
 
 /// The arrow keys: grid columns and rows.
@@ -135,6 +152,19 @@ fn arb_key() -> impl Strategy<Value = Key> {
     select(ALL_KEYS.to_vec())
 }
 
+/// A typed character: mostly letters, sometimes line breaks, spaces,
+/// multi-byte or control characters, or any `char`.
+fn arb_char() -> impl Strategy<Value = char> {
+    prop_oneof![
+        8 => proptest::char::range('a', 'z'),
+        1 => Just('\n'),
+        1 => Just(' '),
+        1 => select(vec!['β', '∑', '≤', 'é', '𝔸']),
+        1 => select(vec!['\u{8}', '\r', '\t', '\u{1b}', '\u{7f}']),
+        1 => any::<char>(),
+    ]
+}
+
 /// A scroll delta: usually a few notches, sometimes extreme or non-finite.
 fn arb_scroll_delta() -> impl Strategy<Value = f32> {
     prop_oneof![
@@ -155,7 +185,58 @@ fn arb_event() -> impl Strategy<Value = InputEvent> {
         (arb_key(), arb_mods()).prop_map(|(key, mods)| InputEvent::KeyDown { key, mods }),
         (arb_key(), arb_mods()).prop_map(|(key, mods)| InputEvent::KeyUp { key, mods }),
         arb_pos().prop_map(|size| InputEvent::Resize { size }),
+        (arb_char(), arb_mods()).prop_map(|(ch, mods)| InputEvent::Char { ch, mods }),
     ]
+}
+
+/// A Text-tool session (T29): `T`, a click, then typing and editing keys,
+/// sometimes ended with `Esc`, `Ctrl+Z`, `Ctrl+Enter` or another click.
+fn arb_text_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    let none = Modifiers::NONE;
+    let step = prop_oneof![
+        8 => arb_char().prop_map(move |ch| vec![InputEvent::Char { ch, mods: none }]),
+        3 => select(TEXT_KEYS.to_vec()).prop_map(move |key| vec![InputEvent::KeyDown { key, mods: none }]),
+        1 => (arb_key(), arb_mods()).prop_map(|(key, mods)| vec![InputEvent::KeyDown { key, mods }]),
+        1 => arb_screen_pos().prop_map(move |pos| vec![
+            InputEvent::PointerDown { pos, button: PointerButton::Left, mods: none },
+            InputEvent::PointerUp { pos, button: PointerButton::Left, mods: none },
+        ]),
+    ];
+    let end = prop_oneof![
+        3 => Just(vec![InputEvent::KeyDown { key: Key::Escape, mods: none }]),
+        1 => Just(vec![InputEvent::KeyDown {
+            key: Key::Z,
+            mods: Modifiers { ctrl: true, ..none },
+        }]),
+        1 => Just(vec![InputEvent::KeyDown {
+            key: Key::Enter,
+            mods: Modifiers { ctrl: true, ..none },
+        }]),
+        1 => Just(Vec::new()),
+    ];
+    (arb_screen_pos(), prop::collection::vec(step, 0..30), end).prop_map(
+        move |(pos, steps, end)| {
+            let mut events = vec![
+                InputEvent::KeyDown {
+                    key: Key::T,
+                    mods: none,
+                },
+                InputEvent::PointerDown {
+                    pos,
+                    button: PointerButton::Left,
+                    mods: none,
+                },
+                InputEvent::PointerUp {
+                    pos,
+                    button: PointerButton::Left,
+                    mods: none,
+                },
+            ];
+            events.extend(steps.into_iter().flatten());
+            events.extend(end);
+            events
+        },
+    )
 }
 
 /// A realistic drag: down, a wobbly path of moves (rarely a wild point), up.
@@ -284,6 +365,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         1 => arb_grid_drag(),
         3 => arb_command_burst(),
         1 => arb_space_drag(),
+        2 => arb_text_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
     ];
@@ -354,6 +436,14 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                     .windows(2)
                     .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)),
                 "step {step}: grid {id:?} fills not sorted/unique: {fills:?}"
+            );
+        }
+        // T29: text blocks have a positive size and visible text.
+        if let Shape::Text { text, size, .. } = shape {
+            prop_assert!(*size > 0.0, "step {step}: text {id:?} has size {size}");
+            prop_assert!(
+                !text.trim().is_empty(),
+                "step {step}: text {id:?} is blank: {text:?}"
             );
         }
         // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
@@ -483,6 +573,10 @@ fn strategies_generate_all_variants() {
                 (5, None)
             }
             InputEvent::Resize { size } => (6, Some(size)),
+            InputEvent::Char { mods, .. } => {
+                mods_seen.insert(mods);
+                (7, None)
+            }
         };
         variants.insert(variant);
         if let Some(pos) = pos {
@@ -492,7 +586,7 @@ fn strategies_generate_all_variants() {
     }
 
     // Assert
-    assert_eq!(variants.len(), 7, "event variants seen: {variants:?}");
+    assert_eq!(variants.len(), 8, "event variants seen: {variants:?}");
     assert_eq!(keys.len(), ALL_KEYS.len(), "keys seen: {keys:?}");
     assert_eq!(
         buttons.len(),
@@ -596,6 +690,40 @@ fn sessions_reach_deep_editor_states() {
     );
     assert!(zoomed >= 20, "sessions that zoomed: {zoomed}/200");
     assert!(with_redo >= 20, "sessions that could redo: {with_redo}/200");
+}
+
+#[test]
+fn sessions_reach_text_edit_states() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_session();
+    let (mut editing, mut committed) = (0, 0);
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        let (mut edit, mut text) = (false, false);
+        for event in tree.current() {
+            editor.handle(event);
+            edit |= editor.text_edit().is_some_and(|e| !e.text().is_empty());
+            text |= editor
+                .document()
+                .shapes()
+                .any(|(_, shape)| matches!(shape, Shape::Text { .. }));
+        }
+        editing += usize::from(edit);
+        committed += usize::from(text);
+    }
+
+    // Assert
+    assert!(editing >= 40, "sessions typing into a block: {editing}/200");
+    assert!(
+        committed >= 20,
+        "sessions with a text block: {committed}/200"
+    );
 }
 
 // ---------------------------------------------------------------------------
