@@ -11,12 +11,13 @@ use draw::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use draw::core::command::{Command, Tool};
 use draw::core::document::ShapeId;
 use draw::core::editor::Editor;
+use draw::core::experimental::Experimental;
 use draw::core::geom::Vec2;
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
 use draw::core::numbering::FIRST_NUMBER;
-use draw::core::shape::{GRID_MAX_CELLS, Shape};
+use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
 use draw::core::tex;
 use draw::core::text_layout::typeset;
@@ -270,6 +271,93 @@ fn arb_text_session() -> impl Strategy<Value = Vec<InputEvent>> {
     )
 }
 
+/// A shape-text session (T31): draw a rectangle, ellipse or grid, switch
+/// to the Text tool, click inside it, then type, walk cells with `Tab` /
+/// `Enter` (with or without `Shift`) and end like a text session.
+fn arb_host_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    let none = Modifiers::NONE;
+    let shift = Modifiers {
+        shift: true,
+        ..none
+    };
+    let step = prop_oneof![
+        6 => arb_char().prop_map(move |ch| vec![InputEvent::Char { ch, mods: none }]),
+        1 => arb_formula().prop_map(move |src| {
+            src.chars().map(|ch| InputEvent::Char { ch, mods: none }).collect()
+        }),
+        3 => (select(vec![Key::Tab, Key::Enter]), any::<bool>()).prop_map(move |(key, s)| {
+            vec![InputEvent::KeyDown { key, mods: if s { shift } else { none } }]
+        }),
+        2 => select(TEXT_KEYS.to_vec()).prop_map(move |key| vec![InputEvent::KeyDown { key, mods: none }]),
+        1 => (-1.0f32..1.0, -1.0f32..1.0).prop_map(|(x, y)| vec![
+            InputEvent::PointerDown { pos: Vec2::new(x, y), button: PointerButton::Left, mods: Modifiers::NONE },
+            InputEvent::PointerUp { pos: Vec2::new(x, y), button: PointerButton::Left, mods: Modifiers::NONE },
+        ]),
+    ];
+    let end = prop_oneof![
+        3 => Just(vec![InputEvent::KeyDown { key: Key::Escape, mods: none }]),
+        1 => Just(vec![InputEvent::KeyDown {
+            key: Key::Z,
+            mods: Modifiers { ctrl: true, ..none },
+        }]),
+        1 => Just(Vec::new()),
+    ];
+    (
+        select(vec![Key::R, Key::C, Key::G]),
+        (50.0f32..700.0, 50.0f32..500.0),
+        (60.0f32..300.0, 60.0f32..300.0),
+        prop::collection::vec(step, 0..30),
+        end,
+    )
+        .prop_map(move |(tool, (x, y), (w, h), steps, end)| {
+            let at = |dx: f32, dy: f32| Vec2::new(x + dx * w, y + dy * h);
+            let press = |pos| InputEvent::PointerDown {
+                pos,
+                button: PointerButton::Left,
+                mods: none,
+            };
+            let release = |pos| InputEvent::PointerUp {
+                pos,
+                button: PointerButton::Left,
+                mods: none,
+            };
+            let mut events = vec![
+                InputEvent::KeyDown {
+                    key: tool,
+                    mods: none,
+                },
+                press(at(0.0, 0.0)),
+                InputEvent::PointerMove {
+                    pos: at(0.5, 0.5),
+                    mods: none,
+                },
+                release(at(1.0, 1.0)),
+                InputEvent::KeyDown {
+                    key: Key::T,
+                    mods: none,
+                },
+                press(at(0.45, 0.45)),
+                release(at(0.45, 0.45)),
+            ];
+            for step in steps {
+                for event in step {
+                    // Clicks are offsets inside the shape.
+                    events.push(match event {
+                        InputEvent::PointerDown { pos, .. } => {
+                            press(at(0.5 + pos.x * 0.4, 0.5 + pos.y * 0.4))
+                        }
+                        InputEvent::PointerUp { pos, .. } => {
+                            release(at(0.5 + pos.x * 0.4, 0.5 + pos.y * 0.4))
+                        }
+                        other => other,
+                    });
+                }
+            }
+            events.extend(end);
+            events
+        })
+}
+
 /// A realistic drag: down, a wobbly path of moves (rarely a wild point), up.
 fn arb_gesture() -> impl Strategy<Value = Vec<InputEvent>> {
     let step = prop_oneof![
@@ -397,6 +485,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         3 => arb_command_burst(),
         1 => arb_space_drag(),
         2 => arb_text_session(),
+        1 => arb_host_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
     ];
@@ -441,6 +530,44 @@ fn shapes_of(editor: &Editor) -> Vec<(ShapeId, Shape)> {
         .shapes()
         .map(|(id, shape)| (id, shape.clone()))
         .collect()
+}
+
+/// T31: shape text exists only with the switch on; it is non-blank and
+/// sized, and cell texts lie inside the grid, sorted by `(row, col)`,
+/// unique.
+fn check_shape_text(
+    editor: &Editor,
+    id: ShapeId,
+    shape: &Shape,
+    step: usize,
+) -> Result<(), TestCaseError> {
+    let own = shape.slot_text(TextSlot::Shape);
+    let cell_texts = shape.cell_texts();
+    if !editor.experimental().shape_text {
+        prop_assert!(
+            own.is_none() && cell_texts.is_empty(),
+            "step {step}: shape {id:?} has text with the switch off"
+        );
+    }
+    for content in own.into_iter().chain(cell_texts.iter().map(|c| &c.content)) {
+        prop_assert!(
+            !content.text.trim().is_empty() && content.size.is_finite() && content.size > 0.0,
+            "step {step}: shape {id:?} has bad text {content:?}"
+        );
+    }
+    if let Shape::Grid { cols, rows, .. } = shape {
+        prop_assert!(
+            cell_texts.iter().all(|c| c.col < *cols && c.row < *rows),
+            "step {step}: grid {id:?} text outside {cols} × {rows}"
+        );
+        prop_assert!(
+            cell_texts
+                .windows(2)
+                .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)),
+            "step {step}: grid {id:?} texts not sorted/unique"
+        );
+    }
+    Ok(())
 }
 
 /// Checks every editor invariant from the architecture note.
@@ -498,6 +625,7 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 );
             }
         }
+        check_shape_text(editor, id, shape, step)?;
         // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
         if let Some(label) = shape.label() {
             prop_assert!(
@@ -545,7 +673,15 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
 
 /// Runs `session`, checking invariants after every event.
 fn run_session(session: &[InputEvent]) -> Result<Editor, TestCaseError> {
-    let mut editor = Editor::new();
+    run_session_with(session, Experimental::default())
+}
+
+/// [`run_session`] on an editor with the `experimental` switches.
+fn run_session_with(
+    session: &[InputEvent],
+    experimental: Experimental,
+) -> Result<Editor, TestCaseError> {
+    let mut editor = Editor::new().with_experimental(experimental);
     check_invariants(&editor, 0)?;
     for (i, &event) in session.iter().enumerate() {
         editor.handle(event);
@@ -779,6 +915,38 @@ fn sessions_reach_text_edit_states() {
 }
 
 #[test]
+fn switch_on_sessions_reach_shape_text() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_host_session();
+    let (mut own, mut cells) = (0, 0);
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_host_session failed to generate a value");
+        };
+        let mut editor = Editor::new().with_experimental(SHAPE_TEXT_ON);
+        editor.handle(InputEvent::Resize {
+            size: Vec2::new(1024.0, 768.0),
+        });
+        for event in tree.current() {
+            editor.handle(event);
+        }
+        let shapes = || editor.document().shapes().map(|(_, shape)| shape);
+        own += usize::from(shapes().any(|s| s.slot_text(TextSlot::Shape).is_some()));
+        cells += usize::from(shapes().any(|s| s.cell_texts().len() >= 2));
+    }
+
+    // Assert
+    assert!(own >= 30, "sessions with rectangle/ellipse text: {own}/200");
+    assert!(
+        cells >= 15,
+        "sessions with two or more cell texts: {cells}/200"
+    );
+}
+
+#[test]
 fn sessions_reach_committed_formulas() {
     // Arrange
     let mut runner = TestRunner::deterministic();
@@ -823,43 +991,75 @@ proptest! {
 
     #[test]
     fn undo_all_then_redo_all_is_symmetric(session in arb_session()) {
-        // Arrange
-        let mut editor = run_session(&session)?;
-        editor.apply(Command::Cancel);
-        // Leftover redo entries would make "redo all" overshoot the snapshot.
-        while editor.can_redo() {
-            prop_assert!(editor.apply(Command::Redo), "redo reported no change");
-        }
-        let before = shapes_of(&editor);
-
-        // Act: undo everything.
-        let mut undos = 0usize;
-        while editor.can_undo() {
-            prop_assert!(editor.apply(Command::Undo), "undo reported no change");
-            check_invariants(&editor, session.len() + undos)?;
-            undos += 1;
-            prop_assert!(undos <= HISTORY_LIMIT, "more undos than the history limit");
-        }
-
-        // Assert: empty unless the history was capped.
-        if undos < HISTORY_LIMIT {
-            prop_assert!(
-                editor.document().is_empty(),
-                "{} shapes left after {undos} undos",
-                editor.document().len()
-            );
-        }
-
-        // Act: redo everything.
-        for _ in 0..undos {
-            prop_assert!(editor.apply(Command::Redo), "redo reported no change");
-            check_invariants(&editor, session.len() + undos)?;
-        }
-
-        // Assert
-        prop_assert!(!editor.can_redo());
-        prop_assert_eq!(shapes_of(&editor), before);
+        check_undo_redo_symmetric(&session, Experimental::default())?;
     }
+
+    #[test]
+    fn shape_text_sessions_never_panic_and_keep_invariants(session in arb_session()) {
+        run_session_with(&session, SHAPE_TEXT_ON)?;
+    }
+
+    #[test]
+    fn shape_text_undo_all_then_redo_all_is_symmetric(session in arb_session()) {
+        check_undo_redo_symmetric(&session, SHAPE_TEXT_ON)?;
+    }
+
+    #[test]
+    fn switch_off_sessions_never_create_shape_text(session in arb_session()) {
+        let editor = run_session(&session)?;
+        let texts = editor.document().shapes().any(|(_, shape)| {
+            shape.slot_text(TextSlot::Shape).is_some() || !shape.cell_texts().is_empty()
+        });
+        prop_assert!(!texts);
+    }
+}
+
+/// Shape text on (T31).
+const SHAPE_TEXT_ON: Experimental = Experimental { shape_text: true };
+
+/// Runs `session`, undoes everything (the document must be empty unless the
+/// history was capped) and redoes everything (the document must be back).
+fn check_undo_redo_symmetric(
+    session: &[InputEvent],
+    experimental: Experimental,
+) -> Result<(), TestCaseError> {
+    // Arrange
+    let mut editor = run_session_with(session, experimental)?;
+    editor.apply(Command::Cancel);
+    // Leftover redo entries would make "redo all" overshoot the snapshot.
+    while editor.can_redo() {
+        prop_assert!(editor.apply(Command::Redo), "redo reported no change");
+    }
+    let before = shapes_of(&editor);
+
+    // Act: undo everything.
+    let mut undos = 0usize;
+    while editor.can_undo() {
+        prop_assert!(editor.apply(Command::Undo), "undo reported no change");
+        check_invariants(&editor, session.len() + undos)?;
+        undos += 1;
+        prop_assert!(undos <= HISTORY_LIMIT, "more undos than the history limit");
+    }
+
+    // Assert: empty unless the history was capped.
+    if undos < HISTORY_LIMIT {
+        prop_assert!(
+            editor.document().is_empty(),
+            "{} shapes left after {undos} undos",
+            editor.document().len()
+        );
+    }
+
+    // Act: redo everything.
+    for _ in 0..undos {
+        prop_assert!(editor.apply(Command::Redo), "redo reported no change");
+        check_invariants(&editor, session.len() + undos)?;
+    }
+
+    // Assert
+    prop_assert!(!editor.can_redo());
+    prop_assert_eq!(shapes_of(&editor), before);
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

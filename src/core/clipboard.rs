@@ -217,6 +217,7 @@ pub(crate) mod testkit {
             style: style(),
             fill: None,
             label: None,
+            text: None,
         }
     }
 
@@ -233,6 +234,7 @@ pub(crate) mod testkit {
             style: style(),
             fill: None,
             label: None,
+            text: None,
         }
     }
 

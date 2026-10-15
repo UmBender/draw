@@ -113,7 +113,19 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     let pos = pointer.pos;
     let world = ctx.camera.screen_to_world(pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
-    let hit = ctx.doc.topmost_where(|shape| shape.hit(world, tol));
+    // With shape text on, the inside of the only selected shape grabs it,
+    // so a second click there can open its text (ADR-T31-1).
+    let hit = ctx
+        .doc
+        .topmost_where(|shape| shape.hit(world, tol))
+        .or_else(|| match ctx.selection.as_slice() {
+            &[id] if ctx.style.helpers.experimental.shape_text => ctx
+                .doc
+                .get(id)
+                .and_then(|shape| shape.text_slot_at(world))
+                .map(|_| id),
+            _ => None,
+        });
     state.gesture = match hit {
         Some(id) if pointer.mods.shift => {
             match ctx.selection.iter().position(|selected| *selected == id) {
@@ -659,5 +671,51 @@ mod tests {
         let mut state = State::default();
         drag(&mut state, &mut fx, (100.0, 100.0), (110.0, 110.0), SHIFT);
         assert!(fx.selection.iter().all(|id| fx.doc.get(*id).is_some()));
+    }
+    // ---- T31 shape text ---------------------------------------------------
+
+    #[test]
+    fn shape_text_press_inside_only_selected_rect_keeps_it() {
+        // Arrange: an unfilled 100 × 100 rectangle, selected.
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.style.helpers.experimental.shape_text = true;
+        fx.selection = vec![ids[0]];
+        let mut state = State::default();
+
+        // Act: click in the middle, away from the outline.
+        click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
+
+        // Assert: still selected; a drag from inside moves it.
+        assert_eq!(fx.selection, ids);
+        drag(
+            &mut state,
+            &mut fx,
+            (50.0, 50.0),
+            (60.0, 55.0),
+            Modifiers::NONE,
+        );
+        assert_eq!(corner(&fx.shape(ids[0])), Vec2::new(10.0, 5.0));
+    }
+
+    #[test]
+    fn shape_text_off_press_inside_selected_rect_clears_selection() {
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.selection = vec![ids[0]];
+        let mut state = State::default();
+
+        click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
+
+        assert!(fx.selection.is_empty());
+    }
+
+    #[test]
+    fn shape_text_press_inside_unselected_rect_does_not_pick_it() {
+        let (mut fx, _) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.style.helpers.experimental.shape_text = true;
+        let mut state = State::default();
+
+        click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
+
+        assert!(fx.selection.is_empty());
     }
 }

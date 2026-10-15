@@ -19,13 +19,14 @@ use crate::core::camera::Camera;
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
+use crate::core::experimental::Experimental;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::{HISTORY_LIMIT, History};
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
-use crate::core::shape::{GRID_MAX_CELLS, Shape};
+use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
@@ -64,6 +65,9 @@ pub struct Helpers {
     pub grid_cols: u32,
     /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_rows: u32,
+    /// Experimental features, set once by [`Editor::with_experimental`]
+    /// (ADR-T31-1).
+    pub experimental: Experimental,
 }
 
 impl Default for Helpers {
@@ -75,6 +79,7 @@ impl Default for Helpers {
             next_number: FIRST_NUMBER,
             grid_cols: DEFAULT_GRID_CELLS,
             grid_rows: DEFAULT_GRID_CELLS,
+            experimental: Experimental::default(),
         }
     }
 }
@@ -197,6 +202,19 @@ impl Editor {
     #[must_use]
     pub fn with_keymap(self, keymap: Keymap) -> Self {
         Self { keymap, ..self }
+    }
+
+    /// Turns the `experimental` features on or off (ADR-T31-1).
+    #[must_use]
+    pub fn with_experimental(mut self, experimental: Experimental) -> Self {
+        self.style.helpers.experimental = experimental;
+        self
+    }
+
+    /// The experimental features that are on.
+    #[must_use]
+    pub fn experimental(&self) -> Experimental {
+        self.style.helpers.experimental
     }
 
     /// Handles one input event. Returns whether the view needs a redraw.
@@ -691,17 +709,37 @@ impl Editor {
 
     /// Handles a key while a text block is open: editing keys edit it,
     /// `Ctrl+[` / `Ctrl+]` resize it, `Esc` and `Ctrl+Enter` commit it,
-    /// `Ctrl+Z` cancels it, every other key does nothing (ADR-T29-2,
-    /// ADR-T29-3). Returns whether a redraw is needed.
+    /// `Ctrl+Z` cancels it, in a grid cell `Tab` and `Enter` (with or
+    /// without `Shift`) move to another cell, every other key does nothing
+    /// (ADR-T29-2, ADR-T29-3, ADR-T31-1). Returns whether a redraw is
+    /// needed.
     fn text_key(&mut self, key: Key, mods: Modifiers) -> bool {
         let ctrl_only = Modifiers {
             ctrl: true,
             ..Modifiers::NONE
         };
+        let shift_only = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+        let in_cell = self
+            .text_edit()
+            .and_then(TextEdit::host)
+            .is_some_and(|host| matches!(host.slot, TextSlot::Cell { .. }));
         match key {
             Key::Escape => return self.finish_text(),
             Key::Enter if mods.ctrl => return self.finish_text(),
             Key::Z if mods == ctrl_only => return self.cancel_text(),
+            // ADR-T31-1: Tab and Enter walk the cells of a grid.
+            Key::Tab | Key::Enter if in_cell && (mods == Modifiers::NONE || mods == shift_only) => {
+                let step = match (key, mods.shift) {
+                    (Key::Tab, false) => CellStep::Next,
+                    (Key::Tab, true) => CellStep::Prev,
+                    (_, false) => CellStep::Down,
+                    (_, true) => CellStep::Up,
+                };
+                return self.step_cell(step);
+            }
             _ => {}
         }
         let Some(edit) = &mut self.tools.text.edit else {
@@ -733,6 +771,20 @@ impl Editor {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
+        if let Some(host) = edit.host().copied() {
+            self.track_document(false, |ed| {
+                let Some(shape) = ed.doc.get(host.id) else {
+                    return false;
+                };
+                let changed = shape.clone().with_slot_text(host.slot, edit.shape_text());
+                if &changed == shape {
+                    return false;
+                }
+                let tx = tx_replace(&ed.doc, host.id, changed);
+                !tx.is_empty() && ed.history.commit(&mut ed.doc, tx).is_ok()
+            });
+            return true;
+        }
         let appends = edit.target().is_none();
         self.track_document(appends, |ed| {
             let target = edit.target().filter(|id| ed.doc.get(*id).is_some());
@@ -750,17 +802,61 @@ impl Editor {
         true
     }
 
+    /// Commits the open grid cell and opens the cell one `step` away, its
+    /// caret at the end; a new cell takes the size of the one left. Does
+    /// nothing, returning `false`, when there is no such cell (ADR-T31-1).
+    fn step_cell(&mut self, step: CellStep) -> bool {
+        let Some(edit) = &self.tools.text.edit else {
+            return false;
+        };
+        let Some(host) = edit.host().copied() else {
+            return false;
+        };
+        let TextSlot::Cell { col, row } = host.slot else {
+            return false;
+        };
+        let size = edit.size;
+        let next = self
+            .doc
+            .get(host.id)
+            .and_then(|shape| shape.grid_cell_step(col, row, step));
+        let Some((col, row)) = next else {
+            return false;
+        };
+        self.finish_text();
+        let slot = TextSlot::Cell { col, row };
+        self.tools.text.edit = self
+            .doc
+            .get(host.id)
+            .and_then(|shape| TextEdit::open_in(host.id, shape, slot, size));
+        true
+    }
+
     /// Throws the open text block away. Returns whether there was one.
     fn cancel_text(&mut self) -> bool {
         self.tools.text.edit.take().is_some()
     }
 
     /// The text block hit at world `p` (tolerance `tol`), if it is the
-    /// topmost shape there and the only selected one.
+    /// topmost shape there and the only selected one. With shape text on,
+    /// also the only selected shape if it holds text at `p` (ADR-T31-1).
     fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
-        let id = self.doc.topmost_where(|shape| shape.hit(p, tol))?;
-        let is_text = matches!(self.doc.get(id), Some(Shape::Text { .. }));
-        (is_text && self.selection == [id]).then_some(id)
+        let &[selected] = self.selection.as_slice() else {
+            return None;
+        };
+        let hosts = self.experimental().shape_text;
+        match self.doc.topmost_where(|shape| shape.hit(p, tol)) {
+            Some(id) if id == selected => {
+                let shape = self.doc.get(id)?;
+                let is_text = matches!(shape, Shape::Text { .. });
+                (is_text || (hosts && shape.text_slot_at(p).is_some())).then_some(id)
+            }
+            None if hosts => {
+                let shape = self.doc.get(selected)?;
+                shape.text_slot_at(p).is_some().then_some(selected)
+            }
+            Some(_) | None => None,
+        }
     }
 
     /// Re-opens the text block of a Select press armed in
@@ -774,10 +870,17 @@ impl Editor {
             return false;
         }
         let at = self.camera.screen_to_world(pos);
+        let size = self
+            .camera
+            .world_len(text::text_size_px(self.style.width_px));
+        let hosts = self.experimental().shape_text;
         self.tools.text.edit = self
             .doc
             .get(id)
-            .and_then(|shape| TextEdit::open(id, shape, at));
+            .and_then(|shape| match shape.text_slot_at(at) {
+                Some(slot) if hosts => TextEdit::open_in(id, shape, slot, size),
+                _ => TextEdit::open(id, shape, at),
+            });
         self.tools.text.edit.is_some()
     }
 
@@ -873,12 +976,13 @@ mod tests {
     use super::*;
     use crate::core::camera::{Camera, ZOOM_STEP};
     use crate::core::document::tx_insert;
+    use crate::core::experimental::Experimental;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
     use crate::core::shape::GRID_MAX_CELLS;
-    use crate::core::shape::{Shape, Style};
+    use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
     use crate::core::smoothing::SmoothingLevel;
 
     const NONE: Modifiers = Modifiers::NONE;
@@ -893,6 +997,7 @@ mod tests {
             },
             fill: None,
             label: None,
+            text: None,
         }
     }
 
@@ -3027,5 +3132,477 @@ mod tests {
         key(&mut ed, Key::Escape);
 
         assert!(ed.text_caret().is_none());
+    }
+    // ---- T31 shape text -----------------------------------------------------
+
+    const SHIFT: Modifiers = Modifiers {
+        shift: true,
+        ctrl: false,
+        alt: false,
+    };
+
+    const SHAPE_TEXT_ON: Experimental = Experimental { shape_text: true };
+
+    fn ellipse(x: f32, y: f32, w: f32, h: f32) -> Shape {
+        Shape::Ellipse {
+            a: Vec2::new(x, y),
+            b: Vec2::new(x + w, y + h),
+            style: Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            fill: None,
+            label: None,
+            text: None,
+        }
+    }
+
+    /// Unfilled `cols × rows` grid over `(x, y)`–`(x + w, y + h)`.
+    fn grid(x: f32, y: f32, w: f32, h: f32, cols: u32, rows: u32) -> Shape {
+        Shape::Grid {
+            a: Vec2::new(x, y),
+            b: Vec2::new(x + w, y + h),
+            cols,
+            rows,
+            style: Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            axes: false,
+            fills: Vec::new(),
+            texts: Vec::new(),
+        }
+    }
+
+    fn cell(col: u32, row: u32) -> TextSlot {
+        TextSlot::Cell { col, row }
+    }
+
+    /// Editor with an 800 × 600 viewport holding `shapes`, the shape text
+    /// switch set to `on`, and `tool` active.
+    fn shape_text_editor(shapes: Vec<Shape>, on: bool, tool: Tool) -> Editor {
+        let experimental = if on {
+            SHAPE_TEXT_ON
+        } else {
+            Experimental::default()
+        };
+        let mut ed = editor_with(shapes).with_experimental(experimental);
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        ed.apply(Command::SetTool(tool));
+        ed
+    }
+
+    /// The text in `slot` of the `index`-th shape (bottom first).
+    fn slot_text(ed: &Editor, index: usize, slot: TextSlot) -> Option<String> {
+        let (_, shape) = ed.document().shapes().nth(index)?;
+        shape.slot_text(slot).map(|t| t.text.clone())
+    }
+
+    /// The host (shape index, slot) of the open edit, if it is hosted.
+    fn editing_host(ed: &Editor) -> Option<(ShapeId, TextSlot)> {
+        ed.text_edit()?.host().map(|h| (h.id, h.slot))
+    }
+
+    #[test]
+    fn with_experimental_sets_the_switch_in_helpers() {
+        let ed = Editor::new();
+        assert_eq!(ed.experimental(), Experimental::default());
+
+        let ed = ed.with_experimental(SHAPE_TEXT_ON);
+
+        assert_eq!(ed.experimental(), SHAPE_TEXT_ON);
+        assert!(ed.helpers().experimental.shape_text);
+    }
+
+    #[test]
+    fn shape_text_off_text_tool_in_rect_starts_free_block() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], false, Tool::Text);
+
+        // Act
+        place(&mut ed, 50.0, 50.0, "ab");
+        key(&mut ed, Key::Escape);
+
+        // Assert: T29 behaviour, the rectangle is untouched.
+        assert_eq!(texts(&ed), ["ab"]);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
+    }
+
+    #[test]
+    fn shape_text_off_select_click_inside_selected_rect_clears_selection() {
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], false, Tool::Select);
+        click(&mut ed, 0.0, 50.0);
+        assert_eq!(ed.selection().len(), 1);
+
+        click(&mut ed, 100.0, 50.0);
+
+        assert!(ed.selection().is_empty());
+        assert!(ed.text_edit().is_none());
+    }
+
+    #[test]
+    fn shape_text_text_tool_click_in_rect_edits_its_text() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let id = ids(&ed)[0];
+
+        // Act
+        place(&mut ed, 100.0, 50.0, "ab");
+
+        // Assert: editing the rectangle, not a free block.
+        assert_eq!(editing_host(&ed), Some((id, TextSlot::Shape)));
+        assert_eq!(editing(&ed).as_deref(), Some("ab"));
+        key(&mut ed, Key::Escape);
+        assert!(texts(&ed).is_empty());
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("ab"));
+        let Some((_, shape)) = ed.document().shapes().next() else {
+            panic!("the rectangle stays");
+        };
+        let size = shape.slot_text(TextSlot::Shape).map(|t| t.size);
+        assert!(size.is_some_and(|s| approx_eq(s, 18.0, 1e-4)), "{size:?}");
+    }
+
+    #[test]
+    fn shape_text_text_tool_click_in_ellipse_edits_its_text() {
+        let mut ed = shape_text_editor(vec![ellipse(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+
+        place(&mut ed, 100.0, 50.0, "3");
+        key(&mut ed, Key::Escape);
+
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("3"));
+        assert!(texts(&ed).is_empty());
+    }
+
+    #[test]
+    fn shape_text_text_tool_click_in_grid_edits_that_cell() {
+        // Arrange: 4 × 4 cells of 50.
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 200.0, 200.0, 4, 4)], true, Tool::Text);
+
+        // Act
+        place(&mut ed, 60.0, 110.0, "7");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(slot_text(&ed, 0, cell(1, 2)).as_deref(), Some("7"));
+        assert_eq!(slot_text(&ed, 0, cell(0, 0)), None);
+        assert!(texts(&ed).is_empty());
+    }
+
+    #[test]
+    fn shape_text_text_block_on_top_of_rect_is_reopened() {
+        // Arrange: a text block inside a rectangle.
+        let block = Shape::Text {
+            origin: Vec2::new(50.0, 40.0),
+            text: "abc".to_owned(),
+            size: 18.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        };
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0), block], true, Tool::Text);
+        let block_id = ids(&ed)[1];
+
+        // Act
+        click(&mut ed, 55.0, 45.0);
+
+        // Assert
+        assert_eq!(ed.text_edit().and_then(TextEdit::target), Some(block_id));
+        assert_eq!(editing_host(&ed), None);
+    }
+
+    #[test]
+    fn shape_text_select_second_click_edits_selected_shape() {
+        // Arrange
+        let shapes = vec![
+            rect(0.0, 0.0, 200.0, 100.0),
+            grid(300.0, 0.0, 200.0, 200.0, 4, 4),
+        ];
+        let mut ed = shape_text_editor(shapes, true, Tool::Select);
+        let ids = ids(&ed);
+
+        // Act / Assert: a first click on the outline only selects.
+        click(&mut ed, 0.0, 50.0);
+        assert_eq!(ed.selection(), [ids[0]]);
+        assert!(ed.text_edit().is_none());
+
+        // The second click, inside, opens its text.
+        click(&mut ed, 100.0, 50.0);
+        assert_eq!(editing_host(&ed), Some((ids[0], TextSlot::Shape)));
+        typed(&mut ed, "x");
+        key(&mut ed, Key::Escape);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("x"));
+
+        // A grid: select by a line, then click a cell.
+        click(&mut ed, 300.0, 120.0);
+        assert_eq!(ed.selection(), [ids[1]]);
+        click(&mut ed, 420.0, 170.0);
+        assert_eq!(editing_host(&ed), Some((ids[1], cell(2, 3))));
+    }
+
+    #[test]
+    fn shape_text_edit_is_one_history_entry() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let before = ed.history.undo_len();
+
+        // Act
+        place(&mut ed, 100.0, 50.0, "hello");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), before + 1);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
+        ed.apply(Command::Redo);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn shape_text_ctrl_z_cancels_edit() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        place(&mut ed, 100.0, 50.0, "x");
+        key(&mut ed, Key::Escape);
+        place(&mut ed, 100.0, 50.0, "yz");
+
+        // Act
+        assert!(key_with(&mut ed, Key::Z, CTRL));
+
+        // Assert
+        assert!(ed.text_edit().is_none());
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn shape_text_blank_edit_clears_text() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        place(&mut ed, 100.0, 50.0, "x");
+        key(&mut ed, Key::Escape);
+
+        // Act: re-open (caret at the end), delete, commit.
+        click(&mut ed, 100.0, 50.0);
+        key(&mut ed, Key::Backspace);
+        typed(&mut ed, "  ");
+        key(&mut ed, Key::Escape);
+
+        // Assert: the rectangle stays, without text; undo brings it back.
+        assert_eq!(ed.document().len(), 1);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
+        ed.apply(Command::Undo);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn shape_text_overlay_hides_host_and_shows_edit_as_block() {
+        // Arrange: a grid with text in cell (0, 0).
+        let g = grid(0.0, 0.0, 200.0, 200.0, 4, 4)
+            .with_slot_text(cell(0, 0), ShapeText::new("a".to_owned(), 18.0));
+        let mut ed = shape_text_editor(vec![g.clone()], true, Tool::Text);
+        let id = ids(&ed)[0];
+
+        // Act: edit cell (0, 0).
+        place(&mut ed, 20.0, 20.0, "b");
+
+        // Assert: the grid is hidden and drawn without the edited text;
+        // the edit is a text block.
+        let overlay = ed.overlay();
+        assert_eq!(overlay.hidden, [id]);
+        let Some(edit) = ed.text_edit() else {
+            panic!("editing");
+        };
+        assert_eq!(edit.text(), "ab");
+        assert!(overlay.shapes.contains(&g.with_slot_text(cell(0, 0), None)));
+        assert!(overlay.shapes.contains(&edit.shape()));
+        assert!(matches!(edit.shape(), Shape::Text { .. }));
+    }
+
+    #[test]
+    fn shape_text_tab_fills_5x5_grid_without_mouse() {
+        // Arrange: 5 × 5 cells of 50; one click into cell (0, 0).
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 250.0, 250.0, 5, 5)], true, Tool::Text);
+        let before = ed.history.undo_len();
+        click(&mut ed, 25.0, 25.0);
+
+        // Act: type every cell, Tab to the next.
+        for i in 0..25 {
+            typed(&mut ed, &i.to_string());
+            assert!(key(&mut ed, Key::Tab));
+        }
+        key(&mut ed, Key::Escape);
+
+        // Assert: reading order, one history entry per cell.
+        for row in 0..5 {
+            for col in 0..5 {
+                let want = (row * 5 + col).to_string();
+                assert_eq!(
+                    slot_text(&ed, 0, cell(col, row)),
+                    Some(want),
+                    "({col}, {row})"
+                );
+            }
+        }
+        assert_eq!(ed.history.undo_len(), before + 25);
+    }
+
+    #[test]
+    fn shape_text_shift_tab_goes_back_and_tab_wraps() {
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 150.0, 100.0, 3, 2)], true, Tool::Text);
+        let id = ids(&ed)[0];
+        click(&mut ed, 25.0, 25.0);
+
+        assert!(key_with(&mut ed, Key::Tab, SHIFT));
+        assert_eq!(editing_host(&ed), Some((id, cell(2, 1))));
+        assert!(key(&mut ed, Key::Tab));
+        assert_eq!(editing_host(&ed), Some((id, cell(0, 0))));
+        assert!(key(&mut ed, Key::Tab));
+        assert_eq!(editing_host(&ed), Some((id, cell(1, 0))));
+        assert_eq!(
+            editing(&ed).as_deref(),
+            Some(""),
+            "Tab types no spaces in a cell"
+        );
+    }
+
+    #[test]
+    fn shape_text_enter_moves_down_and_stays_at_bottom_row() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 100.0, 100.0, 2, 2)], true, Tool::Text);
+        let id = ids(&ed)[0];
+        place(&mut ed, 25.0, 25.0, "a");
+
+        // Act / Assert
+        key(&mut ed, Key::Enter);
+        assert_eq!(editing_host(&ed), Some((id, cell(0, 1))));
+        typed(&mut ed, "b");
+        key(&mut ed, Key::Enter);
+        assert_eq!(editing_host(&ed), Some((id, cell(0, 1))), "bottom row");
+        assert_eq!(editing(&ed).as_deref(), Some("b"), "no new line in a cell");
+        key_with(&mut ed, Key::Enter, SHIFT);
+        assert_eq!(editing_host(&ed), Some((id, cell(0, 0))));
+        assert_eq!(editing(&ed).as_deref(), Some("a"));
+        assert_eq!(
+            ed.text_edit().map(TextEdit::caret),
+            Some(1),
+            "caret at the end"
+        );
+        key(&mut ed, Key::Escape);
+        assert_eq!(slot_text(&ed, 0, cell(0, 1)).as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn shape_text_enter_in_rect_is_a_new_line() {
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+
+        place(&mut ed, 100.0, 50.0, "a");
+        key(&mut ed, Key::Enter);
+        typed(&mut ed, "b");
+
+        assert_eq!(editing(&ed).as_deref(), Some("a\nb"));
+    }
+
+    #[test]
+    fn shape_text_undo_restores_cells_one_edit_at_a_time() {
+        // Arrange: fill three cells with Tab.
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 150.0, 50.0, 3, 1)], true, Tool::Text);
+        click(&mut ed, 25.0, 25.0);
+        for s in ["x", "y", "z"] {
+            typed(&mut ed, s);
+            key(&mut ed, Key::Tab);
+        }
+        key(&mut ed, Key::Escape);
+        let all = |ed: &Editor| {
+            (0..3)
+                .map(|c| slot_text(ed, 0, cell(c, 0)))
+                .collect::<Vec<_>>()
+        };
+        let some = |s: &str| Some(s.to_owned());
+        assert_eq!(all(&ed), [some("x"), some("y"), some("z")]);
+
+        // Act / Assert
+        ed.apply(Command::Undo);
+        assert_eq!(all(&ed), [some("x"), some("y"), None]);
+        ed.apply(Command::Undo);
+        assert_eq!(all(&ed), [some("x"), None, None]);
+        ed.apply(Command::Undo);
+        assert_eq!(all(&ed), [None, None, None]);
+        assert_eq!(ed.document().len(), 1);
+    }
+
+    #[test]
+    fn shape_text_moves_copies_and_duplicates_with_shape() {
+        // Arrange
+        let r = rect(0.0, 0.0, 200.0, 100.0)
+            .with_slot_text(TextSlot::Shape, ShapeText::new("n".to_owned(), 18.0));
+        let mut ed = shape_text_editor(vec![r], true, Tool::Select);
+
+        // Act: move by dragging the outline, duplicate, copy and paste.
+        down(&mut ed, PointerButton::Left, 0.0, 50.0);
+        move_to(&mut ed, 10.0, 60.0);
+        up(&mut ed, PointerButton::Left, 10.0, 60.0);
+        ed.apply(Command::Duplicate);
+        ed.apply(Command::Copy);
+        ed.apply(Command::Paste);
+
+        // Assert
+        assert_eq!(ed.document().len(), 3);
+        for i in 0..3 {
+            assert_eq!(
+                slot_text(&ed, i, TextSlot::Shape).as_deref(),
+                Some("n"),
+                "{i}"
+            );
+        }
+        let Some((_, Shape::Rect { a, .. })) = ed.document().shapes().next() else {
+            panic!("the rectangle stays first");
+        };
+        assert!(a.approx_eq(Vec2::new(10.0, 10.0), 1e-4));
+    }
+
+    #[test]
+    fn shape_text_erased_with_its_shape() {
+        let r = rect(0.0, 0.0, 200.0, 100.0)
+            .with_slot_text(TextSlot::Shape, ShapeText::new("n".to_owned(), 18.0));
+        let mut ed = shape_text_editor(vec![r], true, Tool::Pen);
+
+        // A right drag across the outline removes the shape and its text.
+        down(&mut ed, PointerButton::Right, 0.0, 40.0);
+        move_to(&mut ed, 0.0, 60.0);
+        up(&mut ed, PointerButton::Right, 0.0, 60.0);
+        assert!(ed.document().is_empty());
+
+        ed.apply(Command::Undo);
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("n"));
+    }
+
+    #[test]
+    fn shape_text_hides_label_and_keeps_counter() {
+        // Arrange: a numbered rectangle (label 1, counter 2).
+        let mut ed = shape_text_editor(Vec::new(), true, Tool::Rect);
+        ed.apply(Command::ToggleNumbering);
+        down(&mut ed, PointerButton::Left, 0.0, 0.0);
+        move_to(&mut ed, 100.0, 60.0);
+        up(&mut ed, PointerButton::Left, 200.0, 100.0);
+        assert_eq!(ed.helpers().next_number, 2);
+
+        // Act: type text into it, then undo the text.
+        ed.apply(Command::SetTool(Tool::Text));
+        place(&mut ed, 100.0, 50.0, "A");
+        key(&mut ed, Key::Escape);
+
+        // Assert: label and counter untouched.
+        let label = |ed: &Editor| ed.document().shapes().next().and_then(|(_, s)| s.label());
+        assert_eq!(label(&ed), Some(1));
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("A"));
+        assert_eq!(ed.helpers().next_number, 2);
+        ed.apply(Command::Undo);
+        assert_eq!(label(&ed), Some(1));
+        assert_eq!(ed.helpers().next_number, 2);
+        ed.apply(Command::Redo);
+        assert_eq!(ed.helpers().next_number, 2);
     }
 }

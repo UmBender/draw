@@ -82,6 +82,7 @@ mod tests {
             style: STYLE,
             fill: None,
             label: None,
+            text: None,
         }
     }
 
@@ -92,6 +93,7 @@ mod tests {
             style: STYLE,
             fill: None,
             label: None,
+            text: None,
         }
     }
 

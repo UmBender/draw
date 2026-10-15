@@ -13,7 +13,7 @@ use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::ShapeId;
 use crate::core::editor::WIDTH_LADDER_PX;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::shape::{Shape, Style};
+use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
 use crate::core::{snap, text_layout};
 
 /// On-screen font size, in pixels, of a new block at stroke width 0.
@@ -32,6 +32,19 @@ pub fn text_size_px(width_px: f32) -> f32 {
     TEXT_BASE_PX + TEXT_PX_PER_WIDTH * width_px
 }
 
+/// The shape whose text an edit changes (ADR-T31-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Host {
+    /// The rectangle, ellipse or grid.
+    pub id: ShapeId,
+    /// Its interior or the grid cell.
+    pub slot: TextSlot,
+    /// The world box the text is fitted into ([`Shape::text_frame`]).
+    pub frame: Aabb,
+    /// The slot is filled, so its text is drawn in the background colour.
+    pub filled: bool,
+}
+
 /// A text block being edited: its text, caret and placement.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextEdit {
@@ -43,6 +56,10 @@ pub struct TextEdit {
     pub style: Style,
     /// The document block being re-edited, `None` for a new block.
     target: Option<ShapeId>,
+    /// The shape whose text this is, `None` for a text block. Its edit is
+    /// re-fitted into the host's frame as it is typed; `size` is then the
+    /// largest size.
+    host: Option<Host>,
     /// The text.
     text: String,
     /// Byte index of the caret, always on a `char` boundary.
@@ -58,9 +75,43 @@ impl TextEdit {
             size,
             style,
             target: None,
+            host: None,
             text: String::new(),
             caret: 0,
         }
+    }
+
+    /// Opens the text in `slot` of `shape` (document id `id`) with the
+    /// caret at its end; an empty slot starts empty at `new_size`. `None`
+    /// if `shape` has no such slot.
+    #[must_use]
+    pub fn open_in(id: ShapeId, shape: &Shape, slot: TextSlot, new_size: f32) -> Option<Self> {
+        let frame = shape.text_frame(slot)?;
+        let filled = match slot {
+            TextSlot::Shape => shape.fill(),
+            TextSlot::Cell { col, row } => shape.cell_fill(col, row),
+        }
+        .is_some();
+        let (text, size) = shape
+            .slot_text(slot)
+            .map_or((String::new(), new_size), |t| (t.text.clone(), t.size));
+        Some(Self {
+            origin: frame.min,
+            size,
+            style: Style {
+                color: shape.style().color,
+                width: 0.0,
+            },
+            target: None,
+            host: Some(Host {
+                id,
+                slot,
+                frame,
+                filled,
+            }),
+            caret: text.len(),
+            text,
+        })
     }
 
     /// Re-opens the text block `shape` (document id `id`) with the caret
@@ -81,6 +132,7 @@ impl TextEdit {
             size: *size,
             style: *style,
             target: Some(id),
+            host: None,
             text: text.clone(),
             caret: 0,
         };
@@ -92,6 +144,26 @@ impl TextEdit {
     #[must_use]
     pub fn target(&self) -> Option<ShapeId> {
         self.target
+    }
+
+    /// The shape whose text this is, `None` for a text block.
+    #[must_use]
+    pub fn host(&self) -> Option<&Host> {
+        self.host.as_ref()
+    }
+
+    /// The edited text as shape text; `None` when blank.
+    #[must_use]
+    pub fn shape_text(&self) -> Option<ShapeText> {
+        ShapeText::new(self.text.clone(), self.size)
+    }
+
+    /// Top-left corner and font size the block is shown at: `origin` and
+    /// `size`, or fitted into the host's frame (ADR-T31-1).
+    fn placed(&self) -> (Vec2, f32) {
+        self.host
+            .and_then(|host| text_layout::fit_source(&self.text, host.frame, self.size))
+            .unwrap_or((self.origin, self.size))
     }
 
     /// The text.
@@ -116,10 +188,11 @@ impl TextEdit {
     /// The block as a document shape.
     #[must_use]
     pub fn shape(&self) -> Shape {
+        let (origin, size) = self.placed();
         Shape::Text {
-            origin: self.origin,
+            origin,
             text: self.text.clone(),
-            size: self.size,
+            size,
             style: self.style,
         }
     }
@@ -128,17 +201,16 @@ impl TextEdit {
     /// edited (ADR-T30-1).
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        text_layout::source_bounds(self.origin, &self.text, self.size)
+        let (origin, size) = self.placed();
+        text_layout::source_bounds(origin, &self.text, size)
     }
 
     /// The caret as a world segment, top to bottom of its line.
     #[must_use]
     pub fn caret_line(&self) -> [Vec2; 2] {
-        let top = text_layout::caret_point(self.origin, &self.text, self.size, self.caret);
-        [
-            top,
-            top + Vec2::new(0.0, text_layout::line_height(self.size)),
-        ]
+        let (origin, size) = self.placed();
+        let top = text_layout::caret_point(origin, &self.text, size, self.caret);
+        [top, top + Vec2::new(0.0, text_layout::line_height(size))]
     }
 
     /// Moves the caret to byte `index`, snapped back to a `char` boundary
@@ -149,7 +221,8 @@ impl TextEdit {
 
     /// Moves the caret to the cell boundary nearest to world point `p`.
     pub fn set_caret_at(&mut self, p: Vec2) {
-        self.caret = text_layout::caret_from_point(self.origin, &self.text, self.size, p);
+        let (origin, size) = self.placed();
+        self.caret = text_layout::caret_from_point(origin, &self.text, size, p);
     }
 
     /// Inserts `ch` at the caret and moves past it. Returns `true`.
@@ -281,13 +354,25 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let world = ctx.camera.screen_to_world(pointer.pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     let view = ctx.view();
+    let size = ctx.camera.world_len(text_size_px(view.style.width_px));
+    // With shape text on, the interior of a rectangle or an ellipse and a
+    // grid cell hold text too (ADR-T31-1).
+    let hosts = view.style.helpers.experimental.shape_text;
     let opened = view
         .doc
-        .topmost_where(|shape| matches!(shape, Shape::Text { .. }) && shape.hit(world, tol))
-        .and_then(|id| TextEdit::open(id, view.doc.get(id)?, world));
+        .topmost_where(|shape| {
+            let block = matches!(shape, Shape::Text { .. }) && shape.hit(world, tol);
+            block || (hosts && shape.text_slot_at(world).is_some())
+        })
+        .and_then(|id| {
+            let shape = view.doc.get(id)?;
+            match shape.text_slot_at(world) {
+                Some(slot) if hosts => TextEdit::open_in(id, shape, slot, size),
+                _ => TextEdit::open(id, shape, world),
+            }
+        });
     state.edit = Some(opened.unwrap_or_else(|| {
         let origin = snap::snap_start(world, pointer.mods, &view);
-        let size = ctx.camera.world_len(text_size_px(view.style.width_px));
         let style = Style {
             color: view.style.color,
             width: 0.0,
@@ -298,17 +383,24 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 }
 
 /// What the edit session draws: the edited block, with the original
-/// hidden while re-editing.
+/// hidden while re-editing. Editing a shape's text hides the shape and
+/// draws it without that text, under the block (ADR-T31-1).
 #[must_use]
-pub fn preview(state: &State, _view: &ToolView<'_>) -> Overlay {
-    state
-        .edit
-        .as_ref()
-        .map_or_else(Overlay::default, |edit| Overlay {
-            shapes: vec![edit.shape()],
-            hidden: edit.target.into_iter().collect(),
-            ..Overlay::default()
-        })
+pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
+    let Some(edit) = &state.edit else {
+        return Overlay::default();
+    };
+    let host = edit.host.and_then(|host| {
+        let shape = view.doc.get(host.id)?.clone();
+        Some((host.id, shape.with_slot_text(host.slot, None)))
+    });
+    let (hidden, mut shapes): (Vec<ShapeId>, Vec<Shape>) = host.into_iter().unzip();
+    shapes.push(edit.shape());
+    Overlay {
+        shapes,
+        hidden: edit.target.into_iter().chain(hidden).collect(),
+        ..Overlay::default()
+    }
 }
 
 /// Ends the gesture. The edit session is not part of the gesture and
@@ -322,7 +414,7 @@ mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::palette::ColorId;
-    use crate::core::shape::{Shape, Style};
+    use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
     use proptest::prelude::*;
 
     const STYLE: Style = Style {
@@ -648,5 +740,102 @@ mod tests {
                 prop_assert!(e.text().is_char_boundary(e.caret()));
             }
         }
+    }
+    // ---- T31 text in shapes and cells -------------------------------------
+
+    fn host_rect() -> Shape {
+        Shape::Rect {
+            a: Vec2::ZERO,
+            b: Vec2::new(100.0, 50.0),
+            style: Style {
+                color: ColorId::new(2).unwrap_or(ColorId::INK),
+                width: 1.0,
+            },
+            fill: None,
+            label: Some(3),
+            text: None,
+        }
+    }
+
+    #[test]
+    fn hosted_edit_refits_as_text_is_typed() {
+        // Arrange: the rectangle's text frame is (10, 5)-(90, 45).
+        let id = crate::core::document::ShapeId(4);
+        let Some(mut e) = TextEdit::open_in(id, &host_rect(), TextSlot::Shape, 10.0) else {
+            panic!("a rectangle hosts text");
+        };
+        assert_eq!(e.text(), "");
+        assert_eq!(e.target(), None, "not a text block");
+        let host = e.host().copied();
+        assert_eq!(host.map(|h| (h.id, h.slot)), Some((id, TextSlot::Shape)));
+        assert_eq!(e.style.color, host_rect().style().color);
+
+        // Act: "ab" at 10 fits.
+        e.insert('a');
+        e.insert('b');
+
+        // Assert: the edit is a text block centred in the frame.
+        let Shape::Text { origin, size, .. } = e.shape() else {
+            panic!("an edit is drawn as a text block");
+        };
+        assert!(approx_eq(size, 10.0, 1e-4));
+        assert!(origin.approx_eq(Vec2::new(44.0, 18.75), 1e-4), "{origin:?}");
+        assert!(e.bounds().center().approx_eq(Vec2::new(50.0, 25.0), 1e-4));
+        let [top, _] = e.caret_line();
+        assert!(top.approx_eq(Vec2::new(56.0, 18.75), 1e-4), "{top:?}");
+
+        // Typing past the frame shrinks it; the stored size stays 10.
+        for ch in "cdefghijklmn".chars() {
+            e.insert(ch);
+        }
+        let Shape::Text { size: shown, .. } = e.shape() else {
+            panic!("an edit is drawn as a text block");
+        };
+        assert!(approx_eq(shown, 80.0 / (14.0 * 0.6), 1e-3));
+        assert_eq!(
+            e.shape_text(),
+            ShapeText::new("abcdefghijklmn".to_owned(), 10.0)
+        );
+    }
+
+    #[test]
+    fn hosted_edit_opens_existing_text_with_caret_at_end() {
+        // Arrange
+        let shape =
+            host_rect().with_slot_text(TextSlot::Shape, ShapeText::new("xy".to_owned(), 7.0));
+
+        // Act
+        let Some(e) = TextEdit::open_in(
+            crate::core::document::ShapeId(1),
+            &shape,
+            TextSlot::Shape,
+            10.0,
+        ) else {
+            panic!("a rectangle hosts text");
+        };
+
+        // Assert: its own size, not the new-text size.
+        assert_eq!(e.text(), "xy");
+        assert_eq!(e.caret(), 2);
+        assert!(approx_eq(e.size, 7.0, 1e-6));
+    }
+
+    #[test]
+    fn hosted_edit_blank_text_is_none_and_wrong_slots_do_not_open() {
+        let id = crate::core::document::ShapeId(1);
+        let Some(mut e) = TextEdit::open_in(id, &host_rect(), TextSlot::Shape, 10.0) else {
+            panic!("a rectangle hosts text");
+        };
+        e.insert(' ');
+        assert_eq!(e.shape_text(), None);
+
+        let cell = TextSlot::Cell { col: 0, row: 0 };
+        assert!(TextEdit::open_in(id, &host_rect(), cell, 10.0).is_none());
+        let line = Shape::Line {
+            a: Vec2::ZERO,
+            b: Vec2::new(1.0, 1.0),
+            style: STYLE,
+        };
+        assert!(TextEdit::open_in(id, &line, TextSlot::Shape, 10.0).is_none());
     }
 }

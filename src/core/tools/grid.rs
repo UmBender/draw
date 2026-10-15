@@ -65,6 +65,7 @@ impl Drag {
             // Numbered grids show their indices (ADR-T22-1).
             axes: helpers.numbering,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 }
@@ -507,6 +508,7 @@ mod tests {
             },
             fill: None,
             label: None,
+            text: None,
         });
 
         // Act

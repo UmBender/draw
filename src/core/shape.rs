@@ -1,8 +1,8 @@
 //! Vector shapes with bounds, hit-testing and translation.
 //!
 //! The document is an ordered list of [`Shape`]s in world coordinates
-//! (ADR-0004, amended by ADR-T16-1 with grids and labels and by ADR-T29-1
-//! with text blocks). Widths are world units (ADR-0013). Every query here is total:
+//! (ADR-0004, amended by ADR-T16-1 with grids and labels, by ADR-T29-1
+//! with text blocks and by ADR-T31-1 with text in shapes and grid cells). Widths are world units (ADR-0013). Every query here is total:
 //! non-finite input never panics, a non-finite query point never hits and is
 //! never contained.
 
@@ -19,6 +19,10 @@ pub const ARROW_HEAD_HALF_WIDTH_RATIO: f32 = 0.5;
 
 /// Most columns or rows a [`Shape::Grid`] can have.
 pub const GRID_MAX_CELLS: u32 = 64;
+
+/// Fraction of a shape's or cell's box (an ellipse's inscribed rectangle)
+/// that its text may use, per axis, about the centre (ADR-T31-1).
+pub const SHAPE_TEXT_FILL: f32 = 0.8;
 
 /// Outline style shared by every shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,6 +76,8 @@ pub enum Shape {
         fill: Option<ColorId>,
         /// Number drawn centred inside, if any.
         label: Option<u32>,
+        /// Text drawn centred inside instead of the label (ADR-T31-1).
+        text: Option<ShapeText>,
     },
     /// Axis-aligned ellipse inscribed in the box spanned by `a` and `b`.
     Ellipse {
@@ -85,6 +91,8 @@ pub enum Shape {
         fill: Option<ColorId>,
         /// Number drawn centred inside, if any.
         label: Option<u32>,
+        /// Text drawn centred inside instead of the label (ADR-T31-1).
+        text: Option<ShapeText>,
     },
     /// `cols × rows` uniform cells in the box spanned by `a` and `b`.
     ///
@@ -106,6 +114,9 @@ pub enum Shape {
         /// Filled cells, sorted by `(row, col)`, at most one per cell, all
         /// inside `cols × rows` (ADR-T21-1).
         fills: Vec<CellFill>,
+        /// Cell texts, sorted by `(row, col)`, at most one per cell, all
+        /// inside `cols × rows` (ADR-T31-1).
+        texts: Vec<CellText>,
     },
     /// A block of text, laid out on a monospaced grid by
     /// [`text_layout`] (ADR-T29-1).
@@ -133,6 +144,80 @@ pub struct CellFill {
     pub row: u32,
     /// Fill colour.
     pub color: ColorId,
+}
+
+/// Text inside a rectangle, an ellipse or a grid cell (ADR-T31-1): never
+/// blank, drawn centred in the shape's text frame at `size`, or smaller
+/// when it does not fit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeText {
+    /// The text: lines split on `\n`, `$…$` formulas typeset.
+    pub text: String,
+    /// Largest font size (em height) in world units; finite and positive.
+    pub size: f32,
+}
+
+impl ShapeText {
+    /// `text` at `size`; `None` if `text` is blank (empty or whitespace)
+    /// or `size` is not finite and positive.
+    #[must_use]
+    pub fn new(text: String, size: f32) -> Option<Self> {
+        let sized = size.is_finite() && size > 0.0;
+        (sized && !text.trim().is_empty()).then_some(Self { text, size })
+    }
+}
+
+/// The text of one grid cell; cells are counted from corner `a` toward
+/// `b`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CellText {
+    /// 0-based column.
+    pub col: u32,
+    /// 0-based row.
+    pub row: u32,
+    /// The text.
+    pub content: ShapeText,
+}
+
+/// Where a shape holds text: its own interior or one grid cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TextSlot {
+    /// The interior of a rectangle or an ellipse.
+    Shape,
+    /// Cell `(col, row)` of a grid.
+    Cell {
+        /// 0-based column.
+        col: u32,
+        /// 0-based row.
+        row: u32,
+    },
+}
+
+/// A move between the cells of a grid, as seen on screen (ADR-T31-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CellStep {
+    /// The next cell in reading order (left to right, top to bottom),
+    /// wrapping from the last cell to the first.
+    Next,
+    /// The previous cell in reading order, wrapping from the first cell to
+    /// the last.
+    Prev,
+    /// The cell below; none from the bottom row.
+    Down,
+    /// The cell above; none from the top row.
+    Up,
+}
+
+/// Text of a shape placed for drawing: a text block at `origin` and `size`
+/// fitted into its frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlacedText<'a> {
+    /// Top-left corner of the laid-out block, world units.
+    pub origin: Vec2,
+    /// The text.
+    pub text: &'a str,
+    /// Font size it is drawn at, world units.
+    pub size: f32,
 }
 
 /// One axis index of a grid with [`Shape::Grid::axes`]: the 0-based column
@@ -431,6 +516,173 @@ impl Shape {
         self
     }
 
+    /// The slot of this shape that holds text at world point `p`: the
+    /// interior of a rectangle or an ellipse, or the grid cell under `p`;
+    /// `None` elsewhere and for other shapes.
+    #[must_use]
+    pub fn text_slot_at(&self, p: Vec2) -> Option<TextSlot> {
+        match self {
+            Self::Rect { .. } | Self::Ellipse { .. } => self.contains(p).then_some(TextSlot::Shape),
+            Self::Grid { .. } => self
+                .grid_cell_at(p)
+                .map(|(col, row)| TextSlot::Cell { col, row }),
+            _ => None,
+        }
+    }
+
+    /// The text in `slot`, if any.
+    #[must_use]
+    pub fn slot_text(&self, slot: TextSlot) -> Option<&ShapeText> {
+        match (self, slot) {
+            (Self::Rect { text, .. } | Self::Ellipse { text, .. }, TextSlot::Shape) => {
+                text.as_ref()
+            }
+            (Self::Grid { texts, .. }, TextSlot::Cell { col, row }) => texts
+                .binary_search_by_key(&(row, col), |t| (t.row, t.col))
+                .ok()
+                .map(|i| &texts[i].content),
+            _ => None,
+        }
+    }
+
+    /// Returns the shape with the text in `slot` set to `text`, or cleared
+    /// for `None`. A slot the shape does not have (a cell outside the grid,
+    /// a cell of a rectangle, the interior of a grid) leaves it unchanged.
+    #[must_use]
+    pub fn with_slot_text(mut self, slot: TextSlot, text: Option<ShapeText>) -> Self {
+        match (&mut self, slot) {
+            (Self::Rect { text: t, .. } | Self::Ellipse { text: t, .. }, TextSlot::Shape) => {
+                *t = text;
+            }
+            (
+                Self::Grid {
+                    cols, rows, texts, ..
+                },
+                TextSlot::Cell { col, row },
+            ) if col < clamp_cells(*cols) && row < clamp_cells(*rows) => {
+                match (
+                    texts.binary_search_by_key(&(row, col), |t| (t.row, t.col)),
+                    text,
+                ) {
+                    (Ok(i), Some(content)) => texts[i].content = content,
+                    (Ok(i), None) => {
+                        texts.remove(i);
+                    }
+                    (Err(i), Some(content)) => texts.insert(i, CellText { col, row, content }),
+                    (Err(_), None) => {}
+                }
+            }
+            _ => {}
+        }
+        self
+    }
+
+    /// The cell texts of a grid, sorted by `(row, col)`; empty for other
+    /// shapes.
+    #[must_use]
+    pub fn cell_texts(&self) -> &[CellText] {
+        match self {
+            Self::Grid { texts, .. } => texts,
+            _ => &[],
+        }
+    }
+
+    /// The world box the text in `slot` is fitted into: the box of a
+    /// rectangle, the inscribed rectangle of an ellipse or the grid cell,
+    /// scaled by [`SHAPE_TEXT_FILL`] about its centre. `None` for a slot
+    /// the shape does not have.
+    #[must_use]
+    pub fn text_frame(&self, slot: TextSlot) -> Option<Aabb> {
+        let area = match (self, slot) {
+            (Self::Rect { a, b, .. }, TextSlot::Shape) => Aabb::from_corners(*a, *b),
+            (Self::Ellipse { a, b, .. }, TextSlot::Shape) => {
+                let (center, radii) = ellipse_frame(*a, *b);
+                let half = radii * std::f32::consts::FRAC_1_SQRT_2;
+                Aabb::from_corners(center - half, center + half)
+            }
+            (
+                Self::Grid {
+                    a, b, cols, rows, ..
+                },
+                TextSlot::Cell { col, row },
+            ) if col < clamp_cells(*cols) && row < clamp_cells(*rows) => {
+                grid_cell_rect(*a, *b, *cols, *rows, col, row)
+            }
+            _ => return None,
+        };
+        let half = Vec2::new(area.width(), area.height()) * (0.5 * SHAPE_TEXT_FILL);
+        let center = area.center();
+        Some(Aabb::from_corners(center - half, center + half))
+    }
+
+    /// Every text of the shape placed for drawing, fitted and centred in
+    /// its frame: the shape's own text, then cell texts in `(row, col)`
+    /// order.
+    #[must_use]
+    pub fn placed_texts(&self) -> Vec<PlacedText<'_>> {
+        let own = self
+            .slot_text(TextSlot::Shape)
+            .map(|t| (TextSlot::Shape, t));
+        let cells = self.cell_texts().iter().map(|c| {
+            (
+                TextSlot::Cell {
+                    col: c.col,
+                    row: c.row,
+                },
+                &c.content,
+            )
+        });
+        own.into_iter()
+            .chain(cells)
+            .filter_map(|(slot, content)| {
+                let frame = self.text_frame(slot)?;
+                let (origin, size) = text_layout::fit(&content.text, frame, content.size)?;
+                Some(PlacedText {
+                    origin,
+                    text: &content.text,
+                    size,
+                })
+            })
+            .collect()
+    }
+
+    /// The cell one `step` away from cell `(col, row)` of a grid, in screen
+    /// order whatever the corner `a`; `None` when there is none, for a cell
+    /// outside the grid or for other shapes.
+    #[must_use]
+    pub fn grid_cell_step(&self, col: u32, row: u32, step: CellStep) -> Option<(u32, u32)> {
+        let Self::Grid {
+            a, b, cols, rows, ..
+        } = *self
+        else {
+            return None;
+        };
+        let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+        if col >= cols || row >= rows {
+            return None;
+        }
+        // Screen column and row: counted from the left and the top. The
+        // mapping is its own inverse.
+        let x = |c: u32| if a.x <= b.x { c } else { cols - 1 - c };
+        let y = |r: u32| if a.y <= b.y { r } else { rows - 1 - r };
+        let (sx, sy) = (x(col), y(row));
+        let (sx, sy) = match step {
+            CellStep::Next | CellStep::Prev => {
+                let n = cols * rows;
+                let index = sy * cols + sx;
+                let index = if step == CellStep::Next {
+                    (index + 1) % n
+                } else {
+                    (index + n - 1) % n
+                };
+                (index % cols, index / cols)
+            }
+            CellStep::Down => (sx, (sy + 1 < rows).then_some(sy + 1)?),
+            CellStep::Up => (sx, sy.checked_sub(1)?),
+        };
+        Some((x(sx), y(sy)))
+    }
+
     /// The axis indices to draw: those of a grid with `axes` on (see
     /// [`grid_axis_labels`]), empty for every other shape.
     #[must_use]
@@ -658,6 +910,7 @@ mod tests {
             style: style(width),
             fill,
             label: None,
+            text: None,
         }
     }
 
@@ -668,6 +921,7 @@ mod tests {
             style: style(width),
             fill,
             label: None,
+            text: None,
         }
     }
 
@@ -680,6 +934,7 @@ mod tests {
             style: style(width),
             axes: false,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 
@@ -692,6 +947,7 @@ mod tests {
             style: style(0.0),
             axes: true,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 
@@ -1804,5 +2060,243 @@ mod tests {
             prop_assert!(keys.windows(2).all(|w| w[0] < w[1]), "{keys:?}");
             prop_assert!(g.cell_fills().iter().all(|f| f.col < cols && f.row < rows));
         }
+    }
+    // ---- T31 shape text ---------------------------------------------------
+
+    fn st(text: &str, size: f32) -> Option<ShapeText> {
+        ShapeText::new(text.to_owned(), size)
+    }
+
+    fn cell_texts_of(shape: &Shape) -> Vec<(u32, u32, String)> {
+        shape
+            .cell_texts()
+            .iter()
+            .map(|c| (c.col, c.row, c.content.text.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn shape_text_new_rejects_blank_text_and_bad_sizes() {
+        assert!(st("a", 10.0).is_some());
+        assert!(st("", 10.0).is_none());
+        assert!(st(" \n ", 10.0).is_none());
+        assert!(st("a", 0.0).is_none());
+        assert!(st("a", -1.0).is_none());
+        assert!(st("a", f32::NAN).is_none());
+        assert!(st("a", f32::INFINITY).is_none());
+    }
+
+    #[test]
+    fn with_shape_text_sets_and_clears_rect_and_ellipse_text() {
+        for shape in [
+            rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+            ellipse(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+        ] {
+            // Act
+            let with = shape.clone().with_slot_text(TextSlot::Shape, st("ab", 5.0));
+
+            // Assert
+            assert_eq!(with.slot_text(TextSlot::Shape), st("ab", 5.0).as_ref());
+            let cleared = with.with_slot_text(TextSlot::Shape, None);
+            assert_eq!(cleared, shape);
+        }
+        // Other shapes and slots are left alone.
+        let g = grid(v(0.0, 0.0), v(10.0, 10.0), 2, 2, 1.0);
+        assert_eq!(g.clone().with_slot_text(TextSlot::Shape, st("a", 1.0)), g);
+        let r = rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None);
+        let cell = TextSlot::Cell { col: 0, row: 0 };
+        assert_eq!(r.clone().with_slot_text(cell, st("a", 1.0)), r);
+        assert_eq!(r.slot_text(cell), None);
+    }
+
+    #[test]
+    fn with_cell_text_keeps_cells_sorted_unique_and_in_range() {
+        // Arrange
+        let cell = |col, row| TextSlot::Cell { col, row };
+        let g = grid(v(0.0, 0.0), v(30.0, 30.0), 3, 3, 1.0);
+
+        // Act
+        let g = g
+            .with_slot_text(cell(2, 1), st("c", 1.0))
+            .with_slot_text(cell(0, 0), st("a", 1.0))
+            .with_slot_text(cell(1, 1), st("b", 1.0))
+            .with_slot_text(cell(0, 0), st("A", 2.0))
+            .with_slot_text(cell(3, 0), st("x", 1.0))
+            .with_slot_text(cell(0, 9), st("x", 1.0));
+
+        // Assert: sorted by (row, col), one per cell, in range.
+        assert_eq!(
+            cell_texts_of(&g),
+            [
+                (0, 0, "A".to_owned()),
+                (1, 1, "b".to_owned()),
+                (2, 1, "c".to_owned())
+            ]
+        );
+        assert_eq!(g.slot_text(cell(0, 0)), st("A", 2.0).as_ref());
+        let g = g.with_slot_text(cell(1, 1), None);
+        assert_eq!(cell_texts_of(&g).len(), 2);
+        assert_eq!(g.slot_text(cell(1, 1)), None);
+    }
+
+    #[test]
+    fn text_slot_at_finds_interior_or_cell() {
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None);
+        let e = ellipse(v(0.0, 0.0), v(100.0, 100.0), 1.0, None);
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0);
+        let line = Shape::Line {
+            a: v(0.0, 0.0),
+            b: v(10.0, 10.0),
+            style: style(1.0),
+        };
+
+        assert_eq!(r.text_slot_at(v(50.0, 25.0)), Some(TextSlot::Shape));
+        assert_eq!(r.text_slot_at(v(150.0, 25.0)), None);
+        assert_eq!(e.text_slot_at(v(50.0, 50.0)), Some(TextSlot::Shape));
+        assert_eq!(e.text_slot_at(v(2.0, 2.0)), None, "outside the ellipse");
+        assert_eq!(
+            g.text_slot_at(v(30.0, 60.0)),
+            Some(TextSlot::Cell { col: 1, row: 2 })
+        );
+        assert_eq!(line.text_slot_at(v(5.0, 5.0)), None);
+        assert_eq!(r.text_slot_at(v(f32::NAN, 0.0)), None);
+    }
+
+    #[test]
+    fn text_frame_is_scaled_box_inscribed_rect_or_cell() {
+        // Rectangle: its box scaled by SHAPE_TEXT_FILL about the centre.
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None);
+        let Some(frame) = r.text_frame(TextSlot::Shape) else {
+            panic!("a rectangle has a text frame");
+        };
+        assert!(approx_eq(SHAPE_TEXT_FILL, 0.8, 1e-6));
+        assert_aabb_eq(frame, v(10.0, 5.0), v(90.0, 45.0));
+
+        // Ellipse: the inscribed rectangle (box / sqrt 2), scaled.
+        let e = ellipse(v(0.0, 0.0), v(100.0, 100.0), 1.0, None);
+        let Some(frame) = e.text_frame(TextSlot::Shape) else {
+            panic!("an ellipse has a text frame");
+        };
+        let half = 50.0 / 2.0_f32.sqrt() * 0.8;
+        assert_aabb_eq(
+            frame,
+            v(50.0 - half, 50.0 - half),
+            v(50.0 + half, 50.0 + half),
+        );
+
+        // Grid cell (1, 2) of a 4 × 4 grid over 100 × 100.
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0);
+        let Some(frame) = g.text_frame(TextSlot::Cell { col: 1, row: 2 }) else {
+            panic!("a grid cell has a text frame");
+        };
+        assert_aabb_eq(frame, v(27.5, 52.5), v(47.5, 72.5));
+
+        // Corner `a` at the bottom right: cell (0, 0) is there.
+        let flipped = grid(v(100.0, 100.0), v(0.0, 0.0), 4, 4, 1.0);
+        let Some(frame) = flipped.text_frame(TextSlot::Cell { col: 0, row: 0 }) else {
+            panic!("a grid cell has a text frame");
+        };
+        assert_aabb_eq(frame, v(77.5, 77.5), v(97.5, 97.5));
+
+        // No frame for a missing cell, a wrong slot or another shape.
+        assert!(g.text_frame(TextSlot::Cell { col: 4, row: 0 }).is_none());
+        assert!(g.text_frame(TextSlot::Shape).is_none());
+        assert!(r.text_frame(TextSlot::Cell { col: 0, row: 0 }).is_none());
+    }
+
+    #[test]
+    fn shape_texts_are_centred_and_fitted_in_their_frames() {
+        // Arrange: "ab" at size 10 is 12 × 12.5 and fits the 80 × 40 frame.
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None)
+            .with_slot_text(TextSlot::Shape, st("ab", 10.0));
+
+        // Act
+        let placed = r.placed_texts();
+
+        // Assert
+        assert_eq!(placed.len(), 1);
+        assert_eq!(placed[0].text, "ab");
+        assert!(approx_eq(placed[0].size, 10.0, EPS));
+        assert_vec_eq(placed[0].origin, v(44.0, 18.75));
+
+        // Too wide: ten cells at size 20 shrink to 80 / 6.
+        let wide = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None)
+            .with_slot_text(TextSlot::Shape, st("abcdefghij", 20.0));
+        let placed = wide.placed_texts();
+        assert!(approx_eq(placed[0].size, 80.0 / 6.0, 1e-3));
+        assert_vec_eq(placed[0].origin, v(10.0, 25.0 - 1.25 * 40.0 / 6.0));
+
+        // Grid cells, in (row, col) order.
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0)
+            .with_slot_text(TextSlot::Cell { col: 1, row: 1 }, st("b", 4.0))
+            .with_slot_text(TextSlot::Cell { col: 0, row: 0 }, st("a", 4.0));
+        let placed = g.placed_texts();
+        assert_eq!(placed.len(), 2);
+        assert_eq!(placed[0].text, "a");
+        assert_vec_eq(placed[0].origin, v(12.5 - 1.2, 12.5 - 2.5));
+        assert_eq!(placed[1].text, "b");
+
+        // A shape without text places nothing.
+        assert!(
+            rect(v(0.0, 0.0), v(9.0, 9.0), 1.0, None)
+                .placed_texts()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn grid_cell_step_follows_reading_order_on_screen() {
+        // Arrange: 3 × 2, `a` top-left.
+        let g = grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, 1.0);
+
+        // Act / Assert
+        assert_eq!(g.grid_cell_step(0, 0, CellStep::Next), Some((1, 0)));
+        assert_eq!(g.grid_cell_step(2, 0, CellStep::Next), Some((0, 1)));
+        assert_eq!(
+            g.grid_cell_step(2, 1, CellStep::Next),
+            Some((0, 0)),
+            "wraps"
+        );
+        assert_eq!(
+            g.grid_cell_step(0, 0, CellStep::Prev),
+            Some((2, 1)),
+            "wraps"
+        );
+        assert_eq!(g.grid_cell_step(0, 1, CellStep::Prev), Some((2, 0)));
+        assert_eq!(g.grid_cell_step(1, 0, CellStep::Down), Some((1, 1)));
+        assert_eq!(g.grid_cell_step(1, 1, CellStep::Down), None, "bottom row");
+        assert_eq!(g.grid_cell_step(1, 1, CellStep::Up), Some((1, 0)));
+        assert_eq!(g.grid_cell_step(1, 0, CellStep::Up), None, "top row");
+
+        // `a` bottom-right: col 0 is the right column, row 0 the bottom row.
+        let flipped = grid(v(30.0, 20.0), v(0.0, 0.0), 3, 2, 1.0);
+        assert_eq!(flipped.grid_cell_step(2, 1, CellStep::Next), Some((1, 1)));
+        assert_eq!(flipped.grid_cell_step(0, 1, CellStep::Next), Some((2, 0)));
+        assert_eq!(flipped.grid_cell_step(2, 1, CellStep::Down), Some((2, 0)));
+        assert_eq!(flipped.grid_cell_step(2, 0, CellStep::Down), None);
+
+        // Out of range or not a grid.
+        assert_eq!(g.grid_cell_step(3, 0, CellStep::Next), None);
+        let r = rect(v(0.0, 0.0), v(9.0, 9.0), 1.0, None);
+        assert_eq!(r.grid_cell_step(0, 0, CellStep::Next), None);
+    }
+
+    #[test]
+    fn translate_keeps_shape_and_cell_text() {
+        // Arrange
+        let mut r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None)
+            .with_slot_text(TextSlot::Shape, st("ab", 10.0));
+        let mut g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0)
+            .with_slot_text(TextSlot::Cell { col: 1, row: 1 }, st("b", 4.0));
+        let (r0, g0) = (r.placed_texts()[0].origin, g.placed_texts()[0].origin);
+
+        // Act
+        r.translate(v(5.0, -3.0));
+        g.translate(v(5.0, -3.0));
+
+        // Assert
+        assert_eq!(r.slot_text(TextSlot::Shape), st("ab", 10.0).as_ref());
+        assert_vec_eq(r.placed_texts()[0].origin, r0 + v(5.0, -3.0));
+        assert_vec_eq(g.placed_texts()[0].origin, g0 + v(5.0, -3.0));
     }
 }

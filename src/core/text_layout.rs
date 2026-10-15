@@ -88,6 +88,44 @@ pub fn source_bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
     Aabb::from_corners(origin, origin + cell(size, cols, rows))
 }
 
+/// Where and how big `text` is drawn to fit the world box `frame`
+/// (ADR-T31-1): `(origin, size)` with its [`bounds`] centred in `frame`
+/// and `size` the largest that fits, at most `max_size`. `None` for blank
+/// text, a frame without area or a `max_size` that is not finite and
+/// positive.
+#[must_use]
+pub fn fit(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    fit_box(bounds(Vec2::ZERO, text, 1.0), frame, max_size)
+}
+
+/// [`fit`] for text as typed, formulas as source ([`source_bounds`]): how
+/// an open edit in a shape is placed. Empty text is placed too, so the
+/// caret has a line.
+#[must_use]
+pub fn fit_source(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
+    fit_box(source_bounds(Vec2::ZERO, text, 1.0), frame, max_size)
+}
+
+/// Places a block whose box at size 1 and origin 0 is `unit` in `frame`:
+/// the largest size up to `max_size` whose box fits, centred.
+fn fit_box(unit: Aabb, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
+    let (w, h) = (frame.width(), frame.height());
+    let usable = |v: f32| v.is_finite() && v > 0.0;
+    if !usable(max_size) || !usable(w) || !usable(h) {
+        return None;
+    }
+    // An empty side (no columns) does not limit the size: its ratio is ∞.
+    let size = max_size.min(w / unit.width()).min(h / unit.height());
+    if !usable(size) {
+        return None;
+    }
+    let half = (unit.min + unit.max) * (0.5 * size);
+    Some((frame.center() - half, size))
+}
+
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
 /// once per distinct text and then shared.
 #[must_use]
@@ -460,6 +498,105 @@ mod tests {
                 prop_assert!(b.contains(p), "caret {caret} at {p:?} {b:?}");
                 let (line, col) = line_col(&text, caret);
                 prop_assert_eq!(caret_index(&text, line, col), caret);
+            }
+        }
+    }
+    // ---- T31 fitting text into a frame -------------------------------------
+
+    #[test]
+    fn fit_shrinks_text_to_frame_and_caps_at_size() {
+        // Arrange: frame 80 × 40.
+        let frame = Aabb::from_corners(v(10.0, 5.0), v(90.0, 45.0));
+
+        // Act / Assert: "ab" (1.2 × 1.25 em) keeps size 10.
+        let Some((_, size)) = fit("ab", frame, 10.0) else {
+            panic!("fits");
+        };
+        assert!(approx_eq(size, 10.0, EPS));
+
+        // Ten cells (6 em wide) shrink to 80 / 6.
+        let Some((_, size)) = fit("abcdefghij", frame, 20.0) else {
+            panic!("fits");
+        };
+        assert!(approx_eq(size, 80.0 / 6.0, 1e-3));
+
+        // Four lines (5 em tall) shrink to 40 / 5.
+        let Some((_, size)) = fit("a\nb\nc\nd", frame, 20.0) else {
+            panic!("fits");
+        };
+        assert!(approx_eq(size, 8.0, 1e-3));
+    }
+
+    #[test]
+    fn fit_centres_the_layout_in_the_frame() {
+        let frame = Aabb::from_corners(v(10.0, 5.0), v(90.0, 45.0));
+
+        let Some((origin, size)) = fit("ab", frame, 10.0) else {
+            panic!("fits");
+        };
+
+        let b = bounds(origin, "ab", size);
+        assert!(b.center().approx_eq(frame.center(), EPS), "{b:?}");
+
+        // A formula is centred by its typeset box.
+        let Some((origin, size)) = fit("$x^2$", frame, 10.0) else {
+            panic!("fits");
+        };
+        let b = bounds(origin, "$x^2$", size);
+        assert!(b.center().approx_eq(frame.center(), 1e-3), "{b:?}");
+        assert!(b.width() <= frame.width() + EPS && b.height() <= frame.height() + EPS);
+    }
+
+    #[test]
+    fn fit_of_blank_text_is_none() {
+        let frame = Aabb::from_corners(v(0.0, 0.0), v(10.0, 10.0));
+
+        assert!(fit("", frame, 10.0).is_none());
+        assert!(fit(" \n ", frame, 10.0).is_none());
+        assert!(fit("a", frame, 0.0).is_none());
+        assert!(fit("a", frame, f32::NAN).is_none());
+        let flat = Aabb::from_corners(v(0.0, 0.0), v(10.0, 0.0));
+        assert!(fit("a", flat, 10.0).is_none());
+    }
+
+    #[test]
+    fn fit_source_places_empty_text_at_full_size() {
+        // Arrange: frame 80 × 40 centred at (50, 25).
+        let frame = Aabb::from_corners(v(10.0, 5.0), v(90.0, 45.0));
+
+        // Act: the caret of a just-opened edit needs a place.
+        let Some((origin, size)) = fit_source("", frame, 10.0) else {
+            panic!("an empty edit has a place");
+        };
+
+        // Assert: one empty line, centred.
+        assert!(approx_eq(size, 10.0, EPS));
+        assert!(origin.approx_eq(v(50.0, 25.0 - 6.25), EPS), "{origin:?}");
+
+        // The source box is fitted, not the typeset one.
+        let Some((origin, size)) = fit_source("$x$", frame, 100.0) else {
+            panic!("fits");
+        };
+        let b = source_bounds(origin, "$x$", size);
+        assert!(approx_eq(b.width(), 80.0, 1e-3) || approx_eq(b.height(), 40.0, 1e-3));
+    }
+
+    proptest! {
+        #[test]
+        fn fit_always_inside_frame(
+            text in "[a-z ]{1,12}(\n[a-z]{0,8}){0,3}",
+            w in 0.5_f32..500.0,
+            h in 0.5_f32..500.0,
+            size in 0.1_f32..200.0,
+        ) {
+            let frame = Aabb::from_corners(v(-3.0, 7.0), v(-3.0 + w, 7.0 + h));
+            if let Some((origin, fitted)) = fit_source(&text, frame, size) {
+                let b = source_bounds(origin, &text, fitted);
+                prop_assert!(fitted <= size * (1.0 + 1e-5));
+                prop_assert!(b.min.x >= frame.min.x - 1e-3 && b.max.x <= frame.max.x + 1e-3);
+                prop_assert!(b.min.y >= frame.min.y - 1e-3 && b.max.y <= frame.max.y + 1e-3);
+            } else {
+                prop_assert!(false, "a valid frame and size always fit");
             }
         }
     }

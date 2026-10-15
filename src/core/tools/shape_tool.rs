@@ -106,6 +106,7 @@ impl Drag {
                 style,
                 fill: None,
                 label: None,
+                text: None,
             },
             Kind::Ellipse => Shape::Ellipse {
                 a,
@@ -113,6 +114,7 @@ impl Drag {
                 style,
                 fill: None,
                 label: None,
+                text: None,
             },
         }
     }
@@ -638,6 +640,7 @@ mod tests {
             style: STYLE,
             fill: None,
             label: None,
+            text: None,
         }
     }
 
@@ -825,6 +828,7 @@ mod tests {
                 style: STYLE,
                 fill: None,
                 label: None,
+                text: None,
             });
             let mods = |shift| Modifiers { shift, ctrl: false, alt };
 

@@ -82,6 +82,7 @@ mod tests {
             },
             axes: false,
             fills: Vec::new(),
+            texts: Vec::new(),
         }
     }
 
