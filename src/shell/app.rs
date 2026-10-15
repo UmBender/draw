@@ -328,6 +328,7 @@ impl From<WindowSettings> for Conf {
                 high_dpi: settings.high_dpi,
                 platform: Platform {
                     blocking_event_loop: true,
+                    linux_wm_class: WM_CLASS,
                     ..Platform::default()
                 },
                 ..WindowConf::default()

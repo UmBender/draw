@@ -6,6 +6,7 @@ rust-version = "1.85"
 description = "Minimal, fast, keyboard-first scratch canvas for competitive programming"
 license = "MIT"
 publish = false
+repository = "https://github.com/UmBender/draw"
 
 [dependencies]
 macroquad = "0.4"
@@ -39,9 +40,66 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
+# Release plus debug info, for scripts/package.sh: it splits the symbols
+# into draw.debug and strips the shipped binary (ADR-T27-3).
+[profile.dist]
+inherits = "release"
+debug = true
+strip = false
+
 [profile.dev]
 opt-level = 0
 debug = true
 
 [profile.dev.package."*"]
 opt-level = 3
+
+# Packages built by scripts/package.sh from the staging tree of
+# packaging/build.sh (ADR-T27-2). `depends` and `requires` are the
+# `required` and `gl` packages of packaging/runtime-libs: miniquad loads
+# them with dlopen, so no tool can infer them (tests/packaging.rs).
+[package.metadata.deb]
+depends = "libx11-6, libxi6, libxkbcommon0, libgl1, libegl1"
+maintainer = "Gustavo Bender <gustavo.benderr@gmail.com>"
+copyright = "Gustavo Bender"
+section = "graphics"
+priority = "optional"
+extended-description = "A keyboard-first canvas for sketching graphs, trees, grids and formulas while solving competitive programming problems."
+assets = [
+    ["target/package/stage/usr/bin/draw", "usr/bin/draw", "755"],
+    ["target/package/stage/usr/share/applications/io.github.UmBender.draw.desktop", "usr/share/applications/io.github.UmBender.draw.desktop", "644"],
+    ["target/package/stage/usr/share/icons/hicolor/scalable/apps/io.github.UmBender.draw.svg", "usr/share/icons/hicolor/scalable/apps/io.github.UmBender.draw.svg", "644"],
+    ["target/package/stage/usr/share/icons/hicolor/48x48/apps/io.github.UmBender.draw.png", "usr/share/icons/hicolor/48x48/apps/io.github.UmBender.draw.png", "644"],
+    ["target/package/stage/usr/share/icons/hicolor/128x128/apps/io.github.UmBender.draw.png", "usr/share/icons/hicolor/128x128/apps/io.github.UmBender.draw.png", "644"],
+    ["target/package/stage/usr/share/icons/hicolor/256x256/apps/io.github.UmBender.draw.png", "usr/share/icons/hicolor/256x256/apps/io.github.UmBender.draw.png", "644"],
+    ["target/package/stage/usr/share/metainfo/io.github.UmBender.draw.metainfo.xml", "usr/share/metainfo/io.github.UmBender.draw.metainfo.xml", "644"],
+    ["target/package/stage/usr/share/licenses/draw/LICENSE", "usr/share/licenses/draw/LICENSE", "644"],
+    ["target/package/stage/usr/share/licenses/draw/OFL.txt", "usr/share/licenses/draw/OFL.txt", "644"],
+    ["target/package/stage/usr/share/licenses/draw/GUST-FONT-LICENSE.txt", "usr/share/licenses/draw/GUST-FONT-LICENSE.txt", "644"],
+    ["target/package/stage/usr/share/doc/draw/README.md", "usr/share/doc/draw/README.md", "644"],
+    ["target/package/stage/usr/share/doc/draw/CHANGELOG.md", "usr/share/doc/draw/CHANGELOG.md", "644"],
+]
+
+[package.metadata.generate-rpm]
+release = "1"
+assets = [
+    { source = "target/package/stage/usr/bin/draw", dest = "/usr/bin/draw", mode = "755" },
+    { source = "target/package/stage/usr/share/applications/io.github.UmBender.draw.desktop", dest = "/usr/share/applications/io.github.UmBender.draw.desktop", mode = "644" },
+    { source = "target/package/stage/usr/share/icons/hicolor/scalable/apps/io.github.UmBender.draw.svg", dest = "/usr/share/icons/hicolor/scalable/apps/io.github.UmBender.draw.svg", mode = "644" },
+    { source = "target/package/stage/usr/share/icons/hicolor/48x48/apps/io.github.UmBender.draw.png", dest = "/usr/share/icons/hicolor/48x48/apps/io.github.UmBender.draw.png", mode = "644" },
+    { source = "target/package/stage/usr/share/icons/hicolor/128x128/apps/io.github.UmBender.draw.png", dest = "/usr/share/icons/hicolor/128x128/apps/io.github.UmBender.draw.png", mode = "644" },
+    { source = "target/package/stage/usr/share/icons/hicolor/256x256/apps/io.github.UmBender.draw.png", dest = "/usr/share/icons/hicolor/256x256/apps/io.github.UmBender.draw.png", mode = "644" },
+    { source = "target/package/stage/usr/share/metainfo/io.github.UmBender.draw.metainfo.xml", dest = "/usr/share/metainfo/io.github.UmBender.draw.metainfo.xml", mode = "644" },
+    { source = "target/package/stage/usr/share/licenses/draw/LICENSE", dest = "/usr/share/licenses/draw/LICENSE", mode = "644" },
+    { source = "target/package/stage/usr/share/licenses/draw/OFL.txt", dest = "/usr/share/licenses/draw/OFL.txt", mode = "644" },
+    { source = "target/package/stage/usr/share/licenses/draw/GUST-FONT-LICENSE.txt", dest = "/usr/share/licenses/draw/GUST-FONT-LICENSE.txt", mode = "644" },
+    { source = "target/package/stage/usr/share/doc/draw/README.md", dest = "/usr/share/doc/draw/README.md", mode = "644" },
+    { source = "target/package/stage/usr/share/doc/draw/CHANGELOG.md", dest = "/usr/share/doc/draw/CHANGELOG.md", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+libX11 = "*"
+libXi = "*"
+libxkbcommon = "*"
+libglvnd-glx = "*"
+libglvnd-egl = "*"

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.UmBender.draw</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>draw</name>
+  <summary>Keyboard-first scratch canvas for competitive programming</summary>
+  <description>
+    <p>
+      A minimal, fast canvas for sketching while solving a problem: graphs
+      with numbered nodes and snapped arrows, trees, grids with filled
+      cells, free-hand strokes and text blocks with TeX formulas. Every
+      tool has a single-key shortcut and the window opens instantly.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.UmBender.draw.desktop</launchable>
+  <url type="homepage">https://github.com/UmBender/draw</url>
+  <url type="bugtracker">https://github.com/UmBender/draw/issues</url>
+  <developer id="io.github.umbender">
+    <name>Gustavo Bender</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>draw</binary>
+  </provides>
+  <releases>
+    <release version="1.0.0" date="2026-10-14"/>
+  </releases>
+</component>

@@ -9,7 +9,7 @@
 //! `/etc/ld.so.cache`, then the library directories): no `unsafe`, no
 //! subprocess.
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 
 /// The library list `packaging/runtime-libs`, embedded at build time.
@@ -75,6 +75,18 @@ pub enum Problem {
     MissingLibs(Vec<RuntimeLib>),
 }
 
+/// Directories searched after `/etc/ld.so.cache` and `LD_LIBRARY_PATH`.
+const LIBRARY_DIRS: [&str; 8] = [
+    "/usr/lib64",
+    "/lib64",
+    "/usr/lib/x86_64-linux-gnu",
+    "/lib/x86_64-linux-gnu",
+    "/usr/lib",
+    "/lib",
+    "/usr/local/lib64",
+    "/usr/local/lib",
+];
+
 /// Parses the library list: one `soname role fedora debian` line each,
 /// `#` comments and blank lines ignored.
 ///
@@ -83,7 +95,43 @@ pub enum Problem {
 /// The first line with the wrong number of fields, an unknown role or a
 /// soname that does not look like `lib*.so*`.
 pub fn parse_runtime_libs(text: &str) -> Result<Vec<RuntimeLib>, ParseError> {
-    todo!()
+    let mut libs = Vec::new();
+    for (index, raw) in text.lines().enumerate() {
+        let line = raw.split('#').next().unwrap_or_default().trim();
+        if line.is_empty() {
+            continue;
+        }
+        let error = |reason| ParseError {
+            line: index + 1,
+            reason,
+        };
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let [soname, role, fedora, debian] = fields[..] else {
+            return Err(error("expected `soname role fedora debian`"));
+        };
+        if !soname.starts_with("lib") || !soname.contains(".so") {
+            return Err(error("soname does not look like lib*.so*"));
+        }
+        let role = match role {
+            "required" => Role::Required,
+            "gl" => Role::Gl,
+            "unused" => Role::Unused,
+            "linked" => Role::Linked,
+            _ => return Err(error("role is not required, gl, unused or linked")),
+        };
+        libs.push(RuntimeLib {
+            soname: soname.to_owned(),
+            role,
+            fedora: fedora.to_owned(),
+            debian: debian.to_owned(),
+        });
+    }
+    Ok(libs)
+}
+
+/// Whether an environment variable is set to something.
+fn is_set(value: Option<&OsString>) -> bool {
+    value.is_some_and(|value| !value.is_empty())
 }
 
 /// Decides whether the window can open in `env`, given which sonames
@@ -97,14 +145,59 @@ pub fn check(
     libs: &[RuntimeLib],
     found: impl Fn(&str) -> bool,
 ) -> Result<(), Problem> {
-    todo!()
+    if is_set(env.skip.as_ref()) {
+        return Ok(());
+    }
+    if !is_set(env.display.as_ref()) {
+        return Err(if is_set(env.wayland_display.as_ref()) {
+            Problem::NoXWayland
+        } else {
+            Problem::NoDisplay
+        });
+    }
+    let gl_found = libs
+        .iter()
+        .any(|lib| lib.role == Role::Gl && found(&lib.soname));
+    let missing: Vec<RuntimeLib> = libs
+        .iter()
+        .filter(|lib| match lib.role {
+            Role::Required => !found(&lib.soname),
+            Role::Gl => !gl_found,
+            Role::Unused | Role::Linked => false,
+        })
+        .cloned()
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(Problem::MissingLibs(missing))
+    }
 }
 
 /// Whether the dynamic linker cache bytes name `soname` as a whole entry
 /// (preceded by NUL or `/`, followed by NUL).
 #[must_use]
 pub fn cache_contains_soname(cache: &[u8], soname: &str) -> bool {
-    todo!()
+    let name = soname.as_bytes();
+    if name.is_empty() {
+        return false;
+    }
+    cache.windows(name.len()).enumerate().any(|(at, window)| {
+        window == name
+            && (at == 0 || matches!(cache[at - 1], 0 | b'/'))
+            && cache.get(at + name.len()) == Some(&0)
+    })
+}
+
+/// Whether `soname` is installed: in the linker cache, in a directory of
+/// `LD_LIBRARY_PATH` or in one of [`LIBRARY_DIRS`].
+fn library_installed(cache: &[u8], ld_library_path: Option<&OsStr>, soname: &str) -> bool {
+    cache_contains_soname(cache, soname)
+        || ld_library_path
+            .into_iter()
+            .flat_map(std::env::split_paths)
+            .chain(LIBRARY_DIRS.iter().map(Into::into))
+            .any(|dir| dir.is_absolute() && dir.join(soname).exists())
 }
 
 /// Runs the preflight against the real environment and file system.
@@ -114,12 +207,28 @@ pub fn cache_contains_soname(cache: &[u8], soname: &str) -> bool {
 ///
 /// The [`Problem`] found by [`check`].
 pub fn run() -> Result<(), Problem> {
-    todo!()
+    if !cfg!(target_os = "linux") {
+        return Ok(());
+    }
+    let env = Environment {
+        display: std::env::var_os("DISPLAY"),
+        wayland_display: std::env::var_os("WAYLAND_DISPLAY"),
+        skip: std::env::var_os(SKIP_ENV),
+    };
+    // A broken list is caught by the tests; never block startup on it.
+    let Ok(libs) = parse_runtime_libs(RUNTIME_LIBS) else {
+        return Ok(());
+    };
+    let cache = std::fs::read("/etc/ld.so.cache").unwrap_or_default();
+    let ld_library_path = std::env::var_os("LD_LIBRARY_PATH");
+    check(&env, &libs, |soname| {
+        library_installed(&cache, ld_library_path.as_deref(), soname)
+    })
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        write!(f, "line {}: {}", self.line, self.reason)
     }
 }
 
@@ -128,7 +237,43 @@ impl std::error::Error for ParseError {}
 impl fmt::Display for Problem {
     /// One line naming what is missing and the packages to install.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        let hint = format!("(set {SKIP_ENV}=1 to start anyway)");
+        match self {
+            Self::NoDisplay => write!(
+                f,
+                "no display: DISPLAY and WAYLAND_DISPLAY are unset; \
+                 start draw from a graphical session {hint}"
+            ),
+            Self::NoXWayland => write!(
+                f,
+                "Wayland session without XWayland (DISPLAY is unset); install \
+                 xorg-x11-server-Xwayland (Fedora/RHEL) or xwayland (Debian/Ubuntu) \
+                 and enable it {hint}"
+            ),
+            Self::MissingLibs(libs) => {
+                let pick = |role| libs.iter().filter(move |lib: &&RuntimeLib| lib.role == role);
+                let mut names: Vec<String> =
+                    pick(Role::Required).map(|lib| lib.soname.clone()).collect();
+                let gl: Vec<&str> = pick(Role::Gl).map(|lib| lib.soname.as_str()).collect();
+                if !gl.is_empty() {
+                    names.push(gl.join(" or "));
+                }
+                // One GL loader is enough: suggest the first of the group.
+                let wanted: Vec<&RuntimeLib> =
+                    pick(Role::Required).chain(pick(Role::Gl).take(1)).collect();
+                let packages = |of: fn(&RuntimeLib) -> &str| {
+                    wanted.iter().map(|lib| of(lib)).collect::<Vec<_>>().join(" ")
+                };
+                write!(
+                    f,
+                    "missing libraries {}; install `{}` (Fedora/RHEL) or `{}` \
+                     (Debian/Ubuntu) {hint}",
+                    names.join(", "),
+                    packages(|lib| &lib.fedora),
+                    packages(|lib| &lib.debian),
+                )
+            }
+        }
     }
 }
 
