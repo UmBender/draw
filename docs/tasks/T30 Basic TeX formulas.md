@@ -1,7 +1,7 @@
 ---
 id: T30
 title: Basic TeX formulas
-status: in-progress
+status: review
 wave: 17
 branch: task/T30-tex
 depends_on: [T29, T32]
@@ -153,11 +153,11 @@ Acceptance criteria and the tests that prove them:
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T30): specify TeX formula acceptance criteria`
-- [ ] tests — `test(T30): …`
-- [ ] models — `feat(T30): …`
-- [ ] behaviour — `feat(T30): …`
-- [ ] quality — `chore(T30): …`
-- [ ] docs — `docs(T30): …`
+- [x] tests — `test(T30): add failing tests for TeX parsing, layout and rendering`
+- [x] models — `feat(T30): add TeX segment, node, ink and layout types`
+- [x] behaviour — `feat(T30): implement TeX parsing, box layout and typeset rendering`
+- [x] quality — `chore(T30): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T30): add feature note and tutorial`
 
 ## Learning path
 
@@ -176,3 +176,19 @@ Step 30 — requires step 29 (text blocks).
   box) and `src/shell/app.rs` (the overlay must draw the open block as
   source); both owners are done and T31 runs in a later wave. AC-4
   checked: every subset symbol is in the embedded font, no second font.
+- 2026-10-15 — Behaviour step: two spec tests were wrong and were fixed
+  with the code — a `\` right before the closing `$` escapes it, so the
+  unknown control symbol test uses `\,`; `\min_i` matched the `i` of
+  "min", now `\min_k`.
+- 2026-10-15 — Budgets (AC-5), release build on the development machine
+  (not the target): `perf_tex_layout_200_blocks_is_under_2ms` median
+  0.89 ms (cold parse + layout of 200 formula blocks);
+  `perf_tessellate_200_formula_blocks_is_under_1ms` 0.22 ms;
+  `perf_text_layout_and_cull_500_blocks_is_under_1ms` 0.12 ms and
+  `perf_tessellate_10k_glyphs_is_under_1ms` 0.50 ms (plain text, unchanged
+  path). `perf_undo_delete_5k_of_10k_is_under_1ms` is flaky on this
+  machine on `main` too (0.66–1.59 ms) and does not touch text.
+  The [[ADR-T24-5 Redraw budgets]] manual check with `DRAW_FRAME_TIMES=1`
+  on the target is **pending the owner** (needs the target's GPU).
+- 2026-10-15 — `scripts/check.sh` and `scripts/check.sh --fuzz` green.
+  Status → review.

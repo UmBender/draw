@@ -28,6 +28,8 @@ single-key shortcut so your hands never leave the keyboard for long.
 - **Text blocks** — click and type notes with Greek letters and math
   symbols (`O(n log n)`, `α ≤ β`); no shortcut fires while you type, `Esc`
   finishes.
+- **Formulas** — `$…$` in a text block is typeset TeX: scripts, fractions,
+  roots, sums with limits (`$\sum_{k=1}^{n} k^2$`).
 - **Fill** — bucket fills a shape or a single grid cell; the eraser clears
   fills or whole objects.
 - **Snapping** — smart snap to alignment guides and shape outlines (arrows
@@ -162,6 +164,30 @@ While a block is open every key types; only these act:
 Edit a block again with the Text tool (click it) or Select (double-click
 it). Its size starts from `[` / `]` and its colour from `1`–`6` when you
 click; `Ctrl+]` / `Ctrl+[` resize it while you type.
+
+### Formulas in text blocks
+
+Write `$…$` inside a text block for a formula in a small TeX subset. It is
+typeset once the block is finished and shows its source while you edit:
+
+```text
+$dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
+```
+
+| Write | For |
+|-------|-----|
+| `x^2`, `x_i`, `x_{i,j}^{2k}` | Superscript, subscript (one character or `{group}`) |
+| `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` | Fraction, binomial, root |
+| `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
+| `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` | Upright functions |
+| `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
+| `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` | Relations and operators |
+| `\lfloor \rfloor \lceil \rceil \{ \} \|` | Brackets |
+| `\text{…}` | Upright text inside a formula |
+| `\$` | A literal dollar sign (a lone `$` also stays plain) |
+
+A formula stays on one line. Anything outside the subset is drawn as
+typed in red, so a typo shows.
 
 A printable one-page version lives in
 [`docs/features/Contest cheat sheet.md`](docs/features/Contest%20cheat%20sheet.md).

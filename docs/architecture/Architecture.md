@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T32-1 Own glyph atlas rasterized with fontdue]]", "[[ADR-T32-2 Shapes and glyphs share one textured batch]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T32-1 Own glyph atlas rasterized with fontdue]]", "[[ADR-T32-2 Shapes and glyphs share one textured batch]]"]
 ---
 
 # Architecture
@@ -29,6 +29,7 @@ flowchart LR
     TOOLS --> NUM[numbering]
     TOOLS --> TL[text_layout]
     SH --> TL
+    TL --> TEX[tex]
     DOC --> SH[shape]
     SH --> G[geom]
     CAM --> G
@@ -62,6 +63,7 @@ flowchart LR
 | `core::tools::grid` ([[T18 Grid tool]]) | Grid tool: drag a box, `cols × rows` read live from `Helpers`, `Shift` = square cells ([[ADR-T18-1 Grid drag reads live dims and snaps as a box]]) |
 | `core::numbering` ([[T19 Auto-numbering]]) | Labels for new rectangles/ellipses; counter rules for gesture end, undo and redo ([[ADR-T19-1 Numbering counter and undo]]) |
 | `core::text_layout`, `core::tools::text` ([[T29 Text blocks]]) | Monospaced layout of `Shape::Text` (bounds, caret ↔ point, glyph cells — [[ADR-T29-1 Text shape with monospaced layout and an embedded font]]); the Text tool and the `TextEdit` session the editor routes `Char` events and editing keys to ([[ADR-T29-2 Text edit mode]]) |
+| `core::tex` ([[T30 Basic TeX formulas]]) | `$…$` formulas in text blocks: lossless parse tree, reduced TeX box layout into glyphs and rules; `text_layout::typeset` caches it per text and `text_layout::bounds` uses its size, the edit session the source box ([[ADR-T30-1 TeX subset, box layout and metrics]]) |
 | `shell::render` ([[T07 Renderer]]) | Draw shapes (grids, labels, text blocks in the embedded font — [[ADR-T29-1 Text shape with monospaced layout and an embedded font]]) and previews through the camera, shapes and glyphs in one page-bound `Batch` ([[ADR-T32-2 Shapes and glyphs share one textured batch]]); snap dot grid (`draw_underlay`) and alignment guides (`draw_guides`) |
 | `shell::glyphs` ([[T32 Fast text rendering]]) | Glyph atlas: fontdue rasterization once per `(char, px)`, shelf-packed pages with a white block, partial texture uploads, glyph quads ([[ADR-T32-1 Own glyph atlas rasterized with fontdue]]) |
 | `shell::{app,input_map,toolbar}` ([[T12 App shell and toolbar]]) | Window, event loop, toolbar UI |
@@ -107,7 +109,9 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    `draw_mesh` in chunks; strokes are one mitred strip each
    ([[ADR-T24-4 Strokes as one strip with sparse round joins]]). Text
    blocks, labels and grid indices are glyph quads from the
-   `shell::glyphs` atlas in the same chunks, which are bound to one atlas
+   `shell::glyphs` atlas in the same chunks — formulas typeset, each
+   glyph at its own scale, with fraction bars and root signs as quads
+   ([[ADR-T30-1 TeX subset, box layout and metrics]]) — which are bound to one atlas
    page each ([[ADR-T32-1 Own glyph atlas rasterized with fontdue]],
    [[ADR-T32-2 Shapes and glyphs share one textured batch]]); an atlas
    that overflowed is cleared at the start of the next frame and the layer
@@ -117,8 +121,8 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    ideas: [[Rendering performance options]].
 4. The document layer is blitted to the window (one quad, 1:1 at rest) and
    the overlay —
-   overlay shapes (including the open text block, whose original is in
-   `overlay.hidden`), its caret, guides, selection, marquee, toolbar — is
+   overlay shapes (including the open text block, drawn as typed with
+   formulas as source, whose original is in `overlay.hidden`), its caret, guides, selection, marquee, toolbar — is
    drawn on top,
    single-sampled ([[ADR-T24-2 Overlay drawn straight to the window]]).
 
@@ -131,4 +135,5 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
 - Selection only refers to shape ids that exist.
 - Grid dimensions (of shapes and of the editor's settings) are in
   `1..=GRID_MAX_CELLS`; labels and the numbering counter are ≥ 1.
-- Text blocks have a positive size and non-blank text.
+- Text blocks have a positive size and non-blank text; their box is finite
+  and holds their typeset ink.
