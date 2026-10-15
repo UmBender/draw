@@ -67,25 +67,21 @@ pub fn line_col(text: &str, caret: usize) -> (usize, usize) {
 /// column to the end of its line.
 #[must_use]
 pub fn caret_index(text: &str, line: usize, col: usize) -> usize {
-    let mut start = 0;
-    let mut current = "";
-    for (i, l) in lines(text).enumerate() {
-        current = l;
-        if i == line {
-            break;
-        }
-        start += l.len() + 1;
-    }
-    // The loop ran past `line` only when it is beyond the last line; then
-    // `start` overshot by the last line's length plus one.
-    if start > text.len() {
-        start = text.len() - current.len();
-    }
+    let (start, chars) = line_spans(text)
+        .take(line.saturating_add(1))
+        .last()
+        .unwrap_or((0, text));
     start
-        + current
+        + chars
             .char_indices()
             .nth(col)
-            .map_or(current.len(), |(i, _)| i)
+            .map_or(chars.len(), |(i, _)| i)
+}
+
+/// Height of one line of text of font size `size`.
+#[must_use]
+pub fn line_height(size: f32) -> f32 {
+    LINE_HEIGHT * em(size)
 }
 
 /// Top of the caret line at `caret`, in world units.
@@ -106,7 +102,7 @@ pub fn caret_from_point(origin: Vec2, text: &str, size: f32, p: Vec2) -> usize {
         return 0;
     }
     // Float-to-int casts saturate: negative values become 0.
-    let line = (local.y / (LINE_HEIGHT * size)).floor() as usize;
+    let line = (local.y / line_height(size)).floor() as usize;
     let col = (local.x / (ADVANCE * size)).round() as usize;
     caret_index(text, line, col)
 }
@@ -119,6 +115,15 @@ pub fn glyphs(origin: Vec2, text: &str, size: f32) -> impl Iterator<Item = Glyph
             ch,
             pos: origin + cell(size, col, line) + baseline,
         })
+    })
+}
+
+/// Every line with the byte index it starts at.
+fn line_spans(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    lines(text).scan(0, |start, line| {
+        let span = (*start, line);
+        *start += line.len() + 1;
+        Some(span)
     })
 }
 

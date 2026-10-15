@@ -108,7 +108,7 @@ pub enum Shape {
         fills: Vec<CellFill>,
     },
     /// A block of text, laid out on a monospaced grid by
-    /// [`text_layout`](crate::core::text_layout) (ADR-T29-1).
+    /// [`text_layout`] (ADR-T29-1).
     ///
     /// An open shape: it is never filled, and it is hit anywhere inside its
     /// box.

@@ -133,8 +133,10 @@ impl TextEdit {
     #[must_use]
     pub fn caret_line(&self) -> [Vec2; 2] {
         let top = text_layout::caret_point(self.origin, &self.text, self.size, self.caret);
-        let height = text_layout::caret_point(Vec2::ZERO, "\n", self.size, 1).y;
-        [top, top + Vec2::new(0.0, height)]
+        [
+            top,
+            top + Vec2::new(0.0, text_layout::line_height(self.size)),
+        ]
     }
 
     /// Moves the caret to byte `index`, snapped back to a `char` boundary
