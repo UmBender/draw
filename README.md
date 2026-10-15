@@ -44,7 +44,49 @@ single-key shortcut so your hands never leave the keyboard for long.
 
 ## Install
 
-### Requirements
+### Prebuilt packages
+
+Linux x86_64 packages run on any distribution with glibc 2.28 or newer
+(RHEL / AlmaLinux 8, Debian 10, Ubuntu 20.04 and later). Each one adds draw
+to the application launcher with its icon.
+
+| Package | Install | Remove |
+|---------|---------|--------|
+| `draw-<version>-1.x86_64.rpm` | `sudo dnf install ./draw-*.rpm` | `sudo dnf remove draw` |
+| `draw_<version>-1_amd64.deb` | `sudo apt install ./draw_*.deb` | `sudo apt remove draw` |
+| `draw-<version>-x86_64.flatpak` | `flatpak install --user ./draw-*.flatpak` | `flatpak uninstall io.github.UmBender.draw` |
+| `draw-<version>-x86_64-linux.tar.gz` | `tar xzf draw-*.tar.gz && draw-*/install.sh` | `draw-*/install.sh --uninstall` |
+
+The `.rpm` and `.deb` pull in the libraries the window needs. The tarball
+installs into `~/.local` (`--prefix DIR` for another place) and needs them
+installed already:
+
+```sh
+# Fedora / RHEL
+sudo dnf install libX11 libXi libxkbcommon libglvnd-glx
+# Debian / Ubuntu
+sudo apt install libx11-6 libxi6 libxkbcommon0 libgl1
+```
+
+`SHA256SUMS` lists the checksum of every file; `draw.debug` holds the debug
+symbols that turn a crash address back into a source line.
+
+The window uses X11: on a Wayland session it runs through XWayland, which
+must be installed (`xorg-x11-server-Xwayland` on Fedora, `xwayland` on
+Debian / Ubuntu). If a display or a library is missing, draw says which
+and what to install instead of opening a window;
+`DRAW_SKIP_PREFLIGHT=1 draw` skips that check (for instance when libraries
+live somewhere unusual, as on NixOS).
+
+If draw crashes, it prints a short report and appends it to
+`~/.local/state/draw/crash.log` (`$XDG_STATE_HOME/draw/crash.log` when that
+is set). Please attach it to the issue.
+
+macOS and Windows have no packages: build from source.
+
+### Build from source
+
+Requirements:
 
 - Rust **1.85** or newer (edition 2024) — install with [rustup](https://rustup.rs).
 - Linux: X11, XInput and OpenGL development headers.
@@ -56,11 +98,8 @@ single-key shortcut so your hands never leave the keyboard for long.
   sudo apt install libx11-dev libxi-dev libgl1-mesa-dev
   ```
 
-  On Wayland the window runs through XWayland.
 - macOS and Windows build with no extra packages (macroquad supports them),
   but the app is developed and validated on Linux.
-
-### Build and run
 
 ```sh
 git clone https://github.com/UmBender/draw.git
@@ -77,6 +116,10 @@ draw
 
 The release build is a single stripped binary of about 1 MB that opens a
 window in well under 200 ms.
+
+To build the release packages yourself, run `scripts/package.sh`: it needs
+only `podman` (plus `flatpak-builder` for the Flatpak bundle) and writes
+everything to `dist/`.
 
 ## Quick start
 
@@ -208,7 +251,7 @@ A printable one-page version lives in
 ## Configuration
 
 There is no config file: shortcuts, palette and theme are fixed on purpose.
-Two environment variables exist for troubleshooting, and one turns on
+Three environment variables exist for troubleshooting, and one turns on
 experimental features:
 
 | Variable | Values | Effect |
@@ -216,6 +259,7 @@ experimental features:
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
 | `DRAW_EXPERIMENTAL` | feature names, comma-separated | Turn on experimental features (below) |
+| `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
 
 ```sh
 DRAW_MSAA=off draw

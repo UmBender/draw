@@ -328,6 +328,7 @@ impl From<WindowSettings> for Conf {
                 high_dpi: settings.high_dpi,
                 platform: Platform {
                     blocking_event_loop: true,
+                    linux_wm_class: WM_CLASS,
                     ..Platform::default()
                 },
                 ..WindowConf::default()
@@ -345,6 +346,10 @@ impl From<WindowSettings> for Conf {
         }
     }
 }
+
+/// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`
+/// matches it so launchers show the app's icon (ADR-T27-2).
+pub const WM_CLASS: &str = "draw";
 
 /// Window settings used by `main`.
 #[must_use]
@@ -688,6 +693,16 @@ mod tests {
     use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
     use crate::core::geom::approx_eq;
     use proptest::prelude::*;
+
+    #[test]
+    fn window_conf_sets_wm_class() {
+        // Arrange / Act
+        let conf = Conf::from(window_conf());
+
+        // Assert
+        assert_eq!(conf.miniquad_conf.platform.linux_wm_class, WM_CLASS);
+        assert_eq!(WM_CLASS, "draw");
+    }
 
     #[test]
     fn frame_target_params_uses_sample_count() {

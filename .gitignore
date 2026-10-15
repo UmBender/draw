@@ -13,3 +13,4 @@ docs/.trash/
 # Profiler output
 perf.data
 perf.data.old
+/dist

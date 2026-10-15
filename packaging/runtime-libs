@@ -1,0 +1,26 @@
+# Shared libraries the draw binary may load, one per line (ADR-T27-2).
+#
+# role:  required  loaded by the window backend, the app cannot start without it
+#        gl        at least one of the group is needed (GLX, falling back to EGL)
+#        unused    named in the binary but not loaded by the chosen backend
+#        linked    part of glibc or libgcc, linked rather than loaded
+#
+# The .deb `depends` and .rpm `requires` in Cargo.toml list the fedora and
+# debian packages of every `required` and `gl` line; tests/packaging.rs
+# fails when they drift or when the binary names a library missing here.
+#
+# soname                 role      fedora                    debian
+libX11.so.6              required  libX11                    libx11-6
+libXi.so.6               required  libXi                     libxi6
+libxkbcommon.so.0        required  libxkbcommon              libxkbcommon0
+libGL.so.1               gl        libglvnd-glx              libgl1
+libEGL.so.1              gl        libglvnd-egl              libegl1
+libwayland-client.so.0   unused    libwayland-client         libwayland-client0
+libwayland-egl.so.1      unused    libwayland-egl            libwayland-egl1
+libdecor-0.so.0          unused    libdecor                  libdecor-0-0
+libc.so.6                linked    glibc                     libc6
+libm.so.6                linked    glibc                     libc6
+libdl.so.2               linked    glibc                     libc6
+libpthread.so.0          linked    glibc                     libc6
+librt.so.1               linked    glibc                     libc6
+libgcc_s.so.1            linked    libgcc                    libgcc-s1

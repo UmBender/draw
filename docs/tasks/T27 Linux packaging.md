@@ -1,11 +1,11 @@
 ---
 id: T27
 title: Linux packaging
-status: ready
+status: review
 wave: 20
 branch: task/T27-packaging
 depends_on: [T14]
-adrs: []
+adrs: [ADR-T27-1, ADR-T27-2, ADR-T27-3]
 feature: "[[Linux packages]]"
 tutorial: "[[27 Shipping a binary to other Linux machines]]"
 tags: [task]
@@ -42,86 +42,121 @@ Found after the 1.0.0 release (2026-10-14), checking `target/release/draw`:
 
 ## Spec
 
-To be refined in the spec step; every AC below must name its tests
-there. ADRs expected:
+Refined 2026-10-15. Decisions:
+[[ADR-T27-1 Build in an AlmaLinux 8 container for a glibc 2.28 floor]],
+[[ADR-T27-2 Package formats from one staging tree and one library list]],
+[[ADR-T27-3 Crash report from a panic hook and split debug symbols]].
 
-- **ADR-T27-1 — glibc floor and how to build for it.** Target: glibc
-  ≤ 2.28 (RHEL 8, Debian 10, Ubuntu 20.04). Options to weigh:
-  `cargo zigbuild --target x86_64-unknown-linux-gnu.2.28` or a container
-  build on an old distro (podman). Not musl: loading the system's GL
-  drivers from a static musl binary is unreliable.
-- **ADR-T27-2 — Package formats and tools.** Tarball + `cargo-deb` +
-  `cargo-generate-rpm` (build-time tools only; the app keeps its single
-  dependency) + Flatpak manifest. Runtime dependencies are declared by
-  hand from one list, `packaging/runtime-libs`.
-- **ADR-T27-3 — Crash reports.** Keep `panic = "abort"`; a panic hook
-  writes the report before the abort. A `dist` profile builds with debug
-  info and the package step splits it into `draw.debug`
-  (`objcopy --only-keep-debug`), shipped beside the artifacts but not in
-  them.
+Facts the spec rests on (miniquad 0.4.11, `X11Only` backend, GLX with
+EGL fallback): the window needs `libX11.so.6`, `libXi.so.6`,
+`libxkbcommon.so.0` and one of `libGL.so.1` / `libEGL.so.1`. The binary
+also names `libwayland-client`, `libwayland-egl` and `libdecor-0` (the
+unused Wayland backend); they are listed as `unused` so the scan of AC-1
+passes and [[T28 Experimental native Wayland backend]] can flip them.
+
+The application id is `io.github.UmBender.draw`: desktop file, icon name,
+metainfo and Flatpak all use it (the `draw.desktop` name of the first
+draft is replaced, see ADR-T27-2). The window's WM class stays `draw`
+and the desktop file's `StartupWMClass=draw` ties the two together.
 
 Acceptance criteria:
 
-- **AC-1 — Runtime libraries declared.** `packaging/runtime-libs` maps
-  every shared library the binary `dlopen`s to its Fedora/RHEL and
-  Debian/Ubuntu package. The `.deb` `Depends` and `.rpm` `Requires` come
-  from that list. A check fails if the binary loads a library the list
-  does not name (scan the release binary's strings for `lib*.so*`), so a
-  macroquad upgrade cannot silently add one.
+- **AC-1 — Runtime libraries declared.** `packaging/runtime-libs` lists
+  every shared library the binary may `dlopen` with its role
+  (`required`, `gl` = at least one of the group, `unused`) and its
+  Fedora/RHEL and Debian/Ubuntu package. `[package.metadata.deb]`
+  `depends` and `[package.metadata.generate-rpm.requires]` equal the
+  `required` + `gl` packages of the list. The release binary is scanned
+  for `lib*.so*` strings in `scripts/package.sh`; the debug binary in a
+  test.
+  Tests: `preflight::tests::parse_runtime_libs_reads_roles_and_packages`,
+  `parse_runtime_libs_rejects_bad_lines`,
+  `embedded_runtime_libs_parse`;
+  `packaging::library_bases_finds_packed_strings`,
+  `packaging::runtime_libs_names_every_library_the_binary_mentions`,
+  `packaging::deb_depends_match_runtime_libs`,
+  `packaging::rpm_requires_match_runtime_libs`.
 - **AC-2 — glibc floor.** The packaged binary needs no `GLIBC_` symbol
-  version above 2.28 (`objdump -T`), checked by `scripts/package.sh`.
-  Owner: the tarball starts on one older distro (e.g. a Debian 12 or
-  Ubuntu 22.04 VM or toolbox) on the target.
-- **AC-3 — Startup preflight.** Before opening the window,
-  `shell::preflight` checks for a display and for the runtime libraries.
-  When one is missing, the app prints one message naming what is missing
-  and the package to install, then exits with code 1 (no panic, no
-  backtrace). Cases: no `DISPLAY` and no `WAYLAND_DISPLAY`; a Wayland
-  session with no `DISPLAY` (XWayland missing); a library from AC-1 not
-  found. The decision logic is a pure function over the environment and
-  the set of libraries found, unit-tested; finding the libraries must not
-  need `unsafe` or a new dependency.
+  version above 2.28 (`objdump -T`), checked by `scripts/package.sh`
+  (`check_glibc_floor`). Owner: the tarball starts on one older distro
+  (e.g. a Debian 12 or Ubuntu 22.04 VM or toolbox) on the target.
+- **AC-3 — Startup preflight.** Before the window opens, `main` calls
+  `shell::preflight::run`. A missing display or library prints one line
+  naming what is missing and the package to install and exits with
+  code 1. Libraries are found by looking for their soname in
+  `/etc/ld.so.cache`, in `LD_LIBRARY_PATH` and in the standard library
+  directories (plain file reads: no `unsafe`, no subprocess, no new
+  dependency). `DRAW_SKIP_PREFLIGHT=1` skips the check. Only Linux runs
+  it.
+  Tests: `preflight::tests::check_no_display_reports_no_display`,
+  `check_wayland_without_display_reports_xwayland`,
+  `check_x11_display_with_all_libs_is_ok`,
+  `check_missing_required_lib_names_its_packages`,
+  `check_one_gl_lib_is_enough`,
+  `check_no_gl_lib_names_both`,
+  `check_unused_libs_are_not_needed`,
+  `check_skip_variable_skips_everything`,
+  `cache_contains_soname_matches_whole_names_only`,
+  `problem_message_is_one_line`.
 - **AC-4 — Crash report.** A panic writes the message, location, app
-  version and build id to stderr and to
+  version, build id and Unix time to stderr and appends it to
   `$XDG_STATE_HOME/draw/crash.log` (fallback `~/.local/state/draw/`),
-  then aborts as today. Formatting and path choice are pure functions
-  with unit tests; the hook itself is checked once by hand.
-- **AC-5 — Debug symbols.** `scripts/package.sh` produces `draw.debug`
-  matching the shipped binary (same build id), so a crash address from a
-  user can be resolved with `addr2line`. The shipped binary stays
-  stripped and about 1 MB.
-- **AC-6 — Desktop integration.** `packaging/` holds `draw.desktop`, a
-  scalable SVG icon plus PNGs (48, 128, 256) and an AppStream
-  `metainfo.xml`. `desktop-file-validate` and
-  `appstreamcli validate` pass in `scripts/package.sh`; every package
-  installs them to the standard paths. `window_conf` sets miniquad's
-  `linux_wm_class` to `draw` (today `miniquad-application`) and the
-  desktop file's `StartupWMClass` matches, so the running window gets
-  the launcher icon. Owner: draw appears in the
-  launcher after installing the `.rpm` on the target.
-- **AC-7 — Tarball.** `draw-<version>-x86_64-linux.tar.gz` contains the
-  binary, desktop file, icons, metainfo, LICENSE, the embedded font's
-  license (from T29), README, CHANGELOG and an
-  `install.sh` that installs to `~/.local` by default (`--prefix` to
-  change) and `--uninstall` that removes exactly what it installed.
-- **AC-8 — `.deb` and `.rpm`.** Both build from `scripts/package.sh`,
-  install the binary to `/usr/bin/draw` plus the files of AC-6, and
-  declare the AC-1 dependencies. Owner: `.rpm` installs, starts and
-  uninstalls cleanly on the target; `.deb` the same in a Debian/Ubuntu
-  container or VM.
-- **AC-9 — Flatpak.** `packaging/flatpak/` has a manifest that builds a
-  local bundle with `flatpak-builder` and runs with `--socket=x11`
-  (plus `--socket=fallback-x11` / `--share=ipc`) and `--device=dri`, on
-  the freedesktop runtime. Owner: the bundle installs and starts on the
-  target.
+  then aborts as today. Formatting, path choice and reading the GNU
+  build id from the ELF file are pure functions.
+  Tests: `crash::tests::crash_log_path_prefers_absolute_xdg_state_home`,
+  `crash_log_path_ignores_relative_or_empty_xdg_state_home`,
+  `crash_log_path_without_home_is_none`,
+  `format_report_has_message_location_version_and_build_id`,
+  `panic_message_reads_str_and_string_payloads`,
+  `format_report_marks_unknown_fields`,
+  `build_id_reads_gnu_note`, `build_id_of_elf_without_note_is_none`,
+  `build_id_of_garbage_is_none` (synthetic ELF files: the host linker
+  does not always add a build id, so `scripts/package.sh` passes
+  `-Wl,--build-id` and checks it, AC-5).
+  The hook itself is checked once by hand (log of the check in *Log*).
+- **AC-5 — Debug symbols.** `scripts/package.sh` builds with the `dist`
+  profile (release + debug info, not stripped), writes `draw.debug`
+  with `objcopy --only-keep-debug`, strips the shipped binary and adds a
+  `.gnu_debuglink`; it checks both have the same build id and that the
+  shipped binary stays under 2 MB (`check_debug_symbols`).
+- **AC-6 — Desktop integration.** `packaging/` holds
+  `io.github.UmBender.draw.desktop`, the icons of `packaging/icons/`
+  (SVG + 48, 128, 256 PNG) and `io.github.UmBender.draw.metainfo.xml`.
+  `desktop-file-validate` and `appstreamcli validate` pass in
+  `scripts/package.sh`; every package installs them under
+  `share/applications`, `share/icons/hicolor/<size>/apps` and
+  `share/metainfo`. `window_conf` sets `linux_wm_class` to `draw`.
+  Tests: `app::tests::window_conf_sets_wm_class`;
+  `packaging::desktop_file_matches_wm_class_and_icon`,
+  `packaging::metainfo_release_is_crate_version`,
+  `packaging::icons_have_every_size`. Owner: draw appears in the
+  launcher with its icon after installing the `.rpm` on the target.
+- **AC-7 — Tarball.** `draw-<version>-x86_64-linux.tar.gz` holds the
+  binary, desktop file, icons, metainfo, LICENSE, the font licenses,
+  README, CHANGELOG and `install.sh` (default prefix `~/.local`,
+  `--prefix DIR`, `--uninstall` removes exactly the files it installs).
+  `scripts/package.sh` installs and uninstalls it into a temporary
+  prefix and fails if a file is missing or left behind
+  (`check_tarball_install`).
+- **AC-8 — `.deb` and `.rpm`.** Built by `cargo-deb` and
+  `cargo-generate-rpm` inside the build container from the same staging
+  tree; `/usr/bin/draw` plus the AC-6 files and the licenses, with the
+  AC-1 dependencies (covered by the AC-1 tests). Owner: `.rpm` installs,
+  starts and uninstalls on the target; `.deb` the same in a
+  Debian/Ubuntu container or VM.
+- **AC-9 — Flatpak.** `packaging/flatpak/io.github.UmBender.draw.yml`
+  builds a local bundle with `flatpak-builder` from the staged files on
+  `org.freedesktop.Platform` 26.08, with `--socket=x11`,
+  `--share=ipc` and `--device=dri`. `scripts/package.sh` builds it when
+  `flatpak-builder` (or `org.flatpak.Builder`) is available and says so
+  when it is not. Owner: the bundle installs and starts on the target.
 - **AC-10 — README.** Install section split into *Prebuilt packages*
-  (Linux: tarball, `.deb`, `.rpm`, Flatpak, and the runtime packages for
-  the tarball) and *Build from source* (Linux, macOS, Windows; build
-  headers only here). States that macOS and Windows users build from
-  source, and that on Wayland draw needs XWayland.
-- **AC-11 — Release output.** `scripts/package.sh` writes everything to
-  `dist/` (ignored by git) with a `SHA256SUMS` file, and fails if any
-  check of AC-1, AC-2, AC-6 fails. `scripts/check.sh` stays green and
+  and *Build from source*, runtime packages for the tarball, XWayland
+  note, crash log location and `DRAW_SKIP_PREFLIGHT`.
+- **AC-11 — Release output.** `scripts/package.sh` needs only `podman`
+  (plus `flatpak-builder` for AC-9), writes everything to `dist/`
+  (ignored by git) with `SHA256SUMS`, and fails if any check of AC-1,
+  AC-2, AC-5, AC-6 or AC-7 fails. `scripts/check.sh` stays green and
   does not need the packaging tools.
 
 ## Out of scope
@@ -141,7 +176,8 @@ Acceptance criteria:
 ## Files owned
 
 - `packaging/**` (new: runtime-libs, desktop file, icons, metainfo,
-  `install.sh`, Flatpak manifest)
+  `install.sh`, `Containerfile`, `build.sh` run in the container,
+  Flatpak manifest)
 - `scripts/package.sh` (new)
 - `src/shell/preflight.rs`, `src/shell/crash.rs` (new), `src/shell/mod.rs`,
   `src/main.rs`, `src/shell/app.rs` (`window_conf` WM class only)
@@ -156,12 +192,12 @@ Acceptance criteria:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T27): …`
-- [ ] tests — `test(T27): …`
-- [ ] models — `feat(T27): …`
-- [ ] behaviour — `feat(T27): …`
-- [ ] quality — `chore(T27): …`
-- [ ] docs — `docs(T27): …`
+- [x] spec — `docs(T27): …`
+- [x] tests — `test(T27): …`
+- [x] models — `feat(T27): …`
+- [x] behaviour — `feat(T27): …`
+- [x] quality — `chore(T27): …`
+- [x] docs — `docs(T27): …`
 
 ## Learning path
 
@@ -180,3 +216,61 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   `packaging/icons/draw.svg` plus `draw-48.png`, `draw-128.png`,
   `draw-256.png`. AC-6 uses these files; install them as
   `hicolor/{scalable,48x48,128x128,256x256}/apps/draw.{svg,png}`.
+- 2026-10-15 — Implemented. `scripts/package.sh --no-flatpak` passes in
+  the AlmaLinux 8 container: newest symbol `GLIBC_2.28`, build id shared
+  by `draw` and `draw.debug`, stripped binary 1 442 688 bytes, desktop
+  entry and metainfo valid, tarball installs 12 files and removes them
+  all. `dist/` holds the tarball (727 kB), `.deb` (596 kB), `.rpm`
+  (647 kB), `draw.debug` and `SHA256SUMS`.
+- 2026-10-15 — Deviations: EL8 ships no `appstreamcli`, so inside the
+  container the metainfo is checked with `appstream-util validate-relax`
+  (`libappstream-glib`); `appstreamcli validate` is used where present
+  (host: 1.1.3, passes). Icons are installed as
+  `hicolor/*/apps/io.github.UmBender.draw.{svg,png}`, not `draw.*`, so the
+  desktop entry's `Icon=` is the application id (AC-6, ADR-T27-2).
+- 2026-10-15 — Hand checks (AC-3, AC-4) on the packaged binary: without
+  `DISPLAY` / `WAYLAND_DISPLAY` it prints the no-display line and exits 1;
+  with `WAYLAND_DISPLAY` only, the Xwayland line; in a bare
+  `almalinux:8` container with `DISPLAY=:0` it names the four missing
+  sonames and their packages and exits 1. With `DRAW_SKIP_PREFLIGHT=1`
+  and no display, miniquad's `XOpenDisplay() failed!` panic is written
+  to stderr and appended to `$XDG_STATE_HOME/draw/crash.log` with the
+  binary's build id, then the process aborts (exit 134).
+- 2026-10-15 — `.deb` checked in a `debian:12` container (glibc 2.36,
+  AC-8): `Depends: libegl1, libgl1, libx11-6, libxi6, libxkbcommon0`;
+  before install the unpacked binary names the missing libraries with
+  their Debian packages and exits 1; `apt-get install ./draw_*.deb`
+  pulls them in and installs the binary, desktop entry, icons, metainfo,
+  licenses and docs under `/usr`; with the host's Xwayland socket
+  mounted and run as the host uid, the window opens and renders
+  (`DRAW_FRAME_TIMES` logged frames, still running when `timeout`
+  stopped it after 8 s); `apt-get remove draw` removes it. The container
+  needed `libgl1-mesa-dri` and `libegl-mesa0` (Mesa drivers, present on
+  any desktop install; the package depends on the libglvnd loaders).
+- 2026-10-15 — Tarball checked in an `ubuntu:22.04` container (glibc
+  2.35, AC-2, AC-7): the binary starts (no `GLIBC_` version error) and,
+  before the runtime libraries are installed, names them with their
+  packages and exits 1; after the README's `apt install` line,
+  `install.sh` puts 12 files into `~/.local` with `Exec=` pointing at
+  the binary; run as the host uid through the host's Xwayland socket the
+  window opens and renders (still running when `timeout` stopped it
+  after 8 s); `install.sh --uninstall` leaves no file behind. The 2.28
+  floor itself is covered by `check_glibc_floor` at build time.
+- 2026-10-15 — `.rpm` checked in `fedora:44` (glibc 2.43) and
+  `almalinux:8` (glibc 2.28, the floor itself) containers (AC-2, AC-8):
+  `dnf install ./draw-*.rpm` pulls in `libX11 libXi libxkbcommon
+  libglvnd-glx libglvnd-egl` and installs 12 files; run as the host uid
+  through the host's Xwayland socket the window opens and renders (still
+  running when `timeout` stopped it after 8 s); `dnf remove draw`
+  removes the binary and desktop entry.
+- 2026-10-15 — Owner installed the `.rpm` on the target (AC-6): draw
+  shows in the launcher with its icon.
+- 2026-10-15 — Flatpak checked on the target (AC-9): with
+  `org.flatpak.Builder` installed, `scripts/package.sh` built
+  `draw-1.0.0-x86_64.flatpak` (644 kB, listed in `SHA256SUMS`) on
+  `org.freedesktop.Platform` 26.08. Installed as a user app, its
+  permissions are exactly `sockets=x11`, `shared=ipc`, `devices=dri`;
+  the desktop entry, the four icons and the metainfo are exported under
+  the application id; `flatpak run` opens the window and renders
+  (`DRAW_FRAME_TIMES` logged frames, still running when `timeout`
+  stopped it after 6 s). All acceptance criteria are checked.

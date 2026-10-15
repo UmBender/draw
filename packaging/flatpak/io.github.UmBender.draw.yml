@@ -1,0 +1,21 @@
+# Local Flatpak bundle from the staging tree of packaging/build.sh
+# (ADR-T27-2): no build inside the SDK. Built by scripts/package.sh.
+id: io.github.UmBender.draw
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: draw
+finish-args:
+  # X11 only (ADR-T12-1); on Wayland through XWayland.
+  - --socket=x11
+  - --share=ipc
+  - --device=dri
+modules:
+  - name: draw
+    buildsystem: simple
+    build-commands:
+      - cp -a usr/. /app/
+      - mv /app/share/licenses/draw /app/share/licenses/io.github.UmBender.draw
+    sources:
+      - type: dir
+        path: ../../target/package/stage

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=draw
+GenericName=Scratch Canvas
+Comment=Keyboard-first scratch canvas for competitive programming
+Exec=draw
+Icon=io.github.UmBender.draw
+Terminal=false
+Categories=Graphics;2DGraphics;VectorGraphics;
+Keywords=sketch;whiteboard;graph;tree;competitive programming;
+StartupWMClass=draw
+StartupNotify=false
