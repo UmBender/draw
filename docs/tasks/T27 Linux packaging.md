@@ -1,7 +1,7 @@
 ---
 id: T27
 title: Linux packaging
-status: in-progress
+status: review
 wave: 20
 branch: task/T27-packaging
 depends_on: [T14]
@@ -192,12 +192,12 @@ Acceptance criteria:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T27): …`
-- [ ] tests — `test(T27): …`
-- [ ] models — `feat(T27): …`
-- [ ] behaviour — `feat(T27): …`
-- [ ] quality — `chore(T27): …`
-- [ ] docs — `docs(T27): …`
+- [x] spec — `docs(T27): …`
+- [x] tests — `test(T27): …`
+- [x] models — `feat(T27): …`
+- [x] behaviour — `feat(T27): …`
+- [x] quality — `chore(T27): …`
+- [x] docs — `docs(T27): …`
 
 ## Learning path
 
@@ -216,3 +216,27 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   `packaging/icons/draw.svg` plus `draw-48.png`, `draw-128.png`,
   `draw-256.png`. AC-6 uses these files; install them as
   `hicolor/{scalable,48x48,128x128,256x256}/apps/draw.{svg,png}`.
+- 2026-10-15 — Implemented. `scripts/package.sh --no-flatpak` passes in
+  the AlmaLinux 8 container: newest symbol `GLIBC_2.28`, build id shared
+  by `draw` and `draw.debug`, stripped binary 1 442 688 bytes, desktop
+  entry and metainfo valid, tarball installs 12 files and removes them
+  all. `dist/` holds the tarball (727 kB), `.deb` (596 kB), `.rpm`
+  (647 kB), `draw.debug` and `SHA256SUMS`.
+- 2026-10-15 — Deviations: EL8 ships no `appstreamcli`, so inside the
+  container the metainfo is checked with `appstream-util validate-relax`
+  (`libappstream-glib`); `appstreamcli validate` is used where present
+  (host: 1.1.3, passes). Icons are installed as
+  `hicolor/*/apps/io.github.UmBender.draw.{svg,png}`, not `draw.*`, so the
+  desktop entry's `Icon=` is the application id (AC-6, ADR-T27-2).
+- 2026-10-15 — Hand checks (AC-3, AC-4) on the packaged binary: without
+  `DISPLAY` / `WAYLAND_DISPLAY` it prints the no-display line and exits 1;
+  with `WAYLAND_DISPLAY` only, the Xwayland line; in a bare
+  `almalinux:8` container with `DISPLAY=:0` it names the four missing
+  sonames and their packages and exits 1. With `DRAW_SKIP_PREFLIGHT=1`
+  and no display, miniquad's `XOpenDisplay() failed!` panic is written
+  to stderr and appended to `$XDG_STATE_HOME/draw/crash.log` with the
+  binary's build id, then the process aborts (exit 134).
+- 2026-10-15 — Still for the owner: launcher and icon after installing
+  the `.rpm` (AC-6, AC-8), the `.deb` in a Debian/Ubuntu container or VM
+  (AC-8), the tarball on an older distro (AC-2), and the Flatpak bundle
+  (AC-9: `flatpak-builder` is not installed here, so it was not built).
