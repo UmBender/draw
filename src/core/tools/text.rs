@@ -41,6 +41,8 @@ pub struct Host {
     pub slot: TextSlot,
     /// The world box the text is fitted into ([`Shape::text_frame`]).
     pub frame: Aabb,
+    /// The slot is filled, so its text is drawn in the background colour.
+    pub filled: bool,
 }
 
 /// A text block being edited: its text, caret and placement.
@@ -84,8 +86,32 @@ impl TextEdit {
     /// if `shape` has no such slot.
     #[must_use]
     pub fn open_in(id: ShapeId, shape: &Shape, slot: TextSlot, new_size: f32) -> Option<Self> {
-        let _ = (id, shape, slot, new_size);
-        todo!()
+        let frame = shape.text_frame(slot)?;
+        let filled = match slot {
+            TextSlot::Shape => shape.fill(),
+            TextSlot::Cell { col, row } => shape.cell_fill(col, row),
+        }
+        .is_some();
+        let (text, size) = shape
+            .slot_text(slot)
+            .map_or((String::new(), new_size), |t| (t.text.clone(), t.size));
+        Some(Self {
+            origin: frame.min,
+            size,
+            style: Style {
+                color: shape.style().color,
+                width: 0.0,
+            },
+            target: None,
+            host: Some(Host {
+                id,
+                slot,
+                frame,
+                filled,
+            }),
+            caret: text.len(),
+            text,
+        })
     }
 
     /// Re-opens the text block `shape` (document id `id`) with the caret
@@ -129,7 +155,15 @@ impl TextEdit {
     /// The edited text as shape text; `None` when blank.
     #[must_use]
     pub fn shape_text(&self) -> Option<ShapeText> {
-        todo!()
+        ShapeText::new(self.text.clone(), self.size)
+    }
+
+    /// Top-left corner and font size the block is shown at: `origin` and
+    /// `size`, or fitted into the host's frame (ADR-T31-1).
+    fn placed(&self) -> (Vec2, f32) {
+        self.host
+            .and_then(|host| text_layout::fit_source(&self.text, host.frame, self.size))
+            .unwrap_or((self.origin, self.size))
     }
 
     /// The text.
@@ -154,10 +188,11 @@ impl TextEdit {
     /// The block as a document shape.
     #[must_use]
     pub fn shape(&self) -> Shape {
+        let (origin, size) = self.placed();
         Shape::Text {
-            origin: self.origin,
+            origin,
             text: self.text.clone(),
-            size: self.size,
+            size,
             style: self.style,
         }
     }
@@ -166,17 +201,16 @@ impl TextEdit {
     /// edited (ADR-T30-1).
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        text_layout::source_bounds(self.origin, &self.text, self.size)
+        let (origin, size) = self.placed();
+        text_layout::source_bounds(origin, &self.text, size)
     }
 
     /// The caret as a world segment, top to bottom of its line.
     #[must_use]
     pub fn caret_line(&self) -> [Vec2; 2] {
-        let top = text_layout::caret_point(self.origin, &self.text, self.size, self.caret);
-        [
-            top,
-            top + Vec2::new(0.0, text_layout::line_height(self.size)),
-        ]
+        let (origin, size) = self.placed();
+        let top = text_layout::caret_point(origin, &self.text, size, self.caret);
+        [top, top + Vec2::new(0.0, text_layout::line_height(size))]
     }
 
     /// Moves the caret to byte `index`, snapped back to a `char` boundary
@@ -187,7 +221,8 @@ impl TextEdit {
 
     /// Moves the caret to the cell boundary nearest to world point `p`.
     pub fn set_caret_at(&mut self, p: Vec2) {
-        self.caret = text_layout::caret_from_point(self.origin, &self.text, self.size, p);
+        let (origin, size) = self.placed();
+        self.caret = text_layout::caret_from_point(origin, &self.text, size, p);
     }
 
     /// Inserts `ch` at the caret and moves past it. Returns `true`.
@@ -319,13 +354,25 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let world = ctx.camera.screen_to_world(pointer.pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     let view = ctx.view();
+    let size = ctx.camera.world_len(text_size_px(view.style.width_px));
+    // With shape text on, the interior of a rectangle or an ellipse and a
+    // grid cell hold text too (ADR-T31-1).
+    let hosts = view.style.helpers.experimental.shape_text;
     let opened = view
         .doc
-        .topmost_where(|shape| matches!(shape, Shape::Text { .. }) && shape.hit(world, tol))
-        .and_then(|id| TextEdit::open(id, view.doc.get(id)?, world));
+        .topmost_where(|shape| {
+            let block = matches!(shape, Shape::Text { .. }) && shape.hit(world, tol);
+            block || (hosts && shape.text_slot_at(world).is_some())
+        })
+        .and_then(|id| {
+            let shape = view.doc.get(id)?;
+            match shape.text_slot_at(world) {
+                Some(slot) if hosts => TextEdit::open_in(id, shape, slot, size),
+                _ => TextEdit::open(id, shape, world),
+            }
+        });
     state.edit = Some(opened.unwrap_or_else(|| {
         let origin = snap::snap_start(world, pointer.mods, &view);
-        let size = ctx.camera.world_len(text_size_px(view.style.width_px));
         let style = Style {
             color: view.style.color,
             width: 0.0,
@@ -336,17 +383,24 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
 }
 
 /// What the edit session draws: the edited block, with the original
-/// hidden while re-editing.
+/// hidden while re-editing. Editing a shape's text hides the shape and
+/// draws it without that text, under the block (ADR-T31-1).
 #[must_use]
-pub fn preview(state: &State, _view: &ToolView<'_>) -> Overlay {
-    state
-        .edit
-        .as_ref()
-        .map_or_else(Overlay::default, |edit| Overlay {
-            shapes: vec![edit.shape()],
-            hidden: edit.target.into_iter().collect(),
-            ..Overlay::default()
-        })
+pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
+    let Some(edit) = &state.edit else {
+        return Overlay::default();
+    };
+    let host = edit.host.and_then(|host| {
+        let shape = view.doc.get(host.id)?.clone();
+        Some((host.id, shape.with_slot_text(host.slot, None)))
+    });
+    let (hidden, mut shapes): (Vec<ShapeId>, Vec<Shape>) = host.into_iter().unzip();
+    shapes.push(edit.shape());
+    Overlay {
+        shapes,
+        hidden: edit.target.into_iter().chain(hidden).collect(),
+        ..Overlay::default()
+    }
 }
 
 /// Ends the gesture. The edit session is not part of the gesture and

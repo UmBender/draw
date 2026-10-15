@@ -95,8 +95,10 @@ pub fn source_bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
 /// positive.
 #[must_use]
 pub fn fit(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
-    let _ = (text, frame, max_size);
-    todo!()
+    if text.trim().is_empty() {
+        return None;
+    }
+    fit_box(bounds(Vec2::ZERO, text, 1.0), frame, max_size)
 }
 
 /// [`fit`] for text as typed, formulas as source ([`source_bounds`]): how
@@ -104,8 +106,24 @@ pub fn fit(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
 /// caret has a line.
 #[must_use]
 pub fn fit_source(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
-    let _ = (text, frame, max_size);
-    todo!()
+    fit_box(source_bounds(Vec2::ZERO, text, 1.0), frame, max_size)
+}
+
+/// Places a block whose box at size 1 and origin 0 is `unit` in `frame`:
+/// the largest size up to `max_size` whose box fits, centred.
+fn fit_box(unit: Aabb, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
+    let (w, h) = (frame.width(), frame.height());
+    let usable = |v: f32| v.is_finite() && v > 0.0;
+    if !usable(max_size) || !usable(w) || !usable(h) {
+        return None;
+    }
+    // An empty side (no columns) does not limit the size: its ratio is ∞.
+    let size = max_size.min(w / unit.width()).min(h / unit.height());
+    if !usable(size) {
+        return None;
+    }
+    let half = (unit.min + unit.max) * (0.5 * size);
+    Some((frame.center() - half, size))
 }
 
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out

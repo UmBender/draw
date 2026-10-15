@@ -33,6 +33,7 @@ use crate::core::camera::Camera;
 use crate::core::command::Tool;
 use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
+use crate::core::experimental::{EXPERIMENTAL_ENV, Experimental};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{THEME, palette};
@@ -374,7 +375,10 @@ pub async fn run() {
     }
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
-    let mut editor = Editor::new();
+    // Experimental features are read once (ADR-T31-1).
+    let experimental = std::env::var(EXPERIMENTAL_ENV).ok();
+    let mut editor =
+        Editor::new().with_experimental(Experimental::from_env_value(experimental.as_deref()));
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
@@ -626,9 +630,14 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     let camera = editor.camera();
     // The open text block shows its source, formulas untypeset (ADR-T30-1).
     let editing = editor.text_edit().map(TextEdit::shape);
+    // Text on a filled shape or cell takes the background colour (ADR-T31-1).
+    let on_fill = editor
+        .text_edit()
+        .and_then(TextEdit::host)
+        .is_some_and(|host| host.filled);
     for shape in &overlay.shapes {
         if editing.as_ref() == Some(shape) {
-            render::draw_source_preview(shape, camera);
+            render::draw_source_preview(shape, camera, on_fill);
         } else {
             render::draw_preview(shape, camera);
         }
@@ -639,7 +648,11 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         // the loop stays asleep (ADR-T29-2).
         render::draw_selection(edit.bounds(), camera);
         let [top, bottom] = edit.caret_line().map(|p| camera.world_to_screen(p));
-        let color = to_mq_color(palette(edit.style.color));
+        let color = if on_fill {
+            to_mq_color(THEME.bg)
+        } else {
+            to_mq_color(palette(edit.style.color))
+        };
         draw_line(top.x, top.y, bottom.x, bottom.y, CARET_WIDTH_PX, color);
     }
     if editor.active_gesture().is_none() {

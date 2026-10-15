@@ -113,7 +113,19 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     let pos = pointer.pos;
     let world = ctx.camera.screen_to_world(pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
-    let hit = ctx.doc.topmost_where(|shape| shape.hit(world, tol));
+    // With shape text on, the inside of the only selected shape grabs it,
+    // so a second click there can open its text (ADR-T31-1).
+    let hit = ctx
+        .doc
+        .topmost_where(|shape| shape.hit(world, tol))
+        .or_else(|| match ctx.selection.as_slice() {
+            &[id] if ctx.style.helpers.experimental.shape_text => ctx
+                .doc
+                .get(id)
+                .and_then(|shape| shape.text_slot_at(world))
+                .map(|_| id),
+            _ => None,
+        });
     state.gesture = match hit {
         Some(id) if pointer.mods.shift => {
             match ctx.selection.iter().position(|selected| *selected == id) {

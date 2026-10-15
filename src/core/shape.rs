@@ -162,8 +162,8 @@ impl ShapeText {
     /// or `size` is not finite and positive.
     #[must_use]
     pub fn new(text: String, size: f32) -> Option<Self> {
-        let _ = (text, size);
-        todo!()
+        let sized = size.is_finite() && size > 0.0;
+        (sized && !text.trim().is_empty()).then_some(Self { text, size })
     }
 }
 
@@ -521,31 +521,70 @@ impl Shape {
     /// `None` elsewhere and for other shapes.
     #[must_use]
     pub fn text_slot_at(&self, p: Vec2) -> Option<TextSlot> {
-        let _ = p;
-        todo!()
+        match self {
+            Self::Rect { .. } | Self::Ellipse { .. } => self.contains(p).then_some(TextSlot::Shape),
+            Self::Grid { .. } => self
+                .grid_cell_at(p)
+                .map(|(col, row)| TextSlot::Cell { col, row }),
+            _ => None,
+        }
     }
 
     /// The text in `slot`, if any.
     #[must_use]
     pub fn slot_text(&self, slot: TextSlot) -> Option<&ShapeText> {
-        let _ = slot;
-        todo!()
+        match (self, slot) {
+            (Self::Rect { text, .. } | Self::Ellipse { text, .. }, TextSlot::Shape) => {
+                text.as_ref()
+            }
+            (Self::Grid { texts, .. }, TextSlot::Cell { col, row }) => texts
+                .binary_search_by_key(&(row, col), |t| (t.row, t.col))
+                .ok()
+                .map(|i| &texts[i].content),
+            _ => None,
+        }
     }
 
     /// Returns the shape with the text in `slot` set to `text`, or cleared
     /// for `None`. A slot the shape does not have (a cell outside the grid,
     /// a cell of a rectangle, the interior of a grid) leaves it unchanged.
     #[must_use]
-    pub fn with_slot_text(self, slot: TextSlot, text: Option<ShapeText>) -> Self {
-        let _ = (slot, text);
-        todo!()
+    pub fn with_slot_text(mut self, slot: TextSlot, text: Option<ShapeText>) -> Self {
+        match (&mut self, slot) {
+            (Self::Rect { text: t, .. } | Self::Ellipse { text: t, .. }, TextSlot::Shape) => {
+                *t = text;
+            }
+            (
+                Self::Grid {
+                    cols, rows, texts, ..
+                },
+                TextSlot::Cell { col, row },
+            ) if col < clamp_cells(*cols) && row < clamp_cells(*rows) => {
+                match (
+                    texts.binary_search_by_key(&(row, col), |t| (t.row, t.col)),
+                    text,
+                ) {
+                    (Ok(i), Some(content)) => texts[i].content = content,
+                    (Ok(i), None) => {
+                        texts.remove(i);
+                    }
+                    (Err(i), Some(content)) => texts.insert(i, CellText { col, row, content }),
+                    (Err(_), None) => {}
+                }
+            }
+            _ => {}
+        }
+        self
     }
 
     /// The cell texts of a grid, sorted by `(row, col)`; empty for other
     /// shapes.
     #[must_use]
     pub fn cell_texts(&self) -> &[CellText] {
-        todo!()
+        match self {
+            Self::Grid { texts, .. } => texts,
+            _ => &[],
+        }
     }
 
     /// The world box the text in `slot` is fitted into: the box of a
@@ -554,8 +593,26 @@ impl Shape {
     /// the shape does not have.
     #[must_use]
     pub fn text_frame(&self, slot: TextSlot) -> Option<Aabb> {
-        let _ = slot;
-        todo!()
+        let area = match (self, slot) {
+            (Self::Rect { a, b, .. }, TextSlot::Shape) => Aabb::from_corners(*a, *b),
+            (Self::Ellipse { a, b, .. }, TextSlot::Shape) => {
+                let (center, radii) = ellipse_frame(*a, *b);
+                let half = radii * std::f32::consts::FRAC_1_SQRT_2;
+                Aabb::from_corners(center - half, center + half)
+            }
+            (
+                Self::Grid {
+                    a, b, cols, rows, ..
+                },
+                TextSlot::Cell { col, row },
+            ) if col < clamp_cells(*cols) && row < clamp_cells(*rows) => {
+                grid_cell_rect(*a, *b, *cols, *rows, col, row)
+            }
+            _ => return None,
+        };
+        let half = Vec2::new(area.width(), area.height()) * (0.5 * SHAPE_TEXT_FILL);
+        let center = area.center();
+        Some(Aabb::from_corners(center - half, center + half))
     }
 
     /// Every text of the shape placed for drawing, fitted and centred in
@@ -563,7 +620,30 @@ impl Shape {
     /// order.
     #[must_use]
     pub fn placed_texts(&self) -> Vec<PlacedText<'_>> {
-        todo!()
+        let own = self
+            .slot_text(TextSlot::Shape)
+            .map(|t| (TextSlot::Shape, t));
+        let cells = self.cell_texts().iter().map(|c| {
+            (
+                TextSlot::Cell {
+                    col: c.col,
+                    row: c.row,
+                },
+                &c.content,
+            )
+        });
+        own.into_iter()
+            .chain(cells)
+            .filter_map(|(slot, content)| {
+                let frame = self.text_frame(slot)?;
+                let (origin, size) = text_layout::fit(&content.text, frame, content.size)?;
+                Some(PlacedText {
+                    origin,
+                    text: &content.text,
+                    size,
+                })
+            })
+            .collect()
     }
 
     /// The cell one `step` away from cell `(col, row)` of a grid, in screen
@@ -571,8 +651,36 @@ impl Shape {
     /// outside the grid or for other shapes.
     #[must_use]
     pub fn grid_cell_step(&self, col: u32, row: u32, step: CellStep) -> Option<(u32, u32)> {
-        let _ = (col, row, step);
-        todo!()
+        let Self::Grid {
+            a, b, cols, rows, ..
+        } = *self
+        else {
+            return None;
+        };
+        let (cols, rows) = (clamp_cells(cols), clamp_cells(rows));
+        if col >= cols || row >= rows {
+            return None;
+        }
+        // Screen column and row: counted from the left and the top. The
+        // mapping is its own inverse.
+        let x = |c: u32| if a.x <= b.x { c } else { cols - 1 - c };
+        let y = |r: u32| if a.y <= b.y { r } else { rows - 1 - r };
+        let (sx, sy) = (x(col), y(row));
+        let (sx, sy) = match step {
+            CellStep::Next | CellStep::Prev => {
+                let n = cols * rows;
+                let index = sy * cols + sx;
+                let index = if step == CellStep::Next {
+                    (index + 1) % n
+                } else {
+                    (index + n - 1) % n
+                };
+                (index % cols, index / cols)
+            }
+            CellStep::Down => (sx, (sy + 1 < rows).then_some(sy + 1)?),
+            CellStep::Up => (sx, sy.checked_sub(1)?),
+        };
+        Some((x(sx), y(sy)))
     }
 
     /// The axis indices to draw: those of a grid with `axes` on (see

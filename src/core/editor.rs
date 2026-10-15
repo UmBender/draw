@@ -26,7 +26,7 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
-use crate::core::shape::{GRID_MAX_CELLS, Shape};
+use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
@@ -716,10 +716,28 @@ impl Editor {
             ctrl: true,
             ..Modifiers::NONE
         };
+        let shift_only = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+        let in_cell = self
+            .text_edit()
+            .and_then(TextEdit::host)
+            .is_some_and(|host| matches!(host.slot, TextSlot::Cell { .. }));
         match key {
             Key::Escape => return self.finish_text(),
             Key::Enter if mods.ctrl => return self.finish_text(),
             Key::Z if mods == ctrl_only => return self.cancel_text(),
+            // ADR-T31-1: Tab and Enter walk the cells of a grid.
+            Key::Tab | Key::Enter if in_cell && (mods == Modifiers::NONE || mods == shift_only) => {
+                let step = match (key, mods.shift) {
+                    (Key::Tab, false) => CellStep::Next,
+                    (Key::Tab, true) => CellStep::Prev,
+                    (_, false) => CellStep::Down,
+                    (_, true) => CellStep::Up,
+                };
+                return self.step_cell(step);
+            }
             _ => {}
         }
         let Some(edit) = &mut self.tools.text.edit else {
@@ -751,6 +769,20 @@ impl Editor {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
+        if let Some(host) = edit.host().copied() {
+            self.track_document(false, |ed| {
+                let Some(shape) = ed.doc.get(host.id) else {
+                    return false;
+                };
+                let changed = shape.clone().with_slot_text(host.slot, edit.shape_text());
+                if &changed == shape {
+                    return false;
+                }
+                let tx = tx_replace(&ed.doc, host.id, changed);
+                !tx.is_empty() && ed.history.commit(&mut ed.doc, tx).is_ok()
+            });
+            return true;
+        }
         let appends = edit.target().is_none();
         self.track_document(appends, |ed| {
             let target = edit.target().filter(|id| ed.doc.get(*id).is_some());
@@ -768,17 +800,62 @@ impl Editor {
         true
     }
 
+    /// Commits the open grid cell and opens the cell one `step` away, its
+    /// caret at the end; a new cell takes the size of the one left. Does
+    /// nothing, returning `false`, when there is no such cell (ADR-T31-1).
+    fn step_cell(&mut self, step: CellStep) -> bool {
+        let Some(edit) = &self.tools.text.edit else {
+            return false;
+        };
+        let Some(host) = edit.host().copied() else {
+            return false;
+        };
+        let TextSlot::Cell { col, row } = host.slot else {
+            return false;
+        };
+        let size = edit.size;
+        let next = self
+            .doc
+            .get(host.id)
+            .and_then(|shape| shape.grid_cell_step(col, row, step));
+        let Some((col, row)) = next else {
+            return false;
+        };
+        self.finish_text();
+        let slot = TextSlot::Cell { col, row };
+        self.tools.text.edit = self
+            .doc
+            .get(host.id)
+            .and_then(|shape| TextEdit::open_in(host.id, shape, slot, size));
+        true
+    }
+
     /// Throws the open text block away. Returns whether there was one.
     fn cancel_text(&mut self) -> bool {
         self.tools.text.edit.take().is_some()
     }
 
     /// The text block hit at world `p` (tolerance `tol`), if it is the
-    /// topmost shape there and the only selected one.
+    /// topmost shape there and the only selected one. With shape text on,
+    /// also the only selected shape if it holds text at `p` (ADR-T31-1).
     fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
-        let id = self.doc.topmost_where(|shape| shape.hit(p, tol))?;
-        let is_text = matches!(self.doc.get(id), Some(Shape::Text { .. }));
-        (is_text && self.selection == [id]).then_some(id)
+        let &[selected] = self.selection.as_slice() else {
+            return None;
+        };
+        let hosts = self.experimental().shape_text;
+        match self.doc.topmost_where(|shape| shape.hit(p, tol)) {
+            Some(id) if id == selected => {
+                let shape = self.doc.get(id)?;
+                let is_text = matches!(shape, Shape::Text { .. });
+                (is_text || (hosts && shape.text_slot_at(p).is_some())).then_some(id)
+            }
+            Some(_) => None,
+            None if hosts => {
+                let shape = self.doc.get(selected)?;
+                shape.text_slot_at(p).is_some().then_some(selected)
+            }
+            None => None,
+        }
     }
 
     /// Re-opens the text block of a Select press armed in
@@ -792,10 +869,17 @@ impl Editor {
             return false;
         }
         let at = self.camera.screen_to_world(pos);
+        let size = self
+            .camera
+            .world_len(text::text_size_px(self.style.width_px));
+        let hosts = self.experimental().shape_text;
         self.tools.text.edit = self
             .doc
             .get(id)
-            .and_then(|shape| TextEdit::open(id, shape, at));
+            .and_then(|shape| match shape.text_slot_at(at) {
+                Some(slot) if hosts => TextEdit::open_in(id, shape, slot, size),
+                _ => TextEdit::open(id, shape, at),
+            });
         self.tools.text.edit.is_some()
     }
 

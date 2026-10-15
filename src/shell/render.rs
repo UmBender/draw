@@ -26,11 +26,11 @@ use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, PALETTE, Rgba, THEME, palette};
 use crate::core::shape::{
-    GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
+    GRID_MAX_CELLS, Shape, TextSlot, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
 };
 use crate::core::snap::GRID_STEP;
 use crate::core::tex::Ink;
-use crate::core::text_layout::{glyphs, has_markup, typeset};
+use crate::core::text_layout::{bounds, glyphs, has_markup, typeset};
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
@@ -934,8 +934,9 @@ pub fn draw_preview(shape: &Shape, camera: &Camera) {
 }
 
 /// Draws the text block being edited as typed, formulas as source
-/// (ADR-T30-1); any other shape as [`draw_preview`] does.
-pub fn draw_source_preview(shape: &Shape, camera: &Camera) {
+/// (ADR-T30-1), in the background colour when it sits `on_fill` of a
+/// shape or cell (ADR-T31-1); any other shape as [`draw_preview`] does.
+pub fn draw_source_preview(shape: &Shape, camera: &Camera, on_fill: bool) {
     let Shape::Text {
         origin,
         text,
@@ -953,7 +954,7 @@ pub fn draw_source_preview(shape: &Shape, camera: &Camera) {
     if block_raster(*size, camera, dpi).is_none() {
         return;
     }
-    let color = color_of(style.color);
+    let color = label_color(on_fill.then_some(style.color), color_of(style.color));
     let mut batch = Batch::new(GlSink);
     with_glyphs(
         |atlas| prepare_text_source(atlas, text, *size, camera, dpi),
@@ -997,19 +998,22 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
             draw_segment(batch, to_screen(*a), base, width, color);
             batch.triangle(tip, left, right, color);
         }
-        Shape::Rect {
-            a, b, fill, label, ..
-        } => {
+        Shape::Rect { a, b, fill, .. } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             if let Some(fill) = fill {
                 batch.rect(rect, color_of(*fill));
             }
             draw_rect_outline(batch, rect, width, color);
-            draw_label(batch, *label, rect, false, label_color(*fill, color));
+            draw_label(
+                batch,
+                shown_label(shape),
+                rect,
+                false,
+                label_color(*fill, color),
+            );
+            draw_shape_texts(batch, shape, camera, |_| label_color(*fill, color));
         }
-        Shape::Ellipse {
-            a, b, fill, label, ..
-        } => {
+        Shape::Ellipse { a, b, fill, .. } => {
             let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
             let center = rect.center();
             let radii = Vec2::new(rect.width() * 0.5, rect.height() * 0.5);
@@ -1017,7 +1021,14 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
                 draw_ellipse_fill(batch, center, radii, color_of(*fill));
             }
             draw_ellipse_ring(batch, center, radii, width, color);
-            draw_label(batch, *label, rect, true, label_color(*fill, color));
+            draw_label(
+                batch,
+                shown_label(shape),
+                rect,
+                true,
+                label_color(*fill, color),
+            );
+            draw_shape_texts(batch, shape, camera, |_| label_color(*fill, color));
         }
         Shape::Grid {
             a,
@@ -1042,6 +1053,15 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
             if *axes {
                 draw_axis_labels(batch, a, b, *cols, *rows, color);
             }
+            // On a filled cell the text takes the background colour, like
+            // a label on a filled shape.
+            let cell_color = |p: Vec2| {
+                let filled = shape
+                    .grid_cell_at(p)
+                    .and_then(|(col, row)| shape.cell_fill(col, row));
+                label_color(filled, color)
+            };
+            draw_shape_texts(batch, shape, camera, cell_color);
         }
         Shape::Text {
             origin, text, size, ..
@@ -1053,8 +1073,9 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
 /// which is drawn instead (ADR-T31-1).
 #[must_use]
 pub fn shown_label(shape: &Shape) -> Option<u32> {
-    let _ = shape;
-    todo!()
+    shape
+        .label()
+        .filter(|_| shape.slot_text(TextSlot::Shape).is_none())
 }
 
 /// Text colour of a label: the outline colour, or the background colour on a
@@ -1083,6 +1104,29 @@ fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, 
         |atlas| prepare_text_centered(atlas, &text, size, dpi),
         |atlas| push_text_centered(batch, atlas, &text, rect, size, dpi, color),
     );
+}
+
+/// Adds every text of a rectangle, ellipse or grid (ADR-T31-1), each a
+/// text block fitted into its frame, in the colour `color_at` gives for
+/// the world centre of its block.
+fn draw_shape_texts(
+    batch: &mut Batch,
+    shape: &Shape,
+    camera: &Camera,
+    color_at: impl Fn(Vec2) -> Color,
+) {
+    for placed in shape.placed_texts() {
+        let center = bounds(placed.origin, placed.text, placed.size).center();
+        let color = color_at(center);
+        draw_text_block(
+            batch,
+            placed.origin,
+            placed.text,
+            placed.size,
+            camera,
+            color,
+        );
+    }
 }
 
 /// Adds the axis indices of a grid with screen corners `a` (drag start) and

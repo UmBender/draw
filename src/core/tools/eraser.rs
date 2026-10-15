@@ -1,10 +1,10 @@
 //! Eraser: removes whole shapes or clears fills (also right drag from any
 //! tool).
 //!
-//! The mode is chosen on `Down` (ADR-T21-2). A press inside a fill — a
-//! filled rectangle or ellipse, or a filled grid cell — away from every
-//! outline starts a *clear* drag: every fill the path passes over is
-//! cleared and nothing is removed. Any other press starts a *remove* drag:
+//! The mode is chosen on `Down` (ADR-T21-2). A press inside a fill or a
+//! text — a filled rectangle or ellipse, or a filled grid cell, or one with
+//! text (ADR-T31-1) — away from every outline starts a *clear* drag: every
+//! fill and text the path passes over is cleared and nothing is removed. Any other press starts a *remove* drag:
 //! every shape within [`ERASER_TOLERANCE_PX`] of the path is marked. The
 //! preview hides the affected shapes (showing cleared ones without their
 //! fills) and the release applies everything as one undo step. Between two
@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{ShapeId, Transaction, tx_remove, tx_replace};
 use crate::core::geom::Vec2;
-use crate::core::shape::Shape;
+use crate::core::shape::{Shape, TextSlot};
 
 /// Hit tolerance of the eraser in screen pixels.
 pub const ERASER_TOLERANCE_PX: f32 = 6.0;
@@ -53,25 +53,24 @@ pub struct State {
     cleared_at: HashMap<ShapeId, usize>,
 }
 
-/// `shape` with the fill under the world point `p` cleared: its own fill if
-/// `p` is inside a filled closed shape, or the fill of the grid cell under
-/// `p`. `None` (and no clone) if there is no fill at `p`.
+/// `shape` with the fill and the text under the world point `p` cleared:
+/// its own fill and text if `p` is inside a closed shape, or those of the
+/// grid cell under `p` (ADR-T21-1, ADR-T31-1). `None` (and no clone) if
+/// there is neither at `p`.
 fn clear_at(shape: &Shape, p: Vec2) -> Option<Shape> {
-    let own = shape.fill().is_some() && shape.contains(p);
-    let cell = shape
-        .grid_cell_at(p)
-        .filter(|&(col, row)| shape.cell_fill(col, row).is_some());
-    if !own && cell.is_none() {
+    let slot = shape.text_slot_at(p)?;
+    let fill = match slot {
+        TextSlot::Shape => shape.fill(),
+        TextSlot::Cell { col, row } => shape.cell_fill(col, row),
+    };
+    if fill.is_none() && shape.slot_text(slot).is_none() {
         return None;
     }
-    let mut cleared = shape.clone();
-    if own {
-        cleared = cleared.with_fill(None);
-    }
-    if let Some((col, row)) = cell {
-        cleared = cleared.with_cell_fill(col, row, None);
-    }
-    Some(cleared)
+    let cleared = match slot {
+        TextSlot::Shape => shape.clone().with_fill(None),
+        TextSlot::Cell { col, row } => shape.clone().with_cell_fill(col, row, None),
+    };
+    Some(cleared.with_slot_text(slot, None))
 }
 
 /// The mode of a drag pressed at the world point `p`: [`Mode::Clear`] if
