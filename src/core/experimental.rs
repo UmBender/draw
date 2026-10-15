@@ -25,13 +25,13 @@ impl Experimental {
     #[must_use]
     pub fn from_env_value(value: Option<&str>) -> Self {
         let names = value.unwrap_or_default();
-        let named = |feature: &str| {
+        let listed = |feature: &str| {
             names
                 .split(|ch: char| ch == ',' || ch.is_whitespace())
                 .any(|name| name.eq_ignore_ascii_case(feature))
         };
         Self {
-            shape_text: named(SHAPE_TEXT),
+            shape_text: listed(SHAPE_TEXT),
         }
     }
 }

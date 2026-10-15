@@ -532,6 +532,44 @@ fn shapes_of(editor: &Editor) -> Vec<(ShapeId, Shape)> {
         .collect()
 }
 
+/// T31: shape text exists only with the switch on; it is non-blank and
+/// sized, and cell texts lie inside the grid, sorted by `(row, col)`,
+/// unique.
+fn check_shape_text(
+    editor: &Editor,
+    id: ShapeId,
+    shape: &Shape,
+    step: usize,
+) -> Result<(), TestCaseError> {
+    let own = shape.slot_text(TextSlot::Shape);
+    let cell_texts = shape.cell_texts();
+    if !editor.experimental().shape_text {
+        prop_assert!(
+            own.is_none() && cell_texts.is_empty(),
+            "step {step}: shape {id:?} has text with the switch off"
+        );
+    }
+    for content in own.into_iter().chain(cell_texts.iter().map(|c| &c.content)) {
+        prop_assert!(
+            !content.text.trim().is_empty() && content.size.is_finite() && content.size > 0.0,
+            "step {step}: shape {id:?} has bad text {content:?}"
+        );
+    }
+    if let Shape::Grid { cols, rows, .. } = shape {
+        prop_assert!(
+            cell_texts.iter().all(|c| c.col < *cols && c.row < *rows),
+            "step {step}: grid {id:?} text outside {cols} × {rows}"
+        );
+        prop_assert!(
+            cell_texts
+                .windows(2)
+                .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)),
+            "step {step}: grid {id:?} texts not sorted/unique"
+        );
+    }
+    Ok(())
+}
+
 /// Checks every editor invariant from the architecture note.
 fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
     let cells = 1..=GRID_MAX_CELLS;
@@ -587,34 +625,7 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 );
             }
         }
-        // T31: shape text only with the switch on; non-blank, sized,
-        // cell texts inside the grid, sorted by (row, col), unique.
-        let own = shape.slot_text(TextSlot::Shape);
-        let cell_texts = shape.cell_texts();
-        if !editor.experimental().shape_text {
-            prop_assert!(
-                own.is_none() && cell_texts.is_empty(),
-                "step {step}: shape {id:?} has text with the switch off"
-            );
-        }
-        for content in own.into_iter().chain(cell_texts.iter().map(|c| &c.content)) {
-            prop_assert!(
-                !content.text.trim().is_empty() && content.size.is_finite() && content.size > 0.0,
-                "step {step}: shape {id:?} has bad text {content:?}"
-            );
-        }
-        if let Shape::Grid { cols, rows, .. } = shape {
-            prop_assert!(
-                cell_texts.iter().all(|c| c.col < *cols && c.row < *rows),
-                "step {step}: grid {id:?} text outside {cols} × {rows}"
-            );
-            prop_assert!(
-                cell_texts
-                    .windows(2)
-                    .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)),
-                "step {step}: grid {id:?} texts not sorted/unique"
-            );
-        }
+        check_shape_text(editor, id, shape, step)?;
         // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
         if let Some(label) = shape.label() {
             prop_assert!(

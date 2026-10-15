@@ -709,8 +709,10 @@ impl Editor {
 
     /// Handles a key while a text block is open: editing keys edit it,
     /// `Ctrl+[` / `Ctrl+]` resize it, `Esc` and `Ctrl+Enter` commit it,
-    /// `Ctrl+Z` cancels it, every other key does nothing (ADR-T29-2,
-    /// ADR-T29-3). Returns whether a redraw is needed.
+    /// `Ctrl+Z` cancels it, in a grid cell `Tab` and `Enter` (with or
+    /// without `Shift`) move to another cell, every other key does nothing
+    /// (ADR-T29-2, ADR-T29-3, ADR-T31-1). Returns whether a redraw is
+    /// needed.
     fn text_key(&mut self, key: Key, mods: Modifiers) -> bool {
         let ctrl_only = Modifiers {
             ctrl: true,
@@ -849,12 +851,11 @@ impl Editor {
                 let is_text = matches!(shape, Shape::Text { .. });
                 (is_text || (hosts && shape.text_slot_at(p).is_some())).then_some(id)
             }
-            Some(_) => None,
             None if hosts => {
                 let shape = self.doc.get(selected)?;
                 shape.text_slot_at(p).is_some().then_some(selected)
             }
-            None => None,
+            Some(_) | None => None,
         }
     }
 
