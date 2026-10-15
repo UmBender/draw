@@ -1,7 +1,7 @@
 ---
 id: T33
 title: Math font for formulas
-status: review
+status: done
 wave: 18
 branch: task/T33-math-font
 depends_on: [T30]
@@ -183,3 +183,4 @@ Step 33 — requires step 30 (TeX formulas) and step 32 (glyph atlas).
   `scripts/check.sh` (needs fontTools); the table check runs in the
   tests. `scripts/check.sh` and `scripts/check.sh --fuzz` green. Status
   → review.
+- 2026-10-15 — Integrated into `main`. Status → done.

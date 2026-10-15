@@ -18,6 +18,9 @@ All notable changes to draw are listed here. The format follows
   `\sum` / `\prod` / `\min` / `\max` / `\lim` with limits, Greek letters,
   relations, operators, brackets and `\text{…}`. The source shows while
   editing; anything outside the subset is drawn as typed in red.
+  Formulas are set in Latin Modern Math, the LaTeX font — italic
+  variables, upright operators and functions, TeX's spacing — and
+  `\mathcal{…}` gives calligraphic capitals.
 
 ### Changed
 

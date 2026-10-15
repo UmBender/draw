@@ -49,6 +49,8 @@ flowchart LR
   s24 --> s32[32 Batching glyphs into the document mesh]
   s29 --> s32
   s29 --> s30[30 Parsing and laying out a small TeX subset]
+  s30 --> s33[33 Typesetting with a proportional math font]
+  s32 --> s33
 ```
 
 | Step | Tutorial | Task | Status |
@@ -82,3 +84,4 @@ flowchart LR
 | 29 | [[29 Typing on a canvas without losing the shortcuts]] | [[T29 Text blocks]] | done |
 | 30 | [[30 Parsing and laying out a small TeX subset]] | [[T30 Basic TeX formulas]] | done |
 | 32 | [[32 Batching glyphs into the document mesh]] | [[T32 Fast text rendering]] | done |
+| 33 | [[33 Typesetting with a proportional math font]] | [[T33 Math font for formulas]] | done |
