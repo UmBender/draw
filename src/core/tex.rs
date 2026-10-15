@@ -2,7 +2,7 @@
 //!
 //! [`parse`] splits the text of a block into plain text and `$…$`
 //! formulas and parses each formula into a lossless tree of [`Node`]s:
-//! [`print`] gives the source back. [`layout`] typesets the tree into
+//! [`print()`] gives the source back. [`layout`] typesets the tree into
 //! positioned glyphs and rules ([`Ink`]) with TeX's box model, reduced:
 //! every box has a width, an ascent and a descent, in em of the block's
 //! font size, y down. Both are total: anything outside the subset is a
@@ -668,17 +668,14 @@ impl<'a> Parser<'a> {
                 Some((false, vec![Node::Char(ch)]))
             }
         };
-        match arg {
-            Some((braced, nodes)) => Some(Arg {
-                lead,
-                braced,
-                nodes,
-            }),
-            None => {
-                self.pos = start;
-                None
-            }
+        if arg.is_none() {
+            self.pos = start;
         }
+        arg.map(|(braced, nodes)| Arg {
+            lead,
+            braced,
+            nodes,
+        })
     }
 
     /// Reads the command name after the `\` at the cursor: a run of ASCII
@@ -975,7 +972,7 @@ fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
                 }
             }
             let b = if matches!(class, Class::BigOp | Class::Limits) {
-                limits(base, sup, sub, scale)
+                limits(&base, sup, sub, scale)
             } else {
                 scripts(base, sup, sub, scale)
             };
@@ -1066,7 +1063,7 @@ fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32
 }
 
 /// Limits centred above and below operator `op`.
-fn limits(op: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
+fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
     let gap = LIMIT_GAP * scale;
     let width = [&sup, &sub]
         .into_iter()
@@ -1078,7 +1075,7 @@ fn limits(op: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -
         descent: op.descent,
         ink: Vec::new(),
     };
-    out.put(&op, Vec2::new((width - op.width) / 2.0, 0.0));
+    out.put(op, Vec2::new((width - op.width) / 2.0, 0.0));
     if let Some(sup) = sup {
         let y = -op.ascent - gap - sup.descent;
         out.put(&sup, Vec2::new((width - sup.width) / 2.0, y));

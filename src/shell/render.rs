@@ -2298,7 +2298,7 @@ mod tests {
     fn vertices(rec: &Recorder) -> Vec<Vertex> {
         rec.chunks
             .iter()
-            .flat_map(|(v, _)| v.iter().cloned())
+            .flat_map(|(v, _)| v.iter().copied())
             .collect()
     }
 
