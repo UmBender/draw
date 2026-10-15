@@ -48,6 +48,7 @@ flowchart LR
   s24 --> s29
   s24 --> s32[32 Batching glyphs into the document mesh]
   s29 --> s32
+  s29 --> s30[30 Parsing and laying out a small TeX subset]
 ```
 
 | Step | Tutorial | Task | Status |
@@ -79,4 +80,5 @@ flowchart LR
 | 25 | [[25 Indexing a z-ordered store]] | [[T25 Linear-time selection with large documents]] | done |
 | 26 | [[26 Reusing a frame during a gesture]] | [[T26 Pan and zoom without re-rendering]] | done |
 | 29 | [[29 Typing on a canvas without losing the shortcuts]] | [[T29 Text blocks]] | done |
+| 30 | [[30 Parsing and laying out a small TeX subset]] | [[T30 Basic TeX formulas]] | done |
 | 32 | [[32 Batching glyphs into the document mesh]] | [[T32 Fast text rendering]] | done |

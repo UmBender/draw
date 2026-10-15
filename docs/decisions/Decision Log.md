@@ -60,3 +60,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 49 | [[ADR-T29-3 Resize text while typing]] | accepted | decision | T29-1 | amends T29-2 |
 | 50 | [[ADR-T32-1 Own glyph atlas rasterized with fontdue]] | accepted | decision | 0014, T24-3, T29-1 | amends 0014 |
 | 51 | [[ADR-T32-2 Shapes and glyphs share one textured batch]] | accepted | decision | T24-3, T32-1 | amends T24-3 |
+| 52 | [[ADR-T30-1 TeX subset, box layout and metrics]] | accepted | decision | 0003, 0014, T29-1, T29-2, T32-1, T32-2 | — |

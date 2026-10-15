@@ -13,6 +13,11 @@ All notable changes to draw are listed here. The format follows
   fires while typing; `Esc` finishes, `Ctrl+Z` cancels the edit, `Ctrl+[` /
   `Ctrl+]` resize the block. Blocks move, copy, erase, snap and undo like
   other shapes; edit one again with a Text click or a Select double-click.
+- TeX formulas in text blocks: `$…$` is typeset once the block is
+  finished — superscripts and subscripts, `\frac`, `\sqrt`, `\binom`,
+  `\sum` / `\prod` / `\min` / `\max` / `\lim` with limits, Greek letters,
+  relations, operators, brackets and `\text{…}`. The source shows while
+  editing; anything outside the subset is drawn as typed in red.
 
 ### Changed
 

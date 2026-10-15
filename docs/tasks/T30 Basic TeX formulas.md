@@ -1,7 +1,7 @@
 ---
 id: T30
 title: Basic TeX formulas
-status: review
+status: done
 wave: 17
 branch: task/T30-tex
 depends_on: [T29, T32]
@@ -192,3 +192,4 @@ Step 30 — requires step 29 (text blocks).
   on the target is **pending the owner** (needs the target's GPU).
 - 2026-10-15 — `scripts/check.sh` and `scripts/check.sh --fuzz` green.
   Status → review.
+- 2026-10-15 — Integrated into `main` (merge `18bf30a`). Status → done.
