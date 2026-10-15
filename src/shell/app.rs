@@ -37,6 +37,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
+use crate::core::tools::text::TextEdit;
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, TextStats, to_mq_color};
@@ -612,8 +613,14 @@ fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: 
 /// marquee and toolbar.
 fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     let camera = editor.camera();
+    // The open text block shows its source, formulas untypeset (ADR-T30-1).
+    let editing = editor.text_edit().map(TextEdit::shape);
     for shape in &overlay.shapes {
-        render::draw_preview(shape, camera);
+        if editing.as_ref() == Some(shape) {
+            render::draw_source_preview(shape, camera);
+        } else {
+            render::draw_preview(shape, camera);
+        }
     }
     render::draw_guides(&overlay.guides, camera);
     if let Some(edit) = editor.text_edit() {

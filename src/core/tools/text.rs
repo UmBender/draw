@@ -124,10 +124,11 @@ impl TextEdit {
         }
     }
 
-    /// World box of the block.
+    /// World box of the block as typed: formulas show their source while
+    /// edited (ADR-T30-1).
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        text_layout::bounds(self.origin, &self.text, self.size)
+        text_layout::source_bounds(self.origin, &self.text, self.size)
     }
 
     /// The caret as a world segment, top to bottom of its line.

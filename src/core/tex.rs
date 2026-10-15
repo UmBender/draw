@@ -335,7 +335,38 @@ impl Ink {
     /// and descent), a rule's segment grown by half its width.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        todo!()
+        match *self {
+            Self::Glyph { ch, pos, scale, .. } => {
+                let (ascent, descent) = glyph_extent(ch);
+                Aabb::from_corners(
+                    Vec2::new(pos.x, pos.y - ascent * scale),
+                    Vec2::new(pos.x + ADVANCE * scale, pos.y + descent * scale),
+                )
+            }
+            Self::Rule { a, b, width } => Aabb::from_corners(a, b).expand(width / 2.0),
+        }
+    }
+
+    /// The ink moved by `by`.
+    fn shifted(self, by: Vec2) -> Self {
+        match self {
+            Self::Glyph {
+                ch,
+                pos,
+                scale,
+                warn,
+            } => Self::Glyph {
+                ch,
+                pos: pos + by,
+                scale,
+                warn,
+            },
+            Self::Rule { a, b, width } => Self::Rule {
+                a: a + by,
+                b: b + by,
+                width,
+            },
+        }
     }
 }
 
@@ -351,6 +382,54 @@ pub struct MathBox {
     pub descent: f32,
     /// What to draw, relative to the left end of the baseline.
     pub ink: Vec<Ink>,
+}
+
+impl MathBox {
+    /// One glyph at `scale`.
+    fn glyph(ch: char, scale: f32, warn: bool) -> Self {
+        let (ascent, descent) = glyph_extent(ch);
+        Self {
+            width: ADVANCE * scale,
+            ascent: ascent * scale,
+            descent: descent * scale,
+            ink: vec![Ink::Glyph {
+                ch,
+                pos: Vec2::ZERO,
+                scale,
+                warn,
+            }],
+        }
+    }
+
+    /// Empty space `width` wide.
+    fn gap(width: f32) -> Self {
+        Self {
+            width,
+            ..Self::default()
+        }
+    }
+
+    /// Adds the ink of `other` with its baseline origin at `at`.
+    fn put(&mut self, other: &Self, at: Vec2) {
+        self.ink.extend(other.ink.iter().map(|ink| ink.shifted(at)));
+    }
+
+    /// `boxes` side by side on one baseline.
+    fn row(boxes: impl IntoIterator<Item = Self>) -> Self {
+        let mut out = Self::default();
+        for b in boxes {
+            out.put(&b, Vec2::new(out.width, 0.0));
+            out.width += b.width;
+            out.ascent = out.ascent.max(b.ascent);
+            out.descent = out.descent.max(b.descent);
+        }
+        out
+    }
+
+    /// The characters of `text` side by side, `-` as typed.
+    fn word(text: &str, scale: f32, warn: bool) -> Self {
+        Self::row(text.chars().map(|ch| Self::glyph(ch, scale, warn)))
+    }
 }
 
 /// A laid-out block: its ink relative to its top-left corner.
@@ -375,27 +454,754 @@ impl Layout {
 /// Ascent and descent of glyph `ch` per unit of scale.
 #[must_use]
 pub fn glyph_extent(ch: char) -> (f32, f32) {
-    todo!("{ch}")
+    if "()[]{}|⌊⌋⌈⌉∑∏√".contains(ch) {
+        (TALL_ASCENT, TALL_DESCENT)
+    } else {
+        (GLYPH_ASCENT, GLYPH_DESCENT)
+    }
 }
+
+// ---- parsing ----------------------------------------------------------------
 
 /// Splits a block's text into plain text, `\$` and formulas, and parses
 /// every formula. Total: every string parses.
 #[must_use]
 pub fn parse(text: &str) -> Vec<Segment> {
-    todo!("{text}")
+    let chars: Vec<char> = text.chars().collect();
+    let mut segments = Vec::new();
+    let mut plain = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch == '\\' && chars.get(i + 1) == Some(&'$') {
+            flush(&mut plain, &mut segments);
+            segments.push(Segment::Dollar);
+            i += 2;
+        } else if let Some(close) = (ch == '$').then(|| closing_dollar(&chars, i)).flatten() {
+            flush(&mut plain, &mut segments);
+            segments.push(Segment::Math(Parser::new(&chars[i + 1..close]).parse()));
+            i = close + 1;
+        } else {
+            plain.push(ch);
+            i += 1;
+        }
+    }
+    flush(&mut plain, &mut segments);
+    segments
 }
+
+/// Moves pending plain text into `segments`.
+fn flush(plain: &mut String, segments: &mut Vec<Segment>) {
+    if !plain.is_empty() {
+        segments.push(Segment::Text(std::mem::take(plain)));
+    }
+}
+
+/// The index of the `$` closing the formula opened at `open`: the first
+/// unescaped `$` on the same line, not right after `open`.
+fn closing_dollar(chars: &[char], open: usize) -> Option<usize> {
+    let mut j = open + 1;
+    while let Some(&ch) = chars.get(j) {
+        match ch {
+            '\n' => return None,
+            '$' => return (j > open + 1).then_some(j),
+            '\\' if chars.get(j + 1).is_some_and(|&next| next != '\n') => j += 2,
+            _ => j += 1,
+        }
+    }
+    None
+}
+
+/// Recursive-descent parser of one formula.
+struct Parser<'a> {
+    /// The formula, without its dollars.
+    chars: &'a [char],
+    /// Next character to read.
+    pos: usize,
+    /// For each `{`, the index of its matching `}`, if it has one within
+    /// [`MAX_DEPTH`].
+    closes: Vec<Option<usize>>,
+}
+
+impl<'a> Parser<'a> {
+    fn new(chars: &'a [char]) -> Self {
+        Self {
+            chars,
+            pos: 0,
+            closes: match_braces(chars),
+        }
+    }
+
+    /// The whole formula.
+    fn parse(mut self) -> Vec<Node> {
+        self.list(self.chars.len())
+    }
+
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.pos).copied()
+    }
+
+    /// The `}` matching a `{` at the cursor, if it lies before `end`.
+    fn group_close(&self, end: usize) -> Option<usize> {
+        self.closes
+            .get(self.pos)
+            .copied()
+            .flatten()
+            .filter(|&close| close < end)
+    }
+
+    /// Nodes up to `end`.
+    fn list(&mut self, end: usize) -> Vec<Node> {
+        let mut out: Vec<Node> = Vec::new();
+        while self.pos < end {
+            let ch = self.chars[self.pos];
+            match ch {
+                '^' | '_' => self.script(ch, end, &mut out),
+                _ => {
+                    let node = self.atom(end);
+                    out.push(node);
+                }
+            }
+        }
+        out
+    }
+
+    /// One node that is not a script, at the cursor (which is before
+    /// `end`).
+    fn atom(&mut self, end: usize) -> Node {
+        let ch = self.chars[self.pos];
+        if ch.is_whitespace() {
+            return Node::Space(self.whitespace(end));
+        }
+        if ch == '{' {
+            if let Some(close) = self.group_close(end) {
+                self.pos += 1;
+                let nodes = self.list(close);
+                self.pos = close + 1;
+                return Node::Group(nodes);
+            }
+        }
+        if ch == '\\' {
+            return self.command(end);
+        }
+        self.pos += 1;
+        match ch {
+            '{' | '}' => Node::Literal(ch.to_string()),
+            _ => Node::Char(ch),
+        }
+    }
+
+    /// The whitespace run at the cursor.
+    fn whitespace(&mut self, end: usize) -> String {
+        let start = self.pos;
+        while self.pos < end && self.chars[self.pos].is_whitespace() {
+            self.pos += 1;
+        }
+        self.chars[start..self.pos].iter().collect()
+    }
+
+    /// A `^` or `_` at the cursor: attaches to the node before it, or is
+    /// literal.
+    fn script(&mut self, ch: char, end: usize, out: &mut Vec<Node>) {
+        let kind = if ch == '^' {
+            ScriptKind::Sup
+        } else {
+            ScriptKind::Sub
+        };
+        let full = matches!(out.last(), Some(Node::Scripts { first, second, .. })
+            if second.is_some() || first.kind == kind);
+        let start = self.pos;
+        self.pos += 1;
+        let arg = if full { None } else { self.arg(end) };
+        let Some(arg) = arg else {
+            self.pos = start + 1;
+            out.push(Node::Literal(ch.to_string()));
+            return;
+        };
+        let script = Script { kind, arg };
+        match out.pop() {
+            Some(Node::Scripts {
+                base,
+                first,
+                second: None,
+            }) => out.push(Node::Scripts {
+                base,
+                first,
+                second: Some(script),
+            }),
+            Some(Node::Space(space)) => {
+                out.push(Node::Space(space));
+                out.push(Node::Scripts {
+                    base: None,
+                    first: script,
+                    second: None,
+                });
+            }
+            base => out.push(Node::Scripts {
+                base: base.map(Box::new),
+                first: script,
+                second: None,
+            }),
+        }
+    }
+
+    /// A script or command argument at the cursor: a `{group}`, a symbol
+    /// command or one character. `None` (cursor unchanged) when there is
+    /// none.
+    fn arg(&mut self, end: usize) -> Option<Arg> {
+        let start = self.pos;
+        let lead = self.whitespace(end);
+        let arg = match self.peek().filter(|_| self.pos < end) {
+            Some('{') => self.group_close(end).map(|close| {
+                self.pos += 1;
+                let nodes = self.list(close);
+                self.pos = close + 1;
+                (true, nodes)
+            }),
+            Some('\\') => {
+                let name = self.name(end);
+                symbol(&name).map(|_| (false, vec![Node::Symbol(name)]))
+            }
+            Some('}' | '^' | '_') | None => None,
+            Some(ch) => {
+                self.pos += 1;
+                Some((false, vec![Node::Char(ch)]))
+            }
+        };
+        match arg {
+            Some((braced, nodes)) => Some(Arg {
+                lead,
+                braced,
+                nodes,
+            }),
+            None => {
+                self.pos = start;
+                None
+            }
+        }
+    }
+
+    /// Reads the command name after the `\` at the cursor: a run of ASCII
+    /// letters or one other character; empty at the end.
+    fn name(&mut self, end: usize) -> String {
+        self.pos += 1;
+        let start = self.pos;
+        match self.chars.get(self.pos).filter(|_| self.pos < end) {
+            Some(ch) if ch.is_ascii_alphabetic() => {
+                while self.pos < end && self.chars[self.pos].is_ascii_alphabetic() {
+                    self.pos += 1;
+                }
+            }
+            Some(_) => self.pos += 1,
+            None => {}
+        }
+        self.chars[start..self.pos].iter().collect()
+    }
+
+    /// A command at the cursor (a `\`), with its arguments, or literal.
+    fn command(&mut self, end: usize) -> Node {
+        let name = self.name(end);
+        if symbol(&name).is_some() {
+            return Node::Symbol(name);
+        }
+        let after = self.pos;
+        let node = match name.as_str() {
+            "frac" | "binom" => self.args(2, end).map(|args| Node::Command {
+                name: name.clone(),
+                args,
+            }),
+            "sqrt" | "pmod" => self.args(1, end).map(|args| Node::Command {
+                name: name.clone(),
+                args,
+            }),
+            "text" => self.text_body(end),
+            _ => None,
+        };
+        node.unwrap_or_else(|| {
+            self.pos = after;
+            Node::Literal(format!("\\{name}"))
+        })
+    }
+
+    /// `n` arguments, or `None` if one is missing.
+    fn args(&mut self, n: usize, end: usize) -> Option<Vec<Arg>> {
+        (0..n).map(|_| self.arg(end)).collect()
+    }
+
+    /// The `{…}` body of `\text`, raw.
+    fn text_body(&mut self, end: usize) -> Option<Node> {
+        let lead = self.whitespace(end);
+        let close = self.group_close(end)?;
+        let body = self.chars[self.pos + 1..close].iter().collect();
+        self.pos = close + 1;
+        Some(Node::Text { lead, body })
+    }
+}
+
+/// For each `{` of `chars`, the index of its matching `}`; escaped braces
+/// (`\{`) are skipped and braces nested deeper than [`MAX_DEPTH`] match
+/// nothing.
+fn match_braces(chars: &[char]) -> Vec<Option<usize>> {
+    let mut closes = vec![None; chars.len()];
+    // Open braces: index and whether it is within the depth limit.
+    let mut open: Vec<(usize, bool)> = Vec::new();
+    let mut depth = 0;
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' => i += 1,
+            '{' => {
+                let within = depth < MAX_DEPTH;
+                depth += usize::from(within);
+                open.push((i, within));
+            }
+            '}' => {
+                if let Some((start, within)) = open.pop() {
+                    if within {
+                        closes[start] = Some(i);
+                        depth -= 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    closes
+}
+
+// ---- printing ---------------------------------------------------------------
 
 /// The source of `segments`: `print(&parse(s)) == s` for every `s`.
 #[must_use]
 pub fn print(segments: &[Segment]) -> String {
-    todo!("{segments:?}")
+    let mut out = String::new();
+    for segment in segments {
+        match segment {
+            Segment::Text(text) => out.push_str(text),
+            Segment::Dollar => out.push_str("\\$"),
+            Segment::Math(nodes) => {
+                out.push('$');
+                print_nodes(nodes, &mut out);
+                out.push('$');
+            }
+        }
+    }
+    out
+}
+
+fn print_nodes(nodes: &[Node], out: &mut String) {
+    for node in nodes {
+        print_node(node, out);
+    }
+}
+
+fn print_node(node: &Node, out: &mut String) {
+    match node {
+        Node::Space(text) | Node::Literal(text) => out.push_str(text),
+        Node::Char(ch) => out.push(*ch),
+        Node::Symbol(name) => {
+            out.push('\\');
+            out.push_str(name);
+        }
+        Node::Group(nodes) => {
+            out.push('{');
+            print_nodes(nodes, out);
+            out.push('}');
+        }
+        Node::Scripts {
+            base,
+            first,
+            second,
+        } => {
+            if let Some(base) = base {
+                print_node(base, out);
+            }
+            for script in std::iter::once(first).chain(second) {
+                out.push(match script.kind {
+                    ScriptKind::Sup => '^',
+                    ScriptKind::Sub => '_',
+                });
+                print_arg(&script.arg, out);
+            }
+        }
+        Node::Command { name, args } => {
+            out.push('\\');
+            out.push_str(name);
+            for arg in args {
+                print_arg(arg, out);
+            }
+        }
+        Node::Text { lead, body } => {
+            out.push_str("\\text");
+            out.push_str(lead);
+            out.push('{');
+            out.push_str(body);
+            out.push('}');
+        }
+    }
+}
+
+fn print_arg(arg: &Arg, out: &mut String) {
+    out.push_str(&arg.lead);
+    if arg.braced {
+        out.push('{');
+        print_nodes(&arg.nodes, out);
+        out.push('}');
+    } else {
+        print_nodes(&arg.nodes, out);
+    }
+}
+
+// ---- layout -----------------------------------------------------------------
+
+/// Scale of a script of something at `scale`.
+fn script_scale(scale: f32) -> f32 {
+    (scale * SCRIPT_SCALE).max(MIN_SCALE).min(scale)
 }
 
 /// Lays out the nodes of one formula at `scale` (1 for the block's font
 /// size).
 #[must_use]
 pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
-    todo!("{nodes:?} {scale}")
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let mut atoms: Vec<(MathBox, Class)> =
+        nodes.iter().filter_map(|node| atom(node, scale)).collect();
+    // A binary operator without an operand on both sides is ordinary.
+    for i in 0..atoms.len() {
+        if atoms[i].1 != Class::Bin {
+            continue;
+        }
+        let before = i.checked_sub(1).map(|j| atoms[j].1);
+        let after = atoms.get(i + 1).map(|a| a.1);
+        let unary = matches!(
+            before,
+            None | Some(
+                Class::Bin
+                    | Class::Op
+                    | Class::Limits
+                    | Class::BigOp
+                    | Class::Rel
+                    | Class::Open
+                    | Class::Punct
+            )
+        ) || matches!(after, None | Some(Class::Rel | Class::Close | Class::Punct));
+        if unary {
+            atoms[i].1 = Class::Ord;
+        }
+    }
+    let mut boxes = Vec::with_capacity(atoms.len() * 2);
+    let mut prev: Option<Class> = None;
+    for (b, class) in atoms {
+        if let Some(prev) = prev {
+            let space = spacing(prev, class, scale);
+            if space > 0.0 {
+                boxes.push(MathBox::gap(space));
+            }
+        }
+        prev = Some(class);
+        boxes.push(b);
+    }
+    MathBox::row(boxes)
+}
+
+/// Space between neighbouring atoms of classes `a` and `b` at `scale`.
+fn spacing(a: Class, b: Class, scale: f32) -> f32 {
+    let op = |c| matches!(c, Class::Op | Class::Limits | Class::BigOp);
+    if op(a) && (b == Class::Ord || op(b)) {
+        return OP_SPACE * scale;
+    }
+    // Relation and operator space only at the block's own size.
+    if scale < 1.0 {
+        return 0.0;
+    }
+    if (a == Class::Rel) != (b == Class::Rel)
+        && a != Class::Open
+        && !matches!(b, Class::Close | Class::Punct)
+    {
+        return REL_SPACE * scale;
+    }
+    if a == Class::Bin || b == Class::Bin {
+        return BIN_SPACE * scale;
+    }
+    0.0
+}
+
+/// Class of a character typed in a formula.
+fn char_class(ch: char) -> Class {
+    match ch {
+        '=' | '<' | '>' | ':' => Class::Rel,
+        '+' | '-' | '*' => Class::Bin,
+        '(' | '[' => Class::Open,
+        ')' | ']' => Class::Close,
+        ',' | ';' => Class::Punct,
+        _ => Class::Ord,
+    }
+}
+
+/// The box and class of one node; `None` for whitespace.
+fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
+    let atom = match node {
+        Node::Space(_) => return None,
+        Node::Char(ch) => {
+            let shown = if *ch == '-' { MINUS } else { *ch };
+            (MathBox::glyph(shown, scale, false), char_class(*ch))
+        }
+        Node::Symbol(name) => match symbol(name) {
+            Some(def) => (symbol_box(def, scale), def.class),
+            None => (MathBox::word(&format!("\\{name}"), scale, true), Class::Ord),
+        },
+        Node::Group(nodes) => (layout_math(nodes, scale), Class::Ord),
+        Node::Scripts {
+            base,
+            first,
+            second,
+        } => {
+            let (base, class) = base
+                .as_deref()
+                .and_then(|b| atom(b, scale))
+                .unwrap_or((MathBox::default(), Class::Ord));
+            let ss = script_scale(scale);
+            let (mut sup, mut sub) = (None, None);
+            for script in std::iter::once(first).chain(second) {
+                let b = layout_math(&script.arg.nodes, ss);
+                match script.kind {
+                    ScriptKind::Sup => sup = Some(b),
+                    ScriptKind::Sub => sub = Some(b),
+                }
+            }
+            let b = if matches!(class, Class::BigOp | Class::Limits) {
+                limits(base, sup, sub, scale)
+            } else {
+                scripts(base, sup, sub, scale)
+            };
+            (b, class)
+        }
+        Node::Command { name, args } => {
+            let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
+            let b = match name.as_str() {
+                "frac" => fraction(arg(0), arg(1), scale, true),
+                "binom" => binomial(arg(0), arg(1), scale),
+                "sqrt" => root(arg(0), scale),
+                "pmod" => MathBox::row([
+                    MathBox::gap(ADVANCE * scale),
+                    MathBox::word("(mod", scale, false),
+                    MathBox::gap(ADVANCE * scale),
+                    layout_math(arg(0), scale),
+                    MathBox::glyph(')', scale, false),
+                ]),
+                _ => MathBox::word(&format!("\\{name}"), scale, true),
+            };
+            (b, Class::Ord)
+        }
+        Node::Text { body, .. } => (MathBox::word(body, scale, false), Class::Ord),
+        Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
+    };
+    Some(atom)
+}
+
+/// The box of a table symbol: a glyph, an enlarged big operator or a word.
+fn symbol_box(def: &SymbolDef, scale: f32) -> MathBox {
+    let mut chars = def.text.chars();
+    match (chars.next(), chars.next(), def.class) {
+        (Some(ch), None, Class::BigOp) => big_operator(ch, scale),
+        (Some(ch), None, _) => MathBox::glyph(ch, scale, false),
+        _ => MathBox::word(def.text, scale, false),
+    }
+}
+
+/// `∑` or `∏`, enlarged and centred on the axis.
+fn big_operator(ch: char, scale: f32) -> MathBox {
+    let k = BIG_OP_SCALE * scale;
+    let (ascent, descent) = glyph_extent(ch);
+    // The glyph's middle sits on the axis.
+    let y = -AXIS * scale - (descent - ascent) * k / 2.0;
+    MathBox {
+        width: ADVANCE * k,
+        ascent: ascent * k - y,
+        descent: descent * k + y,
+        ink: vec![Ink::Glyph {
+            ch,
+            pos: Vec2::new(0.0, y),
+            scale: k,
+            warn: false,
+        }],
+    }
+}
+
+/// Superscript and subscript to the right of `base`.
+fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
+    let up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
+    let mut down = (SUB_SHIFT * scale).max(base.descent - SUB_DROP * scale);
+    if let (Some(sup), Some(sub)) = (&sup, &sub) {
+        let gap = (down - sub.ascent) - (sup.descent - up);
+        if gap < SCRIPT_GAP * scale {
+            down += SCRIPT_GAP * scale - gap;
+        }
+    }
+    let mut out = MathBox {
+        width: base.width,
+        ascent: base.ascent,
+        descent: base.descent,
+        ink: base.ink,
+    };
+    let x = out.width;
+    if let Some(sup) = sup {
+        out.put(&sup, Vec2::new(x, -up));
+        out.width = out.width.max(x + sup.width);
+        out.ascent = out.ascent.max(up + sup.ascent);
+        out.descent = out.descent.max(sup.descent - up);
+    }
+    if let Some(sub) = sub {
+        out.put(&sub, Vec2::new(x, down));
+        out.width = out.width.max(x + sub.width);
+        out.ascent = out.ascent.max(sub.ascent - down);
+        out.descent = out.descent.max(down + sub.descent);
+    }
+    out
+}
+
+/// Limits centred above and below operator `op`.
+fn limits(op: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
+    let gap = LIMIT_GAP * scale;
+    let width = [&sup, &sub]
+        .into_iter()
+        .flatten()
+        .fold(op.width, |w, b| w.max(b.width));
+    let mut out = MathBox {
+        width,
+        ascent: op.ascent,
+        descent: op.descent,
+        ink: Vec::new(),
+    };
+    out.put(&op, Vec2::new((width - op.width) / 2.0, 0.0));
+    if let Some(sup) = sup {
+        let y = -op.ascent - gap - sup.descent;
+        out.put(&sup, Vec2::new((width - sup.width) / 2.0, y));
+        out.ascent = out.ascent.max(sup.ascent - y);
+    }
+    if let Some(sub) = sub {
+        let y = op.descent + gap + sub.ascent;
+        out.put(&sub, Vec2::new((width - sub.width) / 2.0, y));
+        out.descent = out.descent.max(y + sub.descent);
+    }
+    out
+}
+
+/// A fraction of `num` over `den`, with a bar on the axis when `bar`.
+fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool) -> MathBox {
+    let ss = script_scale(scale);
+    let (n, d) = (layout_math(num, ss), layout_math(den, ss));
+    let pad = FRAC_PAD * scale;
+    let width = n.width.max(d.width) + 2.0 * pad;
+    let axis = -AXIS * scale;
+    let half = RULE * scale / 2.0;
+    let n_base = axis - half - FRAC_GAP * scale - n.descent;
+    let d_base = axis + half + FRAC_GAP * scale + d.ascent;
+    let mut out = MathBox {
+        width,
+        ascent: (n.ascent - n_base).max(half - axis),
+        descent: (d_base + d.descent).max(axis + half),
+        ink: Vec::new(),
+    };
+    out.put(&n, Vec2::new((width - n.width) / 2.0, n_base));
+    out.put(&d, Vec2::new((width - d.width) / 2.0, d_base));
+    if bar {
+        out.ink.push(Ink::Rule {
+            a: Vec2::new(pad / 2.0, axis),
+            b: Vec2::new(width - pad / 2.0, axis),
+            width: RULE * scale,
+        });
+    }
+    out
+}
+
+/// `n` over `k` without a bar, in parentheses as tall as both.
+fn binomial(n: &[Node], k: &[Node], scale: f32) -> MathBox {
+    let inner = fraction(n, k, scale, false);
+    let height = inner.ascent + inner.descent;
+    let paren = (height / (TALL_ASCENT + TALL_DESCENT)).clamp(scale, BINOM_MAX_SCALE * scale);
+    // The parentheses' middle sits on the middle of the stack.
+    let middle = (inner.descent - inner.ascent) / 2.0;
+    let y = middle - (TALL_DESCENT - TALL_ASCENT) * paren / 2.0;
+    let side = ADVANCE * paren;
+    let mut out = MathBox {
+        width: inner.width + 2.0 * side,
+        ascent: inner.ascent.max(TALL_ASCENT * paren - y),
+        descent: inner.descent.max(TALL_DESCENT * paren + y),
+        ink: Vec::new(),
+    };
+    out.put(&MathBox::glyph('(', paren, false), Vec2::new(0.0, y));
+    out.put(&inner, Vec2::new(side, 0.0));
+    out.put(
+        &MathBox::glyph(')', paren, false),
+        Vec2::new(side + inner.width, y),
+    );
+    out
+}
+
+/// A root sign of four rules over `content`.
+fn root(content: &[Node], scale: f32) -> MathBox {
+    let c = layout_math(content, scale);
+    let top = -(c.ascent + SQRT_GAP * scale);
+    let bottom = c.descent;
+    let at = |t: f32| top + (bottom - top) * t;
+    let x = SQRT_SIGN * scale;
+    let points = [
+        Vec2::new(0.05 * scale, at(0.6)),
+        Vec2::new(0.15 * scale, at(0.5)),
+        Vec2::new(0.3 * scale, bottom),
+        Vec2::new(0.5 * scale, top),
+        Vec2::new(x + c.width + 0.05 * scale, top),
+    ];
+    let width = RULE * scale;
+    let mut out = MathBox {
+        width: points[4].x + 0.05 * scale,
+        ascent: -top + width / 2.0,
+        descent: bottom + width / 2.0,
+        ink: Vec::new(),
+    };
+    out.put(&c, Vec2::new(x, 0.0));
+    out.ink.extend(points.windows(2).map(|w| Ink::Rule {
+        a: w[0],
+        b: w[1],
+        width,
+    }));
+    out
+}
+
+/// One line of a block being laid out.
+struct Line {
+    ink: Vec<Ink>,
+    width: f32,
+    ascent: f32,
+    descent: f32,
+}
+
+impl Line {
+    fn new() -> Self {
+        Self {
+            ink: Vec::new(),
+            width: 0.0,
+            ascent: BASELINE,
+            descent: LINE_HEIGHT - BASELINE,
+        }
+    }
+
+    /// A plain character in the next cell.
+    fn cell(&mut self, ch: char) {
+        self.ink.push(Ink::Glyph {
+            ch,
+            pos: Vec2::new(self.width, 0.0),
+            scale: 1.0,
+            warn: false,
+        });
+        self.width += ADVANCE;
+    }
 }
 
 /// Lays out a parsed block: lines split on `\n`, plain characters in
@@ -403,7 +1209,40 @@ pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
 /// formulas.
 #[must_use]
 pub fn layout(segments: &[Segment]) -> Layout {
-    todo!("{segments:?}")
+    let mut lines = Vec::new();
+    let mut line = Line::new();
+    for segment in segments {
+        match segment {
+            Segment::Text(text) => {
+                for ch in text.chars() {
+                    if ch == '\n' {
+                        lines.push(std::mem::replace(&mut line, Line::new()));
+                    } else {
+                        line.cell(ch);
+                    }
+                }
+            }
+            Segment::Dollar => line.cell('$'),
+            Segment::Math(nodes) => {
+                let b = layout_math(nodes, 1.0);
+                let at = Vec2::new(line.width, 0.0);
+                line.ink.extend(b.ink.iter().map(|ink| ink.shifted(at)));
+                line.width += b.width;
+                line.ascent = line.ascent.max(b.ascent + MATH_PAD);
+                line.descent = line.descent.max(b.descent + MATH_PAD);
+            }
+        }
+    }
+    lines.push(line);
+    let mut out = Layout::default();
+    for line in lines {
+        let baseline = Vec2::new(0.0, out.height + line.ascent);
+        out.ink
+            .extend(line.ink.into_iter().map(|ink| ink.shifted(baseline)));
+        out.width = out.width.max(line.width);
+        out.height += line.ascent + line.descent;
+    }
+    out
 }
 
 #[cfg(test)]
@@ -667,9 +1506,11 @@ mod tests {
                 Node::Char('x'),
             ]
         );
+        // A control symbol outside the table; a `\` before the closing
+        // `$` would escape it instead.
         assert_eq!(
-            math("a\\"),
-            vec![Node::Char('a'), Node::Literal("\\".to_owned())]
+            math("\\,x"),
+            vec![Node::Literal("\\,".to_owned()), Node::Char('x')]
         );
     }
 
@@ -940,10 +1781,10 @@ mod tests {
         assert!(n.y + GLYPH_DESCENT * ns <= sum.y - TALL_ASCENT * big + EPS);
         assert!(k.y - GLYPH_ASCENT * ks >= sum.y + TALL_DESCENT * big - EPS);
         // Words with limits too.
-        let m = boxed("\\min_i");
-        let (i, is) = glyph(&m.ink, 'i');
-        assert!(approx_eq(i.x + 0.3 * is, 0.9, EPS), "{i:?}");
-        assert!(i.y > GLYPH_DESCENT);
+        let m = boxed("\\min_k");
+        let (k, ks) = glyph(&m.ink, 'k');
+        assert!(approx_eq(k.x + 0.3 * ks, 0.9, EPS), "{k:?}");
+        assert!(k.y > GLYPH_DESCENT);
     }
 
     #[test]

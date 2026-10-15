@@ -7,10 +7,12 @@
 //! 0, so every function is total. Carets are byte indices into the text;
 //! every caret returned lies on a `char` boundary.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::tex::Layout;
+use crate::core::tex::{self, Layout};
 
 /// Width of one cell, per unit of font size: every glyph of the embedded
 /// font is 600/1000 em wide.
@@ -47,26 +49,61 @@ pub fn extent(text: &str) -> (usize, usize) {
     })
 }
 
+/// Most distinct texts [`typeset`] keeps; past this the cache starts over.
+pub const TYPESET_CACHE_MAX: usize = 4096;
+
+thread_local! {
+    /// Layouts of the texts seen so far (ADR-T30-1).
+    static TYPESET: RefCell<HashMap<String, Rc<Layout>>> = RefCell::new(HashMap::new());
+}
+
+/// Whether `text` may hold TeX markup (`$…$` or `\$`); text without a `$`
+/// lays out exactly on the cell grid.
+#[must_use]
+pub fn has_markup(text: &str) -> bool {
+    text.contains('$')
+}
+
 /// The box of a block: `origin` to `origin + (columns × ADVANCE,
-/// lines × LINE_HEIGHT) × size`.
+/// lines × LINE_HEIGHT) × size`, or the typeset size when the text has
+/// formulas (ADR-T30-1).
 #[must_use]
 pub fn bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
-    let (cols, rows) = extent(text);
-    Aabb::from_corners(origin, origin + cell(size, cols, rows))
+    if !has_markup(text) {
+        return source_bounds(origin, text, size);
+    }
+    let layout = typeset(text);
+    let size = em(size);
+    Aabb::from_corners(
+        origin,
+        origin + Vec2::new(layout.width * size, layout.height * size),
+    )
 }
 
 /// The cell box of a block as typed, formulas included as source: what
 /// the edit session shows (ADR-T30-1).
 #[must_use]
 pub fn source_bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
-    todo!("{origin:?} {text} {size}")
+    let (cols, rows) = extent(text);
+    Aabb::from_corners(origin, origin + cell(size, cols, rows))
 }
 
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
 /// once per distinct text and then shared.
 #[must_use]
 pub fn typeset(text: &str) -> Rc<Layout> {
-    todo!("{text}")
+    TYPESET.with(|cache| {
+        if let Some(layout) = cache.borrow().get(text) {
+            return Rc::clone(layout);
+        }
+        let layout = Rc::new(tex::layout(&tex::parse(text)));
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= TYPESET_CACHE_MAX {
+            cache.clear();
+        }
+        cache.insert(text.to_owned(), Rc::clone(&layout));
+        layout
+    })
 }
 
 /// The `(line, column)` of `caret`, counted in `char`s. A caret inside a
