@@ -23,6 +23,7 @@ match exactly ([[ADR-T11-1 Exact modifier matching]]). Changes require an ADR.
 | `V` | Select / move |
 | `H` | Hand (pan) |
 | `G` | Grid (table of cells) |
+| `T` | Text blocks ([[T29 Text blocks]]) |
 
 ## Style
 
@@ -68,6 +69,27 @@ Added by [[T16 Shape model v2 and helper skeleton]]
 | `Shift+N` | Restart numbering at 1 |
 | `→` / `←` | Grid: one more / one less column (1–64, live while dragging) |
 | `↓` / `↑` | Grid: one more / one less row (1–64, live while dragging) |
+
+## Text edit mode
+
+Added by [[T29 Text blocks]] ([[ADR-T29-2 Text edit mode]]). While a text
+block is open **no binding above fires**: every key types its character
+(from the keyboard layout), and only these keys act.
+
+| Key | Action |
+|-----|--------|
+| `Esc`, `Ctrl+Enter` | Commit the block (one undo step) and leave |
+| `Ctrl+Z` | Cancel the edit (new block vanishes, old text stays) |
+| `Enter` | New line |
+| `Tab` | Four spaces |
+| `←` / `→` | Previous / next character |
+| `↑` / `↓` | Previous / next line, same column |
+| `Home` / `End` | Start / end of the line |
+| `Backspace` / `Delete` | Delete the character before / after the caret |
+| `Ctrl+]` / `Ctrl+[` | Bigger / smaller text, one step of the 14–76 px ladder ([[ADR-T29-3 Resize text while typing]]) |
+
+A press outside the block (that does not pan) commits it too; toolbar
+buttons commit it before acting, except Undo, which cancels it.
 
 ## Gesture macros
 

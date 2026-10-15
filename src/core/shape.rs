@@ -1,12 +1,14 @@
 //! Vector shapes with bounds, hit-testing and translation.
 //!
 //! The document is an ordered list of [`Shape`]s in world coordinates
-//! (ADR-0004, amended by ADR-T16-1 with grids and labels). Widths are world units (ADR-0013). Every query here is total:
+//! (ADR-0004, amended by ADR-T16-1 with grids and labels and by ADR-T29-1
+//! with text blocks). Widths are world units (ADR-0013). Every query here is total:
 //! non-finite input never panics, a non-finite query point never hits and is
 //! never contained.
 
 use crate::core::geom::{Aabb, Vec2, distance_to_segment};
 use crate::core::palette::ColorId;
+use crate::core::text_layout;
 
 /// Arrow head length per unit of stroke width. The head has no absolute
 /// minimum, so it keeps its proportion to the shaft at any zoom.
@@ -105,6 +107,21 @@ pub enum Shape {
         /// inside `cols × rows` (ADR-T21-1).
         fills: Vec<CellFill>,
     },
+    /// A block of text, laid out on a monospaced grid by
+    /// [`text_layout`] (ADR-T29-1).
+    ///
+    /// An open shape: it is never filled, and it is hit anywhere inside its
+    /// box.
+    Text {
+        /// Top-left corner of the block.
+        origin: Vec2,
+        /// The text; lines are separated by `\n`.
+        text: String,
+        /// Font size (em height) in world units.
+        size: f32,
+        /// `color` is the text colour; `width` is unused (0).
+        style: Style,
+    },
 }
 
 /// The fill of one grid cell; cells are counted from corner `a` toward `b`.
@@ -138,7 +155,8 @@ impl Shape {
             | Self::Arrow { style, .. }
             | Self::Rect { style, .. }
             | Self::Ellipse { style, .. }
-            | Self::Grid { style, .. } => *style,
+            | Self::Grid { style, .. }
+            | Self::Text { style, .. } => *style,
         }
     }
 
@@ -147,9 +165,11 @@ impl Shape {
     pub fn fill(&self) -> Option<ColorId> {
         match self {
             Self::Rect { fill, .. } | Self::Ellipse { fill, .. } => *fill,
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
-                None
-            }
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => None,
         }
     }
 
@@ -159,9 +179,11 @@ impl Shape {
     pub fn label(&self) -> Option<u32> {
         match self {
             Self::Rect { label, .. } | Self::Ellipse { label, .. } => *label,
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
-                None
-            }
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => None,
         }
     }
 
@@ -172,11 +194,15 @@ impl Shape {
     }
 
     /// Bounding box including half the outline width (and the arrow head).
+    /// A text block's box is its layout box (ADR-T29-1).
     ///
     /// A stroke with no finite point gives the zero-size box at the origin.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
         let geometry = match self {
+            Self::Text {
+                origin, text, size, ..
+            } => return text_layout::bounds(*origin, text, *size),
             Self::Stroke { points, .. } => match Aabb::from_points(points) {
                 Some(b) => b,
                 None => return Aabb::from_corners(Vec2::ZERO, Vec2::ZERO),
@@ -258,6 +284,8 @@ impl Shape {
                 a, b, cols, rows, ..
             } => grid_lines(*a, *b, *cols, *rows)
                 .any(|[start, end]| distance_to_segment(p, start, end) <= reach),
+            // Already inside the box grown by `tol`: text is solid.
+            Self::Text { .. } => true,
         }
     }
 
@@ -279,9 +307,11 @@ impl Shape {
                 let (u, w) = (q.x / radii.x, q.y / radii.y);
                 u * u + w * w <= 1.0
             }
-            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Grid { .. } => {
-                false
-            }
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => false,
         }
     }
 
@@ -301,6 +331,7 @@ impl Shape {
                 *a += delta;
                 *b += delta;
             }
+            Self::Text { origin, .. } => *origin += delta,
         }
     }
 
@@ -428,6 +459,7 @@ impl Shape {
                 | Self::Rect { a, b, .. }
                 | Self::Ellipse { a, b, .. }
                 | Self::Grid { a, b, .. } => a.is_finite() && b.is_finite(),
+                Self::Text { origin, size, .. } => origin.is_finite() && size.is_finite(),
             }
     }
 }
@@ -1688,6 +1720,72 @@ mod tests {
         assert!(filled.hit(inside, 1.0));
         assert!(!filled.hit_outline(inside, 1.0));
         assert!(filled.hit_outline(edge, 1.0));
+    }
+
+    // ---- T29 text blocks ---------------------------------------------------
+
+    fn text(origin: Vec2, content: &str, size: f32) -> Shape {
+        Shape::Text {
+            origin,
+            text: content.to_owned(),
+            size,
+            style: style(0.0),
+        }
+    }
+
+    #[test]
+    fn text_bounds_follow_layout() {
+        // Arrange: 3 columns × 2 lines at size 10 (cells 6 × 12.5).
+        let shape = text(v(10.0, 20.0), "abc\nd", 10.0);
+
+        // Act / Assert
+        assert_aabb_eq(shape.bounds(), v(10.0, 20.0), v(28.0, 45.0));
+    }
+
+    #[test]
+    fn text_hit_inside_box() {
+        let shape = text(v(0.0, 0.0), "abcd", 10.0);
+
+        assert!(shape.hit(v(12.0, 6.0), 0.0));
+        assert!(shape.hit_outline(v(12.0, 6.0), 0.0));
+        assert!(shape.hit(v(25.0, 6.0), 2.0), "within tolerance of the box");
+        assert!(!shape.hit(v(40.0, 6.0), 2.0));
+        assert!(!shape.hit(v(f32::NAN, 6.0), 2.0));
+    }
+
+    #[test]
+    fn text_is_open_and_never_filled() {
+        let shape = text(v(0.0, 0.0), "abcd", 10.0);
+
+        assert!(!shape.is_closed());
+        assert!(!shape.contains(v(5.0, 5.0)));
+        assert_eq!(shape.clone().with_fill(Some(red())), shape);
+        assert_eq!(shape.fill(), None);
+    }
+
+    #[test]
+    fn text_has_no_label() {
+        let shape = text(v(0.0, 0.0), "7", 10.0);
+
+        assert_eq!(shape.label(), None);
+        assert_eq!(shape.clone().with_label(Some(3)), shape);
+    }
+
+    #[test]
+    fn text_translate_moves_origin() {
+        let mut shape = text(v(1.0, 2.0), "x", 10.0);
+
+        shape.translate(v(10.0, -5.0));
+
+        assert_eq!(shape, text(v(11.0, -3.0), "x", 10.0));
+    }
+
+    #[test]
+    fn text_is_finite_checks_origin_and_size() {
+        assert!(text(v(1.0, 2.0), "x", 10.0).is_finite());
+        assert!(!text(v(f32::NAN, 2.0), "x", 10.0).is_finite());
+        assert!(!text(v(1.0, 2.0), "x", f32::INFINITY).is_finite());
+        assert_eq!(text(v(1.0, 2.0), "x", 10.0).style(), style(0.0));
     }
 
     proptest! {

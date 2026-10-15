@@ -4,7 +4,8 @@
 //! `docs/architecture/Keymap.md`; the toolbar and docs can list it, and
 //! [`resolve`] looks chords up in it. A binding fires only when the held
 //! modifiers match the chord's modifiers exactly (ADR-T11-1). `Space` is not
-//! bound: the editor consumes it as the pan modifier.
+//! bound: the editor consumes it as the pan modifier. While a text block is
+//! being edited no binding fires (ADR-T29-2).
 
 use crate::core::command::{Command, Tool};
 use crate::core::input::{Key, Modifiers};
@@ -121,6 +122,7 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Hand (pan)",
     ),
     (KeyChord::bare(Key::G), Command::SetTool(Tool::Grid), "Grid"),
+    (KeyChord::bare(Key::T), Command::SetTool(Tool::Text), "Text"),
     // Style
     (KeyChord::bare(Key::Digit1), color(1), "Colour 1 (ink)"),
     (KeyChord::bare(Key::Digit2), color(2), "Colour 2 (red)"),
@@ -275,7 +277,7 @@ mod tests {
         alt: true,
     };
 
-    const ALL_KEYS: [Key; 47] = [
+    const ALL_KEYS: [Key; 50] = [
         Key::A,
         Key::B,
         Key::C,
@@ -323,6 +325,9 @@ mod tests {
         Key::ArrowRight,
         Key::ArrowUp,
         Key::ArrowDown,
+        Key::Enter,
+        Key::Home,
+        Key::End,
     ];
 
     fn color(digit: u8) -> Command {
@@ -347,6 +352,7 @@ mod tests {
             (Key::V, NONE, Command::SetTool(Tool::Select)),
             (Key::H, NONE, Command::SetTool(Tool::Hand)),
             (Key::G, NONE, Command::SetTool(Tool::Grid)),
+            (Key::T, NONE, Command::SetTool(Tool::Text)),
             // Style
             (Key::Digit1, NONE, color(1)),
             (Key::Digit2, NONE, color(2)),
@@ -445,6 +451,23 @@ mod tests {
         assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
         assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
         assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn t_selects_text_tool() {
+        assert_eq!(resolve(Key::T, NONE), Some(Command::SetTool(Tool::Text)));
+        assert_eq!(resolve(Key::T, SHIFT), None);
+        assert_eq!(resolve(Key::T, CTRL), None);
+    }
+
+    #[test]
+    fn editing_keys_are_unbound() {
+        // T29: Enter, Home and End act only inside a text block.
+        for key in [Key::Enter, Key::Home, Key::End] {
+            for mods in all_mods() {
+                assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
+            }
+        }
     }
 
     #[test]

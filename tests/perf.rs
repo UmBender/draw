@@ -16,12 +16,16 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use draw::core::camera::Camera;
+use draw::core::command::{Command, Tool};
 use draw::core::document::{Document, Edit, ShapeId, Transaction, tx_insert, tx_remove};
+use draw::core::editor::Editor;
 use draw::core::geom::Vec2;
+use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::palette::ColorId;
 use draw::core::shape::{CellFill, Shape, Style};
 use draw::core::smoothing::{Smoother, SmoothingLevel, simplify_rdp};
 use draw::core::snap::{DragKind, Snaps, Targets, snap_drag};
+use draw::core::text_layout::glyphs;
 use draw::shell::render::{cull_rect, is_visible};
 
 /// Shapes in the benchmark document.
@@ -48,6 +52,12 @@ const WORLD: f32 = 20_000.0;
 
 /// Viewport of a 1080p screen, in pixels.
 const VIEWPORT: Vec2 = Vec2::new(1920.0, 1080.0);
+
+/// Text blocks in the T29 benchmark (AC-8).
+const TEXT_BLOCKS: usize = 500;
+
+/// Characters per benchmark text block.
+const TEXT_CHARS: usize = 20;
 
 /// Deterministic xorshift generator, so every run times the same document.
 struct Rng(u64);
@@ -445,4 +455,138 @@ fn perf_undo_delete_5k_of_10k_is_under_1ms() {
     // Assert
     assert!(deleted.clone().apply(&undo).is_ok());
     assert_within_budget("undo delete 5k, 10k shapes", median, BUDGET);
+}
+
+/// [`TEXT_BLOCKS`] blocks of [`TEXT_CHARS`] characters over a 1080p screen
+/// area, each on two lines with a multi-byte character.
+fn text_blocks() -> Vec<Shape> {
+    let mut rng = Rng(0x51_7cc1_b727_220a);
+    let style = Style {
+        color: ColorId::INK,
+        width: 0.0,
+    };
+    (0..TEXT_BLOCKS)
+        .map(|i| {
+            let origin = Vec2::new(rng.range(-200.0, 2_400.0), rng.range(-200.0, 1_400.0));
+            let mut text: String = (0..TEXT_CHARS - 2)
+                .map(|k| char::from(b'a' + ((i + k) % 26) as u8))
+                .collect();
+            text.insert(9, '\n');
+            text.push('∑');
+            Shape::Text {
+                origin,
+                text,
+                size: 18.0,
+                style,
+            }
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_text_layout_and_cull_500_blocks_is_under_1ms() {
+    // Arrange
+    if !optimised() {
+        return;
+    }
+    let mut doc = Document::new();
+    let tx = tx_insert(&mut doc, text_blocks());
+    assert!(doc.apply(&tx).is_ok(), "fresh ids always apply");
+    let camera = Camera::default();
+
+    // Act: what a full re-render computes on the CPU before drawing.
+    let median = median_time(
+        || cull_rect(&camera, VIEWPORT),
+        |view| {
+            let mut sum = 0.0f32;
+            for (_, shape) in doc.shapes() {
+                if let Shape::Text {
+                    origin, text, size, ..
+                } = shape
+                {
+                    if is_visible(shape.bounds(), view) {
+                        for glyph in glyphs(*origin, text, *size) {
+                            sum += camera.world_to_screen(glyph.pos).x;
+                        }
+                    }
+                }
+            }
+            sum
+        },
+    );
+
+    // Assert
+    assert_within_budget("text layout + cull, 500 blocks", median, BUDGET);
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_typing_with_500_blocks_is_under_1ms() {
+    // Arrange: 500 committed blocks, then an open one.
+    if !optimised() {
+        return;
+    }
+    let none = Modifiers::NONE;
+    let mut editor = Editor::new();
+    editor.handle(InputEvent::Resize { size: VIEWPORT });
+    editor.apply(Command::SetTool(Tool::Text));
+    for shape in text_blocks() {
+        let Shape::Text { origin, text, .. } = shape else {
+            continue;
+        };
+        let pos = editor.camera().world_to_screen(origin);
+        for event in [
+            InputEvent::PointerDown {
+                pos,
+                button: PointerButton::Left,
+                mods: none,
+            },
+            InputEvent::PointerUp {
+                pos,
+                button: PointerButton::Left,
+                mods: none,
+            },
+        ] {
+            editor.handle(event);
+        }
+        for ch in text.chars() {
+            editor.handle(InputEvent::Char { ch, mods: none });
+        }
+        editor.handle(InputEvent::KeyDown {
+            key: Key::Escape,
+            mods: none,
+        });
+    }
+    assert!(
+        editor.document().len() >= TEXT_BLOCKS / 2,
+        "blocks committed"
+    );
+    editor.handle(InputEvent::PointerDown {
+        pos: Vec2::new(960.0, 1_060.0),
+        button: PointerButton::Left,
+        mods: none,
+    });
+    editor.handle(InputEvent::PointerUp {
+        pos: Vec2::new(960.0, 1_060.0),
+        button: PointerButton::Left,
+        mods: none,
+    });
+    assert!(editor.text_edit().is_some(), "a block is open");
+
+    // Act: one keystroke and the overlay the frame draws.
+    let median = median_time(
+        || editor.clone(),
+        |mut editor| {
+            editor.handle(InputEvent::Char {
+                ch: 'x',
+                mods: none,
+            });
+            let overlay = editor.overlay();
+            (editor, overlay)
+        },
+    );
+
+    // Assert
+    assert_within_budget("typing, 500 blocks", median, BUDGET);
 }

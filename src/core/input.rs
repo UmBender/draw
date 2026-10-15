@@ -1,4 +1,4 @@
-//! Input model: pointer, key and scroll events in screen space.
+//! Input model: pointer, key, character and scroll events in screen space.
 //!
 //! The shell translates window-system input into [`InputEvent`]s and feeds them
 //! to [`Editor::handle`](crate::core::editor::Editor::handle). Positions are
@@ -100,6 +100,13 @@ pub enum Key {
     ArrowUp,
     /// `↓`.
     ArrowDown,
+    /// `Enter` (either `Return` or the keypad's): a line break in a text
+    /// block (T29).
+    Enter,
+    /// `Home`: start of the line in a text block.
+    Home,
+    /// `End`: end of the line in a text block.
+    End,
 }
 
 /// One input event, positions in screen pixels.
@@ -149,6 +156,15 @@ pub enum InputEvent {
     KeyUp {
         /// The key.
         key: Key,
+        /// Modifiers held.
+        mods: Modifiers,
+    },
+    /// The keyboard layout produced the character `ch` (sent before the
+    /// [`InputEvent::KeyDown`] of its key). Only a text block in edit mode
+    /// uses it (ADR-T29-2).
+    Char {
+        /// The character, possibly a control character.
+        ch: char,
         /// Modifiers held.
         mods: Modifiers,
     },

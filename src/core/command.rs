@@ -22,6 +22,8 @@ pub enum Tool {
     Ellipse,
     /// Table of `cols × rows` cells.
     Grid,
+    /// Free-standing text blocks (ADR-T29-2).
+    Text,
     /// Removes whole shapes it touches.
     Eraser,
     /// Fills the clicked rectangle or ellipse.
@@ -34,13 +36,14 @@ pub enum Tool {
 
 impl Tool {
     /// Every tool once, in toolbar order.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Pen,
         Self::Line,
         Self::Arrow,
         Self::Rect,
         Self::Ellipse,
         Self::Grid,
+        Self::Text,
         Self::Eraser,
         Self::Bucket,
         Self::Select,
@@ -120,8 +123,9 @@ mod tests {
         let unique: std::collections::HashSet<Tool> = all.iter().copied().collect();
 
         // Assert
-        assert_eq!(all.len(), 10);
+        assert_eq!(all.len(), 11);
         assert!(all.contains(&Tool::Grid));
+        assert!(all.contains(&Tool::Text));
         assert_eq!(unique.len(), all.len());
     }
 }

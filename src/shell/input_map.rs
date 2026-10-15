@@ -63,6 +63,9 @@ pub fn map_key(code: KeyCode) -> Option<Key> {
         KeyCode::Right => Key::ArrowRight,
         KeyCode::Up => Key::ArrowUp,
         KeyCode::Down => Key::ArrowDown,
+        KeyCode::Enter | KeyCode::KpEnter => Key::Enter,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
         _ => return None,
     };
     Some(key)
@@ -148,8 +151,8 @@ impl HeldMods {
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
-/// have none of their own); key events carry the modifiers the platform
-/// reports with them.
+/// have none of their own); key and character events carry the modifiers
+/// the platform reports with them.
 #[derive(Debug, Clone)]
 pub struct Collector {
     events: Vec<InputEvent>,
@@ -239,6 +242,11 @@ impl EventHandler for Collector {
             let mods = map_mods(mods);
             self.events.push(InputEvent::KeyDown { key, mods });
         }
+    }
+
+    fn char_event(&mut self, ch: char, mods: KeyMods, _repeat: bool) {
+        let mods = map_mods(mods);
+        self.events.push(InputEvent::Char { ch, mods });
     }
 
     fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
@@ -358,13 +366,24 @@ mod tests {
     }
 
     #[test]
+    fn map_key_editing_keys() {
+        for (code, key) in [
+            (KeyCode::Enter, Key::Enter),
+            (KeyCode::KpEnter, Key::Enter),
+            (KeyCode::Home, Key::Home),
+            (KeyCode::End, Key::End),
+        ] {
+            assert_eq!(map_key(code), Some(key), "{code:?}");
+        }
+    }
+
+    #[test]
     fn map_key_unbound_is_none() {
         for code in [
             KeyCode::LeftShift,
             KeyCode::RightControl,
             KeyCode::LeftAlt,
             KeyCode::LeftSuper,
-            KeyCode::Enter,
             KeyCode::F1,
             KeyCode::Kp1,
             KeyCode::Minus,
@@ -495,11 +514,46 @@ mod tests {
         let mut c = Collector::new();
         // Act
         c.key_down_event(KeyCode::F5, NO_MODS, false);
-        c.key_up_event(KeyCode::Enter, NO_MODS);
+        c.key_up_event(KeyCode::F6, NO_MODS);
         c.mouse_button_down_event(MouseButton::Unknown, 1.0, 1.0);
         c.mouse_button_up_event(MouseButton::Unknown, 1.0, 1.0);
         // Assert
         assert!(drain(&mut c).is_empty());
+    }
+
+    #[test]
+    fn collector_char_event_becomes_char() {
+        // Arrange
+        let mut c = Collector::new();
+        let ctrl = KeyMods {
+            ctrl: true,
+            ..NO_MODS
+        };
+
+        // Act: miniquad sends the character before its key.
+        c.char_event('β', NO_MODS, false);
+        c.key_down_event(KeyCode::B, NO_MODS, false);
+        c.char_event('z', ctrl, true);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                InputEvent::Char {
+                    ch: 'β',
+                    mods: Modifiers::NONE,
+                },
+                InputEvent::KeyDown {
+                    key: Key::B,
+                    mods: Modifiers::NONE,
+                },
+                InputEvent::Char {
+                    ch: 'z',
+                    mods: CTRL
+                },
+            ]
+        );
     }
 
     #[test]

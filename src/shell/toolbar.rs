@@ -29,13 +29,14 @@ pub const GAP_PX: f32 = 2.0;
 pub const GROUP_GAP_PX: f32 = 12.0;
 
 /// Tools in toolbar order (the keymap's order).
-pub const TOOLS: [Tool; 10] = [
+pub const TOOLS: [Tool; 11] = [
     Tool::Pen,
     Tool::Line,
     Tool::Arrow,
     Tool::Rect,
     Tool::Ellipse,
     Tool::Grid,
+    Tool::Text,
     Tool::Eraser,
     Tool::Bucket,
     Tool::Select,
@@ -319,6 +320,7 @@ fn tool_label(tool: Tool) -> &'static str {
         Tool::Rect => "R",
         Tool::Ellipse => "C",
         Tool::Grid => "G",
+        Tool::Text => "T",
         Tool::Eraser => "E",
         Tool::Bucket => "B",
         Tool::Select => "V",
@@ -420,6 +422,7 @@ mod tests {
             Tool::Rect,
             Tool::Ellipse,
             Tool::Grid,
+            Tool::Text,
             Tool::Eraser,
             Tool::Bucket,
             Tool::Select,
@@ -458,7 +461,7 @@ mod tests {
         // Assert
         let kinds: Vec<ButtonKind> = buttons.iter().map(|b| b.kind).collect();
         assert_eq!(kinds, expected_kinds());
-        assert_eq!(buttons.len(), 21);
+        assert_eq!(buttons.len(), 22);
     }
 
     #[test]
@@ -487,9 +490,9 @@ mod tests {
         }
         // Groups (tools | colours | helpers | history) get a larger gap.
         let gap = |i: usize| buttons[i + 1].rect.min.y - buttons[i].rect.max.y;
-        assert!(gap(9) > gap(8), "gap after the tools");
-        assert!(gap(15) > gap(14), "gap after the colours");
-        assert!(gap(18) > gap(17), "gap after the helpers");
+        assert!(gap(10) > gap(9), "gap after the tools");
+        assert!(gap(16) > gap(15), "gap after the colours");
+        assert!(gap(19) > gap(18), "gap after the helpers");
     }
 
     #[test]

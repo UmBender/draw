@@ -10,11 +10,15 @@
 //! `Space` held pans; a right drag erases from any tool; any other left drag
 //! goes to the active tool. One gesture runs at a time; other buttons are
 //! ignored until it ends. Keys go through the keymap, then [`Editor::apply`].
+//!
+//! Text edit mode (ADR-T29-2): while a text block is open, typed characters
+//! and editing keys go to it and no key reaches the keymap; `Esc`, a press
+//! outside the block or any applied command commits it as one undo step.
 
 use crate::core::camera::Camera;
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
-use crate::core::document::{Document, ShapeId, tx_clear};
+use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::{HISTORY_LIMIT, History};
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -24,6 +28,7 @@ use crate::core::palette::ColorId;
 use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
+use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
 
 /// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
@@ -144,6 +149,10 @@ pub struct Editor {
     cursor: Vec2,
     space_held: bool,
     gesture: Option<Gesture>,
+    /// A plain Select press on the text block that was the only selection:
+    /// press position and block id. Released as a click, it re-opens the
+    /// block (ADR-T29-2).
+    reedit: Option<(Vec2, ShapeId)>,
     keymap: Keymap,
     /// Grows whenever the document may have changed (ADR-T24-1).
     doc_revision: u64,
@@ -177,6 +186,7 @@ impl Editor {
             cursor: Vec2::ZERO,
             space_held: false,
             gesture: None,
+            reedit: None,
             keymap: keymap::resolve,
             doc_revision: 0,
             doc_base_revision: 0,
@@ -208,6 +218,9 @@ impl Editor {
                 self.track_cursor(pos)
                     .is_some_and(|pos| navigate::zoom(&mut self.camera, pos, delta))
             }
+            InputEvent::KeyDown { key, mods } if self.tools.text.edit.is_some() => {
+                self.text_key(key, mods)
+            }
             InputEvent::KeyDown {
                 key: Key::Space, ..
             } => {
@@ -224,6 +237,13 @@ impl Editor {
                 false
             }
             InputEvent::KeyUp { .. } => false,
+            InputEvent::Char { ch, mods } => {
+                let typed = !mods.ctrl && !ch.is_control();
+                match &mut self.tools.text.edit {
+                    Some(edit) if typed => edit.insert(ch),
+                    _ => false,
+                }
+            }
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
                     self.viewport = size;
@@ -235,7 +255,17 @@ impl Editor {
     }
 
     /// Executes `command`. Returns whether the view needs a redraw.
+    ///
+    /// An open text block is committed first, except that
+    /// [`Command::Undo`] cancels it instead (ADR-T29-2).
     pub fn apply(&mut self, command: Command) -> bool {
+        if self.tools.text.edit.is_some() {
+            if command == Command::Undo {
+                return self.cancel_text();
+            }
+            let committed = self.finish_text();
+            return self.apply(command) || committed;
+        }
         if edits_document(command) {
             let appends = matches!(command, Command::Paste | Command::Duplicate);
             self.track_document(appends, |ed| ed.execute(command))
@@ -424,13 +454,11 @@ impl Editor {
         self.overlay().shapes.into_iter().next()
     }
 
-    /// What the gesture in progress draws on top of the document.
+    /// What the gesture in progress and the open text block draw on top of
+    /// the document.
     #[must_use]
     pub fn overlay(&self) -> Overlay {
-        let Some(Gesture::Tool { tool, .. }) = self.gesture else {
-            return Overlay::default();
-        };
-        self.tools.preview(&ToolView {
+        let view = |tool| ToolView {
             doc: &self.doc,
             camera: &self.camera,
             selection: &self.selection,
@@ -438,7 +466,17 @@ impl Editor {
             style: self.style,
             smoothing: self.smoothing,
             cursor: self.cursor,
-        })
+        };
+        let mut overlay = match self.gesture {
+            Some(Gesture::Tool { tool, .. }) if tool != Tool::Text => {
+                self.tools.preview(&view(tool))
+            }
+            _ => Overlay::default(),
+        };
+        let edit = text::preview(&self.tools.text, &view(Tool::Text));
+        overlay.shapes.extend(edit.shapes);
+        overlay.hidden.extend(edit.hidden);
+        overlay
     }
 
     /// The gesture in progress, if any.
@@ -448,6 +486,19 @@ impl Editor {
             Gesture::Pan { .. } => ActiveGesture::Pan,
             Gesture::Tool { tool, .. } => ActiveGesture::Tool(tool),
         })
+    }
+
+    /// The text block being edited, if any (ADR-T29-2).
+    #[must_use]
+    pub fn text_edit(&self) -> Option<&TextEdit> {
+        self.tools.text.edit.as_ref()
+    }
+
+    /// The caret of the text block being edited, as a world segment from
+    /// the top to the bottom of its line; `None` when not editing.
+    #[must_use]
+    pub fn text_caret(&self) -> Option<[Vec2; 2]> {
+        self.text_edit().map(TextEdit::caret_line)
     }
 
     /// Whether the toolbar is shown.
@@ -481,7 +532,9 @@ impl Editor {
         Some(pos)
     }
 
-    /// Starts a gesture, unless one is already running.
+    /// Starts a gesture, unless one is already running. With a text block
+    /// open, a left press inside it moves the caret and any other press
+    /// that does not pan commits it first (ADR-T29-2).
     fn pointer_down(&mut self, pos: Vec2, button: PointerButton, mods: Modifiers) -> bool {
         if self.gesture.is_some() {
             return false;
@@ -491,6 +544,22 @@ impl Editor {
             PointerButton::Left => self.tool == Tool::Hand || self.space_held,
             PointerButton::Right => false,
         };
+        let mut committed = false;
+        if !pans {
+            let world = self.camera.screen_to_world(pos);
+            let tol = self.camera.world_len(select::HIT_TOLERANCE_PX);
+            if let Some(edit) = &mut self.tools.text.edit {
+                if button == PointerButton::Left && edit.bounds().expand(tol).contains(world) {
+                    edit.set_caret_at(world);
+                    return true;
+                }
+                committed = self.finish_text();
+            }
+            if button == PointerButton::Left && self.tool == Tool::Select && mods == Modifiers::NONE
+            {
+                self.reedit = self.selected_text_at(world, tol).map(|id| (pos, id));
+            }
+        }
         if pans {
             self.gesture = Some(Gesture::Pan {
                 button,
@@ -504,7 +573,7 @@ impl Editor {
             self.tool
         };
         self.gesture = Some(Gesture::Tool { button, tool });
-        self.tool_pointer(tool, Phase::Down, pos, mods)
+        self.tool_pointer(tool, Phase::Down, pos, mods) || committed
     }
 
     /// Continues the gesture in progress, if any.
@@ -536,7 +605,8 @@ impl Editor {
                     self.advance_numbering(before);
                 }
                 self.prune_selection();
-                changed
+                let reopened = self.reopen_clicked_text(pos);
+                changed || reopened
             }
             _ => false,
         }
@@ -619,8 +689,101 @@ impl Editor {
         changed || cancelled
     }
 
+    /// Handles a key while a text block is open: editing keys edit it,
+    /// `Ctrl+[` / `Ctrl+]` resize it, `Esc` and `Ctrl+Enter` commit it,
+    /// `Ctrl+Z` cancels it, every other key does nothing (ADR-T29-2,
+    /// ADR-T29-3). Returns whether a redraw is needed.
+    fn text_key(&mut self, key: Key, mods: Modifiers) -> bool {
+        let ctrl_only = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        };
+        match key {
+            Key::Escape => return self.finish_text(),
+            Key::Enter if mods.ctrl => return self.finish_text(),
+            Key::Z if mods == ctrl_only => return self.cancel_text(),
+            _ => {}
+        }
+        let Some(edit) = &mut self.tools.text.edit else {
+            return false;
+        };
+        match key {
+            // ADR-T29-3: grow or shrink the open block.
+            Key::BracketLeft | Key::BracketRight if mods == ctrl_only => {
+                edit.step_size(key == Key::BracketRight, self.camera.zoom())
+            }
+            Key::Enter => edit.insert('\n'),
+            Key::Tab => edit.tab(),
+            Key::Backspace => edit.backspace(),
+            Key::Delete => edit.delete(),
+            Key::ArrowLeft => edit.left(),
+            Key::ArrowRight => edit.right(),
+            Key::ArrowUp => edit.up(),
+            Key::ArrowDown => edit.down(),
+            Key::Home => edit.home(),
+            Key::End => edit.end(),
+            _ => false,
+        }
+    }
+
+    /// Ends the open text block, committing it as one undo step: a new
+    /// block is inserted, a changed one replaced, a blank one removed
+    /// (ADR-T29-2). Returns whether there was a block.
+    fn finish_text(&mut self) -> bool {
+        let Some(edit) = self.tools.text.edit.take() else {
+            return false;
+        };
+        let appends = edit.target().is_none();
+        self.track_document(appends, |ed| {
+            let target = edit.target().filter(|id| ed.doc.get(*id).is_some());
+            let tx = match target {
+                Some(id) if edit.is_blank() => tx_remove(&ed.doc, &[id]),
+                Some(id) if ed.doc.get(id) == Some(&edit.shape()) => return false,
+                Some(id) => tx_replace(&ed.doc, id, edit.shape()),
+                None if edit.is_blank() => return false,
+                None => tx_insert(&mut ed.doc, [edit.shape()]),
+            };
+            let changed = !tx.is_empty() && ed.history.commit(&mut ed.doc, tx).is_ok();
+            ed.prune_selection();
+            changed
+        });
+        true
+    }
+
+    /// Throws the open text block away. Returns whether there was one.
+    fn cancel_text(&mut self) -> bool {
+        self.tools.text.edit.take().is_some()
+    }
+
+    /// The text block hit at world `p` (tolerance `tol`), if it is the
+    /// topmost shape there and the only selected one.
+    fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
+        let id = self.doc.topmost_where(|shape| shape.hit(p, tol))?;
+        let is_text = matches!(self.doc.get(id), Some(Shape::Text { .. }));
+        (is_text && self.selection == [id]).then_some(id)
+    }
+
+    /// Re-opens the text block of a Select press armed in
+    /// [`Editor::pointer_down`] if the release at `pos` makes it a click
+    /// and the block is still the only selection. Returns whether it did.
+    fn reopen_clicked_text(&mut self, pos: Vec2) -> bool {
+        let Some((start, id)) = self.reedit.take() else {
+            return false;
+        };
+        if start.distance(pos) >= select::CLICK_SLOP_PX || self.selection != [id] {
+            return false;
+        }
+        let at = self.camera.screen_to_world(pos);
+        self.tools.text.edit = self
+            .doc
+            .get(id)
+            .and_then(|shape| TextEdit::open(id, shape, at));
+        self.tools.text.edit.is_some()
+    }
+
     /// Discards the gesture in progress. Returns whether there was one.
     fn cancel_gesture(&mut self) -> bool {
+        self.reedit = None;
         match self.gesture.take() {
             Some(Gesture::Tool { tool, .. }) => {
                 self.tools.cancel(tool);
@@ -2064,5 +2227,805 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    // ---- T29 text blocks ---------------------------------------------------
+
+    const CTRL: Modifiers = Modifiers {
+        shift: false,
+        ctrl: true,
+        alt: false,
+    };
+
+    /// Editor with an 800 × 600 viewport and the Text tool.
+    fn text_editor() -> Editor {
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        ed.apply(Command::SetTool(Tool::Text));
+        ed
+    }
+
+    /// Types `s` as the shell does: one `Char` per character.
+    fn typed(ed: &mut Editor, s: &str) {
+        for ch in s.chars() {
+            ed.handle(InputEvent::Char { ch, mods: NONE });
+        }
+    }
+
+    fn key_with(ed: &mut Editor, key: Key, mods: Modifiers) -> bool {
+        ed.handle(InputEvent::KeyDown { key, mods })
+    }
+
+    /// Clicks at screen `(x, y)` and types `s` (the block stays open).
+    fn place(ed: &mut Editor, x: f32, y: f32, s: &str) {
+        click(ed, x, y);
+        typed(ed, s);
+    }
+
+    /// The text of every text block in the document, bottom first.
+    fn texts(ed: &Editor) -> Vec<String> {
+        ed.document()
+            .shapes()
+            .filter_map(|(_, shape)| match shape {
+                Shape::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The text being edited, if any.
+    fn editing(ed: &Editor) -> Option<String> {
+        ed.text_edit().map(|edit| edit.text().to_owned())
+    }
+
+    /// Screen x of caret column `col` of a block at screen x `x0`, at the
+    /// default width (18 px text) and zoom 1.
+    fn column_x(x0: f32, col: f32) -> f32 {
+        x0 + col * 18.0 * crate::core::text_layout::ADVANCE
+    }
+
+    /// The character a bare or `Shift` chord types, if any.
+    fn chord_char(key: Key, mods: Modifiers) -> Option<char> {
+        if mods.ctrl || mods.alt {
+            return None;
+        }
+        let name = format!("{key:?}");
+        let ch = match key {
+            Key::Space => ' ',
+            Key::BracketLeft => '[',
+            Key::BracketRight => ']',
+            _ if name.len() == 1 => name.chars().next()?.to_ascii_lowercase(),
+            _ => name.strip_prefix("Digit")?.chars().next()?,
+        };
+        Some(if mods.shift {
+            ch.to_ascii_uppercase()
+        } else {
+            ch
+        })
+    }
+
+    #[test]
+    fn text_click_starts_block_at_pointer() {
+        // Arrange
+        let mut ed = text_editor();
+
+        // Act
+        let changed = click(&mut ed, 100.0, 50.0);
+
+        // Assert
+        assert!(changed);
+        let Some(edit) = ed.text_edit() else {
+            panic!("the click opens a block");
+        };
+        let world = ed.camera().screen_to_world(Vec2::new(100.0, 50.0));
+        assert!(edit.origin.approx_eq(world, 1e-4), "{edit:?}");
+        assert_eq!(edit.text(), "");
+        assert_eq!(edit.caret(), 0);
+        assert_eq!(edit.target(), None);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn text_typed_chars_appear_in_overlay() {
+        // Arrange
+        let mut ed = text_editor();
+
+        // Act
+        place(&mut ed, 100.0, 50.0, "hi ∑");
+
+        // Assert
+        let overlay = ed.overlay();
+        assert!(
+            overlay
+                .shapes
+                .iter()
+                .any(|s| matches!(s, Shape::Text { text, .. } if text == "hi ∑")),
+            "{overlay:?}"
+        );
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn text_escape_commits_one_shape() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "abc");
+
+        // Act
+        let changed = key(&mut ed, Key::Escape);
+
+        // Assert
+        assert!(changed);
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["abc"]);
+        assert_eq!(ed.document().len(), 1);
+        assert!(ed.can_undo());
+    }
+
+    #[test]
+    fn text_ctrl_enter_commits() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "abc");
+
+        assert!(key_with(&mut ed, Key::Enter, CTRL));
+
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["abc"]);
+    }
+
+    #[test]
+    fn text_click_outside_commits_and_starts_new_block() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+
+        // Act
+        click(&mut ed, 400.0, 300.0);
+
+        // Assert
+        assert_eq!(texts(&ed), ["a"]);
+        let Some(edit) = ed.text_edit() else {
+            panic!("the click opens the next block");
+        };
+        assert!(edit.origin.approx_eq(Vec2::new(400.0, 300.0), 1e-4));
+        assert_eq!(edit.text(), "");
+    }
+
+    #[test]
+    fn text_empty_block_leaves_no_shape_and_no_history() {
+        let mut ed = text_editor();
+
+        click(&mut ed, 100.0, 50.0);
+        click(&mut ed, 300.0, 50.0);
+        key(&mut ed, Key::Escape);
+
+        assert!(ed.document().is_empty());
+        assert!(!ed.can_undo());
+        assert!(ed.text_edit().is_none());
+    }
+
+    #[test]
+    fn text_whitespace_only_block_is_discarded() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "  ");
+        key(&mut ed, Key::Enter);
+        key(&mut ed, Key::Tab);
+
+        key(&mut ed, Key::Escape);
+
+        assert!(ed.document().is_empty());
+        assert!(!ed.can_undo());
+    }
+
+    #[test]
+    fn text_new_block_size_follows_width_and_zoom() {
+        // Arrange: one notch of zoom, one step up the width ladder (4 px).
+        let mut ed = text_editor();
+        ed.handle(InputEvent::Scroll {
+            pos: Vec2::new(10.0, 10.0),
+            delta: 1.0,
+        });
+        ed.apply(Command::WidthUp);
+
+        // Act
+        place(&mut ed, 100.0, 50.0, "x");
+        key(&mut ed, Key::Escape);
+
+        // Assert: 12 + 2 × 4 = 20 px on screen.
+        let Some((_, Shape::Text { size, .. })) = ed.document().shapes().next() else {
+            panic!("a text block was committed");
+        };
+        assert!(approx_eq(*size, 20.0 / ZOOM_STEP, 1e-4), "{size}");
+    }
+
+    #[test]
+    fn text_new_block_uses_current_colour() {
+        let Some(red) = ColorId::new(2) else {
+            panic!("palette has colour 2");
+        };
+        let mut ed = text_editor();
+        ed.apply(Command::SetColor(red));
+
+        place(&mut ed, 100.0, 50.0, "x");
+        key(&mut ed, Key::Escape);
+
+        let Some((_, shape)) = ed.document().shapes().next() else {
+            panic!("a text block was committed");
+        };
+        assert_eq!(shape.style().color, red);
+    }
+
+    #[test]
+    fn text_edit_mode_every_binding_types_instead_of_acting() {
+        for &(chord, command, _) in keymap::BINDINGS {
+            // Arrange: an open block holding "x".
+            let mut ed = text_editor();
+            place(&mut ed, 100.0, 50.0, "x");
+            let (style, smoothing, camera) = (ed.style(), ed.smoothing(), *ed.camera());
+
+            // Act: the shell sends the character, then the key.
+            if let Some(ch) = chord_char(chord.key, chord.mods) {
+                ed.handle(InputEvent::Char {
+                    ch,
+                    mods: chord.mods,
+                });
+            }
+            key_with(&mut ed, chord.key, chord.mods);
+
+            // Assert
+            let label = format!("{chord:?} -> {command:?}");
+            match command {
+                Command::Cancel => {
+                    assert_eq!(texts(&ed), ["x"], "{label}: Esc commits");
+                    continue;
+                }
+                Command::Undo => {
+                    assert!(ed.document().is_empty(), "{label}: Ctrl+Z cancels");
+                    assert!(ed.text_edit().is_none(), "{label}");
+                    continue;
+                }
+                _ => {}
+            }
+            assert!(ed.text_edit().is_some(), "{label}: still editing");
+            assert!(ed.document().is_empty(), "{label}: nothing committed");
+            assert_eq!(ed.tool(), Tool::Text, "{label}");
+            assert_eq!(ed.style(), style, "{label}");
+            assert_eq!(ed.smoothing(), smoothing, "{label}");
+            assert_eq!(*ed.camera(), camera, "{label}");
+            assert!(ed.toolbar_visible(), "{label}");
+            assert!(ed.selection().is_empty(), "{label}");
+            if let Some(ch) = chord_char(chord.key, chord.mods) {
+                let text = editing(&ed).unwrap_or_default();
+                assert!(text.ends_with(ch), "{label}: typed {text:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn text_after_escape_keys_act_as_shortcuts_again() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "p");
+        key(&mut ed, Key::Escape);
+
+        ed.handle(InputEvent::Char {
+            ch: 'p',
+            mods: NONE,
+        });
+        key(&mut ed, Key::P);
+
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert_eq!(texts(&ed), ["p"]);
+    }
+
+    #[test]
+    fn text_ctrl_chars_are_not_inserted() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+
+        ed.handle(InputEvent::Char {
+            ch: 'c',
+            mods: CTRL,
+        });
+        for ch in ['\u{8}', '\r', '\t', '\u{1b}', '\u{7f}'] {
+            ed.handle(InputEvent::Char { ch, mods: NONE });
+        }
+
+        assert_eq!(editing(&ed).as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn text_tab_types_four_spaces() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+
+        key(&mut ed, Key::Tab);
+
+        assert_eq!(editing(&ed).as_deref(), Some("a    "));
+        assert!(ed.toolbar_visible());
+    }
+
+    #[test]
+    fn text_space_in_edit_mode_does_not_pan() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+        ed.handle(InputEvent::Char {
+            ch: ' ',
+            mods: NONE,
+        });
+        key(&mut ed, Key::Space);
+
+        // Act: a left drag elsewhere.
+        down(&mut ed, PointerButton::Left, 300.0, 300.0);
+        move_to(&mut ed, 350.0, 320.0);
+        up(&mut ed, PointerButton::Left, 350.0, 320.0);
+
+        // Assert: no pan; the block was committed and a new one opened.
+        assert_eq!(*ed.camera(), Camera::default());
+        assert_eq!(texts(&ed), ["a "]);
+        assert!(ed.text_edit().is_some());
+    }
+
+    #[test]
+    fn text_char_outside_edit_mode_is_ignored() {
+        let mut ed = text_editor();
+
+        assert!(!ed.handle(InputEvent::Char {
+            ch: 'p',
+            mods: NONE
+        }));
+
+        assert!(ed.document().is_empty());
+        assert!(ed.text_edit().is_none());
+    }
+
+    #[test]
+    fn text_editing_keys_edit_the_block() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "aβc");
+
+        // Act
+        key(&mut ed, Key::ArrowLeft);
+        key(&mut ed, Key::Backspace);
+        key(&mut ed, Key::Home);
+        key(&mut ed, Key::Delete);
+        key(&mut ed, Key::End);
+        key(&mut ed, Key::Enter);
+        typed(&mut ed, "de");
+        key(&mut ed, Key::ArrowUp);
+        typed(&mut ed, "!");
+        key(&mut ed, Key::ArrowDown);
+        key(&mut ed, Key::ArrowRight);
+        typed(&mut ed, "?");
+
+        // Assert
+        assert_eq!(editing(&ed).as_deref(), Some("c!\nde?"));
+    }
+
+    #[test]
+    fn text_ctrl_brackets_resize_open_block() {
+        // Arrange: default width gives 18 px at zoom 1.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "ab");
+        let width = ed.style().width_px;
+
+        // Act: the shell sends a control character, then the key.
+        ed.handle(InputEvent::Char {
+            ch: '\u{1d}',
+            mods: CTRL,
+        });
+        assert!(key_with(&mut ed, Key::BracketRight, CTRL));
+        key_with(&mut ed, Key::BracketLeft, CTRL);
+        key_with(&mut ed, Key::BracketLeft, CTRL);
+
+        // Assert
+        let Some(edit) = ed.text_edit() else {
+            panic!("still editing");
+        };
+        assert_eq!(edit.text(), "ab");
+        assert!(approx_eq(edit.size, 16.0, 1e-4), "{}", edit.size);
+        assert!(approx_eq(ed.style().width_px, width, 1e-6));
+        key(&mut ed, Key::Escape);
+        let Some((_, Shape::Text { size, .. })) = ed.document().shapes().next() else {
+            panic!("a text block was committed");
+        };
+        assert!(approx_eq(*size, 16.0, 1e-4));
+    }
+
+    #[test]
+    fn text_tool_click_on_block_reopens_it_with_caret_at_click() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+        key(&mut ed, Key::Escape);
+        let ids = ids(&ed);
+
+        // Act: just right of column 2.
+        click(&mut ed, column_x(100.0, 2.0) + 1.0, 105.0);
+
+        // Assert
+        let Some(edit) = ed.text_edit() else {
+            panic!("the click re-opens the block");
+        };
+        assert_eq!(edit.target(), Some(ids[0]));
+        assert_eq!(edit.text(), "abcd");
+        assert_eq!(edit.caret(), 2);
+        assert_eq!(ed.document().len(), 1);
+    }
+
+    #[test]
+    fn select_click_on_selected_block_reopens_it() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Select));
+        ed.apply(Command::SelectAll);
+        let ids = ids(&ed);
+
+        // Act
+        click(&mut ed, column_x(100.0, 1.0), 105.0);
+
+        // Assert
+        let Some(edit) = ed.text_edit() else {
+            panic!("a click on the selected block edits it");
+        };
+        assert_eq!(edit.target(), Some(ids[0]));
+        assert_eq!(edit.caret(), 1);
+        assert_eq!(ed.tool(), Tool::Select);
+    }
+
+    #[test]
+    fn select_double_click_on_block_reopens_it() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Select));
+
+        click(&mut ed, 110.0, 105.0);
+        click(&mut ed, 110.0, 105.0);
+
+        assert_eq!(editing(&ed).as_deref(), Some("abcd"));
+    }
+
+    #[test]
+    fn select_click_on_unselected_block_only_selects() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Select));
+
+        click(&mut ed, 110.0, 105.0);
+
+        assert!(ed.text_edit().is_none());
+        assert_eq!(ed.selection(), ids(&ed));
+    }
+
+    #[test]
+    fn text_reedit_hides_original_while_editing() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+        key(&mut ed, Key::Escape);
+        let ids = ids(&ed);
+
+        // Act
+        click(&mut ed, 110.0, 105.0);
+        typed(&mut ed, "X");
+
+        // Assert
+        let overlay = ed.overlay();
+        assert_eq!(overlay.hidden, ids);
+        assert!(
+            overlay
+                .shapes
+                .iter()
+                .any(|s| matches!(s, Shape::Text { text, .. } if text == "aXbcd")),
+            "{overlay:?}"
+        );
+        assert_eq!(texts(&ed), ["abcd"], "the document keeps the old text");
+    }
+
+    #[test]
+    fn text_click_inside_edited_block_moves_caret() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+
+        click(&mut ed, column_x(100.0, 1.0), 105.0);
+
+        let Some(edit) = ed.text_edit() else {
+            panic!("still editing");
+        };
+        assert_eq!(edit.target(), None);
+        assert_eq!(edit.caret(), 1);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn text_edit_is_one_history_entry() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hello");
+        key(&mut ed, Key::Enter);
+        typed(&mut ed, "world");
+        key(&mut ed, Key::Escape);
+
+        assert!(ed.apply(Command::Undo));
+
+        assert!(ed.document().is_empty());
+        assert!(!ed.can_undo());
+    }
+
+    #[test]
+    fn text_undo_redo_restore_text_exactly() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        key(&mut ed, Key::Escape);
+        click(&mut ed, 105.0, 105.0);
+        key(&mut ed, Key::End);
+        typed(&mut ed, "δ");
+        key(&mut ed, Key::Escape);
+        assert_eq!(texts(&ed), ["abcδ"]);
+
+        // Act / Assert
+        ed.apply(Command::Undo);
+        assert_eq!(texts(&ed), ["abc"]);
+        ed.apply(Command::Undo);
+        assert!(texts(&ed).is_empty());
+        ed.apply(Command::Redo);
+        assert_eq!(texts(&ed), ["abc"]);
+        ed.apply(Command::Redo);
+        assert_eq!(texts(&ed), ["abcδ"]);
+    }
+
+    #[test]
+    fn text_ctrl_z_while_editing_cancels_edit() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        key(&mut ed, Key::Escape);
+        click(&mut ed, 105.0, 105.0);
+        typed(&mut ed, "XYZ");
+
+        // Act
+        assert!(key_with(&mut ed, Key::Z, CTRL));
+
+        // Assert: the old text is back and the next undo removes the block.
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["abc"]);
+        key_with(&mut ed, Key::Z, CTRL);
+        assert!(ed.document().is_empty());
+
+        // A new block vanishes.
+        place(&mut ed, 300.0, 100.0, "q");
+        key_with(&mut ed, Key::Z, CTRL);
+        assert!(ed.document().is_empty());
+        assert!(ed.text_edit().is_none());
+    }
+
+    #[test]
+    fn text_reedit_unchanged_adds_no_history() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        key(&mut ed, Key::Escape);
+        let revision = ed.document_revision();
+
+        click(&mut ed, 105.0, 105.0);
+        key(&mut ed, Key::Escape);
+
+        assert_eq!(ed.document_revision(), revision);
+        ed.apply(Command::Undo);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn text_reedit_to_empty_removes_block_undoably() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        key(&mut ed, Key::Escape);
+
+        click(&mut ed, 105.0, 105.0);
+        key(&mut ed, Key::End);
+        for _ in 0..3 {
+            key(&mut ed, Key::Backspace);
+        }
+        key(&mut ed, Key::Escape);
+
+        assert!(ed.document().is_empty());
+        ed.apply(Command::Undo);
+        assert_eq!(texts(&ed), ["abc"]);
+    }
+
+    #[test]
+    fn text_toolbar_command_commits_edit_first() {
+        let Some(red) = ColorId::new(2) else {
+            panic!("palette has colour 2");
+        };
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+
+        ed.apply(Command::SetColor(red));
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["abc"]);
+
+        // Undo from the toolbar while editing cancels the edit instead.
+        place(&mut ed, 300.0, 100.0, "zz");
+        assert!(ed.apply(Command::Undo));
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["abc"]);
+    }
+
+    #[test]
+    fn text_commit_bumps_document_revision() {
+        // Arrange
+        let mut ed = text_editor();
+        let (revision, base) = (ed.document_revision(), ed.document_base_revision());
+
+        // Act / Assert: typing touches only the overlay.
+        place(&mut ed, 100.0, 100.0, "abc");
+        assert_eq!(ed.document_revision(), revision);
+        key(&mut ed, Key::Escape);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(
+            ed.document_base_revision(),
+            base,
+            "a new block is appended on top"
+        );
+
+        // Re-editing replaces a shape: the base follows.
+        click(&mut ed, 105.0, 105.0);
+        typed(&mut ed, "d");
+        key(&mut ed, Key::Escape);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+    }
+
+    #[test]
+    fn text_click_snaps_origin_to_grid() {
+        let mut ed = text_editor();
+        ed.apply(Command::ToggleGridSnap);
+
+        click(&mut ed, 107.0, 52.0);
+
+        let Some(edit) = ed.text_edit() else {
+            panic!("the click opens a block");
+        };
+        assert!(
+            edit.origin.approx_eq(Vec2::new(100.0, 60.0), 1e-4),
+            "{edit:?}"
+        );
+    }
+
+    #[test]
+    fn text_block_moves_duplicates_and_erases_like_other_shapes() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Select));
+
+        // Act / Assert: move by (40, 30).
+        drag(&mut ed, 105.0, 105.0);
+        let origins = |ed: &Editor| -> Vec<Vec2> {
+            ed.document()
+                .shapes()
+                .filter_map(|(_, s)| match s {
+                    Shape::Text { origin, .. } => Some(*origin),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert!(origins(&ed)[0].approx_eq(Vec2::new(140.0, 130.0), 1e-3));
+
+        // Alt-drag duplicates.
+        ed.handle(InputEvent::PointerDown {
+            pos: Vec2::new(145.0, 135.0),
+            button: PointerButton::Left,
+            mods: Modifiers { alt: true, ..NONE },
+        });
+        ed.handle(InputEvent::PointerUp {
+            pos: Vec2::new(245.0, 135.0),
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        assert_eq!(texts(&ed), ["abc", "abc"]);
+
+        // A right click erases one.
+        down(&mut ed, PointerButton::Right, 145.0, 135.0);
+        up(&mut ed, PointerButton::Right, 145.0, 135.0);
+        assert_eq!(texts(&ed), ["abc"]);
+        assert!(origins(&ed)[0].approx_eq(Vec2::new(240.0, 130.0), 1e-3));
+    }
+
+    #[test]
+    fn text_block_copy_paste_keeps_text() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "a∑b");
+        key(&mut ed, Key::Escape);
+
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+        ed.apply(Command::Paste);
+
+        assert_eq!(texts(&ed), ["a∑b", "a∑b"]);
+    }
+
+    #[test]
+    fn fit_view_includes_text_blocks() {
+        // Arrange: a block far off screen.
+        let mut ed = editor_with(vec![Shape::Text {
+            origin: Vec2::new(5000.0, 4000.0),
+            text: "far".to_owned(),
+            size: 20.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        }]);
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+
+        // Act
+        assert!(ed.apply(Command::FitView));
+
+        // Assert
+        let view = ed.camera().visible_world_rect(ed.viewport());
+        let Some((_, shape)) = ed.document().shapes().next() else {
+            panic!("one shape");
+        };
+        let bounds = shape.bounds();
+        assert!(view.contains(bounds.min) && view.contains(bounds.max));
+    }
+
+    #[test]
+    fn text_bucket_ignores_text_block() {
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Bucket));
+        let revision = ed.document_revision();
+
+        click(&mut ed, 105.0, 105.0);
+
+        assert_eq!(ed.document_revision(), revision);
+        assert_eq!(
+            ed.document().shapes().next().and_then(|(_, s)| s.fill()),
+            None
+        );
+    }
+
+    #[test]
+    fn text_caret_follows_typing() {
+        // Arrange
+        let mut ed = text_editor();
+        click(&mut ed, 100.0, 50.0);
+        let Some([top, bottom]) = ed.text_caret() else {
+            panic!("editing shows a caret");
+        };
+        assert!(top.approx_eq(Vec2::new(100.0, 50.0), 1e-4));
+        assert!(approx_eq(bottom.y - top.y, 18.0 * 1.25, 1e-3));
+
+        // Act
+        typed(&mut ed, "ab");
+
+        // Assert
+        let Some([top, _]) = ed.text_caret() else {
+            panic!("still editing");
+        };
+        assert!(top.approx_eq(Vec2::new(column_x(100.0, 2.0), 50.0), 1e-3));
+    }
+
+    #[test]
+    fn text_caret_none_when_not_editing() {
+        let mut ed = text_editor();
+        assert!(ed.text_caret().is_none());
+
+        place(&mut ed, 100.0, 50.0, "a");
+        key(&mut ed, Key::Escape);
+
+        assert!(ed.text_caret().is_none());
     }
 }
