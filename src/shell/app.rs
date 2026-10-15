@@ -690,6 +690,16 @@ mod tests {
     use proptest::prelude::*;
 
     #[test]
+    fn window_conf_sets_wm_class() {
+        // Arrange / Act
+        let conf = Conf::from(window_conf());
+
+        // Assert
+        assert_eq!(conf.miniquad_conf.platform.linux_wm_class, WM_CLASS);
+        assert_eq!(WM_CLASS, "draw");
+    }
+
+    #[test]
     fn frame_target_params_uses_sample_count() {
         // Arrange / Act
         let params = frame_target_params(4);

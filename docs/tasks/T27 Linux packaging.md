@@ -72,6 +72,7 @@ Acceptance criteria:
   Tests: `preflight::tests::parse_runtime_libs_reads_roles_and_packages`,
   `parse_runtime_libs_rejects_bad_lines`,
   `embedded_runtime_libs_parse`;
+  `packaging::library_bases_finds_packed_strings`,
   `packaging::runtime_libs_names_every_library_the_binary_mentions`,
   `packaging::deb_depends_match_runtime_libs`,
   `packaging::rpm_requires_match_runtime_libs`.
@@ -107,8 +108,11 @@ Acceptance criteria:
   `crash_log_path_without_home_is_none`,
   `format_report_has_message_location_version_and_build_id`,
   `panic_message_reads_str_and_string_payloads`,
-  `build_id_reads_gnu_note`, `build_id_of_garbage_is_none`,
-  `build_id_of_this_test_binary_matches_readelf_format`.
+  `format_report_marks_unknown_fields`,
+  `build_id_reads_gnu_note`, `build_id_of_elf_without_note_is_none`,
+  `build_id_of_garbage_is_none` (synthetic ELF files: the host linker
+  does not always add a build id, so `scripts/package.sh` passes
+  `-Wl,--build-id` and checks it, AC-5).
   The hook itself is checked once by hand (log of the check in *Log*).
 - **AC-5 — Debug symbols.** `scripts/package.sh` builds with the `dist`
   profile (release + debug info, not stripped), writes `draw.debug`
