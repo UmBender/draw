@@ -289,6 +289,7 @@ impl std::error::Error for Problem {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shell::backend::Backend;
     use std::ffi::OsString;
 
     const LIBS: &str = "\
@@ -298,7 +299,10 @@ libXi.so.6           required  libXi           libxi6
 libGL.so.1           gl        libglvnd-glx    libgl1
 libEGL.so.1          gl        libglvnd-egl    libegl1
 
-libwayland-client.so.0 unused  libwayland-client libwayland-client0
+libwayland-client.so.0 wayland libwayland-client libwayland-client0
+libxkbcommon.so.0    wayland   libxkbcommon    libxkbcommon0
+libdecor-0.so.0      optional  libdecor        libdecor-0-0
+libfoo.so.1          unused    foo             libfoo1
 libc.so.6            linked    glibc           libc6
 ";
 
@@ -325,7 +329,7 @@ libc.so.6            linked    glibc           libc6
 
         // Assert
         let libs = libs.unwrap_or_default();
-        assert_eq!(libs.len(), 6);
+        assert_eq!(libs.len(), 9);
         assert_eq!(
             libs[0],
             RuntimeLib {
@@ -336,8 +340,8 @@ libc.so.6            linked    glibc           libc6
             }
         );
         assert_eq!(libs[2].role, Role::Gl);
-        assert_eq!(libs[4].role, Role::Unused);
-        assert_eq!(libs[5].role, Role::Linked);
+        assert_eq!(libs[7].role, Role::Unused);
+        assert_eq!(libs[8].role, Role::Linked);
     }
 
     #[test]
@@ -392,7 +396,7 @@ libc.so.6            linked    glibc           libc6
         };
 
         // Act
-        let result = check(&env, &libs(), all_found);
+        let result = check(&env, Backend::X11, &libs(), all_found);
 
         // Assert
         assert_eq!(result, Err(Problem::NoDisplay));
@@ -408,7 +412,7 @@ libc.so.6            linked    glibc           libc6
         };
 
         // Act
-        let result = check(&env, &libs(), all_found);
+        let result = check(&env, Backend::X11, &libs(), all_found);
 
         // Assert
         assert_eq!(result, Err(Problem::NoXWayland));
@@ -421,7 +425,7 @@ libc.so.6            linked    glibc           libc6
         env.wayland_display = Some(OsString::from("wayland-0"));
 
         // Act
-        let result = check(&env, &libs(), all_found);
+        let result = check(&env, Backend::X11, &libs(), all_found);
 
         // Assert
         assert_eq!(result, Ok(()));
@@ -433,7 +437,7 @@ libc.so.6            linked    glibc           libc6
         let found = |soname: &str| soname != "libXi.so.6";
 
         // Act
-        let result = check(&x11(), &libs(), found);
+        let result = check(&x11(), Backend::X11, &libs(), found);
 
         // Assert
         let Err(Problem::MissingLibs(missing)) = result else {
@@ -453,7 +457,7 @@ libc.so.6            linked    glibc           libc6
         let found = |soname: &str| soname != "libGL.so.1";
 
         // Act
-        let result = check(&x11(), &libs(), found);
+        let result = check(&x11(), Backend::X11, &libs(), found);
 
         // Assert
         assert_eq!(result, Ok(()));
@@ -465,7 +469,7 @@ libc.so.6            linked    glibc           libc6
         let found = |soname: &str| !matches!(soname, "libGL.so.1" | "libEGL.so.1");
 
         // Act
-        let result = check(&x11(), &libs(), found);
+        let result = check(&x11(), Backend::X11, &libs(), found);
 
         // Assert
         let Err(Problem::MissingLibs(missing)) = result else {
@@ -478,10 +482,10 @@ libc.so.6            linked    glibc           libc6
     #[test]
     fn check_unused_libs_are_not_needed() {
         // Arrange
-        let found = |soname: &str| !matches!(soname, "libwayland-client.so.0" | "libc.so.6");
+        let found = |soname: &str| !matches!(soname, "libfoo.so.1" | "libc.so.6");
 
         // Act
-        let result = check(&x11(), &libs(), found);
+        let result = check(&x11(), Backend::X11, &libs(), found);
 
         // Assert
         assert_eq!(result, Ok(()));
@@ -497,7 +501,7 @@ libc.so.6            linked    glibc           libc6
         };
 
         // Act
-        let result = check(&env, &libs(), |_| false);
+        let result = check(&env, Backend::X11, &libs(), |_| false);
 
         // Assert
         assert_eq!(result, Ok(()));
@@ -533,5 +537,162 @@ libc.so.6            linked    glibc           libc6
             assert!(!message.is_empty());
             assert!(!message.contains('\n'), "{message}");
         }
+    }
+
+    fn wayland() -> Environment {
+        Environment {
+            display: None,
+            wayland_display: Some(OsString::from("wayland-0")),
+            skip: None,
+        }
+    }
+
+    #[test]
+    fn parse_runtime_libs_reads_wayland_and_optional_roles() {
+        // Arrange / Act
+        let libs = libs();
+
+        // Assert
+        assert_eq!(libs[4].role, Role::Wayland);
+        assert_eq!(libs[5].role, Role::Wayland);
+        assert_eq!(libs[6].role, Role::Optional);
+    }
+
+    #[test]
+    fn check_wayland_backend_without_display_is_ok() {
+        // Arrange / Act
+        let result = check(&wayland(), Backend::Wayland, &libs(), all_found);
+
+        // Assert
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn check_wayland_backend_ignores_x11_libs() {
+        // Arrange
+        let found = |soname: &str| {
+            !matches!(
+                soname,
+                "libX11.so.6" | "libXi.so.6" | "libGL.so.1" | "libEGL.so.1"
+            )
+        };
+
+        // Act
+        let result = check(&wayland(), Backend::Wayland, &libs(), found);
+
+        // Assert
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn check_wayland_backend_missing_lib_names_its_packages() {
+        // Arrange
+        let mut env = wayland();
+        env.display = Some(OsString::from(":0"));
+        let found = |soname: &str| soname != "libwayland-client.so.0";
+
+        // Act
+        let result = check(&env, Backend::Wayland, &libs(), found);
+
+        // Assert
+        let Err(Problem::MissingLibs(missing)) = result else {
+            panic!("expected missing libraries, got {result:?}");
+        };
+        let names: Vec<&str> = missing.iter().map(|lib| lib.soname.as_str()).collect();
+        assert_eq!(names, ["libwayland-client.so.0"]);
+        let message = Problem::MissingLibs(missing).to_string();
+        assert!(message.contains("libwayland-client.so.0"), "{message}");
+        assert!(message.contains("`libwayland-client`"), "{message}");
+        assert!(message.contains("`libwayland-client0`"), "{message}");
+    }
+
+    #[test]
+    fn check_wayland_backend_without_wayland_session_checks_x11() {
+        // Arrange
+        let found = |soname: &str| soname != "libXi.so.6";
+
+        // Act
+        let on_x11 = check(&x11(), Backend::Wayland, &libs(), found);
+        let nowhere = check(
+            &Environment::default(),
+            Backend::Wayland,
+            &libs(),
+            all_found,
+        );
+
+        // Assert
+        let Err(Problem::MissingLibs(missing)) = on_x11 else {
+            panic!("expected missing libraries, got {on_x11:?}");
+        };
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].soname, "libXi.so.6");
+        assert_eq!(nowhere, Err(Problem::NoDisplay));
+    }
+
+    #[test]
+    fn check_x11_backend_ignores_wayland_libs() {
+        // Arrange
+        let found = |soname: &str| soname != "libwayland-client.so.0";
+
+        // Act
+        let result = check(&x11(), Backend::X11, &libs(), found);
+
+        // Assert
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn check_optional_libs_are_not_needed() {
+        // Arrange
+        let found = |soname: &str| soname != "libdecor-0.so.0";
+
+        // Act
+        let on_x11 = check(&x11(), Backend::X11, &libs(), found);
+        let on_wayland = check(&wayland(), Backend::Wayland, &libs(), found);
+
+        // Assert
+        assert_eq!(on_x11, Ok(()));
+        assert_eq!(on_wayland, Ok(()));
+    }
+
+    #[test]
+    fn embedded_runtime_libs_list_wayland_libs() {
+        // Arrange / Act
+        let libs = parse_runtime_libs(RUNTIME_LIBS).unwrap_or_default();
+        let has = |soname: &str, role: Role| {
+            libs.iter()
+                .any(|lib| lib.soname == soname && lib.role == role)
+        };
+
+        // Assert
+        for soname in [
+            "libwayland-client.so.0",
+            "libwayland-egl.so.1",
+            "libxkbcommon.so.0",
+            "libEGL.so.1",
+        ] {
+            assert!(has(soname, Role::Wayland), "{soname}");
+        }
+        assert!(has("libdecor-0.so.0", Role::Optional));
+        assert!(has("libxkbcommon.so.0", Role::Required));
+        assert!(has("libEGL.so.1", Role::Gl));
+        assert!(!libs.iter().any(|lib| lib.role == Role::Unused));
+    }
+
+    #[test]
+    fn flatpak_manifest_allows_wayland_and_x11() {
+        // Arrange
+        let manifest = include_str!("../../packaging/flatpak/io.github.UmBender.draw.yml");
+
+        // Act
+        let args: Vec<&str> = manifest
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("- --socket="))
+            .collect();
+
+        // Assert
+        assert!(args.contains(&"wayland"), "{args:?}");
+        assert!(args.contains(&"x11"), "{args:?}");
+        assert!(!args.contains(&"fallback-x11"), "{args:?}");
     }
 }

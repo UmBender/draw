@@ -705,6 +705,45 @@ mod tests {
     }
 
     #[test]
+    fn window_settings_x11_is_x11_only_with_blocking_loop() {
+        // Arrange
+        let settings = WindowSettings {
+            backend: Backend::X11,
+            ..window_conf()
+        };
+
+        // Act
+        let platform = Conf::from(settings).miniquad_conf.platform;
+
+        // Assert
+        assert_eq!(platform.linux_backend, LinuxBackend::X11Only);
+        assert!(platform.blocking_event_loop);
+        assert_eq!(platform.linux_wm_class, WM_CLASS);
+    }
+
+    #[test]
+    fn window_settings_wayland_keeps_blocking_loop() {
+        // Arrange
+        let settings = WindowSettings {
+            backend: Backend::Wayland,
+            ..window_conf()
+        };
+
+        // Act
+        let conf = Conf::from(settings);
+
+        // Assert
+        let platform = &conf.miniquad_conf.platform;
+        assert_eq!(platform.linux_backend, LinuxBackend::WaylandWithX11Fallback);
+        assert!(platform.blocking_event_loop);
+        assert_eq!(platform.linux_wm_class, WM_CLASS);
+        assert!(
+            conf.update_on
+                .is_some_and(|on| on.mouse_motion && on.key_down)
+        );
+    }
+
+    #[test]
     fn frame_target_params_uses_sample_count() {
         // Arrange / Act
         let params = frame_target_params(4);
