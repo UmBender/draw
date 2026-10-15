@@ -1,7 +1,7 @@
 ---
 id: T32
 title: Fast text rendering
-status: review
+status: done
 wave: 16
 branch: task/T32-fast-text
 depends_on: [T29]
@@ -224,3 +224,7 @@ Step 32 — requires step 24 (layered redraw and batched meshes) and step
 - 2026-10-15 — Quality: clippy (doc backticks, hex grouping, `must_use`).
   `scripts/check.sh` green (743 lib tests). Docs: tutorial 32, *How it
   works* in [[Text blocks]], architecture module map and data flow.
+- 2026-10-15 — Integrated into `main` (`--no-ff`). The proptest
+  regression seeds recorded while the models step's bodies were
+  `todo!()` (`proptest-regressions/shell/glyphs.txt`) were dropped: they
+  were not real failures.
