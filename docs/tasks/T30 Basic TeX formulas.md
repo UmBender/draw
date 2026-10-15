@@ -2,9 +2,9 @@
 id: T30
 title: Basic TeX formulas
 status: todo
-wave: 16
+wave: 17
 branch: task/T30-tex
-depends_on: [T29]
+depends_on: [T29, T32]
 adrs: []
 feature: "[[TeX formulas]]"
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
@@ -103,3 +103,7 @@ Step 30 — requires step 29 (text blocks).
 
 - 2026-10-14 — Created from the owner's proposal; depends on the text
   blocks and font of T29.
+- 2026-10-14 — Now depends on [[T32 Fast text rendering]] (wave 17):
+  T29's per-character text drawing missed the full re-render budget, and
+  formulas should use T32's batched glyph path; both tasks own
+  `src/shell/render.rs` and `tests/perf.rs`.

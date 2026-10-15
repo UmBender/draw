@@ -1,8 +1,8 @@
 ---
 id: T31
 title: Text in rectangles and grid cells
-status: todo
-wave: 17
+status: ready
+wave: 18
 branch: task/T31-shape-text
 depends_on: [T29]
 adrs: []

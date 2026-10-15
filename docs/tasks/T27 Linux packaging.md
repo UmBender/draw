@@ -2,7 +2,7 @@
 id: T27
 title: Linux packaging
 status: ready
-wave: 18
+wave: 19
 branch: task/T27-packaging
 depends_on: [T14]
 adrs: []

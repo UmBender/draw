@@ -60,7 +60,9 @@ flowchart TD
   T14 --> T27[T27 Linux packaging]
   T27 --> T28[T28 Experimental native Wayland backend]
   T14 --> T29[T29 Text blocks]
-  T29 --> T30[T30 Basic TeX formulas]
+  T29 --> T32[T32 Fast text rendering]
+  T32 --> T30[T30 Basic TeX formulas]
+  T29 --> T30
   T29 --> T31[T31 Text in rectangles and grid cells]
 ```
 
@@ -84,10 +86,11 @@ flowchart TD
 | 13 | [[T24 Smooth redraws with large documents]] · [[T25 Linear-time selection with large documents]] |
 | 14 | [[T26 Pan and zoom without re-rendering]] |
 | 15 | [[T29 Text blocks]] |
-| 16 | [[T30 Basic TeX formulas]] |
-| 17 | [[T31 Text in rectangles and grid cells]] |
-| 18 | [[T27 Linux packaging]] |
-| 19 | [[T28 Experimental native Wayland backend]] |
+| 16 | [[T32 Fast text rendering]] |
+| 17 | [[T30 Basic TeX formulas]] |
+| 18 | [[T31 Text in rectangles and grid cells]] |
+| 19 | [[T27 Linux packaging]] |
+| 20 | [[T28 Experimental native Wayland backend]] |
 
 ## Status
 
@@ -121,7 +124,8 @@ flowchart TD
 | [[T25 Linear-time selection with large documents]] | done | T14 | `task/T25-fast-lookup` |
 | [[T26 Pan and zoom without re-rendering]] | done | T24 | `task/T26-gesture-redraw` |
 | [[T29 Text blocks]] | done | T14 | `task/T29-text` |
-| [[T30 Basic TeX formulas]] | ready | T29 | `task/T30-tex` |
+| [[T32 Fast text rendering]] | ready | T29 | `task/T32-fast-text` |
+| [[T30 Basic TeX formulas]] | todo | T29, T32 | `task/T30-tex` |
 | [[T31 Text in rectangles and grid cells]] | ready | T29 | `task/T31-shape-text` |
 | [[T27 Linux packaging]] | ready | T14 | `task/T27-packaging` |
 | [[T28 Experimental native Wayland backend]] | todo | T27 | `task/T28-wayland` |
