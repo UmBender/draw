@@ -1,7 +1,7 @@
 ---
 id: T32
 title: Fast text rendering
-status: in-progress
+status: review
 wave: 16
 branch: task/T32-fast-text
 depends_on: [T29]
@@ -142,12 +142,12 @@ context needed) and `tests/perf.rs`.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T32): …`
-- [ ] tests — `test(T32): …`
-- [ ] models — `feat(T32): …`
-- [ ] behaviour — `feat(T32): …`
-- [ ] quality — `chore(T32): …`
-- [ ] docs — `docs(T32): …`
+- [x] spec — `docs(T32): …`
+- [x] tests — `test(T32): …`
+- [x] models — `feat(T32): …`
+- [x] behaviour — `feat(T32): …`
+- [x] quality — `chore(T32): …`
+- [x] docs — `docs(T32): …`
 
 ## Learning path
 
@@ -179,3 +179,48 @@ Step 32 — requires step 24 (layered redraw and batched meshes) and step
   are within 16 ms but text is ~70 % of them (≈ 0.8 µs per character).
   Before images for AC-5 captured with the same harness.
 - 2026-10-14 — Spec: ADR-T32-1, ADR-T32-2; ACs name their tests.
+- 2026-10-14 — Tests (red, did not compile), models (`todo!()` bodies,
+  direct `fontdue = "0.9"`: `Cargo.lock` only gains the `draw → fontdue`
+  edge, still 0.9.4), behaviour (all green).
+- 2026-10-15 — After numbers, same harness, scene and machine (944×1024,
+  three runs):
+
+  | zoom (raster) | first render at the size | steady median | text in steady |
+  |---|---|---|---|
+  | 0.3 (12 px) | 10.1–12.1 ms | 5.2–5.8 ms | 2.3–2.8 ms |
+  | 0.5 (12 px, cached) | 3.8–10.4 ms | 5.5–6.1 ms | 2.4–2.8 ms |
+  | 1 (20 px) | 6.8–10.1 ms | 5.9–7.1 ms | 2.4–3.2 ms |
+  | 2 (40 px) | 3.3–7.6 ms | 4.2–5.7 ms | 1.9–2.6 ms |
+
+  Every full re-render is under the 16 ms of ADR-T24-5, including the
+  first at a new size (was 80–160 ms). The steady median is now also
+  under `REUSE_ABOVE` (8 ms), so pan and zoom re-render instead of
+  blitting the old layer, as ADR-T26-3 intends; slowest steady frames
+  were 15–20 ms. Typing into a block with 512 on the canvas: overlay
+  frames 0.06–0.33 ms median (text 8–13 µs). The first overlay frame
+  after start-up took 51–66 ms: 13 µs of it text, the rest the toolbar's
+  first draw through macroquad's own font cache (toolbar is out of
+  scope). `perf_tessellate_10k_glyphs_is_under_1ms`: 0.36–0.52 ms median
+  with the `KeyHasher` (0.75–1.15 ms with std's `SipHash`, hence the
+  hasher). Release binary 1 172 536 bytes (was 1 167 032).
+- 2026-10-15 — Extra commit `perf(T32): open the first glyph atlas page
+  at start-up`: creating the first 4 MiB page texture took ~25 ms inside
+  the first frame with text; it now happens before the first frame. One
+  more commit than the six steps.
+- 2026-10-15 — AC-5 same look: the harness renders a scene (Latin
+  `Hello, world! 0123456789 (x+y)/2`, Greek `αβγδ λμπ σφω ΓΔΛΣΩ`, math
+  `∑ ≤ ≥ ≠ ≈ ≡ → ⇒ ∞ ⌊n/2⌋ ⌈x⌉ ± × ÷ ∈ ∪ ∩`, three numbered rectangles,
+  a 4×4 grid with indices) into the document layer, before and after,
+  and compares the PNGs pixel by pixel: 0.05× and 1× identical; 20×
+  (two views on the text) 6 and 45 pixels differ by at most 6/255. Not a
+  manual side-by-side but a stricter check; the screenshots were not
+  committed (`assets/` is not owned).
+- 2026-10-15 — Perf check: `perf_delete_5k_of_10k`,
+  `perf_move_commit_5k_of_10k` and `perf_undo_delete_5k_of_10k` hover
+  around their 1 ms budget on the target: 0.66–1.77 ms on this branch
+  and 0.30–1.20 ms on `main` over runs, `main`'s slowest run right after
+  the branch's. They time `core` code this task does not touch, so this
+  is load noise on this machine, not a T32 regression. The T29 perf tests and the rest pass.
+- 2026-10-15 — Quality: clippy (doc backticks, hex grouping, `must_use`).
+  `scripts/check.sh` green (743 lib tests). Docs: tutorial 32, *How it
+  works* in [[Text blocks]], architecture module map and data flow.
