@@ -256,6 +256,14 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   window opens and renders (still running when `timeout` stopped it
   after 8 s); `install.sh --uninstall` leaves no file behind. The 2.28
   floor itself is covered by `check_glibc_floor` at build time.
-- 2026-10-15 — Still for the owner: launcher and icon after installing
-  the `.rpm` (AC-6, AC-8) and the Flatpak bundle (AC-9:
+- 2026-10-15 — `.rpm` checked in `fedora:44` (glibc 2.43) and
+  `almalinux:8` (glibc 2.28, the floor itself) containers (AC-2, AC-8):
+  `dnf install ./draw-*.rpm` pulls in `libX11 libXi libxkbcommon
+  libglvnd-glx libglvnd-egl` and installs 12 files; run as the host uid
+  through the host's Xwayland socket the window opens and renders (still
+  running when `timeout` stopped it after 8 s); `dnf remove draw`
+  removes the binary and desktop entry.
+- 2026-10-15 — Owner installed the `.rpm` on the target (AC-6): draw
+  shows in the launcher with its icon.
+- 2026-10-15 — Still for the owner: the Flatpak bundle (AC-9:
   `flatpak-builder` is not installed here, so it was not built).
