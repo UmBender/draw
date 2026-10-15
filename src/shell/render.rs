@@ -721,6 +721,43 @@ pub fn push_text_block<S: MeshSink>(
     }
 }
 
+/// Colour of literal source in a formula drawn in `color`: palette red,
+/// or palette yellow when `color` is already that red (ADR-T30-1).
+#[must_use]
+pub fn warn_color(color: Color) -> Color {
+    todo!("{color:?}")
+}
+
+/// Puts every glyph of a text block drawn as typed (formulas as source)
+/// into `atlas`.
+pub fn prepare_text_source(
+    atlas: &mut GlyphAtlas,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+) {
+    let _ = (atlas, text, size, camera, dpi);
+    todo!()
+}
+
+/// Adds the glyphs of a text block as typed, formulas as source, each at
+/// its cell (ADR-T29-1): how the open block is drawn.
+#[allow(clippy::too_many_arguments)]
+pub fn push_text_source<S: MeshSink>(
+    batch: &mut Batch<S>,
+    atlas: &GlyphAtlas,
+    origin: Vec2,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+    color: Color,
+) {
+    let _ = (batch, atlas, origin, text, size, camera, dpi, color);
+    todo!()
+}
+
 /// Puts every glyph of a label of `size` logical pixels at `dpi` into
 /// `atlas`.
 pub fn prepare_text_centered(atlas: &mut GlyphAtlas, text: &str, size: f32, dpi: f32) {

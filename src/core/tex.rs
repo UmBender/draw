@@ -1,3 +1,411 @@
+//! A small TeX subset inside text blocks (ADR-T30-1).
+//!
+//! [`parse`] splits the text of a block into plain text and `$…$`
+//! formulas and parses each formula into a lossless tree of [`Node`]s:
+//! [`print`] gives the source back. [`layout`] typesets the tree into
+//! positioned glyphs and rules ([`Ink`]) with TeX's box model, reduced:
+//! every box has a width, an ascent and a descent, in em of the block's
+//! font size, y down. Both are total: anything outside the subset is a
+//! [`Node::Literal`], drawn as its source with the warning flag.
+
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::text_layout::{ADVANCE, BASELINE, LINE_HEIGHT};
+
+/// Ascent of a glyph box per unit of scale: the font's cap height 0.735
+/// with its overshoot.
+pub const GLYPH_ASCENT: f32 = 0.75;
+
+/// Descent of a glyph box per unit of scale: the font's descender.
+pub const GLYPH_DESCENT: f32 = 0.22;
+
+/// Ascent of brackets, bars and big operators per unit of scale.
+pub const TALL_ASCENT: f32 = 0.85;
+
+/// Descent of brackets, bars and big operators per unit of scale.
+pub const TALL_DESCENT: f32 = 0.17;
+
+/// Height of the math axis (the middle of `−`) above the baseline.
+pub const AXIS: f32 = 0.34;
+
+/// Thickness of fraction bars and root signs (that of `−`).
+pub const RULE: f32 = 0.07;
+
+/// Scale of scripts, limits and fraction parts relative to their parent.
+pub const SCRIPT_SCALE: f32 = 0.7;
+
+/// Smallest scale of nested scripts.
+pub const MIN_SCALE: f32 = 0.5;
+
+/// Smallest rise of a superscript's baseline.
+pub const SUP_SHIFT: f32 = 0.4;
+
+/// A superscript's baseline sits this far below the top of its base.
+pub const SUP_DROP: f32 = 0.35;
+
+/// Smallest drop of a subscript's baseline.
+pub const SUB_SHIFT: f32 = 0.2;
+
+/// A subscript's baseline sits this far above the bottom of its base.
+pub const SUB_DROP: f32 = 0.05;
+
+/// Smallest gap between a superscript and a subscript on one base.
+pub const SCRIPT_GAP: f32 = 0.1;
+
+/// Gap between a big operator and its limits.
+pub const LIMIT_GAP: f32 = 0.1;
+
+/// Scale of the big operators `∑` and `∏`.
+pub const BIG_OP_SCALE: f32 = 1.3;
+
+/// Gap between a fraction bar and its numerator or denominator.
+pub const FRAC_GAP: f32 = 0.08;
+
+/// Space left and right of a fraction's parts.
+pub const FRAC_PAD: f32 = 0.1;
+
+/// Gap between a root's content and its overbar.
+pub const SQRT_GAP: f32 = 0.1;
+
+/// Width of the root sign before the content.
+pub const SQRT_SIGN: f32 = 0.55;
+
+/// Largest scale of a binomial's parentheses.
+pub const BINOM_MAX_SCALE: f32 = 3.0;
+
+/// Space on each side of a relation.
+pub const REL_SPACE: f32 = 0.15;
+
+/// Space on each side of a binary operator.
+pub const BIN_SPACE: f32 = 0.1;
+
+/// Space after a function or big operator before an ordinary atom.
+pub const OP_SPACE: f32 = 0.1;
+
+/// Room kept above and below a formula in its line.
+pub const MATH_PAD: f32 = 0.03;
+
+/// The math minus a `-` is drawn as.
+pub const MINUS: char = '\u{2212}';
+
+/// Deepest brace nesting parsed as groups; deeper braces are literal, so
+/// parsing and layout never recurse without bound.
+pub const MAX_DEPTH: usize = 32;
+
+/// A run of a block's text.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Segment {
+    /// Plain text, drawn as typed (may contain line breaks).
+    Text(String),
+    /// `\$` outside a formula: a literal dollar sign.
+    Dollar,
+    /// A `$…$` formula, without its dollars.
+    Math(Vec<Node>),
+}
+
+/// One node of a formula; every node keeps its source (ADR-T30-1).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Node {
+    /// Whitespace, ignored by the layout.
+    Space(String),
+    /// A character typed as is: letter, digit, operator, bracket.
+    Char(char),
+    /// A command of the symbol table, by name without the backslash.
+    Symbol(String),
+    /// A balanced `{…}` group.
+    Group(Vec<Node>),
+    /// Scripts on a base: one `^` and one `_` at most, in source order.
+    Scripts {
+        /// The atom before the first script; `None` when there is none
+        /// right before it.
+        base: Option<Box<Node>>,
+        /// The first script.
+        first: Script,
+        /// The second script, of the other kind.
+        second: Option<Script>,
+    },
+    /// `\frac`, `\binom`, `\sqrt` or `\pmod` with all its arguments.
+    Command {
+        /// Name without the backslash.
+        name: String,
+        /// The arguments, as many as the command takes.
+        args: Vec<Arg>,
+    },
+    /// `\text{…}`: a raw body drawn as typed.
+    Text {
+        /// Whitespace between `\text` and `{`.
+        lead: String,
+        /// The body between the braces (balanced braces allowed).
+        body: String,
+    },
+    /// Source outside the subset, drawn as typed in the warning colour.
+    Literal(String),
+}
+
+/// A superscript or subscript.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Script {
+    /// `^` or `_`.
+    pub kind: ScriptKind,
+    /// What follows it.
+    pub arg: Arg,
+}
+
+/// The kind of a script.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScriptKind {
+    /// `^`.
+    Sup,
+    /// `_`.
+    Sub,
+}
+
+/// The argument of a script or command.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Arg {
+    /// Whitespace skipped before the argument.
+    pub lead: String,
+    /// Whether it is a `{group}`; otherwise `nodes` is one token.
+    pub braced: bool,
+    /// The argument's nodes.
+    pub nodes: Vec<Node>,
+}
+
+/// TeX atom class, which sets the space between neighbours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Class {
+    /// Ordinary: letters, digits, Greek, `∞`.
+    Ord,
+    /// A function name in upright type: `log`.
+    Op,
+    /// A word with limits: `min`, `max`, `lim`.
+    Limits,
+    /// A big operator with limits, drawn enlarged: `∑`, `∏`.
+    BigOp,
+    /// A binary operator: `+`, `×`.
+    Bin,
+    /// A relation: `=`, `≤`.
+    Rel,
+    /// An opening bracket.
+    Open,
+    /// A closing bracket.
+    Close,
+    /// Punctuation: `,`, `;`.
+    Punct,
+}
+
+/// One command of the symbol table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SymbolDef {
+    /// Command name without the backslash.
+    pub name: &'static str,
+    /// What it draws: one character or an upright word.
+    pub text: &'static str,
+    /// Its atom class.
+    pub class: Class,
+}
+
+/// Shorthand for a table row.
+const fn def(name: &'static str, text: &'static str, class: Class) -> SymbolDef {
+    SymbolDef { name, text, class }
+}
+
+/// Every symbol command of the subset (ADR-T30-1).
+pub const SYMBOLS: &[SymbolDef] = &[
+    def("alpha", "α", Class::Ord),
+    def("beta", "β", Class::Ord),
+    def("gamma", "γ", Class::Ord),
+    def("delta", "δ", Class::Ord),
+    def("epsilon", "ϵ", Class::Ord),
+    def("varepsilon", "ε", Class::Ord),
+    def("zeta", "ζ", Class::Ord),
+    def("eta", "η", Class::Ord),
+    def("theta", "θ", Class::Ord),
+    def("vartheta", "ϑ", Class::Ord),
+    def("iota", "ι", Class::Ord),
+    def("kappa", "κ", Class::Ord),
+    def("lambda", "λ", Class::Ord),
+    def("mu", "μ", Class::Ord),
+    def("nu", "ν", Class::Ord),
+    def("xi", "ξ", Class::Ord),
+    def("omicron", "ο", Class::Ord),
+    def("pi", "π", Class::Ord),
+    def("varpi", "ϖ", Class::Ord),
+    def("rho", "ρ", Class::Ord),
+    def("varrho", "ϱ", Class::Ord),
+    def("sigma", "σ", Class::Ord),
+    def("varsigma", "ς", Class::Ord),
+    def("tau", "τ", Class::Ord),
+    def("upsilon", "υ", Class::Ord),
+    def("phi", "ϕ", Class::Ord),
+    def("varphi", "φ", Class::Ord),
+    def("chi", "χ", Class::Ord),
+    def("psi", "ψ", Class::Ord),
+    def("omega", "ω", Class::Ord),
+    def("Gamma", "Γ", Class::Ord),
+    def("Delta", "Δ", Class::Ord),
+    def("Theta", "Θ", Class::Ord),
+    def("Lambda", "Λ", Class::Ord),
+    def("Xi", "Ξ", Class::Ord),
+    def("Pi", "Π", Class::Ord),
+    def("Sigma", "Σ", Class::Ord),
+    def("Upsilon", "Υ", Class::Ord),
+    def("Phi", "Φ", Class::Ord),
+    def("Psi", "Ψ", Class::Ord),
+    def("Omega", "Ω", Class::Ord),
+    def("le", "≤", Class::Rel),
+    def("leq", "≤", Class::Rel),
+    def("ge", "≥", Class::Rel),
+    def("geq", "≥", Class::Rel),
+    def("ne", "≠", Class::Rel),
+    def("neq", "≠", Class::Rel),
+    def("approx", "≈", Class::Rel),
+    def("equiv", "≡", Class::Rel),
+    def("to", "→", Class::Rel),
+    def("leftarrow", "←", Class::Rel),
+    def("Rightarrow", "⇒", Class::Rel),
+    def("iff", "⇔", Class::Rel),
+    def("in", "∈", Class::Rel),
+    def("notin", "∉", Class::Rel),
+    def("subset", "⊂", Class::Rel),
+    def("cdot", "·", Class::Bin),
+    def("times", "×", Class::Bin),
+    def("div", "÷", Class::Bin),
+    def("pm", "±", Class::Bin),
+    def("cup", "∪", Class::Bin),
+    def("cap", "∩", Class::Bin),
+    def("land", "∧", Class::Bin),
+    def("lor", "∨", Class::Bin),
+    def("oplus", "⊕", Class::Bin),
+    def("bmod", "mod", Class::Bin),
+    def("neg", "¬", Class::Ord),
+    def("infty", "∞", Class::Ord),
+    def("ldots", "…", Class::Ord),
+    def("cdots", "⋯", Class::Ord),
+    def("lfloor", "⌊", Class::Open),
+    def("rfloor", "⌋", Class::Close),
+    def("lceil", "⌈", Class::Open),
+    def("rceil", "⌉", Class::Close),
+    def("{", "{", Class::Open),
+    def("}", "}", Class::Close),
+    def("$", "$", Class::Ord),
+    def("sum", "∑", Class::BigOp),
+    def("prod", "∏", Class::BigOp),
+    def("min", "min", Class::Limits),
+    def("max", "max", Class::Limits),
+    def("lim", "lim", Class::Limits),
+    def("log", "log", Class::Op),
+    def("ln", "ln", Class::Op),
+    def("gcd", "gcd", Class::Op),
+    def("lcm", "lcm", Class::Op),
+];
+
+/// The table entry of command `name` (without the backslash).
+#[must_use]
+pub fn symbol(name: &str) -> Option<&'static SymbolDef> {
+    SYMBOLS.iter().find(|s| s.name == name)
+}
+
+/// Something to draw, in em from its box's origin, y down.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Ink {
+    /// A glyph of the embedded font.
+    Glyph {
+        /// The character.
+        ch: char,
+        /// Left end of its baseline.
+        pos: Vec2,
+        /// Its size relative to the block's font size.
+        scale: f32,
+        /// Drawn in the warning colour: source outside the subset.
+        warn: bool,
+    },
+    /// A straight stroke: fraction bar or part of a root sign.
+    Rule {
+        /// One end.
+        a: Vec2,
+        /// The other end.
+        b: Vec2,
+        /// Stroke width.
+        width: f32,
+    },
+}
+
+impl Ink {
+    /// The box the ink covers: a glyph's cell (its advance by its ascent
+    /// and descent), a rule's segment grown by half its width.
+    #[must_use]
+    pub fn bounds(&self) -> Aabb {
+        todo!()
+    }
+}
+
+/// A laid-out formula: its ink around a baseline that starts at the
+/// origin.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MathBox {
+    /// Advance width.
+    pub width: f32,
+    /// Height above the baseline.
+    pub ascent: f32,
+    /// Depth below the baseline.
+    pub descent: f32,
+    /// What to draw, relative to the left end of the baseline.
+    pub ink: Vec<Ink>,
+}
+
+/// A laid-out block: its ink relative to its top-left corner.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Layout {
+    /// Width of the widest line.
+    pub width: f32,
+    /// Sum of the line heights (at least one line).
+    pub height: f32,
+    /// What to draw.
+    pub ink: Vec<Ink>,
+}
+
+impl Layout {
+    /// `(0, 0)` to `(width, height)`.
+    #[must_use]
+    pub fn bounds(&self) -> Aabb {
+        Aabb::from_corners(Vec2::ZERO, Vec2::new(self.width, self.height))
+    }
+}
+
+/// Ascent and descent of glyph `ch` per unit of scale.
+#[must_use]
+pub fn glyph_extent(ch: char) -> (f32, f32) {
+    todo!("{ch}")
+}
+
+/// Splits a block's text into plain text, `\$` and formulas, and parses
+/// every formula. Total: every string parses.
+#[must_use]
+pub fn parse(text: &str) -> Vec<Segment> {
+    todo!("{text}")
+}
+
+/// The source of `segments`: `print(&parse(s)) == s` for every `s`.
+#[must_use]
+pub fn print(segments: &[Segment]) -> String {
+    todo!("{segments:?}")
+}
+
+/// Lays out the nodes of one formula at `scale` (1 for the block's font
+/// size).
+#[must_use]
+pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
+    todo!("{nodes:?} {scale}")
+}
+
+/// Lays out a parsed block: lines split on `\n`, plain characters in
+/// their monospaced cells, formulas typeset; a line grows to fit its
+/// formulas.
+#[must_use]
+pub fn layout(segments: &[Segment]) -> Layout {
+    todo!("{segments:?}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

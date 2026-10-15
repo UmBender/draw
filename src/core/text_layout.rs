@@ -7,7 +7,10 @@
 //! 0, so every function is total. Carets are byte indices into the text;
 //! every caret returned lies on a `char` boundary.
 
+use std::rc::Rc;
+
 use crate::core::geom::{Aabb, Vec2};
+use crate::core::tex::Layout;
 
 /// Width of one cell, per unit of font size: every glyph of the embedded
 /// font is 600/1000 em wide.
@@ -50,6 +53,20 @@ pub fn extent(text: &str) -> (usize, usize) {
 pub fn bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
     let (cols, rows) = extent(text);
     Aabb::from_corners(origin, origin + cell(size, cols, rows))
+}
+
+/// The cell box of a block as typed, formulas included as source: what
+/// the edit session shows (ADR-T30-1).
+#[must_use]
+pub fn source_bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
+    todo!("{origin:?} {text} {size}")
+}
+
+/// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
+/// once per distinct text and then shared.
+#[must_use]
+pub fn typeset(text: &str) -> Rc<Layout> {
+    todo!("{text}")
 }
 
 /// The `(line, column)` of `caret`, counted in `char`s. A caret inside a
