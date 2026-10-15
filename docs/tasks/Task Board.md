@@ -64,6 +64,7 @@ flowchart TD
   T32 --> T30[T30 Basic TeX formulas]
   T29 --> T30
   T29 --> T31[T31 Text in rectangles and grid cells]
+  T30 --> T33[T33 Math font for formulas]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -88,9 +89,10 @@ flowchart TD
 | 15 | [[T29 Text blocks]] |
 | 16 | [[T32 Fast text rendering]] |
 | 17 | [[T30 Basic TeX formulas]] |
-| 18 | [[T31 Text in rectangles and grid cells]] |
-| 19 | [[T27 Linux packaging]] |
-| 20 | [[T28 Experimental native Wayland backend]] |
+| 18 | [[T33 Math font for formulas]] |
+| 19 | [[T31 Text in rectangles and grid cells]] |
+| 20 | [[T27 Linux packaging]] |
+| 21 | [[T28 Experimental native Wayland backend]] |
 
 ## Status
 
@@ -126,6 +128,7 @@ flowchart TD
 | [[T29 Text blocks]] | done | T14 | `task/T29-text` |
 | [[T32 Fast text rendering]] | done | T29 | `task/T32-fast-text` |
 | [[T30 Basic TeX formulas]] | done | T29, T32 | `task/T30-tex` |
+| [[T33 Math font for formulas]] | ready | T30 | `task/T33-math-font` |
 | [[T31 Text in rectangles and grid cells]] | ready | T29 | `task/T31-shape-text` |
 | [[T27 Linux packaging]] | ready | T14 | `task/T27-packaging` |
 | [[T28 Experimental native Wayland backend]] | todo | T27 | `task/T28-wayland` |
