@@ -1226,8 +1226,8 @@ mod tests {
     use super::*;
     use crate::core::camera::Camera;
     use crate::core::geom::{Aabb, Vec2, approx_eq};
-    use crate::core::palette::{ColorId, Rgba, palette};
     use crate::core::math_metrics;
+    use crate::core::palette::{ColorId, Rgba, palette};
     use crate::core::tex::{Face, MINUS, SYMBOLS, calligraphic, italic};
     use proptest::prelude::*;
 

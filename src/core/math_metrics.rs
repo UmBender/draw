@@ -23,7 +23,14 @@ pub struct GlyphMetrics {
 }
 
 /// Shorthand for a table row.
-const fn m(advance: f32, x_min: f32, x_max: f32, y_min: f32, y_max: f32, italic: f32) -> GlyphMetrics {
+const fn m(
+    advance: f32,
+    x_min: f32,
+    x_max: f32,
+    y_min: f32,
+    y_max: f32,
+    italic: f32,
+) -> GlyphMetrics {
     GlyphMetrics {
         advance,
         x_min,
@@ -45,6 +52,8 @@ pub fn get(ch: char) -> Option<GlyphMetrics> {
 }
 
 /// Every glyph of the math font, sorted by character.
+// Font data, not approximations of constants such as π/6.
+#[allow(clippy::approx_constant)]
 #[rustfmt::skip]
 pub const TABLE: &[(char, GlyphMetrics)] = &[
     // BEGIN GENERATED

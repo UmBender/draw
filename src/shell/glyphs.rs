@@ -926,7 +926,11 @@ mod tests {
         assert!(approx_eq(text.advance, 0.6 * 40.0, 0.5), "{text:?}");
         let lm = math_metrics::get('a').map_or(0.0, |m| m.advance);
         assert!(approx_eq(math.advance, lm * 40.0, 0.5), "{math:?}");
-        assert_eq!(atlas.get('a', 40), Some(text), "the text face is the default");
+        assert_eq!(
+            atlas.get('a', 40),
+            Some(text),
+            "the text face is the default"
+        );
         assert_eq!(atlas.get_in(Face::Math, 'a', 40), Some(math));
         assert_eq!(atlas.take_rasterized(), 2);
         assert!(atlas.with_math(b"not a font").is_err());

@@ -1088,8 +1088,7 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
 fn spacing(a: Class, b: Class, scale: f32) -> f32 {
     let op = |c| matches!(c, Class::Op | Class::Limits | Class::BigOp);
     // TeX's thin space around operators, in scripts too.
-    if (op(a) && (b == Class::Ord || op(b))) || (op(b) && matches!(a, Class::Ord | Class::Close))
-    {
+    if (op(a) && (b == Class::Ord || op(b))) || (op(b) && matches!(a, Class::Ord | Class::Close)) {
         return OP_SPACE * scale;
     }
     // Punctuation, relation and operator space only at the block's own
@@ -2101,7 +2100,10 @@ mod tests {
         let centre = sum.x + adv("∑") * big / 2.0;
         let (n, ns) = glyph(&b.ink, N);
         let (k, ks) = glyph(&b.ink, K);
-        assert!(approx_eq(n.x + mm(N).advance * ns / 2.0, centre, EPS), "{n:?} {centre}");
+        assert!(
+            approx_eq(n.x + mm(N).advance * ns / 2.0, centre, EPS),
+            "{n:?} {centre}"
+        );
         // "k=1" at script scale, without relation space.
         let below = (mm(K).advance + adv("=1")) * ks;
         assert!(approx_eq(k.x + below / 2.0, centre, EPS), "{k:?} {centre}");
@@ -2112,7 +2114,10 @@ mod tests {
         // Words with limits too, in upright type.
         let m = boxed("\\min_k");
         let (k, ks) = glyph(&m.ink, K);
-        assert!(approx_eq(k.x + mm(K).advance * ks / 2.0, adv("min") / 2.0, EPS), "{k:?}");
+        assert!(
+            approx_eq(k.x + mm(K).advance * ks / 2.0, adv("min") / 2.0, EPS),
+            "{k:?}"
+        );
         assert!(k.y > -mm('n').y_min);
     }
 
@@ -2121,17 +2126,33 @@ mod tests {
         let width = |src| boxed(src).width;
         let ab = mm(A).advance + mm(B).advance;
 
-        assert!(approx_eq(width("a=b"), ab + adv("=") + 2.0 * REL_SPACE, EPS));
-        assert!(approx_eq(width("a+b"), ab + adv("+") + 2.0 * BIN_SPACE, EPS));
+        assert!(approx_eq(
+            width("a=b"),
+            ab + adv("=") + 2.0 * REL_SPACE,
+            EPS
+        ));
+        assert!(approx_eq(
+            width("a+b"),
+            ab + adv("+") + 2.0 * BIN_SPACE,
+            EPS
+        ));
         // A leading minus is unary; spaces in the source are ignored.
         assert!(approx_eq(width("-a"), adv("\u{2212}") + mm(A).advance, EPS));
-        assert!(approx_eq(width("a + b"), ab + adv("+") + 2.0 * BIN_SPACE, EPS));
+        assert!(approx_eq(
+            width("a + b"),
+            ab + adv("+") + 2.0 * BIN_SPACE,
+            EPS
+        ));
         // A function before an ordinary atom, not before a bracket.
         let n = mm(N).advance;
         assert!(approx_eq(width("\\log n"), adv("log") + OP_SPACE + n, EPS));
         assert!(approx_eq(width("\\log(n)"), adv("log()") + n, EPS));
         // Before an operator after an atom, and after punctuation.
-        assert!(approx_eq(width("n\\log n"), n + adv("log") + 2.0 * OP_SPACE + n, EPS));
+        assert!(approx_eq(
+            width("n\\log n"),
+            n + adv("log") + 2.0 * OP_SPACE + n,
+            EPS
+        ));
         assert!(approx_eq(width("a,b"), ab + adv(",") + OP_SPACE, EPS));
         // No relation space inside scripts.
         let script = (mm(I).advance + adv("=1")) * SCRIPT_SCALE;
@@ -2198,7 +2219,9 @@ mod tests {
         // Assert
         let first = frac.ascent.max(text_layout::BASELINE - MATH_PAD)
             + MATH_PAD
-            + frac.descent.max(text_layout::LINE_HEIGHT - text_layout::BASELINE - MATH_PAD)
+            + frac
+                .descent
+                .max(text_layout::LINE_HEIGHT - text_layout::BASELINE - MATH_PAD)
             + MATH_PAD;
         assert!(approx_eq(l.height, first + text_layout::LINE_HEIGHT, EPS));
         let (x, _) = glyph(&l.ink, 'x');
@@ -2285,15 +2308,24 @@ mod tests {
     #[test]
     fn tex_lowercase_greek_is_italic_and_capitals_upright() {
         // Act
-        let got = faces(&boxed("\\alpha\\omega\\varphi\\phi\\epsilon\\varepsilon\\varsigma\\Gamma\\Omega").ink);
+        let got = faces(
+            &boxed("\\alpha\\omega\\varphi\\phi\\epsilon\\varepsilon\\varsigma\\Gamma\\Omega").ink,
+        );
 
         // Assert
         let chars: Vec<char> = got.iter().map(|g| g.0).collect();
         assert_eq!(
             chars,
             vec![
-                '\u{1D6FC}', '\u{1D714}', '\u{1D711}', '\u{1D719}', '\u{1D716}', '\u{1D700}',
-                '\u{1D70D}', 'Γ', 'Ω',
+                '\u{1D6FC}',
+                '\u{1D714}',
+                '\u{1D711}',
+                '\u{1D719}',
+                '\u{1D716}',
+                '\u{1D700}',
+                '\u{1D70D}',
+                'Γ',
+                'Ω',
             ]
         );
         assert!(got.iter().all(|g| g.1 == Face::Math));
