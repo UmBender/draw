@@ -1106,6 +1106,7 @@ mod tests {
     use crate::core::camera::Camera;
     use crate::core::geom::{Aabb, Vec2, approx_eq};
     use crate::core::palette::{ColorId, Rgba, palette};
+    use crate::core::tex::{MINUS, SYMBOLS};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -2172,5 +2173,100 @@ mod tests {
         let top = ys.iter().copied().fold(f32::INFINITY, f32::min);
         let ink = seven.ymin + f32::from(seven.rect.h);
         assert!(approx_eq(top, 30.0 - ink / 2.0, EPS), "{top}");
+    }
+
+    // ---- T30 formulas ------------------------------------------------------
+
+    /// Every vertex `rec` submitted.
+    fn vertices(rec: &Recorder) -> Vec<Vertex> {
+        rec.chunks
+            .iter()
+            .flat_map(|(v, _)| v.iter().cloned())
+            .collect()
+    }
+
+    fn same_color(a: Color, b: Color) -> bool {
+        [a.r - b.r, a.g - b.g, a.b - b.b, a.a - b.a]
+            .iter()
+            .all(|d| d.abs() < EPS)
+    }
+
+    fn vertex_color(v: &Vertex) -> Color {
+        Color::from_rgba(v.color[0], v.color[1], v.color[2], v.color[3])
+    }
+
+    #[test]
+    fn push_text_block_formula_draws_glyphs_and_rules() {
+        // Act
+        let rec = pushed("$\\frac{a}{b}$", 20.0, &Camera::default());
+
+        // Assert: two glyph quads and the fraction bar, untextured.
+        let all = vertices(&rec);
+        let bar = all.iter().filter(|v| is_white(v)).count();
+        assert_eq!(bar, 4, "one rule quad");
+        assert_eq!(all.len() - bar, 2 * 4, "two glyph quads");
+    }
+
+    #[test]
+    fn push_text_block_literal_uses_the_warning_colour() {
+        // Act
+        let rec = pushed("$\\foo$", 20.0, &Camera::default());
+
+        // Assert
+        let warn = warn_color(RED);
+        assert!(!same_color(warn, RED));
+        let all = vertices(&rec);
+        assert_eq!(all.len(), 4 * 4);
+        assert!(all.iter().all(|v| same_color(vertex_color(v), warn)));
+        // A block already in the warning colour warns in another one.
+        assert!(!same_color(warn_color(warn), warn));
+    }
+
+    #[test]
+    fn push_text_source_draws_formulas_as_typed() {
+        // Arrange
+        let text = "$x^2$";
+        let camera = Camera::default();
+        let mut atlas = atlas();
+        prepare_text_source(&mut atlas, text, 20.0, &camera, 1.0);
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        push_text_source(
+            &mut batch,
+            &atlas,
+            Vec2::ZERO,
+            text,
+            20.0,
+            &camera,
+            1.0,
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: one quad per typed character, all in the text colour.
+        let all = vertices(&rec);
+        assert_eq!(all.len(), 5 * 4);
+        assert!(all.iter().all(|v| same_color(vertex_color(v), RED)));
+    }
+
+    #[test]
+    fn tex_symbols_all_have_glyphs_in_the_embedded_font() {
+        // Arrange
+        let font = match fontdue::Font::from_bytes(TEXT_FONT, fontdue::FontSettings::default()) {
+            Ok(font) => font,
+            Err(err) => panic!("embedded font loads: {err}"),
+        };
+
+        // Act
+        let missing: Vec<char> = SYMBOLS
+            .iter()
+            .flat_map(|s| s.text.chars())
+            .chain([MINUS, '(', ')'])
+            .filter(|&ch| font.lookup_glyph_index(ch) == 0)
+            .collect();
+
+        // Assert: no second math font is needed (ADR-T30-1).
+        assert!(missing.is_empty(), "missing glyphs: {missing:?}");
     }
 }

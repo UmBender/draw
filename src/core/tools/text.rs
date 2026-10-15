@@ -347,6 +347,15 @@ mod tests {
     }
 
     #[test]
+    fn text_edit_bounds_are_the_source_cells() {
+        // Act: a formula that typesets far narrower than its source.
+        let b = edit("$\\frac{a}{b}$", 0).bounds();
+
+        // Assert: 13 cells of 6, one line of 12.5 (ADR-T30-1).
+        assert!(b.max.approx_eq(Vec2::new(78.0, 12.5), 1e-4), "{b:?}");
+    }
+
+    #[test]
     fn edit_new_is_empty_with_caret_at_start() {
         let e = TextEdit::new(Vec2::new(1.0, 2.0), 10.0, STYLE);
 

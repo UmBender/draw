@@ -158,7 +158,12 @@ pub(crate) fn floor_boundary(text: &str, index: usize) -> usize {
 mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
+    use crate::core::palette::ColorId;
+    use crate::core::shape::{Shape, Style};
+    use crate::core::snap::Targets;
+    use crate::core::tex;
     use proptest::prelude::*;
+    use std::rc::Rc;
 
     const EPS: f32 = 1e-4;
 
@@ -277,6 +282,77 @@ mod tests {
         assert!(glyphs[2].pos.approx_eq(v(0.0, 22.5), EPS));
     }
 
+    // ---- T30 formulas --------------------------------------------------------
+
+    const FRAC: &str = "$\\frac{a}{b}$";
+
+    #[test]
+    fn layout_bounds_use_the_typeset_size_with_formulas() {
+        // Arrange
+        let typeset = tex::layout(&tex::parse(FRAC));
+
+        // Act
+        let b = bounds(v(10.0, 20.0), FRAC, 10.0);
+
+        // Assert: narrower than its 13-char source, taller than one line.
+        assert!(b.min.approx_eq(v(10.0, 20.0), EPS), "{b:?}");
+        let size = v(typeset.width * 10.0, typeset.height * 10.0);
+        assert!(b.max.approx_eq(v(10.0, 20.0) + size, EPS), "{b:?}");
+        assert!(b.width() < 13.0 * 6.0 && b.height() > 12.5, "{b:?}");
+    }
+
+    #[test]
+    fn layout_source_bounds_ignore_formulas() {
+        // Act
+        let b = source_bounds(v(0.0, 0.0), FRAC, 10.0);
+
+        // Assert: 13 cells of 6, one line of 12.5.
+        assert!(b.max.approx_eq(v(78.0, 12.5), EPS), "{b:?}");
+        assert!(
+            source_bounds(v(1.0, 2.0), "ab", 10.0)
+                .max
+                .approx_eq(bounds(v(1.0, 2.0), "ab", 10.0).max, EPS)
+        );
+    }
+
+    #[test]
+    fn layout_text_shape_hits_and_snaps_on_the_typeset_box() {
+        // Arrange
+        let shape = Shape::Text {
+            origin: v(0.0, 0.0),
+            text: FRAC.to_owned(),
+            size: 10.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        };
+        let b = bounds(v(0.0, 0.0), FRAC, 10.0);
+
+        // Act / Assert: bounds, hit-test and snap targets follow the box.
+        assert!(shape.bounds().max.approx_eq(b.max, EPS));
+        let y = b.center().y;
+        assert!(shape.hit(v(b.max.x - 1.0, y), 0.5));
+        // Inside the source box, right of the typeset one.
+        assert!(!shape.hit(v(b.max.x + 20.0, y), 0.5));
+        let targets = Targets::from_shapes([&shape]);
+        assert!(targets.xs.iter().any(|a| approx_eq(a.value, b.max.x, EPS)));
+        assert!(targets.ys.iter().any(|a| approx_eq(a.value, b.max.y, EPS)));
+    }
+
+    #[test]
+    fn layout_typeset_is_cached_per_text() {
+        // Act
+        let first = typeset("$x^2$");
+        let again = typeset("$x^2$");
+        let other = typeset("$x^3$");
+
+        // Assert: one layout per text, recomputed only for a new text.
+        assert!(Rc::ptr_eq(&first, &again));
+        assert!(!Rc::ptr_eq(&first, &other));
+        assert_eq!(*first, tex::layout(&tex::parse("$x^2$")));
+    }
+
     fn arb_text() -> impl Strategy<Value = String> {
         prop::collection::vec(
             prop_oneof![
@@ -317,7 +393,7 @@ mod tests {
         ) {
             // Arrange
             let origin = v(ox, oy);
-            let b = bounds(origin, &text, size).expand(1e-2);
+            let b = source_bounds(origin, &text, size).expand(1e-2);
 
             // Act / Assert: each glyph cell and each caret point lies inside.
             for g in glyphs(origin, &text, size) {
