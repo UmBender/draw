@@ -236,7 +236,18 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   and no display, miniquad's `XOpenDisplay() failed!` panic is written
   to stderr and appended to `$XDG_STATE_HOME/draw/crash.log` with the
   binary's build id, then the process aborts (exit 134).
+- 2026-10-15 — `.deb` checked in a `debian:12` container (glibc 2.36,
+  AC-8): `Depends: libegl1, libgl1, libx11-6, libxi6, libxkbcommon0`;
+  before install the unpacked binary names the missing libraries with
+  their Debian packages and exits 1; `apt-get install ./draw_*.deb`
+  pulls them in and installs the binary, desktop entry, icons, metainfo,
+  licenses and docs under `/usr`; with the host's Xwayland socket
+  mounted and run as the host uid, the window opens and renders
+  (`DRAW_FRAME_TIMES` logged frames, still running when `timeout`
+  stopped it after 8 s); `apt-get remove draw` removes it. The container
+  needed `libgl1-mesa-dri` and `libegl-mesa0` (Mesa drivers, present on
+  any desktop install; the package depends on the libglvnd loaders).
 - 2026-10-15 — Still for the owner: launcher and icon after installing
-  the `.rpm` (AC-6, AC-8), the `.deb` in a Debian/Ubuntu container or VM
-  (AC-8), the tarball on an older distro (AC-2), and the Flatpak bundle
-  (AC-9: `flatpak-builder` is not installed here, so it was not built).
+  the `.rpm` (AC-6, AC-8), the tarball on an older distro (AC-2), and the
+  Flatpak bundle (AC-9: `flatpak-builder` is not installed here, so it
+  was not built).
