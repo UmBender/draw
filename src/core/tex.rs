@@ -9,56 +9,80 @@
 //! [`Node::Literal`], drawn as its source with the warning flag.
 
 use crate::core::geom::{Aabb, Vec2};
+use crate::core::math_metrics;
 use crate::core::text_layout::{ADVANCE, BASELINE, LINE_HEIGHT};
 
-/// Ascent of a glyph box per unit of scale: the font's cap height 0.735
-/// with its overshoot.
+/// Ascent of a text-face glyph box per unit of scale: the text font's cap
+/// height 0.735 with its overshoot.
 pub const GLYPH_ASCENT: f32 = 0.75;
 
-/// Descent of a glyph box per unit of scale: the font's descender.
+/// Descent of a text-face glyph box per unit of scale: the text font's
+/// descender.
 pub const GLYPH_DESCENT: f32 = 0.22;
 
-/// Ascent of brackets, bars and big operators per unit of scale.
+/// Ascent of text-face brackets and bars per unit of scale.
 pub const TALL_ASCENT: f32 = 0.85;
 
-/// Descent of brackets, bars and big operators per unit of scale.
+/// Descent of text-face brackets and bars per unit of scale.
 pub const TALL_DESCENT: f32 = 0.17;
 
-/// Height of the math axis (the middle of `−`) above the baseline.
-pub const AXIS: f32 = 0.34;
+/// Height of the math axis (the middle of `−`) above the baseline: the
+/// math font's `AxisHeight` (ADR-T33-1).
+pub const AXIS: f32 = 0.25;
 
-/// Thickness of fraction bars and root signs (that of `−`).
-pub const RULE: f32 = 0.07;
+/// Thickness of fraction bars and root signs: `FractionRuleThickness`.
+pub const RULE: f32 = 0.04;
 
-/// Scale of scripts, limits and fraction parts relative to their parent.
+/// Scale of scripts, limits and fraction parts relative to their parent:
+/// `ScriptPercentScaleDown`.
 pub const SCRIPT_SCALE: f32 = 0.7;
 
-/// Smallest scale of nested scripts.
+/// Smallest scale of nested scripts: `ScriptScriptPercentScaleDown`.
 pub const MIN_SCALE: f32 = 0.5;
 
-/// Smallest rise of a superscript's baseline.
-pub const SUP_SHIFT: f32 = 0.4;
+/// Smallest rise of a superscript's baseline: `SuperscriptShiftUp`.
+pub const SUP_SHIFT: f32 = 0.363;
 
-/// A superscript's baseline sits this far below the top of its base.
-pub const SUP_DROP: f32 = 0.35;
+/// A superscript's baseline sits at most this far below the top of its
+/// base: `SuperscriptBaselineDropMax`.
+pub const SUP_DROP: f32 = 0.25;
 
-/// Smallest drop of a subscript's baseline.
-pub const SUB_SHIFT: f32 = 0.2;
+/// Smallest height of a superscript's bottom above the baseline:
+/// `SuperscriptBottomMin`.
+pub const SUP_BOTTOM_MIN: f32 = 0.108;
+
+/// Smallest drop of a subscript's baseline: `SubscriptShiftDown`.
+pub const SUB_SHIFT: f32 = 0.247;
 
 /// A subscript's baseline sits this far above the bottom of its base.
 pub const SUB_DROP: f32 = 0.05;
 
-/// Smallest gap between a superscript and a subscript on one base.
-pub const SCRIPT_GAP: f32 = 0.1;
+/// Highest top of a subscript above the baseline: `SubscriptTopMax`.
+pub const SUB_TOP_MAX: f32 = 0.344;
 
-/// Gap between a big operator and its limits.
-pub const LIMIT_GAP: f32 = 0.1;
+/// Smallest gap between a superscript and a subscript on one base:
+/// `SubSuperscriptGapMin`.
+pub const SCRIPT_GAP: f32 = 0.16;
+
+/// Space after scripts: `SpaceAfterScript`.
+pub const SCRIPT_SPACE: f32 = 0.056;
+
+/// Gap between a big operator and its limits: `LowerLimitGapMin`.
+pub const LIMIT_GAP: f32 = 0.167;
 
 /// Scale of the big operators `∑` and `∏`.
 pub const BIG_OP_SCALE: f32 = 1.3;
 
-/// Gap between a fraction bar and its numerator or denominator.
-pub const FRAC_GAP: f32 = 0.08;
+/// Smallest gap between a fraction bar and its numerator or denominator:
+/// `FractionNumeratorGapMin`.
+pub const FRAC_GAP: f32 = 0.04;
+
+/// Smallest rise of a numerator's baseline: `FractionNumeratorShiftUp`.
+pub const FRAC_NUM_SHIFT: f32 = 0.394;
+
+/// Smallest drop of a denominator's baseline:
+/// `FractionDenominatorShiftDown`.
+pub const FRAC_DEN_SHIFT: f32 = 0.345;
 
 /// Space left and right of a fraction's parts.
 pub const FRAC_PAD: f32 = 0.1;
@@ -72,14 +96,15 @@ pub const SQRT_SIGN: f32 = 0.55;
 /// Largest scale of a binomial's parentheses.
 pub const BINOM_MAX_SCALE: f32 = 3.0;
 
-/// Space on each side of a relation.
-pub const REL_SPACE: f32 = 0.15;
+/// Space on each side of a relation: TeX's thick space, 5/18 em.
+pub const REL_SPACE: f32 = 5.0 / 18.0;
 
-/// Space on each side of a binary operator.
-pub const BIN_SPACE: f32 = 0.1;
+/// Space on each side of a binary operator: TeX's medium space, 2/9 em.
+pub const BIN_SPACE: f32 = 2.0 / 9.0;
 
-/// Space after a function or big operator before an ordinary atom.
-pub const OP_SPACE: f32 = 0.1;
+/// Space after a function or big operator before an ordinary atom: TeX's
+/// thin space, 1/6 em.
+pub const OP_SPACE: f32 = 1.0 / 6.0;
 
 /// Room kept above and below a formula in its line.
 pub const MATH_PAD: f32 = 0.03;
@@ -305,13 +330,40 @@ pub fn symbol(name: &str) -> Option<&'static SymbolDef> {
     SYMBOLS.iter().find(|s| s.name == name)
 }
 
+/// Which embedded font draws a glyph (ADR-T33-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Face {
+    /// The monospaced text font: plain text, literals, characters the
+    /// math font lacks.
+    #[default]
+    Text,
+    /// The math font: formulas.
+    Math,
+}
+
+/// The math italic form of `ch`: Latin letters and lowercase Greek;
+/// anything else as is (ADR-T33-1).
+#[must_use]
+pub fn italic(ch: char) -> char {
+    todo!("math italic of {ch:?}")
+}
+
+/// The script (`\mathcal`) form of `ch`: Latin capitals; anything else as
+/// [`italic`] draws it (ADR-T33-1).
+#[must_use]
+pub fn calligraphic(ch: char) -> char {
+    todo!("script form of {ch:?}")
+}
+
 /// Something to draw, in em from its box's origin, y down.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Ink {
-    /// A glyph of the embedded font.
+    /// A glyph of one of the embedded fonts.
     Glyph {
         /// The character.
         ch: char,
+        /// The font that draws it.
+        face: Face,
         /// Left end of its baseline.
         pos: Vec2,
         /// Its size relative to the block's font size.
@@ -352,11 +404,13 @@ impl Ink {
         match self {
             Self::Glyph {
                 ch,
+                face,
                 pos,
                 scale,
                 warn,
             } => Self::Glyph {
                 ch,
+                face,
                 pos: pos + by,
                 scale,
                 warn,
@@ -394,6 +448,7 @@ impl MathBox {
             descent: descent * scale,
             ink: vec![Ink::Glyph {
                 ch,
+                face: Face::Text,
                 pos: Vec2::ZERO,
                 scale,
                 warn,
@@ -1023,6 +1078,7 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
         descent: descent * k + y,
         ink: vec![Ink::Glyph {
             ch,
+            face: Face::Text,
             pos: Vec2::new(0.0, y),
             scale: k,
             warn: false,
@@ -1193,6 +1249,7 @@ impl Line {
     fn cell(&mut self, ch: char) {
         self.ink.push(Ink::Glyph {
             ch,
+            face: Face::Text,
             pos: Vec2::new(self.width, 0.0),
             scale: 1.0,
             warn: false,

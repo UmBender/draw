@@ -14,6 +14,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use macroquad::texture::{FilterMode, Image, Texture2D};
 
 use crate::core::geom::Vec2;
+use crate::core::tex::Face;
 
 /// Side of one atlas page in texels.
 pub const PAGE_SIDE: u16 = 1024;
@@ -299,6 +300,29 @@ impl GlyphAtlas {
                 rgba: vec![255; 4 * texels],
             });
         }
+    }
+
+    /// This atlas with `font_bytes` drawing the math face (ADR-T33-1);
+    /// without it the text font draws both faces.
+    ///
+    /// # Errors
+    ///
+    /// fontdue's message if the font cannot be parsed.
+    pub fn with_math(self, font_bytes: &[u8]) -> Result<Self, String> {
+        todo!("math font of {} bytes", font_bytes.len())
+    }
+
+    /// The entry of `ch` in `face` at `px` physical pixels, rasterizing and
+    /// packing it first if needed; see [`GlyphAtlas::prepare`].
+    pub fn prepare_in(&mut self, face: Face, ch: char, px: u16) -> Option<AtlasEntry> {
+        todo!("{face:?} {ch:?} {px}")
+    }
+
+    /// The entry of `ch` in `face` at `px` if it is prepared; never
+    /// rasterizes.
+    #[must_use]
+    pub fn get_in(&self, face: Face, ch: char, px: u16) -> Option<AtlasEntry> {
+        todo!("{face:?} {ch:?} {px}")
     }
 
     /// The entry of `ch` at `px` if it is prepared; never rasterizes.

@@ -729,6 +729,7 @@ pub fn push_text_block<S: MeshSink>(
                 pos,
                 scale,
                 warn: warned,
+                ..
             } => {
                 let Some((rpx, glyph_scale)) = block_raster(size * scale, camera, dpi) else {
                     continue;

@@ -65,6 +65,9 @@ pub const FRAME_TIMES_ENV: &str = "DRAW_FRAME_TIMES";
 /// The embedded monospaced font for text blocks and labels (ADR-T29-1).
 pub const TEXT_FONT: &[u8] = include_bytes!("../../assets/fonts/AdwaitaMono-Regular-subset.ttf");
 
+/// The embedded formula font: a Latin Modern Math subset (ADR-T33-1).
+pub const MATH_FONT: &[u8] = include_bytes!("../../assets/fonts/LatinModernMath-draw-subset.otf");
+
 /// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
 /// so nearest keeps it sharp.
 const FRAME_FILTER: FilterMode = FilterMode::Nearest;
