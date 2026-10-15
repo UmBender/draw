@@ -1,11 +1,11 @@
 ---
 id: T29
 title: Text blocks
-status: review
+status: in-progress
 wave: 15
 branch: task/T29-text
 depends_on: [T14]
-adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]"]
+adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-T29-3 Resize text while typing]]"]
 feature: "[[Text blocks]]"
 tutorial: "[[29 Typing on a canvas without losing the shortcuts]]"
 tags: [task]
@@ -102,6 +102,13 @@ sends (`Char` then `KeyDown` for a printable key).
   `edit_ends_of_text_are_noops`,
   `edit_random_operations_keep_caret_on_boundary` (proptest);
   *(`core::editor`):* `text_editing_keys_edit_the_block`.
+- **AC-3b — Resize while typing.** `Ctrl+]` / `Ctrl+[` step the open
+  block's size up / down the on-screen text ladder (14 … 76 px) at the
+  current zoom, clamped at the ends; the size is committed with the edit
+  and the stroke width is unchanged
+  ([[ADR-T29-3 Resize text while typing]]). *Tests (`core::tools::text`):*
+  `edit_step_size_walks_text_ladder`; *(`core::editor`):*
+  `text_ctrl_brackets_resize_open_block`.
 - **AC-4 — Re-edit.** A Text-tool press on a block re-opens it with the
   caret at the press; with Select a click on the block that is already the
   only selection re-opens it (a double-click does exactly this); a click
