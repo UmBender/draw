@@ -1049,6 +1049,14 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
     }
 }
 
+/// The label to draw on `shape`: its label, unless the shape has text,
+/// which is drawn instead (ADR-T31-1).
+#[must_use]
+pub fn shown_label(shape: &Shape) -> Option<u32> {
+    let _ = shape;
+    todo!()
+}
+
 /// Text colour of a label: the outline colour, or the background colour on a
 /// filled shape so the number stays readable.
 fn label_color(fill: Option<ColorId>, outline: Color) -> Color {

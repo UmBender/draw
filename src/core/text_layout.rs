@@ -88,6 +88,26 @@ pub fn source_bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
     Aabb::from_corners(origin, origin + cell(size, cols, rows))
 }
 
+/// Where and how big `text` is drawn to fit the world box `frame`
+/// (ADR-T31-1): `(origin, size)` with its [`bounds`] centred in `frame`
+/// and `size` the largest that fits, at most `max_size`. `None` for blank
+/// text, a frame without area or a `max_size` that is not finite and
+/// positive.
+#[must_use]
+pub fn fit(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
+    let _ = (text, frame, max_size);
+    todo!()
+}
+
+/// [`fit`] for text as typed, formulas as source ([`source_bounds`]): how
+/// an open edit in a shape is placed. Empty text is placed too, so the
+/// caret has a line.
+#[must_use]
+pub fn fit_source(text: &str, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
+    let _ = (text, frame, max_size);
+    todo!()
+}
+
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
 /// once per distinct text and then shared.
 #[must_use]

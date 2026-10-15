@@ -1,8 +1,8 @@
 //! Vector shapes with bounds, hit-testing and translation.
 //!
 //! The document is an ordered list of [`Shape`]s in world coordinates
-//! (ADR-0004, amended by ADR-T16-1 with grids and labels and by ADR-T29-1
-//! with text blocks). Widths are world units (ADR-0013). Every query here is total:
+//! (ADR-0004, amended by ADR-T16-1 with grids and labels, by ADR-T29-1
+//! with text blocks and by ADR-T31-1 with text in shapes and grid cells). Widths are world units (ADR-0013). Every query here is total:
 //! non-finite input never panics, a non-finite query point never hits and is
 //! never contained.
 
@@ -19,6 +19,10 @@ pub const ARROW_HEAD_HALF_WIDTH_RATIO: f32 = 0.5;
 
 /// Most columns or rows a [`Shape::Grid`] can have.
 pub const GRID_MAX_CELLS: u32 = 64;
+
+/// Fraction of a shape's or cell's box (an ellipse's inscribed rectangle)
+/// that its text may use, per axis, about the centre (ADR-T31-1).
+pub const SHAPE_TEXT_FILL: f32 = 0.8;
 
 /// Outline style shared by every shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,6 +76,8 @@ pub enum Shape {
         fill: Option<ColorId>,
         /// Number drawn centred inside, if any.
         label: Option<u32>,
+        /// Text drawn centred inside instead of the label (ADR-T31-1).
+        text: Option<ShapeText>,
     },
     /// Axis-aligned ellipse inscribed in the box spanned by `a` and `b`.
     Ellipse {
@@ -85,6 +91,8 @@ pub enum Shape {
         fill: Option<ColorId>,
         /// Number drawn centred inside, if any.
         label: Option<u32>,
+        /// Text drawn centred inside instead of the label (ADR-T31-1).
+        text: Option<ShapeText>,
     },
     /// `cols × rows` uniform cells in the box spanned by `a` and `b`.
     ///
@@ -106,6 +114,9 @@ pub enum Shape {
         /// Filled cells, sorted by `(row, col)`, at most one per cell, all
         /// inside `cols × rows` (ADR-T21-1).
         fills: Vec<CellFill>,
+        /// Cell texts, sorted by `(row, col)`, at most one per cell, all
+        /// inside `cols × rows` (ADR-T31-1).
+        texts: Vec<CellText>,
     },
     /// A block of text, laid out on a monospaced grid by
     /// [`text_layout`] (ADR-T29-1).
@@ -133,6 +144,80 @@ pub struct CellFill {
     pub row: u32,
     /// Fill colour.
     pub color: ColorId,
+}
+
+/// Text inside a rectangle, an ellipse or a grid cell (ADR-T31-1): never
+/// blank, drawn centred in the shape's text frame at `size`, or smaller
+/// when it does not fit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeText {
+    /// The text: lines split on `\n`, `$…$` formulas typeset.
+    pub text: String,
+    /// Largest font size (em height) in world units; finite and positive.
+    pub size: f32,
+}
+
+impl ShapeText {
+    /// `text` at `size`; `None` if `text` is blank (empty or whitespace)
+    /// or `size` is not finite and positive.
+    #[must_use]
+    pub fn new(text: String, size: f32) -> Option<Self> {
+        let _ = (text, size);
+        todo!()
+    }
+}
+
+/// The text of one grid cell; cells are counted from corner `a` toward
+/// `b`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CellText {
+    /// 0-based column.
+    pub col: u32,
+    /// 0-based row.
+    pub row: u32,
+    /// The text.
+    pub content: ShapeText,
+}
+
+/// Where a shape holds text: its own interior or one grid cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TextSlot {
+    /// The interior of a rectangle or an ellipse.
+    Shape,
+    /// Cell `(col, row)` of a grid.
+    Cell {
+        /// 0-based column.
+        col: u32,
+        /// 0-based row.
+        row: u32,
+    },
+}
+
+/// A move between the cells of a grid, as seen on screen (ADR-T31-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CellStep {
+    /// The next cell in reading order (left to right, top to bottom),
+    /// wrapping from the last cell to the first.
+    Next,
+    /// The previous cell in reading order, wrapping from the first cell to
+    /// the last.
+    Prev,
+    /// The cell below; none from the bottom row.
+    Down,
+    /// The cell above; none from the top row.
+    Up,
+}
+
+/// Text of a shape placed for drawing: a text block at `origin` and `size`
+/// fitted into its frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PlacedText<'a> {
+    /// Top-left corner of the laid-out block, world units.
+    pub origin: Vec2,
+    /// The text.
+    pub text: &'a str,
+    /// Font size it is drawn at, world units.
+    pub size: f32,
 }
 
 /// One axis index of a grid with [`Shape::Grid::axes`]: the 0-based column
@@ -429,6 +514,65 @@ impl Shape {
             (Err(_), None) => {}
         }
         self
+    }
+
+    /// The slot of this shape that holds text at world point `p`: the
+    /// interior of a rectangle or an ellipse, or the grid cell under `p`;
+    /// `None` elsewhere and for other shapes.
+    #[must_use]
+    pub fn text_slot_at(&self, p: Vec2) -> Option<TextSlot> {
+        let _ = p;
+        todo!()
+    }
+
+    /// The text in `slot`, if any.
+    #[must_use]
+    pub fn slot_text(&self, slot: TextSlot) -> Option<&ShapeText> {
+        let _ = slot;
+        todo!()
+    }
+
+    /// Returns the shape with the text in `slot` set to `text`, or cleared
+    /// for `None`. A slot the shape does not have (a cell outside the grid,
+    /// a cell of a rectangle, the interior of a grid) leaves it unchanged.
+    #[must_use]
+    pub fn with_slot_text(self, slot: TextSlot, text: Option<ShapeText>) -> Self {
+        let _ = (slot, text);
+        todo!()
+    }
+
+    /// The cell texts of a grid, sorted by `(row, col)`; empty for other
+    /// shapes.
+    #[must_use]
+    pub fn cell_texts(&self) -> &[CellText] {
+        todo!()
+    }
+
+    /// The world box the text in `slot` is fitted into: the box of a
+    /// rectangle, the inscribed rectangle of an ellipse or the grid cell,
+    /// scaled by [`SHAPE_TEXT_FILL`] about its centre. `None` for a slot
+    /// the shape does not have.
+    #[must_use]
+    pub fn text_frame(&self, slot: TextSlot) -> Option<Aabb> {
+        let _ = slot;
+        todo!()
+    }
+
+    /// Every text of the shape placed for drawing, fitted and centred in
+    /// its frame: the shape's own text, then cell texts in `(row, col)`
+    /// order.
+    #[must_use]
+    pub fn placed_texts(&self) -> Vec<PlacedText<'_>> {
+        todo!()
+    }
+
+    /// The cell one `step` away from cell `(col, row)` of a grid, in screen
+    /// order whatever the corner `a`; `None` when there is none, for a cell
+    /// outside the grid or for other shapes.
+    #[must_use]
+    pub fn grid_cell_step(&self, col: u32, row: u32, step: CellStep) -> Option<(u32, u32)> {
+        let _ = (col, row, step);
+        todo!()
     }
 
     /// The axis indices to draw: those of a grid with `axes` on (see

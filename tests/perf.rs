@@ -159,6 +159,7 @@ fn mixed_shapes(count: usize) -> Vec<Shape> {
                     style,
                     fill: if i % 12 == 3 { fill } else { None },
                     label,
+                    text: None,
                 },
                 4 => Shape::Ellipse {
                     a,
@@ -166,6 +167,7 @@ fn mixed_shapes(count: usize) -> Vec<Shape> {
                     style,
                     fill: if i % 12 == 4 { fill } else { None },
                     label,
+                    text: None,
                 },
                 _ => Shape::Grid {
                     a,
@@ -183,6 +185,7 @@ fn mixed_shapes(count: usize) -> Vec<Shape> {
                             })
                         })
                         .collect(),
+                    texts: Vec::new(),
                 },
             }
         })

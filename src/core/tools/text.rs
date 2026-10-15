@@ -13,7 +13,7 @@ use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::ShapeId;
 use crate::core::editor::WIDTH_LADDER_PX;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::shape::{Shape, Style};
+use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
 use crate::core::{snap, text_layout};
 
 /// On-screen font size, in pixels, of a new block at stroke width 0.
@@ -32,6 +32,17 @@ pub fn text_size_px(width_px: f32) -> f32 {
     TEXT_BASE_PX + TEXT_PX_PER_WIDTH * width_px
 }
 
+/// The shape whose text an edit changes (ADR-T31-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Host {
+    /// The rectangle, ellipse or grid.
+    pub id: ShapeId,
+    /// Its interior or the grid cell.
+    pub slot: TextSlot,
+    /// The world box the text is fitted into ([`Shape::text_frame`]).
+    pub frame: Aabb,
+}
+
 /// A text block being edited: its text, caret and placement.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextEdit {
@@ -43,6 +54,10 @@ pub struct TextEdit {
     pub style: Style,
     /// The document block being re-edited, `None` for a new block.
     target: Option<ShapeId>,
+    /// The shape whose text this is, `None` for a text block. Its edit is
+    /// re-fitted into the host's frame as it is typed; `size` is then the
+    /// largest size.
+    host: Option<Host>,
     /// The text.
     text: String,
     /// Byte index of the caret, always on a `char` boundary.
@@ -58,9 +73,19 @@ impl TextEdit {
             size,
             style,
             target: None,
+            host: None,
             text: String::new(),
             caret: 0,
         }
+    }
+
+    /// Opens the text in `slot` of `shape` (document id `id`) with the
+    /// caret at its end; an empty slot starts empty at `new_size`. `None`
+    /// if `shape` has no such slot.
+    #[must_use]
+    pub fn open_in(id: ShapeId, shape: &Shape, slot: TextSlot, new_size: f32) -> Option<Self> {
+        let _ = (id, shape, slot, new_size);
+        todo!()
     }
 
     /// Re-opens the text block `shape` (document id `id`) with the caret
@@ -81,6 +106,7 @@ impl TextEdit {
             size: *size,
             style: *style,
             target: Some(id),
+            host: None,
             text: text.clone(),
             caret: 0,
         };
@@ -92,6 +118,18 @@ impl TextEdit {
     #[must_use]
     pub fn target(&self) -> Option<ShapeId> {
         self.target
+    }
+
+    /// The shape whose text this is, `None` for a text block.
+    #[must_use]
+    pub fn host(&self) -> Option<&Host> {
+        self.host.as_ref()
+    }
+
+    /// The edited text as shape text; `None` when blank.
+    #[must_use]
+    pub fn shape_text(&self) -> Option<ShapeText> {
+        todo!()
     }
 
     /// The text.

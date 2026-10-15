@@ -19,6 +19,7 @@ use crate::core::camera::Camera;
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
+use crate::core::experimental::Experimental;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::{HISTORY_LIMIT, History};
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -64,6 +65,9 @@ pub struct Helpers {
     pub grid_cols: u32,
     /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_rows: u32,
+    /// Experimental features, set once by [`Editor::with_experimental`]
+    /// (ADR-T31-1).
+    pub experimental: Experimental,
 }
 
 impl Default for Helpers {
@@ -75,6 +79,7 @@ impl Default for Helpers {
             next_number: FIRST_NUMBER,
             grid_cols: DEFAULT_GRID_CELLS,
             grid_rows: DEFAULT_GRID_CELLS,
+            experimental: Experimental::default(),
         }
     }
 }
@@ -197,6 +202,19 @@ impl Editor {
     #[must_use]
     pub fn with_keymap(self, keymap: Keymap) -> Self {
         Self { keymap, ..self }
+    }
+
+    /// Turns the `experimental` features on or off (ADR-T31-1).
+    #[must_use]
+    pub fn with_experimental(mut self, experimental: Experimental) -> Self {
+        self.style.helpers.experimental = experimental;
+        self
+    }
+
+    /// The experimental features that are on.
+    #[must_use]
+    pub fn experimental(&self) -> Experimental {
+        self.style.helpers.experimental
     }
 
     /// Handles one input event. Returns whether the view needs a redraw.

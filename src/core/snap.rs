@@ -882,6 +882,7 @@ mod tests {
             style: STYLE,
             fill: None,
             label: None,
+            text: None,
         }
     }
 
@@ -983,6 +984,7 @@ mod tests {
             style: STYLE,
             axes: false,
             fills: Vec::new(),
+            texts: Vec::new(),
         };
         let t = targets(&[grid]);
 
@@ -1222,6 +1224,7 @@ mod tests {
             style: STYLE,
             fill: None,
             label: None,
+            text: None,
         }
     }
 
@@ -1382,6 +1385,7 @@ mod tests {
                 style: wide,
                 fill: None,
                 label: None,
+                text: None,
             },
             ellipse(v(20.0, 0.0), v(30.0, 10.0)),
             Shape::Grid {
@@ -1392,6 +1396,7 @@ mod tests {
                 style: STYLE,
                 axes: false,
                 fills: Vec::new(),
+                texts: Vec::new(),
             },
             line(v(0.0, 50.0), v(10.0, 60.0)),
             Shape::Stroke {
@@ -1730,6 +1735,7 @@ mod tests {
                         style,
                         fill: None,
                         label: None,
+                        text: None,
                     },
                     1 => line(a, b),
                     2 => Shape::Ellipse {
@@ -1738,6 +1744,7 @@ mod tests {
                         style,
                         fill: None,
                         label: None,
+                        text: None,
                     },
                     _ => Shape::Grid {
                         a,
@@ -1747,6 +1754,7 @@ mod tests {
                         style,
                         axes: false,
                         fills: Vec::new(),
+                        texts: Vec::new(),
                     },
                 }
             })
