@@ -12,6 +12,8 @@
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 
+use crate::shell::backend::{self, Backend};
+
 /// The library list `packaging/runtime-libs`, embedded at build time.
 pub const RUNTIME_LIBS: &str = include_str!("../../packaging/runtime-libs");
 
@@ -25,6 +27,11 @@ pub enum Role {
     Required,
     /// One of the OpenGL loaders; at least one of the group is needed.
     Gl,
+    /// Loaded by the Wayland backend (`DRAW_BACKEND=wayland`); a library
+    /// both backends need also has a `required` or `gl` line.
+    Wayland,
+    /// Loaded when present, never checked (e.g. `libdecor`).
+    Optional,
     /// Named in the binary but not loaded by the chosen backend.
     Unused,
     /// Part of glibc or libgcc, linked rather than loaded.
@@ -115,9 +122,15 @@ pub fn parse_runtime_libs(text: &str) -> Result<Vec<RuntimeLib>, ParseError> {
         let role = match role {
             "required" => Role::Required,
             "gl" => Role::Gl,
+            "wayland" => Role::Wayland,
+            "optional" => Role::Optional,
             "unused" => Role::Unused,
             "linked" => Role::Linked,
-            _ => return Err(error("role is not required, gl, unused or linked")),
+            _ => {
+                return Err(error(
+                    "role is not required, gl, wayland, optional, unused or linked",
+                ));
+            }
         };
         libs.push(RuntimeLib {
             soname: soname.to_owned(),
@@ -142,6 +155,7 @@ fn is_set(value: Option<&OsString>) -> bool {
 /// The first [`Problem`]: display problems before missing libraries.
 pub fn check(
     env: &Environment,
+    backend: Backend,
     libs: &[RuntimeLib],
     found: impl Fn(&str) -> bool,
 ) -> Result<(), Problem> {
@@ -163,7 +177,7 @@ pub fn check(
         .filter(|lib| match lib.role {
             Role::Required => !found(&lib.soname),
             Role::Gl => !gl_found,
-            Role::Unused | Role::Linked => false,
+            Role::Wayland | Role::Optional | Role::Unused | Role::Linked => false,
         })
         .cloned()
         .collect();
@@ -221,7 +235,7 @@ pub fn run() -> Result<(), Problem> {
     };
     let cache = std::fs::read("/etc/ld.so.cache").unwrap_or_default();
     let ld_library_path = std::env::var_os("LD_LIBRARY_PATH");
-    check(&env, &libs, |soname| {
+    check(&env, backend::from_env().backend, &libs, |soname| {
         library_installed(&cache, ld_library_path.as_deref(), soname)
     })
 }

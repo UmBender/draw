@@ -1,5 +1,63 @@
 //! Window backend chosen at start-up from `DRAW_BACKEND` (T28,
 //! ADR-T28-1).
+//!
+//! [`choose`] is a pure function over the variable's value; [`from_env`]
+//! feeds it the real one. X11 (on Wayland sessions through XWayland) is
+//! the default; the native Wayland backend is experimental and falls back
+//! to X11 when it cannot connect.
+
+use std::ffi::OsStr;
+
+use macroquad::miniquad::conf::LinuxBackend;
+
+/// Environment variable naming the window backend.
+pub const BACKEND_ENV: &str = "DRAW_BACKEND";
+
+/// The window backend draw asks miniquad for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Backend {
+    /// X11 only, through XWayland on Wayland sessions (the default).
+    #[default]
+    X11,
+    /// Native Wayland, falling back to X11 (experimental).
+    Wayland,
+}
+
+/// The backend picked from [`BACKEND_ENV`] and what to tell the user.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Choice {
+    /// The backend to use.
+    pub backend: Backend,
+    /// One stderr line when the value was not understood.
+    pub warning: Option<String>,
+}
+
+impl Backend {
+    /// The miniquad setting for this backend.
+    #[must_use]
+    pub fn linux_backend(self) -> LinuxBackend {
+        todo!()
+    }
+
+    /// One stderr line to print at start-up, if this backend needs one.
+    #[must_use]
+    pub fn notice(self) -> Option<&'static str> {
+        todo!()
+    }
+}
+
+/// Picks the backend from the value of [`BACKEND_ENV`] (`None` when
+/// unset).
+#[must_use]
+pub fn choose(value: Option<&OsStr>) -> Choice {
+    todo!()
+}
+
+/// [`choose`] applied to the real environment.
+#[must_use]
+pub fn from_env() -> Choice {
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {

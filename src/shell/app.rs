@@ -39,6 +39,7 @@ use crate::core::input::InputEvent;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
+use crate::shell::backend::{self, Backend};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, TextStats, to_mq_color};
@@ -314,6 +315,8 @@ pub struct WindowSettings {
     pub window_resizable: bool,
     /// Whether to render at the display's full resolution.
     pub high_dpi: bool,
+    /// Window backend on Linux (ADR-T28-1).
+    pub backend: Backend,
 }
 
 impl From<WindowSettings> for Conf {
@@ -360,6 +363,7 @@ pub fn window_conf() -> WindowSettings {
         window_height: 800,
         window_resizable: true,
         high_dpi: true,
+        backend: Backend::default(),
     }
 }
 
@@ -692,6 +696,7 @@ mod tests {
     use super::*;
     use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
     use crate::core::geom::approx_eq;
+    use macroquad::miniquad::conf::LinuxBackend;
     use proptest::prelude::*;
 
     #[test]
