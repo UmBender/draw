@@ -1,7 +1,7 @@
 ---
 id: T29
 title: Text blocks
-status: in-progress
+status: review
 wave: 15
 branch: task/T29-text
 depends_on: [T14]
@@ -250,3 +250,6 @@ step 11 (keymap) and step 24 (layered redraw).
   check of sharpness at 0.05×, 1× and 20× and of non-ASCII glyphs.
   `docs/features/Contest cheat sheet.md` does not list `T` yet (not in
   *Files owned*; for the integrator).
+- 2026-10-14 — Owner request after review: `Ctrl+[` / `Ctrl+]` resize
+  the open block ([[ADR-T29-3 Resize text while typing]], AC-3b).
+  `scripts/check.sh` green (713 lib tests).

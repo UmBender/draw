@@ -68,7 +68,9 @@ single `Insert`, `Replace` or `Remove` transaction.
   `delete`, `left`/`right` (step by `len_utf8`), `up`/`down` (same column,
   clamped), `home`/`end`, `tab`. `Shape::Text` comes out of `shape()`.
 - `Editor::handle` checks `tools.text.edit` before the keymap:
-  `text_key` handles editing keys and swallows the rest; `Char` inserts
+  `text_key` handles editing keys (and `Ctrl+[` / `Ctrl+]`, which call
+  `TextEdit::step_size` — a modifier frees the bracket keys for a command
+  without stealing their characters) and swallows the rest; `Char` inserts
   unless it is a control character or `Ctrl` is held. `finish_text`
   commits through `track_document`, so the document layer is redrawn once
   (step 24). `Editor::overlay` shows the open block and hides the original

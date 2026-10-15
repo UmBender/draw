@@ -157,10 +157,11 @@ While a block is open every key types; only these act:
 | `Enter` | New line | `Tab` | Four spaces |
 | `←` `→` `↑` `↓` | Move the caret | `Home` / `End` | Line start / end |
 | `Backspace` / `Delete` | Delete a character | Click outside | Finish |
+| `Ctrl+]` / `Ctrl+[` | Bigger / smaller text | | |
 
 Edit a block again with the Text tool (click it) or Select (double-click
-it). Its size comes from `[` / `]` and its colour from `1`–`6` when you
-click.
+it). Its size starts from `[` / `]` and its colour from `1`–`6` when you
+click; `Ctrl+]` / `Ctrl+[` resize it while you type.
 
 A printable one-page version lives in
 [`docs/features/Contest cheat sheet.md`](docs/features/Contest%20cheat%20sheet.md).

@@ -1,9 +1,9 @@
 ---
 title: Text blocks
 task: "[[T29 Text blocks]]"
-adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]"]
+adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-T29-3 Resize text while typing]]"]
 tutorial: "[[29 Typing on a canvas without losing the shortcuts]]"
-shortcuts: ["T", "Esc", "Ctrl+Enter", "Enter", "Tab", "Ctrl+Z"]
+shortcuts: ["T", "Esc", "Ctrl+Enter", "Enter", "Tab", "Ctrl+Z", "Ctrl+[", "Ctrl+]"]
 tags: [feature]
 ---
 
@@ -32,6 +32,7 @@ back.
 | Throw the edit away | `Ctrl+Z` while typing |
 | Edit a block again | Text tool: click it · Select tool: double-click it (or click it when it is already selected) |
 | Text size | `[` / `]` before clicking (the stroke width ladder: 14–76 px) |
+| Bigger / smaller while typing | `Ctrl+]` / `Ctrl+[` (one step of the same ladder) |
 | Text colour | `1`–`6` before clicking |
 
 Finishing an edit is one undo step: `Ctrl+Z` afterwards removes the new
