@@ -618,7 +618,12 @@ thread_local! {
 
 /// Makes `atlas` the glyph atlas of text blocks and labels; until then
 /// they are not drawn (ADR-T32-1). Main thread only.
-pub fn set_glyph_atlas(atlas: GlyphAtlas) {
+pub fn set_glyph_atlas(mut atlas: GlyphAtlas) {
+    // Opens the first page now: creating a page texture takes ~25 ms on
+    // the target, too long for the first frame with text.
+    atlas.prepare('0', raster_px(TEXT_RASTER_SIZES[0], screen_dpi_scale()));
+    TEXTURES.with(|textures| textures.borrow_mut().sync(&mut atlas));
+    atlas.take_rasterized();
     ATLAS.with(|cell| *cell.borrow_mut() = Some(atlas));
 }
 
