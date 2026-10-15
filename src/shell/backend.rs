@@ -2,7 +2,7 @@
 //! ADR-T28-1).
 //!
 //! [`choose`] is a pure function over the variable's value; [`from_env`]
-//! feeds it the real one. X11 (on Wayland sessions through XWayland) is
+//! feeds it the real one. X11 (on Wayland sessions through Xwayland) is
 //! the default; the native Wayland backend is experimental and falls back
 //! to X11 when it cannot connect.
 
@@ -16,7 +16,7 @@ pub const BACKEND_ENV: &str = "DRAW_BACKEND";
 /// The window backend draw asks miniquad for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Backend {
-    /// X11 only, through XWayland on Wayland sessions (the default).
+    /// X11 only, through Xwayland on Wayland sessions (the default).
     #[default]
     X11,
     /// Native Wayland, falling back to X11 (experimental).
