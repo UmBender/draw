@@ -11,6 +11,7 @@
 use super::select::HIT_TOLERANCE_PX;
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::ShapeId;
+use crate::core::editor::WIDTH_LADDER_PX;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::{Shape, Style};
 use crate::core::{snap, text_layout};
@@ -226,6 +227,31 @@ impl TextEdit {
     pub fn end(&mut self) -> bool {
         let (line, _) = text_layout::line_col(&self.text, self.caret);
         self.move_to(line, usize::MAX)
+    }
+
+    /// Steps the font size to the next rung of the on-screen text ladder
+    /// ([`text_size_px`] of every [`WIDTH_LADDER_PX`] entry) above
+    /// (`grow`) or below its size at `zoom` (ADR-T29-3). Returns whether
+    /// it changed; at either end, or for a non-finite size or zoom, it does
+    /// not.
+    pub fn step_size(&mut self, grow: bool, zoom: f32) -> bool {
+        let px = self.size * zoom;
+        let valid_zoom = zoom.is_finite() && zoom > 0.0;
+        if !valid_zoom || !px.is_finite() {
+            return false;
+        }
+        // Sizes within rounding of a rung count as that rung.
+        let eps = 1e-3 * px.max(1.0);
+        let mut ladder = WIDTH_LADDER_PX.into_iter().map(text_size_px);
+        let next = if grow {
+            ladder.find(|&rung| rung > px + eps)
+        } else {
+            ladder.rev().find(|&rung| rung < px - eps)
+        };
+        next.is_some_and(|rung| {
+            self.size = rung / zoom;
+            true
+        })
     }
 
     /// Moves the caret to `(line, col)` (clamped). Returns whether it moved.

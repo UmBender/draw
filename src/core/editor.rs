@@ -690,8 +690,9 @@ impl Editor {
     }
 
     /// Handles a key while a text block is open: editing keys edit it,
-    /// `Esc` and `Ctrl+Enter` commit it, `Ctrl+Z` cancels it, every other
-    /// key does nothing (ADR-T29-2). Returns whether a redraw is needed.
+    /// `Ctrl+[` / `Ctrl+]` resize it, `Esc` and `Ctrl+Enter` commit it,
+    /// `Ctrl+Z` cancels it, every other key does nothing (ADR-T29-2,
+    /// ADR-T29-3). Returns whether a redraw is needed.
     fn text_key(&mut self, key: Key, mods: Modifiers) -> bool {
         let ctrl_only = Modifiers {
             ctrl: true,
@@ -707,6 +708,10 @@ impl Editor {
             return false;
         };
         match key {
+            // ADR-T29-3: grow or shrink the open block.
+            Key::BracketLeft | Key::BracketRight if mods == ctrl_only => {
+                edit.step_size(key == Key::BracketRight, self.camera.zoom())
+            }
             Key::Enter => edit.insert('\n'),
             Key::Tab => edit.tab(),
             Key::Backspace => edit.backspace(),
