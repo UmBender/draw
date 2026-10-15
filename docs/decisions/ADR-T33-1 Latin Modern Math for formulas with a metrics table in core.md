@@ -80,7 +80,8 @@ row per character of the subset, sorted by character, with advance,
 ink box (`x_min x_max y_min y_max`) and the `MATH` table's italic
 correction, in em, y up. `math_metrics::get(ch)` is a binary search.
 A shell test checks the table against the embedded font with fontdue
-(advance and ink box within 0.002 em), so the table cannot drift from
+(advance and ink box within 0.005 em: fontdue measures flattened
+curves, up to 0.0032 em off the exact ink box), so the table cannot drift from
 the font.
 
 A math-face glyph box is its advance by its ink height (`y_max` up,
@@ -113,7 +114,7 @@ Taken from the font's `MATH` table (em) and TeX's spacing:
 | `SQRT_GAP` | 0.1 | 0.1 | kept (between text and display style) |
 | `REL_SPACE` | 0.15 | 5/18 | TeX thick space |
 | `BIN_SPACE` | 0.1 | 2/9 | TeX medium space |
-| `OP_SPACE` | 0.1 | 1/6 | TeX thin space |
+| `OP_SPACE` | 0.1 | 1/6 | TeX thin space: also before an operator after an ordinary atom or a closing bracket (`n \log n`), and after punctuation outside scripts |
 
 Rules per constant are those of ADR-T30-1, plus: a superscript starts
 after the base's **italic correction** (the italic correction of the

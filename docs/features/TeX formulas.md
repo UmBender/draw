@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -18,6 +18,12 @@ with limits, Greek letters and the usual relations — enough for
 `$\sum_{k=1}^{n} k^2 = \frac{n(n+1)(2n+1)}{6}$`. While the block is open
 you see and edit the source; plain text and formulas mix on one line.
 
+Formulas are set in **Latin Modern Math**, the font of LaTeX: italic
+variables, upright digits, operators and function names, TeX's spacing,
+and calligraphic capitals with `\mathcal`. Plain text around them stays
+in the monospaced text font. (Since [[T33 Math font for formulas]];
+tutorial [[33 Typesetting with a proportional math font]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -28,7 +34,8 @@ you see and edit the source; plain text and formulas mix on one line.
 | Fraction, binomial, root | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` (`\frac12` works too) |
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
 | Functions (upright) | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` |
-| Greek | `\alpha` … `\omega`, `\Gamma` … `\Omega` |
+| Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
+| Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
 | Brackets | `\lfloor \rfloor \lceil \rceil \{ \} |` |
 | Upright text | `\text{if } x > 0` |
@@ -40,19 +47,28 @@ typo shows.
 
 `core::tex` (`src/core/tex.rs`) parses a block into plain text and
 formulas, each a lossless tree, and lays it out with a reduced TeX box
-model — width, ascent, descent; scripts at 0.7×, a math axis at 0.34 em —
-in em units ([[ADR-T30-1 TeX subset, box layout and metrics]]).
+model — width, ascent, descent; scripts at 0.7×, a math axis at 0.25 em —
+in em units ([[ADR-T30-1 TeX subset, box layout and metrics]]). Each
+glyph carries a face: formula glyphs are in the math face and measured
+with `core::math_metrics`, a table generated from the embedded Latin
+Modern Math subset, so `core` stays font-free; letters map to the
+Mathematical Alphanumeric Symbols (`x` → `𝑥`, `\mathcal{A}` → `𝒜`)
+([[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]).
 `core::text_layout::typeset` caches the layout per text, and
 `text_layout::bounds` gives every shape query (hit-test, culling,
 snapping, selection) the typeset box; the edit session keeps the source
 box (`source_bounds`). `shell::render` draws the glyphs through the T32
-atlas at their own scales and the fraction bars and root signs as quads
+atlas — keyed by face, one font per face — at their own scales and the
+fraction bars and root signs as quads
 of the same batch.
 
 ## Limits
 
 - No display mode (`$$…$$`), matrices, environments, macros, accents or
   `\left`/`\right` — brackets do not grow (only `\binom`'s do).
-- One upright font: letters are not italic.
+- `\mathcal` has capitals only (as in TeX); no `\mathbb`, `\mathfrak`
+  or bold math.
+- A character the math font lacks (e.g. CJK in `\text{…}`) falls back to
+  a monospaced cell.
 - A formula stays on one line.
 - Lines with scripts or fractions are taller than plain lines.

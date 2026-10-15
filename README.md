@@ -168,7 +168,8 @@ click; `Ctrl+]` / `Ctrl+[` resize it while you type.
 ### Formulas in text blocks
 
 Write `$…$` inside a text block for a formula in a small TeX subset. It is
-typeset once the block is finished and shows its source while you edit:
+typeset in Latin Modern Math — the LaTeX look, with italic variables —
+once the block is finished, and shows its source while you edit:
 
 ```text
 $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
@@ -181,6 +182,7 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
 | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` | Upright functions |
 | `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
+| `\mathcal{F}` | Calligraphic capitals |
 | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` | Relations and operators |
 | `\lfloor \rfloor \lceil \rceil \{ \} \|` | Brackets |
 | `\text{…}` | Upright text inside a formula |
