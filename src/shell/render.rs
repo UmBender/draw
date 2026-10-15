@@ -6,17 +6,20 @@
 //! bounding box (ADR-0006). Shapes are tessellated here into a [`Batch`] and
 //! submitted with one `draw_mesh` per few thousand indices instead of one
 //! `draw_*` call per triangle (ADR-T24-3). Grids and labels follow
-//! ADR-T16-1. Text blocks and labels use the embedded monospaced font set
-//! with [`set_text_font`], each glyph drawn at its
-//! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1).
+//! ADR-T16-1. Text blocks and labels use the embedded monospaced font
+//! through the glyph atlas set with [`set_glyph_atlas`], each glyph a quad
+//! in the same batch as the shapes at its
+//! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1, ADR-T32-1,
+//! ADR-T32-2).
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 use macroquad::models::{Mesh, Vertex, draw_mesh};
 use macroquad::shapes::draw_line;
-use macroquad::text::{Font, TextParams, draw_text_ex, measure_text};
+use macroquad::window::screen_dpi_scale;
 
-use std::cell::OnceCell;
+use std::cell::{Cell, RefCell};
+use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
 use crate::core::editor::Editor;
@@ -27,6 +30,9 @@ use crate::core::shape::{
 };
 use crate::core::snap::GRID_STEP;
 use crate::core::text_layout::glyphs;
+use crate::shell::glyphs::{
+    GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
+};
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
 /// capacity of 10 000 (ADR-T24-3).
@@ -38,8 +44,9 @@ pub const BATCH_MAX_INDICES: usize = 4_800;
 
 /// Where a [`Batch`] sends finished chunks.
 pub trait MeshSink {
-    /// Draws (or records) one chunk of triangles.
-    fn draw(&mut self, mesh: &Mesh);
+    /// Draws (or records) one chunk of triangles bound to atlas `page`
+    /// (`None`: no glyphs, untextured), ADR-T32-2.
+    fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>);
 }
 
 /// Sends chunks to macroquad with `draw_mesh`.
@@ -47,19 +54,24 @@ pub trait MeshSink {
 pub struct GlSink;
 
 impl MeshSink for GlSink {
-    fn draw(&mut self, mesh: &Mesh) {
+    fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
+        mesh.texture = page.and_then(|page| TEXTURES.with(|t| t.borrow().get(page).cloned()));
         draw_mesh(mesh);
     }
 }
 
-/// Collects untextured triangles and submits them in chunks of at most
-/// [`BATCH_MAX_VERTICES`] / [`BATCH_MAX_INDICES`] (ADR-T24-3). Callers
-/// [`Batch::flush`] before drawing anything else (text) to keep z-order.
+/// Collects triangles and glyph quads and submits them in chunks of at
+/// most [`BATCH_MAX_VERTICES`] / [`BATCH_MAX_INDICES`] (ADR-T24-3). Shapes
+/// sample the white block of the chunk's atlas page, so they share chunks
+/// with glyphs; a chunk is bound to one page (ADR-T32-2). Callers
+/// [`Batch::flush`] before drawing anything outside the batch.
 pub struct Batch<S: MeshSink = GlSink> {
     /// The chunk being filled.
     mesh: Mesh,
     /// Receives finished chunks.
     sink: S,
+    /// Atlas page the chunk's glyphs come from (ADR-T32-2).
+    page: Option<u32>,
 }
 
 impl<S: MeshSink> Batch<S> {
@@ -72,6 +84,7 @@ impl<S: MeshSink> Batch<S> {
                 texture: None,
             },
             sink,
+            page: None,
         }
     }
 
@@ -199,10 +212,32 @@ impl<S: MeshSink> Batch<S> {
     /// Sends the current chunk to the sink, if it holds anything.
     pub fn flush(&mut self) {
         if !self.mesh.indices.is_empty() {
-            self.sink.draw(&self.mesh);
+            self.sink.draw(&mut self.mesh, self.page);
         }
         self.mesh.vertices.clear();
         self.mesh.indices.clear();
+    }
+
+    /// Adds a glyph quad from atlas `page`, flushing first if the chunk's
+    /// glyphs come from another page (ADR-T32-2).
+    pub fn glyph(&mut self, quad: &GlyphQuad, page: u32, color: Color) {
+        if self.page.is_some_and(|current| current != page) {
+            self.flush();
+        }
+        self.page = Some(page);
+        let base = self.reserve(4, 6);
+        let (min, max, uv0, uv1) = (quad.min, quad.max, quad.uv_min, quad.uv_max);
+        for (x, y, u, v) in [
+            (min.x, min.y, uv0.x, uv0.y),
+            (max.x, min.y, uv1.x, uv0.y),
+            (max.x, max.y, uv1.x, uv1.y),
+            (min.x, max.y, uv0.x, uv1.y),
+        ] {
+            self.mesh.vertices.push(Vertex::new(x, y, 0.0, u, v, color));
+        }
+        self.mesh
+            .indices
+            .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }
 
     /// Flushes and returns the sink.
@@ -276,7 +311,7 @@ impl<S: MeshSink> Batch<S> {
     fn vertex(&mut self, p: Vec2, color: Color) {
         self.mesh
             .vertices
-            .push(Vertex::new(p.x, p.y, 0.0, 0.0, 0.0, color));
+            .push(Vertex::new(p.x, p.y, 0.0, WHITE_UV[0], WHITE_UV[1], color));
     }
 }
 
@@ -561,24 +596,194 @@ pub fn text_raster(px: f32) -> (u16, f32) {
     (raster, px / f32::from(raster))
 }
 
+/// Text work of one frame, for the frame timer (T32 AC-1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextStats {
+    /// CPU time spent preparing and tessellating text.
+    pub time: Duration,
+    /// Glyphs rasterized.
+    pub rasterized: usize,
+}
+
 thread_local! {
-    /// The font of text blocks and labels; macroquad's built-in font until
-    /// [`set_text_font`] is called.
-    static TEXT_FONT: OnceCell<Font> = const { OnceCell::new() };
+    /// The glyph atlas of text blocks and labels; none until
+    /// [`set_glyph_atlas`] is called (ADR-T32-1).
+    static ATLAS: RefCell<Option<GlyphAtlas>> = const { RefCell::new(None) };
+    /// The atlas pages on the GPU; a separate cell, so [`GlSink`] can bind
+    /// them while text reads the atlas.
+    static TEXTURES: RefCell<GlyphTextures> = RefCell::new(GlyphTextures::default());
+    /// Text work since the last [`take_text_stats`].
+    static STATS: Cell<TextStats> = Cell::new(TextStats::default());
 }
 
-/// Makes `font` the font of text blocks and labels. Only the first call
-/// has an effect; drawing happens on the main thread, which must make it.
-pub fn set_text_font(font: Font) {
-    TEXT_FONT.with(|cell| {
-        // A second font is ignored: one font for the whole run.
-        let _ = cell.set(font);
+/// Makes `atlas` the glyph atlas of text blocks and labels; until then
+/// they are not drawn (ADR-T32-1). Main thread only.
+pub fn set_glyph_atlas(mut atlas: GlyphAtlas) {
+    // Opens the first page now: creating a page texture takes ~25 ms on
+    // the target, too long for the first frame with text.
+    atlas.prepare('0', raster_px(TEXT_RASTER_SIZES[0], screen_dpi_scale()));
+    TEXTURES.with(|textures| textures.borrow_mut().sync(&mut atlas));
+    atlas.take_rasterized();
+    ATLAS.with(|cell| *cell.borrow_mut() = Some(atlas));
+}
+
+/// Starts a frame's text work: clears an atlas that overflowed in an
+/// earlier frame (ADR-T32-1). Returns whether it was cleared.
+#[must_use]
+pub fn begin_text_frame() -> bool {
+    ATLAS.with(|cell| match cell.borrow_mut().as_mut() {
+        Some(atlas) if atlas.overflowed() => {
+            atlas.clear();
+            true
+        }
+        _ => false,
+    })
+}
+
+/// Whether a glyph found no room in the atlas since the last clear.
+#[must_use]
+pub fn text_overflowed() -> bool {
+    ATLAS.with(|cell| cell.borrow().as_ref().is_some_and(GlyphAtlas::overflowed))
+}
+
+/// The text work since the last call.
+pub fn take_text_stats() -> TextStats {
+    STATS.with(Cell::take)
+}
+
+/// Rasterization size and scale of a text block of world `size` through
+/// `camera` at `dpi`: physical raster px and logical px per texel. `None`
+/// when it is too small to draw.
+fn block_raster(size: f32, camera: &Camera, dpi: f32) -> Option<(u16, f32)> {
+    let px = text_screen_px(size, camera.zoom())?;
+    let (raster, _) = text_raster(px);
+    let rpx = raster_px(raster, dpi);
+    Some((rpx, glyph_scale(px, rpx)))
+}
+
+/// Rasterization size and scale of a label of `size` logical pixels at
+/// `dpi`.
+fn label_glyph_raster(size: f32, dpi: f32) -> (u16, f32) {
+    let (raster, _) = label_raster(size);
+    let rpx = raster_px(raster, dpi);
+    (rpx, glyph_scale(size, rpx))
+}
+
+/// Whether `ch` has ink to draw.
+fn drawable(ch: char) -> bool {
+    !(ch.is_whitespace() || ch.is_control())
+}
+
+/// Puts every glyph of a text block of world `size` seen through `camera`
+/// at `dpi` into `atlas`.
+pub fn prepare_text_block(
+    atlas: &mut GlyphAtlas,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+) {
+    let Some((rpx, _)) = block_raster(size, camera, dpi) else {
+        return;
+    };
+    for ch in text.chars().filter(|&ch| drawable(ch)) {
+        atlas.prepare(ch, rpx);
+    }
+}
+
+/// Adds the glyphs of a text block of world `size` at world `origin` to
+/// `batch`, each at its layout cell (ADR-T29-1); glyphs missing from
+/// `atlas`, whitespace and text below [`TEXT_MIN_PX`] are skipped.
+#[allow(clippy::too_many_arguments)]
+pub fn push_text_block<S: MeshSink>(
+    batch: &mut Batch<S>,
+    atlas: &GlyphAtlas,
+    origin: Vec2,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+    color: Color,
+) {
+    let Some((rpx, scale)) = block_raster(size, camera, dpi) else {
+        return;
+    };
+    for glyph in glyphs(origin, text, size) {
+        if !drawable(glyph.ch) {
+            continue;
+        }
+        let Some(entry) = atlas.get(glyph.ch, rpx) else {
+            continue;
+        };
+        if let Some(quad) = glyph_quad(camera.world_to_screen(glyph.pos), &entry, scale) {
+            batch.glyph(&quad, entry.page, color);
+        }
+    }
+}
+
+/// Puts every glyph of a label of `size` logical pixels at `dpi` into
+/// `atlas`.
+pub fn prepare_text_centered(atlas: &mut GlyphAtlas, text: &str, size: f32, dpi: f32) {
+    let (rpx, _) = label_glyph_raster(size, dpi);
+    for ch in text.chars() {
+        atlas.prepare(ch, rpx);
+    }
+}
+
+/// Adds a label of `size` logical pixels to `batch`, its advance box
+/// centred horizontally and its ink vertically in the screen rectangle
+/// `rect`, as macroquad's `measure_text` centring did.
+pub fn push_text_centered<S: MeshSink>(
+    batch: &mut Batch<S>,
+    atlas: &GlyphAtlas,
+    text: &str,
+    rect: Aabb,
+    size: f32,
+    dpi: f32,
+    color: Color,
+) {
+    let (rpx, scale) = label_glyph_raster(size, dpi);
+    let entries = || text.chars().filter_map(|ch| atlas.get(ch, rpx));
+    let width: f32 = entries().map(|e| e.advance * scale).sum();
+    let ink = entries()
+        .map(|e| (e.ymin + f32::from(e.rect.h)) * scale)
+        .fold(0.0, f32::max);
+    let c = rect.center();
+    let mut pen = Vec2::new(c.x - width * 0.5, c.y + ink * 0.5);
+    for entry in entries() {
+        if let Some(quad) = glyph_quad(pen, &entry, scale) {
+            batch.glyph(&quad, entry.page, color);
+        }
+        pen.x += entry.advance * scale;
+    }
+}
+
+/// Runs `prepare` on the glyph atlas, puts new glyphs on the GPU, then
+/// runs `draw` with the atlas, adding the time and rasterizations to the
+/// frame's [`TextStats`]. Nothing runs without an atlas.
+fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAtlas)) {
+    let started = Instant::now();
+    let rasterized = ATLAS.with(|cell| {
+        let rasterized = {
+            let mut guard = cell.borrow_mut();
+            let Some(atlas) = guard.as_mut() else {
+                return 0;
+            };
+            prepare(atlas);
+            TEXTURES.with(|textures| textures.borrow_mut().sync(atlas));
+            atlas.take_rasterized()
+        };
+        if let Some(atlas) = cell.borrow().as_ref() {
+            draw(atlas);
+        }
+        rasterized
     });
-}
-
-/// Runs `draw` with the text font (`None`: macroquad's built-in one).
-fn with_text_font<R>(draw: impl FnOnce(Option<&Font>) -> R) -> R {
-    TEXT_FONT.with(|cell| draw(cell.get()))
+    STATS.with(|stats| {
+        let mut sum = stats.get();
+        sum.time += started.elapsed();
+        sum.rasterized += rasterized;
+        stats.set(sum);
+    });
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
@@ -733,9 +938,9 @@ fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
     }
 }
 
-/// Draws `label` centred in the screen rectangle `rect` of a rectangle or
-/// (`ellipse`) an ellipse, if it is big enough on screen. Flushes `batch`
-/// first so the text lands on top of the shape.
+/// Adds `label` centred in the screen rectangle `rect` of a rectangle or
+/// (`ellipse`) an ellipse, if it is big enough on screen, on top of the
+/// shape (ADR-T32-2).
 fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
     let Some(label) = label else {
         return;
@@ -744,14 +949,15 @@ fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, 
     let Some(size) = label_size(text.len(), label_area(rect, ellipse)) else {
         return;
     };
-    let (font_size, font_scale) = label_raster(size);
-    batch.flush();
-    draw_text_centered(&text, rect, font_size, font_scale, color);
+    let dpi = screen_dpi_scale();
+    with_glyphs(
+        |atlas| prepare_text_centered(atlas, &text, size, dpi),
+        |atlas| push_text_centered(batch, atlas, &text, rect, size, dpi, color),
+    );
 }
 
-/// Draws the axis indices of a grid with screen corners `a` (drag start) and
-/// `b`, all at one size, if the cells are big enough on screen. Flushes
-/// `batch` first so the text lands on top of the grid.
+/// Adds the axis indices of a grid with screen corners `a` (drag start) and
+/// `b`, all at one size, if the cells are big enough on screen.
 fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
     let Some(first) = grid_axis_labels(a, b, cols, rows).next() else {
         return;
@@ -760,42 +966,26 @@ fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, c
     let Some(size) = axis_label_size(cols, rows, cell) else {
         return;
     };
-    let (font_size, font_scale) = label_raster(size);
-    batch.flush();
-    for label in grid_axis_labels(a, b, cols, rows) {
-        draw_text_centered(
-            &label.index.to_string(),
-            label.rect,
-            font_size,
-            font_scale,
-            color,
-        );
-    }
+    let dpi = screen_dpi_scale();
+    let labels: Vec<(String, Aabb)> = grid_axis_labels(a, b, cols, rows)
+        .map(|label| (label.index.to_string(), label.rect))
+        .collect();
+    with_glyphs(
+        |atlas| {
+            for (text, _) in &labels {
+                prepare_text_centered(atlas, text, size, dpi);
+            }
+        },
+        |atlas| {
+            for (text, rect) in &labels {
+                push_text_centered(batch, atlas, text, *rect, size, dpi, color);
+            }
+        },
+    );
 }
 
-/// Draws `text` centred in the screen rectangle `rect`.
-fn draw_text_centered(text: &str, rect: Aabb, font_size: u16, font_scale: f32, color: Color) {
-    with_text_font(|font| {
-        let dims = measure_text(text, font, font_size, font_scale);
-        let c = rect.center();
-        draw_text_ex(
-            text,
-            c.x - dims.width * 0.5,
-            c.y + dims.offset_y * 0.5,
-            TextParams {
-                font,
-                font_size,
-                font_scale,
-                color,
-                ..TextParams::default()
-            },
-        );
-    });
-}
-
-/// Draws a text block of world `size` at world `origin`, each glyph at its
-/// layout cell (ADR-T29-1), if it is big enough on screen. Flushes `batch`
-/// first so the text keeps its z-order.
+/// Adds a text block of world `size` at world `origin`, each glyph at its
+/// layout cell (ADR-T29-1), if it is big enough on screen.
 fn draw_text_block(
     batch: &mut Batch,
     origin: Vec2,
@@ -804,28 +994,14 @@ fn draw_text_block(
     camera: &Camera,
     color: Color,
 ) {
-    let Some(px) = text_screen_px(size, camera.zoom()) else {
+    let dpi = screen_dpi_scale();
+    if block_raster(size, camera, dpi).is_none() {
         return;
-    };
-    let (font_size, font_scale) = text_raster(px);
-    batch.flush();
-    with_text_font(|font| {
-        let params = TextParams {
-            font,
-            font_size,
-            font_scale,
-            color,
-            ..TextParams::default()
-        };
-        let mut buf = [0; 4];
-        for glyph in glyphs(origin, text, size) {
-            if glyph.ch.is_whitespace() || glyph.ch.is_control() {
-                continue;
-            }
-            let p = camera.world_to_screen(glyph.pos);
-            draw_text_ex(glyph.ch.encode_utf8(&mut buf), p.x, p.y, params.clone());
-        }
-    });
+    }
+    with_glyphs(
+        |atlas| prepare_text_block(atlas, text, size, camera, dpi),
+        |atlas| push_text_block(batch, atlas, origin, text, size, camera, dpi, color),
+    );
 }
 
 /// Draws an axis-aligned screen segment as a band `width` pixels wide that
@@ -948,12 +1124,15 @@ mod tests {
     #[derive(Default)]
     struct Recorder {
         chunks: Vec<(Vec<Vertex>, Vec<u16>)>,
+        /// The atlas page each chunk was bound to.
+        pages: Vec<Option<u32>>,
     }
 
     impl MeshSink for Recorder {
-        fn draw(&mut self, mesh: &Mesh) {
+        fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
             self.chunks
                 .push((mesh.vertices.clone(), mesh.indices.clone()));
+            self.pages.push(page);
         }
     }
 
@@ -1757,5 +1936,241 @@ mod tests {
 
         assert_eq!(raster, largest);
         assert!(approx_eq(scale, 1024.0 / f32::from(largest), EPS));
+    }
+
+    // ---- T32 glyph batching ------------------------------------------------
+
+    use crate::shell::app::TEXT_FONT;
+    use crate::shell::glyphs::{GlyphAtlas, GlyphQuad, WHITE_UV};
+
+    fn atlas() -> GlyphAtlas {
+        match GlyphAtlas::new(TEXT_FONT) {
+            Ok(atlas) => atlas,
+            Err(err) => panic!("embedded font loads: {err}"),
+        }
+    }
+
+    fn uv(v: &Vertex) -> Vec2 {
+        Vec2::new(v.uv.x, v.uv.y)
+    }
+
+    fn is_white(v: &Vertex) -> bool {
+        uv(v).approx_eq(Vec2::new(WHITE_UV[0], WHITE_UV[1]), EPS)
+    }
+
+    fn quad() -> GlyphQuad {
+        GlyphQuad {
+            min: Vec2::new(0.0, 0.0),
+            max: Vec2::new(10.0, 20.0),
+            uv_min: Vec2::new(0.1, 0.2),
+            uv_max: Vec2::new(0.3, 0.4),
+        }
+    }
+
+    /// The chunks of a text block of `size` world units at the origin,
+    /// prepared in a fresh atlas and pushed through `camera` at DPI 1.
+    fn pushed(text: &str, size: f32, camera: &Camera) -> Recorder {
+        let mut atlas = atlas();
+        prepare_text_block(&mut atlas, text, size, camera, 1.0);
+        let mut batch = Batch::new(Recorder::default());
+        push_text_block(&mut batch, &atlas, Vec2::ZERO, text, size, camera, 1.0, RED);
+        batch.finish()
+    }
+
+    #[test]
+    fn batch_shape_vertices_use_white_uv() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.triangle(Vec2::ZERO, Vec2::new(1.0, 0.0), Vec2::new(0.0, 1.0), RED);
+        batch.polyline(points(&[(0.0, 0.0), (10.0, 0.0)]), 4.0, RED);
+        let rec = batch.finish();
+
+        // Assert: shapes alone are not bound to a page.
+        let (vertices, _) = only_chunk(&rec);
+        assert!(vertices.iter().all(is_white));
+        assert_eq!(rec.pages, vec![None]);
+    }
+
+    #[test]
+    fn batch_glyphs_and_shapes_share_a_chunk() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act: shape, glyph, shape, glyph on one page.
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.glyph(&quad(), 0, RED);
+        batch.rect(aabb(5.0, 0.0, 9.0, 2.0), RED);
+        batch.glyph(&quad(), 0, RED);
+        let rec = batch.finish();
+
+        // Assert: one draw call, in the order added.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (16, 24));
+        assert_eq!(rec.pages, vec![Some(0)]);
+        let white: Vec<bool> = vertices.iter().map(is_white).collect();
+        assert!(white[..4].iter().all(|&w| w));
+        assert!(white[4..8].iter().all(|&w| !w));
+        assert!(white[8..12].iter().all(|&w| w));
+        assert!(uv(&vertices[4]).approx_eq(Vec2::new(0.1, 0.2), EPS));
+    }
+
+    #[test]
+    fn batch_glyph_on_other_page_flushes() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.glyph(&quad(), 0, RED);
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.glyph(&quad(), 1, RED);
+        batch.glyph(&quad(), 1, RED);
+        let rec = batch.finish();
+
+        // Assert: the shape stays with the chunk it was added to.
+        assert_eq!(rec.pages, vec![Some(0), Some(1)]);
+        assert_eq!(rec.chunks[0].0.len(), 8);
+        assert_eq!(rec.chunks[1].0.len(), 8);
+    }
+
+    #[test]
+    fn push_text_block_10k_glyphs_fill_whole_chunks() {
+        // Arrange: 100 lines of 100 letters.
+        let line: String = (0..100)
+            .map(|i| char::from(b'a' + (i % 26) as u8))
+            .collect();
+        let text = vec![line; 100].join("\n");
+        let camera = Camera::default();
+
+        // Act
+        let rec = pushed(&text, 18.0, &camera);
+
+        // Assert: one quad per glyph, as few chunks as the limits allow.
+        let quads: usize = rec.chunks.iter().map(|(_, i)| i.len()).sum::<usize>() / 6;
+        assert_eq!(quads, 10_000);
+        assert_eq!(
+            rec.chunks.len(),
+            (10_000 * 6usize).div_ceil(BATCH_MAX_INDICES)
+        );
+        assert!(rec.pages.iter().all(|&p| p == Some(0)));
+    }
+
+    #[test]
+    fn push_text_block_keeps_z_order_with_shapes() {
+        // Arrange
+        let mut atlas = atlas();
+        let camera = Camera::default();
+        prepare_text_block(&mut atlas, "ab", 18.0, &camera, 1.0);
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act: shape, text, shape.
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        push_text_block(
+            &mut batch,
+            &atlas,
+            Vec2::ZERO,
+            "ab",
+            18.0,
+            &camera,
+            1.0,
+            RED,
+        );
+        batch.rect(aabb(5.0, 0.0, 9.0, 2.0), RED);
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, _) = only_chunk(&rec);
+        let white: Vec<bool> = vertices.iter().map(is_white).collect();
+        assert_eq!(white.len(), 16);
+        assert!(white[..4].iter().all(|&w| w));
+        assert!(white[4..12].iter().all(|&w| !w));
+        assert!(white[12..].iter().all(|&w| w));
+    }
+
+    #[test]
+    fn push_text_block_skips_whitespace_and_tiny_text() {
+        // Arrange
+        let camera = Camera::default();
+        let zoomed_out = Camera::new(Vec2::ZERO, 0.05);
+
+        // Act
+        let spaced = pushed("a b\n c\t", 18.0, &camera);
+        let tiny = pushed("abc", 18.0, &zoomed_out);
+
+        // Assert
+        let quads: usize = spaced.chunks.iter().map(|(_, i)| i.len()).sum::<usize>() / 6;
+        assert_eq!(quads, 3);
+        assert!(tiny.chunks.is_empty(), "0.9 px text is not drawn");
+    }
+
+    #[test]
+    fn push_text_block_places_glyphs_at_their_cells() {
+        // Arrange: 20 px text at zoom 1 is rasterized at 20 px, scale 1.
+        let mut atlas = atlas();
+        let camera = Camera::default();
+        prepare_text_block(&mut atlas, "ab", 20.0, &camera, 1.0);
+        let Some(b) = atlas.get('b', 20) else {
+            panic!("'b' is prepared");
+        };
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        push_text_block(
+            &mut batch,
+            &atlas,
+            Vec2::new(10.0, 30.0),
+            "ab",
+            20.0,
+            &camera,
+            1.0,
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: 'b' starts one advance (0.6 em) right, on the baseline
+        // one em below the top.
+        let (vertices, _) = only_chunk(&rec);
+        let left = vertices[4..8]
+            .iter()
+            .map(|v| v.position.x)
+            .fold(f32::INFINITY, f32::min);
+        let bottom = vertices[4..8]
+            .iter()
+            .map(|v| v.position.y)
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(approx_eq(left, 10.0 + 12.0 + b.xmin, EPS), "{left}");
+        assert!(approx_eq(bottom, 30.0 + 20.0 - b.ymin, EPS), "{bottom}");
+    }
+
+    #[test]
+    fn push_text_centered_centres_on_rect() {
+        // Arrange: a 32 px label, rasterized at 32 px, scale 1.
+        let mut atlas = atlas();
+        prepare_text_centered(&mut atlas, "7", 32.0, 1.0);
+        let Some(seven) = atlas.get('7', 32) else {
+            panic!("'7' is prepared");
+        };
+        let rect = aabb(0.0, 0.0, 100.0, 60.0);
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        push_text_centered(&mut batch, &atlas, "7", rect, 32.0, 1.0, RED);
+        let rec = batch.finish();
+
+        // Assert: the advance box is centred horizontally, the ink
+        // vertically (as macroquad's measure_text centring did).
+        let (vertices, _) = only_chunk(&rec);
+        let xs = vertices.iter().map(|v| v.position.x);
+        let ys: Vec<f32> = vertices.iter().map(|v| v.position.y).collect();
+        let left = xs.fold(f32::INFINITY, f32::min);
+        assert!(
+            approx_eq(left, 50.0 - seven.advance / 2.0 + seven.xmin, EPS),
+            "{left}"
+        );
+        let top = ys.iter().copied().fold(f32::INFINITY, f32::min);
+        let ink = seven.ymin + f32::from(seven.rect.h);
+        assert!(approx_eq(top, 30.0 - ink / 2.0, EPS), "{top}");
     }
 }

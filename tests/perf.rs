@@ -26,7 +26,13 @@ use draw::core::shape::{CellFill, Shape, Style};
 use draw::core::smoothing::{Smoother, SmoothingLevel, simplify_rdp};
 use draw::core::snap::{DragKind, Snaps, Targets, snap_drag};
 use draw::core::text_layout::glyphs;
-use draw::shell::render::{cull_rect, is_visible};
+use draw::shell::app::TEXT_FONT;
+use draw::shell::glyphs::GlyphAtlas;
+use draw::shell::render::{
+    Batch, MeshSink, cull_rect, is_visible, prepare_text_block, push_text_block,
+};
+use macroquad::color::WHITE;
+use macroquad::models::Mesh;
 
 /// Shapes in the benchmark document.
 const SHAPES: usize = 10_000;
@@ -589,4 +595,76 @@ fn perf_typing_with_500_blocks_is_under_1ms() {
 
     // Assert
     assert_within_budget("typing, 500 blocks", median, BUDGET);
+}
+
+/// Counts the chunks and indices a batch submits, without a GPU.
+#[derive(Default)]
+struct CountingSink {
+    chunks: usize,
+    indices: usize,
+}
+
+impl MeshSink for CountingSink {
+    fn draw(&mut self, mesh: &mut Mesh, _page: Option<u32>) {
+        self.chunks += 1;
+        self.indices += mesh.indices.len();
+    }
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_tessellate_10k_glyphs_is_under_1ms() {
+    // Arrange: the T29 blocks, 500 × 20 characters, glyphs already in the
+    // atlas (a steady full re-render, T32 AC-6).
+    if !optimised() {
+        return;
+    }
+    let Ok(mut atlas) = GlyphAtlas::new(TEXT_FONT) else {
+        panic!("embedded font loads");
+    };
+    let blocks = text_blocks();
+    let camera = Camera::default();
+    for shape in &blocks {
+        if let Shape::Text { text, size, .. } = shape {
+            prepare_text_block(&mut atlas, text, *size, &camera, 1.0);
+        }
+    }
+
+    // Act: tessellate every glyph into the batch.
+    let median = median_time(
+        || Batch::new(CountingSink::default()),
+        |mut batch| {
+            for shape in &blocks {
+                if let Shape::Text {
+                    origin, text, size, ..
+                } = shape
+                {
+                    push_text_block(
+                        &mut batch, &atlas, *origin, text, *size, &camera, 1.0, WHITE,
+                    );
+                }
+            }
+            batch.finish()
+        },
+    );
+
+    // Assert
+    let mut batch = Batch::new(CountingSink::default());
+    for shape in &blocks {
+        if let Shape::Text {
+            origin, text, size, ..
+        } = shape
+        {
+            push_text_block(
+                &mut batch, &atlas, *origin, text, *size, &camera, 1.0, WHITE,
+            );
+        }
+    }
+    let sink = batch.finish();
+    assert_eq!(
+        sink.indices / 6,
+        TEXT_BLOCKS * (TEXT_CHARS - 1),
+        "one quad per glyph"
+    );
+    assert_within_budget("tessellate 10k glyphs", median, BUDGET);
 }

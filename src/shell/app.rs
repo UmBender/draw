@@ -18,7 +18,6 @@ use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
-use macroquad::text::load_ttf_font_from_bytes;
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
     render_target_ex,
@@ -38,8 +37,9 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
+use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::Collector;
-use crate::shell::render::{self, to_mq_color};
+use crate::shell::render::{self, TextStats, to_mq_color};
 use crate::shell::toolbar::{self, Route};
 
 /// Opacity of the marquee fill.
@@ -98,9 +98,19 @@ pub fn frame_timing_enabled(setting: Option<&str>) -> bool {
 }
 
 /// The frame timer's line for one re-render: which layers, CPU time in
-/// milliseconds and the number of shapes in the document.
+/// milliseconds, the frame's text work if given (T32 AC-1) and the number
+/// of shapes in the document.
 #[must_use]
-pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> String {
+pub fn frame_log_line(
+    redraw: Redraw,
+    elapsed: Duration,
+    text: Option<TextStats>,
+    shapes: usize,
+) -> String {
+    let text = text.map_or_else(String::new, |text| {
+        let ms = text.time.as_secs_f64() * 1000.0;
+        format!(" (text {ms:.3} ms, {} rasterized)", text.rasterized)
+    });
     let layers = match redraw {
         Redraw::None => "no",
         Redraw::Overlay => "overlay",
@@ -109,7 +119,7 @@ pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> Strin
         Redraw::Full => "full",
     };
     let ms = elapsed.as_secs_f64() * 1000.0;
-    format!("draw: {layers} re-render {ms:.3} ms, {shapes} shapes")
+    format!("draw: {layers} re-render {ms:.3} ms{text}, {shapes} shapes")
 }
 
 /// What the document layer shows (ADR-T24-1); it is re-rendered when this
@@ -181,6 +191,15 @@ pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty:
     } else {
         Redraw::Full
     }
+}
+
+/// Whether the document layer must be re-rendered in full next frame
+/// because the glyph atlas `overflowed` while drawing it: only if the atlas
+/// was not `cleared` at the start of this frame, so an atlas too small for
+/// one frame does not re-render forever (ADR-T32-1).
+#[must_use]
+pub fn rerender_after_overflow(overflowed: bool, cleared: bool) -> bool {
+    overflowed && !cleared
 }
 
 /// How long the camera must stay still before a [`Redraw::Moved`] layer is
@@ -336,10 +355,10 @@ pub fn window_conf() -> WindowSettings {
 
 /// Runs the application until the window is closed.
 pub async fn run() {
-    match load_ttf_font_from_bytes(TEXT_FONT) {
-        Ok(font) => render::set_text_font(font),
-        // Text still draws, with macroquad's ASCII-only font.
-        Err(err) => eprintln!("draw: embedded font not loaded: {err}"),
+    match GlyphAtlas::new(TEXT_FONT) {
+        Ok(atlas) => render::set_glyph_atlas(atlas),
+        // A unit test proves the embedded font parses (ADR-T32-1).
+        Err(err) => eprintln!("draw: embedded font not loaded, text hidden: {err}"),
     }
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
@@ -398,6 +417,9 @@ struct CachedFrame {
     samples: i32,
     /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
     timed: bool,
+    /// Whether the next frame re-renders the layer in full because the
+    /// glyph atlas overflowed (ADR-T32-1).
+    rerender: bool,
 }
 
 impl CachedFrame {
@@ -414,6 +436,7 @@ impl CachedFrame {
             last_full: None,
             samples,
             timed,
+            rerender: false,
         }
     }
 
@@ -442,6 +465,13 @@ impl CachedFrame {
         let planned = plan_redraw(self.key.as_ref(), &key, base, dirty);
         let planned = reuse_if_slow(planned, self.last_full);
         let redraw = settle(planned, now.saturating_duration_since(self.changed_at));
+        let redraw = if std::mem::take(&mut self.rerender) {
+            Redraw::Full
+        } else {
+            redraw
+        };
+        let cleared = render::begin_text_frame();
+        render::take_text_stats();
         let started = self.timed.then(Instant::now);
         let from = match redraw {
             Redraw::Full => Some(0),
@@ -490,9 +520,20 @@ impl CachedFrame {
             blit(&document.texture, dest);
         }
         draw_overlay(editor, &overlay, viewport);
+        if rerender_after_overflow(render::text_overflowed(), cleared) {
+            // Glyphs were dropped from the layer; draw it again next frame
+            // with the atlas cleared.
+            self.rerender = true;
+            schedule_update();
+        }
+        let text = render::take_text_stats();
         if let Some(started) = started.filter(|_| redraw != Redraw::None) {
             let shapes = editor.document().len();
-            eprintln!("{}", frame_log_line(redraw, started.elapsed(), shapes));
+            let text = (text != TextStats::default()).then_some(text);
+            eprintln!(
+                "{}",
+                frame_log_line(redraw, started.elapsed(), text, shapes)
+            );
         }
     }
 
@@ -731,8 +772,8 @@ mod tests {
         let elapsed = Duration::from_micros(12_345);
 
         // Act
-        let full = frame_log_line(Redraw::Full, elapsed, 5120);
-        let overlay = frame_log_line(Redraw::Overlay, Duration::from_micros(800), 7);
+        let full = frame_log_line(Redraw::Full, elapsed, None, 5120);
+        let overlay = frame_log_line(Redraw::Overlay, Duration::from_micros(800), None, 7);
 
         // Assert
         assert_eq!(full, "draw: full re-render 12.345 ms, 5120 shapes");
@@ -885,7 +926,12 @@ mod tests {
 
     #[test]
     fn frame_log_line_names_appends() {
-        let line = frame_log_line(Redraw::Append { from: 3 }, Duration::from_micros(250), 4);
+        let line = frame_log_line(
+            Redraw::Append { from: 3 },
+            Duration::from_micros(250),
+            None,
+            4,
+        );
 
         assert_eq!(line, "draw: append re-render 0.250 ms, 4 shapes");
     }
@@ -994,7 +1040,7 @@ mod tests {
 
     #[test]
     fn frame_log_line_names_moved() {
-        let line = frame_log_line(Redraw::Moved, Duration::from_micros(90), 5120);
+        let line = frame_log_line(Redraw::Moved, Duration::from_micros(90), None, 5120);
 
         assert_eq!(line, "draw: moved re-render 0.090 ms, 5120 shapes");
     }
@@ -1211,6 +1257,41 @@ mod tests {
             let width_tol = 1e-3 * (1.0 + layer.width() * scale);
             prop_assert!(approx_eq(rect.width(), layer.width() * scale, width_tol));
         }
+    }
+
+    // ---- T32 text stats and atlas overflow ---------------------------------
+
+    #[test]
+    fn frame_log_line_with_text_stats_names_them() {
+        // Arrange
+        let text = TextStats {
+            time: Duration::from_micros(3_210),
+            rasterized: 45,
+        };
+
+        // Act
+        let line = frame_log_line(
+            Redraw::Full,
+            Duration::from_micros(12_345),
+            Some(text),
+            5120,
+        );
+
+        // Assert
+        assert_eq!(
+            line,
+            "draw: full re-render 12.345 ms (text 3.210 ms, 45 rasterized), 5120 shapes"
+        );
+    }
+
+    #[test]
+    fn glyph_overflow_rerenders_once() {
+        // An overflow clears the atlas next frame and re-renders the layer;
+        // an overflow right after a clear is accepted (ADR-T32-1).
+        assert!(rerender_after_overflow(true, false));
+        assert!(!rerender_after_overflow(true, true));
+        assert!(!rerender_after_overflow(false, false));
+        assert!(!rerender_after_overflow(false, true));
     }
 
     // ---- T29 text font -----------------------------------------------------

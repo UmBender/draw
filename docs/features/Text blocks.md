@@ -52,7 +52,11 @@ the document until it is committed; the editor sends it typed characters
 (`InputEvent::Char`) and editing keys and keeps every key away from the
 keymap ([[ADR-T29-2 Text edit mode]]). The shell draws each glyph at its
 cell from an embedded 124 KB subset of Adwaita Mono, rasterized near its
-on-screen size (`src/shell/render.rs`); the number labels use the same font.
+on-screen size once into its own glyph atlas (`src/shell/glyphs.rs`) and
+drawn as textured quads in the same batched meshes as the shapes
+(`src/shell/render.rs`); the number labels and grid indices use the same
+font and path ([[ADR-T32-1 Own glyph atlas rasterized with fontdue]],
+[[ADR-T32-2 Shapes and glyphs share one textured batch]]).
 While typing, only the overlay is redrawn and the caret does not blink, so
 the app stays idle between keys.
 
