@@ -26,4 +26,5 @@ One note per user-visible feature, created by the task that implements it
 | [[Text blocks]] | [[T29 Text blocks]] | [[29 Typing on a canvas without losing the shortcuts]] | done |
 | [[TeX formulas]] | [[T30 Basic TeX formulas]], [[T33 Math font for formulas]] | [[30 Parsing and laying out a small TeX subset]], [[33 Typesetting with a proportional math font]] | done |
 | [[Text in shapes (experimental)]] | [[T31 Text in rectangles and grid cells]] | [[31 Prototyping an interaction behind a switch]] | experimental |
+| [[Linux packages]] | [[T27 Linux packaging]] | [[27 Shipping a binary to other Linux machines]] | done |
 | [[Contest cheat sheet]] | [[T14 Performance and release validation]] | [[14 Profiling and shipping a release build]] | done |

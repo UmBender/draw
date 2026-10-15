@@ -1,7 +1,7 @@
 ---
 id: T27
 title: Linux packaging
-status: review
+status: done
 wave: 20
 branch: task/T27-packaging
 depends_on: [T14]
@@ -274,3 +274,4 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   the application id; `flatpak run` opens the window and renders
   (`DRAW_FRAME_TIMES` logged frames, still running when `timeout`
   stopped it after 6 s). All acceptance criteria are checked.
+- 2026-10-15 — Integrated into `main`. Status → done; T28 is ready.

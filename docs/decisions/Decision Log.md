@@ -63,3 +63,6 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 52 | [[ADR-T30-1 TeX subset, box layout and metrics]] | accepted | decision | 0003, 0014, T29-1, T29-2, T32-1, T32-2 | — |
 | 53 | [[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]] | accepted | decision | 0003, 0014, T29-1, T32-1, T32-2 | amends T30-1 |
 | 54 | [[ADR-T31-1 Shape text prototype behind a switch]] | accepted | decision | T16-1, T16-3, T19-1, T21-1, T21-2, T29-1, T29-2, T29-3, T30-1 | amends T16-1, T21-2, T29-2 |
+| 55 | [[ADR-T27-1 Build in an AlmaLinux 8 container for a glibc 2.28 floor]] | accepted | decision | 0002, 0014 | — |
+| 56 | [[ADR-T27-2 Package formats from one staging tree and one library list]] | accepted | decision | 0002, 0014, T12-1, T27-1 | — |
+| 57 | [[ADR-T27-3 Crash report from a panic hook and split debug symbols]] | accepted | decision | 0002, 0014 | — |

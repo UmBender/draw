@@ -26,6 +26,17 @@ All notable changes to draw are listed here. The format follows
   Text tool, or click a selected shape again, to type into it; `Tab` /
   `Enter` walk grid cells. Text shrinks to fit, hides the shape's number,
   moves and copies with the shape, and the fill eraser clears it.
+- Linux packages: `scripts/package.sh` builds a portable tarball (with
+  `install.sh`), a `.deb`, an `.rpm` and a Flatpak bundle that run on
+  glibc 2.28 and newer (Debian 10+, Ubuntu 20.04+, RHEL 8+), with a
+  desktop entry, icon and metainfo, and declare the X11 and OpenGL
+  libraries draw needs.
+- A missing display or library prints one line naming what to install
+  and exits, instead of panicking; `DRAW_SKIP_PREFLIGHT=1` skips the
+  check.
+- A crash writes a report with the app version and build id to stderr
+  and to `~/.local/state/draw/crash.log`; release packages ship split
+  debug symbols (`draw.debug`) to trace it.
 
 ### Changed
 

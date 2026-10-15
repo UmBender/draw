@@ -1,7 +1,7 @@
 ---
 id: T28
 title: Experimental native Wayland backend
-status: todo
+status: ready
 wave: 21
 branch: task/T28-wayland
 depends_on: [T27]
