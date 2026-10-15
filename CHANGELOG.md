@@ -6,6 +6,18 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Text blocks: the Text tool (`T`) places free-standing text with Greek
+  letters and math symbols in an embedded monospaced font. No shortcut
+  fires while typing; `Esc` finishes, `Ctrl+Z` cancels the edit, `Ctrl+[` /
+  `Ctrl+]` resize the block. Blocks move, copy, erase, snap and undo like
+  other shapes; edit one again with a Text click or a Select double-click.
+
+### Changed
+
+- Number labels use the embedded monospaced font.
+
 ## [1.0.0] - 2026-10-04
 
 First release.

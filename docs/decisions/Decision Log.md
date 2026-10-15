@@ -55,3 +55,6 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 44 | [[ADR-T26-1 Reuse the document layer during pan and zoom]] | accepted | decision | T12-1, T15-1, T24-1, T24-2 | amends T12-1, T24-1; amended by T26-3 |
 | 45 | [[ADR-T26-2 Gesture frame budget]] | proposed | decision | T26-1 | amends T24-5 |
 | 46 | [[ADR-T26-3 Reuse the layer only when re-rendering is slow]] | accepted | decision | T26-1 | amends T26-1 |
+| 47 | [[ADR-T29-1 Text shape with monospaced layout and an embedded font]] | accepted | decision | 0003, 0013, 0014, T07-1 | amends 0004, T16-1 |
+| 48 | [[ADR-T29-2 Text edit mode]] | accepted | decision | 0005, T08-1, T11-1, T24-1, T29-1 | amended by T29-3 |
+| 49 | [[ADR-T29-3 Resize text while typing]] | accepted | decision | T29-1 | amends T29-2 |

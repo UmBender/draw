@@ -22,6 +22,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `A` | Arrow | `E` | Eraser (on a fill: clears fills) |
 | `R` | Rectangle | `B` | Bucket (shape or grid cell) |
 | `C` | Circle / ellipse | `H` | Hand (pan) |
+| `T` | Text (click, type, `Esc`) | | |
 
 ## Style
 
@@ -65,6 +66,13 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Alt` while drawing | No snapping |
 | `Alt` + drag selection | Duplicate while moving |
 | Right drag | Temporary eraser, from any tool |
+
+## Typing in a text block
+
+Every key types; only these act: `Esc` / `Ctrl+Enter` finish · `Ctrl+Z`
+cancel · `Enter` new line · `Tab` 4 spaces · arrows, `Home`, `End` move ·
+`Backspace`, `Delete` delete · `Ctrl+]` / `Ctrl+[` bigger / smaller.
+Edit again: Text click, or Select double-click.
 
 ## Recipes
 

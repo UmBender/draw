@@ -23,4 +23,5 @@ One note per user-visible feature, created by the task that implements it
 | [[Grid tool]] | [[T16 Shape model v2 and helper skeleton]], [[T18 Grid tool]], [[T22 Numbering drives grid indices]] | [[18 A grid tool with live parameters]] | done |
 | [[Numbered nodes]] | [[T16 Shape model v2 and helper skeleton]], [[T19 Auto-numbering]], [[T22 Numbering drives grid indices]] | [[19 Auto-numbering and undoable counters]], [[22 One toggle, two meanings]] | done |
 | [[Cell fill]] | [[T21 Cell fill and fill eraser]] | [[21 Per-cell fills and a two-mode eraser]] | done |
+| [[Text blocks]] | [[T29 Text blocks]] | [[29 Typing on a canvas without losing the shortcuts]] | done |
 | [[Contest cheat sheet]] | [[T14 Performance and release validation]] | [[14 Profiling and shipping a release build]] | done |

@@ -120,8 +120,8 @@ flowchart TD
 | [[T24 Smooth redraws with large documents]] | done | T14 | `task/T24-layered-redraw` |
 | [[T25 Linear-time selection with large documents]] | done | T14 | `task/T25-fast-lookup` |
 | [[T26 Pan and zoom without re-rendering]] | done | T24 | `task/T26-gesture-redraw` |
-| [[T29 Text blocks]] | ready | T14 | `task/T29-text` |
-| [[T30 Basic TeX formulas]] | todo | T29 | `task/T30-tex` |
-| [[T31 Text in rectangles and grid cells]] | todo | T29 | `task/T31-shape-text` |
+| [[T29 Text blocks]] | done | T14 | `task/T29-text` |
+| [[T30 Basic TeX formulas]] | ready | T29 | `task/T30-tex` |
+| [[T31 Text in rectangles and grid cells]] | ready | T29 | `task/T31-shape-text` |
 | [[T27 Linux packaging]] | ready | T14 | `task/T27-packaging` |
 | [[T28 Experimental native Wayland backend]] | todo | T27 | `task/T28-wayland` |

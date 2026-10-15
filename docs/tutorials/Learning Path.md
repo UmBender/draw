@@ -41,6 +41,11 @@ flowchart LR
   s14 --> s25
   s12 --> s26[26 Reusing a frame during a gesture]
   s24 --> s26
+  s5 --> s29[29 Typing without losing the shortcuts]
+  s16 --> s29
+  s8 --> s29
+  s11 --> s29
+  s24 --> s29
 ```
 
 | Step | Tutorial | Task | Status |
@@ -71,3 +76,4 @@ flowchart LR
 | 24 | [[24 Layered redraws and measuring a frame]] | [[T24 Smooth redraws with large documents]] | done |
 | 25 | [[25 Indexing a z-ordered store]] | [[T25 Linear-time selection with large documents]] | done |
 | 26 | [[26 Reusing a frame during a gesture]] | [[T26 Pan and zoom without re-rendering]] | done |
+| 29 | [[29 Typing on a canvas without losing the shortcuts]] | [[T29 Text blocks]] | done |
