@@ -265,5 +265,12 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   removes the binary and desktop entry.
 - 2026-10-15 — Owner installed the `.rpm` on the target (AC-6): draw
   shows in the launcher with its icon.
-- 2026-10-15 — Still for the owner: the Flatpak bundle (AC-9:
-  `flatpak-builder` is not installed here, so it was not built).
+- 2026-10-15 — Flatpak checked on the target (AC-9): with
+  `org.flatpak.Builder` installed, `scripts/package.sh` built
+  `draw-1.0.0-x86_64.flatpak` (644 kB, listed in `SHA256SUMS`) on
+  `org.freedesktop.Platform` 26.08. Installed as a user app, its
+  permissions are exactly `sockets=x11`, `shared=ipc`, `devices=dri`;
+  the desktop entry, the four icons and the metainfo are exported under
+  the application id; `flatpak run` opens the window and renders
+  (`DRAW_FRAME_TIMES` logged frames, still running when `timeout`
+  stopped it after 6 s). All acceptance criteria are checked.
