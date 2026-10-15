@@ -208,15 +208,34 @@ A printable one-page version lives in
 ## Configuration
 
 There is no config file: shortcuts, palette and theme are fixed on purpose.
-Two environment variables exist for troubleshooting:
+Two environment variables exist for troubleshooting, and one turns on
+experimental features:
 
 | Variable | Values | Effect |
 |----------|--------|--------|
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
+| `DRAW_EXPERIMENTAL` | feature names, comma-separated | Turn on experimental features (below) |
 
 ```sh
 DRAW_MSAA=off draw
+```
+
+### Experimental
+
+Experimental features are off unless named in `DRAW_EXPERIMENTAL`. They
+may change or disappear in any release.
+
+- **`shape-text` — text in rectangles, ellipses and grid cells.** With the
+  Text tool (`T`), click inside a rectangle, ellipse or grid cell to type
+  into it; with Select, click again on the selected shape. In a grid,
+  `Tab` / `Shift+Tab` go to the next / previous cell and `Enter` /
+  `Shift+Enter` to the cell below / above. Text shrinks to fit, hides the
+  shape's number, moves and copies with the shape; the fill eraser clears
+  it.
+
+```sh
+DRAW_EXPERIMENTAL=shape-text draw
 ```
 
 ## Limitations

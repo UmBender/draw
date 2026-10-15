@@ -1,7 +1,7 @@
 ---
 id: T31
 title: Text in rectangles and grid cells
-status: in-progress
+status: review
 wave: 19
 branch: task/T31-shape-text
 depends_on: [T29]
@@ -139,12 +139,15 @@ trial, **ADR-T31-2 — Verdict** (promote / rework / remove).
   `src/core/tools/grid.rs`, `src/core/tools/select.rs`,
   `src/core/tools/eraser.rs`, `src/core/numbering.rs`,
   `src/core/text_layout.rs`, `src/core/experimental.rs` (new)
-- `src/shell/render.rs`, `src/shell/app.rs` (reading the switch)
+- `src/shell/render.rs`, `src/shell/app.rs` (reading the switch, drawing
+  the open edit in the background colour on fills)
 - `tests/fuzz.rs`, `README.md` (*Experimental* section)
 - amended 2026-10-15 (owner): `src/core/tools/shape_tool.rs`,
   `src/core/clipboard.rs`, `src/core/snap.rs`, `tests/perf.rs` — only
   the new fields in `Rect` / `Ellipse` / `Grid` struct literals, no
-  logic
+  logic; `src/core/tools/bucket.rs` (one test literal) and
+  `src/core/mod.rs` (`pub mod experimental;`) fall under the same
+  amendment
 - new ADRs `ADR-T31-*`, feature note
   `docs/features/Text in shapes (experimental).md`, tutorial
   `docs/tutorials/31 Prototyping an interaction behind a switch.md`
@@ -152,11 +155,11 @@ trial, **ADR-T31-2 — Verdict** (promote / rework / remove).
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T31): …`
-- [ ] tests — `test(T31): …`
-- [ ] models — `feat(T31): …`
-- [ ] behaviour — `feat(T31): …`
-- [ ] quality — `chore(T31): …`
-- [ ] docs — `docs(T31): …`
+- [x] tests — `test(T31): …`
+- [x] models — `feat(T31): …`
+- [x] behaviour — `feat(T31): …`
+- [x] quality — `chore(T31): …`
+- [x] docs — `docs(T31): …`
 
 ## Learning path
 
@@ -171,3 +174,19 @@ step 19 (numbering).
 - 2026-10-15 — Spec: owner answered Q1–Q6 (all as recommended), see
   ADR-T31-1. Files owned amended with four files that construct
   `Rect` / `Ellipse` / `Grid` literals (new fields only).
+- 2026-10-15 — Implemented on `task/T31-shape-text`. Every AC-1..AC-4
+  test passes; `scripts/check.sh` green; fuzz at 2000 cases green.
+  Additions beyond the spec's test list: `fit_source_places_empty_text_at_full_size`,
+  `fit_always_inside_frame` (proptest), `hosted_edit_opens_existing_text_with_caret_at_end`,
+  `hosted_edit_blank_text_is_none_and_wrong_slots_do_not_open`,
+  `shape_text_new_rejects_blank_text_and_bad_sizes`,
+  `text_slot_at_finds_interior_or_cell`, `with_experimental_sets_the_switch_in_helpers`,
+  `shape_text_enter_in_rect_is_a_new_line`,
+  `shape_text_press_inside_unselected_rect_does_not_pick_it`,
+  fuzz `shape_text_sessions_never_panic_and_keep_invariants`,
+  `shape_text_undo_all_then_redo_all_is_symmetric`. An edit on a
+  filled shape or cell is drawn in the background colour (like its
+  committed text), so it stays readable while typing.
+- **Pending (owner):** AC-5 trial on the target — fill a 5 × 5 DP table
+  and label a 6-node graph with and without `DRAW_EXPERIMENTAL=shape-text`,
+  note times and misfires here — then AC-6, ADR-T31-2 *Verdict*.
