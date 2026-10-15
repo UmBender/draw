@@ -6,13 +6,17 @@
 //! bounding box (ADR-0006). Shapes are tessellated here into a [`Batch`] and
 //! submitted with one `draw_mesh` per few thousand indices instead of one
 //! `draw_*` call per triangle (ADR-T24-3). Grids and labels follow
-//! ADR-T16-1.
+//! ADR-T16-1. Text blocks and labels use the embedded monospaced font set
+//! with [`set_text_font`], each glyph drawn at its
+//! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1).
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 use macroquad::models::{Mesh, Vertex, draw_mesh};
 use macroquad::shapes::draw_line;
-use macroquad::text::{TextParams, draw_text_ex, measure_text};
+use macroquad::text::{Font, TextParams, draw_text_ex, measure_text};
+
+use std::cell::OnceCell;
 
 use crate::core::camera::Camera;
 use crate::core::editor::Editor;
@@ -22,6 +26,7 @@ use crate::core::shape::{
     GRID_MAX_CELLS, Shape, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
 };
 use crate::core::snap::GRID_STEP;
+use crate::core::text_layout::glyphs;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
 /// capacity of 10 000 (ADR-T24-3).
@@ -539,7 +544,8 @@ pub const TEXT_RASTER_SIZES: [u16; 12] = [12, 16, 20, 24, 32, 40, 48, 64, 96, 12
 /// (not drawn) below [`TEXT_MIN_PX`] or when not finite.
 #[must_use]
 pub fn text_screen_px(size: f32, zoom: f32) -> Option<f32> {
-    todo!("T29: text px for {size} at {zoom}")
+    let px = size * zoom;
+    (px.is_finite() && px >= TEXT_MIN_PX).then_some(px)
 }
 
 /// Raster size and scale for text of `px` pixels: the smallest of
@@ -547,7 +553,32 @@ pub fn text_screen_px(size: f32, zoom: f32) -> Option<f32> {
 /// mapping it to `px`.
 #[must_use]
 pub fn text_raster(px: f32) -> (u16, f32) {
-    todo!("T29: raster for {px}")
+    let largest = TEXT_RASTER_SIZES[TEXT_RASTER_SIZES.len() - 1];
+    let raster = TEXT_RASTER_SIZES
+        .into_iter()
+        .find(|&r| f32::from(r) >= px)
+        .unwrap_or(largest);
+    (raster, px / f32::from(raster))
+}
+
+thread_local! {
+    /// The font of text blocks and labels; macroquad's built-in font until
+    /// [`set_text_font`] is called.
+    static TEXT_FONT: OnceCell<Font> = const { OnceCell::new() };
+}
+
+/// Makes `font` the font of text blocks and labels. Only the first call
+/// has an effect; drawing happens on the main thread, which must make it.
+pub fn set_text_font(font: Font) {
+    TEXT_FONT.with(|cell| {
+        // A second font is ignored: one font for the whole run.
+        let _ = cell.set(font);
+    });
+}
+
+/// Runs `draw` with the text font (`None`: macroquad's built-in one).
+fn with_text_font<R>(draw: impl FnOnce(Option<&Font>) -> R) -> R {
+    TEXT_FONT.with(|cell| draw(cell.get()))
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
@@ -686,7 +717,9 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
                 draw_axis_labels(batch, a, b, *cols, *rows, color);
             }
         }
-        Shape::Text { .. } => todo!("T29: draw text"),
+        Shape::Text {
+            origin, text, size, ..
+        } => draw_text_block(batch, *origin, text, *size, camera, color),
     }
 }
 
@@ -742,19 +775,57 @@ fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, c
 
 /// Draws `text` centred in the screen rectangle `rect`.
 fn draw_text_centered(text: &str, rect: Aabb, font_size: u16, font_scale: f32, color: Color) {
-    let dims = measure_text(text, None, font_size, font_scale);
-    let c = rect.center();
-    draw_text_ex(
-        text,
-        c.x - dims.width * 0.5,
-        c.y + dims.offset_y * 0.5,
-        TextParams {
+    with_text_font(|font| {
+        let dims = measure_text(text, font, font_size, font_scale);
+        let c = rect.center();
+        draw_text_ex(
+            text,
+            c.x - dims.width * 0.5,
+            c.y + dims.offset_y * 0.5,
+            TextParams {
+                font,
+                font_size,
+                font_scale,
+                color,
+                ..TextParams::default()
+            },
+        );
+    });
+}
+
+/// Draws a text block of world `size` at world `origin`, each glyph at its
+/// layout cell (ADR-T29-1), if it is big enough on screen. Flushes `batch`
+/// first so the text keeps its z-order.
+fn draw_text_block(
+    batch: &mut Batch,
+    origin: Vec2,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    color: Color,
+) {
+    let Some(px) = text_screen_px(size, camera.zoom()) else {
+        return;
+    };
+    let (font_size, font_scale) = text_raster(px);
+    batch.flush();
+    with_text_font(|font| {
+        let params = TextParams {
+            font,
             font_size,
             font_scale,
             color,
             ..TextParams::default()
-        },
-    );
+        };
+        let mut buf = [0; 4];
+        for glyph in glyphs(origin, text, size) {
+            if glyph.ch.is_whitespace() || glyph.ch.is_control() {
+                continue;
+            }
+            let p = camera.world_to_screen(glyph.pos);
+            draw_text_ex(glyph.ch.encode_utf8(&mut buf), p.x, p.y, params.clone());
+        }
+    });
 }
 
 /// Draws an axis-aligned screen segment as a band `width` pixels wide that

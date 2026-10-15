@@ -4,7 +4,8 @@
 //! `docs/architecture/Keymap.md`; the toolbar and docs can list it, and
 //! [`resolve`] looks chords up in it. A binding fires only when the held
 //! modifiers match the chord's modifiers exactly (ADR-T11-1). `Space` is not
-//! bound: the editor consumes it as the pan modifier.
+//! bound: the editor consumes it as the pan modifier. While a text block is
+//! being edited no binding fires (ADR-T29-2).
 
 use crate::core::command::{Command, Tool};
 use crate::core::input::{Key, Modifiers};
@@ -121,6 +122,7 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Hand (pan)",
     ),
     (KeyChord::bare(Key::G), Command::SetTool(Tool::Grid), "Grid"),
+    (KeyChord::bare(Key::T), Command::SetTool(Tool::Text), "Text"),
     // Style
     (KeyChord::bare(Key::Digit1), color(1), "Colour 1 (ink)"),
     (KeyChord::bare(Key::Digit2), color(2), "Colour 2 (red)"),

@@ -7,7 +7,8 @@
 //! [`LayerKey`] changes (ADR-T24-1, ADR-T24-3); every woken frame blits it
 //! and draws the overlay on top (ADR-T24-2). While only the camera moves,
 //! the cached layer is blitted moved and scaled and re-rendered once the
-//! camera settles (ADR-T26-1).
+//! camera settles (ADR-T26-1). The embedded font is loaded at start-up
+//! (ADR-T29-1); an open text block's caret is part of the overlay.
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::WHITE;
@@ -16,7 +17,8 @@ use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_inp
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::window::schedule_update;
-use macroquad::shapes::{draw_rectangle, draw_rectangle_lines};
+use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
+use macroquad::text::load_ttf_font_from_bytes;
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
     render_target_ex,
@@ -34,7 +36,7 @@ use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
-use crate::core::palette::THEME;
+use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, to_mq_color};
@@ -42,6 +44,9 @@ use crate::shell::toolbar::{self, Route};
 
 /// Opacity of the marquee fill.
 const MARQUEE_FILL_ALPHA: f32 = 0.25;
+
+/// Width of the text caret in pixels.
+const CARET_WIDTH_PX: f32 = 2.0;
 
 /// Viewport sizes closer than this many pixels count as unchanged.
 const RESIZE_EPS_PX: f32 = 0.5;
@@ -331,6 +336,11 @@ pub fn window_conf() -> WindowSettings {
 
 /// Runs the application until the window is closed.
 pub async fn run() {
+    match load_ttf_font_from_bytes(TEXT_FONT) {
+        Ok(font) => render::set_text_font(font),
+        // Text still draws, with macroquad's ASCII-only font.
+        Err(err) => eprintln!("draw: embedded font not loaded: {err}"),
+    }
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
     let mut editor = Editor::new();
@@ -565,6 +575,14 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         render::draw_preview(shape, camera);
     }
     render::draw_guides(&overlay.guides, camera);
+    if let Some(edit) = editor.text_edit() {
+        // The block being edited is outlined; its caret does not blink, so
+        // the loop stays asleep (ADR-T29-2).
+        render::draw_selection(edit.bounds(), camera);
+        let [top, bottom] = edit.caret_line().map(|p| camera.world_to_screen(p));
+        let color = to_mq_color(palette(edit.style.color));
+        draw_line(top.x, top.y, bottom.x, bottom.y, CARET_WIDTH_PX, color);
+    }
     if editor.active_gesture().is_none() {
         if let Some(bounds) = editor.selection_bounds() {
             render::draw_selection(bounds, camera);

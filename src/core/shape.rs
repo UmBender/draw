@@ -8,6 +8,7 @@
 
 use crate::core::geom::{Aabb, Vec2, distance_to_segment};
 use crate::core::palette::ColorId;
+use crate::core::text_layout;
 
 /// Arrow head length per unit of stroke width. The head has no absolute
 /// minimum, so it keeps its proportion to the shaft at any zoom.
@@ -193,12 +194,15 @@ impl Shape {
     }
 
     /// Bounding box including half the outline width (and the arrow head).
+    /// A text block's box is its layout box (ADR-T29-1).
     ///
     /// A stroke with no finite point gives the zero-size box at the origin.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
         let geometry = match self {
-            Self::Text { .. } => todo!("T29: text bounds"),
+            Self::Text {
+                origin, text, size, ..
+            } => return text_layout::bounds(*origin, text, *size),
             Self::Stroke { points, .. } => match Aabb::from_points(points) {
                 Some(b) => b,
                 None => return Aabb::from_corners(Vec2::ZERO, Vec2::ZERO),
@@ -280,7 +284,8 @@ impl Shape {
                 a, b, cols, rows, ..
             } => grid_lines(*a, *b, *cols, *rows)
                 .any(|[start, end]| distance_to_segment(p, start, end) <= reach),
-            Self::Text { .. } => todo!("T29: text hit-test"),
+            // Already inside the box grown by `tol`: text is solid.
+            Self::Text { .. } => true,
         }
     }
 
@@ -326,7 +331,7 @@ impl Shape {
                 *a += delta;
                 *b += delta;
             }
-            Self::Text { .. } => todo!("T29: translate text"),
+            Self::Text { origin, .. } => *origin += delta,
         }
     }
 
@@ -454,7 +459,7 @@ impl Shape {
                 | Self::Rect { a, b, .. }
                 | Self::Ellipse { a, b, .. }
                 | Self::Grid { a, b, .. } => a.is_finite() && b.is_finite(),
-                Self::Text { .. } => todo!("T29: finite text"),
+                Self::Text { origin, size, .. } => origin.is_finite() && size.is_finite(),
             }
     }
 }

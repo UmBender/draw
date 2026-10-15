@@ -8,10 +8,12 @@
 //! routes typed characters and editing keys here and decides when an edit
 //! ends.
 
+use super::select::HIT_TOLERANCE_PX;
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::ShapeId;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::{Shape, Style};
+use crate::core::{snap, text_layout};
 
 /// On-screen font size, in pixels, of a new block at stroke width 0.
 pub const TEXT_BASE_PX: f32 = 12.0;
@@ -26,7 +28,7 @@ pub const TAB_SPACES: usize = 4;
 /// `width_px`.
 #[must_use]
 pub fn text_size_px(width_px: f32) -> f32 {
-    todo!("T29: text size for width {width_px}")
+    TEXT_BASE_PX + TEXT_PX_PER_WIDTH * width_px
 }
 
 /// A text block being edited: its text, caret and placement.
@@ -50,14 +52,39 @@ impl TextEdit {
     /// A new, empty block at `origin`.
     #[must_use]
     pub fn new(origin: Vec2, size: f32, style: Style) -> Self {
-        todo!("T29: new edit at {origin:?}, {size}, {style:?}")
+        Self {
+            origin,
+            size,
+            style,
+            target: None,
+            text: String::new(),
+            caret: 0,
+        }
     }
 
     /// Re-opens the text block `shape` (document id `id`) with the caret
     /// nearest to world point `at`; `None` if `shape` is not a text block.
     #[must_use]
     pub fn open(id: ShapeId, shape: &Shape, at: Vec2) -> Option<Self> {
-        todo!("T29: open {id:?} {shape:?} at {at:?}")
+        let Shape::Text {
+            origin,
+            text,
+            size,
+            style,
+        } = shape
+        else {
+            return None;
+        };
+        let mut edit = Self {
+            origin: *origin,
+            size: *size,
+            style: *style,
+            target: Some(id),
+            text: text.clone(),
+            caret: 0,
+        };
+        edit.set_caret_at(at);
+        Some(edit)
     }
 
     /// The document block being re-edited, `None` for a new block.
@@ -82,88 +109,129 @@ impl TextEdit {
     /// discarded on commit).
     #[must_use]
     pub fn is_blank(&self) -> bool {
-        todo!("T29: is_blank")
+        self.text.trim().is_empty()
     }
 
     /// The block as a document shape.
     #[must_use]
     pub fn shape(&self) -> Shape {
-        todo!("T29: shape")
+        Shape::Text {
+            origin: self.origin,
+            text: self.text.clone(),
+            size: self.size,
+            style: self.style,
+        }
     }
 
     /// World box of the block.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
-        todo!("T29: bounds")
+        text_layout::bounds(self.origin, &self.text, self.size)
     }
 
     /// The caret as a world segment, top to bottom of its line.
     #[must_use]
     pub fn caret_line(&self) -> [Vec2; 2] {
-        todo!("T29: caret_line")
+        let top = text_layout::caret_point(self.origin, &self.text, self.size, self.caret);
+        let height = text_layout::caret_point(Vec2::ZERO, "\n", self.size, 1).y;
+        [top, top + Vec2::new(0.0, height)]
     }
 
     /// Moves the caret to byte `index`, snapped back to a `char` boundary
     /// and clamped to the text.
     pub fn set_caret(&mut self, index: usize) {
-        todo!("T29: set_caret {index}")
+        self.caret = text_layout::floor_boundary(&self.text, index);
     }
 
     /// Moves the caret to the cell boundary nearest to world point `p`.
     pub fn set_caret_at(&mut self, p: Vec2) {
-        todo!("T29: set_caret_at {p:?}")
+        self.caret = text_layout::caret_from_point(self.origin, &self.text, self.size, p);
     }
 
     /// Inserts `ch` at the caret and moves past it. Returns `true`.
     pub fn insert(&mut self, ch: char) -> bool {
-        todo!("T29: insert {ch:?}")
+        self.text.insert(self.caret, ch);
+        self.caret += ch.len_utf8();
+        true
     }
 
     /// Inserts [`TAB_SPACES`] spaces at the caret. Returns `true`.
     pub fn tab(&mut self) -> bool {
-        todo!("T29: tab")
+        self.text.insert_str(self.caret, &" ".repeat(TAB_SPACES));
+        self.caret += TAB_SPACES;
+        true
     }
 
     /// Removes the `char` before the caret. Returns whether there was one.
     pub fn backspace(&mut self) -> bool {
-        todo!("T29: backspace")
+        self.left() && self.delete()
     }
 
     /// Removes the `char` after the caret. Returns whether there was one.
     pub fn delete(&mut self) -> bool {
-        todo!("T29: delete")
+        // The caret is on a boundary, so a byte after it starts a `char`.
+        let some = self.caret < self.text.len();
+        if some {
+            self.text.remove(self.caret);
+        }
+        some
     }
 
     /// Moves the caret one `char` back. Returns whether it moved.
     pub fn left(&mut self) -> bool {
-        todo!("T29: left")
+        match self.text[..self.caret].chars().next_back() {
+            Some(ch) => {
+                self.caret -= ch.len_utf8();
+                true
+            }
+            None => false,
+        }
     }
 
     /// Moves the caret one `char` forward. Returns whether it moved.
     pub fn right(&mut self) -> bool {
-        todo!("T29: right")
+        match self.text[self.caret..].chars().next() {
+            Some(ch) => {
+                self.caret += ch.len_utf8();
+                true
+            }
+            None => false,
+        }
     }
 
     /// Moves the caret to the previous line, same column (clamped).
     /// Returns whether it moved.
     pub fn up(&mut self) -> bool {
-        todo!("T29: up")
+        let (line, col) = text_layout::line_col(&self.text, self.caret);
+        line > 0 && self.move_to(line - 1, col)
     }
 
     /// Moves the caret to the next line, same column (clamped). Returns
     /// whether it moved.
     pub fn down(&mut self) -> bool {
-        todo!("T29: down")
+        let (line, col) = text_layout::line_col(&self.text, self.caret);
+        let (_, lines) = text_layout::extent(&self.text);
+        line + 1 < lines && self.move_to(line + 1, col)
     }
 
     /// Moves the caret to the start of its line. Returns whether it moved.
     pub fn home(&mut self) -> bool {
-        todo!("T29: home")
+        let (line, _) = text_layout::line_col(&self.text, self.caret);
+        self.move_to(line, 0)
     }
 
     /// Moves the caret to the end of its line. Returns whether it moved.
     pub fn end(&mut self) -> bool {
-        todo!("T29: end")
+        let (line, _) = text_layout::line_col(&self.text, self.caret);
+        self.move_to(line, usize::MAX)
+    }
+
+    /// Moves the caret to `(line, col)` (clamped). Returns whether it moved.
+    fn move_to(&mut self, line: usize, col: usize) -> bool {
+        let caret = text_layout::caret_index(&self.text, line, col);
+        let moved = caret != self.caret;
+        self.caret = caret;
+        moved
     }
 }
 
@@ -178,20 +246,46 @@ pub struct State {
 /// block under the pointer or a new one (the editor has already committed
 /// any previous edit). Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    todo!("T29: on_pointer {state:?} {:?} {pointer:?}", ctx.tool)
+    if pointer.phase != Phase::Down {
+        return false;
+    }
+    let world = ctx.camera.screen_to_world(pointer.pos);
+    let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
+    let view = ctx.view();
+    let opened = view
+        .doc
+        .topmost_where(|shape| matches!(shape, Shape::Text { .. }) && shape.hit(world, tol))
+        .and_then(|id| TextEdit::open(id, view.doc.get(id)?, world));
+    state.edit = Some(opened.unwrap_or_else(|| {
+        let origin = snap::snap_start(world, pointer.mods, &view);
+        let size = ctx.camera.world_len(text_size_px(view.style.width_px));
+        let style = Style {
+            color: view.style.color,
+            width: 0.0,
+        };
+        TextEdit::new(origin, size, style)
+    }));
+    true
 }
 
 /// What the edit session draws: the edited block, with the original
 /// hidden while re-editing.
 #[must_use]
-pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    todo!("T29: preview {state:?} {:?}", view.tool)
+pub fn preview(state: &State, _view: &ToolView<'_>) -> Overlay {
+    state
+        .edit
+        .as_ref()
+        .map_or_else(Overlay::default, |edit| Overlay {
+            shapes: vec![edit.shape()],
+            hidden: edit.target.into_iter().collect(),
+            ..Overlay::default()
+        })
 }
 
 /// Ends the gesture. The edit session is not part of the gesture and
 /// stays open; returns `false`.
-pub fn cancel(state: &mut State) -> bool {
-    todo!("T29: cancel {state:?}")
+pub fn cancel(_state: &mut State) -> bool {
+    false
 }
 
 #[cfg(test)]

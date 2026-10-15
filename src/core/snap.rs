@@ -436,9 +436,9 @@ fn outline_mark(p: Vec2, size: f32) -> Vec<[Vec2; 2]> {
 }
 
 impl Targets {
-    /// Targets of `shapes`: edges and centres of rectangle, ellipse and grid
-    /// boxes, line and arrow endpoints, box and grid cell sizes. Strokes and
-    /// non-finite values are skipped.
+    /// Targets of `shapes`: edges and centres of rectangle, ellipse, grid
+    /// and text boxes, line and arrow endpoints, box and grid cell sizes.
+    /// Strokes and non-finite values are skipped.
     #[must_use]
     pub fn from_shapes<'a>(shapes: impl IntoIterator<Item = &'a Shape>) -> Self {
         let mut targets = Self::default();
@@ -474,7 +474,17 @@ impl Targets {
                     }
                 }
                 Shape::Stroke { .. } => {}
-                Shape::Text { .. } => todo!("T29: text targets"),
+                // Edges and centre only: a text box is no size to match.
+                Shape::Text { .. } => {
+                    let bounds = shape.bounds();
+                    let (x0, x1, y0, y1) = (bounds.min.x, bounds.max.x, bounds.min.y, bounds.max.y);
+                    for x in [x0, x1, midpoint(x0, x1)] {
+                        add_anchor(&mut targets.xs, x, y0, y1);
+                    }
+                    for y in [y0, y1, midpoint(y0, y1)] {
+                        add_anchor(&mut targets.ys, y, x0, x1);
+                    }
+                }
             }
         }
         targets

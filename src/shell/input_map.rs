@@ -63,6 +63,9 @@ pub fn map_key(code: KeyCode) -> Option<Key> {
         KeyCode::Right => Key::ArrowRight,
         KeyCode::Up => Key::ArrowUp,
         KeyCode::Down => Key::ArrowDown,
+        KeyCode::Enter | KeyCode::KpEnter => Key::Enter,
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
         _ => return None,
     };
     Some(key)
@@ -148,8 +151,8 @@ impl HeldMods {
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
-/// have none of their own); key events carry the modifiers the platform
-/// reports with them.
+/// have none of their own); key and character events carry the modifiers
+/// the platform reports with them.
 #[derive(Debug, Clone)]
 pub struct Collector {
     events: Vec<InputEvent>,
@@ -239,6 +242,11 @@ impl EventHandler for Collector {
             let mods = map_mods(mods);
             self.events.push(InputEvent::KeyDown { key, mods });
         }
+    }
+
+    fn char_event(&mut self, ch: char, mods: KeyMods, _repeat: bool) {
+        let mods = map_mods(mods);
+        self.events.push(InputEvent::Char { ch, mods });
     }
 
     fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {

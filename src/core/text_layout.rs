@@ -39,34 +39,60 @@ pub fn lines(text: &str) -> impl Iterator<Item = &str> {
 /// number of lines (at least 1).
 #[must_use]
 pub fn extent(text: &str) -> (usize, usize) {
-    todo!("T29: extent of {text:?}")
+    lines(text).fold((0, 0), |(cols, count), line| {
+        (cols.max(line.chars().count()), count + 1)
+    })
 }
 
 /// The box of a block: `origin` to `origin + (columns × ADVANCE,
 /// lines × LINE_HEIGHT) × size`.
 #[must_use]
 pub fn bounds(origin: Vec2, text: &str, size: f32) -> Aabb {
-    todo!("T29: bounds of {text:?} at {origin:?}, {size}")
+    let (cols, rows) = extent(text);
+    Aabb::from_corners(origin, origin + cell(size, cols, rows))
 }
 
 /// The `(line, column)` of `caret`, counted in `char`s. A caret inside a
 /// `char` counts as the start of that `char`; one past the end as the end.
 #[must_use]
 pub fn line_col(text: &str, caret: usize) -> (usize, usize) {
-    todo!("T29: line_col of {caret} in {text:?}")
+    let caret = floor_boundary(text, caret);
+    let before = &text[..caret];
+    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+    let line = before.matches('\n').count();
+    (line, before[line_start..].chars().count())
 }
 
 /// The caret at `(line, col)`: the line is clamped to the last line, the
 /// column to the end of its line.
 #[must_use]
 pub fn caret_index(text: &str, line: usize, col: usize) -> usize {
-    todo!("T29: caret_index {line}:{col} in {text:?}")
+    let mut start = 0;
+    let mut current = "";
+    for (i, l) in lines(text).enumerate() {
+        current = l;
+        if i == line {
+            break;
+        }
+        start += l.len() + 1;
+    }
+    // The loop ran past `line` only when it is beyond the last line; then
+    // `start` overshot by the last line's length plus one.
+    if start > text.len() {
+        start = text.len() - current.len();
+    }
+    start
+        + current
+            .char_indices()
+            .nth(col)
+            .map_or(current.len(), |(i, _)| i)
 }
 
 /// Top of the caret line at `caret`, in world units.
 #[must_use]
 pub fn caret_point(origin: Vec2, text: &str, size: f32, caret: usize) -> Vec2 {
-    todo!("T29: caret_point {caret} in {text:?} at {origin:?}, {size}")
+    let (line, col) = line_col(text, caret);
+    origin + cell(size, col, line)
 }
 
 /// The caret nearest to world point `p`: the line under it and the nearest
@@ -74,14 +100,53 @@ pub fn caret_point(origin: Vec2, text: &str, size: f32, caret: usize) -> Vec2 {
 /// size gives 0.
 #[must_use]
 pub fn caret_from_point(origin: Vec2, text: &str, size: f32, p: Vec2) -> usize {
-    todo!("T29: caret_from_point {p:?} in {text:?} at {origin:?}, {size}")
+    let size = em(size);
+    let local = p - origin;
+    if size <= 0.0 || !local.is_finite() {
+        return 0;
+    }
+    // Float-to-int casts saturate: negative values become 0.
+    let line = (local.y / (LINE_HEIGHT * size)).floor() as usize;
+    let col = (local.x / (ADVANCE * size)).round() as usize;
+    caret_index(text, line, col)
 }
 
 /// Every character to draw except line breaks, in text order, at its cell.
 pub fn glyphs(origin: Vec2, text: &str, size: f32) -> impl Iterator<Item = Glyph> + '_ {
-    todo!("T29: glyphs of {text:?} at {origin:?}, {size}");
-    #[allow(unreachable_code)]
-    std::iter::empty()
+    let baseline = Vec2::new(0.0, BASELINE * em(size));
+    lines(text).enumerate().flat_map(move |(line, chars)| {
+        chars.chars().enumerate().map(move |(col, ch)| Glyph {
+            ch,
+            pos: origin + cell(size, col, line) + baseline,
+        })
+    })
+}
+
+/// `size` if it is finite and positive, else 0.
+fn em(size: f32) -> f32 {
+    if size.is_finite() && size > 0.0 {
+        size
+    } else {
+        0.0
+    }
+}
+
+/// Offset of cell `(col, line)` from the origin.
+fn cell(size: f32, col: usize, line: usize) -> Vec2 {
+    let size = em(size);
+    Vec2::new(
+        col as f32 * ADVANCE * size,
+        line as f32 * LINE_HEIGHT * size,
+    )
+}
+
+/// `index` clamped to the text and moved back to a `char` boundary.
+pub(crate) fn floor_boundary(text: &str, index: usize) -> usize {
+    let mut index = index.min(text.len());
+    while !text.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
 }
 
 #[cfg(test)]

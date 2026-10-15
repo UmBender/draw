@@ -10,11 +10,15 @@
 //! `Space` held pans; a right drag erases from any tool; any other left drag
 //! goes to the active tool. One gesture runs at a time; other buttons are
 //! ignored until it ends. Keys go through the keymap, then [`Editor::apply`].
+//!
+//! Text edit mode (ADR-T29-2): while a text block is open, typed characters
+//! and editing keys go to it and no key reaches the keymap; `Esc`, a press
+//! outside the block or any applied command commits it as one undo step.
 
 use crate::core::camera::Camera;
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
-use crate::core::document::{Document, ShapeId, tx_clear};
+use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::{HISTORY_LIMIT, History};
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -24,7 +28,7 @@ use crate::core::palette::ColorId;
 use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::tools::navigate::{self, Pan};
-use crate::core::tools::text::TextEdit;
+use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
 
 /// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
@@ -145,6 +149,10 @@ pub struct Editor {
     cursor: Vec2,
     space_held: bool,
     gesture: Option<Gesture>,
+    /// A plain Select press on the text block that was the only selection:
+    /// press position and block id. Released as a click, it re-opens the
+    /// block (ADR-T29-2).
+    reedit: Option<(Vec2, ShapeId)>,
     keymap: Keymap,
     /// Grows whenever the document may have changed (ADR-T24-1).
     doc_revision: u64,
@@ -178,6 +186,7 @@ impl Editor {
             cursor: Vec2::ZERO,
             space_held: false,
             gesture: None,
+            reedit: None,
             keymap: keymap::resolve,
             doc_revision: 0,
             doc_base_revision: 0,
@@ -209,6 +218,9 @@ impl Editor {
                 self.track_cursor(pos)
                     .is_some_and(|pos| navigate::zoom(&mut self.camera, pos, delta))
             }
+            InputEvent::KeyDown { key, mods } if self.tools.text.edit.is_some() => {
+                self.text_key(key, mods)
+            }
             InputEvent::KeyDown {
                 key: Key::Space, ..
             } => {
@@ -225,7 +237,13 @@ impl Editor {
                 false
             }
             InputEvent::KeyUp { .. } => false,
-            InputEvent::Char { ch, mods } => todo!("T29: typed {ch:?} {mods:?}"),
+            InputEvent::Char { ch, mods } => {
+                let typed = !mods.ctrl && !ch.is_control();
+                match &mut self.tools.text.edit {
+                    Some(edit) if typed => edit.insert(ch),
+                    _ => false,
+                }
+            }
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
                     self.viewport = size;
@@ -237,7 +255,17 @@ impl Editor {
     }
 
     /// Executes `command`. Returns whether the view needs a redraw.
+    ///
+    /// An open text block is committed first, except that
+    /// [`Command::Undo`] cancels it instead (ADR-T29-2).
     pub fn apply(&mut self, command: Command) -> bool {
+        if self.tools.text.edit.is_some() {
+            if command == Command::Undo {
+                return self.cancel_text();
+            }
+            let committed = self.finish_text();
+            return self.apply(command) || committed;
+        }
         if edits_document(command) {
             let appends = matches!(command, Command::Paste | Command::Duplicate);
             self.track_document(appends, |ed| ed.execute(command))
@@ -426,13 +454,11 @@ impl Editor {
         self.overlay().shapes.into_iter().next()
     }
 
-    /// What the gesture in progress draws on top of the document.
+    /// What the gesture in progress and the open text block draw on top of
+    /// the document.
     #[must_use]
     pub fn overlay(&self) -> Overlay {
-        let Some(Gesture::Tool { tool, .. }) = self.gesture else {
-            return Overlay::default();
-        };
-        self.tools.preview(&ToolView {
+        let view = |tool| ToolView {
             doc: &self.doc,
             camera: &self.camera,
             selection: &self.selection,
@@ -440,7 +466,17 @@ impl Editor {
             style: self.style,
             smoothing: self.smoothing,
             cursor: self.cursor,
-        })
+        };
+        let mut overlay = match self.gesture {
+            Some(Gesture::Tool { tool, .. }) if tool != Tool::Text => {
+                self.tools.preview(&view(tool))
+            }
+            _ => Overlay::default(),
+        };
+        let edit = text::preview(&self.tools.text, &view(Tool::Text));
+        overlay.shapes.extend(edit.shapes);
+        overlay.hidden.extend(edit.hidden);
+        overlay
     }
 
     /// The gesture in progress, if any.
@@ -462,7 +498,7 @@ impl Editor {
     /// the top to the bottom of its line; `None` when not editing.
     #[must_use]
     pub fn text_caret(&self) -> Option<[Vec2; 2]> {
-        todo!("T29: caret")
+        self.text_edit().map(TextEdit::caret_line)
     }
 
     /// Whether the toolbar is shown.
@@ -496,7 +532,9 @@ impl Editor {
         Some(pos)
     }
 
-    /// Starts a gesture, unless one is already running.
+    /// Starts a gesture, unless one is already running. With a text block
+    /// open, a left press inside it moves the caret and any other press
+    /// that does not pan commits it first (ADR-T29-2).
     fn pointer_down(&mut self, pos: Vec2, button: PointerButton, mods: Modifiers) -> bool {
         if self.gesture.is_some() {
             return false;
@@ -506,6 +544,22 @@ impl Editor {
             PointerButton::Left => self.tool == Tool::Hand || self.space_held,
             PointerButton::Right => false,
         };
+        let mut committed = false;
+        if !pans {
+            let world = self.camera.screen_to_world(pos);
+            let tol = self.camera.world_len(select::HIT_TOLERANCE_PX);
+            if let Some(edit) = &mut self.tools.text.edit {
+                if button == PointerButton::Left && edit.bounds().expand(tol).contains(world) {
+                    edit.set_caret_at(world);
+                    return true;
+                }
+                committed = self.finish_text();
+            }
+            if button == PointerButton::Left && self.tool == Tool::Select && mods == Modifiers::NONE
+            {
+                self.reedit = self.selected_text_at(world, tol).map(|id| (pos, id));
+            }
+        }
         if pans {
             self.gesture = Some(Gesture::Pan {
                 button,
@@ -519,7 +573,7 @@ impl Editor {
             self.tool
         };
         self.gesture = Some(Gesture::Tool { button, tool });
-        self.tool_pointer(tool, Phase::Down, pos, mods)
+        self.tool_pointer(tool, Phase::Down, pos, mods) || committed
     }
 
     /// Continues the gesture in progress, if any.
@@ -551,7 +605,8 @@ impl Editor {
                     self.advance_numbering(before);
                 }
                 self.prune_selection();
-                changed
+                let reopened = self.reopen_clicked_text(pos);
+                changed || reopened
             }
             _ => false,
         }
@@ -634,8 +689,96 @@ impl Editor {
         changed || cancelled
     }
 
+    /// Handles a key while a text block is open: editing keys edit it,
+    /// `Esc` and `Ctrl+Enter` commit it, `Ctrl+Z` cancels it, every other
+    /// key does nothing (ADR-T29-2). Returns whether a redraw is needed.
+    fn text_key(&mut self, key: Key, mods: Modifiers) -> bool {
+        let ctrl_only = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        };
+        match key {
+            Key::Escape => return self.finish_text(),
+            Key::Enter if mods.ctrl => return self.finish_text(),
+            Key::Z if mods == ctrl_only => return self.cancel_text(),
+            _ => {}
+        }
+        let Some(edit) = &mut self.tools.text.edit else {
+            return false;
+        };
+        match key {
+            Key::Enter => edit.insert('\n'),
+            Key::Tab => edit.tab(),
+            Key::Backspace => edit.backspace(),
+            Key::Delete => edit.delete(),
+            Key::ArrowLeft => edit.left(),
+            Key::ArrowRight => edit.right(),
+            Key::ArrowUp => edit.up(),
+            Key::ArrowDown => edit.down(),
+            Key::Home => edit.home(),
+            Key::End => edit.end(),
+            _ => false,
+        }
+    }
+
+    /// Ends the open text block, committing it as one undo step: a new
+    /// block is inserted, a changed one replaced, a blank one removed
+    /// (ADR-T29-2). Returns whether there was a block.
+    fn finish_text(&mut self) -> bool {
+        let Some(edit) = self.tools.text.edit.take() else {
+            return false;
+        };
+        let appends = edit.target().is_none();
+        self.track_document(appends, |ed| {
+            let target = edit.target().filter(|id| ed.doc.get(*id).is_some());
+            let tx = match target {
+                Some(id) if edit.is_blank() => tx_remove(&ed.doc, &[id]),
+                Some(id) if ed.doc.get(id) == Some(&edit.shape()) => return false,
+                Some(id) => tx_replace(&ed.doc, id, edit.shape()),
+                None if edit.is_blank() => return false,
+                None => tx_insert(&mut ed.doc, [edit.shape()]),
+            };
+            let changed = !tx.is_empty() && ed.history.commit(&mut ed.doc, tx).is_ok();
+            ed.prune_selection();
+            changed
+        });
+        true
+    }
+
+    /// Throws the open text block away. Returns whether there was one.
+    fn cancel_text(&mut self) -> bool {
+        self.tools.text.edit.take().is_some()
+    }
+
+    /// The text block hit at world `p` (tolerance `tol`), if it is the
+    /// topmost shape there and the only selected one.
+    fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
+        let id = self.doc.topmost_where(|shape| shape.hit(p, tol))?;
+        let is_text = matches!(self.doc.get(id), Some(Shape::Text { .. }));
+        (is_text && self.selection == [id]).then_some(id)
+    }
+
+    /// Re-opens the text block of a Select press armed in
+    /// [`Editor::pointer_down`] if the release at `pos` makes it a click
+    /// and the block is still the only selection. Returns whether it did.
+    fn reopen_clicked_text(&mut self, pos: Vec2) -> bool {
+        let Some((start, id)) = self.reedit.take() else {
+            return false;
+        };
+        if start.distance(pos) >= select::CLICK_SLOP_PX || self.selection != [id] {
+            return false;
+        }
+        let at = self.camera.screen_to_world(pos);
+        self.tools.text.edit = self
+            .doc
+            .get(id)
+            .and_then(|shape| TextEdit::open(id, shape, at));
+        self.tools.text.edit.is_some()
+    }
+
     /// Discards the gesture in progress. Returns whether there was one.
     fn cancel_gesture(&mut self) -> bool {
+        self.reedit = None;
         match self.gesture.take() {
             Some(Gesture::Tool { tool, .. }) => {
                 self.tools.cancel(tool);

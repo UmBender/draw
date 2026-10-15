@@ -461,7 +461,7 @@ mod tests {
         // Assert
         let kinds: Vec<ButtonKind> = buttons.iter().map(|b| b.kind).collect();
         assert_eq!(kinds, expected_kinds());
-        assert_eq!(buttons.len(), 21);
+        assert_eq!(buttons.len(), 22);
     }
 
     #[test]
