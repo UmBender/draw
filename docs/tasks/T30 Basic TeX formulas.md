@@ -193,3 +193,13 @@ Step 30 — requires step 29 (text blocks).
 - 2026-10-15 — `scripts/check.sh` and `scripts/check.sh --fuzz` green.
   Status → review.
 - 2026-10-15 — Integrated into `main` (merge `18bf30a`). Status → done.
+- 2026-10-15 — [[ADR-T24-5 Redraw budgets]] manual check (AC-5) on the
+  target (i5-8250U, Wayland, 1920×1080 at scale 1), 512 plain-text blocks,
+  full screen, zoomed out, `DRAW_FRAME_TIMES=1`: full re-render
+  3.4–8.2 ms (text 1.7–4.3 ms, 0 rasterized), moved re-render
+  0.02–0.38 ms. The pre-T30 build (`d2b59ec`) on the same scene: full
+  3.9–8.9 ms (text 2.3–4.2 ms), moved 0.02–0.23 ms, so the plain path did
+  not regress. An earlier owner run of 21–22 ms (text 18 ms) came from
+  machine load (many browser tabs open) and did not repeat once they were
+  closed; an off-screen 1920×1080 bench agreed (both builds 3.7–5.2 ms
+  steady). Formula scenes: 1.3–2.5 ms steady at 944×506.
