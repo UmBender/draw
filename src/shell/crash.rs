@@ -171,8 +171,8 @@ pub fn install_hook() {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs());
         let backtrace = Backtrace::capture();
-        let backtrace = (backtrace.status() == BacktraceStatus::Captured)
-            .then(|| backtrace.to_string());
+        let backtrace =
+            (backtrace.status() == BacktraceStatus::Captured).then(|| backtrace.to_string());
         let text = format_report(&Report {
             message: panic_message(info.payload()),
             location,
@@ -289,7 +289,10 @@ mod tests {
         // Arrange / Act / Assert
         assert_eq!(crash_log_path(None, None), None);
         assert_eq!(crash_log_path(None, Some(OsStr::new(""))), None);
-        assert_eq!(crash_log_path(Some(OsStr::new("rel")), Some(OsStr::new("rel"))), None);
+        assert_eq!(
+            crash_log_path(Some(OsStr::new("rel")), Some(OsStr::new("rel"))),
+            None
+        );
     }
 
     #[test]

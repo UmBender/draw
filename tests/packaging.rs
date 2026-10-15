@@ -95,7 +95,10 @@ fn runtime_libs_names_every_library_the_binary_mentions() {
     let mentioned = library_bases(&binary);
 
     // Assert
-    assert!(mentioned.contains("libX11"), "scan found nothing: {mentioned:?}");
+    assert!(
+        mentioned.contains("libX11"),
+        "scan found nothing: {mentioned:?}"
+    );
     let unlisted: Vec<&String> = mentioned
         .iter()
         .filter(|base| !listed.contains(base.as_str()))
@@ -199,7 +202,10 @@ fn icons_have_every_size() {
     for size in [48_u32, 128, 256] {
         let png = std::fs::read(dir.join(format!("draw-{size}.png"))).unwrap_or_default();
         assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"), "draw-{size}.png");
-        let dimension = |at: usize| png.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
+        let dimension = |at: usize| {
+            png.get(at..at + 4)
+                .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+        };
         assert_eq!(dimension(16), Some(size), "draw-{size}.png width");
         assert_eq!(dimension(20), Some(size), "draw-{size}.png height");
     }

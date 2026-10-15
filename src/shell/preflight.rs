@@ -56,7 +56,7 @@ pub struct ParseError {
 /// The parts of the environment the preflight reads.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Environment {
-    /// `DISPLAY`: the X11 (or XWayland) display.
+    /// `DISPLAY`: the X11 (or Xwayland) display.
     pub display: Option<OsString>,
     /// `WAYLAND_DISPLAY`: set in a Wayland session.
     pub wayland_display: Option<OsString>,
@@ -69,7 +69,7 @@ pub struct Environment {
 pub enum Problem {
     /// Neither `DISPLAY` nor `WAYLAND_DISPLAY` is set.
     NoDisplay,
-    /// A Wayland session without XWayland (`DISPLAY` unset).
+    /// A Wayland session without Xwayland (`DISPLAY` unset).
     NoXWayland,
     /// These libraries are missing (a whole `gl` group, or `required` ones).
     MissingLibs(Vec<RuntimeLib>),
@@ -251,7 +251,10 @@ impl fmt::Display for Problem {
                  and enable it {hint}"
             ),
             Self::MissingLibs(libs) => {
-                let pick = |role| libs.iter().filter(move |lib: &&RuntimeLib| lib.role == role);
+                let pick = |role| {
+                    libs.iter()
+                        .filter(move |lib: &&RuntimeLib| lib.role == role)
+                };
                 let mut names: Vec<String> =
                     pick(Role::Required).map(|lib| lib.soname.clone()).collect();
                 let gl: Vec<&str> = pick(Role::Gl).map(|lib| lib.soname.as_str()).collect();
@@ -262,7 +265,11 @@ impl fmt::Display for Problem {
                 let wanted: Vec<&RuntimeLib> =
                     pick(Role::Required).chain(pick(Role::Gl).take(1)).collect();
                 let packages = |of: fn(&RuntimeLib) -> &str| {
-                    wanted.iter().map(|lib| of(lib)).collect::<Vec<_>>().join(" ")
+                    wanted
+                        .iter()
+                        .map(|lib| of(lib))
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 };
                 write!(
                     f,
