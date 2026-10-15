@@ -346,6 +346,10 @@ impl From<WindowSettings> for Conf {
     }
 }
 
+/// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`
+/// matches it so launchers show the app's icon (ADR-T27-2).
+pub const WM_CLASS: &str = "draw";
+
 /// Window settings used by `main`.
 #[must_use]
 pub fn window_conf() -> WindowSettings {

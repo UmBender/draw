@@ -1,3 +1,66 @@
+//! Crash report: a panic hook that records what crashed before the
+//! abort (T27, ADR-T27-3).
+//!
+//! The release build aborts on panic and ships stripped, so the hook
+//! writes the panic message, its source location, the app version and
+//! the GNU build id (which pairs the binary with its `draw.debug`) to
+//! stderr and appends them to [`crash_log_path`]. Everything but the hook
+//! itself is a pure function.
+
+use std::any::Any;
+use std::ffi::OsStr;
+use std::path::PathBuf;
+
+/// What one crash report says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Report<'a> {
+    /// The panic message.
+    pub message: &'a str,
+    /// `file:line:column` of the panic, when known.
+    pub location: Option<String>,
+    /// The crate version.
+    pub version: &'a str,
+    /// GNU build id of the running binary, in lowercase hex.
+    pub build_id: Option<String>,
+    /// Seconds since the Unix epoch.
+    pub unix_time: u64,
+    /// A captured backtrace, when `RUST_BACKTRACE` asks for one.
+    pub backtrace: Option<String>,
+}
+
+/// Where the crash log goes: `$XDG_STATE_HOME/draw/crash.log` when that is
+/// an absolute path, else `$HOME/.local/state/draw/crash.log`; `None`
+/// without an absolute home either.
+#[must_use]
+pub fn crash_log_path(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    todo!()
+}
+
+/// The report as text, one `key: value` line per field, ending in a
+/// newline.
+#[must_use]
+pub fn format_report(report: &Report<'_>) -> String {
+    todo!()
+}
+
+/// The message of a panic payload (`&str` or `String`).
+#[must_use]
+pub fn panic_message(payload: &(dyn Any + Send)) -> &str {
+    todo!()
+}
+
+/// The GNU build id of a 64-bit little-endian ELF file, read from its
+/// `PT_NOTE` segments, in lowercase hex. `None` for anything else.
+#[must_use]
+pub fn build_id(elf: &[u8]) -> Option<String> {
+    todo!()
+}
+
+/// Installs the panic hook. Call first in `main`.
+pub fn install_hook() {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,139 @@
+//! Startup preflight: checks for a display and the window-system
+//! libraries before miniquad opens the window (T27, ADR-T27-2).
+//!
+//! miniquad loads its libraries with `dlopen` and panics when one is
+//! missing; this check runs first and turns that into one line naming the
+//! package to install. The decision ([`check`]) is a pure function over
+//! the environment and a library lookup; [`run`] feeds it the real ones.
+//! Libraries are found by plain file reads ([`cache_contains_soname`] over
+//! `/etc/ld.so.cache`, then the library directories): no `unsafe`, no
+//! subprocess.
+
+use std::ffi::OsString;
+use std::fmt;
+
+/// The library list `packaging/runtime-libs`, embedded at build time.
+pub const RUNTIME_LIBS: &str = include_str!("../../packaging/runtime-libs");
+
+/// Environment variable that skips the preflight when set and non-empty.
+pub const SKIP_ENV: &str = "DRAW_SKIP_PREFLIGHT";
+
+/// What a library in [`RUNTIME_LIBS`] is to the running app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// Loaded by the window backend; the app cannot start without it.
+    Required,
+    /// One of the OpenGL loaders; at least one of the group is needed.
+    Gl,
+    /// Named in the binary but not loaded by the chosen backend.
+    Unused,
+    /// Part of glibc or libgcc, linked rather than loaded.
+    Linked,
+}
+
+/// One line of [`RUNTIME_LIBS`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeLib {
+    /// Soname passed to `dlopen`, e.g. `libX11.so.6`.
+    pub soname: String,
+    /// What the app needs it for.
+    pub role: Role,
+    /// Fedora / RHEL package that ships it.
+    pub fedora: String,
+    /// Debian / Ubuntu package that ships it.
+    pub debian: String,
+}
+
+/// A line of the library list that does not parse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseError {
+    /// 1-based line number.
+    pub line: usize,
+    /// What is wrong with it.
+    pub reason: &'static str,
+}
+
+/// The parts of the environment the preflight reads.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Environment {
+    /// `DISPLAY`: the X11 (or XWayland) display.
+    pub display: Option<OsString>,
+    /// `WAYLAND_DISPLAY`: set in a Wayland session.
+    pub wayland_display: Option<OsString>,
+    /// [`SKIP_ENV`].
+    pub skip: Option<OsString>,
+}
+
+/// Why the window cannot open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Problem {
+    /// Neither `DISPLAY` nor `WAYLAND_DISPLAY` is set.
+    NoDisplay,
+    /// A Wayland session without XWayland (`DISPLAY` unset).
+    NoXWayland,
+    /// These libraries are missing (a whole `gl` group, or `required` ones).
+    MissingLibs(Vec<RuntimeLib>),
+}
+
+/// Parses the library list: one `soname role fedora debian` line each,
+/// `#` comments and blank lines ignored.
+///
+/// # Errors
+///
+/// The first line with the wrong number of fields, an unknown role or a
+/// soname that does not look like `lib*.so*`.
+pub fn parse_runtime_libs(text: &str) -> Result<Vec<RuntimeLib>, ParseError> {
+    todo!()
+}
+
+/// Decides whether the window can open in `env`, given which sonames
+/// `found` reports as installed.
+///
+/// # Errors
+///
+/// The first [`Problem`]: display problems before missing libraries.
+pub fn check(
+    env: &Environment,
+    libs: &[RuntimeLib],
+    found: impl Fn(&str) -> bool,
+) -> Result<(), Problem> {
+    todo!()
+}
+
+/// Whether the dynamic linker cache bytes name `soname` as a whole entry
+/// (preceded by NUL or `/`, followed by NUL).
+#[must_use]
+pub fn cache_contains_soname(cache: &[u8], soname: &str) -> bool {
+    todo!()
+}
+
+/// Runs the preflight against the real environment and file system.
+/// Always succeeds off Linux.
+///
+/// # Errors
+///
+/// The [`Problem`] found by [`check`].
+pub fn run() -> Result<(), Problem> {
+    todo!()
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+impl fmt::Display for Problem {
+    /// One line naming what is missing and the packages to install.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for Problem {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
