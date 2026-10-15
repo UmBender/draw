@@ -247,7 +247,15 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
   stopped it after 8 s); `apt-get remove draw` removes it. The container
   needed `libgl1-mesa-dri` and `libegl-mesa0` (Mesa drivers, present on
   any desktop install; the package depends on the libglvnd loaders).
+- 2026-10-15 — Tarball checked in an `ubuntu:22.04` container (glibc
+  2.35, AC-2, AC-7): the binary starts (no `GLIBC_` version error) and,
+  before the runtime libraries are installed, names them with their
+  packages and exits 1; after the README's `apt install` line,
+  `install.sh` puts 12 files into `~/.local` with `Exec=` pointing at
+  the binary; run as the host uid through the host's Xwayland socket the
+  window opens and renders (still running when `timeout` stopped it
+  after 8 s); `install.sh --uninstall` leaves no file behind. The 2.28
+  floor itself is covered by `check_glibc_floor` at build time.
 - 2026-10-15 — Still for the owner: launcher and icon after installing
-  the `.rpm` (AC-6, AC-8), the tarball on an older distro (AC-2), and the
-  Flatpak bundle (AC-9: `flatpak-builder` is not installed here, so it
-  was not built).
+  the `.rpm` (AC-6, AC-8) and the Flatpak bundle (AC-9:
+  `flatpak-builder` is not installed here, so it was not built).
