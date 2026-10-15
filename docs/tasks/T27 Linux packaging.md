@@ -176,3 +176,7 @@ Step 27 — requires step 12 (app shell) and step 14 (release validation).
 - 2026-10-14 — Moved after T29–T31 (wave 18). The binary then embeds
   T29's font: every package ships its license, and the size budget of
   AC-5 is re-measured with it.
+- 2026-10-15 — Owner supplied the app icon (sword and crown):
+  `packaging/icons/draw.svg` plus `draw-48.png`, `draw-128.png`,
+  `draw-256.png`. AC-6 uses these files; install them as
+  `hicolor/{scalable,48x48,128x128,256x256}/apps/draw.{svg,png}`.

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Sword and crown</title>
+  <desc id="desc">A warm gold crown beside a slender silver rapier with a round gold guard and blue grip. Dark rounded outlines and a transparent background.</desc>
+
+  <!-- Crown: broad, simple points stay readable at small icon sizes. -->
+  <g transform="rotate(-12 83 79)" stroke="#303D3B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M42 110 27 44 57 64 79 25 102 64 136 44 124 110Q84 122 42 110Z" fill="#F3D376"/>
+    <path d="M42 110 39 97Q83 109 126 97L124 110Q84 122 42 110Z" fill="#DDB45C" stroke="none"/>
+    <path d="m37 58 9 37 10 2-10-32Z" fill="#FFF0B0" stroke="none"/>
+    <path d="m79 36-13 26 10-5 6-15Z" fill="#FFF0B0" stroke="none"/>
+    <path d="M40 98Q83 109 126 98" stroke="#8E733F" stroke-width="3.5"/>
+  </g>
+
+  <!-- Rapier: the circular guard and fine blade echo the reference. -->
+  <g transform="translate(131 168) rotate(34)" stroke="#303D3B" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-9 24H9L8 61Q0 67-8 61Z" fill="#4979A5"/>
+    <path d="M-5 33V55" stroke="#81A9C5" stroke-width="3"/>
+    <path d="m-7 40 15-5m-15 17 15-5" stroke="#2E557A" stroke-width="3"/>
+    <path d="M-9 59Q0 55 9 59L11 66Q0 77-11 66Z" fill="#F3D376"/>
+    <path d="M-6 63Q0 61 6 63" stroke="#FFF0B0" stroke-width="3"/>
+
+    <circle r="34" fill="#F3D376"/>
+    <path d="M24-24A34 34 0 0 1-24 24Q14 29 24-24Z" fill="#DEB65E" stroke="none"/>
+    <path d="M-25-8A26 26 0 0 1-9-25" stroke="#FFF0B0" stroke-width="5"/>
+    <circle r="34"/>
+
+    <path d="M-8-10Q-8-88 0-171 8-88 8-10Q0-5-8-10Z" fill="#ECF3EE"/>
+    <path d="M0-161Q6-85 5.5-12L0-10Z" fill="#A8BEBA" stroke="none"/>
+  </g>
+</svg>
