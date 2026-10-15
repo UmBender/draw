@@ -39,7 +39,7 @@ use crate::core::input::InputEvent;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::shell::input_map::Collector;
-use crate::shell::render::{self, to_mq_color};
+use crate::shell::render::{self, TextStats, to_mq_color};
 use crate::shell::toolbar::{self, Route};
 
 /// Opacity of the marquee fill.
@@ -98,9 +98,16 @@ pub fn frame_timing_enabled(setting: Option<&str>) -> bool {
 }
 
 /// The frame timer's line for one re-render: which layers, CPU time in
-/// milliseconds and the number of shapes in the document.
+/// milliseconds, the frame's text work if given (T32 AC-1) and the number
+/// of shapes in the document.
 #[must_use]
-pub fn frame_log_line(redraw: Redraw, elapsed: Duration, shapes: usize) -> String {
+pub fn frame_log_line(
+    redraw: Redraw,
+    elapsed: Duration,
+    text: Option<TextStats>,
+    shapes: usize,
+) -> String {
+    let _ = text;
     let layers = match redraw {
         Redraw::None => "no",
         Redraw::Overlay => "overlay",
@@ -181,6 +188,16 @@ pub fn plan_redraw(cached: Option<&LayerKey>, next: &LayerKey, base: u64, dirty:
     } else {
         Redraw::Full
     }
+}
+
+/// Whether the document layer must be re-rendered in full next frame
+/// because the glyph atlas `overflowed` while drawing it: only if the atlas
+/// was not `cleared` at the start of this frame, so an atlas too small for
+/// one frame does not re-render forever (ADR-T32-1).
+#[must_use]
+pub fn rerender_after_overflow(overflowed: bool, cleared: bool) -> bool {
+    let _ = (overflowed, cleared);
+    todo!()
 }
 
 /// How long the camera must stay still before a [`Redraw::Moved`] layer is
@@ -492,7 +509,10 @@ impl CachedFrame {
         draw_overlay(editor, &overlay, viewport);
         if let Some(started) = started.filter(|_| redraw != Redraw::None) {
             let shapes = editor.document().len();
-            eprintln!("{}", frame_log_line(redraw, started.elapsed(), shapes));
+            eprintln!(
+                "{}",
+                frame_log_line(redraw, started.elapsed(), None, shapes)
+            );
         }
     }
 

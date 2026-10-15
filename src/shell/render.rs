@@ -17,6 +17,7 @@ use macroquad::shapes::draw_line;
 use macroquad::text::{Font, TextParams, draw_text_ex, measure_text};
 
 use std::cell::OnceCell;
+use std::time::Duration;
 
 use crate::core::camera::Camera;
 use crate::core::editor::Editor;
@@ -27,6 +28,7 @@ use crate::core::shape::{
 };
 use crate::core::snap::GRID_STEP;
 use crate::core::text_layout::glyphs;
+use crate::shell::glyphs::{GlyphAtlas, GlyphQuad, glyph_quad, glyph_scale, raster_px};
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
 /// capacity of 10 000 (ADR-T24-3).
@@ -38,8 +40,9 @@ pub const BATCH_MAX_INDICES: usize = 4_800;
 
 /// Where a [`Batch`] sends finished chunks.
 pub trait MeshSink {
-    /// Draws (or records) one chunk of triangles.
-    fn draw(&mut self, mesh: &Mesh);
+    /// Draws (or records) one chunk of triangles bound to atlas `page`
+    /// (`None`: no glyphs, untextured), ADR-T32-2.
+    fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>);
 }
 
 /// Sends chunks to macroquad with `draw_mesh`.
@@ -47,7 +50,8 @@ pub trait MeshSink {
 pub struct GlSink;
 
 impl MeshSink for GlSink {
-    fn draw(&mut self, mesh: &Mesh) {
+    fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
+        let _ = page;
         draw_mesh(mesh);
     }
 }
@@ -60,6 +64,8 @@ pub struct Batch<S: MeshSink = GlSink> {
     mesh: Mesh,
     /// Receives finished chunks.
     sink: S,
+    /// Atlas page the chunk's glyphs come from (ADR-T32-2).
+    page: Option<u32>,
 }
 
 impl<S: MeshSink> Batch<S> {
@@ -72,6 +78,7 @@ impl<S: MeshSink> Batch<S> {
                 texture: None,
             },
             sink,
+            page: None,
         }
     }
 
@@ -199,10 +206,17 @@ impl<S: MeshSink> Batch<S> {
     /// Sends the current chunk to the sink, if it holds anything.
     pub fn flush(&mut self) {
         if !self.mesh.indices.is_empty() {
-            self.sink.draw(&self.mesh);
+            self.sink.draw(&mut self.mesh, self.page);
         }
         self.mesh.vertices.clear();
         self.mesh.indices.clear();
+    }
+
+    /// Adds a glyph quad from atlas `page`, flushing first if the chunk's
+    /// glyphs come from another page (ADR-T32-2).
+    pub fn glyph(&mut self, quad: &GlyphQuad, page: u32, color: Color) {
+        let _ = (quad, page, color);
+        todo!()
     }
 
     /// Flushes and returns the sink.
@@ -579,6 +593,103 @@ pub fn set_text_font(font: Font) {
 /// Runs `draw` with the text font (`None`: macroquad's built-in one).
 fn with_text_font<R>(draw: impl FnOnce(Option<&Font>) -> R) -> R {
     TEXT_FONT.with(|cell| draw(cell.get()))
+}
+
+/// Text work of one frame, for the frame timer (T32 AC-1).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextStats {
+    /// CPU time spent preparing and tessellating text.
+    pub time: Duration,
+    /// Glyphs rasterized.
+    pub rasterized: usize,
+}
+
+/// Makes `atlas` the glyph atlas of text blocks and labels; until then
+/// they are not drawn (ADR-T32-1). Main thread only.
+pub fn set_glyph_atlas(atlas: GlyphAtlas) {
+    let _ = atlas;
+    todo!()
+}
+
+/// Starts a frame's text work: clears an atlas that overflowed in an
+/// earlier frame (ADR-T32-1). Returns whether it was cleared.
+pub fn begin_text_frame() -> bool {
+    todo!()
+}
+
+/// Whether a glyph found no room in the atlas since the last clear.
+#[must_use]
+pub fn text_overflowed() -> bool {
+    todo!()
+}
+
+/// The text work since the last call.
+pub fn take_text_stats() -> TextStats {
+    todo!()
+}
+
+/// Rasterization size and scale of a text block of world `size` through
+/// `camera` at `dpi`: physical raster px and logical px per texel. `None`
+/// when it is too small to draw.
+fn block_raster(size: f32, camera: &Camera, dpi: f32) -> Option<(u16, f32)> {
+    let _ = (size, camera, dpi, text_raster, raster_px, glyph_scale);
+    todo!()
+}
+
+/// Puts every glyph of a text block of world `size` seen through `camera`
+/// at `dpi` into `atlas`.
+pub fn prepare_text_block(
+    atlas: &mut GlyphAtlas,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+) {
+    let _ = (atlas, text, block_raster(size, camera, dpi));
+    todo!()
+}
+
+/// Adds the glyphs of a text block of world `size` at world `origin` to
+/// `batch`, each at its layout cell (ADR-T29-1); glyphs missing from
+/// `atlas`, whitespace and text below [`TEXT_MIN_PX`] are skipped.
+#[allow(clippy::too_many_arguments)]
+pub fn push_text_block<S: MeshSink>(
+    batch: &mut Batch<S>,
+    atlas: &GlyphAtlas,
+    origin: Vec2,
+    text: &str,
+    size: f32,
+    camera: &Camera,
+    dpi: f32,
+    color: Color,
+) {
+    let _ = (
+        batch, atlas, origin, text, size, camera, dpi, color, glyph_quad,
+    );
+    todo!()
+}
+
+/// Puts every glyph of a label of `size` logical pixels at `dpi` into
+/// `atlas`.
+pub fn prepare_text_centered(atlas: &mut GlyphAtlas, text: &str, size: f32, dpi: f32) {
+    let _ = (atlas, text, size, dpi);
+    todo!()
+}
+
+/// Adds a label of `size` logical pixels to `batch`, its advance box
+/// centred horizontally and its ink vertically in the screen rectangle
+/// `rect`.
+pub fn push_text_centered<S: MeshSink>(
+    batch: &mut Batch<S>,
+    atlas: &GlyphAtlas,
+    text: &str,
+    rect: Aabb,
+    size: f32,
+    dpi: f32,
+    color: Color,
+) {
+    let _ = (batch, atlas, text, rect, size, dpi, color);
+    todo!()
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is

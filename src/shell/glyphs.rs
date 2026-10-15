@@ -1,3 +1,254 @@
+//! Glyph rasterization, the glyph atlas and glyph quads (ADR-T32-1).
+//!
+//! [`GlyphAtlas`] is CPU only: it rasterizes each `(char, raster px)` once
+//! with fontdue — the rasterizer and settings macroquad uses — packs the
+//! bitmap into a page with a [`ShelfPacker`] and queues an [`Upload`].
+//! [`GlyphTextures`] owns one GPU texture per page and applies the queued
+//! uploads. [`glyph_quad`] maps an atlas entry to a screen quad. Every page
+//! starts with an opaque white block, so shapes drawn with [`WHITE_UV`]
+//! share chunks with glyphs (ADR-T32-2).
+
+use std::collections::HashMap;
+
+use macroquad::texture::{FilterMode, Image, Texture2D};
+
+use crate::core::geom::Vec2;
+
+/// Side of one atlas page in texels.
+pub const PAGE_SIDE: u16 = 1024;
+
+/// Most atlas pages; at 4 MiB each (RGBA8) the atlas stays within 16 MiB.
+pub const MAX_PAGES: usize = 4;
+
+/// Empty texels around every packed rectangle, as in macroquad's atlas, so
+/// linear filtering never bleeds between glyphs.
+pub const GAP: u16 = 2;
+
+/// Side of the opaque white block at texel `(GAP, GAP)` of every page.
+pub const WHITE_SIDE: u16 = 4;
+
+/// UV of the centre of the white block: shapes sample it (ADR-T32-2).
+pub const WHITE_UV: [f32; 2] = [
+    (GAP as f32 + WHITE_SIDE as f32 / 2.0) / PAGE_SIDE as f32,
+    (GAP as f32 + WHITE_SIDE as f32 / 2.0) / PAGE_SIDE as f32,
+];
+
+/// Largest em size in physical pixels a glyph is rasterized at; larger text
+/// is scaled up from it, so every glyph fits a page.
+pub const MAX_RASTER_PX: u16 = 512;
+
+/// A rectangle of texels in a page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TexelRect {
+    /// Left column.
+    pub x: u16,
+    /// Top row.
+    pub y: u16,
+    /// Width in texels.
+    pub w: u16,
+    /// Height in texels.
+    pub h: u16,
+}
+
+/// Packs rectangles into a square page row by row ("shelves"), [`GAP`]
+/// texels apart and from the edges. Deterministic: the same sizes in the
+/// same order land in the same places.
+#[derive(Debug, Clone)]
+pub struct ShelfPacker {
+    /// Side of the page.
+    side: u16,
+    /// Top of the current shelf.
+    shelf_y: u16,
+    /// Height of the tallest rectangle on the current shelf.
+    shelf_h: u16,
+    /// Left of the next rectangle on the current shelf.
+    cursor_x: u16,
+}
+
+impl ShelfPacker {
+    /// An empty page of `side` texels.
+    #[must_use]
+    pub fn new(side: u16) -> Self {
+        let _ = side;
+        todo!()
+    }
+
+    /// Places a `w × h` rectangle, or `None` if the page has no room left
+    /// for it.
+    pub fn pack(&mut self, w: u16, h: u16) -> Option<TexelRect> {
+        let _ = (w, h);
+        todo!()
+    }
+
+    /// Empties the page.
+    pub fn clear(&mut self) {
+        todo!()
+    }
+}
+
+/// Where a glyph is in the atlas, with its fontdue metrics in texels of
+/// its raster size.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AtlasEntry {
+    /// Page index.
+    pub page: u32,
+    /// Bitmap rectangle in the page (empty for blank glyphs).
+    pub rect: TexelRect,
+    /// Left of the bitmap, right of the pen.
+    pub xmin: f32,
+    /// Bottom of the bitmap, above the baseline (negative: below).
+    pub ymin: f32,
+    /// Horizontal advance.
+    pub advance: f32,
+}
+
+/// Texels to copy into a page texture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Upload {
+    /// Page index.
+    pub page: u32,
+    /// Where they go.
+    pub rect: TexelRect,
+    /// RGBA8 texels, row by row.
+    pub rgba: Vec<u8>,
+}
+
+/// The glyph atlas on the CPU side (ADR-T32-1): entries, page packers and
+/// pending uploads; no page copies.
+pub struct GlyphAtlas {
+    /// The embedded font.
+    font: fontdue::Font,
+    /// Every prepared `(char, raster px)`.
+    entries: HashMap<(char, u16), AtlasEntry>,
+    /// One packer per page.
+    pages: Vec<ShelfPacker>,
+    /// Texels not yet on the GPU.
+    uploads: Vec<Upload>,
+    /// Whether a glyph found no room since the last clear.
+    overflowed: bool,
+    /// Glyphs rasterized since the last [`GlyphAtlas::take_rasterized`].
+    rasterized: usize,
+}
+
+impl GlyphAtlas {
+    /// An empty atlas for the TrueType or OpenType font in `font_bytes`.
+    ///
+    /// # Errors
+    ///
+    /// fontdue's message if the font cannot be parsed.
+    pub fn new(font_bytes: &[u8]) -> Result<Self, String> {
+        let _ = font_bytes;
+        todo!()
+    }
+
+    /// The entry of `ch` at `px` physical pixels, rasterizing and packing
+    /// it first if needed. `None` when no page has room
+    /// ([`GlyphAtlas::overflowed`] then turns true).
+    pub fn prepare(&mut self, ch: char, px: u16) -> Option<AtlasEntry> {
+        let _ = (ch, px);
+        todo!()
+    }
+
+    /// The entry of `ch` at `px` if it is prepared; never rasterizes.
+    #[must_use]
+    pub fn get(&self, ch: char, px: u16) -> Option<AtlasEntry> {
+        let _ = (ch, px);
+        todo!()
+    }
+
+    /// Pages in use.
+    #[must_use]
+    pub fn page_count(&self) -> usize {
+        todo!()
+    }
+
+    /// Whether a glyph found no room since the last [`GlyphAtlas::clear`].
+    #[must_use]
+    pub fn overflowed(&self) -> bool {
+        todo!()
+    }
+
+    /// Forgets every entry and empties the pages (the page count stays),
+    /// reserving the white blocks again.
+    pub fn clear(&mut self) {
+        todo!()
+    }
+
+    /// The pending uploads, oldest first.
+    pub fn take_uploads(&mut self) -> Vec<Upload> {
+        todo!()
+    }
+
+    /// Glyphs rasterized since the last call.
+    pub fn take_rasterized(&mut self) -> usize {
+        todo!()
+    }
+}
+
+/// The GPU side of the atlas: one texture per page.
+#[derive(Default)]
+pub struct GlyphTextures {
+    /// Page textures, by page index.
+    pages: Vec<Texture2D>,
+}
+
+impl GlyphTextures {
+    /// Creates textures for new pages and applies `atlas`'s pending
+    /// uploads. Needs the GL context (main thread).
+    pub fn sync(&mut self, atlas: &mut GlyphAtlas) {
+        let _ = atlas;
+        let _ = (FilterMode::Linear, Image::empty());
+        todo!()
+    }
+
+    /// The texture of `page`, if it exists.
+    #[must_use]
+    pub fn get(&self, page: u32) -> Option<&Texture2D> {
+        let _ = page;
+        todo!()
+    }
+}
+
+/// A glyph's screen rectangle and its texture coordinates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GlyphQuad {
+    /// Top-left corner, screen pixels.
+    pub min: Vec2,
+    /// Bottom-right corner, screen pixels.
+    pub max: Vec2,
+    /// UV of the top-left corner.
+    pub uv_min: Vec2,
+    /// UV of the bottom-right corner.
+    pub uv_max: Vec2,
+}
+
+/// The screen quad of a glyph whose pen sits at screen point `baseline`,
+/// its bitmap scaled by `scale` logical pixels per texel. `None` for an
+/// empty bitmap, a non-finite point or a scale that is not finite and
+/// positive.
+#[must_use]
+pub fn glyph_quad(baseline: Vec2, entry: &AtlasEntry, scale: f32) -> Option<GlyphQuad> {
+    let _ = (baseline, entry, scale);
+    todo!()
+}
+
+/// Physical em size a raster size is rasterized at: `ceil(raster × dpi)`,
+/// in `1..=MAX_RASTER_PX`. A DPI that is not finite and positive counts
+/// as 1.
+#[must_use]
+pub fn raster_px(raster: u16, dpi: f32) -> u16 {
+    let _ = (raster, dpi);
+    todo!()
+}
+
+/// Logical pixels per texel for text of `px` logical pixels drawn from a
+/// `raster_px` raster.
+#[must_use]
+pub fn glyph_scale(px: f32, raster_px: u16) -> f32 {
+    let _ = (px, raster_px);
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

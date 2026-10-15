@@ -93,6 +93,7 @@ dependencies = [
 name = "draw"
 version = "1.0.0"
 dependencies = [
+ "fontdue",
  "macroquad",
  "proptest",
 ]
