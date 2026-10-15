@@ -253,3 +253,14 @@ step 11 (keymap) and step 24 (layered redraw).
 - 2026-10-14 — Owner request after review: `Ctrl+[` / `Ctrl+]` resize
   the open block ([[ADR-T29-3 Resize text while typing]], AC-3b).
   `scripts/check.sh` green (713 lib tests).
+- 2026-10-14 — Owner check on the target with `DRAW_FRAME_TIMES=1`,
+  512 text blocks of ~20 characters (8 blocks doubled with `Ctrl+A`,
+  `Ctrl+D` ×6): `moved` frames 0.48–1.36 ms — within
+  [[ADR-T26-2 Gesture frame budget]]; one `full` re-render 68 ms —
+  **over** the 16 ms of [[ADR-T24-5 Redraw budgets]] (single sample, zoom
+  level not recorded). Pan and zoom stay smooth because a slow layer is
+  reused while the camera moves and re-rendered once it settles
+  ([[ADR-T26-3 Reuse the layer only when re-rendering is slow]]).
+  Suspected cause, not yet profiled: one `draw_text_ex` call per glyph
+  (~10 000 per full render, ≈ 6.8 µs each). Candidate follow-up task:
+  batch glyphs into the document meshes like strokes (ADR-T24-3).
