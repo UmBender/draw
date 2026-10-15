@@ -130,17 +130,17 @@ pub struct AtlasEntry {
 }
 
 /// A multiply-rotate hasher for the atlas's `(char, raster px)` keys: one
-/// lookup per glyph per frame, where std's SipHash dominated the
+/// lookup per glyph per frame, where std's `SipHash` dominated the
 /// tessellation time. Not DoS-resistant, which keys from our own text do
 /// not need.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KeyHasher(u64);
 
 impl KeyHasher {
-    /// Mixes one word into the state (the FxHash step).
+    /// Mixes one word into the state (the `FxHash` step).
     fn mix(&mut self, word: u64) {
-        /// FxHash's multiplier.
-        const K: u64 = 0x51_7cc1_b727_220a_95;
+        /// `FxHash`'s multiplier.
+        const K: u64 = 0x517c_c1b7_2722_0a95;
         self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(K);
     }
 }

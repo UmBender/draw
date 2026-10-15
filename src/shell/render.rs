@@ -629,6 +629,7 @@ pub fn set_glyph_atlas(mut atlas: GlyphAtlas) {
 
 /// Starts a frame's text work: clears an atlas that overflowed in an
 /// earlier frame (ADR-T32-1). Returns whether it was cleared.
+#[must_use]
 pub fn begin_text_frame() -> bool {
     ATLAS.with(|cell| match cell.borrow_mut().as_mut() {
         Some(atlas) if atlas.overflowed() => {
