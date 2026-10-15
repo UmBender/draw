@@ -2601,6 +2601,36 @@ mod tests {
     }
 
     #[test]
+    fn text_ctrl_brackets_resize_open_block() {
+        // Arrange: default width gives 18 px at zoom 1.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "ab");
+        let width = ed.style().width_px;
+
+        // Act: the shell sends a control character, then the key.
+        ed.handle(InputEvent::Char {
+            ch: '\u{1d}',
+            mods: CTRL,
+        });
+        assert!(key_with(&mut ed, Key::BracketRight, CTRL));
+        key_with(&mut ed, Key::BracketLeft, CTRL);
+        key_with(&mut ed, Key::BracketLeft, CTRL);
+
+        // Assert
+        let Some(edit) = ed.text_edit() else {
+            panic!("still editing");
+        };
+        assert_eq!(edit.text(), "ab");
+        assert!(approx_eq(edit.size, 16.0, 1e-4), "{}", edit.size);
+        assert!(approx_eq(ed.style().width_px, width, 1e-6));
+        key(&mut ed, Key::Escape);
+        let Some((_, Shape::Text { size, .. })) = ed.document().shapes().next() else {
+            panic!("a text block was committed");
+        };
+        assert!(approx_eq(*size, 16.0, 1e-4));
+    }
+
+    #[test]
     fn text_tool_click_on_block_reopens_it_with_caret_at_click() {
         // Arrange
         let mut ed = text_editor();

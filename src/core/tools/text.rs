@@ -448,6 +448,35 @@ mod tests {
     }
 
     #[test]
+    fn edit_step_size_walks_text_ladder() {
+        // Arrange: 18 px at zoom 1.
+        let mut e = TextEdit::new(Vec2::ZERO, 18.0, STYLE);
+
+        // Act / Assert
+        assert!(e.step_size(true, 1.0));
+        assert!(approx_eq(e.size, 20.0, 1e-4));
+        assert!(e.step_size(false, 1.0) && e.step_size(false, 1.0));
+        assert!(approx_eq(e.size, 16.0, 1e-4));
+
+        // Between rungs: 17 px goes to 18 up, 16 down.
+        e.size = 17.0;
+        assert!(e.step_size(true, 1.0));
+        assert!(approx_eq(e.size, 18.0, 1e-4));
+
+        // Ends of the ladder clamp.
+        e.size = 76.0;
+        assert!(!e.step_size(true, 1.0));
+        e.size = 14.0;
+        assert!(!e.step_size(false, 1.0));
+
+        // On-screen size: 9 world units at zoom 2 are 18 px.
+        e.size = 9.0;
+        assert!(e.step_size(true, 2.0));
+        assert!(approx_eq(e.size, 10.0, 1e-4));
+        assert!(!e.step_size(true, f32::NAN));
+    }
+
+    #[test]
     fn edit_is_blank_for_whitespace_only() {
         assert!(edit(" \n\t ", 0).is_blank());
         assert!(!edit(" x ", 0).is_blank());
