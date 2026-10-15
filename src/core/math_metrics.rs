@@ -37,7 +37,11 @@ const fn m(advance: f32, x_min: f32, x_max: f32, y_min: f32, y_max: f32, italic:
 /// The metrics of `ch`, if the math font has it.
 #[must_use]
 pub fn get(ch: char) -> Option<GlyphMetrics> {
-    todo!("binary search of {ch:?}")
+    TABLE
+        .binary_search_by(|row| row.0.cmp(&ch))
+        .ok()
+        .and_then(|i| TABLE.get(i))
+        .map(|row| row.1)
 }
 
 /// Every glyph of the math font, sorted by character.

@@ -102,8 +102,8 @@ pub const REL_SPACE: f32 = 5.0 / 18.0;
 /// Space on each side of a binary operator: TeX's medium space, 2/9 em.
 pub const BIN_SPACE: f32 = 2.0 / 9.0;
 
-/// Space after a function or big operator before an ordinary atom: TeX's
-/// thin space, 1/6 em.
+/// Space between a function or big operator and an ordinary atom, and
+/// after punctuation: TeX's thin space, 1/6 em.
 pub const OP_SPACE: f32 = 1.0 / 6.0;
 
 /// Room kept above and below a formula in its line.
@@ -345,14 +345,61 @@ pub enum Face {
 /// anything else as is (ADR-T33-1).
 #[must_use]
 pub fn italic(ch: char) -> char {
-    todo!("math italic of {ch:?}")
+    let offset = |from: char, base: u32| char::from_u32(base + (u32::from(ch) - u32::from(from)));
+    let mapped = match ch {
+        // The italic h is the older Planck constant.
+        'h' => Some('\u{210E}'),
+        'a'..='z' => offset('a', 0x1D44E),
+        'A'..='Z' => offset('A', 0x1D434),
+        'α'..='ω' => offset('α', 0x1D6FC),
+        'ϵ' => Some('\u{1D716}'),
+        'ϑ' => Some('\u{1D717}'),
+        'ϰ' => Some('\u{1D718}'),
+        'ϕ' => Some('\u{1D719}'),
+        'ϱ' => Some('\u{1D71A}'),
+        'ϖ' => Some('\u{1D71B}'),
+        _ => None,
+    };
+    mapped.unwrap_or(ch)
 }
 
 /// The script (`\mathcal`) form of `ch`: Latin capitals; anything else as
 /// [`italic`] draws it (ADR-T33-1).
 #[must_use]
 pub fn calligraphic(ch: char) -> char {
-    todo!("script form of {ch:?}")
+    // Script capitals that Unicode had before the math block.
+    let mapped = match ch {
+        'B' => Some('\u{212C}'),
+        'E' => Some('\u{2130}'),
+        'F' => Some('\u{2131}'),
+        'H' => Some('\u{210B}'),
+        'I' => Some('\u{2110}'),
+        'L' => Some('\u{2112}'),
+        'M' => Some('\u{2133}'),
+        'R' => Some('\u{211B}'),
+        'A'..='Z' => char::from_u32(0x1D49C + (u32::from(ch) - u32::from('A'))),
+        _ => None,
+    };
+    mapped.unwrap_or_else(|| italic(ch))
+}
+
+/// How the letters of a formula part are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Style {
+    /// Math italic.
+    Italic,
+    /// `\mathcal`: script capitals.
+    Calligraphic,
+}
+
+impl Style {
+    /// `ch` typed in a formula part of this style.
+    fn map(self, ch: char) -> char {
+        match self {
+            Self::Italic => italic(ch),
+            Self::Calligraphic => calligraphic(ch),
+        }
+    }
 }
 
 /// Something to draw, in em from its box's origin, y down.
@@ -383,12 +430,28 @@ pub enum Ink {
 }
 
 impl Ink {
-    /// The box the ink covers: a glyph's cell (its advance by its ascent
-    /// and descent), a rule's segment grown by half its width.
+    /// The box the ink covers: a text-face glyph's cell (its advance by
+    /// its ascent and descent), a math-face glyph's advance and ink box
+    /// together, a rule's segment grown by half its width.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
         match *self {
-            Self::Glyph { ch, pos, scale, .. } => {
+            Self::Glyph {
+                ch,
+                face,
+                pos,
+                scale,
+                ..
+            } => {
+                if let Some(m) = math_glyph_metrics(face, ch) {
+                    return Aabb::from_corners(
+                        Vec2::new(pos.x + m.x_min.min(0.0) * scale, pos.y - m.y_max * scale),
+                        Vec2::new(
+                            pos.x + m.advance.max(m.x_max) * scale,
+                            pos.y - m.y_min * scale,
+                        ),
+                    );
+                }
                 let (ascent, descent) = glyph_extent(ch);
                 Aabb::from_corners(
                     Vec2::new(pos.x, pos.y - ascent * scale),
@@ -434,24 +497,48 @@ pub struct MathBox {
     pub ascent: f32,
     /// Depth below the baseline.
     pub descent: f32,
+    /// Italic correction of its last glyph: room a superscript leaves.
+    pub italic: f32,
     /// What to draw, relative to the left end of the baseline.
     pub ink: Vec<Ink>,
 }
 
 impl MathBox {
-    /// One glyph at `scale`.
+    /// One text-face glyph at `scale`: a monospaced cell.
     fn glyph(ch: char, scale: f32, warn: bool) -> Self {
         let (ascent, descent) = glyph_extent(ch);
         Self {
             width: ADVANCE * scale,
             ascent: ascent * scale,
             descent: descent * scale,
+            italic: 0.0,
             ink: vec![Ink::Glyph {
                 ch,
                 face: Face::Text,
                 pos: Vec2::ZERO,
                 scale,
                 warn,
+            }],
+        }
+    }
+
+    /// One math-face glyph at `scale` with its metrics; a text-face cell
+    /// when the math font lacks `ch` (ADR-T33-1).
+    fn math(ch: char, scale: f32) -> Self {
+        let Some(m) = math_metrics::get(ch) else {
+            return Self::glyph(ch, scale, false);
+        };
+        Self {
+            width: m.advance * scale,
+            ascent: m.y_max * scale,
+            descent: -m.y_min * scale,
+            italic: m.italic * scale,
+            ink: vec![Ink::Glyph {
+                ch,
+                face: Face::Math,
+                pos: Vec2::ZERO,
+                scale,
+                warn: false,
             }],
         }
     }
@@ -469,7 +556,8 @@ impl MathBox {
         self.ink.extend(other.ink.iter().map(|ink| ink.shifted(at)));
     }
 
-    /// `boxes` side by side on one baseline.
+    /// `boxes` side by side on one baseline; the italic correction is the
+    /// last box's.
     fn row(boxes: impl IntoIterator<Item = Self>) -> Self {
         let mut out = Self::default();
         for b in boxes {
@@ -477,13 +565,32 @@ impl MathBox {
             out.width += b.width;
             out.ascent = out.ascent.max(b.ascent);
             out.descent = out.descent.max(b.descent);
+            out.italic = b.italic;
         }
         out
     }
 
-    /// The characters of `text` side by side, `-` as typed.
+    /// The characters of `text` side by side in the text face, `-` as
+    /// typed.
     fn word(text: &str, scale: f32, warn: bool) -> Self {
         Self::row(text.chars().map(|ch| Self::glyph(ch, scale, warn)))
+    }
+
+    /// The characters of `text` side by side, upright in the math face.
+    fn upright(text: &str, scale: f32) -> Self {
+        Self::row(text.chars().map(|ch| Self::math(ch, scale)))
+    }
+
+    /// Leftmost and rightmost x of its ink; `(0, 0)` without ink.
+    fn ink_span(&self) -> (f32, f32) {
+        let mut span: Option<(f32, f32)> = None;
+        for ink in &self.ink {
+            let b = ink.bounds();
+            span = Some(span.map_or((b.min.x, b.max.x), |(lo, hi)| {
+                (lo.min(b.min.x), hi.max(b.max.x))
+            }));
+        }
+        span.unwrap_or((0.0, 0.0))
     }
 }
 
@@ -506,7 +613,16 @@ impl Layout {
     }
 }
 
-/// Ascent and descent of glyph `ch` per unit of scale.
+/// The math metrics of a glyph of `face`; `None` for the text face or a
+/// character the math font lacks.
+fn math_glyph_metrics(face: Face, ch: char) -> Option<math_metrics::GlyphMetrics> {
+    match face {
+        Face::Math => math_metrics::get(ch),
+        Face::Text => None,
+    }
+}
+
+/// Ascent and descent of text-face glyph `ch` per unit of scale.
 #[must_use]
 pub fn glyph_extent(ch: char) -> (f32, f32) {
     if "()[]{}|⌊⌋⌈⌉∑∏√".contains(ch) {
@@ -762,7 +878,7 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 args,
             }),
-            "sqrt" | "pmod" => self.args(1, end).map(|args| Node::Command {
+            "sqrt" | "pmod" | "mathcal" => self.args(1, end).map(|args| Node::Command {
                 name: name.clone(),
                 args,
             }),
@@ -916,13 +1032,20 @@ fn script_scale(scale: f32) -> f32 {
 /// size).
 #[must_use]
 pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
+    layout_styled(nodes, scale, Style::Italic)
+}
+
+/// [`layout_math`] with letters drawn in `style`.
+fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
     let scale = if scale.is_finite() && scale > 0.0 {
         scale
     } else {
         1.0
     };
-    let mut atoms: Vec<(MathBox, Class)> =
-        nodes.iter().filter_map(|node| atom(node, scale)).collect();
+    let mut atoms: Vec<(MathBox, Class)> = nodes
+        .iter()
+        .filter_map(|node| atom(node, scale, style))
+        .collect();
     // A binary operator without an operand on both sides is ordinary.
     for i in 0..atoms.len() {
         if atoms[i].1 != Class::Bin {
@@ -964,12 +1087,18 @@ pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
 /// Space between neighbouring atoms of classes `a` and `b` at `scale`.
 fn spacing(a: Class, b: Class, scale: f32) -> f32 {
     let op = |c| matches!(c, Class::Op | Class::Limits | Class::BigOp);
-    if op(a) && (b == Class::Ord || op(b)) {
+    // TeX's thin space around operators, in scripts too.
+    if (op(a) && (b == Class::Ord || op(b))) || (op(b) && matches!(a, Class::Ord | Class::Close))
+    {
         return OP_SPACE * scale;
     }
-    // Relation and operator space only at the block's own size.
+    // Punctuation, relation and operator space only at the block's own
+    // size.
     if scale < 1.0 {
         return 0.0;
+    }
+    if a == Class::Punct {
+        return OP_SPACE * scale;
     }
     if (a == Class::Rel) != (b == Class::Rel)
         && a != Class::Open
@@ -995,19 +1124,20 @@ fn char_class(ch: char) -> Class {
     }
 }
 
-/// The box and class of one node; `None` for whitespace.
-fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
+/// The box and class of one node with letters in `style`; `None` for
+/// whitespace.
+fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
     let atom = match node {
         Node::Space(_) => return None,
         Node::Char(ch) => {
-            let shown = if *ch == '-' { MINUS } else { *ch };
-            (MathBox::glyph(shown, scale, false), char_class(*ch))
+            let shown = if *ch == '-' { MINUS } else { style.map(*ch) };
+            (MathBox::math(shown, scale), char_class(*ch))
         }
         Node::Symbol(name) => match symbol(name) {
             Some(def) => (symbol_box(def, scale), def.class),
             None => (MathBox::word(&format!("\\{name}"), scale, true), Class::Ord),
         },
-        Node::Group(nodes) => (layout_math(nodes, scale), Class::Ord),
+        Node::Group(nodes) => (layout_styled(nodes, scale, style), Class::Ord),
         Node::Scripts {
             base,
             first,
@@ -1015,12 +1145,12 @@ fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
         } => {
             let (base, class) = base
                 .as_deref()
-                .and_then(|b| atom(b, scale))
+                .and_then(|b| atom(b, scale, style))
                 .unwrap_or((MathBox::default(), Class::Ord));
             let ss = script_scale(scale);
             let (mut sup, mut sub) = (None, None);
             for script in std::iter::once(first).chain(second) {
-                let b = layout_math(&script.arg.nodes, ss);
+                let b = layout_styled(&script.arg.nodes, ss, style);
                 match script.kind {
                     ScriptKind::Sup => sup = Some(b),
                     ScriptKind::Sub => sub = Some(b),
@@ -1036,76 +1166,85 @@ fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
         Node::Command { name, args } => {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
             let b = match name.as_str() {
-                "frac" => fraction(arg(0), arg(1), scale, true),
-                "binom" => binomial(arg(0), arg(1), scale),
-                "sqrt" => root(arg(0), scale),
+                "frac" => fraction(arg(0), arg(1), scale, true, style),
+                "binom" => binomial(arg(0), arg(1), scale, style),
+                "sqrt" => root(arg(0), scale, style),
+                "mathcal" => layout_styled(arg(0), scale, Style::Calligraphic),
+                // TeX's \pmod: a quad, "(mod", a third of a quad.
                 "pmod" => MathBox::row([
-                    MathBox::gap(ADVANCE * scale),
-                    MathBox::word("(mod", scale, false),
-                    MathBox::gap(ADVANCE * scale),
-                    layout_math(arg(0), scale),
-                    MathBox::glyph(')', scale, false),
+                    MathBox::gap(scale),
+                    MathBox::upright("(mod", scale),
+                    MathBox::gap(scale / 3.0),
+                    layout_styled(arg(0), scale, style),
+                    MathBox::math(')', scale),
                 ]),
                 _ => MathBox::word(&format!("\\{name}"), scale, true),
             };
             (b, Class::Ord)
         }
-        Node::Text { body, .. } => (MathBox::word(body, scale, false), Class::Ord),
+        Node::Text { body, .. } => (MathBox::upright(body, scale), Class::Ord),
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
 }
 
-/// The box of a table symbol: a glyph, an enlarged big operator or a word.
+/// The box of a table symbol: a glyph (lowercase Greek in italic), an
+/// enlarged big operator or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32) -> MathBox {
     let mut chars = def.text.chars();
     match (chars.next(), chars.next(), def.class) {
         (Some(ch), None, Class::BigOp) => big_operator(ch, scale),
-        (Some(ch), None, _) => MathBox::glyph(ch, scale, false),
-        _ => MathBox::word(def.text, scale, false),
+        (Some(ch), None, _) => MathBox::math(italic(ch), scale),
+        _ => MathBox::upright(def.text, scale),
     }
 }
 
 /// `∑` or `∏`, enlarged and centred on the axis.
 fn big_operator(ch: char, scale: f32) -> MathBox {
     let k = BIG_OP_SCALE * scale;
-    let (ascent, descent) = glyph_extent(ch);
+    let glyph = MathBox::math(ch, k);
     // The glyph's middle sits on the axis.
-    let y = -AXIS * scale - (descent - ascent) * k / 2.0;
-    MathBox {
-        width: ADVANCE * k,
-        ascent: ascent * k - y,
-        descent: descent * k + y,
-        ink: vec![Ink::Glyph {
-            ch,
-            face: Face::Text,
-            pos: Vec2::new(0.0, y),
-            scale: k,
-            warn: false,
-        }],
-    }
+    let y = -AXIS * scale - (glyph.descent - glyph.ascent) / 2.0;
+    let mut out = MathBox {
+        width: glyph.width,
+        ascent: glyph.ascent - y,
+        descent: glyph.descent + y,
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    out.put(&glyph, Vec2::new(0.0, y));
+    out
 }
 
-/// Superscript and subscript to the right of `base`.
+/// Superscript and subscript to the right of `base` (ADR-T33-1): the
+/// superscript after the base's italic correction.
 fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
-    let up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
+    let mut up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
+    if let Some(sup) = &sup {
+        up = up.max(sup.descent + SUP_BOTTOM_MIN * scale);
+    }
     let mut down = (SUB_SHIFT * scale).max(base.descent - SUB_DROP * scale);
+    if let Some(sub) = &sub {
+        down = down.max(sub.ascent - SUB_TOP_MAX * scale);
+    }
     if let (Some(sup), Some(sub)) = (&sup, &sub) {
         let gap = (down - sub.ascent) - (sup.descent - up);
         if gap < SCRIPT_GAP * scale {
             down += SCRIPT_GAP * scale - gap;
         }
     }
+    let x = base.width;
     let mut out = MathBox {
         width: base.width,
         ascent: base.ascent,
         descent: base.descent,
+        italic: 0.0,
         ink: base.ink,
     };
-    let x = out.width;
     if let Some(sup) = sup {
-        out.put(&sup, Vec2::new(x, -up));
-        out.width = out.width.max(x + sup.width);
+        let at = x + base.italic;
+        out.put(&sup, Vec2::new(at, -up));
+        out.width = out.width.max(at + sup.width);
         out.ascent = out.ascent.max(up + sup.ascent);
         out.descent = out.descent.max(sup.descent - up);
     }
@@ -1114,6 +1253,9 @@ fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32
         out.width = out.width.max(x + sub.width);
         out.ascent = out.ascent.max(sub.ascent - down);
         out.descent = out.descent.max(down + sub.descent);
+    }
+    if out.width > x {
+        out.width += SCRIPT_SPACE * scale;
     }
     out
 }
@@ -1129,6 +1271,7 @@ fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) 
         width,
         ascent: op.ascent,
         descent: op.descent,
+        italic: 0.0,
         ink: Vec::new(),
     };
     out.put(op, Vec2::new((width - op.width) / 2.0, 0.0));
@@ -1146,19 +1289,20 @@ fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) 
 }
 
 /// A fraction of `num` over `den`, with a bar on the axis when `bar`.
-fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool) -> MathBox {
+fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool, style: Style) -> MathBox {
     let ss = script_scale(scale);
-    let (n, d) = (layout_math(num, ss), layout_math(den, ss));
+    let (n, d) = (layout_styled(num, ss, style), layout_styled(den, ss, style));
     let pad = FRAC_PAD * scale;
     let width = n.width.max(d.width) + 2.0 * pad;
     let axis = -AXIS * scale;
     let half = RULE * scale / 2.0;
-    let n_base = axis - half - FRAC_GAP * scale - n.descent;
-    let d_base = axis + half + FRAC_GAP * scale + d.ascent;
+    let n_base = (axis - half - FRAC_GAP * scale - n.descent).min(-FRAC_NUM_SHIFT * scale);
+    let d_base = (axis + half + FRAC_GAP * scale + d.ascent).max(FRAC_DEN_SHIFT * scale);
     let mut out = MathBox {
         width,
         ascent: (n.ascent - n_base).max(half - axis),
         descent: (d_base + d.descent).max(axis + half),
+        italic: 0.0,
         ink: Vec::new(),
     };
     out.put(&n, Vec2::new((width - n.width) / 2.0, n_base));
@@ -1174,32 +1318,32 @@ fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool) -> MathBox {
 }
 
 /// `n` over `k` without a bar, in parentheses as tall as both.
-fn binomial(n: &[Node], k: &[Node], scale: f32) -> MathBox {
-    let inner = fraction(n, k, scale, false);
+fn binomial(n: &[Node], k: &[Node], scale: f32, style: Style) -> MathBox {
+    let inner = fraction(n, k, scale, false, style);
     let height = inner.ascent + inner.descent;
-    let paren = (height / (TALL_ASCENT + TALL_DESCENT)).clamp(scale, BINOM_MAX_SCALE * scale);
+    let unit = MathBox::math('(', 1.0);
+    let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
+    let paren = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
+    let (open, close) = (MathBox::math('(', paren), MathBox::math(')', paren));
     // The parentheses' middle sits on the middle of the stack.
     let middle = (inner.descent - inner.ascent) / 2.0;
-    let y = middle - (TALL_DESCENT - TALL_ASCENT) * paren / 2.0;
-    let side = ADVANCE * paren;
+    let y = middle + (open.ascent - open.descent) / 2.0;
     let mut out = MathBox {
-        width: inner.width + 2.0 * side,
-        ascent: inner.ascent.max(TALL_ASCENT * paren - y),
-        descent: inner.descent.max(TALL_DESCENT * paren + y),
+        width: open.width + inner.width + close.width,
+        ascent: inner.ascent.max(open.ascent - y),
+        descent: inner.descent.max(open.descent + y),
+        italic: 0.0,
         ink: Vec::new(),
     };
-    out.put(&MathBox::glyph('(', paren, false), Vec2::new(0.0, y));
-    out.put(&inner, Vec2::new(side, 0.0));
-    out.put(
-        &MathBox::glyph(')', paren, false),
-        Vec2::new(side + inner.width, y),
-    );
+    out.put(&open, Vec2::new(0.0, y));
+    out.put(&inner, Vec2::new(open.width, 0.0));
+    out.put(&close, Vec2::new(open.width + inner.width, y));
     out
 }
 
 /// A root sign of four rules over `content`.
-fn root(content: &[Node], scale: f32) -> MathBox {
-    let c = layout_math(content, scale);
+fn root(content: &[Node], scale: f32, style: Style) -> MathBox {
+    let c = layout_styled(content, scale, style);
     let top = -(c.ascent + SQRT_GAP * scale);
     let bottom = c.descent;
     let at = |t: f32| top + (bottom - top) * t;
@@ -1216,6 +1360,7 @@ fn root(content: &[Node], scale: f32) -> MathBox {
         width: points[4].x + 0.05 * scale,
         ascent: -top + width / 2.0,
         descent: bottom + width / 2.0,
+        italic: 0.0,
         ink: Vec::new(),
     };
     out.put(&c, Vec2::new(x, 0.0));
@@ -1279,9 +1424,12 @@ pub fn layout(segments: &[Segment]) -> Layout {
             Segment::Dollar => line.cell('$'),
             Segment::Math(nodes) => {
                 let b = layout_math(nodes, 1.0);
-                let at = Vec2::new(line.width, 0.0);
-                line.ink.extend(b.ink.iter().map(|ink| ink.shifted(at)));
-                line.width += b.width;
+                // Italic overhangs stay inside the line (ADR-T33-1).
+                let (left, right) = b.ink_span();
+                let x = line.width + (-(line.width + left)).max(0.0);
+                line.ink
+                    .extend(b.ink.iter().map(|ink| ink.shifted(Vec2::new(x, 0.0))));
+                line.width = (x + b.width).max(x + right);
                 line.ascent = line.ascent.max(b.ascent + MATH_PAD);
                 line.descent = line.descent.max(b.descent + MATH_PAD);
             }
@@ -1982,6 +2130,9 @@ mod tests {
         let n = mm(N).advance;
         assert!(approx_eq(width("\\log n"), adv("log") + OP_SPACE + n, EPS));
         assert!(approx_eq(width("\\log(n)"), adv("log()") + n, EPS));
+        // Before an operator after an atom, and after punctuation.
+        assert!(approx_eq(width("n\\log n"), n + adv("log") + 2.0 * OP_SPACE + n, EPS));
+        assert!(approx_eq(width("a,b"), ab + adv(",") + OP_SPACE, EPS));
         // No relation space inside scripts.
         let script = (mm(I).advance + adv("=1")) * SCRIPT_SCALE;
         assert!(approx_eq(
@@ -2179,7 +2330,7 @@ mod tests {
     #[test]
     fn tex_literals_and_plain_text_use_the_text_face() {
         // Act
-        let l = layout(&parse("a $x\\foo$"));
+        let l = layout(&parse("a$x\\foo$"));
 
         // Assert
         let got = faces(&l.ink);

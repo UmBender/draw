@@ -360,8 +360,16 @@ pub fn window_conf() -> WindowSettings {
 /// Runs the application until the window is closed.
 pub async fn run() {
     match GlyphAtlas::new(TEXT_FONT) {
-        Ok(atlas) => render::set_glyph_atlas(atlas),
-        // A unit test proves the embedded font parses (ADR-T32-1).
+        // Unit tests prove both embedded fonts parse (ADR-T32-1, ADR-T33-1).
+        Ok(atlas) => match atlas.with_math(MATH_FONT) {
+            Ok(atlas) => render::set_glyph_atlas(atlas),
+            Err(err) => {
+                eprintln!("draw: math font not loaded, formulas in the text font: {err}");
+                if let Ok(atlas) = GlyphAtlas::new(TEXT_FONT) {
+                    render::set_glyph_atlas(atlas);
+                }
+            }
+        },
         Err(err) => eprintln!("draw: embedded font not loaded, text hidden: {err}"),
     }
     let subscriber = register_input_subscriber();

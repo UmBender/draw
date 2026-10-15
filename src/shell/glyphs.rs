@@ -3,6 +3,7 @@
 //! [`GlyphAtlas`] is CPU only: it rasterizes each `(char, raster px)` once
 //! with fontdue — the rasterizer and settings macroquad uses — packs the
 //! bitmap into a page with a [`ShelfPacker`] and queues an [`Upload`].
+//! Keys carry a face: the text font or the math font (ADR-T33-1).
 //! [`GlyphTextures`] owns one GPU texture per page and applies the queued
 //! uploads. [`glyph_quad`] maps an atlas entry to a screen quad. Every page
 //! starts with an opaque white block, so shapes drawn with [`WHITE_UV`]
@@ -130,7 +131,7 @@ pub struct AtlasEntry {
     pub advance: f32,
 }
 
-/// A multiply-rotate hasher for the atlas's `(char, raster px)` keys: one
+/// A multiply-rotate hasher for the atlas's `(face, char, raster px)` keys: one
 /// lookup per glyph per frame, where std's `SipHash` dominated the
 /// tessellation time. Not DoS-resistant, which keys from our own text do
 /// not need.
@@ -164,6 +165,11 @@ impl Hasher for KeyHasher {
     fn write_u32(&mut self, n: u32) {
         self.mix(u64::from(n));
     }
+
+    // A derived `Hash` of a fieldless enum writes its discriminant so.
+    fn write_isize(&mut self, n: isize) {
+        self.mix(n as u64);
+    }
 }
 
 /// Texels to copy into a page texture.
@@ -180,10 +186,12 @@ pub struct Upload {
 /// The glyph atlas on the CPU side (ADR-T32-1): entries, page packers and
 /// pending uploads; no page copies.
 pub struct GlyphAtlas {
-    /// The embedded font.
+    /// The text font.
     font: fontdue::Font,
-    /// Every prepared `(char, raster px)`.
-    entries: HashMap<(char, u16), AtlasEntry, BuildHasherDefault<KeyHasher>>,
+    /// The math font (ADR-T33-1); the text font stands in without it.
+    math: Option<fontdue::Font>,
+    /// Every prepared `(face, char, raster px)`.
+    entries: HashMap<(Face, char, u16), AtlasEntry, BuildHasherDefault<KeyHasher>>,
     /// One packer per page.
     pages: Vec<ShelfPacker>,
     /// Texels not yet on the GPU.
@@ -204,6 +212,7 @@ impl GlyphAtlas {
         let font = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())?;
         Ok(Self {
             font,
+            math: None,
             entries: HashMap::default(),
             pages: Vec::new(),
             uploads: Vec::new(),
@@ -216,11 +225,39 @@ impl GlyphAtlas {
     /// it first if needed. `None` when no page has room
     /// ([`GlyphAtlas::overflowed`] then turns true).
     pub fn prepare(&mut self, ch: char, px: u16) -> Option<AtlasEntry> {
-        if let Some(entry) = self.entries.get(&(ch, px)) {
+        self.prepare_in(Face::Text, ch, px)
+    }
+
+    /// The font that draws `face`.
+    fn font(&self, face: Face) -> &fontdue::Font {
+        match (face, &self.math) {
+            (Face::Math, Some(math)) => math,
+            _ => &self.font,
+        }
+    }
+
+    /// This atlas with `font_bytes` drawing the math face (ADR-T33-1);
+    /// without it the text font draws both faces.
+    ///
+    /// # Errors
+    ///
+    /// fontdue's message if the font cannot be parsed.
+    pub fn with_math(mut self, font_bytes: &[u8]) -> Result<Self, String> {
+        let math = fontdue::Font::from_bytes(font_bytes, fontdue::FontSettings::default())?;
+        self.math = Some(math);
+        // Entries of the math face drawn with the text font are stale.
+        self.clear();
+        Ok(self)
+    }
+
+    /// The entry of `ch` in `face` at `px` physical pixels, rasterizing and
+    /// packing it first if needed; see [`GlyphAtlas::prepare`].
+    pub fn prepare_in(&mut self, face: Face, ch: char, px: u16) -> Option<AtlasEntry> {
+        if let Some(entry) = self.entries.get(&(face, ch, px)) {
             return Some(*entry);
         }
         // Size first, so a glyph that finds no room is never rasterized.
-        let metrics = self.font.metrics(ch, f32::from(px));
+        let metrics = self.font(face).metrics(ch, f32::from(px));
         let (w, h) = (
             u16::try_from(metrics.width).ok()?,
             u16::try_from(metrics.height).ok()?,
@@ -243,7 +280,7 @@ impl GlyphAtlas {
             placed
         };
         if rect.w > 0 {
-            let (metrics, coverage) = self.font.rasterize(ch, f32::from(px));
+            let (metrics, coverage) = self.font(face).rasterize(ch, f32::from(px));
             debug_assert_eq!(
                 (metrics.width, metrics.height),
                 (usize::from(w), usize::from(h))
@@ -262,7 +299,7 @@ impl GlyphAtlas {
             ymin: metrics.ymin as f32,
             advance: metrics.advance_width,
         };
-        self.entries.insert((ch, px), entry);
+        self.entries.insert((face, ch, px), entry);
         Some(entry)
     }
 
@@ -302,33 +339,17 @@ impl GlyphAtlas {
         }
     }
 
-    /// This atlas with `font_bytes` drawing the math face (ADR-T33-1);
-    /// without it the text font draws both faces.
-    ///
-    /// # Errors
-    ///
-    /// fontdue's message if the font cannot be parsed.
-    pub fn with_math(self, font_bytes: &[u8]) -> Result<Self, String> {
-        todo!("math font of {} bytes", font_bytes.len())
-    }
-
-    /// The entry of `ch` in `face` at `px` physical pixels, rasterizing and
-    /// packing it first if needed; see [`GlyphAtlas::prepare`].
-    pub fn prepare_in(&mut self, face: Face, ch: char, px: u16) -> Option<AtlasEntry> {
-        todo!("{face:?} {ch:?} {px}")
-    }
-
     /// The entry of `ch` in `face` at `px` if it is prepared; never
     /// rasterizes.
     #[must_use]
     pub fn get_in(&self, face: Face, ch: char, px: u16) -> Option<AtlasEntry> {
-        todo!("{face:?} {ch:?} {px}")
+        self.entries.get(&(face, ch, px)).copied()
     }
 
     /// The entry of `ch` at `px` if it is prepared; never rasterizes.
     #[must_use]
     pub fn get(&self, ch: char, px: u16) -> Option<AtlasEntry> {
-        self.entries.get(&(ch, px)).copied()
+        self.get_in(Face::Text, ch, px)
     }
 
     /// Pages in use.
@@ -934,7 +955,9 @@ mod tests {
             Err(err) => panic!("math font parses: {err}"),
         };
         let px = 1000.0;
-        let tol = 0.002;
+        // fontdue measures flattened curves: up to 0.0032 em off the exact
+        // ink box of the table.
+        let tol = 0.005;
 
         for (ch, m) in math_metrics::TABLE {
             // Act

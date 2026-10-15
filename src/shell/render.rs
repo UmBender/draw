@@ -690,10 +690,13 @@ pub fn prepare_text_block(
         return;
     }
     for ink in &typeset(text).ink {
-        if let Ink::Glyph { ch, scale, .. } = *ink {
+        if let Ink::Glyph {
+            ch, face, scale, ..
+        } = *ink
+        {
             if let Some((rpx, _)) = block_raster(size * scale, camera, dpi) {
                 if drawable(ch) {
-                    atlas.prepare(ch, rpx);
+                    atlas.prepare_in(face, ch, rpx);
                 }
             }
         }
@@ -726,15 +729,15 @@ pub fn push_text_block<S: MeshSink>(
         match *ink {
             Ink::Glyph {
                 ch,
+                face,
                 pos,
                 scale,
                 warn: warned,
-                ..
             } => {
                 let Some((rpx, glyph_scale)) = block_raster(size * scale, camera, dpi) else {
                     continue;
                 };
-                let Some(entry) = atlas.get(ch, rpx).filter(|_| drawable(ch)) else {
+                let Some(entry) = atlas.get_in(face, ch, rpx).filter(|_| drawable(ch)) else {
                     continue;
                 };
                 if let Some(quad) = glyph_quad(at(pos), &entry, glyph_scale) {
