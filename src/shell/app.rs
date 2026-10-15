@@ -65,6 +65,9 @@ pub const FRAME_TIMES_ENV: &str = "DRAW_FRAME_TIMES";
 /// The embedded monospaced font for text blocks and labels (ADR-T29-1).
 pub const TEXT_FONT: &[u8] = include_bytes!("../../assets/fonts/AdwaitaMono-Regular-subset.ttf");
 
+/// The embedded formula font: a Latin Modern Math subset (ADR-T33-1).
+pub const MATH_FONT: &[u8] = include_bytes!("../../assets/fonts/LatinModernMath-draw-subset.otf");
+
 /// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
 /// so nearest keeps it sharp.
 const FRAME_FILTER: FilterMode = FilterMode::Nearest;
@@ -357,8 +360,16 @@ pub fn window_conf() -> WindowSettings {
 /// Runs the application until the window is closed.
 pub async fn run() {
     match GlyphAtlas::new(TEXT_FONT) {
-        Ok(atlas) => render::set_glyph_atlas(atlas),
-        // A unit test proves the embedded font parses (ADR-T32-1).
+        // Unit tests prove both embedded fonts parse (ADR-T32-1, ADR-T33-1).
+        Ok(atlas) => match atlas.with_math(MATH_FONT) {
+            Ok(atlas) => render::set_glyph_atlas(atlas),
+            Err(err) => {
+                eprintln!("draw: math font not loaded, formulas in the text font: {err}");
+                if let Ok(atlas) = GlyphAtlas::new(TEXT_FONT) {
+                    render::set_glyph_atlas(atlas);
+                }
+            }
+        },
         Err(err) => eprintln!("draw: embedded font not loaded, text hidden: {err}"),
     }
     let subscriber = register_input_subscriber();
@@ -1308,5 +1319,16 @@ mod tests {
         // A TrueType file starts with the sfnt version 1.0.
         assert_eq!(TEXT_FONT.get(..4), Some(&[0, 1, 0, 0][..]));
         assert!(TEXT_FONT.len() < 200_000, "{} bytes", TEXT_FONT.len());
+    }
+
+    // ---- T33 math font -----------------------------------------------------
+
+    #[test]
+    fn math_font_is_embedded_and_small() {
+        // An OpenType font with CFF outlines starts with "OTTO".
+        assert_eq!(MATH_FONT.get(..4), Some(&b"OTTO"[..]));
+        assert!(MATH_FONT.len() < 200_000, "{} bytes", MATH_FONT.len());
+        let font = fontdue::Font::from_bytes(MATH_FONT, fontdue::FontSettings::default());
+        assert!(font.is_ok());
     }
 }

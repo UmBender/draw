@@ -9,56 +9,80 @@
 //! [`Node::Literal`], drawn as its source with the warning flag.
 
 use crate::core::geom::{Aabb, Vec2};
+use crate::core::math_metrics;
 use crate::core::text_layout::{ADVANCE, BASELINE, LINE_HEIGHT};
 
-/// Ascent of a glyph box per unit of scale: the font's cap height 0.735
-/// with its overshoot.
+/// Ascent of a text-face glyph box per unit of scale: the text font's cap
+/// height 0.735 with its overshoot.
 pub const GLYPH_ASCENT: f32 = 0.75;
 
-/// Descent of a glyph box per unit of scale: the font's descender.
+/// Descent of a text-face glyph box per unit of scale: the text font's
+/// descender.
 pub const GLYPH_DESCENT: f32 = 0.22;
 
-/// Ascent of brackets, bars and big operators per unit of scale.
+/// Ascent of text-face brackets and bars per unit of scale.
 pub const TALL_ASCENT: f32 = 0.85;
 
-/// Descent of brackets, bars and big operators per unit of scale.
+/// Descent of text-face brackets and bars per unit of scale.
 pub const TALL_DESCENT: f32 = 0.17;
 
-/// Height of the math axis (the middle of `−`) above the baseline.
-pub const AXIS: f32 = 0.34;
+/// Height of the math axis (the middle of `−`) above the baseline: the
+/// math font's `AxisHeight` (ADR-T33-1).
+pub const AXIS: f32 = 0.25;
 
-/// Thickness of fraction bars and root signs (that of `−`).
-pub const RULE: f32 = 0.07;
+/// Thickness of fraction bars and root signs: `FractionRuleThickness`.
+pub const RULE: f32 = 0.04;
 
-/// Scale of scripts, limits and fraction parts relative to their parent.
+/// Scale of scripts, limits and fraction parts relative to their parent:
+/// `ScriptPercentScaleDown`.
 pub const SCRIPT_SCALE: f32 = 0.7;
 
-/// Smallest scale of nested scripts.
+/// Smallest scale of nested scripts: `ScriptScriptPercentScaleDown`.
 pub const MIN_SCALE: f32 = 0.5;
 
-/// Smallest rise of a superscript's baseline.
-pub const SUP_SHIFT: f32 = 0.4;
+/// Smallest rise of a superscript's baseline: `SuperscriptShiftUp`.
+pub const SUP_SHIFT: f32 = 0.363;
 
-/// A superscript's baseline sits this far below the top of its base.
-pub const SUP_DROP: f32 = 0.35;
+/// A superscript's baseline sits at most this far below the top of its
+/// base: `SuperscriptBaselineDropMax`.
+pub const SUP_DROP: f32 = 0.25;
 
-/// Smallest drop of a subscript's baseline.
-pub const SUB_SHIFT: f32 = 0.2;
+/// Smallest height of a superscript's bottom above the baseline:
+/// `SuperscriptBottomMin`.
+pub const SUP_BOTTOM_MIN: f32 = 0.108;
+
+/// Smallest drop of a subscript's baseline: `SubscriptShiftDown`.
+pub const SUB_SHIFT: f32 = 0.247;
 
 /// A subscript's baseline sits this far above the bottom of its base.
 pub const SUB_DROP: f32 = 0.05;
 
-/// Smallest gap between a superscript and a subscript on one base.
-pub const SCRIPT_GAP: f32 = 0.1;
+/// Highest top of a subscript above the baseline: `SubscriptTopMax`.
+pub const SUB_TOP_MAX: f32 = 0.344;
 
-/// Gap between a big operator and its limits.
-pub const LIMIT_GAP: f32 = 0.1;
+/// Smallest gap between a superscript and a subscript on one base:
+/// `SubSuperscriptGapMin`.
+pub const SCRIPT_GAP: f32 = 0.16;
+
+/// Space after scripts: `SpaceAfterScript`.
+pub const SCRIPT_SPACE: f32 = 0.056;
+
+/// Gap between a big operator and its limits: `LowerLimitGapMin`.
+pub const LIMIT_GAP: f32 = 0.167;
 
 /// Scale of the big operators `∑` and `∏`.
 pub const BIG_OP_SCALE: f32 = 1.3;
 
-/// Gap between a fraction bar and its numerator or denominator.
-pub const FRAC_GAP: f32 = 0.08;
+/// Smallest gap between a fraction bar and its numerator or denominator:
+/// `FractionNumeratorGapMin`.
+pub const FRAC_GAP: f32 = 0.04;
+
+/// Smallest rise of a numerator's baseline: `FractionNumeratorShiftUp`.
+pub const FRAC_NUM_SHIFT: f32 = 0.394;
+
+/// Smallest drop of a denominator's baseline:
+/// `FractionDenominatorShiftDown`.
+pub const FRAC_DEN_SHIFT: f32 = 0.345;
 
 /// Space left and right of a fraction's parts.
 pub const FRAC_PAD: f32 = 0.1;
@@ -72,14 +96,15 @@ pub const SQRT_SIGN: f32 = 0.55;
 /// Largest scale of a binomial's parentheses.
 pub const BINOM_MAX_SCALE: f32 = 3.0;
 
-/// Space on each side of a relation.
-pub const REL_SPACE: f32 = 0.15;
+/// Space on each side of a relation: TeX's thick space, 5/18 em.
+pub const REL_SPACE: f32 = 5.0 / 18.0;
 
-/// Space on each side of a binary operator.
-pub const BIN_SPACE: f32 = 0.1;
+/// Space on each side of a binary operator: TeX's medium space, 2/9 em.
+pub const BIN_SPACE: f32 = 2.0 / 9.0;
 
-/// Space after a function or big operator before an ordinary atom.
-pub const OP_SPACE: f32 = 0.1;
+/// Space between a function or big operator and an ordinary atom, and
+/// after punctuation: TeX's thin space, 1/6 em.
+pub const OP_SPACE: f32 = 1.0 / 6.0;
 
 /// Room kept above and below a formula in its line.
 pub const MATH_PAD: f32 = 0.03;
@@ -305,13 +330,87 @@ pub fn symbol(name: &str) -> Option<&'static SymbolDef> {
     SYMBOLS.iter().find(|s| s.name == name)
 }
 
+/// Which embedded font draws a glyph (ADR-T33-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Face {
+    /// The monospaced text font: plain text, literals, characters the
+    /// math font lacks.
+    #[default]
+    Text,
+    /// The math font: formulas.
+    Math,
+}
+
+/// The math italic form of `ch`: Latin letters and lowercase Greek;
+/// anything else as is (ADR-T33-1).
+#[must_use]
+pub fn italic(ch: char) -> char {
+    let offset = |from: char, base: u32| char::from_u32(base + (u32::from(ch) - u32::from(from)));
+    let mapped = match ch {
+        // The italic h is the older Planck constant.
+        'h' => Some('\u{210E}'),
+        'a'..='z' => offset('a', 0x1D44E),
+        'A'..='Z' => offset('A', 0x1D434),
+        'α'..='ω' => offset('α', 0x1D6FC),
+        'ϵ' => Some('\u{1D716}'),
+        'ϑ' => Some('\u{1D717}'),
+        'ϰ' => Some('\u{1D718}'),
+        'ϕ' => Some('\u{1D719}'),
+        'ϱ' => Some('\u{1D71A}'),
+        'ϖ' => Some('\u{1D71B}'),
+        _ => None,
+    };
+    mapped.unwrap_or(ch)
+}
+
+/// The script (`\mathcal`) form of `ch`: Latin capitals; anything else as
+/// [`italic`] draws it (ADR-T33-1).
+#[must_use]
+pub fn calligraphic(ch: char) -> char {
+    // Script capitals that Unicode had before the math block.
+    let mapped = match ch {
+        'B' => Some('\u{212C}'),
+        'E' => Some('\u{2130}'),
+        'F' => Some('\u{2131}'),
+        'H' => Some('\u{210B}'),
+        'I' => Some('\u{2110}'),
+        'L' => Some('\u{2112}'),
+        'M' => Some('\u{2133}'),
+        'R' => Some('\u{211B}'),
+        'A'..='Z' => char::from_u32(0x1D49C + (u32::from(ch) - u32::from('A'))),
+        _ => None,
+    };
+    mapped.unwrap_or_else(|| italic(ch))
+}
+
+/// How the letters of a formula part are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Style {
+    /// Math italic.
+    Italic,
+    /// `\mathcal`: script capitals.
+    Calligraphic,
+}
+
+impl Style {
+    /// `ch` typed in a formula part of this style.
+    fn map(self, ch: char) -> char {
+        match self {
+            Self::Italic => italic(ch),
+            Self::Calligraphic => calligraphic(ch),
+        }
+    }
+}
+
 /// Something to draw, in em from its box's origin, y down.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Ink {
-    /// A glyph of the embedded font.
+    /// A glyph of one of the embedded fonts.
     Glyph {
         /// The character.
         ch: char,
+        /// The font that draws it.
+        face: Face,
         /// Left end of its baseline.
         pos: Vec2,
         /// Its size relative to the block's font size.
@@ -331,12 +430,28 @@ pub enum Ink {
 }
 
 impl Ink {
-    /// The box the ink covers: a glyph's cell (its advance by its ascent
-    /// and descent), a rule's segment grown by half its width.
+    /// The box the ink covers: a text-face glyph's cell (its advance by
+    /// its ascent and descent), a math-face glyph's advance and ink box
+    /// together, a rule's segment grown by half its width.
     #[must_use]
     pub fn bounds(&self) -> Aabb {
         match *self {
-            Self::Glyph { ch, pos, scale, .. } => {
+            Self::Glyph {
+                ch,
+                face,
+                pos,
+                scale,
+                ..
+            } => {
+                if let Some(m) = math_glyph_metrics(face, ch) {
+                    return Aabb::from_corners(
+                        Vec2::new(pos.x + m.x_min.min(0.0) * scale, pos.y - m.y_max * scale),
+                        Vec2::new(
+                            pos.x + m.advance.max(m.x_max) * scale,
+                            pos.y - m.y_min * scale,
+                        ),
+                    );
+                }
                 let (ascent, descent) = glyph_extent(ch);
                 Aabb::from_corners(
                     Vec2::new(pos.x, pos.y - ascent * scale),
@@ -352,11 +467,13 @@ impl Ink {
         match self {
             Self::Glyph {
                 ch,
+                face,
                 pos,
                 scale,
                 warn,
             } => Self::Glyph {
                 ch,
+                face,
                 pos: pos + by,
                 scale,
                 warn,
@@ -380,23 +497,48 @@ pub struct MathBox {
     pub ascent: f32,
     /// Depth below the baseline.
     pub descent: f32,
+    /// Italic correction of its last glyph: room a superscript leaves.
+    pub italic: f32,
     /// What to draw, relative to the left end of the baseline.
     pub ink: Vec<Ink>,
 }
 
 impl MathBox {
-    /// One glyph at `scale`.
+    /// One text-face glyph at `scale`: a monospaced cell.
     fn glyph(ch: char, scale: f32, warn: bool) -> Self {
         let (ascent, descent) = glyph_extent(ch);
         Self {
             width: ADVANCE * scale,
             ascent: ascent * scale,
             descent: descent * scale,
+            italic: 0.0,
             ink: vec![Ink::Glyph {
                 ch,
+                face: Face::Text,
                 pos: Vec2::ZERO,
                 scale,
                 warn,
+            }],
+        }
+    }
+
+    /// One math-face glyph at `scale` with its metrics; a text-face cell
+    /// when the math font lacks `ch` (ADR-T33-1).
+    fn math(ch: char, scale: f32) -> Self {
+        let Some(m) = math_metrics::get(ch) else {
+            return Self::glyph(ch, scale, false);
+        };
+        Self {
+            width: m.advance * scale,
+            ascent: m.y_max * scale,
+            descent: -m.y_min * scale,
+            italic: m.italic * scale,
+            ink: vec![Ink::Glyph {
+                ch,
+                face: Face::Math,
+                pos: Vec2::ZERO,
+                scale,
+                warn: false,
             }],
         }
     }
@@ -414,7 +556,8 @@ impl MathBox {
         self.ink.extend(other.ink.iter().map(|ink| ink.shifted(at)));
     }
 
-    /// `boxes` side by side on one baseline.
+    /// `boxes` side by side on one baseline; the italic correction is the
+    /// last box's.
     fn row(boxes: impl IntoIterator<Item = Self>) -> Self {
         let mut out = Self::default();
         for b in boxes {
@@ -422,13 +565,32 @@ impl MathBox {
             out.width += b.width;
             out.ascent = out.ascent.max(b.ascent);
             out.descent = out.descent.max(b.descent);
+            out.italic = b.italic;
         }
         out
     }
 
-    /// The characters of `text` side by side, `-` as typed.
+    /// The characters of `text` side by side in the text face, `-` as
+    /// typed.
     fn word(text: &str, scale: f32, warn: bool) -> Self {
         Self::row(text.chars().map(|ch| Self::glyph(ch, scale, warn)))
+    }
+
+    /// The characters of `text` side by side, upright in the math face.
+    fn upright(text: &str, scale: f32) -> Self {
+        Self::row(text.chars().map(|ch| Self::math(ch, scale)))
+    }
+
+    /// Leftmost and rightmost x of its ink; `(0, 0)` without ink.
+    fn ink_span(&self) -> (f32, f32) {
+        let mut span: Option<(f32, f32)> = None;
+        for ink in &self.ink {
+            let b = ink.bounds();
+            span = Some(span.map_or((b.min.x, b.max.x), |(lo, hi)| {
+                (lo.min(b.min.x), hi.max(b.max.x))
+            }));
+        }
+        span.unwrap_or((0.0, 0.0))
     }
 }
 
@@ -451,7 +613,16 @@ impl Layout {
     }
 }
 
-/// Ascent and descent of glyph `ch` per unit of scale.
+/// The math metrics of a glyph of `face`; `None` for the text face or a
+/// character the math font lacks.
+fn math_glyph_metrics(face: Face, ch: char) -> Option<math_metrics::GlyphMetrics> {
+    match face {
+        Face::Math => math_metrics::get(ch),
+        Face::Text => None,
+    }
+}
+
+/// Ascent and descent of text-face glyph `ch` per unit of scale.
 #[must_use]
 pub fn glyph_extent(ch: char) -> (f32, f32) {
     if "()[]{}|⌊⌋⌈⌉∑∏√".contains(ch) {
@@ -707,7 +878,7 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 args,
             }),
-            "sqrt" | "pmod" => self.args(1, end).map(|args| Node::Command {
+            "sqrt" | "pmod" | "mathcal" => self.args(1, end).map(|args| Node::Command {
                 name: name.clone(),
                 args,
             }),
@@ -861,13 +1032,20 @@ fn script_scale(scale: f32) -> f32 {
 /// size).
 #[must_use]
 pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
+    layout_styled(nodes, scale, Style::Italic)
+}
+
+/// [`layout_math`] with letters drawn in `style`.
+fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
     let scale = if scale.is_finite() && scale > 0.0 {
         scale
     } else {
         1.0
     };
-    let mut atoms: Vec<(MathBox, Class)> =
-        nodes.iter().filter_map(|node| atom(node, scale)).collect();
+    let mut atoms: Vec<(MathBox, Class)> = nodes
+        .iter()
+        .filter_map(|node| atom(node, scale, style))
+        .collect();
     // A binary operator without an operand on both sides is ordinary.
     for i in 0..atoms.len() {
         if atoms[i].1 != Class::Bin {
@@ -909,12 +1087,17 @@ pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
 /// Space between neighbouring atoms of classes `a` and `b` at `scale`.
 fn spacing(a: Class, b: Class, scale: f32) -> f32 {
     let op = |c| matches!(c, Class::Op | Class::Limits | Class::BigOp);
-    if op(a) && (b == Class::Ord || op(b)) {
+    // TeX's thin space around operators, in scripts too.
+    if (op(a) && (b == Class::Ord || op(b))) || (op(b) && matches!(a, Class::Ord | Class::Close)) {
         return OP_SPACE * scale;
     }
-    // Relation and operator space only at the block's own size.
+    // Punctuation, relation and operator space only at the block's own
+    // size.
     if scale < 1.0 {
         return 0.0;
+    }
+    if a == Class::Punct {
+        return OP_SPACE * scale;
     }
     if (a == Class::Rel) != (b == Class::Rel)
         && a != Class::Open
@@ -940,19 +1123,20 @@ fn char_class(ch: char) -> Class {
     }
 }
 
-/// The box and class of one node; `None` for whitespace.
-fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
+/// The box and class of one node with letters in `style`; `None` for
+/// whitespace.
+fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
     let atom = match node {
         Node::Space(_) => return None,
         Node::Char(ch) => {
-            let shown = if *ch == '-' { MINUS } else { *ch };
-            (MathBox::glyph(shown, scale, false), char_class(*ch))
+            let shown = if *ch == '-' { MINUS } else { style.map(*ch) };
+            (MathBox::math(shown, scale), char_class(*ch))
         }
         Node::Symbol(name) => match symbol(name) {
             Some(def) => (symbol_box(def, scale), def.class),
             None => (MathBox::word(&format!("\\{name}"), scale, true), Class::Ord),
         },
-        Node::Group(nodes) => (layout_math(nodes, scale), Class::Ord),
+        Node::Group(nodes) => (layout_styled(nodes, scale, style), Class::Ord),
         Node::Scripts {
             base,
             first,
@@ -960,12 +1144,12 @@ fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
         } => {
             let (base, class) = base
                 .as_deref()
-                .and_then(|b| atom(b, scale))
+                .and_then(|b| atom(b, scale, style))
                 .unwrap_or((MathBox::default(), Class::Ord));
             let ss = script_scale(scale);
             let (mut sup, mut sub) = (None, None);
             for script in std::iter::once(first).chain(second) {
-                let b = layout_math(&script.arg.nodes, ss);
+                let b = layout_styled(&script.arg.nodes, ss, style);
                 match script.kind {
                     ScriptKind::Sup => sup = Some(b),
                     ScriptKind::Sub => sub = Some(b),
@@ -981,75 +1165,85 @@ fn atom(node: &Node, scale: f32) -> Option<(MathBox, Class)> {
         Node::Command { name, args } => {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
             let b = match name.as_str() {
-                "frac" => fraction(arg(0), arg(1), scale, true),
-                "binom" => binomial(arg(0), arg(1), scale),
-                "sqrt" => root(arg(0), scale),
+                "frac" => fraction(arg(0), arg(1), scale, true, style),
+                "binom" => binomial(arg(0), arg(1), scale, style),
+                "sqrt" => root(arg(0), scale, style),
+                "mathcal" => layout_styled(arg(0), scale, Style::Calligraphic),
+                // TeX's \pmod: a quad, "(mod", a third of a quad.
                 "pmod" => MathBox::row([
-                    MathBox::gap(ADVANCE * scale),
-                    MathBox::word("(mod", scale, false),
-                    MathBox::gap(ADVANCE * scale),
-                    layout_math(arg(0), scale),
-                    MathBox::glyph(')', scale, false),
+                    MathBox::gap(scale),
+                    MathBox::upright("(mod", scale),
+                    MathBox::gap(scale / 3.0),
+                    layout_styled(arg(0), scale, style),
+                    MathBox::math(')', scale),
                 ]),
                 _ => MathBox::word(&format!("\\{name}"), scale, true),
             };
             (b, Class::Ord)
         }
-        Node::Text { body, .. } => (MathBox::word(body, scale, false), Class::Ord),
+        Node::Text { body, .. } => (MathBox::upright(body, scale), Class::Ord),
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
 }
 
-/// The box of a table symbol: a glyph, an enlarged big operator or a word.
+/// The box of a table symbol: a glyph (lowercase Greek in italic), an
+/// enlarged big operator or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32) -> MathBox {
     let mut chars = def.text.chars();
     match (chars.next(), chars.next(), def.class) {
         (Some(ch), None, Class::BigOp) => big_operator(ch, scale),
-        (Some(ch), None, _) => MathBox::glyph(ch, scale, false),
-        _ => MathBox::word(def.text, scale, false),
+        (Some(ch), None, _) => MathBox::math(italic(ch), scale),
+        _ => MathBox::upright(def.text, scale),
     }
 }
 
 /// `∑` or `∏`, enlarged and centred on the axis.
 fn big_operator(ch: char, scale: f32) -> MathBox {
     let k = BIG_OP_SCALE * scale;
-    let (ascent, descent) = glyph_extent(ch);
+    let glyph = MathBox::math(ch, k);
     // The glyph's middle sits on the axis.
-    let y = -AXIS * scale - (descent - ascent) * k / 2.0;
-    MathBox {
-        width: ADVANCE * k,
-        ascent: ascent * k - y,
-        descent: descent * k + y,
-        ink: vec![Ink::Glyph {
-            ch,
-            pos: Vec2::new(0.0, y),
-            scale: k,
-            warn: false,
-        }],
-    }
+    let y = -AXIS * scale - (glyph.descent - glyph.ascent) / 2.0;
+    let mut out = MathBox {
+        width: glyph.width,
+        ascent: glyph.ascent - y,
+        descent: glyph.descent + y,
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    out.put(&glyph, Vec2::new(0.0, y));
+    out
 }
 
-/// Superscript and subscript to the right of `base`.
+/// Superscript and subscript to the right of `base` (ADR-T33-1): the
+/// superscript after the base's italic correction.
 fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
-    let up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
+    let mut up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
+    if let Some(sup) = &sup {
+        up = up.max(sup.descent + SUP_BOTTOM_MIN * scale);
+    }
     let mut down = (SUB_SHIFT * scale).max(base.descent - SUB_DROP * scale);
+    if let Some(sub) = &sub {
+        down = down.max(sub.ascent - SUB_TOP_MAX * scale);
+    }
     if let (Some(sup), Some(sub)) = (&sup, &sub) {
         let gap = (down - sub.ascent) - (sup.descent - up);
         if gap < SCRIPT_GAP * scale {
             down += SCRIPT_GAP * scale - gap;
         }
     }
+    let x = base.width;
     let mut out = MathBox {
         width: base.width,
         ascent: base.ascent,
         descent: base.descent,
+        italic: 0.0,
         ink: base.ink,
     };
-    let x = out.width;
     if let Some(sup) = sup {
-        out.put(&sup, Vec2::new(x, -up));
-        out.width = out.width.max(x + sup.width);
+        let at = x + base.italic;
+        out.put(&sup, Vec2::new(at, -up));
+        out.width = out.width.max(at + sup.width);
         out.ascent = out.ascent.max(up + sup.ascent);
         out.descent = out.descent.max(sup.descent - up);
     }
@@ -1058,6 +1252,9 @@ fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32
         out.width = out.width.max(x + sub.width);
         out.ascent = out.ascent.max(sub.ascent - down);
         out.descent = out.descent.max(down + sub.descent);
+    }
+    if out.width > x {
+        out.width += SCRIPT_SPACE * scale;
     }
     out
 }
@@ -1073,6 +1270,7 @@ fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) 
         width,
         ascent: op.ascent,
         descent: op.descent,
+        italic: 0.0,
         ink: Vec::new(),
     };
     out.put(op, Vec2::new((width - op.width) / 2.0, 0.0));
@@ -1090,19 +1288,20 @@ fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) 
 }
 
 /// A fraction of `num` over `den`, with a bar on the axis when `bar`.
-fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool) -> MathBox {
+fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool, style: Style) -> MathBox {
     let ss = script_scale(scale);
-    let (n, d) = (layout_math(num, ss), layout_math(den, ss));
+    let (n, d) = (layout_styled(num, ss, style), layout_styled(den, ss, style));
     let pad = FRAC_PAD * scale;
     let width = n.width.max(d.width) + 2.0 * pad;
     let axis = -AXIS * scale;
     let half = RULE * scale / 2.0;
-    let n_base = axis - half - FRAC_GAP * scale - n.descent;
-    let d_base = axis + half + FRAC_GAP * scale + d.ascent;
+    let n_base = (axis - half - FRAC_GAP * scale - n.descent).min(-FRAC_NUM_SHIFT * scale);
+    let d_base = (axis + half + FRAC_GAP * scale + d.ascent).max(FRAC_DEN_SHIFT * scale);
     let mut out = MathBox {
         width,
         ascent: (n.ascent - n_base).max(half - axis),
         descent: (d_base + d.descent).max(axis + half),
+        italic: 0.0,
         ink: Vec::new(),
     };
     out.put(&n, Vec2::new((width - n.width) / 2.0, n_base));
@@ -1118,32 +1317,32 @@ fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool) -> MathBox {
 }
 
 /// `n` over `k` without a bar, in parentheses as tall as both.
-fn binomial(n: &[Node], k: &[Node], scale: f32) -> MathBox {
-    let inner = fraction(n, k, scale, false);
+fn binomial(n: &[Node], k: &[Node], scale: f32, style: Style) -> MathBox {
+    let inner = fraction(n, k, scale, false, style);
     let height = inner.ascent + inner.descent;
-    let paren = (height / (TALL_ASCENT + TALL_DESCENT)).clamp(scale, BINOM_MAX_SCALE * scale);
+    let unit = MathBox::math('(', 1.0);
+    let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
+    let paren = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
+    let (open, close) = (MathBox::math('(', paren), MathBox::math(')', paren));
     // The parentheses' middle sits on the middle of the stack.
     let middle = (inner.descent - inner.ascent) / 2.0;
-    let y = middle - (TALL_DESCENT - TALL_ASCENT) * paren / 2.0;
-    let side = ADVANCE * paren;
+    let y = middle + (open.ascent - open.descent) / 2.0;
     let mut out = MathBox {
-        width: inner.width + 2.0 * side,
-        ascent: inner.ascent.max(TALL_ASCENT * paren - y),
-        descent: inner.descent.max(TALL_DESCENT * paren + y),
+        width: open.width + inner.width + close.width,
+        ascent: inner.ascent.max(open.ascent - y),
+        descent: inner.descent.max(open.descent + y),
+        italic: 0.0,
         ink: Vec::new(),
     };
-    out.put(&MathBox::glyph('(', paren, false), Vec2::new(0.0, y));
-    out.put(&inner, Vec2::new(side, 0.0));
-    out.put(
-        &MathBox::glyph(')', paren, false),
-        Vec2::new(side + inner.width, y),
-    );
+    out.put(&open, Vec2::new(0.0, y));
+    out.put(&inner, Vec2::new(open.width, 0.0));
+    out.put(&close, Vec2::new(open.width + inner.width, y));
     out
 }
 
 /// A root sign of four rules over `content`.
-fn root(content: &[Node], scale: f32) -> MathBox {
-    let c = layout_math(content, scale);
+fn root(content: &[Node], scale: f32, style: Style) -> MathBox {
+    let c = layout_styled(content, scale, style);
     let top = -(c.ascent + SQRT_GAP * scale);
     let bottom = c.descent;
     let at = |t: f32| top + (bottom - top) * t;
@@ -1160,6 +1359,7 @@ fn root(content: &[Node], scale: f32) -> MathBox {
         width: points[4].x + 0.05 * scale,
         ascent: -top + width / 2.0,
         descent: bottom + width / 2.0,
+        italic: 0.0,
         ink: Vec::new(),
     };
     out.put(&c, Vec2::new(x, 0.0));
@@ -1193,6 +1393,7 @@ impl Line {
     fn cell(&mut self, ch: char) {
         self.ink.push(Ink::Glyph {
             ch,
+            face: Face::Text,
             pos: Vec2::new(self.width, 0.0),
             scale: 1.0,
             warn: false,
@@ -1222,9 +1423,12 @@ pub fn layout(segments: &[Segment]) -> Layout {
             Segment::Dollar => line.cell('$'),
             Segment::Math(nodes) => {
                 let b = layout_math(nodes, 1.0);
-                let at = Vec2::new(line.width, 0.0);
-                line.ink.extend(b.ink.iter().map(|ink| ink.shifted(at)));
-                line.width += b.width;
+                // Italic overhangs stay inside the line (ADR-T33-1).
+                let (left, right) = b.ink_span();
+                let x = line.width + (-(line.width + left)).max(0.0);
+                line.ink
+                    .extend(b.ink.iter().map(|ink| ink.shifted(Vec2::new(x, 0.0))));
+                line.width = (x + b.width).max(x + right);
                 line.ascent = line.ascent.max(b.ascent + MATH_PAD);
                 line.descent = line.descent.max(b.descent + MATH_PAD);
             }
@@ -1246,6 +1450,7 @@ pub fn layout(segments: &[Segment]) -> Layout {
 mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
+    use crate::core::math_metrics::{self, GlyphMetrics};
     use crate::core::text_layout;
     use proptest::prelude::*;
 
@@ -1296,7 +1501,18 @@ mod tests {
                     pos,
                     scale,
                     warn,
+                    ..
                 } => Some((ch, pos, scale, warn)),
+                Ink::Rule { .. } => None,
+            })
+            .collect()
+    }
+
+    /// `(char, face)` of every glyph, in order.
+    fn faces(ink: &[Ink]) -> Vec<(char, Face)> {
+        ink.iter()
+            .filter_map(|ink| match *ink {
+                Ink::Glyph { ch, face, .. } => Some((ch, face)),
                 Ink::Rule { .. } => None,
             })
             .collect()
@@ -1461,6 +1677,32 @@ mod tests {
     }
 
     #[test]
+    fn tex_parse_mathcal_takes_one_argument() {
+        assert_eq!(
+            math("\\mathcal{A}"),
+            vec![Node::Command {
+                name: "mathcal".to_owned(),
+                args: vec![braced(vec![Node::Char('A')])],
+            }]
+        );
+        assert_eq!(
+            math("\\mathcal L"),
+            vec![Node::Command {
+                name: "mathcal".to_owned(),
+                args: vec![Arg {
+                    lead: " ".to_owned(),
+                    braced: false,
+                    nodes: vec![Node::Char('L')],
+                }],
+            }]
+        );
+        assert_eq!(
+            math("\\mathcal"),
+            vec![Node::Literal("\\mathcal".to_owned())]
+        );
+    }
+
+    #[test]
     fn tex_parse_symbols_come_from_the_table() {
         // Act
         let nodes = math("\\alpha\\le\\sum");
@@ -1598,6 +1840,7 @@ mod tests {
                 "$", "$", "\\$", "{", "}", "^", "_", "\\", " ", "\n", "x", "1", "-", "=",
                 "\\frac", "\\sqrt", "\\binom", "\\text", "\\pmod", "\\alpha", "\\sum",
                 "\\min", "\\log", "\\le", "\\{", "\\}", "\\foo", "(", ")", "|",
+                "\\mathcal", "f", "j", "\\text{日}",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -1643,18 +1886,45 @@ mod tests {
         }
     }
 
-    // ---- AC-2 layout -------------------------------------------------------
+    // ---- AC-2 layout (metrics of ADR-T33-1) -------------------------------
+
+    /// The math-font metrics of `ch`; panics if the font lacks it.
+    fn mm(ch: char) -> GlyphMetrics {
+        match math_metrics::get(ch) {
+            Some(m) => m,
+            None => panic!("no math metrics for {ch:?}"),
+        }
+    }
+
+    /// Advance of `chars` side by side in the math face at scale 1.
+    fn adv(chars: &str) -> f32 {
+        chars.chars().map(|ch| mm(ch).advance).sum()
+    }
+
+    /// Math italic `x`, `a`, `b`, … (ADR-T33-1).
+    const X: char = '\u{1D465}';
+    const A: char = '\u{1D44E}';
+    const B: char = '\u{1D44F}';
+    const F: char = '\u{1D453}';
+    const I: char = '\u{1D456}';
+    const J: char = '\u{1D457}';
+    const K: char = '\u{1D458}';
+    const N: char = '\u{1D45B}';
+    const Y: char = '\u{1D466}';
+    const Z: char = '\u{1D467}';
 
     #[test]
-    fn tex_layout_char_is_one_cell() {
+    fn tex_layout_char_uses_its_glyph_metrics() {
         // Act
         let b = boxed("x");
 
         // Assert
-        assert!(approx_eq(b.width, 0.6, EPS));
-        assert!(approx_eq(b.ascent, GLYPH_ASCENT, EPS));
-        assert!(approx_eq(b.descent, GLYPH_DESCENT, EPS));
-        assert_eq!(glyphs(&b.ink), vec![('x', v(0.0, 0.0), 1.0, false)]);
+        let x = mm(X);
+        assert!(approx_eq(b.width, x.advance, EPS));
+        assert!(approx_eq(b.ascent, x.y_max, EPS));
+        assert!(approx_eq(b.descent, -x.y_min, EPS));
+        assert_eq!(glyphs(&b.ink), vec![(X, v(0.0, 0.0), 1.0, false)]);
+        assert_eq!(faces(&b.ink), vec![(X, Face::Math)]);
     }
 
     #[test]
@@ -1662,14 +1932,21 @@ mod tests {
         // Act
         let b = boxed("x^2");
 
-        // Assert
+        // Assert: TeX's rule — the larger of the shift, the drop from the
+        // base's top and the script's bottom limit.
+        let s = SCRIPT_SCALE;
+        let up = SUP_SHIFT
+            .max(mm(X).y_max - SUP_DROP)
+            .max(-mm('2').y_min * s + SUP_BOTTOM_MIN);
         let (pos, scale) = glyph(&b.ink, '2');
-        assert!(pos.approx_eq(v(0.6, -0.4), EPS), "{pos:?}");
-        assert!(approx_eq(scale, SCRIPT_SCALE, EPS));
-        assert!(approx_eq(b.width, 0.6 + 0.6 * SCRIPT_SCALE, EPS));
+        let x = mm(X).advance + mm(X).italic;
+        assert!(pos.approx_eq(v(x, -up), EPS), "{pos:?}");
+        assert!(approx_eq(scale, s, EPS));
+        assert!(approx_eq(b.width, x + adv("2") * s + SCRIPT_SPACE, EPS));
         // A script of a script stops at the smallest scale.
-        let (_, scale) = glyph(&boxed("x^{y^z}").ink, 'z');
+        let (_, scale) = glyph(&boxed("x^{y^z}").ink, Z);
         assert!(approx_eq(scale, MIN_SCALE, EPS));
+        assert!(glyphs(&boxed("x^{y^z}").ink).iter().any(|g| g.0 == Y));
     }
 
     #[test]
@@ -1678,9 +1955,44 @@ mod tests {
         let b = boxed("x_2");
 
         // Assert
+        let s = SCRIPT_SCALE;
+        let down = SUB_SHIFT
+            .max(-mm(X).y_min - SUB_DROP)
+            .max(mm('2').y_max * s - SUB_TOP_MAX);
         let (pos, scale) = glyph(&b.ink, '2');
-        assert!(pos.approx_eq(v(0.6, 0.2), EPS), "{pos:?}");
-        assert!(approx_eq(scale, SCRIPT_SCALE, EPS));
+        assert!(pos.approx_eq(v(mm(X).advance, down), EPS), "{pos:?}");
+        assert!(approx_eq(scale, s, EPS));
+    }
+
+    #[test]
+    fn tex_layout_subscript_top_stays_low() {
+        // Arrange: a subscript with a superscript of its own is tall.
+        let sub = layout_math(&math("b^2"), SCRIPT_SCALE);
+        assert!(sub.ascent - SUB_SHIFT > SUB_TOP_MAX, "the case is tall");
+
+        // Act
+        let b = boxed("x_{b^2}");
+
+        // Assert: its top is no higher than SUB_TOP_MAX.
+        let (pos, _) = glyph(&b.ink, B);
+        assert!(approx_eq(pos.y - sub.ascent, -SUB_TOP_MAX, EPS), "{pos:?}");
+    }
+
+    #[test]
+    fn tex_layout_superscript_clears_the_italic_correction() {
+        // Arrange
+        let f = mm(F);
+        assert!(f.italic > 0.0, "italic f has a correction");
+
+        // Act
+        let sup = boxed("f^2");
+        let sub = boxed("f_2");
+
+        // Assert: superscripts start after it, subscripts tuck under.
+        let (p, _) = glyph(&sup.ink, '2');
+        let (q, _) = glyph(&sub.ink, '2');
+        assert!(approx_eq(p.x, f.advance + f.italic, EPS), "{p:?}");
+        assert!(approx_eq(q.x, f.advance, EPS), "{q:?}");
     }
 
     #[test]
@@ -1689,17 +2001,23 @@ mod tests {
             // Act
             let b = boxed(src);
 
-            // Assert: both start at the base's right edge, apart by 0.1 em.
+            // Assert: both start at the base's right edge, apart by at
+            // least SCRIPT_GAP.
             let (sup, s) = glyph(&b.ink, '2');
-            let (sub, _) = glyph(&b.ink, 'i');
+            let (sub, _) = glyph(&b.ink, I);
+            let x = mm(X).advance;
             assert!(
-                approx_eq(sup.x, 0.6, EPS) && approx_eq(sub.x, 0.6, EPS),
+                approx_eq(sup.x, x + mm(X).italic, EPS) && approx_eq(sub.x, x, EPS),
                 "{src}"
             );
-            let sup_bottom = sup.y + GLYPH_DESCENT * s;
-            let sub_top = sub.y - GLYPH_ASCENT * s;
-            assert!(sub_top - sup_bottom >= 0.1 - EPS, "{src}: {sup:?} {sub:?}");
-            assert!(approx_eq(b.width, 0.6 + 0.6 * SCRIPT_SCALE, EPS));
+            let sup_bottom = sup.y - mm('2').y_min * s;
+            let sub_top = sub.y - mm(I).y_max * s;
+            assert!(
+                sub_top - sup_bottom >= SCRIPT_GAP - EPS,
+                "{src}: {sup:?} {sub:?}"
+            );
+            let scripts = adv("2").max(mm(I).advance) * s;
+            assert!(approx_eq(b.width, x + scripts + SCRIPT_SPACE, EPS));
         }
     }
 
@@ -1714,16 +2032,17 @@ mod tests {
         let (p, q, width) = bars[0];
         assert!(approx_eq(p.y, -AXIS, EPS) && approx_eq(q.y, -AXIS, EPS));
         assert!(approx_eq(width, RULE, EPS));
-        assert!(p.x >= 0.0 && q.x <= b.width && q.x - p.x >= 0.6 * SCRIPT_SCALE);
-        let (num, ns) = glyph(&b.ink, 'a');
-        let (den, ds) = glyph(&b.ink, 'b');
+        assert!(p.x >= 0.0 && q.x <= b.width && q.x - p.x >= mm(B).advance * SCRIPT_SCALE);
+        let (num, ns) = glyph(&b.ink, A);
+        let (den, ds) = glyph(&b.ink, B);
         assert!(approx_eq(ns, SCRIPT_SCALE, EPS) && approx_eq(ds, SCRIPT_SCALE, EPS));
-        assert!(num.y + GLYPH_DESCENT * ns < -AXIS - RULE / 2.0);
-        assert!(den.y - GLYPH_ASCENT * ds > -AXIS + RULE / 2.0);
+        assert!(num.y - mm(A).y_min * ns <= -AXIS - RULE / 2.0 - FRAC_GAP + EPS);
+        assert!(den.y - mm(B).y_max * ds >= -AXIS + RULE / 2.0 + FRAC_GAP - EPS);
+        assert!(num.y <= -FRAC_NUM_SHIFT + EPS && den.y >= FRAC_DEN_SHIFT - EPS);
         let middle = b.width / 2.0;
-        assert!(approx_eq(num.x + 0.3 * ns, middle, EPS));
-        assert!(approx_eq(den.x + 0.3 * ds, middle, EPS));
-        assert!(b.ascent > GLYPH_ASCENT && b.descent > GLYPH_DESCENT);
+        assert!(approx_eq(num.x + mm(A).advance * ns / 2.0, middle, EPS));
+        assert!(approx_eq(den.x + mm(B).advance * ds / 2.0, middle, EPS));
+        assert!(b.ascent > mm(A).y_max && b.descent > -mm(B).y_min);
     }
 
     #[test]
@@ -1734,12 +2053,15 @@ mod tests {
         // Assert: four strokes, the last a bar over the whole content.
         let strokes = rules(&b.ink);
         assert_eq!(strokes.len(), 4);
-        let (x, scale) = glyph(&b.ink, 'x');
+        let (x, scale) = glyph(&b.ink, X);
         assert!(approx_eq(scale, 1.0, EPS) && approx_eq(x.y, 0.0, EPS));
         let (p, q, _) = strokes[3];
         assert!(approx_eq(p.y, q.y, EPS), "overbar is horizontal");
-        assert!(p.y < -GLYPH_ASCENT, "overbar above the content");
-        assert!(p.x <= x.x && q.x >= x.x + 0.6, "overbar covers the content");
+        assert!(p.y < -mm(X).y_max, "overbar above the content");
+        assert!(
+            p.x <= x.x && q.x >= x.x + mm(X).advance,
+            "overbar covers the content"
+        );
         assert!(b.ascent >= -p.y && b.width >= q.x);
     }
 
@@ -1755,10 +2077,16 @@ mod tests {
         assert_eq!((first.0, last.0), ('(', ')'));
         assert!(first.2 > 1.0 && approx_eq(first.2, last.2, EPS), "{g:?}");
         assert!(approx_eq(first.1.x, 0.0, EPS));
-        assert!(approx_eq(last.1.x + 0.6 * last.2, b.width, EPS));
-        let (n, _) = glyph(&b.ink, 'n');
-        let (k, _) = glyph(&b.ink, 'k');
-        assert!(n.y < k.y && approx_eq(n.x, k.x, EPS));
+        assert!(approx_eq(last.1.x + adv(")") * last.2, b.width, EPS));
+        assert!(faces(&b.ink).iter().all(|f| f.1 == Face::Math));
+        let (n, ns) = glyph(&b.ink, N);
+        let (k, ks) = glyph(&b.ink, K);
+        assert!(n.y < k.y);
+        assert!(approx_eq(
+            n.x + mm(N).advance * ns / 2.0,
+            k.x + mm(K).advance * ks / 2.0,
+            EPS
+        ));
     }
 
     #[test]
@@ -1769,42 +2097,77 @@ mod tests {
         // Assert
         let (sum, big) = glyph(&b.ink, '∑');
         assert!(approx_eq(big, BIG_OP_SCALE, EPS));
-        let centre = sum.x + 0.3 * big;
-        let (n, ns) = glyph(&b.ink, 'n');
-        let (k, ks) = glyph(&b.ink, 'k');
-        assert!(approx_eq(n.x + 0.3 * ns, centre, EPS), "{n:?} {centre}");
-        // "k=1" is three cells at script scale, without relation space.
-        assert!(approx_eq(k.x + 0.9 * ks, centre, EPS), "{k:?} {centre}");
-        assert!(n.y + GLYPH_DESCENT * ns <= sum.y - TALL_ASCENT * big + EPS);
-        assert!(k.y - GLYPH_ASCENT * ks >= sum.y + TALL_DESCENT * big - EPS);
-        // Words with limits too.
+        let centre = sum.x + adv("∑") * big / 2.0;
+        let (n, ns) = glyph(&b.ink, N);
+        let (k, ks) = glyph(&b.ink, K);
+        assert!(
+            approx_eq(n.x + mm(N).advance * ns / 2.0, centre, EPS),
+            "{n:?} {centre}"
+        );
+        // "k=1" at script scale, without relation space.
+        let below = (mm(K).advance + adv("=1")) * ks;
+        assert!(approx_eq(k.x + below / 2.0, centre, EPS), "{k:?} {centre}");
+        let sum_top = sum.y - mm('∑').y_max * big;
+        let sum_bottom = sum.y - mm('∑').y_min * big;
+        assert!(n.y - mm(N).y_min * ns <= sum_top - LIMIT_GAP + EPS);
+        assert!(k.y - mm(K).y_max * ks >= sum_bottom + LIMIT_GAP - EPS);
+        // Words with limits too, in upright type.
         let m = boxed("\\min_k");
-        let (k, ks) = glyph(&m.ink, 'k');
-        assert!(approx_eq(k.x + 0.3 * ks, 0.9, EPS), "{k:?}");
-        assert!(k.y > GLYPH_DESCENT);
+        let (k, ks) = glyph(&m.ink, K);
+        assert!(
+            approx_eq(k.x + mm(K).advance * ks / 2.0, adv("min") / 2.0, EPS),
+            "{k:?}"
+        );
+        assert!(k.y > -mm('n').y_min);
     }
 
     #[test]
     fn tex_layout_relations_and_binary_operators_get_space() {
         let width = |src| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
 
-        assert!(approx_eq(width("a=b"), 1.8 + 2.0 * REL_SPACE, EPS));
-        assert!(approx_eq(width("a+b"), 1.8 + 2.0 * BIN_SPACE, EPS));
+        assert!(approx_eq(
+            width("a=b"),
+            ab + adv("=") + 2.0 * REL_SPACE,
+            EPS
+        ));
+        assert!(approx_eq(
+            width("a+b"),
+            ab + adv("+") + 2.0 * BIN_SPACE,
+            EPS
+        ));
         // A leading minus is unary; spaces in the source are ignored.
-        assert!(approx_eq(width("-a"), 1.2, EPS));
-        assert!(approx_eq(width("a + b"), 1.8 + 2.0 * BIN_SPACE, EPS));
+        assert!(approx_eq(width("-a"), adv("\u{2212}") + mm(A).advance, EPS));
+        assert!(approx_eq(
+            width("a + b"),
+            ab + adv("+") + 2.0 * BIN_SPACE,
+            EPS
+        ));
         // A function before an ordinary atom, not before a bracket.
-        assert!(approx_eq(width("\\log n"), 2.4 + OP_SPACE, EPS));
-        assert!(approx_eq(width("\\log(n)"), 3.6, EPS));
+        let n = mm(N).advance;
+        assert!(approx_eq(width("\\log n"), adv("log") + OP_SPACE + n, EPS));
+        assert!(approx_eq(width("\\log(n)"), adv("log()") + n, EPS));
+        // Before an operator after an atom, and after punctuation.
+        assert!(approx_eq(
+            width("n\\log n"),
+            n + adv("log") + 2.0 * OP_SPACE + n,
+            EPS
+        ));
+        assert!(approx_eq(width("a,b"), ab + adv(",") + OP_SPACE, EPS));
         // No relation space inside scripts.
-        assert!(approx_eq(width("a_{i=1}"), 0.6 + 1.8 * SCRIPT_SCALE, EPS));
+        let script = (mm(I).advance + adv("=1")) * SCRIPT_SCALE;
+        assert!(approx_eq(
+            width("a_{i=1}"),
+            mm(A).advance + script + SCRIPT_SPACE,
+            EPS
+        ));
     }
 
     #[test]
     fn tex_layout_minus_is_the_math_minus() {
         let chars: Vec<char> = glyphs(&boxed("a-b").ink).iter().map(|g| g.0).collect();
 
-        assert_eq!(chars, vec!['a', MINUS, 'b']);
+        assert_eq!(chars, vec![A, MINUS, B]);
     }
 
     #[test]
@@ -1819,7 +2182,7 @@ mod tests {
         assert!(unknown.iter().all(|g| g.3));
         assert_eq!(
             brace.iter().map(|g| (g.0, g.3)).collect::<Vec<_>>(),
-            vec![('{', true), ('a', false)]
+            vec![('{', true), (A, false)]
         );
     }
 
@@ -1854,16 +2217,23 @@ mod tests {
         let l = layout(&parse("$\\frac{a}{b}$\nx"));
 
         // Assert
-        let first = frac.ascent + MATH_PAD + frac.descent + MATH_PAD;
-        assert!(first > text_layout::LINE_HEIGHT);
+        let first = frac.ascent.max(text_layout::BASELINE - MATH_PAD)
+            + MATH_PAD
+            + frac
+                .descent
+                .max(text_layout::LINE_HEIGHT - text_layout::BASELINE - MATH_PAD)
+            + MATH_PAD;
         assert!(approx_eq(l.height, first + text_layout::LINE_HEIGHT, EPS));
         let (x, _) = glyph(&l.ink, 'x');
         assert!(
             x.approx_eq(v(0.0, first + text_layout::BASELINE), EPS),
             "{x:?}"
         );
-        let (a, _) = glyph(&l.ink, 'a');
-        assert!(a.y - GLYPH_ASCENT * SCRIPT_SCALE >= -EPS, "inside the line");
+        let (a, s) = glyph(&l.ink, A);
+        assert!(a.y - mm(A).y_max * s >= -EPS, "inside the line");
+        // A formula taller than a text line grows it.
+        let tall = layout(&parse("$\\frac{\\sum_k^n}{b}$"));
+        assert!(tall.height > text_layout::LINE_HEIGHT);
     }
 
     #[test]
@@ -1873,15 +2243,148 @@ mod tests {
 
         // Assert: plain cells, the formula, then cells after it, one line.
         let (f, _) = glyph(&l.ink, 'f');
-        let (x, _) = glyph(&l.ink, 'x');
+        let (x, _) = glyph(&l.ink, X);
         let (two, _) = glyph(&l.ink, '2');
         let (g, _) = glyph(&l.ink, 'g');
-        let formula = 0.6 + 0.6 * SCRIPT_SCALE;
+        let formula = boxed("x^2");
+        let (two_in, _) = glyph(&formula.ink, '2');
         assert!(f.approx_eq(v(0.0, 1.0), EPS));
         assert!(x.approx_eq(v(1.2, 1.0), EPS));
-        assert!(two.approx_eq(v(1.8, 0.6), EPS));
-        assert!(g.approx_eq(v(1.2 + formula + 0.6, 1.0), EPS), "{g:?}");
-        assert!(approx_eq(l.width, 1.8 + formula + 0.6, EPS));
+        assert!(two.approx_eq(v(1.2, 1.0) + two_in, EPS), "{two:?}");
+        assert!(g.approx_eq(v(1.2 + formula.width + 0.6, 1.0), EPS), "{g:?}");
+        assert!(approx_eq(l.width, 1.8 + formula.width + 0.6, EPS));
         assert!(approx_eq(l.height, text_layout::LINE_HEIGHT, EPS));
+    }
+
+    #[test]
+    fn tex_layout_line_holds_italic_overhangs() {
+        // Arrange: italic j hangs left of its pen, italic f right of its
+        // advance.
+        let (j, f) = (mm(J), mm(F));
+        assert!(j.x_min < 0.0 && f.x_max > f.advance);
+
+        // Act
+        let left = layout(&parse("$j$"));
+        let right = layout(&parse("$f$ g"));
+        let inside = layout(&parse("a$j$"));
+
+        // Assert: a formula starting a line moves right by its overhang;
+        // the line is as wide as its rightmost ink.
+        let (pos, _) = glyph(&left.ink, J);
+        assert!(approx_eq(pos.x, -j.x_min, EPS), "{pos:?}");
+        let (g, _) = glyph(&right.ink, 'g');
+        assert!(approx_eq(g.x, f.x_max + 0.6, EPS), "{g:?}");
+        let (pos, _) = glyph(&inside.ink, J);
+        assert!(approx_eq(pos.x, 0.6, EPS), "{pos:?}");
+        for l in [&left, &right, &inside] {
+            let b = l.bounds().expand(1e-4);
+            assert!(l.ink.iter().all(|ink| {
+                let ib = ink.bounds();
+                b.contains(ib.min) && b.contains(ib.max)
+            }));
+        }
+    }
+
+    // ---- AC-3 faces and mapping (ADR-T33-1) --------------------------------
+
+    #[test]
+    fn tex_math_letters_are_italic() {
+        // Act
+        let got = faces(&boxed("aAzZh").ink);
+
+        // Assert
+        assert_eq!(
+            got,
+            vec![
+                (A, Face::Math),
+                ('\u{1D434}', Face::Math),
+                (Z, Face::Math),
+                ('\u{1D44D}', Face::Math),
+                ('\u{210E}', Face::Math),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_lowercase_greek_is_italic_and_capitals_upright() {
+        // Act
+        let got = faces(
+            &boxed("\\alpha\\omega\\varphi\\phi\\epsilon\\varepsilon\\varsigma\\Gamma\\Omega").ink,
+        );
+
+        // Assert
+        let chars: Vec<char> = got.iter().map(|g| g.0).collect();
+        assert_eq!(
+            chars,
+            vec![
+                '\u{1D6FC}',
+                '\u{1D714}',
+                '\u{1D711}',
+                '\u{1D719}',
+                '\u{1D716}',
+                '\u{1D700}',
+                '\u{1D70D}',
+                'Γ',
+                'Ω',
+            ]
+        );
+        assert!(got.iter().all(|g| g.1 == Face::Math));
+    }
+
+    #[test]
+    fn tex_digits_operators_and_functions_are_upright_math() {
+        // Act
+        let got = faces(&boxed("1+\\log x\\le\\infty\\text{ok}").ink);
+
+        // Assert
+        let chars: String = got.iter().map(|g| g.0).collect();
+        assert_eq!(chars, format!("1+log{X}≤∞ok"));
+        assert!(got.iter().all(|g| g.1 == Face::Math));
+        let pmod: String = faces(&boxed("\\pmod{n}").ink).iter().map(|g| g.0).collect();
+        assert_eq!(pmod, format!("(mod{N})"));
+    }
+
+    #[test]
+    fn tex_mathcal_maps_to_script_letters() {
+        // Act
+        let got = faces(&boxed("\\mathcal{ABE}x\\mathcal L\\mathcal{a1}").ink);
+
+        // Assert: capitals turn script (holes from Letterlike Symbols),
+        // anything else is drawn as outside `\mathcal`.
+        assert_eq!(
+            got.iter().map(|g| g.0).collect::<Vec<_>>(),
+            vec!['\u{1D49C}', '\u{212C}', '\u{2130}', X, '\u{2112}', A, '1']
+        );
+        assert!(got.iter().all(|g| g.1 == Face::Math));
+        assert!(math_metrics::get('\u{1D49C}').is_some());
+    }
+
+    #[test]
+    fn tex_literals_and_plain_text_use_the_text_face() {
+        // Act
+        let l = layout(&parse("a$x\\foo$"));
+
+        // Assert
+        let got = faces(&l.ink);
+        assert_eq!(got[0], ('a', Face::Text));
+        assert_eq!(got[1], (X, Face::Math));
+        assert!(got[2..].iter().all(|g| g.1 == Face::Text), "{got:?}");
+    }
+
+    #[test]
+    fn tex_char_without_math_glyph_falls_back_to_a_text_cell() {
+        // Arrange
+        assert!(math_metrics::get('日').is_none());
+
+        // Act
+        let typed = boxed("日");
+        let text = boxed("\\text{日}");
+
+        // Assert: one 0.6 em cell of the text font.
+        for b in [typed, text] {
+            assert_eq!(faces(&b.ink), vec![('日', Face::Text)]);
+            assert!(approx_eq(b.width, ADVANCE, EPS));
+            assert!(approx_eq(b.ascent, GLYPH_ASCENT, EPS));
+        }
     }
 }

@@ -167,7 +167,7 @@ fn arb_char() -> impl Strategy<Value = char> {
     ]
 }
 
-/// Formula-ish source (T30): TeX tokens, `$`s, braces and any `char`.
+/// Formula-ish source (T30, T33): TeX tokens, `$`s, braces and any `char`.
 fn arb_formula_text() -> impl Strategy<Value = String> {
     let token = prop_oneof![
         6 => select(vec![
@@ -175,6 +175,8 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             ")", ",", "|", "\\frac", "\\sqrt", "\\binom", "\\text", "\\pmod",
             "\\alpha", "\\Omega", "\\sum", "\\prod", "\\min", "\\lim", "\\log",
             "\\le", "\\cdot", "\\lfloor", "\\{", "\\}", "\\foo",
+            // T33: script capitals and italic overhangs at both ends.
+            "\\mathcal", "A", "f", "j", "\\varphi",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

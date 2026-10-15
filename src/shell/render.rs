@@ -690,10 +690,13 @@ pub fn prepare_text_block(
         return;
     }
     for ink in &typeset(text).ink {
-        if let Ink::Glyph { ch, scale, .. } = *ink {
+        if let Ink::Glyph {
+            ch, face, scale, ..
+        } = *ink
+        {
             if let Some((rpx, _)) = block_raster(size * scale, camera, dpi) {
                 if drawable(ch) {
-                    atlas.prepare(ch, rpx);
+                    atlas.prepare_in(face, ch, rpx);
                 }
             }
         }
@@ -726,6 +729,7 @@ pub fn push_text_block<S: MeshSink>(
         match *ink {
             Ink::Glyph {
                 ch,
+                face,
                 pos,
                 scale,
                 warn: warned,
@@ -733,7 +737,7 @@ pub fn push_text_block<S: MeshSink>(
                 let Some((rpx, glyph_scale)) = block_raster(size * scale, camera, dpi) else {
                     continue;
                 };
-                let Some(entry) = atlas.get(ch, rpx).filter(|_| drawable(ch)) else {
+                let Some(entry) = atlas.get_in(face, ch, rpx).filter(|_| drawable(ch)) else {
                     continue;
                 };
                 if let Some(quad) = glyph_quad(at(pos), &entry, glyph_scale) {
@@ -1222,8 +1226,9 @@ mod tests {
     use super::*;
     use crate::core::camera::Camera;
     use crate::core::geom::{Aabb, Vec2, approx_eq};
+    use crate::core::math_metrics;
     use crate::core::palette::{ColorId, Rgba, palette};
-    use crate::core::tex::{MINUS, SYMBOLS};
+    use crate::core::tex::{Face, MINUS, SYMBOLS, calligraphic, italic};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -2058,13 +2063,13 @@ mod tests {
 
     // ---- T32 glyph batching ------------------------------------------------
 
-    use crate::shell::app::TEXT_FONT;
+    use crate::shell::app::{MATH_FONT, TEXT_FONT};
     use crate::shell::glyphs::{GlyphAtlas, GlyphQuad, WHITE_UV};
 
     fn atlas() -> GlyphAtlas {
-        match GlyphAtlas::new(TEXT_FONT) {
+        match GlyphAtlas::new(TEXT_FONT).and_then(|atlas| atlas.with_math(MATH_FONT)) {
             Ok(atlas) => atlas,
-            Err(err) => panic!("embedded font loads: {err}"),
+            Err(err) => panic!("embedded fonts load: {err}"),
         }
     }
 
@@ -2368,22 +2373,48 @@ mod tests {
     }
 
     #[test]
-    fn tex_symbols_all_have_glyphs_in_the_embedded_font() {
+    fn push_text_block_formula_uses_the_math_face() {
         // Arrange
-        let font = match fontdue::Font::from_bytes(TEXT_FONT, fontdue::FontSettings::default()) {
-            Ok(font) => font,
-            Err(err) => panic!("embedded font loads: {err}"),
+        let camera = Camera::default();
+        let mut atlas = atlas();
+        let Some((rpx, _)) = block_raster(20.0, &camera, 1.0) else {
+            panic!("20 px text is drawn");
         };
 
         // Act
+        prepare_text_block(&mut atlas, "b $a$", 20.0, &camera, 1.0);
+
+        // Assert: the formula's italic a from the math font, the plain b
+        // from the text font, nothing else.
+        let a = italic('a');
+        assert!(atlas.get_in(Face::Math, a, rpx).is_some());
+        assert!(atlas.get_in(Face::Text, a, rpx).is_none());
+        assert!(atlas.get_in(Face::Text, 'b', rpx).is_some());
+        assert!(atlas.get_in(Face::Math, 'b', rpx).is_none());
+        assert!(atlas.get_in(Face::Text, 'a', rpx).is_none());
+    }
+
+    #[test]
+    fn tex_symbols_all_have_glyphs_in_the_math_font() {
+        // Arrange
+        let font = match fontdue::Font::from_bytes(MATH_FONT, fontdue::FontSettings::default()) {
+            Ok(font) => font,
+            Err(err) => panic!("embedded math font loads: {err}"),
+        };
+        let letters = ('a'..='z').chain('A'..='Z');
+
+        // Act: every character the layout puts in the math face.
         let missing: Vec<char> = SYMBOLS
             .iter()
             .flat_map(|s| s.text.chars())
             .chain([MINUS, '(', ')'])
-            .filter(|&ch| font.lookup_glyph_index(ch) == 0)
+            .map(italic)
+            .chain(letters.clone().map(italic))
+            .chain(letters.map(calligraphic))
+            .filter(|&ch| font.lookup_glyph_index(ch) == 0 || math_metrics::get(ch).is_none())
             .collect();
 
-        // Assert: no second math font is needed (ADR-T30-1).
+        // Assert
         assert!(missing.is_empty(), "missing glyphs: {missing:?}");
     }
 }
