@@ -147,8 +147,12 @@ fn is_set(value: Option<&OsString>) -> bool {
     value.is_some_and(|value| !value.is_empty())
 }
 
-/// Decides whether the window can open in `env`, given which sonames
-/// `found` reports as installed.
+/// Decides whether the window can open in `env` with `backend`, given
+/// which sonames `found` reports as installed.
+///
+/// With [`Backend::Wayland`] in a Wayland session the `wayland` libraries
+/// are checked and `DISPLAY` is not needed; elsewhere miniquad falls back
+/// to X11, so the X11 check runs (ADR-T28-1).
 ///
 /// # Errors
 ///
@@ -162,7 +166,8 @@ pub fn check(
     if is_set(env.skip.as_ref()) {
         return Ok(());
     }
-    if !is_set(env.display.as_ref()) {
+    let native_wayland = backend == Backend::Wayland && is_set(env.wayland_display.as_ref());
+    if !native_wayland && !is_set(env.display.as_ref()) {
         return Err(if is_set(env.wayland_display.as_ref()) {
             Problem::NoXWayland
         } else {
@@ -175,9 +180,10 @@ pub fn check(
     let missing: Vec<RuntimeLib> = libs
         .iter()
         .filter(|lib| match lib.role {
-            Role::Required => !found(&lib.soname),
-            Role::Gl => !gl_found,
-            Role::Wayland | Role::Optional | Role::Unused | Role::Linked => false,
+            Role::Wayland => native_wayland && !found(&lib.soname),
+            Role::Required => !native_wayland && !found(&lib.soname),
+            Role::Gl => !native_wayland && !gl_found,
+            Role::Optional | Role::Unused | Role::Linked => false,
         })
         .cloned()
         .collect();
@@ -269,15 +275,14 @@ impl fmt::Display for Problem {
                     libs.iter()
                         .filter(move |lib: &&RuntimeLib| lib.role == role)
                 };
-                let mut names: Vec<String> =
-                    pick(Role::Required).map(|lib| lib.soname.clone()).collect();
+                let single = || libs.iter().filter(|lib| lib.role != Role::Gl);
+                let mut names: Vec<String> = single().map(|lib| lib.soname.clone()).collect();
                 let gl: Vec<&str> = pick(Role::Gl).map(|lib| lib.soname.as_str()).collect();
                 if !gl.is_empty() {
                     names.push(gl.join(" or "));
                 }
                 // One GL loader is enough: suggest the first of the group.
-                let wanted: Vec<&RuntimeLib> =
-                    pick(Role::Required).chain(pick(Role::Gl).take(1)).collect();
+                let wanted: Vec<&RuntimeLib> = single().chain(pick(Role::Gl).take(1)).collect();
                 let packages = |of: fn(&RuntimeLib) -> &str| {
                     wanted
                         .iter()

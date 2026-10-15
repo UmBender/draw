@@ -36,13 +36,22 @@ impl Backend {
     /// The miniquad setting for this backend.
     #[must_use]
     pub fn linux_backend(self) -> LinuxBackend {
-        todo!()
+        match self {
+            Self::X11 => LinuxBackend::X11Only,
+            Self::Wayland => LinuxBackend::WaylandWithX11Fallback,
+        }
     }
 
     /// One stderr line to print at start-up, if this backend needs one.
     #[must_use]
     pub fn notice(self) -> Option<&'static str> {
-        todo!()
+        match self {
+            Self::X11 => None,
+            Self::Wayland => Some(
+                "draw: DRAW_BACKEND=wayland is experimental; \
+                 unset it to go back to X11 if something misbehaves",
+            ),
+        }
     }
 }
 
@@ -50,13 +59,33 @@ impl Backend {
 /// unset).
 #[must_use]
 pub fn choose(value: Option<&OsStr>) -> Choice {
-    todo!()
+    let Some(value) = value else {
+        return Choice::default();
+    };
+    let text = value.to_string_lossy();
+    let text = text.trim();
+    if text.is_empty() || text.eq_ignore_ascii_case("x11") {
+        Choice::default()
+    } else if text.eq_ignore_ascii_case("wayland") {
+        Choice {
+            backend: Backend::Wayland,
+            warning: None,
+        }
+    } else {
+        Choice {
+            backend: Backend::X11,
+            warning: Some(format!(
+                "draw: unknown {BACKEND_ENV} value {text:?}, using x11 \
+                 (expected x11 or wayland)"
+            )),
+        }
+    }
 }
 
 /// [`choose`] applied to the real environment.
 #[must_use]
 pub fn from_env() -> Choice {
-    todo!()
+    choose(std::env::var_os(BACKEND_ENV).as_deref())
 }
 
 #[cfg(test)]

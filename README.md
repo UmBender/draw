@@ -251,7 +251,7 @@ A printable one-page version lives in
 ## Configuration
 
 There is no config file: shortcuts, palette and theme are fixed on purpose.
-Three environment variables exist for troubleshooting, and one turns on
+Three environment variables exist for troubleshooting, and two turn on
 experimental features:
 
 | Variable | Values | Effect |
@@ -259,6 +259,7 @@ experimental features:
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
 | `DRAW_EXPERIMENTAL` | feature names, comma-separated | Turn on experimental features (below) |
+| `DRAW_BACKEND` | `x11` (default), `wayland` | Window backend on Linux; `wayland` is experimental (below) |
 | `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
 
 ```sh
@@ -280,6 +281,19 @@ may change or disappear in any release.
 
 ```sh
 DRAW_EXPERIMENTAL=shape-text draw
+```
+
+- **Native Wayland — `DRAW_BACKEND=wayland`.** By default draw is an X11
+  app and runs on Wayland sessions through XWayland. With this variable it
+  talks to the Wayland compositor directly, which can help on sessions
+  without XWayland; if the Wayland connection fails it falls back to X11.
+  It prints a one-line warning at start-up, is not yet tested on every
+  compositor and may not be sharper under fractional scaling. Without
+  `libdecor` the window may have no title bar on GNOME. Unset the
+  variable to go back to X11.
+
+```sh
+DRAW_BACKEND=wayland draw
 ```
 
 ## Limitations

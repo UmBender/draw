@@ -330,6 +330,7 @@ impl From<WindowSettings> for Conf {
                 window_resizable: settings.window_resizable,
                 high_dpi: settings.high_dpi,
                 platform: Platform {
+                    linux_backend: settings.backend.linux_backend(),
                     blocking_event_loop: true,
                     linux_wm_class: WM_CLASS,
                     ..Platform::default()
@@ -354,16 +355,26 @@ impl From<WindowSettings> for Conf {
 /// matches it so launchers show the app's icon (ADR-T27-2).
 pub const WM_CLASS: &str = "draw";
 
-/// Window settings used by `main`.
+/// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and
+/// prints its warning or the experimental notice on stderr (ADR-T28-1).
 #[must_use]
 pub fn window_conf() -> WindowSettings {
+    let choice = backend::from_env();
+    for line in choice
+        .warning
+        .as_deref()
+        .into_iter()
+        .chain(choice.backend.notice())
+    {
+        eprintln!("{line}");
+    }
     WindowSettings {
         window_title: "draw".to_owned(),
         window_width: 1280,
         window_height: 800,
         window_resizable: true,
         high_dpi: true,
-        backend: Backend::default(),
+        backend: choice.backend,
     }
 }
 
