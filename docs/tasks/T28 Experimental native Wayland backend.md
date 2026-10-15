@@ -1,11 +1,11 @@
 ---
 id: T28
 title: Experimental native Wayland backend
-status: ready
+status: in-progress
 wave: 21
 branch: task/T28-wayland
 depends_on: [T27]
-adrs: []
+adrs: [ADR-T28-1]
 feature: "[[Native Wayland (experimental)]]"
 tutorial: "[[28 Choosing a window backend at startup]]"
 tags: [task, experimental]
@@ -57,39 +57,80 @@ Read from miniquad 0.4.11 `src/native/linux_wayland.rs` on 2026-10-14:
 
 ## Spec
 
-To be refined in the spec step; every AC must name its tests there.
-ADR expected: **ADR-T28-1 — Opt-in native Wayland backend** (env var,
-fallback behaviour, why experimental, what would make it the default).
+Decision: [[ADR-T28-1 Opt-in native Wayland backend]]. Spec-step findings
+against miniquad 0.4.11: the Wayland branch loads `libwayland-client`,
+`libwayland-egl`, `libxkbcommon`, `libEGL` and, for decorations,
+`libdecor-0` — not `libwayland-cursor`. `WaylandWithX11Fallback` falls
+back to X11 when the Wayland connection or a library fails. On Wayland
+`linux_wm_class` becomes the `app_id`.
 
-- **AC-1 — Backend choice.** A pure function maps `DRAW_BACKEND`
-  (unset, `x11`, `wayland`, anything else) to a `LinuxBackend`: unset and
-  `x11` → `X11Only` (unchanged default); `wayland` →
-  `WaylandWithX11Fallback`; an unknown value → default plus one warning
-  line on stderr. `window_conf` uses it, keeping the blocking loop.
-- **AC-2 — Experimental is visible.** With the Wayland backend the app
-  prints one stderr line saying the backend is experimental; the README
-  documents the variable under an *Experimental* heading.
-- **AC-3 — Preflight.** T27's `shell::preflight` takes the chosen
-  backend: with `wayland`, a Wayland session without `DISPLAY` is no
-  longer an error, and missing Wayland libraries are reported the same
-  way as the X11 ones.
+- **AC-1 — Backend choice.** `shell::backend::choose(value)` maps the
+  value of `DRAW_BACKEND` to a `Choice { backend, warning }`; values are
+  trimmed and ASCII-case-insensitive. Unset, empty and `x11` →
+  `Backend::X11` (→ `LinuxBackend::X11Only`); `wayland` →
+  `Backend::Wayland` (→ `WaylandWithX11Fallback`); anything else →
+  `X11` plus one warning line. `window_conf()` reads the variable once,
+  prints the warning and stores the backend in `WindowSettings`; the
+  `Conf` keeps the blocking loop for both.
+  Tests (`backend.rs`): `choose_unset_or_empty_is_x11_without_warning`,
+  `choose_x11_is_x11_without_warning`,
+  `choose_wayland_is_wayland_without_warning`,
+  `choose_ignores_case_and_surrounding_space`,
+  `choose_unknown_value_warns_and_keeps_x11`,
+  `choose_any_value_warns_unless_known` (proptest),
+  `backend_linux_backend_maps_to_miniquad`.
+  Tests (`app.rs`): `window_settings_wayland_keeps_blocking_loop`.
+- **AC-2 — Experimental is visible.** `Backend::notice()` is one stderr
+  line containing "experimental" for `Wayland` and `None` for `X11`;
+  `window_conf()` prints it. The README lists `DRAW_BACKEND` in the
+  variable table and under *Experimental*.
+  Tests (`backend.rs`): `backend_notice_only_for_wayland`,
+  `warning_and_notice_are_one_line`,
+  `readme_documents_draw_backend_as_experimental`.
+- **AC-3 — Preflight.** `preflight::check(env, backend, libs, found)`.
+  With `Backend::Wayland` and `WAYLAND_DISPLAY` set, `DISPLAY` is not
+  needed and the libraries of the new role `wayland` are checked instead
+  of `required`/`gl`; missing ones are `Problem::MissingLibs` with their
+  packages. With `Wayland` but no `WAYLAND_DISPLAY` the X11 check runs.
+  New role `optional` is never checked. `run()` reads the backend with
+  `backend::from_env()`.
+  Tests (`preflight.rs`): `parse_runtime_libs_reads_wayland_and_optional_roles`,
+  `check_wayland_backend_without_display_is_ok`,
+  `check_wayland_backend_ignores_x11_libs`,
+  `check_wayland_backend_missing_lib_names_its_packages`,
+  `check_wayland_backend_without_wayland_session_checks_x11`,
+  `check_x11_backend_ignores_wayland_libs`,
+  `check_optional_libs_are_not_needed`; existing X11 tests updated to
+  pass `Backend::X11`.
 - **AC-4 — Sharp at fractional scale.** Owner on the target at 125 % or
   150 % scaling: compare lines and toolbar text under X11 and Wayland;
-  result and screenshots noted in the *Log*.
+  result and screenshots noted in the *Log*. (Manual.)
 - **AC-5 — Behaviour parity.** Owner checklist on the target with
   `DRAW_BACKEND=wayland`: idle CPU ≈ 0 %, every README shortcut, middle
   and `Space`+drag pan, wheel zoom, resize, the T26 settle sharpening
   ≈ 100 ms after a gesture without moving the mouse, window title bar
-  present (GNOME and one wlroots/KDE compositor if available).
+  present (GNOME and one wlroots/KDE compositor if available), launcher
+  icon matched by `app_id`. (Manual.)
 - **AC-6 — Budgets.** `DRAW_FRAME_TIMES=1` with the ADR-T24-5 scene:
   frame times within [[ADR-T24-5 Redraw budgets]] and
-  [[ADR-T26-2 Gesture frame budget]], numbers in the *Log*.
-- **AC-7 — Packaging.** `packaging/runtime-libs` lists the Wayland
-  libraries as optional (Recommends / weak deps); the Flatpak manifest
-  adds `--socket=wayland` next to `--socket=fallback-x11`.
-- **AC-8 — No regressions.** With the variable unset the app is
-  byte-for-byte the same backend as before; `scripts/check.sh` and the
-  T14 perf tests stay green.
+  [[ADR-T26-2 Gesture frame budget]], numbers in the *Log*. (Manual.)
+- **AC-7 — Packaging.** `packaging/runtime-libs` lists
+  `libwayland-client`, `libwayland-egl`, `libxkbcommon` and `libEGL` as
+  `wayland` and `libdecor-0` as `optional`; none of them becomes a
+  package dependency (T27's `tests/packaging.rs` stays green). The
+  Flatpak manifest adds `--socket=wayland` and keeps `--socket=x11`
+  (ADR-T28-1: `fallback-x11` would hide X11, still the default).
+  `.deb` Recommends / `.rpm` weak deps need `Cargo.toml`, which T28 does
+  not own — reported for a follow-up.
+  Tests (`preflight.rs`): `embedded_runtime_libs_list_wayland_libs`,
+  `flatpak_manifest_allows_wayland_and_x11`; `tests/packaging.rs`
+  (`runtime_libs_names_every_library_the_binary_mentions`,
+  `deb_depends_match_runtime_libs`, `rpm_requires_match_runtime_libs`).
+- **AC-8 — No regressions.** With the variable unset the `Conf` has
+  `LinuxBackend::X11Only` and the same platform settings as before;
+  `scripts/check.sh` and the T14 perf tests stay green.
+  Tests (`app.rs`): `window_settings_x11_is_x11_only_with_blocking_loop`,
+  existing `window_conf_sets_wm_class`.
 
 ## Out of scope
 
@@ -110,7 +151,7 @@ fallback behaviour, why experimental, what would make it the default).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T28): …`
+- [x] spec — `docs(T28): …`
 - [ ] tests — `test(T28): …`
 - [ ] models — `feat(T28): …`
 - [ ] behaviour — `feat(T28): …`
