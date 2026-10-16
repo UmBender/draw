@@ -114,6 +114,36 @@ cargo install --path .
 draw
 ```
 
+#### System-wide with `cargo install`
+
+To install draw for every user under `/usr/local`, build as yourself and
+copy the result as root. Do not run `cargo` with `sudo`: root usually has
+no Rust toolchain, and the build would leave root-owned files in
+`target/` and `~/.cargo`.
+
+```sh
+# From a clone (or replace `--path .` with
+# `--git https://github.com/UmBender/draw --tag v1.1.0` to skip cloning)
+cargo install --path . --locked --root "$PWD/target/install"
+
+sudo install -Dm755 target/install/bin/draw /usr/local/bin/draw
+# Optional: application launcher entry and icon
+sudo install -Dm644 packaging/io.github.UmBender.draw.desktop \
+    /usr/local/share/applications/io.github.UmBender.draw.desktop
+sudo install -Dm644 packaging/icons/draw.svg \
+    /usr/local/share/icons/hicolor/scalable/apps/io.github.UmBender.draw.svg
+```
+
+Cargo warns that `target/install/bin` is not in `PATH`; that is expected,
+as the binary is copied out of it. Use `--root /opt/draw` and `/opt/draw/bin/draw` (or any prefix) the same
+way. To upgrade, run the same commands again. To remove it:
+
+```sh
+sudo rm -f /usr/local/bin/draw \
+    /usr/local/share/applications/io.github.UmBender.draw.desktop \
+    /usr/local/share/icons/hicolor/scalable/apps/io.github.UmBender.draw.svg
+```
+
 The release build is a single stripped binary of about 1 MB that opens a
 window in well under 200 ms.
 
