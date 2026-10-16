@@ -186,6 +186,25 @@ step 27 (packaging).
   `.deb` Recommends / `.rpm` weak deps for the Wayland libraries are not
   done: they live in `Cargo.toml`, outside T28's files — follow-up for
   its owner.
-- Pending (owner, on the target): AC-4 sharpness at 125 %/150 %, AC-5
-  behaviour checklist (GNOME + one other compositor, title bar, launcher
-  icon via `app_id` `draw`), AC-6 `DRAW_FRAME_TIMES` numbers.
+- 2026-10-15 — AC-5: the owner ran the behaviour checklist with
+  `DRAW_BACKEND=wayland` on the development machine (Fedora 44, Wayland
+  session); no differences from X11 reported.
+- 2026-10-15 — AC-6: `DRAW_FRAME_TIMES=1`, ADR-T24-5 scene (5 120
+  strokes), pan and wheel zoom zoomed out and at medium zoom, same
+  moves on both backends. CPU ms, median / p95 / max:
+
+  | Re-render | X11 (XWayland) | Wayland |
+  |-----------|----------------|---------|
+  | Moved (< 2 ms, ADR-T26-2) | 0.88 / 3.25 / 5.43 (472) | 0.09 / 1.20 / 1.76 (522) |
+  | Full / settle (< 16 ms, ADR-T24-5) | 13.4 / 37.8 / 93.6 (44) | 9.7 / 34.3 / 76.8 (55) |
+  | Overlay (< 2 ms) | 0.41 (1) | 0.02 / 0.04 / 0.07 (8) |
+  | Append | 18.9 (1) | 13.3 (1) |
+
+  Wayland meets the gesture and overlay budgets and is not slower than
+  X11 on any line. Full re-renders miss < 16 ms on both backends at
+  medium zoom, as ADR-T24-5 already records. Finding outside T28: on
+  X11 the moved frames exceed the ADR-T26-2 budget (p95 3.25 ms, max
+  5.43 ms) — for a follow-up, not caused by this task.
+- Pending (owner): AC-4 sharpness at 125 %/150 % (X11 vs Wayland
+  screenshots) and the Flatpak run (`--socket=wayland` with
+  `DRAW_BACKEND=wayland`).
