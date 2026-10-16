@@ -39,6 +39,7 @@ use crate::core::input::InputEvent;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
+use crate::shell::backend::{self, Backend};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, TextStats, to_mq_color};
@@ -314,6 +315,8 @@ pub struct WindowSettings {
     pub window_resizable: bool,
     /// Whether to render at the display's full resolution.
     pub high_dpi: bool,
+    /// Window backend on Linux (ADR-T28-1).
+    pub backend: Backend,
 }
 
 impl From<WindowSettings> for Conf {
@@ -327,6 +330,7 @@ impl From<WindowSettings> for Conf {
                 window_resizable: settings.window_resizable,
                 high_dpi: settings.high_dpi,
                 platform: Platform {
+                    linux_backend: settings.backend.linux_backend(),
                     blocking_event_loop: true,
                     linux_wm_class: WM_CLASS,
                     ..Platform::default()
@@ -351,15 +355,26 @@ impl From<WindowSettings> for Conf {
 /// matches it so launchers show the app's icon (ADR-T27-2).
 pub const WM_CLASS: &str = "draw";
 
-/// Window settings used by `main`.
+/// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and
+/// prints its warning or the experimental notice on stderr (ADR-T28-1).
 #[must_use]
 pub fn window_conf() -> WindowSettings {
+    let choice = backend::from_env();
+    for line in choice
+        .warning
+        .as_deref()
+        .into_iter()
+        .chain(choice.backend.notice())
+    {
+        eprintln!("{line}");
+    }
     WindowSettings {
         window_title: "draw".to_owned(),
         window_width: 1280,
         window_height: 800,
         window_resizable: true,
         high_dpi: true,
+        backend: choice.backend,
     }
 }
 
@@ -692,6 +707,7 @@ mod tests {
     use super::*;
     use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
     use crate::core::geom::approx_eq;
+    use macroquad::miniquad::conf::LinuxBackend;
     use proptest::prelude::*;
 
     #[test]
@@ -702,6 +718,45 @@ mod tests {
         // Assert
         assert_eq!(conf.miniquad_conf.platform.linux_wm_class, WM_CLASS);
         assert_eq!(WM_CLASS, "draw");
+    }
+
+    #[test]
+    fn window_settings_x11_is_x11_only_with_blocking_loop() {
+        // Arrange
+        let settings = WindowSettings {
+            backend: Backend::X11,
+            ..window_conf()
+        };
+
+        // Act
+        let platform = Conf::from(settings).miniquad_conf.platform;
+
+        // Assert
+        assert_eq!(platform.linux_backend, LinuxBackend::X11Only);
+        assert!(platform.blocking_event_loop);
+        assert_eq!(platform.linux_wm_class, WM_CLASS);
+    }
+
+    #[test]
+    fn window_settings_wayland_keeps_blocking_loop() {
+        // Arrange
+        let settings = WindowSettings {
+            backend: Backend::Wayland,
+            ..window_conf()
+        };
+
+        // Act
+        let conf = Conf::from(settings);
+
+        // Assert
+        let platform = &conf.miniquad_conf.platform;
+        assert_eq!(platform.linux_backend, LinuxBackend::WaylandWithX11Fallback);
+        assert!(platform.blocking_event_loop);
+        assert_eq!(platform.linux_wm_class, WM_CLASS);
+        assert!(
+            conf.update_on
+                .is_some_and(|on| on.mouse_motion && on.key_down)
+        );
     }
 
     #[test]

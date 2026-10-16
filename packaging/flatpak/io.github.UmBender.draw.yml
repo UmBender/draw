@@ -6,8 +6,11 @@ runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
 command: draw
 finish-args:
-  # X11 only (ADR-T12-1); on Wayland through XWayland.
+  # X11 is the default backend, through XWayland on Wayland sessions
+  # (ADR-T12-1); kept as x11, not fallback-x11, which would hide it there.
+  # Wayland for the experimental DRAW_BACKEND=wayland (ADR-T28-1).
   - --socket=x11
+  - --socket=wayland
   - --share=ipc
   - --device=dri
 modules:
