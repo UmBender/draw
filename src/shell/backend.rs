@@ -88,6 +88,27 @@ pub fn from_env() -> Choice {
     choose(std::env::var_os(BACKEND_ENV).as_deref())
 }
 
+/// Wheel units a native Wayland compositor reports per wheel notch.
+///
+/// miniquad passes `wl_pointer.axis` values through unchanged; libinput
+/// compositors (`wlroots`, Hyprland, `KWin`) send 15 per notch and Mutter 10,
+/// where X11 sends 1. Dividing by 15 makes one notch one zoom step.
+pub const WAYLAND_WHEEL_UNITS_PER_NOTCH: f32 = 15.0;
+
+/// Wheel units per notch for `backend` in a session whose
+/// `WAYLAND_DISPLAY` is `wayland_display`: [`WAYLAND_WHEEL_UNITS_PER_NOTCH`]
+/// on native Wayland, `1` on X11 (including the fallback without a
+/// Wayland session).
+#[must_use]
+pub fn wheel_units_per_notch(backend: Backend, wayland_display: Option<&OsStr>) -> f32 {
+    let wayland_session = wayland_display.is_some_and(|value| !value.is_empty());
+    if backend == Backend::Wayland && wayland_session {
+        WAYLAND_WHEEL_UNITS_PER_NOTCH
+    } else {
+        1.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,9 +277,9 @@ mod tests {
 
         // Assert: X11 reports one unit per notch, and Wayland without a
         // session falls back to X11
-        assert_eq!(on_x11, 1.0);
-        assert_eq!(no_session, 1.0);
-        assert_eq!(empty, 1.0);
+        assert!((on_x11 - 1.0).abs() < f32::EPSILON);
+        assert!((no_session - 1.0).abs() < f32::EPSILON);
+        assert!((empty - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -267,8 +288,8 @@ mod tests {
         let units = wheel_units_per_notch(Backend::Wayland, Some(OsStr::new("wayland-1")));
 
         // Assert
-        assert_eq!(units, WAYLAND_WHEEL_UNITS_PER_NOTCH);
-        assert_eq!(WAYLAND_WHEEL_UNITS_PER_NOTCH, 15.0);
+        assert!((units - WAYLAND_WHEEL_UNITS_PER_NOTCH).abs() < f32::EPSILON);
+        assert!((WAYLAND_WHEEL_UNITS_PER_NOTCH - 15.0).abs() < f32::EPSILON);
     }
 
     proptest! {

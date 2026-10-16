@@ -161,6 +161,8 @@ pub struct Collector {
     pointer: Vec2,
     /// Physical pixels per logical pixel.
     dpi: f32,
+    /// Wheel units the platform reports per notch.
+    wheel_units_per_notch: f32,
 }
 
 impl Default for Collector {
@@ -178,6 +180,15 @@ impl Collector {
             held: HeldMods::default(),
             pointer: Vec2::ZERO,
             dpi: 1.0,
+            wheel_units_per_notch: 1.0,
+        }
+    }
+
+    /// Sets how many wheel units make one notch; ignored unless positive
+    /// and finite.
+    pub fn set_wheel_units_per_notch(&mut self, units: f32) {
+        if units.is_finite() && units > 0.0 {
+            self.wheel_units_per_notch = units;
         }
     }
 
@@ -213,7 +224,7 @@ impl EventHandler for Collector {
         if y != 0.0 {
             self.events.push(InputEvent::Scroll {
                 pos: self.pointer,
-                delta: y,
+                delta: y / self.wheel_units_per_notch,
             });
         }
     }
