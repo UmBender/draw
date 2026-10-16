@@ -161,6 +161,8 @@ pub struct Collector {
     pointer: Vec2,
     /// Physical pixels per logical pixel.
     dpi: f32,
+    /// Wheel units the platform reports per notch.
+    wheel_units_per_notch: f32,
 }
 
 impl Default for Collector {
@@ -178,6 +180,15 @@ impl Collector {
             held: HeldMods::default(),
             pointer: Vec2::ZERO,
             dpi: 1.0,
+            wheel_units_per_notch: 1.0,
+        }
+    }
+
+    /// Sets how many wheel units make one notch; ignored unless positive
+    /// and finite.
+    pub fn set_wheel_units_per_notch(&mut self, units: f32) {
+        if units.is_finite() && units > 0.0 {
+            self.wheel_units_per_notch = units;
         }
     }
 
@@ -213,7 +224,7 @@ impl EventHandler for Collector {
         if y != 0.0 {
             self.events.push(InputEvent::Scroll {
                 pos: self.pointer,
-                delta: y,
+                delta: y / self.wheel_units_per_notch,
             });
         }
     }
@@ -506,6 +517,44 @@ mod tests {
         };
         assert!(pos_eq(pos, Vec2::new(40.0, 50.0)));
         assert!(approx_eq(delta, -1.0, EPS));
+    }
+
+    #[test]
+    fn collector_scroll_divides_by_units_per_notch() {
+        // Arrange: a Wayland compositor reporting 15 units per notch
+        let mut c = Collector::new();
+        c.set_wheel_units_per_notch(15.0);
+        // Act
+        c.mouse_wheel_event(0.0, 15.0);
+        c.mouse_wheel_event(0.0, -7.5);
+        let events = drain(&mut c);
+        // Assert
+        let deltas: Vec<f32> = events
+            .iter()
+            .filter_map(|event| match event {
+                InputEvent::Scroll { delta, .. } => Some(*delta),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(deltas.len(), 2, "{events:?}");
+        assert!(approx_eq(deltas[0], 1.0, EPS));
+        assert!(approx_eq(deltas[1], -0.5, EPS));
+    }
+
+    #[test]
+    fn collector_ignores_non_positive_units_per_notch() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_wheel_units_per_notch(0.0);
+        c.set_wheel_units_per_notch(f32::NAN);
+        // Act
+        c.mouse_wheel_event(0.0, 1.0);
+        let events = drain(&mut c);
+        // Assert: still one notch per unit
+        let InputEvent::Scroll { delta, .. } = events[0] else {
+            panic!("expected scroll, got {:?}", events[0]);
+        };
+        assert!(approx_eq(delta, 1.0, EPS));
     }
 
     #[test]

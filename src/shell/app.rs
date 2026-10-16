@@ -395,6 +395,10 @@ pub async fn run() {
     }
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
+    collector.set_wheel_units_per_notch(backend::wheel_units_per_notch(
+        backend::from_env().backend,
+        std::env::var_os("WAYLAND_DISPLAY").as_deref(),
+    ));
     // Experimental features are read once (ADR-T31-1).
     let experimental = std::env::var(EXPERIMENTAL_ENV).ok();
     let mut editor =
