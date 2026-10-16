@@ -205,6 +205,14 @@ step 27 (packaging).
   medium zoom, as ADR-T24-5 already records. Finding outside T28: on
   X11 the moved frames exceed the ADR-T26-2 budget (p95 3.25 ms, max
   5.43 ms) — for a follow-up, not caused by this task.
-- Pending (owner): AC-4 sharpness at 125 %/150 % (X11 vs Wayland
-  screenshots) and the Flatpak run (`--socket=wayland` with
-  `DRAW_BACKEND=wayland`).
+- 2026-10-15 — Flatpak: bundle rebuilt with `scripts/package.sh` and
+  installed; `flatpak info --show-permissions` lists
+  `sockets=wayland;x11;`. The owner ran it with
+  `--env=DRAW_BACKEND=wayland` and without the variable; both ran well,
+  no issues reported.
+- 2026-10-15 — AC-4 deferred by the owner (fractional-scale comparison
+  takes a session of its own). It does not block T28: Wayland stays
+  opt-in whatever the result. Follow-ups for the integrator: a task for
+  AC-4 (X11 vs Wayland at 125 %/150 %, and miniquad fractional-scale
+  support if Wayland is blurrier), and one for the X11 moved-frame
+  overrun of ADR-T26-2 found in AC-6.
