@@ -247,6 +247,30 @@ mod tests {
         );
     }
 
+    #[test]
+    fn wheel_units_per_notch_is_one_on_x11() {
+        // Arrange / Act
+        let on_x11 = wheel_units_per_notch(Backend::X11, Some(OsStr::new("wayland-1")));
+        let no_session = wheel_units_per_notch(Backend::Wayland, None);
+        let empty = wheel_units_per_notch(Backend::Wayland, Some(OsStr::new("")));
+
+        // Assert: X11 reports one unit per notch, and Wayland without a
+        // session falls back to X11
+        assert_eq!(on_x11, 1.0);
+        assert_eq!(no_session, 1.0);
+        assert_eq!(empty, 1.0);
+    }
+
+    #[test]
+    fn wheel_units_per_notch_on_native_wayland() {
+        // Arrange / Act
+        let units = wheel_units_per_notch(Backend::Wayland, Some(OsStr::new("wayland-1")));
+
+        // Assert
+        assert_eq!(units, WAYLAND_WHEEL_UNITS_PER_NOTCH);
+        assert_eq!(WAYLAND_WHEEL_UNITS_PER_NOTCH, 15.0);
+    }
+
     proptest! {
         #[test]
         fn choose_any_value_warns_unless_known(value in ".*") {
