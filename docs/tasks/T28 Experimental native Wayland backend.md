@@ -1,7 +1,7 @@
 ---
 id: T28
 title: Experimental native Wayland backend
-status: review
+status: done
 wave: 21
 branch: task/T28-wayland
 depends_on: [T27]
@@ -216,3 +216,5 @@ step 27 (packaging).
   AC-4 (X11 vs Wayland at 125 %/150 %, and miniquad fractional-scale
   support if Wayland is blurrier), and one for the X11 moved-frame
   overrun of ADR-T26-2 found in AC-6.
+- 2026-10-15 — Integrated into `main`. Status → done; AC-4 and the
+  follow-ups above are not yet on the Task Board.

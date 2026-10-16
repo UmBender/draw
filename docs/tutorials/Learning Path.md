@@ -56,6 +56,9 @@ flowchart LR
   s19 --> s31
   s12 --> s27[27 Shipping a binary to other Linux machines]
   s14 --> s27
+  s12 --> s28[28 Choosing a window backend at startup]
+  s26 --> s28
+  s27 --> s28
 ```
 
 | Step | Tutorial | Task | Status |
@@ -87,6 +90,7 @@ flowchart LR
 | 25 | [[25 Indexing a z-ordered store]] | [[T25 Linear-time selection with large documents]] | done |
 | 26 | [[26 Reusing a frame during a gesture]] | [[T26 Pan and zoom without re-rendering]] | done |
 | 27 | [[27 Shipping a binary to other Linux machines]] | [[T27 Linux packaging]] | done |
+| 28 | [[28 Choosing a window backend at startup]] | [[T28 Experimental native Wayland backend]] | done |
 | 29 | [[29 Typing on a canvas without losing the shortcuts]] | [[T29 Text blocks]] | done |
 | 30 | [[30 Parsing and laying out a small TeX subset]] | [[T30 Basic TeX formulas]] | done |
 | 31 | [[31 Prototyping an interaction behind a switch]] | [[T31 Text in rectangles and grid cells]] | done |

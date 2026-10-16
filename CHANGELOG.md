@@ -37,6 +37,9 @@ All notable changes to draw are listed here. The format follows
 - A crash writes a report with the app version and build id to stderr
   and to `~/.local/state/draw/crash.log`; release packages ship split
   debug symbols (`draw.debug`) to trace it.
+- Experimental native Wayland: `DRAW_BACKEND=wayland` runs draw without
+  XWayland (falls back to X11 if Wayland is unavailable). X11 stays the
+  default; the Flatpak grants both sockets.
 
 ### Changed
 

@@ -131,4 +131,4 @@ flowchart TD
 | [[T33 Math font for formulas]] | done | T30 | `task/T33-math-font` |
 | [[T31 Text in rectangles and grid cells]] | done | T29 | `task/T31-shape-text` |
 | [[T27 Linux packaging]] | done | T14 | `task/T27-packaging` |
-| [[T28 Experimental native Wayland backend]] | ready | T27 | `task/T28-wayland` |
+| [[T28 Experimental native Wayland backend]] | done | T27 | `task/T28-wayland` |
