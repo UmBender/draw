@@ -210,3 +210,31 @@ fn icons_have_every_size() {
         assert_eq!(dimension(20), Some(size), "draw-{size}.png height");
     }
 }
+
+#[test]
+fn cargo_patches_miniquad_with_the_vendored_copy() {
+    // Arrange
+    let manifest = read("Cargo.toml");
+    let lock = read("Cargo.lock");
+    let vendored = read("vendor/miniquad/Cargo.toml");
+
+    // Act
+    let patch = toml_table(&manifest, "patch.crates-io");
+
+    // Assert: ADR-T35-1 — the patch points at vendor/miniquad, which is
+    // 0.4.11 with its change list, and the lock file uses it (no source).
+    assert!(
+        patch
+            .iter()
+            .any(|line| line.starts_with("miniquad") && line.contains("vendor/miniquad")),
+        "{patch:?}"
+    );
+    assert!(vendored.contains("version = \"0.4.11\""));
+    assert!(read("vendor/miniquad/PATCHED.md").contains("ADR-T35-1"));
+    let entry: Vec<&str> = lock
+        .split("[[package]]")
+        .filter(|block| block.contains("name = \"miniquad\""))
+        .collect();
+    assert_eq!(entry.len(), 1, "{entry:?}");
+    assert!(!entry[0].contains("source ="), "{}", entry[0]);
+}

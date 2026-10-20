@@ -437,6 +437,36 @@ mod tests {
         assert_eq!(tap, vec![up_at(0.0, 0.0, PointerButton::Left)]);
     }
 
+    #[test]
+    fn tap_filter_passes_pressure_without_changing_state() {
+        // Arrange
+        let mut filter = TapFilter::new(SLOP);
+        run(
+            &mut filter,
+            &[down_at(0.0, 0.0, PointerButton::Left), move_at(4.0, 0.0)],
+        );
+        let pressures = [
+            InputEvent::Pressure {
+                pressure: Some(0.7),
+            },
+            InputEvent::Pressure { pressure: None },
+            InputEvent::Pressure {
+                pressure: Some(f32::NAN),
+            },
+        ];
+
+        // Act
+        let passed = run(&mut filter, &pressures);
+        let tap = run(&mut filter, &[up_at(9.0, 0.0, PointerButton::Left)]);
+
+        // Assert
+        assert_eq!(passed.len(), pressures.len());
+        for (a, b) in passed.iter().zip(&pressures) {
+            assert_eq!(format!("{a:?}"), format!("{b:?}"));
+        }
+        assert_eq!(tap, vec![up_at(0.0, 0.0, PointerButton::Left)]);
+    }
+
     proptest! {
         #[test]
         fn tap_filter_keeps_presses_and_releases_in_order(

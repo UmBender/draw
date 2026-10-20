@@ -13,6 +13,7 @@ pub mod keymap;
 pub mod math_metrics;
 pub mod numbering;
 pub mod palette;
+pub mod pressure;
 pub mod shape;
 pub mod smoothing;
 pub mod snap;

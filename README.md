@@ -40,8 +40,8 @@ single-key shortcut so your hands never leave the keyboard for long.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
 - **Toolbar** — clickable tools, colours and helpers, hidden with `Tab`.
-- **Pen tablets** — draw with a pen; taps are clean clicks while a tablet
-  is attached.
+- **Pen tablets** — draw with a pen; pressure sets the stroke width, and
+  taps are clean clicks while a tablet is attached.
 - **Kanagawa Dragon** dark theme with a fixed six-colour palette.
 
 ## Install
@@ -323,10 +323,16 @@ DRAW_TABLET=off draw
 Map the tablet to **one monitor** in your compositor, otherwise strokes are
 stretched and taps slip further. On Hyprland put `output = current` (or a
 monitor name) in the `input:tablet` section; on X11 use
-`xinput map-to-output <pen device> <output>`. Pressure is not used yet, and
-on the experimental native Wayland backend the pen moves the cursor but
-cannot draw: miniquad does not speak the Wayland tablet protocol. Use the
-default X11 backend with a pen.
+`xinput map-to-output <pen device> <output>`.
+
+**Pressure.** With the Pen tool, pressing harder draws a thicker line: a
+normal (half) press gives the width chosen with `[` / `]`, a light touch
+down to a quarter of it, a hard press up to twice. Mouse strokes and the
+other tools are unchanged. Pressure works on the default X11 backend and on
+the native Wayland backend (`DRAW_BACKEND=wayland`), where the pen also
+draws and both barrel buttons pan and erase. Tilt, rotation and the eraser
+end of the pen are not used. draw ships a patched copy of its window
+library for this (`vendor/miniquad`).
 
 ### Experimental
 

@@ -43,6 +43,9 @@ pub enum Shape {
     Stroke {
         /// Polyline vertices in drawing order.
         points: Vec<Vec2>,
+        /// Width factor of each point, multiplying `style.width`; `None`
+        /// for a stroke drawn without pressure (ADR-T35-2).
+        widths: Option<Vec<f32>>,
         /// Outline style.
         style: Style,
     },
@@ -272,6 +275,25 @@ impl Shape {
         }
     }
 
+    /// The largest width factor of a stroke with widths; `1` for every
+    /// other shape (ADR-T35-2).
+    #[must_use]
+    pub fn max_width_factor(&self) -> f32 {
+        let Self::Stroke {
+            widths: Some(widths),
+            ..
+        } = self
+        else {
+            return 1.0;
+        };
+        let max = widths.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        if max.is_finite() && max > 0.0 {
+            max
+        } else {
+            1.0
+        }
+    }
+
     /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).
     #[must_use]
     pub fn is_closed(&self) -> bool {
@@ -318,7 +340,7 @@ impl Shape {
                 Aabb::from_corners(*a, *b).union(&Aabb::from_corners(*a - cell, *a - cell))
             }
         };
-        geometry.expand(half_width(self.style().width))
+        geometry.expand(half_width(self.style().width * self.max_width_factor()))
     }
 
     /// `true` if `p` is within `tol + width / 2` of the outline, or inside a
@@ -335,7 +357,7 @@ impl Shape {
     /// counts.
     #[must_use]
     pub fn hit_outline(&self, p: Vec2, tol: f32) -> bool {
-        let reach = tol + half_width(self.style().width);
+        let reach = tol + half_width(self.style().width * self.max_width_factor());
         if !p.is_finite() || !reach.is_finite() || !self.bounds().expand(tol).contains(p) {
             return false;
         }
@@ -705,7 +727,13 @@ impl Shape {
     pub fn is_finite(&self) -> bool {
         self.style().width.is_finite()
             && match self {
-                Self::Stroke { points, .. } => points.iter().all(|p| p.is_finite()),
+                Self::Stroke { points, widths, .. } => {
+                    points.iter().all(|p| p.is_finite())
+                        && widths.as_ref().is_none_or(|widths| {
+                            widths.len() == points.len()
+                                && widths.iter().all(|w| w.is_finite() && *w > 0.0)
+                        })
+                }
                 Self::Line { a, b, .. }
                 | Self::Arrow { a, b, .. }
                 | Self::Rect { a, b, .. }
@@ -954,8 +982,64 @@ mod tests {
     fn stroke(points: &[Vec2], width: f32) -> Shape {
         Shape::Stroke {
             points: points.to_vec(),
+            widths: None,
             style: style(width),
         }
+    }
+
+    fn pressed_stroke(points: &[Vec2], widths: &[f32], width: f32) -> Shape {
+        Shape::Stroke {
+            points: points.to_vec(),
+            widths: Some(widths.to_vec()),
+            style: style(width),
+        }
+    }
+
+    // ---- T35: per-point widths ----
+
+    #[test]
+    fn stroke_max_width_factor_without_widths_is_one() {
+        let s = stroke(&[v(0.0, 0.0), v(10.0, 0.0)], 2.0);
+
+        assert!(approx_eq(s.max_width_factor(), 1.0, EPS));
+        let r = rect(v(0.0, 0.0), v(1.0, 1.0), 1.0, None);
+        assert!(approx_eq(r.max_width_factor(), 1.0, EPS));
+    }
+
+    #[test]
+    fn stroke_bounds_grow_with_the_widest_point() {
+        // Arrange: width 2, widest factor 3 → half-width 3.
+        let s = pressed_stroke(&[v(0.0, 0.0), v(10.0, 0.0)], &[0.5, 3.0], 2.0);
+
+        // Act
+        let b = s.bounds();
+
+        // Assert
+        assert!(approx_eq(s.max_width_factor(), 3.0, EPS));
+        assert_vec_eq(b.min, v(-3.0, -3.0));
+        assert_vec_eq(b.max, v(13.0, 3.0));
+    }
+
+    #[test]
+    fn stroke_hit_reaches_a_thick_point() {
+        // Arrange: half-width 3 with the factor, 1 without.
+        let thick = pressed_stroke(&[v(0.0, 0.0), v(10.0, 0.0)], &[3.0, 3.0], 2.0);
+        let plain = stroke(&[v(0.0, 0.0), v(10.0, 0.0)], 2.0);
+
+        // Act / Assert
+        assert!(thick.hit(v(5.0, 2.5), 0.0));
+        assert!(!plain.hit(v(5.0, 2.5), 0.0));
+    }
+
+    #[test]
+    fn stroke_with_bad_widths_is_not_finite() {
+        let points = [v(0.0, 0.0), v(10.0, 0.0)];
+
+        assert!(pressed_stroke(&points, &[1.0, 2.0], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0, f32::NAN], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0, 0.0], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0, -1.0], 1.0).is_finite());
     }
 
     // ---- AC-1: construction and accessors ----
@@ -964,13 +1048,14 @@ mod tests {
     fn construct_stroke_keeps_points_and_style() {
         let s = Shape::Stroke {
             points: vec![v(0.0, 0.0), v(1.0, 2.0)],
+            widths: None,
             style: Style {
                 color: color(2),
                 width: 3.0,
             },
         };
 
-        let Shape::Stroke { points, style } = s else {
+        let Shape::Stroke { points, style, .. } = s else {
             panic!("expected Stroke");
         };
         assert_eq!(points.len(), 2);
@@ -1666,6 +1751,7 @@ mod tests {
             (prop::collection::vec(point(), 1..16), width.clone()).prop_map(|(points, w)| {
                 Shape::Stroke {
                     points,
+                    widths: None,
                     style: style(w),
                 }
             }),

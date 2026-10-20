@@ -297,7 +297,16 @@ mod tests {
                 smoothing: SmoothingLevel::Medium,
                 cursor: pos,
             };
-            on_pointer(&mut self.state, &mut ctx, Pointer { phase, pos, mods })
+            on_pointer(
+                &mut self.state,
+                &mut ctx,
+                Pointer {
+                    phase,
+                    pos,
+                    mods,
+                    pressure: None,
+                },
+            )
         }
 
         fn send(&mut self, phase: Phase, x: f32, y: f32) -> bool {

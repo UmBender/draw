@@ -153,15 +153,23 @@ impl<S: MeshSink> Batch<S> {
     /// ([`stroke_needs_joints`]) get round discs at breaks and ends. A
     /// single point is a dot (ADR-T24-4).
     pub fn polyline(&mut self, points: impl IntoIterator<Item = Vec2>, width: f32, color: Color) {
-        let h = width * 0.5;
-        let round = stroke_needs_joints(width);
+        self.polyline_widths(points.into_iter().map(|p| (p, width)), color);
+    }
+
+    /// [`Batch::polyline`] with a width per point: each strip pair is
+    /// offset by its own point's half-width, and caps and breaks are discs
+    /// of that point's width (ADR-T35-2).
+    pub fn polyline_widths(&mut self, points: impl IntoIterator<Item = (Vec2, f32)>, color: Color) {
         let mut points = points.into_iter();
-        let Some(first) = points.next() else {
+        let Some((first, first_width)) = points.next() else {
             return;
         };
-        let (mut prev, mut prev_normal) = (first, None::<Vec2>);
+        // The previous kept point, its half-width and whether it gets discs.
+        let (mut prev, mut h, mut round) =
+            (first, first_width * 0.5, stroke_needs_joints(first_width));
+        let mut prev_normal = None::<Vec2>;
         let mut last = None;
-        for p in points {
+        for (p, width) in points {
             let d = p - prev;
             let len = d.length();
             // Also skips non-finite steps.
@@ -192,6 +200,7 @@ impl<S: MeshSink> Batch<S> {
                 }
             }
             (prev, prev_normal) = (p, Some(n));
+            (h, round) = (width * 0.5, stroke_needs_joints(width));
         }
         match prev_normal {
             None => self.disc(first, h, color),
@@ -988,6 +997,17 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
     let color = color_of(style.color);
     let to_screen = |p: Vec2| camera.world_to_screen(p);
     match shape {
+        Shape::Stroke {
+            points,
+            widths: Some(widths),
+            style,
+        } => batch.polyline_widths(
+            points.iter().zip(widths).map(|(p, factor)| {
+                let width = stroke_point_width(style.width, *factor, camera.zoom());
+                (camera.world_to_screen(*p), width)
+            }),
+            color,
+        ),
         Shape::Stroke { points, .. } => draw_polyline(batch, points, camera, width, color),
         Shape::Line { a, b, .. } => {
             draw_segment(batch, to_screen(*a), to_screen(*b), width, color);
@@ -1197,6 +1217,13 @@ fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32
         width,
         color,
     );
+}
+
+/// Screen width in pixels of a stroke point: [`screen_width`] of the
+/// stroke's world width times the point's factor (ADR-T35-2).
+#[must_use]
+pub fn stroke_point_width(world_width: f32, factor: f32, zoom: f32) -> f32 {
+    screen_width(world_width * factor, zoom)
 }
 
 /// Draws a screen-space segment with round caps when thick.
@@ -1610,6 +1637,89 @@ mod tests {
         // Assert: one quad from the first to the last point.
         let (vertices, indices) = only_chunk(&rec);
         assert_eq!((vertices.len(), indices.len()), (4, 6));
+    }
+
+    // ---- T35 per-point widths -------------------------------------------
+
+    proptest! {
+        #[test]
+        fn polyline_widths_with_constant_width_matches_polyline(
+            xy in prop::collection::vec((-200.0f32..200.0, -200.0f32..200.0), 0..40),
+            width in 0.5f32..12.0,
+        ) {
+            let line = xy.iter().map(|&(x, y)| Vec2::new(x, y)).collect::<Vec<_>>();
+            let mut plain = Batch::new(Recorder::default());
+            let mut varying = Batch::new(Recorder::default());
+
+            plain.polyline(line.iter().copied(), width, RED);
+            varying.polyline_widths(line.iter().map(|&p| (p, width)), RED);
+            let (plain, varying) = (plain.finish(), varying.finish());
+
+            prop_assert_eq!(plain.chunks.len(), varying.chunks.len());
+            for ((pv, pi), (vv, vi)) in plain.chunks.iter().zip(&varying.chunks) {
+                prop_assert_eq!(pi, vi);
+                prop_assert_eq!(pv.len(), vv.len());
+                for (a, b) in pv.iter().zip(vv) {
+                    prop_assert!(position(a).approx_eq(position(b), 0.0));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn polyline_widths_offsets_each_point_by_its_half_width() {
+        // Arrange: a straight thin line, 1 px wide at the start, 2 px at the end.
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.polyline_widths(
+            [(Vec2::new(0.0, 0.0), 1.0), (Vec2::new(10.0, 0.0), 2.0)],
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: one quad, ±0.5 at x = 0 and ±1 at x = 10.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (4, 6));
+        let ys = |x: f32| {
+            let mut ys: Vec<f32> = vertices
+                .iter()
+                .map(position)
+                .filter(|p| approx_eq(p.x, x, EPS))
+                .map(|p| p.y)
+                .collect();
+            ys.sort_by(f32::total_cmp);
+            ys
+        };
+        let (start, end) = (ys(0.0), ys(10.0));
+        assert!(
+            approx_eq(start[0], -0.5, EPS) && approx_eq(start[1], 0.5, EPS),
+            "{start:?}"
+        );
+        assert!(
+            approx_eq(end[0], -1.0, EPS) && approx_eq(end[1], 1.0, EPS),
+            "{end:?}"
+        );
+    }
+
+    #[test]
+    fn stroke_screen_widths_scale_by_factor_and_clamp() {
+        assert!(approx_eq(stroke_point_width(2.0, 1.5, 2.0), 6.0, EPS));
+        assert!(approx_eq(
+            stroke_point_width(2.0, 0.25, 1.0),
+            MIN_SCREEN_WIDTH_PX,
+            EPS
+        ));
+        assert!(approx_eq(
+            stroke_point_width(2.0, f32::NAN, 1.0),
+            MIN_SCREEN_WIDTH_PX,
+            EPS
+        ));
+        assert!(approx_eq(
+            stroke_point_width(3.0, 1.0, 2.5),
+            screen_width(3.0, 2.5),
+            EPS
+        ));
     }
 
     #[test]

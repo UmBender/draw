@@ -21,6 +21,10 @@ use crate::core::geom::{Vec2, distance_to_segment};
 /// freeze the stroke at its first point.
 pub const MIN_ALPHA: f32 = 0.01;
 
+/// Largest width-factor error [`simplify_rdp_widths`] accepts when it
+/// drops a point (ADR-T35-2).
+pub const WIDTH_EPSILON: f32 = 0.1;
+
 /// User-selectable smoothing strength, cycled with `S` (see the keymap).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SmoothingLevel {
@@ -106,6 +110,11 @@ pub struct Smoother {
     last_raw: Option<Vec2>,
     /// Smoothed polyline so far.
     points: Vec<Vec2>,
+    /// Smoothed width factor of each point, if the first kept point had
+    /// one (ADR-T35-2).
+    widths: Option<Vec<f32>>,
+    /// Last finite width factor pushed, for points that come without one.
+    last_width: Option<f32>,
 }
 
 impl Smoother {
@@ -135,6 +144,8 @@ impl Smoother {
             last_kept_raw: None,
             last_raw: None,
             points: Vec::new(),
+            widths: None,
+            last_width: None,
         }
     }
 
@@ -145,32 +156,61 @@ impl Smoother {
     /// of it; the kept point is EMA-filtered before it joins
     /// [`Smoother::points`]. The first point is kept unfiltered.
     pub fn push(&mut self, raw: Vec2) -> bool {
+        self.push_width(raw, None)
+    }
+
+    /// [`Smoother::push`] with a width factor for the point.
+    ///
+    /// The first kept point decides whether the stroke has widths: with a
+    /// finite factor it does, and every later kept point gets one. A
+    /// missing or non-finite factor repeats the last one. Factors are
+    /// EMA-filtered with the same α as the points.
+    pub fn push_width(&mut self, raw: Vec2, width: Option<f32>) -> bool {
         let Some(raw) = raw.sanitize() else {
             return false;
         };
         self.last_raw = Some(raw);
+        if let Some(width) = width.filter(|w| w.is_finite()) {
+            self.last_width = Some(width);
+        }
 
-        let smoothed = match (self.last_kept_raw, self.points.last()) {
-            (Some(kept), Some(&prev)) => {
+        let (smoothed, smoothed_width) =
+            if let (Some(kept), Some(&prev)) = (self.last_kept_raw, self.points.last()) {
                 let d = raw.distance(kept);
                 // `d <= 0` catches exact duplicates even when min_dist is 0.
                 if d <= 0.0 || d < self.min_dist {
                     return false;
                 }
+                let prev_width = self.widths.as_ref().and_then(|w| w.last().copied());
+                let width = prev_width.zip(self.last_width);
                 if self.alpha >= 1.0 {
-                    raw
+                    (raw, width.map(|(_, w)| w))
                 } else {
                     // Same as `prev + α (raw − prev)`, but as a convex
                     // combination it cannot overflow for finite inputs.
-                    prev * (1.0 - self.alpha) + raw * self.alpha
+                    let a = self.alpha;
+                    let smoothed = prev * (1.0 - a) + raw * a;
+                    (smoothed, width.map(|(prev, w)| prev * (1.0 - a) + w * a))
                 }
-            }
-            _ => raw,
-        };
+            } else {
+                // The first kept point decides whether the stroke has widths.
+                self.widths = self.last_width.map(|_| Vec::new());
+                (raw, self.last_width)
+            };
 
         self.last_kept_raw = Some(raw);
         self.points.push(smoothed);
+        if let (Some(widths), Some(width)) = (&mut self.widths, smoothed_width) {
+            widths.push(width);
+        }
         true
+    }
+
+    /// The width factor of each point of [`Smoother::points`], `None` for
+    /// a stroke without widths.
+    #[must_use]
+    pub fn widths(&self) -> Option<&[f32]> {
+        self.widths.as_deref()
     }
 
     /// The live smoothed polyline, for drawing a preview while the pen is down.
@@ -186,18 +226,38 @@ impl Smoother {
     /// point for a click without movement.
     #[must_use]
     pub fn finish(self) -> Vec<Vec2> {
+        self.finish_with_widths().0
+    }
+}
+
+impl Smoother {
+    /// [`Smoother::finish`] with the width factors in step with the
+    /// points, simplified with [`simplify_rdp_widths`].
+    #[must_use]
+    pub fn finish_with_widths(self) -> (Vec<Vec2>, Option<Vec<f32>>) {
         let Self {
             epsilon,
             last_raw,
             mut points,
+            mut widths,
+            last_width,
             ..
         } = self;
         if let (Some(end), Some(&last)) = (last_raw, points.last()) {
             if end.distance(last) > 0.0 {
                 points.push(end);
+                if let (Some(widths), Some(width)) = (&mut widths, last_width) {
+                    widths.push(width);
+                }
             }
         }
-        simplify_rdp(&points, epsilon)
+        match widths {
+            None => (simplify_rdp(&points, epsilon), None),
+            Some(widths) => {
+                let (points, widths) = simplify_rdp_widths(&points, &widths, epsilon);
+                (points, Some(widths))
+            }
+        }
     }
 }
 
@@ -221,9 +281,53 @@ fn non_negative(value: f32) -> f32 {
 /// bound only holds for finite input.
 #[must_use]
 pub fn simplify_rdp(points: &[Vec2], eps: f32) -> Vec<Vec2> {
+    rdp_keep(points, eps, |_, _, _| 0.0)
+        .iter()
+        .zip(points)
+        .filter_map(|(&k, &p)| k.then_some(p))
+        .collect()
+}
+
+/// [`simplify_rdp`] for a polyline with a width factor per point.
+///
+/// A point is also kept when its factor is more than [`WIDTH_EPSILON`]
+/// from the factor linearly interpolated along the chord. Returns the kept
+/// points and their factors. `widths` shorter than `points` count as `1`.
+#[must_use]
+pub fn simplify_rdp_widths(points: &[Vec2], widths: &[f32], eps: f32) -> (Vec<Vec2>, Vec<f32>) {
+    let width = |i: usize| widths.get(i).copied().unwrap_or(1.0);
+    let keep = rdp_keep(points, eps, |first, last, i| {
+        // The factor the chord gives at `points[i]`'s projection onto it.
+        let (a, b) = (points[first], points[last]);
+        let d = b - a;
+        let len2 = d.dot(d);
+        let t = if len2 > 0.0 && len2.is_finite() {
+            ((points[i] - a).dot(d) / len2).clamp(0.0, 1.0)
+        } else {
+            (i - first) as f32 / (last - first) as f32
+        };
+        let chord = width(first) + (width(last) - width(first)) * t;
+        (width(i) - chord).abs()
+    });
+    keep.iter()
+        .enumerate()
+        .filter(|&(_, &k)| k)
+        .map(|(i, _)| (points[i], width(i)))
+        .unzip()
+}
+
+/// The points Ramer–Douglas–Peucker keeps: a point is kept when it is more
+/// than `eps` from the chord of its span; when no point is, the one whose
+/// `width_error(first, last, i)` exceeds [`WIDTH_EPSILON`] the most. Every
+/// point is kept for `eps` NaN or `<= 0`.
+fn rdp_keep(
+    points: &[Vec2],
+    eps: f32,
+    width_error: impl Fn(usize, usize, usize) -> f32,
+) -> Vec<bool> {
     let n = points.len();
     if n <= 2 || eps.is_nan() || eps <= 0.0 {
-        return points.to_vec();
+        return vec![true; n];
     }
 
     let mut keep = vec![false; n];
@@ -237,27 +341,29 @@ pub fn simplify_rdp(points: &[Vec2], eps: f32) -> Vec<Vec2> {
             continue;
         }
         let (a, b) = (points[first], points[last]);
-        let mut farthest = first;
-        let mut max_dist = eps;
-        for (i, &p) in points.iter().enumerate().take(last).skip(first + 1) {
-            let d = distance_to_segment(p, a, b);
-            if d > max_dist {
-                farthest = i;
-                max_dist = d;
+        let farthest = |error: &dyn Fn(usize) -> f32, tolerance: f32| {
+            let mut farthest = first;
+            let mut max_error = tolerance;
+            for i in first + 1..last {
+                let e = error(i);
+                if e > max_error {
+                    farthest = i;
+                    max_error = e;
+                }
             }
+            farthest
+        };
+        let mut split = farthest(&|i| distance_to_segment(points[i], a, b), eps);
+        if split == first {
+            split = farthest(&|i| width_error(first, last, i), WIDTH_EPSILON);
         }
-        if farthest != first {
-            keep[farthest] = true;
-            stack.push((first, farthest));
-            stack.push((farthest, last));
+        if split != first {
+            keep[split] = true;
+            stack.push((first, split));
+            stack.push((split, last));
         }
     }
-
-    points
-        .iter()
-        .zip(&keep)
-        .filter_map(|(&p, &k)| k.then_some(p))
-        .collect()
+    keep
 }
 
 #[cfg(test)]
@@ -767,6 +873,80 @@ mod tests {
         ]
     }
 
+    // ---- T35: width factors ----
+
+    #[test]
+    fn smoother_without_widths_reports_none() {
+        // Arrange
+        let mut s = Smoother::new(SmoothingLevel::Off.params(), 1.0);
+
+        // Act
+        s.push(v(0.0, 0.0));
+        s.push_width(v(10.0, 0.0), Some(1.5));
+
+        // Assert: the first kept point decides.
+        assert!(s.widths().is_none());
+        let (points, widths) = s.finish_with_widths();
+        assert_eq!(points.len(), 2);
+        assert!(widths.is_none());
+    }
+
+    #[test]
+    fn smoother_missing_width_repeats_the_last() {
+        // Arrange
+        let mut s = Smoother::new(SmoothingLevel::Off.params(), 1.0);
+
+        // Act
+        s.push_width(v(0.0, 0.0), Some(0.5));
+        s.push_width(v(10.0, 0.0), Some(1.5));
+        s.push_width(v(20.0, 5.0), None);
+        s.push_width(v(30.0, 0.0), Some(f32::NAN));
+
+        // Assert
+        let Some(widths) = s.widths() else {
+            panic!("expected widths");
+        };
+        assert_eq!(widths.len(), 4);
+        for (w, e) in widths.iter().zip([0.5, 1.5, 1.5, 1.5]) {
+            assert!(approx_eq(*w, e, EPS), "{widths:?}");
+        }
+    }
+
+    #[test]
+    fn smoother_widths_follow_the_ema() {
+        // Arrange: Medium has alpha 0.4 and min_dist 2.5.
+        let mut s = Smoother::new(medium(), 1.0);
+
+        // Act
+        s.push_width(v(0.0, 0.0), Some(1.0));
+        s.push_width(v(10.0, 0.0), Some(2.0));
+
+        // Assert: 1 + 0.4 (2 - 1).
+        let Some(widths) = s.widths() else {
+            panic!("expected widths");
+        };
+        assert!(approx_eq(widths[0], 1.0, EPS));
+        assert!(approx_eq(widths[1], 1.4, EPS), "{widths:?}");
+    }
+
+    #[test]
+    fn rdp_widths_keeps_a_width_change_on_a_straight_line() {
+        // Arrange: collinear points, thick in the middle.
+        let points = [v(0.0, 0.0), v(10.0, 0.0), v(20.0, 0.0)];
+        let widths = [1.0, 2.0, 1.0];
+
+        // Act
+        let (kept, kept_widths) = simplify_rdp_widths(&points, &widths, 1.0);
+
+        // Assert
+        assert_points_eq(&kept, &points);
+        assert_eq!(kept_widths.len(), 3);
+        // A change within WIDTH_EPSILON of the chord still goes.
+        let (kept, kept_widths) = simplify_rdp_widths(&points, &[1.0, 1.05, 1.1], 1.0);
+        assert_points_eq(&kept, &[points[0], points[2]]);
+        assert_eq!(kept_widths.len(), 2);
+    }
+
     proptest! {
         #[test]
         fn rdp_keeps_endpoints(points in polyline(), eps in 0.0_f32..50.0) {
@@ -827,6 +1007,42 @@ mod tests {
             let out = s.finish();
 
             prop_assert!(out.iter().all(|p| p.is_finite()));
+        }
+
+        #[test]
+        fn smoother_widths_stay_in_step_with_points(
+            lvl in level(),
+            raw in prop::collection::vec((any_f32(), any_f32(), prop::option::of(any_f32())), 1..64),
+        ) {
+            let mut s = Smoother::new(lvl.params(), 1.0);
+
+            for (x, y, w) in raw {
+                s.push_width(Vec2::new(x, y), w);
+                if let Some(widths) = s.widths() {
+                    prop_assert_eq!(widths.len(), s.points().len());
+                    prop_assert!(widths.iter().all(|w| w.is_finite()));
+                }
+            }
+            let (points, widths) = s.finish_with_widths();
+
+            if let Some(widths) = widths {
+                prop_assert_eq!(widths.len(), points.len());
+                prop_assert!(widths.iter().all(|w| w.is_finite()));
+            }
+        }
+
+        #[test]
+        fn rdp_widths_with_constant_widths_matches_rdp(points in polyline(), eps in any_f32()) {
+            let widths = vec![1.25; points.len()];
+
+            let (kept, kept_widths) = simplify_rdp_widths(&points, &widths, eps);
+
+            let plain = simplify_rdp(&points, eps);
+            prop_assert_eq!(kept.len(), plain.len());
+            for (a, b) in kept.iter().zip(&plain) {
+                prop_assert!(a.approx_eq(*b, 0.0));
+            }
+            prop_assert_eq!(kept_widths.len(), kept.len());
         }
     }
 }

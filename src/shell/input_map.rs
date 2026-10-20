@@ -6,6 +6,8 @@
 //! in arrival order. Raw positions are physical pixels; [`to_logical`] turns
 //! them into the logical pixels used by the editor and the renderer.
 
+use std::collections::VecDeque;
+
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::{EventHandler, KeyMods};
 
@@ -148,6 +150,20 @@ impl HeldMods {
     }
 }
 
+/// Largest distance in physical pixels, per axis, between a pointer event
+/// and the pen sample it is paired with.
+const PEN_MATCH_PX: f32 = 0.01;
+
+/// A pen sample from the window library: where a pen pointer event
+/// happened and how hard the tip pressed (ADR-T35-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PenSample {
+    /// Position in physical pixels.
+    pub pos: Vec2,
+    /// Tip pressure in `[0, 1]`.
+    pub pressure: f32,
+}
+
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
@@ -163,6 +179,10 @@ pub struct Collector {
     dpi: f32,
     /// Wheel units the platform reports per notch.
     wheel_units_per_notch: f32,
+    /// Pen samples of this frame not yet paired, oldest first.
+    pen: VecDeque<PenSample>,
+    /// Pressure of the last pointer event, as last emitted.
+    pressure: Option<f32>,
 }
 
 impl Default for Collector {
@@ -181,6 +201,8 @@ impl Collector {
             pointer: Vec2::ZERO,
             dpi: 1.0,
             wheel_units_per_notch: 1.0,
+            pen: VecDeque::new(),
+            pressure: None,
         }
     }
 
@@ -192,6 +214,12 @@ impl Collector {
         }
     }
 
+    /// Replaces the queued pen samples with this frame's (ADR-T35-1).
+    pub fn set_pen_samples(&mut self, samples: impl IntoIterator<Item = PenSample>) {
+        self.pen.clear();
+        self.pen.extend(samples);
+    }
+
     /// Sets the DPI scale used for the following pointer events.
     pub fn set_dpi(&mut self, dpi: f32) {
         self.dpi = dpi;
@@ -200,6 +228,23 @@ impl Collector {
     /// Removes and yields the collected events, oldest first.
     pub fn drain(&mut self) -> impl Iterator<Item = InputEvent> + '_ {
         self.events.drain(..)
+    }
+
+    /// Pairs a pointer event at physical `(x, y)` with the oldest queued pen
+    /// sample there, dropping older samples, and emits
+    /// [`InputEvent::Pressure`] if the pressure changed (ADR-T35-1).
+    fn pair_pen(&mut self, x: f32, y: f32) {
+        let near = |s: &PenSample| {
+            (s.pos.x - x).abs() <= PEN_MATCH_PX && (s.pos.y - y).abs() <= PEN_MATCH_PX
+        };
+        let pressure = self.pen.iter().position(near).and_then(|i| {
+            self.pen.drain(..i);
+            self.pen.pop_front().map(|s| s.pressure)
+        });
+        if pressure.map(f32::to_bits) != self.pressure.map(f32::to_bits) {
+            self.pressure = pressure;
+            self.events.push(InputEvent::Pressure { pressure });
+        }
     }
 
     /// Converts a physical position and remembers it as the pointer.
@@ -215,6 +260,7 @@ impl EventHandler for Collector {
     fn draw(&mut self) {}
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.pair_pen(x, y);
         let pos = self.track(x, y);
         let mods = self.held.modifiers();
         self.events.push(InputEvent::PointerMove { pos, mods });
@@ -232,6 +278,7 @@ impl EventHandler for Collector {
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
+            self.pair_pen(x, y);
             let mods = self.held.modifiers();
             self.events
                 .push(InputEvent::PointerDown { pos, button, mods });
@@ -241,6 +288,7 @@ impl EventHandler for Collector {
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
+            self.pair_pen(x, y);
             let mods = self.held.modifiers();
             self.events
                 .push(InputEvent::PointerUp { pos, button, mods });
@@ -687,6 +735,127 @@ mod tests {
                     alt: false,
                 },
             }]
+        );
+    }
+
+    // ---- T35 pen samples ---------------------------------------------------
+
+    fn sample(x: f32, y: f32, pressure: f32) -> PenSample {
+        PenSample {
+            pos: Vec2::new(x, y),
+            pressure,
+        }
+    }
+
+    fn pressure(p: Option<f32>) -> InputEvent {
+        InputEvent::Pressure { pressure: p }
+    }
+
+    fn moved(x: f32, y: f32) -> InputEvent {
+        InputEvent::PointerMove {
+            pos: Vec2::new(x, y),
+            mods: Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn collector_pairs_pen_samples_with_pointer_events() {
+        // Arrange: physical pixels at DPI 2.
+        let mut c = Collector::new();
+        c.set_dpi(2.0);
+        c.set_pen_samples(vec![sample(20.0, 20.0, 0.3), sample(40.0, 20.0, 0.6)]);
+
+        // Act
+        c.mouse_motion_event(20.0, 20.0);
+        c.mouse_button_down_event(MouseButton::Left, 40.0, 20.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.3)),
+                moved(10.0, 10.0),
+                pressure(Some(0.6)),
+                InputEvent::PointerDown {
+                    pos: Vec2::new(20.0, 10.0),
+                    button: PointerButton::Left,
+                    mods: Modifiers::NONE,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_emits_pressure_only_when_it_changes() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![sample(1.0, 1.0, 0.5), sample(2.0, 1.0, 0.5)]);
+
+        // Act
+        c.mouse_motion_event(1.0, 1.0);
+        c.mouse_motion_event(2.0, 1.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [pressure(Some(0.5)), moved(1.0, 1.0), moved(2.0, 1.0)]
+        );
+    }
+
+    #[test]
+    fn collector_mouse_after_pen_clears_pressure() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![sample(1.0, 1.0, 0.5)]);
+
+        // Act
+        c.mouse_motion_event(1.0, 1.0);
+        c.mouse_motion_event(50.0, 50.0);
+        c.mouse_motion_event(60.0, 50.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.5)),
+                moved(1.0, 1.0),
+                pressure(None),
+                moved(50.0, 50.0),
+                moved(60.0, 50.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_drops_samples_older_than_the_match() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![
+            sample(1.0, 1.0, 0.2),
+            sample(2.0, 2.0, 0.4),
+            sample(3.0, 3.0, 0.6),
+        ]);
+
+        // Act: the event at (1, 1) comes after the (2, 2) match.
+        c.mouse_motion_event(2.0, 2.0);
+        c.mouse_motion_event(1.0, 1.0);
+        c.mouse_motion_event(3.0, 3.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.4)),
+                moved(2.0, 2.0),
+                pressure(None),
+                moved(1.0, 1.0),
+                pressure(Some(0.6)),
+                moved(3.0, 3.0),
+            ]
         );
     }
 }

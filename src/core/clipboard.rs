@@ -258,6 +258,7 @@ pub(crate) mod testkit {
             phase,
             pos: Vec2::new(x, y),
             mods,
+            pressure: None,
         }
     }
 }

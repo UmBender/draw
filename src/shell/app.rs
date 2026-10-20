@@ -16,6 +16,7 @@ use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
+use macroquad::miniquad::pen;
 use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
@@ -41,7 +42,7 @@ use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
 use crate::shell::glyphs::GlyphAtlas;
-use crate::shell::input_map::Collector;
+use crate::shell::input_map::{Collector, PenSample};
 use crate::shell::render::{self, TextStats, to_mq_color};
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -421,6 +422,7 @@ pub async fn run() {
             dirty |= editor.handle(InputEvent::Resize { size: viewport });
         }
         collector.set_dpi(dpi);
+        collector.set_pen_samples(pen_samples());
         repeat_all_miniquad_input(&mut collector, subscriber);
         for event in collector.drain() {
             dirty |= dispatch(&mut editor, event);
@@ -428,6 +430,18 @@ pub async fn run() {
         frame.present(&editor, viewport, dpi, dirty);
         next_frame().await;
     }
+}
+
+/// The pen samples the window library pushed since the last call
+/// (ADR-T35-1).
+fn pen_samples() -> Vec<PenSample> {
+    pen::take_samples()
+        .into_iter()
+        .map(|s| PenSample {
+            pos: Vec2::new(s.x, s.y),
+            pressure: s.pressure,
+        })
+        .collect()
 }
 
 /// Sends one event to the toolbar or the editor. Returns whether the view
@@ -720,6 +734,15 @@ mod tests {
     use crate::core::geom::approx_eq;
     use macroquad::miniquad::conf::LinuxBackend;
     use proptest::prelude::*;
+
+    #[test]
+    fn pen_samples_are_empty_without_a_window() {
+        // Arrange / Act: no backend has run, so nothing was pushed.
+        let samples = pen_samples();
+
+        // Assert
+        assert!(samples.is_empty());
+    }
 
     #[test]
     fn window_conf_sets_wm_class() {
