@@ -1,7 +1,7 @@
 ---
 id: ADR-T35-1
 title: Vendored miniquad with a pen tablet patch
-status: proposed
+status: accepted
 kind: decision
 date: 2026-10-20
 task: T35
@@ -93,7 +93,9 @@ replays only the events it knows to input subscribers.
   right = eraser, and the pen draws natively.
 - On X11 a pressure-only change (pen still) produces no sample until the
   pointer moves. At 175 Hz this is not visible.
-- `cargo fmt --all` also checks the vendored crate.
+- The vendored crate is not a workspace member: `cargo fmt --all` and
+  `cargo clippy` skip it, and its two upstream compiler warnings show in
+  every build.
 
 ## Rollback plan
 

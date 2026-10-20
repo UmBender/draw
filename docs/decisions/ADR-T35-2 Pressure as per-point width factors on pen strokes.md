@@ -1,7 +1,7 @@
 ---
 id: ADR-T35-2
 title: Pressure as per-point width factors on pen strokes
-status: proposed
+status: accepted
 kind: decision
 date: 2026-10-20
 task: T35

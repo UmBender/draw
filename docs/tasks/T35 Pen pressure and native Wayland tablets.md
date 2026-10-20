@@ -1,7 +1,7 @@
 ---
 id: T35
 title: Pen pressure and native Wayland tablets
-status: in-progress
+status: review
 wave: 23
 branch: task/T35-pen-pressure
 depends_on: [T34]
@@ -163,16 +163,17 @@ Decisions: [[ADR-T35-1 Vendored miniquad with a pen tablet patch]],
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T35): …`
-- [ ] tests — `test(T35): …`
-- [ ] models — `feat(T35): …`
-- [ ] behaviour — `feat(T35): …`
-- [ ] quality — `chore(T35): …`
-- [ ] docs — `docs(T35): …`
+- [x] spec — `docs(T35): specify pen pressure acceptance criteria`
+- [x] tests — `test(T35): add failing tests for pen pressure and stroke widths`
+- [x] models — `feat(T35): add pressure, stroke width and pen sample types`
+- [x] behaviour — `feat(T35): read pen pressure and draw strokes with per-point widths`
+- [x] quality — `chore(T35): pass clippy and rustfmt`
+- [x] docs — `docs(T35): add feature note and tutorial`
 
 ## Learning path
 
-Step 35 — requires step 34 (pen tablets).
+Step 35 — requires step 34 (telling a tap from a drag) and step 24
+(layered redraws, the stroke strip).
 
 ## Log
 
@@ -189,3 +190,23 @@ Step 35 — requires step 34 (pen tablets).
   turn tablet tip presses into pointer clicks for clients without
   `zwp_tablet_v2`.
 - 2026-10-20 — Owner decisions taken (above); spec written.
+- 2026-10-20 — Spec, tests, models, behaviour, quality committed on
+  `task/T35-pen-pressure`. `src/core/clipboard.rs` was added to *Files
+  owned*: its test helper builds a `Pointer`. Deviations from the spec:
+  `arb_pressure` in `tests/fuzz.rs` decodes one byte instead of a
+  `prop_oneof!`, and the pressure session cycles 1–15 pressures: nested
+  unions overflowed the 2 MB test-thread stack in debug builds.
+  `simplify_rdp` now shares `rdp_keep` with `simplify_rdp_widths`: a span
+  is split on geometry first, then on width, so constant widths give
+  exactly the old result (proptest).
+- 2026-10-20 — Smoke runs on the target: both backends start; with
+  `WAYLAND_DEBUG=client` the native backend binds `zwp_tablet_manager_v2`,
+  gets the tablet seat and the HUION 420 tablet, pad and pad group with
+  no protocol error. The pen tool object only appears once the pen is in
+  proximity, so the pen path is part of AC-11.
+- 2026-10-20 — `scripts/check.sh` green. The vendored crate is not a
+  workspace member, so fmt and clippy skip it; its two upstream warnings
+  (`set_or_replace_display` unused, `static_mut_refs`) show in builds.
+  `docs/architecture/Architecture.md` updated (`core::pressure`,
+  `vendor/miniquad`, pairing in the data flow). ADRs accepted. AC-11
+  (owner check with the pen, both backends) pending. Status → review.
