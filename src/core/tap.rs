@@ -69,11 +69,11 @@ impl TapFilter {
         if self.slop <= 0.0 {
             return pass;
         }
-        let pos = match event {
-            InputEvent::PointerDown { pos, .. }
-            | InputEvent::PointerMove { pos, .. }
-            | InputEvent::PointerUp { pos, .. } => pos,
-            _ => return pass,
+        let (InputEvent::PointerDown { pos, .. }
+        | InputEvent::PointerMove { pos, .. }
+        | InputEvent::PointerUp { pos, .. }) = event
+        else {
+            return pass;
         };
         // The editor drops non-finite positions; they must not move the
         // state either.

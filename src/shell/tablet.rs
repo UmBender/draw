@@ -131,7 +131,7 @@ mod tests {
     use proptest::prelude::*;
     use std::ffi::OsStr;
 
-    /// Blocks of the owner's `/proc/bus/input/devices` (2026-10-20, x86_64):
+    /// Blocks of the owner's `/proc/bus/input/devices` (2026-10-20, `x86_64`):
     /// keyboard, touchpad, the HUION 420 pen and its mouse interface.
     const OWNER_DEVICES: &str = "\
 I: Bus=0011 Vendor=0001 Product=0001 Version=ab83
