@@ -94,8 +94,8 @@ replays only the events it knows to input subscribers.
 - On X11 a pressure-only change (pen still) produces no sample until the
   pointer moves. At 175 Hz this is not visible.
 - The vendored crate is not a workspace member: `cargo fmt --all` and
-  `cargo clippy` skip it, and its two upstream compiler warnings show in
-  every build.
+  `cargo clippy` skip it. Cargo shows a path dependency's compiler
+  warnings, so the patch also fixes miniquad's two upstream warnings.
 
 ## Rollback plan
 

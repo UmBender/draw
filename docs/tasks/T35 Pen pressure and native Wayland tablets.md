@@ -210,3 +210,8 @@ Step 35 — requires step 34 (telling a tap from a drag) and step 24
   `docs/architecture/Architecture.md` updated (`core::pressure`,
   `vendor/miniquad`, pairing in the data flow). ADRs accepted. AC-11
   (owner check with the pen, both backends) pending. Status → review.
+- 2026-10-20 — Owner check: pressure works. The owner reported the two
+  upstream miniquad warnings in the build (Cargo does not cap lints for a
+  path dependency). Fixed in the vendored copy (`PATCHED.md`): the
+  Android-only `set_or_replace_display` is compiled only for Android, and
+  the X11 clipboard reads `MESSAGE` through `addr_of!`.
