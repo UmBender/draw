@@ -65,6 +65,8 @@ flowchart TD
   T29 --> T30
   T29 --> T31[T31 Text in rectangles and grid cells]
   T30 --> T33[T33 Math font for formulas]
+  T28 --> T34[T34 Pen tablet input]
+  T34 --> T35[T35 Pen pressure and native Wayland tablets]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -93,6 +95,8 @@ flowchart TD
 | 19 | [[T31 Text in rectangles and grid cells]] |
 | 20 | [[T27 Linux packaging]] |
 | 21 | [[T28 Experimental native Wayland backend]] |
+| 22 | [[T34 Pen tablet input]] |
+| 23 | [[T35 Pen pressure and native Wayland tablets]] |
 
 ## Status
 
@@ -132,3 +136,5 @@ flowchart TD
 | [[T31 Text in rectangles and grid cells]] | done | T29 | `task/T31-shape-text` |
 | [[T27 Linux packaging]] | done | T14 | `task/T27-packaging` |
 | [[T28 Experimental native Wayland backend]] | done | T27 | `task/T28-wayland` |
+| [[T34 Pen tablet input]] | ready | T28 | `task/T34-pen-tablet` |
+| [[T35 Pen pressure and native Wayland tablets]] | todo | T34 | `task/T35-pen-pressure` |
