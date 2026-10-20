@@ -19,6 +19,7 @@ use draw::core::keymap::BINDINGS;
 use draw::core::numbering::FIRST_NUMBER;
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
+use draw::core::tap::PEN_TAP_SLOP_PX;
 use draw::core::tex;
 use draw::core::text_layout::typeset;
 use proptest::prelude::*;
@@ -681,7 +682,11 @@ fn run_session_with(
     session: &[InputEvent],
     experimental: Experimental,
 ) -> Result<Editor, TestCaseError> {
-    let mut editor = Editor::new().with_experimental(experimental);
+    run_session_on(Editor::new().with_experimental(experimental), session)
+}
+
+/// [`run_session`] on `editor`.
+fn run_session_on(mut editor: Editor, session: &[InputEvent]) -> Result<Editor, TestCaseError> {
     check_invariants(&editor, 0)?;
     for (i, &event) in session.iter().enumerate() {
         editor.handle(event);
@@ -991,7 +996,7 @@ proptest! {
 
     #[test]
     fn undo_all_then_redo_all_is_symmetric(session in arb_session()) {
-        check_undo_redo_symmetric(&session, Experimental::default())?;
+        check_undo_redo_symmetric(&session, Editor::new())?;
     }
 
     #[test]
@@ -1001,7 +1006,18 @@ proptest! {
 
     #[test]
     fn shape_text_undo_all_then_redo_all_is_symmetric(session in arb_session()) {
-        check_undo_redo_symmetric(&session, SHAPE_TEXT_ON)?;
+        check_undo_redo_symmetric(&session, Editor::new().with_experimental(SHAPE_TEXT_ON))?;
+    }
+
+    #[test]
+    fn pen_tap_sessions_never_panic_and_keep_invariants(session in arb_session()) {
+        // T34: every event goes through the tap filter first.
+        run_session_on(pen_editor(), &session)?;
+    }
+
+    #[test]
+    fn pen_tap_undo_all_then_redo_all_is_symmetric(session in arb_session()) {
+        check_undo_redo_symmetric(&session, pen_editor())?;
     }
 
     #[test]
@@ -1014,17 +1030,19 @@ proptest! {
     }
 }
 
+/// An editor with the pen tap slop on (T34).
+fn pen_editor() -> Editor {
+    Editor::new().with_tap_slop(PEN_TAP_SLOP_PX)
+}
+
 /// Shape text on (T31).
 const SHAPE_TEXT_ON: Experimental = Experimental { shape_text: true };
 
 /// Runs `session`, undoes everything (the document must be empty unless the
 /// history was capped) and redoes everything (the document must be back).
-fn check_undo_redo_symmetric(
-    session: &[InputEvent],
-    experimental: Experimental,
-) -> Result<(), TestCaseError> {
+fn check_undo_redo_symmetric(session: &[InputEvent], editor: Editor) -> Result<(), TestCaseError> {
     // Arrange
-    let mut editor = run_session_with(session, experimental)?;
+    let mut editor = run_session_on(editor, session)?;
     editor.apply(Command::Cancel);
     // Leftover redo entries would make "redo all" overshoot the snapshot.
     while editor.can_redo() {

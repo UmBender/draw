@@ -519,6 +519,30 @@ mod tests {
         }
     }
 
+    // T34
+
+    #[test]
+    fn pen_badge_sits_in_the_strip_below_the_buttons() {
+        // Arrange
+        let strip = panel(VIEWPORT);
+        let buttons = layout(VIEWPORT);
+        let Some(last) = buttons.last() else {
+            panic!("toolbar has buttons");
+        };
+
+        // Act
+        let badge = pen_badge(VIEWPORT);
+
+        // Assert
+        assert!(
+            strip.contains(badge.min) && strip.contains(badge.max),
+            "{badge:?}"
+        );
+        assert!(badge.min.y > last.rect.max.y, "{badge:?} below {last:?}");
+        assert!(badge.width() > 0.0 && badge.height() > 0.0);
+        assert!(hit(&buttons, badge.center()).is_none());
+    }
+
     // AC-3
 
     #[test]
