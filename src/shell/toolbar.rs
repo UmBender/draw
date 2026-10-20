@@ -164,6 +164,14 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
     buttons
 }
 
+/// Where the `pen` badge sits while pen taps are held still (T34): the
+/// bottom of the strip, below every button.
+#[must_use]
+pub fn pen_badge(viewport: Vec2) -> Aabb {
+    let _ = viewport;
+    todo!()
+}
+
 /// The command of the button under `pos`, `None` if there is none or `pos`
 /// is not finite.
 #[must_use]

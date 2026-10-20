@@ -1,3 +1,68 @@
+//! Tap slop for pen tablets (T34, ADR-T34-1).
+//!
+//! A pen tip slips a few pixels while it touches down and lifts, so a tap
+//! reaches the tools as a short drag. [`TapFilter`] sits in front of the
+//! editor: after a press it holds back the pointer moves that stay within
+//! the *slop* of the press point, and a release inside the slop arrives at
+//! the press point, so every tool sees a clean click. The first move outside
+//! the slop lets the last held move and itself through, and the drag goes on
+//! unchanged. A slop of zero turns the filter off.
+
+use crate::core::geom::Vec2;
+use crate::core::input::{InputEvent, Modifiers, PointerButton};
+
+/// Slop in screen pixels used while a pen tablet is attached.
+pub const PEN_TAP_SLOP_PX: f32 = 16.0;
+
+/// Holds pen taps still; see the [module docs](self).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TapFilter {
+    /// Radius in screen pixels; `0` when off.
+    slop: f32,
+    state: TapState,
+}
+
+/// Where the filter is in a press.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum TapState {
+    /// No button held (or the filter is off).
+    Idle,
+    /// `button` went down at `origin` and the pointer has stayed within the
+    /// slop; `held` is the last move held back.
+    Holding {
+        origin: Vec2,
+        button: PointerButton,
+        held: Option<(Vec2, Modifiers)>,
+    },
+    /// The pointer left the slop: events pass until `button` is released.
+    Dragging { button: PointerButton },
+}
+
+/// Events let through by one call of [`TapFilter::filter`], in order.
+pub type Passed = [Option<InputEvent>; 2];
+
+impl TapFilter {
+    /// A filter with a slop of `slop_px` screen pixels; off (every event
+    /// passes unchanged) unless `slop_px` is finite and positive.
+    #[must_use]
+    pub fn new(slop_px: f32) -> Self {
+        let _ = slop_px;
+        todo!()
+    }
+
+    /// The slop in screen pixels, `0` when off.
+    #[must_use]
+    pub fn slop(&self) -> f32 {
+        self.slop
+    }
+
+    /// Takes one event and returns the events to hand on, in order.
+    pub fn filter(&mut self, event: InputEvent) -> Passed {
+        let _ = (event, self.state);
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

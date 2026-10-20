@@ -28,6 +28,7 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
+use crate::core::tap::TapFilter;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -159,6 +160,8 @@ pub struct Editor {
     /// block (ADR-T29-2).
     reedit: Option<(Vec2, ShapeId)>,
     keymap: Keymap,
+    /// Holds pen taps still before the events reach the tools (ADR-T34-1).
+    tap: TapFilter,
     /// Grows whenever the document may have changed (ADR-T24-1).
     doc_revision: u64,
     /// `doc_revision` of the latest change that was not a pure append of
@@ -193,9 +196,24 @@ impl Editor {
             gesture: None,
             reedit: None,
             keymap: keymap::resolve,
+            tap: TapFilter::new(0.0),
             doc_revision: 0,
             doc_base_revision: 0,
         }
+    }
+
+    /// Sets the tap slop in screen pixels: a press released within it is a
+    /// click at the press point; `0` turns it off (ADR-T34-1).
+    #[must_use]
+    pub fn with_tap_slop(mut self, slop_px: f32) -> Self {
+        self.tap = TapFilter::new(slop_px);
+        self
+    }
+
+    /// The tap slop in screen pixels, `0` when off.
+    #[must_use]
+    pub fn tap_slop(&self) -> f32 {
+        self.tap.slop()
     }
 
     /// Replaces the keymap (used by tests and alternative bindings).

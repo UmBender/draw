@@ -135,7 +135,7 @@ Decision: [[ADR-T34-1 Tap slop for pen tablets detected at start-up]].
 
 - [x] spec — `docs(T34): specify pen tablet acceptance criteria`
 - [x] tests — `test(T34): add failing tests for tap slop and tablet detection`
-- [ ] models — `feat(T34): add tap filter and tablet choice types`
+- [x] models — `feat(T34): add tap filter and tablet choice types`
 - [ ] behaviour — `feat(T34): hold pen taps still and detect tablets`
 - [ ] quality — `chore(T34): pass clippy, rustfmt and rustdoc`
 - [ ] docs — `docs(T34): add feature note and tutorial`

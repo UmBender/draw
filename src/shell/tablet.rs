@@ -1,3 +1,64 @@
+//! Pen tablet detection at start-up (T34, ADR-T34-1).
+//!
+//! [`choose`] is a pure function over the value of `DRAW_TABLET` and the
+//! text of `/proc/bus/input/devices`; [`from_env`] feeds it the real ones.
+//! With a pen attached the editor gets the tap slop of
+//! [`PEN_TAP_SLOP_PX`].
+
+use std::ffi::OsStr;
+
+use crate::core::tap::PEN_TAP_SLOP_PX;
+
+/// Environment variable forcing pen mode: `on`, `off` or `auto`.
+pub const TABLET_ENV: &str = "DRAW_TABLET";
+
+/// The kernel's list of input devices (world-readable).
+pub const DEVICES_PATH: &str = "/proc/bus/input/devices";
+
+/// Whether pen mode is on and what to tell the user.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Choice {
+    /// Pen taps are held still.
+    pub pen: bool,
+    /// One stderr line when pen mode is on.
+    pub notice: Option<String>,
+    /// One stderr line when the value of [`TABLET_ENV`] was not understood.
+    pub warning: Option<String>,
+}
+
+impl Choice {
+    /// The editor's tap slop for this choice: [`PEN_TAP_SLOP_PX`] in pen
+    /// mode, `0` otherwise.
+    #[must_use]
+    pub fn tap_slop_px(&self) -> f32 {
+        todo!()
+    }
+}
+
+/// The name of the first device in `devices` (the text of
+/// [`DEVICES_PATH`]) with the `BTN_TOOL_PEN` key and the `ABS_X` and
+/// `ABS_Y` axes.
+#[must_use]
+pub fn find_pen(devices: &str) -> Option<&str> {
+    let _ = devices;
+    todo!()
+}
+
+/// Pen mode from `value`, the value of [`TABLET_ENV`] (`None` when unset),
+/// and `devices`, the text of [`DEVICES_PATH`] (`None` when unreadable).
+#[must_use]
+pub fn choose(value: Option<&OsStr>, devices: Option<&str>) -> Choice {
+    let _ = (value, devices);
+    todo!()
+}
+
+/// [`choose`] applied to the real environment and device list.
+#[must_use]
+pub fn from_env() -> Choice {
+    let devices = std::fs::read_to_string(DEVICES_PATH).ok();
+    choose(std::env::var_os(TABLET_ENV).as_deref(), devices.as_deref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
