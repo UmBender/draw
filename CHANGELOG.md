@@ -6,6 +6,8 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-20
+
 ### Added
 
 - Pen tablets: with a tablet attached, draw switches to pen mode (shown as
@@ -95,7 +97,8 @@ First release.
   frame reuse during pan and zoom, smooth with thousands of shapes on an
   8th-gen i5 iGPU (`DRAW_FRAME_TIMES=1` logs frame times).
 
-[Unreleased]: https://github.com/UmBender/draw/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/UmBender/draw/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/UmBender/draw/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/UmBender/draw/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/UmBender/draw/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/UmBender/draw/releases/tag/v1.0.0
