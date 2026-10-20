@@ -1,7 +1,7 @@
 ---
 id: T34
 title: Pen tablet input
-status: review
+status: done
 wave: 22
 branch: task/T34-pen-tablet
 depends_on: [T28]
@@ -170,3 +170,4 @@ Step 34 — requires step 8 (editor as an input state machine) and step 28
   backend): start-up line and `pen` badge shown; Select taps select
   without moving, Rect taps make nothing, Text taps place the caret,
   strokes draw normally. Status → review.
+- 2026-10-20 — Integrated into `main`. Status → done; released in 1.2.0.

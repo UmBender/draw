@@ -67,3 +67,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 56 | [[ADR-T27-2 Package formats from one staging tree and one library list]] | accepted | decision | 0002, 0014, T12-1, T27-1 | — |
 | 57 | [[ADR-T27-3 Crash report from a panic hook and split debug symbols]] | accepted | decision | 0002, 0014 | — |
 | 58 | [[ADR-T28-1 Opt-in native Wayland backend]] | accepted | decision | T12-1, T26-1, T27-2 | — |
+| 59 | [[ADR-T34-1 Tap slop for pen tablets detected at start-up]] | accepted | decision | 0003, T28-1 | — |

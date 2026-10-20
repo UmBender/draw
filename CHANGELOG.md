@@ -6,6 +6,13 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Pen tablets: with a tablet attached, draw switches to pen mode (shown as
+  **pen** in the toolbar) and treats a tap that slips less than 16 px as a
+  clean click, so pen taps select, place text and no longer draw tiny
+  shapes. `DRAW_TABLET=off` / `on` overrides the detection.
+
 ## [1.1.1] - 2026-10-15
 
 ### Fixed

@@ -136,5 +136,5 @@ flowchart TD
 | [[T31 Text in rectangles and grid cells]] | done | T29 | `task/T31-shape-text` |
 | [[T27 Linux packaging]] | done | T14 | `task/T27-packaging` |
 | [[T28 Experimental native Wayland backend]] | done | T27 | `task/T28-wayland` |
-| [[T34 Pen tablet input]] | ready | T28 | `task/T34-pen-tablet` |
-| [[T35 Pen pressure and native Wayland tablets]] | todo | T34 | `task/T35-pen-pressure` |
+| [[T34 Pen tablet input]] | done | T28 | `task/T34-pen-tablet` |
+| [[T35 Pen pressure and native Wayland tablets]] | ready | T34 | `task/T35-pen-pressure` |

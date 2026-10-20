@@ -1,7 +1,7 @@
 ---
 id: T35
 title: Pen pressure and native Wayland tablets
-status: todo
+status: ready
 wave: 23
 branch: task/T35-pen-pressure
 depends_on: [T34]
