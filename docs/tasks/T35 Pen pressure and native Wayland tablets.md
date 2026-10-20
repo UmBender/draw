@@ -70,3 +70,13 @@ Step 35 — requires step 34 (pen tablets).
 
 - 2026-10-20 — Created with T34: the owner chose pen ergonomics for 1.2.0
   and pressure later.
+- 2026-10-20 — Open: only one barrel button reaches Xwayland apps (as
+  middle); the other sends nothing. `/proc/bus/input/devices` advertises
+  both (`KEY=1c01`: `BTN_STYLUS`, `BTN_STYLUS2`). Next check:
+  `sudo evtest /dev/input/event13`, pressing each button. If
+  `BTN_STYLUS2` appears, it is lost in Hyprland/Xwayland (Hyprland only
+  remaps the eraser button, `input:tablettool:eraser_button_*`), and a
+  native tablet backend here would see it. If nothing appears, it needs a
+  driver-side remap (udev hwdb / hid-uclogic). Hyprland has no option to
+  turn tablet tip presses into pointer clicks for clients without
+  `zwp_tablet_v2`.

@@ -171,3 +171,8 @@ Step 34 — requires step 8 (editor as an input state machine) and step 28
   without moving, Rect taps make nothing, Text taps place the caret,
   strokes draw normally. Status → review.
 - 2026-10-20 — Integrated into `main`. Status → done; released in 1.2.0.
+- 2026-10-20 — Tablet mapping fixed in the owner's dotfiles (commit
+  `cfd7939`, `hypr/.config/hypr/conf/input.lua`): `input.tablet.output =
+  "current"` maps the pen to the monitor under the pointer instead of both
+  (3840 × 1080). Owner check pending: a circle stays round, a tap barely
+  moves the pointer. If `current` misbehaves, use `output = "HDMI-A-2"`.
