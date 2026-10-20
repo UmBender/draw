@@ -174,8 +174,8 @@ impl Smoother {
             self.last_width = Some(width);
         }
 
-        let (smoothed, smoothed_width) = match (self.last_kept_raw, self.points.last()) {
-            (Some(kept), Some(&prev)) => {
+        let (smoothed, smoothed_width) =
+            if let (Some(kept), Some(&prev)) = (self.last_kept_raw, self.points.last()) {
                 let d = raw.distance(kept);
                 // `d <= 0` catches exact duplicates even when min_dist is 0.
                 if d <= 0.0 || d < self.min_dist {
@@ -192,13 +192,11 @@ impl Smoother {
                     let smoothed = prev * (1.0 - a) + raw * a;
                     (smoothed, width.map(|(prev, w)| prev * (1.0 - a) + w * a))
                 }
-            }
-            // The first kept point decides whether the stroke has widths.
-            _ => {
+            } else {
+                // The first kept point decides whether the stroke has widths.
                 self.widths = self.last_width.map(|_| Vec::new());
                 (raw, self.last_width)
-            }
-        };
+            };
 
         self.last_kept_raw = Some(raw);
         self.points.push(smoothed);

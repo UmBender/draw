@@ -610,6 +610,25 @@ fn check_shape_text(
     Ok(())
 }
 
+/// T35: a stroke's widths are in step with its points.
+fn check_stroke_widths(id: ShapeId, shape: &Shape, step: usize) -> Result<(), TestCaseError> {
+    if let Shape::Stroke {
+        points,
+        widths: Some(widths),
+        ..
+    } = shape
+    {
+        prop_assert_eq!(
+            widths.len(),
+            points.len(),
+            "step {}: stroke {:?} widths out of step",
+            step,
+            id
+        );
+    }
+    Ok(())
+}
+
 /// Checks every editor invariant from the architecture note.
 fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
     let cells = 1..=GRID_MAX_CELLS;
@@ -636,21 +655,7 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 "step {step}: grid {id:?} fills not sorted/unique: {fills:?}"
             );
         }
-        // T35: a stroke's widths are in step with its points.
-        if let Shape::Stroke {
-            points,
-            widths: Some(widths),
-            ..
-        } = shape
-        {
-            prop_assert_eq!(
-                widths.len(),
-                points.len(),
-                "step {}: stroke {:?} widths out of step",
-                step,
-                id
-            );
-        }
+        check_stroke_widths(id, shape, step)?;
         // T29: text blocks have a positive size and visible text.
         if let Shape::Text { text, size, .. } = shape {
             prop_assert!(*size > 0.0, "step {step}: text {id:?} has size {size}");
