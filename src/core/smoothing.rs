@@ -21,6 +21,10 @@ use crate::core::geom::{Vec2, distance_to_segment};
 /// freeze the stroke at its first point.
 pub const MIN_ALPHA: f32 = 0.01;
 
+/// Largest width-factor error [`simplify_rdp_widths`] accepts when it
+/// drops a point (ADR-T35-2).
+pub const WIDTH_EPSILON: f32 = 0.1;
+
 /// User-selectable smoothing strength, cycled with `S` (see the keymap).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SmoothingLevel {
@@ -106,6 +110,11 @@ pub struct Smoother {
     last_raw: Option<Vec2>,
     /// Smoothed polyline so far.
     points: Vec<Vec2>,
+    /// Smoothed width factor of each point, if the first kept point had
+    /// one (ADR-T35-2).
+    widths: Option<Vec<f32>>,
+    /// Last finite width factor pushed, for points that come without one.
+    last_width: Option<f32>,
 }
 
 impl Smoother {
@@ -135,6 +144,8 @@ impl Smoother {
             last_kept_raw: None,
             last_raw: None,
             points: Vec::new(),
+            widths: None,
+            last_width: None,
         }
     }
 
@@ -173,6 +184,24 @@ impl Smoother {
         true
     }
 
+    /// [`Smoother::push`] with a width factor for the point.
+    ///
+    /// The first kept point decides whether the stroke has widths: with a
+    /// finite factor it does, and every later kept point gets one. A
+    /// missing or non-finite factor repeats the last one. Factors are
+    /// EMA-filtered with the same α as the points.
+    pub fn push_width(&mut self, raw: Vec2, width: Option<f32>) -> bool {
+        let _ = (raw, width);
+        todo!()
+    }
+
+    /// The width factor of each point of [`Smoother::points`], `None` for
+    /// a stroke without widths.
+    #[must_use]
+    pub fn widths(&self) -> Option<&[f32]> {
+        todo!()
+    }
+
     /// The live smoothed polyline, for drawing a preview while the pen is down.
     #[must_use]
     pub fn points(&self) -> &[Vec2] {
@@ -198,6 +227,15 @@ impl Smoother {
             }
         }
         simplify_rdp(&points, epsilon)
+    }
+}
+
+impl Smoother {
+    /// [`Smoother::finish`] with the width factors in step with the
+    /// points, simplified with [`simplify_rdp_widths`].
+    #[must_use]
+    pub fn finish_with_widths(self) -> (Vec<Vec2>, Option<Vec<f32>>) {
+        todo!()
     }
 }
 
@@ -258,6 +296,17 @@ pub fn simplify_rdp(points: &[Vec2], eps: f32) -> Vec<Vec2> {
         .zip(&keep)
         .filter_map(|(&p, &k)| k.then_some(p))
         .collect()
+}
+
+/// [`simplify_rdp`] for a polyline with a width factor per point.
+///
+/// A point is also kept when its factor is more than [`WIDTH_EPSILON`]
+/// from the factor linearly interpolated along the chord. Returns the kept
+/// points and their factors. `widths` shorter than `points` count as `1`.
+#[must_use]
+pub fn simplify_rdp_widths(points: &[Vec2], widths: &[f32], eps: f32) -> (Vec<Vec2>, Vec<f32>) {
+    let _ = (points, widths, eps);
+    todo!()
 }
 
 #[cfg(test)]

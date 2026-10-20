@@ -16,6 +16,12 @@ fontdue = "0.9"
 [dev-dependencies]
 proptest = "1"
 
+# miniquad 0.4.11 with pen tablet input: pressure on X11, zwp_tablet_v2
+# on Wayland (ADR-T35-1, vendor/miniquad/PATCHED.md). macroquad itself
+# stays the crates.io release.
+[patch.crates-io]
+miniquad = { path = "vendor/miniquad" }
+
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"

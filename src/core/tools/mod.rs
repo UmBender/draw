@@ -52,6 +52,8 @@ pub struct Pointer {
     pub pos: Vec2,
     /// Modifiers held.
     pub mods: Modifiers,
+    /// Pen pressure in `[0, 1]`, `None` for a mouse (ADR-T35-2).
+    pub pressure: Option<f32>,
 }
 
 /// What an in-progress gesture draws on top of the document.

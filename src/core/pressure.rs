@@ -1,4 +1,24 @@
 //! Pen pressure to stroke width (T35, ADR-T35-2).
+//!
+//! A pen stroke stores one width *factor* per point, multiplying the
+//! stroke's chosen width. A half press draws the chosen width; a light
+//! touch goes down to [`MIN_WIDTH_FACTOR`] of it and a hard press up to
+//! [`MAX_WIDTH_FACTOR`].
+
+/// Width factor of the lightest press.
+pub const MIN_WIDTH_FACTOR: f32 = 0.25;
+
+/// Width factor of the hardest press.
+pub const MAX_WIDTH_FACTOR: f32 = 2.0;
+
+/// The width factor for pen pressure `p` (`0` none, `1` full):
+/// `2p` clamped to [`MIN_WIDTH_FACTOR`]`..=`[`MAX_WIDTH_FACTOR`]. A
+/// non-finite pressure gives `1`.
+#[must_use]
+pub fn width_factor(p: f32) -> f32 {
+    let _ = p;
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {

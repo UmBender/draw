@@ -41,7 +41,7 @@ use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
 use crate::shell::glyphs::GlyphAtlas;
-use crate::shell::input_map::Collector;
+use crate::shell::input_map::{Collector, PenSample};
 use crate::shell::render::{self, TextStats, to_mq_color};
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -428,6 +428,12 @@ pub async fn run() {
         frame.present(&editor, viewport, dpi, dirty);
         next_frame().await;
     }
+}
+
+/// The pen samples the window library pushed since the last call
+/// (ADR-T35-1).
+fn pen_samples() -> Vec<PenSample> {
+    todo!()
 }
 
 /// Sends one event to the toolbar or the editor. Returns whether the view

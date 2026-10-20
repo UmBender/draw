@@ -43,6 +43,9 @@ pub enum Shape {
     Stroke {
         /// Polyline vertices in drawing order.
         points: Vec<Vec2>,
+        /// Width factor of each point, multiplying `style.width`; `None`
+        /// for a stroke drawn without pressure (ADR-T35-2).
+        widths: Option<Vec<f32>>,
         /// Outline style.
         style: Style,
     },
@@ -270,6 +273,13 @@ impl Shape {
             | Self::Grid { .. }
             | Self::Text { .. } => None,
         }
+    }
+
+    /// The largest width factor of a stroke with widths; `1` for every
+    /// other shape (ADR-T35-2).
+    #[must_use]
+    pub fn max_width_factor(&self) -> f32 {
+        todo!()
     }
 
     /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).

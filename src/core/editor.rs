@@ -162,6 +162,8 @@ pub struct Editor {
     keymap: Keymap,
     /// Holds pen taps still before the events reach the tools (ADR-T34-1).
     tap: TapFilter,
+    /// Pen pressure of the pointer events, in `[0, 1]` (ADR-T35-2).
+    pressure: Option<f32>,
     /// Grows whenever the document may have changed (ADR-T24-1).
     doc_revision: u64,
     /// `doc_revision` of the latest change that was not a pure append of
@@ -197,6 +199,7 @@ impl Editor {
             reedit: None,
             keymap: keymap::resolve,
             tap: TapFilter::new(0.0),
+            pressure: None,
             doc_revision: 0,
             doc_base_revision: 0,
         }
@@ -214,6 +217,13 @@ impl Editor {
     #[must_use]
     pub fn tap_slop(&self) -> f32 {
         self.tap.slop()
+    }
+
+    /// The pen pressure of the pointer events, in `[0, 1]`; `None` for a
+    /// mouse (ADR-T35-2).
+    #[must_use]
+    pub fn pressure(&self) -> Option<f32> {
+        self.pressure
     }
 
     /// Replaces the keymap (used by tests and alternative bindings).
@@ -290,6 +300,10 @@ impl Editor {
                     Some(edit) if typed => edit.insert(ch),
                     _ => false,
                 }
+            }
+            InputEvent::Pressure { pressure } => {
+                let _ = pressure;
+                todo!()
             }
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
@@ -701,7 +715,12 @@ impl Editor {
 
     /// Delivers one pointer event to `tool`.
     fn send_pointer(&mut self, tool: Tool, phase: Phase, pos: Vec2, mods: Modifiers) -> bool {
-        let pointer = Pointer { phase, pos, mods };
+        let pointer = Pointer {
+            phase,
+            pos,
+            mods,
+            pressure: self.pressure,
+        };
         let mut ctx = ToolCtx {
             doc: &mut self.doc,
             history: &mut self.history,

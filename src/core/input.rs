@@ -168,6 +168,13 @@ pub enum InputEvent {
         /// Modifiers held.
         mods: Modifiers,
     },
+    /// The pen pressure of the following pointer events changed: `0` to
+    /// `1`, or `None` when they come from something without pressure
+    /// (T35, ADR-T35-2).
+    Pressure {
+        /// Tip pressure; `None` for a mouse.
+        pressure: Option<f32>,
+    },
     /// The viewport now measures `size` pixels.
     Resize {
         /// Width and height in pixels.

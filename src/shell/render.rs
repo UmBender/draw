@@ -204,6 +204,14 @@ impl<S: MeshSink> Batch<S> {
         }
     }
 
+    /// [`Batch::polyline`] with a width per point: each strip pair is
+    /// offset by its own point's half-width, and caps and breaks are discs
+    /// of that point's width (ADR-T35-2).
+    pub fn polyline_widths(&mut self, points: impl IntoIterator<Item = (Vec2, f32)>, color: Color) {
+        let _ = (points.into_iter(), color);
+        todo!()
+    }
+
     /// Adds a filled disc of `radius` pixels centred at `center`.
     pub fn disc(&mut self, center: Vec2, radius: f32, color: Color) {
         let n = circle_segments(radius);
@@ -1197,6 +1205,14 @@ fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32
         width,
         color,
     );
+}
+
+/// Screen width in pixels of a stroke point: [`screen_width`] of the
+/// stroke's world width times the point's factor (ADR-T35-2).
+#[must_use]
+pub fn stroke_point_width(world_width: f32, factor: f32, zoom: f32) -> f32 {
+    let _ = (world_width, factor, zoom);
+    todo!()
 }
 
 /// Draws a screen-space segment with round caps when thick.

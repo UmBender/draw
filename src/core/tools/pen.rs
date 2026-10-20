@@ -50,12 +50,12 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
                 return false;
             };
             stroke.smoother.push(world);
-            let points = stroke.smoother.finish();
+            let (points, widths) = stroke.smoother.finish_with_widths();
             if points.is_empty() {
                 // Only non-finite positions were pushed: just drop the preview.
                 return true;
             }
-            let shape = to_shape(points, stroke.style);
+            let shape = to_shape(points, widths, stroke.style);
             if !shape.is_finite() {
                 return true;
             }
@@ -75,7 +75,10 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
         .stroke
         .as_ref()
         .filter(|stroke| !stroke.smoother.points().is_empty())
-        .map(|stroke| to_shape(stroke.smoother.points().to_vec(), stroke.style))
+        .map(|stroke| {
+            let widths = stroke.smoother.widths().map(<[f32]>::to_vec);
+            to_shape(stroke.smoother.points().to_vec(), widths, stroke.style)
+        })
         .into_iter()
         .collect();
     Overlay {
@@ -102,8 +105,12 @@ fn begin(ctx: &ToolCtx<'_>) -> LiveStroke {
 }
 
 /// The stroke as a shape with the given points.
-fn to_shape(points: Vec<Vec2>, style: Style) -> Shape {
-    Shape::Stroke { points, style }
+fn to_shape(points: Vec<Vec2>, widths: Option<Vec<f32>>, style: Style) -> Shape {
+    Shape::Stroke {
+        points,
+        widths,
+        style,
+    }
 }
 
 #[cfg(test)]

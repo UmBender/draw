@@ -6,6 +6,8 @@
 //! in arrival order. Raw positions are physical pixels; [`to_logical`] turns
 //! them into the logical pixels used by the editor and the renderer.
 
+use std::collections::VecDeque;
+
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::{EventHandler, KeyMods};
 
@@ -148,6 +150,16 @@ impl HeldMods {
     }
 }
 
+/// A pen sample from the window library: where a pen pointer event
+/// happened and how hard the tip pressed (ADR-T35-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PenSample {
+    /// Position in physical pixels.
+    pub pos: Vec2,
+    /// Tip pressure in `[0, 1]`.
+    pub pressure: f32,
+}
+
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
@@ -163,6 +175,10 @@ pub struct Collector {
     dpi: f32,
     /// Wheel units the platform reports per notch.
     wheel_units_per_notch: f32,
+    /// Pen samples of this frame not yet paired, oldest first.
+    pen: VecDeque<PenSample>,
+    /// Pressure of the last pointer event, as last emitted.
+    pressure: Option<f32>,
 }
 
 impl Default for Collector {
@@ -181,6 +197,8 @@ impl Collector {
             pointer: Vec2::ZERO,
             dpi: 1.0,
             wheel_units_per_notch: 1.0,
+            pen: VecDeque::new(),
+            pressure: None,
         }
     }
 
@@ -190,6 +208,12 @@ impl Collector {
         if units.is_finite() && units > 0.0 {
             self.wheel_units_per_notch = units;
         }
+    }
+
+    /// Replaces the queued pen samples with this frame's (ADR-T35-1).
+    pub fn set_pen_samples(&mut self, samples: impl IntoIterator<Item = PenSample>) {
+        let _ = samples.into_iter();
+        todo!()
     }
 
     /// Sets the DPI scale used for the following pointer events.

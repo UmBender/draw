@@ -153,8 +153,8 @@ Decisions: [[ADR-T35-1 Vendored miniquad with a pen tablet patch]],
   `src/core/tap.rs`, `src/core/editor.rs`, `src/core/smoothing.rs`,
   `src/core/shape.rs`, `src/core/snap.rs` (test constructor),
   `src/core/tools/mod.rs`, `src/core/tools/pen.rs`,
-  `src/core/tools/grid.rs`, `src/core/tools/shape_tool.rs` (test
-  constructors)
+  `src/core/tools/grid.rs`, `src/core/tools/shape_tool.rs`,
+  `src/core/clipboard.rs` (test constructors)
 - `src/shell/input_map.rs`, `src/shell/app.rs`, `src/shell/render.rs`
 - `tests/fuzz.rs`, `tests/perf.rs`, `tests/packaging.rs`, `README.md`
 - `docs/architecture/Architecture.md`
