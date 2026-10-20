@@ -17,6 +17,7 @@ use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
 use draw::core::numbering::FIRST_NUMBER;
+use draw::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
 use draw::core::tap::PEN_TAP_SLOP_PX;
@@ -216,7 +217,41 @@ fn arb_event() -> impl Strategy<Value = InputEvent> {
         (arb_key(), arb_mods()).prop_map(|(key, mods)| InputEvent::KeyUp { key, mods }),
         arb_pos().prop_map(|size| InputEvent::Resize { size }),
         (arb_char(), arb_mods()).prop_map(|(ch, mods)| InputEvent::Char { ch, mods }),
+        arb_pressure().prop_map(|pressure| InputEvent::Pressure { pressure }),
     ]
+}
+
+/// A pen pressure: mostly in range, sometimes out of it, non-finite or absent.
+fn arb_pressure() -> impl Strategy<Value = Option<f32>> {
+    prop_oneof![
+        6 => (0.0f32..=1.0).prop_map(Some),
+        1 => arb_coord().prop_map(Some),
+        1 => Just(None),
+    ]
+}
+
+/// [`arb_session`] with a pen: a pressure before most pointer events (T35).
+fn arb_pressure_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    (
+        arb_session(),
+        prop::collection::vec(prop::option::of(arb_pressure()), MAX_SESSION_LEN),
+    )
+        .prop_map(|(session, pressures)| {
+            let mut events = Vec::with_capacity(session.len() * 2);
+            for (event, pressure) in session.into_iter().zip(pressures) {
+                let pointer = matches!(
+                    event,
+                    InputEvent::PointerDown { .. }
+                        | InputEvent::PointerMove { .. }
+                        | InputEvent::PointerUp { .. }
+                );
+                if let (true, Some(pressure)) = (pointer, pressure) {
+                    events.push(InputEvent::Pressure { pressure });
+                }
+                events.push(event);
+            }
+            events
+        })
 }
 
 /// A Text-tool session (T29): `T`, a click, then typing and editing keys,
@@ -597,6 +632,21 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 "step {step}: grid {id:?} fills not sorted/unique: {fills:?}"
             );
         }
+        // T35: a stroke's widths are in step with its points.
+        if let Shape::Stroke {
+            points,
+            widths: Some(widths),
+            ..
+        } = shape
+        {
+            prop_assert_eq!(
+                widths.len(),
+                points.len(),
+                "step {}: stroke {:?} widths out of step",
+                step,
+                id
+            );
+        }
         // T29: text blocks have a positive size and visible text.
         if let Shape::Text { text, size, .. } = shape {
             prop_assert!(*size > 0.0, "step {step}: text {id:?} has size {size}");
@@ -770,6 +820,7 @@ fn strategies_generate_all_variants() {
                 mods_seen.insert(mods);
                 (7, None)
             }
+            InputEvent::Pressure { .. } => (8, None),
         };
         variants.insert(variant);
         if let Some(pos) = pos {
@@ -779,7 +830,7 @@ fn strategies_generate_all_variants() {
     }
 
     // Assert
-    assert_eq!(variants.len(), 8, "event variants seen: {variants:?}");
+    assert_eq!(variants.len(), 9, "event variants seen: {variants:?}");
     assert_eq!(keys.len(), ALL_KEYS.len(), "keys seen: {keys:?}");
     assert_eq!(
         buttons.len(),
@@ -1017,6 +1068,27 @@ proptest! {
 
     #[test]
     fn pen_tap_undo_all_then_redo_all_is_symmetric(session in arb_session()) {
+        check_undo_redo_symmetric(&session, pen_editor())?;
+    }
+
+    #[test]
+    fn pressure_sessions_keep_stroke_widths_in_step(session in arb_pressure_session()) {
+        // T35: pressure reaches the pen; check_invariants checks the widths.
+        let editor = run_session_on(pen_editor(), &session)?;
+        for (id, shape) in editor.document().shapes() {
+            if let Shape::Stroke { widths: Some(widths), .. } = shape {
+                prop_assert!(
+                    widths
+                        .iter()
+                        .all(|w| (MIN_WIDTH_FACTOR..=MAX_WIDTH_FACTOR).contains(w)),
+                    "stroke {id:?} widths out of range: {widths:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pressure_undo_all_then_redo_all_is_symmetric(session in arb_pressure_session()) {
         check_undo_redo_symmetric(&session, pen_editor())?;
     }
 

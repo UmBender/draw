@@ -689,4 +689,125 @@ mod tests {
             }]
         );
     }
+
+    // ---- T35 pen samples ---------------------------------------------------
+
+    fn sample(x: f32, y: f32, pressure: f32) -> PenSample {
+        PenSample {
+            pos: Vec2::new(x, y),
+            pressure,
+        }
+    }
+
+    fn pressure(p: Option<f32>) -> InputEvent {
+        InputEvent::Pressure { pressure: p }
+    }
+
+    fn moved(x: f32, y: f32) -> InputEvent {
+        InputEvent::PointerMove {
+            pos: Vec2::new(x, y),
+            mods: Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn collector_pairs_pen_samples_with_pointer_events() {
+        // Arrange: physical pixels at DPI 2.
+        let mut c = Collector::new();
+        c.set_dpi(2.0);
+        c.set_pen_samples(vec![sample(20.0, 20.0, 0.3), sample(40.0, 20.0, 0.6)]);
+
+        // Act
+        c.mouse_motion_event(20.0, 20.0);
+        c.mouse_button_down_event(MouseButton::Left, 40.0, 20.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.3)),
+                moved(10.0, 10.0),
+                pressure(Some(0.6)),
+                InputEvent::PointerDown {
+                    pos: Vec2::new(20.0, 10.0),
+                    button: PointerButton::Left,
+                    mods: Modifiers::NONE,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_emits_pressure_only_when_it_changes() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![sample(1.0, 1.0, 0.5), sample(2.0, 1.0, 0.5)]);
+
+        // Act
+        c.mouse_motion_event(1.0, 1.0);
+        c.mouse_motion_event(2.0, 1.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [pressure(Some(0.5)), moved(1.0, 1.0), moved(2.0, 1.0)]
+        );
+    }
+
+    #[test]
+    fn collector_mouse_after_pen_clears_pressure() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![sample(1.0, 1.0, 0.5)]);
+
+        // Act
+        c.mouse_motion_event(1.0, 1.0);
+        c.mouse_motion_event(50.0, 50.0);
+        c.mouse_motion_event(60.0, 50.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.5)),
+                moved(1.0, 1.0),
+                pressure(None),
+                moved(50.0, 50.0),
+                moved(60.0, 50.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_drops_samples_older_than_the_match() {
+        // Arrange
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![
+            sample(1.0, 1.0, 0.2),
+            sample(2.0, 2.0, 0.4),
+            sample(3.0, 3.0, 0.6),
+        ]);
+
+        // Act: the event at (1, 1) comes after the (2, 2) match.
+        c.mouse_motion_event(2.0, 2.0);
+        c.mouse_motion_event(1.0, 1.0);
+        c.mouse_motion_event(3.0, 3.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.4)),
+                moved(2.0, 2.0),
+                pressure(None),
+                moved(1.0, 1.0),
+                pressure(Some(0.6)),
+                moved(3.0, 3.0),
+            ]
+        );
+    }
 }

@@ -1612,6 +1612,89 @@ mod tests {
         assert_eq!((vertices.len(), indices.len()), (4, 6));
     }
 
+    // ---- T35 per-point widths -------------------------------------------
+
+    proptest! {
+        #[test]
+        fn polyline_widths_with_constant_width_matches_polyline(
+            xy in prop::collection::vec((-200.0f32..200.0, -200.0f32..200.0), 0..40),
+            width in 0.5f32..12.0,
+        ) {
+            let line = xy.iter().map(|&(x, y)| Vec2::new(x, y)).collect::<Vec<_>>();
+            let mut plain = Batch::new(Recorder::default());
+            let mut varying = Batch::new(Recorder::default());
+
+            plain.polyline(line.iter().copied(), width, RED);
+            varying.polyline_widths(line.iter().map(|&p| (p, width)), RED);
+            let (plain, varying) = (plain.finish(), varying.finish());
+
+            prop_assert_eq!(plain.chunks.len(), varying.chunks.len());
+            for ((pv, pi), (vv, vi)) in plain.chunks.iter().zip(&varying.chunks) {
+                prop_assert_eq!(pi, vi);
+                prop_assert_eq!(pv.len(), vv.len());
+                for (a, b) in pv.iter().zip(vv) {
+                    prop_assert!(position(a).approx_eq(position(b), 0.0));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn polyline_widths_offsets_each_point_by_its_half_width() {
+        // Arrange: a straight thin line, 1 px wide at the start, 2 px at the end.
+        let mut batch = Batch::new(Recorder::default());
+
+        // Act
+        batch.polyline_widths(
+            [(Vec2::new(0.0, 0.0), 1.0), (Vec2::new(10.0, 0.0), 2.0)],
+            RED,
+        );
+        let rec = batch.finish();
+
+        // Assert: one quad, ±0.5 at x = 0 and ±1 at x = 10.
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!((vertices.len(), indices.len()), (4, 6));
+        let ys = |x: f32| {
+            let mut ys: Vec<f32> = vertices
+                .iter()
+                .map(position)
+                .filter(|p| approx_eq(p.x, x, EPS))
+                .map(|p| p.y)
+                .collect();
+            ys.sort_by(f32::total_cmp);
+            ys
+        };
+        let (start, end) = (ys(0.0), ys(10.0));
+        assert!(
+            approx_eq(start[0], -0.5, EPS) && approx_eq(start[1], 0.5, EPS),
+            "{start:?}"
+        );
+        assert!(
+            approx_eq(end[0], -1.0, EPS) && approx_eq(end[1], 1.0, EPS),
+            "{end:?}"
+        );
+    }
+
+    #[test]
+    fn stroke_screen_widths_scale_by_factor_and_clamp() {
+        assert!(approx_eq(stroke_point_width(2.0, 1.5, 2.0), 6.0, EPS));
+        assert!(approx_eq(
+            stroke_point_width(2.0, 0.25, 1.0),
+            MIN_SCREEN_WIDTH_PX,
+            EPS
+        ));
+        assert!(approx_eq(
+            stroke_point_width(2.0, f32::NAN, 1.0),
+            MIN_SCREEN_WIDTH_PX,
+            EPS
+        ));
+        assert!(approx_eq(
+            stroke_point_width(3.0, 1.0, 2.5),
+            screen_width(3.0, 2.5),
+            EPS
+        ));
+    }
+
     #[test]
     fn batch_strip_longer_than_a_chunk_continues() {
         // Arrange

@@ -149,6 +149,7 @@ fn mixed_shapes(count: usize) -> Vec<Shape> {
                     points: (0..30)
                         .map(|k| a + Vec2::new(k as f32 * 5.0, rng.range(-10.0, 10.0)))
                         .collect(),
+                    widths: None,
                     style,
                 },
                 1 => Shape::Line { a, b, style },

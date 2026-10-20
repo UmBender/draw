@@ -767,6 +767,80 @@ mod tests {
         ]
     }
 
+    // ---- T35: width factors ----
+
+    #[test]
+    fn smoother_without_widths_reports_none() {
+        // Arrange
+        let mut s = Smoother::new(SmoothingLevel::Off.params(), 1.0);
+
+        // Act
+        s.push(v(0.0, 0.0));
+        s.push_width(v(10.0, 0.0), Some(1.5));
+
+        // Assert: the first kept point decides.
+        assert!(s.widths().is_none());
+        let (points, widths) = s.finish_with_widths();
+        assert_eq!(points.len(), 2);
+        assert!(widths.is_none());
+    }
+
+    #[test]
+    fn smoother_missing_width_repeats_the_last() {
+        // Arrange
+        let mut s = Smoother::new(SmoothingLevel::Off.params(), 1.0);
+
+        // Act
+        s.push_width(v(0.0, 0.0), Some(0.5));
+        s.push_width(v(10.0, 0.0), Some(1.5));
+        s.push_width(v(20.0, 5.0), None);
+        s.push_width(v(30.0, 0.0), Some(f32::NAN));
+
+        // Assert
+        let Some(widths) = s.widths() else {
+            panic!("expected widths");
+        };
+        assert_eq!(widths.len(), 4);
+        for (w, e) in widths.iter().zip([0.5, 1.5, 1.5, 1.5]) {
+            assert!(approx_eq(*w, e, EPS), "{widths:?}");
+        }
+    }
+
+    #[test]
+    fn smoother_widths_follow_the_ema() {
+        // Arrange: Medium has alpha 0.4 and min_dist 2.5.
+        let mut s = Smoother::new(medium(), 1.0);
+
+        // Act
+        s.push_width(v(0.0, 0.0), Some(1.0));
+        s.push_width(v(10.0, 0.0), Some(2.0));
+
+        // Assert: 1 + 0.4 (2 - 1).
+        let Some(widths) = s.widths() else {
+            panic!("expected widths");
+        };
+        assert!(approx_eq(widths[0], 1.0, EPS));
+        assert!(approx_eq(widths[1], 1.4, EPS), "{widths:?}");
+    }
+
+    #[test]
+    fn rdp_widths_keeps_a_width_change_on_a_straight_line() {
+        // Arrange: collinear points, thick in the middle.
+        let points = [v(0.0, 0.0), v(10.0, 0.0), v(20.0, 0.0)];
+        let widths = [1.0, 2.0, 1.0];
+
+        // Act
+        let (kept, kept_widths) = simplify_rdp_widths(&points, &widths, 1.0);
+
+        // Assert
+        assert_points_eq(&kept, &points);
+        assert_eq!(kept_widths.len(), 3);
+        // A change within WIDTH_EPSILON of the chord still goes.
+        let (kept, kept_widths) = simplify_rdp_widths(&points, &[1.0, 1.05, 1.1], 1.0);
+        assert_points_eq(&kept, &[points[0], points[2]]);
+        assert_eq!(kept_widths.len(), 2);
+    }
+
     proptest! {
         #[test]
         fn rdp_keeps_endpoints(points in polyline(), eps in 0.0_f32..50.0) {
@@ -827,6 +901,42 @@ mod tests {
             let out = s.finish();
 
             prop_assert!(out.iter().all(|p| p.is_finite()));
+        }
+
+        #[test]
+        fn smoother_widths_stay_in_step_with_points(
+            lvl in level(),
+            raw in prop::collection::vec((any_f32(), any_f32(), prop::option::of(any_f32())), 1..64),
+        ) {
+            let mut s = Smoother::new(lvl.params(), 1.0);
+
+            for (x, y, w) in raw {
+                s.push_width(Vec2::new(x, y), w);
+                if let Some(widths) = s.widths() {
+                    prop_assert_eq!(widths.len(), s.points().len());
+                    prop_assert!(widths.iter().all(|w| w.is_finite()));
+                }
+            }
+            let (points, widths) = s.finish_with_widths();
+
+            if let Some(widths) = widths {
+                prop_assert_eq!(widths.len(), points.len());
+                prop_assert!(widths.iter().all(|w| w.is_finite()));
+            }
+        }
+
+        #[test]
+        fn rdp_widths_with_constant_widths_matches_rdp(points in polyline(), eps in any_f32()) {
+            let widths = vec![1.25; points.len()];
+
+            let (kept, kept_widths) = simplify_rdp_widths(&points, &widths, eps);
+
+            let plain = simplify_rdp(&points, eps);
+            prop_assert_eq!(kept.len(), plain.len());
+            for (a, b) in kept.iter().zip(&plain) {
+                prop_assert!(a.approx_eq(*b, 0.0));
+            }
+            prop_assert_eq!(kept_widths.len(), kept.len());
         }
     }
 }

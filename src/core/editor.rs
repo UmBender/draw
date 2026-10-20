@@ -3758,4 +3758,103 @@ mod tests {
             "{points:?}"
         );
     }
+
+    // ---- T35 pressure -------------------------------------------------------
+
+    fn press(ed: &mut Editor, pressure: Option<f32>) -> bool {
+        ed.handle(InputEvent::Pressure { pressure })
+    }
+
+    fn only_shape(ed: &Editor) -> Shape {
+        let shapes: Vec<_> = ed.document().shapes().map(|(_, s)| s.clone()).collect();
+        let [shape] = shapes.as_slice() else {
+            panic!("expected one shape, got {shapes:?}");
+        };
+        shape.clone()
+    }
+
+    #[test]
+    fn pressure_event_sets_the_pen_pressure() {
+        // Arrange
+        let mut ed = Editor::new();
+        assert_eq!(ed.pressure(), None);
+
+        // Act
+        press(&mut ed, Some(0.4));
+
+        // Assert
+        assert!(ed.pressure().is_some_and(|p| approx_eq(p, 0.4, 1e-6)));
+        press(&mut ed, None);
+        assert_eq!(ed.pressure(), None);
+    }
+
+    #[test]
+    fn pressure_event_clamps_and_drops_non_finite_values() {
+        let mut ed = Editor::new();
+
+        press(&mut ed, Some(1.5));
+        assert!(ed.pressure().is_some_and(|p| approx_eq(p, 1.0, 1e-6)));
+        press(&mut ed, Some(-0.5));
+        assert!(ed.pressure().is_some_and(|p| approx_eq(p, 0.0, 1e-6)));
+        press(&mut ed, Some(f32::NAN));
+        assert_eq!(ed.pressure(), None);
+        press(&mut ed, Some(0.3));
+        press(&mut ed, Some(f32::INFINITY));
+        assert_eq!(ed.pressure(), None);
+    }
+
+    #[test]
+    fn pressure_event_needs_no_redraw() {
+        let mut ed = Editor::new();
+
+        assert!(!press(&mut ed, Some(0.9)));
+        assert!(!press(&mut ed, None));
+    }
+
+    #[test]
+    fn pressure_reaches_the_pen_tool() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Pen));
+
+        // Act: light at the start, hard at the end.
+        press(&mut ed, Some(0.1));
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+        move_to(&mut ed, 150.0, 100.0);
+        press(&mut ed, Some(1.0));
+        move_to(&mut ed, 150.0, 150.0);
+        up(&mut ed, PointerButton::Left, 200.0, 150.0);
+
+        // Assert
+        let Shape::Stroke { points, widths, .. } = only_shape(&ed) else {
+            panic!("expected a stroke");
+        };
+        let Some(widths) = widths else {
+            panic!("expected widths");
+        };
+        assert_eq!(widths.len(), points.len());
+        assert!(widths.first().is_some_and(|w| *w < 1.0), "{widths:?}");
+        assert!(widths.last().is_some_and(|w| *w > 1.0), "{widths:?}");
+    }
+
+    #[test]
+    fn pressure_leaves_rect_width_alone() {
+        // Arrange
+        let mut plain = Editor::new();
+        let mut pressed = Editor::new();
+        for ed in [&mut plain, &mut pressed] {
+            ed.apply(Command::SetTool(Tool::Rect));
+        }
+
+        // Act
+        press(&mut pressed, Some(1.0));
+        for ed in [&mut plain, &mut pressed] {
+            down(ed, PointerButton::Left, 100.0, 100.0);
+            move_to(ed, 200.0, 180.0);
+            up(ed, PointerButton::Left, 200.0, 180.0);
+        }
+
+        // Assert
+        assert_eq!(only_shape(&plain), only_shape(&pressed));
+    }
 }

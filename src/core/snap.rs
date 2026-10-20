@@ -1401,6 +1401,7 @@ mod tests {
             line(v(0.0, 50.0), v(10.0, 60.0)),
             Shape::Stroke {
                 points: vec![v(0.0, 70.0), v(10.0, 80.0)],
+                widths: None,
                 style: STYLE,
             },
         ];

@@ -954,8 +954,64 @@ mod tests {
     fn stroke(points: &[Vec2], width: f32) -> Shape {
         Shape::Stroke {
             points: points.to_vec(),
+            widths: None,
             style: style(width),
         }
+    }
+
+    fn pressed_stroke(points: &[Vec2], widths: &[f32], width: f32) -> Shape {
+        Shape::Stroke {
+            points: points.to_vec(),
+            widths: Some(widths.to_vec()),
+            style: style(width),
+        }
+    }
+
+    // ---- T35: per-point widths ----
+
+    #[test]
+    fn stroke_max_width_factor_without_widths_is_one() {
+        let s = stroke(&[v(0.0, 0.0), v(10.0, 0.0)], 2.0);
+
+        assert!(approx_eq(s.max_width_factor(), 1.0, EPS));
+        let r = rect(v(0.0, 0.0), v(1.0, 1.0), 1.0, None);
+        assert!(approx_eq(r.max_width_factor(), 1.0, EPS));
+    }
+
+    #[test]
+    fn stroke_bounds_grow_with_the_widest_point() {
+        // Arrange: width 2, widest factor 3 → half-width 3.
+        let s = pressed_stroke(&[v(0.0, 0.0), v(10.0, 0.0)], &[0.5, 3.0], 2.0);
+
+        // Act
+        let b = s.bounds();
+
+        // Assert
+        assert!(approx_eq(s.max_width_factor(), 3.0, EPS));
+        assert_vec_eq(b.min, v(-3.0, -3.0));
+        assert_vec_eq(b.max, v(13.0, 3.0));
+    }
+
+    #[test]
+    fn stroke_hit_reaches_a_thick_point() {
+        // Arrange: half-width 3 with the factor, 1 without.
+        let thick = pressed_stroke(&[v(0.0, 0.0), v(10.0, 0.0)], &[3.0, 3.0], 2.0);
+        let plain = stroke(&[v(0.0, 0.0), v(10.0, 0.0)], 2.0);
+
+        // Act / Assert
+        assert!(thick.hit(v(5.0, 2.5), 0.0));
+        assert!(!plain.hit(v(5.0, 2.5), 0.0));
+    }
+
+    #[test]
+    fn stroke_with_bad_widths_is_not_finite() {
+        let points = [v(0.0, 0.0), v(10.0, 0.0)];
+
+        assert!(pressed_stroke(&points, &[1.0, 2.0], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0, f32::NAN], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0, 0.0], 1.0).is_finite());
+        assert!(!pressed_stroke(&points, &[1.0, -1.0], 1.0).is_finite());
     }
 
     // ---- AC-1: construction and accessors ----
@@ -964,13 +1020,14 @@ mod tests {
     fn construct_stroke_keeps_points_and_style() {
         let s = Shape::Stroke {
             points: vec![v(0.0, 0.0), v(1.0, 2.0)],
+            widths: None,
             style: Style {
                 color: color(2),
                 width: 3.0,
             },
         };
 
-        let Shape::Stroke { points, style } = s else {
+        let Shape::Stroke { points, style, .. } = s else {
             panic!("expected Stroke");
         };
         assert_eq!(points.len(), 2);
@@ -1666,6 +1723,7 @@ mod tests {
             (prop::collection::vec(point(), 1..16), width.clone()).prop_map(|(points, w)| {
                 Shape::Stroke {
                     points,
+                    widths: None,
                     style: style(w),
                 }
             }),

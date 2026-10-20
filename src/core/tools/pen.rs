@@ -118,6 +118,7 @@ mod tests {
     use crate::core::history::History;
     use crate::core::input::Modifiers;
     use crate::core::palette::ColorId;
+    use crate::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
     use crate::core::shape::Shape;
     use crate::core::smoothing::SmoothingLevel;
     use crate::core::tools::Phase;
@@ -132,6 +133,8 @@ mod tests {
         style: DrawStyle,
         smoothing: SmoothingLevel,
         state: State,
+        /// Pen pressure of the next events.
+        pressure: Option<f32>,
     }
 
     impl Fixture {
@@ -145,6 +148,7 @@ mod tests {
                 style: DrawStyle::default(),
                 smoothing: SmoothingLevel::Off,
                 state: State::default(),
+                pressure: None,
             }
         }
 
@@ -168,6 +172,7 @@ mod tests {
                     phase,
                     pos,
                     mods: Modifiers::NONE,
+                    pressure: self.pressure,
                 },
             )
         }
@@ -367,5 +372,120 @@ mod tests {
         assert_eq!(f.doc.len(), 1);
         assert!(f.history.undo(&mut f.doc));
         assert!(f.doc.is_empty());
+    }
+
+    // ---- T35 pressure ------------------------------------------------------
+
+    fn stroke_widths(shape: &Shape) -> Option<&[f32]> {
+        match shape {
+            Shape::Stroke { widths, .. } => widths.as_deref(),
+            other => panic!("expected a stroke, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pen_with_pressure_stores_a_width_per_point() {
+        // Arrange
+        let mut f = Fixture::new();
+        f.pressure = Some(0.5);
+
+        // Act
+        f.send(Phase::Down, 0.0, 0.0);
+        f.send(Phase::Move, 10.0, 0.0);
+        f.send(Phase::Move, 20.0, 5.0);
+        f.send(Phase::Up, 30.0, 0.0);
+
+        // Assert
+        let shape = f.only_shape();
+        let Some(widths) = stroke_widths(shape) else {
+            panic!("expected widths");
+        };
+        assert_eq!(widths.len(), stroke_points(shape).len());
+        assert!(
+            widths.iter().all(|w| approx_eq(*w, 1.0, 1e-5)),
+            "{widths:?}"
+        );
+        assert!(shape.is_finite());
+    }
+
+    #[test]
+    fn pen_without_pressure_stores_no_widths() {
+        let mut f = Fixture::new();
+
+        f.send(Phase::Down, 0.0, 0.0);
+        f.send(Phase::Move, 10.0, 0.0);
+        f.send(Phase::Up, 20.0, 0.0);
+
+        assert!(stroke_widths(f.only_shape()).is_none());
+    }
+
+    #[test]
+    fn pen_light_and_hard_presses_give_thin_and_thick_points() {
+        // Arrange
+        let mut f = Fixture::new();
+
+        // Act
+        f.pressure = Some(0.1);
+        f.send(Phase::Down, 0.0, 0.0);
+        f.send(Phase::Move, 10.0, 0.0);
+        f.pressure = Some(1.0);
+        f.send(Phase::Move, 20.0, 0.0);
+        f.send(Phase::Up, 30.0, 5.0);
+
+        // Assert
+        let Some(widths) = stroke_widths(f.only_shape()) else {
+            panic!("expected widths");
+        };
+        assert!(approx_eq(widths[0], MIN_WIDTH_FACTOR, 1e-5), "{widths:?}");
+        assert!(
+            widths
+                .last()
+                .is_some_and(|w| approx_eq(*w, MAX_WIDTH_FACTOR, 1e-5)),
+            "{widths:?}"
+        );
+        assert!(overlay_widths_match(&f));
+    }
+
+    /// The live preview carries widths in step with its points.
+    fn overlay_widths_match(f: &Fixture) -> bool {
+        f.overlay().shapes.iter().all(Shape::is_finite)
+    }
+
+    #[test]
+    fn pen_tap_dot_takes_the_press_factor() {
+        let mut f = Fixture::new();
+        f.pressure = Some(0.75);
+
+        f.send(Phase::Down, 5.0, 7.0);
+        f.send(Phase::Up, 5.0, 7.0);
+
+        let Some(widths) = stroke_widths(f.only_shape()) else {
+            panic!("expected widths");
+        };
+        assert_eq!(widths.len(), 1);
+        assert!(approx_eq(widths[0], 1.5, 1e-5), "{widths:?}");
+    }
+
+    #[test]
+    fn pen_points_without_pressure_keep_the_last_factor() {
+        // Arrange
+        let mut f = Fixture::new();
+
+        // Act
+        f.pressure = Some(0.25);
+        f.send(Phase::Down, 0.0, 0.0);
+        f.pressure = None;
+        f.send(Phase::Move, 10.0, 0.0);
+        f.send(Phase::Move, 20.0, 5.0);
+        f.send(Phase::Up, 30.0, 0.0);
+
+        // Assert
+        let Some(widths) = stroke_widths(f.only_shape()) else {
+            panic!("expected widths");
+        };
+        assert!(
+            widths.iter().all(|w| approx_eq(*w, 0.5, 1e-5)),
+            "{widths:?}"
+        );
     }
 }

@@ -722,6 +722,15 @@ mod tests {
     use proptest::prelude::*;
 
     #[test]
+    fn pen_samples_are_empty_without_a_window() {
+        // Arrange / Act: no backend has run, so nothing was pushed.
+        let samples = pen_samples();
+
+        // Assert
+        assert!(samples.is_empty());
+    }
+
+    #[test]
     fn window_conf_sets_wm_class() {
         // Arrange / Act
         let conf = Conf::from(window_conf());
