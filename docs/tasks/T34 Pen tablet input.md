@@ -1,11 +1,11 @@
 ---
 id: T34
 title: Pen tablet input
-status: ready
+status: in-progress
 wave: 22
 branch: task/T34-pen-tablet
 depends_on: [T28]
-adrs: []
+adrs: ["[[ADR-T34-1 Tap slop for pen tablets detected at start-up]]"]
 feature: "[[Pen tablets]]"
 tutorial: "[[34 Telling a tap from a drag]]"
 tags: [task]
@@ -55,7 +55,65 @@ Measured with a bare miniquad 0.4.11 window that logged every pointer event:
 
 ## Spec
 
-To be refined in the spec step.
+Decision: [[ADR-T34-1 Tap slop for pen tablets detected at start-up]].
+
+- **AC-1 — Tap filter.** `core::tap::TapFilter::new(slop)` is off (every
+  event passes unchanged) for a slop that is zero, negative or not finite.
+  On: after a press, moves within the slop are held back; a release within
+  the slop arrives at the press point; the first move outside the slop
+  releases the last held move, then itself, and later events pass until the
+  release; a press or release of another button during the hold starts the
+  drag the same way; keys, wheel, characters, resizes and non-finite
+  pointer events pass without changing the state; presses and releases
+  stay balanced and in order.
+  Tests (`src/core/tap.rs`): `tap_filter_off_passes_every_event_unchanged`
+  (proptest), `tap_filter_tap_within_slop_is_a_click_at_the_press_point`,
+  `tap_filter_moves_within_slop_are_held_back`,
+  `tap_filter_leaving_the_slop_flushes_the_last_held_move`,
+  `tap_filter_drag_passes_through_to_the_release`,
+  `tap_filter_other_button_during_hold_starts_the_drag`,
+  `tap_filter_keys_and_non_finite_events_pass_without_changing_state`,
+  `tap_filter_keeps_presses_and_releases_in_order` (proptest).
+- **AC-2 — Editor.** `Editor::new()` has no slop (`tap_slop() == 0`) and
+  behaves as before; `with_tap_slop(PEN_TAP_SLOP_PX)` routes every event
+  through the filter: a slipping tap selects with Select, makes no shape
+  with Rect, commits a dot with Pen, and a stroke that leaves the slop is
+  drawn from the press point to the release point.
+  Tests (`src/core/editor.rs`): `tap_slop_is_off_by_default`,
+  `pen_tap_with_select_selects_instead_of_marquee`,
+  `pen_tap_with_rect_makes_no_shape`,
+  `pen_tap_with_pen_commits_a_dot`,
+  `pen_stroke_beyond_slop_runs_from_press_to_release`.
+- **AC-3 — Detection.** `shell::tablet::find_pen(devices)` returns the
+  name of the first device with `BTN_TOOL_PEN` and `ABS_X` + `ABS_Y`;
+  `choose(value, devices)` follows ADR-T34-1 §3 and returns whether pen
+  mode is on, its notice and any warning.
+  Tests (`src/shell/tablet.rs`): `find_pen_finds_the_huion_420_pen`,
+  `find_pen_ignores_keyboards_mice_and_touchpads`,
+  `find_pen_never_panics` (proptest),
+  `choose_auto_follows_detection`,
+  `choose_on_and_off_force_pen_mode`,
+  `choose_ignores_case_and_surrounding_space`,
+  `choose_unknown_value_warns_and_detects`,
+  `choose_on_gives_the_pen_tap_slop`.
+- **AC-4 — Shell.** `shell::app::run` builds the editor with the slop
+  from `tablet::from_env()` and prints its notice and warning once; the
+  toolbar draws a `pen` badge at the bottom of the strip while the slop is
+  on. Tests (`src/shell/toolbar.rs`):
+  `pen_badge_sits_in_the_strip_below_the_buttons`; the wiring is checked
+  on the target (AC-7).
+- **AC-5 — Fuzz.** Sessions on an editor with the pen slop keep every
+  invariant, and undo/redo stays symmetric.
+  Tests (`tests/fuzz.rs`): `pen_tap_sessions_never_panic_and_keep_invariants`,
+  `pen_tap_undo_all_then_redo_all_is_symmetric`.
+- **AC-6 — Docs.** README *Pen tablets* section: what works, the tap
+  slop, `DRAW_TABLET`, mapping the tablet to one monitor (Hyprland
+  `input:tablet:output`, X11 `xinput map-to-output`), the native Wayland
+  limitation and T35.
+- **AC-7 — Owner check (manual).** On the target, with the HUION 420:
+  start-up notice printed, `pen` badge shown, taps select / place text /
+  make no Rect, strokes draw normally; `DRAW_TABLET=off` restores the old
+  behaviour.
 
 ## Out of scope
 
@@ -75,7 +133,7 @@ To be refined in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T34): specify pen tablet acceptance criteria`
+- [x] spec — `docs(T34): specify pen tablet acceptance criteria`
 - [ ] tests — `test(T34): add failing tests for tap slop and tablet detection`
 - [ ] models — `feat(T34): add tap filter and tablet choice types`
 - [ ] behaviour — `feat(T34): hold pen taps still and detect tablets`
