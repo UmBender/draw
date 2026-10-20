@@ -121,6 +121,13 @@ const FLY_BUTTON_PX: f32 = 24.0;
 const FLY_LABEL_PX: f32 = 40.0;
 /// Width of a flyout value cell, in pixels.
 const FLY_VALUE_PX: f32 = 28.0;
+/// Height of the `pen` badge, in pixels: it fits the 20 px left under the
+/// buttons in the default 800 px window.
+const BADGE_PX: f32 = 16.0;
+/// Gap between the `pen` badge and the bottom of the strip, in pixels.
+const BADGE_INSET_PX: f32 = 2.0;
+/// Size of the `pen` badge's text, in pixels.
+const BADGE_LABEL_SIZE: u16 = 12;
 /// Size of the flyout row labels, in pixels.
 const FLY_LABEL_SIZE: u16 = 16;
 
@@ -168,8 +175,8 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
 /// bottom of the strip, below every button.
 #[must_use]
 pub fn pen_badge(viewport: Vec2) -> Aabb {
-    let _ = viewport;
-    todo!()
+    let max = Vec2::new(PAD_PX + BUTTON_PX, viewport.y - BADGE_INSET_PX);
+    Aabb::from_corners(max - Vec2::new(BUTTON_PX, BADGE_PX), max)
 }
 
 /// The command of the button under `pos`, `None` if there is none or `pos`
@@ -272,6 +279,9 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
         }
+    }
+    if editor.tap_slop() > 0.0 {
+        draw_label_sized(pen_badge(viewport), "pen", accent, BADGE_LABEL_SIZE);
     }
     if editor.tool() == Tool::Grid {
         draw_flyout(editor, viewport);

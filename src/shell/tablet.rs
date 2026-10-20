@@ -31,7 +31,7 @@ impl Choice {
     /// mode, `0` otherwise.
     #[must_use]
     pub fn tap_slop_px(&self) -> f32 {
-        todo!()
+        if self.pen { PEN_TAP_SLOP_PX } else { 0.0 }
     }
 }
 
@@ -40,16 +40,81 @@ impl Choice {
 /// `ABS_Y` axes.
 #[must_use]
 pub fn find_pen(devices: &str) -> Option<&str> {
-    let _ = devices;
-    todo!()
+    let mut name = None;
+    let mut pen_key = false;
+    let mut axes = false;
+    // Blocks end at a blank line; the final "" closes the last one.
+    for line in devices.lines().chain(std::iter::once("")) {
+        let line = line.trim_end();
+        if line.is_empty() {
+            if pen_key && axes && name.is_some() {
+                return name;
+            }
+            (name, pen_key, axes) = (None, false, false);
+        } else if let Some(value) = line.strip_prefix("N: Name=") {
+            name = Some(value.trim_matches('"'));
+        } else if let Some(mask) = line.strip_prefix("B: KEY=") {
+            pen_key = has_bit(mask, BTN_TOOL_PEN);
+        } else if let Some(mask) = line.strip_prefix("B: ABS=") {
+            axes = has_bit(mask, ABS_X) && has_bit(mask, ABS_Y);
+        }
+    }
+    None
+}
+
+/// `BTN_TOOL_PEN` in `linux/input-event-codes.h`.
+const BTN_TOOL_PEN: usize = 0x140;
+/// `ABS_X` in `linux/input-event-codes.h`.
+const ABS_X: usize = 0x00;
+/// `ABS_Y` in `linux/input-event-codes.h`.
+const ABS_Y: usize = 0x01;
+
+/// Whether `bit` is set in `mask`, a `/proc` bitmap: hexadecimal words of
+/// `usize::BITS` bits (the kernel's `long`), most significant first.
+fn has_bit(mask: &str, bit: usize) -> bool {
+    let word_bits = usize::BITS as usize;
+    mask.split_whitespace()
+        .rev()
+        .nth(bit / word_bits)
+        .and_then(|word| usize::from_str_radix(word, 16).ok())
+        .is_some_and(|word| (word >> (bit % word_bits)) & 1 == 1)
 }
 
 /// Pen mode from `value`, the value of [`TABLET_ENV`] (`None` when unset),
 /// and `devices`, the text of [`DEVICES_PATH`] (`None` when unreadable).
 #[must_use]
 pub fn choose(value: Option<&OsStr>, devices: Option<&str>) -> Choice {
-    let _ = (value, devices);
-    todo!()
+    let text = value.map(OsStr::to_string_lossy);
+    let text = text.as_deref().map_or("", str::trim);
+    if text.eq_ignore_ascii_case("on") {
+        Choice {
+            pen: true,
+            notice: Some(format!(
+                "draw: {TABLET_ENV}=on: pen taps within {PEN_TAP_SLOP_PX} px are clicks"
+            )),
+            warning: None,
+        }
+    } else if text.eq_ignore_ascii_case("off") {
+        Choice::default()
+    } else {
+        let warning = (!text.is_empty() && !text.eq_ignore_ascii_case("auto")).then(|| {
+            format!(
+                "draw: unknown {TABLET_ENV} value {text:?}, detecting the tablet \
+                 (expected on, off or auto)"
+            )
+        });
+        let pen = devices.and_then(find_pen);
+        Choice {
+            pen: pen.is_some(),
+            notice: pen.map(|name| {
+                format!(
+                    "draw: pen tablet {name:?} found: taps within {PEN_TAP_SLOP_PX} px \
+                     are clicks; {TABLET_ENV}=off turns this off"
+                )
+            }),
+            warning,
+        }
+    }
 }
 
 /// [`choose`] applied to the real environment and device list.

@@ -43,6 +43,7 @@ use crate::shell::backend::{self, Backend};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::Collector;
 use crate::shell::render::{self, TextStats, to_mq_color};
+use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
 
 /// Opacity of the marquee fill.
@@ -401,8 +402,14 @@ pub async fn run() {
     ));
     // Experimental features are read once (ADR-T31-1).
     let experimental = std::env::var(EXPERIMENTAL_ENV).ok();
-    let mut editor =
-        Editor::new().with_experimental(Experimental::from_env_value(experimental.as_deref()));
+    // Pen tablet mode is read once (ADR-T34-1).
+    let tablet = tablet::from_env();
+    for line in tablet.warning.iter().chain(&tablet.notice) {
+        eprintln!("{line}");
+    }
+    let mut editor = Editor::new()
+        .with_experimental(Experimental::from_env_value(experimental.as_deref()))
+        .with_tap_slop(tablet.tap_slop_px());
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);

@@ -46,8 +46,15 @@ impl TapFilter {
     /// passes unchanged) unless `slop_px` is finite and positive.
     #[must_use]
     pub fn new(slop_px: f32) -> Self {
-        let _ = slop_px;
-        todo!()
+        let slop = if slop_px.is_finite() && slop_px > 0.0 {
+            slop_px
+        } else {
+            0.0
+        };
+        Self {
+            slop,
+            state: TapState::Idle,
+        }
     }
 
     /// The slop in screen pixels, `0` when off.
@@ -58,8 +65,74 @@ impl TapFilter {
 
     /// Takes one event and returns the events to hand on, in order.
     pub fn filter(&mut self, event: InputEvent) -> Passed {
-        let _ = (event, self.state);
-        todo!()
+        let pass = [Some(event), None];
+        if self.slop <= 0.0 {
+            return pass;
+        }
+        let pos = match event {
+            InputEvent::PointerDown { pos, .. }
+            | InputEvent::PointerMove { pos, .. }
+            | InputEvent::PointerUp { pos, .. } => pos,
+            _ => return pass,
+        };
+        // The editor drops non-finite positions; they must not move the
+        // state either.
+        if !pos.is_finite() {
+            return pass;
+        }
+        match (self.state, event) {
+            (TapState::Idle, InputEvent::PointerDown { button, .. }) => {
+                self.state = TapState::Holding {
+                    origin: pos,
+                    button,
+                    held: None,
+                };
+                pass
+            }
+            (TapState::Holding { origin, button, .. }, InputEvent::PointerMove { mods, .. })
+                if pos.distance(origin) <= self.slop =>
+            {
+                self.state = TapState::Holding {
+                    origin,
+                    button,
+                    held: Some((pos, mods)),
+                };
+                [None, None]
+            }
+            (
+                TapState::Holding { origin, button, .. },
+                InputEvent::PointerUp {
+                    button: released,
+                    mods,
+                    ..
+                },
+            ) if released == button => {
+                self.state = TapState::Idle;
+                [
+                    Some(InputEvent::PointerUp {
+                        pos: origin,
+                        button,
+                        mods,
+                    }),
+                    None,
+                ]
+            }
+            (TapState::Holding { button, held, .. }, _) => {
+                self.state = TapState::Dragging { button };
+                let held = held.map(|(pos, mods)| InputEvent::PointerMove { pos, mods });
+                [held, Some(event)]
+            }
+            (
+                TapState::Dragging { button },
+                InputEvent::PointerUp {
+                    button: released, ..
+                },
+            ) if released == button => {
+                self.state = TapState::Idle;
+                pass
+            }
+            _ => pass,
+        }
     }
 }
 
@@ -180,7 +253,8 @@ mod tests {
 
             // Assert
             prop_assert!(filter.slop().abs() < f32::EPSILON);
-            prop_assert_eq!(out, events);
+            // NaN positions are never equal; compare the debug text.
+            prop_assert_eq!(format!("{out:?}"), format!("{events:?}"));
         }
     }
 

@@ -236,7 +236,18 @@ impl Editor {
     }
 
     /// Handles one input event. Returns whether the view needs a redraw.
+    ///
+    /// Events go through the tap filter first (ADR-T34-1).
     pub fn handle(&mut self, event: InputEvent) -> bool {
+        let mut redraw = false;
+        for event in self.tap.filter(event).into_iter().flatten() {
+            redraw |= self.handle_filtered(event);
+        }
+        redraw
+    }
+
+    /// [`Editor::handle`] for one event that left the tap filter.
+    fn handle_filtered(&mut self, event: InputEvent) -> bool {
         match event {
             InputEvent::PointerDown { pos, button, mods } => self
                 .track_cursor(pos)
@@ -3648,12 +3659,17 @@ mod tests {
         ed.apply(Command::SetTool(Tool::Select));
         let at = origin_on_screen(&ed) + Vec2::new(0.0, 50.0);
 
-        // Act: the slip is a marquee that encloses nothing.
+        // Act: the slip drags the rectangle along.
         slipping_tap(&mut ed, at);
 
         // Assert
         assert!(ed.tap_slop().abs() < f32::EPSILON);
-        assert!(ed.selection().is_empty());
+        assert!(ed.can_undo());
+        assert!(
+            ed.document()
+                .shapes()
+                .all(|(_, s)| *s != rect(0.0, 0.0, 100.0, 100.0))
+        );
     }
 
     #[test]
@@ -3670,6 +3686,11 @@ mod tests {
         assert!(approx_eq(ed.tap_slop(), PEN_TAP_SLOP_PX, 1e-6));
         assert_eq!(ed.selection(), ids(&ed).as_slice());
         assert_eq!(ed.selection().len(), 1);
+        assert!(
+            ed.document()
+                .shapes()
+                .all(|(_, s)| *s == rect(0.0, 0.0, 100.0, 100.0))
+        );
     }
 
     #[test]
