@@ -40,6 +40,8 @@ single-key shortcut so your hands never leave the keyboard for long.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
 - **Toolbar** — clickable tools, colours and helpers, hidden with `Tab`.
+- **Pen tablets** — draw with a pen; taps are clean clicks while a tablet
+  is attached.
 - **Kanagawa Dragon** dark theme with a fixed six-colour palette.
 
 ## Install
@@ -281,7 +283,7 @@ A printable one-page version lives in
 ## Configuration
 
 There is no config file: shortcuts, palette and theme are fixed on purpose.
-Three environment variables exist for troubleshooting, and two turn on
+Four environment variables exist for troubleshooting, and two turn on
 experimental features:
 
 | Variable | Values | Effect |
@@ -291,10 +293,40 @@ experimental features:
 | `DRAW_EXPERIMENTAL` | feature names, comma-separated | Turn on experimental features (below) |
 | `DRAW_BACKEND` | `x11` (default), `wayland` | Window backend on Linux; `wayland` is experimental (below) |
 | `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
+| `DRAW_TABLET` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
 
 ```sh
 DRAW_MSAA=off draw
 ```
+
+### Pen tablets
+
+A pen tablet (Wacom, Huion, XP-Pen, …) works like a mouse: the tip draws
+with the current tool, hovering moves the cursor, and the barrel buttons do
+what the middle (pan) and right (erase) mouse buttons do, if the compositor
+passes them on.
+
+A pen tip slips a little while it touches down and lifts, so a tap would
+reach the tools as a tiny drag. When a tablet is attached, draw finds it in
+`/proc/bus/input/devices`, prints one line naming it, and shows **pen** at
+the bottom of the toolbar. In this pen mode a tap that stays within 16 px of
+where it landed is a clean click: it selects with Select, places the caret
+with Text, and draws nothing with Rect or Ellipse. Strokes start once the
+pen has moved 16 px and then catch up. A mouse on the same machine gets the
+same 16 px, so `DRAW_TABLET=off` turns pen mode off and `DRAW_TABLET=on`
+forces it on.
+
+```sh
+DRAW_TABLET=off draw
+```
+
+Map the tablet to **one monitor** in your compositor, otherwise strokes are
+stretched and taps slip further. On Hyprland put `output = current` (or a
+monitor name) in the `input:tablet` section; on X11 use
+`xinput map-to-output <pen device> <output>`. Pressure is not used yet, and
+on the experimental native Wayland backend the pen moves the cursor but
+cannot draw: miniquad does not speak the Wayland tablet protocol. Use the
+default X11 backend with a pen.
 
 ### Experimental
 

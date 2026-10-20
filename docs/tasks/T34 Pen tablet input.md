@@ -1,7 +1,7 @@
 ---
 id: T34
 title: Pen tablet input
-status: in-progress
+status: review
 wave: 22
 branch: task/T34-pen-tablet
 depends_on: [T28]
@@ -138,7 +138,7 @@ Decision: [[ADR-T34-1 Tap slop for pen tablets detected at start-up]].
 - [x] models — `feat(T34): add tap filter and tablet choice types`
 - [x] behaviour — `feat(T34): hold pen taps still and detect tablets`
 - [x] quality — `chore(T34): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T34): add feature note and tutorial`
+- [x] docs — `docs(T34): add feature note and tutorial`
 
 ## Learning path
 
@@ -150,3 +150,23 @@ Step 34 — requires step 8 (editor as an input state machine) and step 28
 - 2026-10-20 — Created from the owner's request for graphics tablet
   support in 1.2.0, after logging the owner's HUION 420 on both backends
   (findings above).
+- 2026-10-20 — Spec, tests, models, behaviour, quality committed on
+  `task/T34-pen-tablet`. Two spec tests were fixed with the code: the
+  off-mode proptest compares debug text (NaN positions never compare
+  equal); `tap_slop_is_off_by_default` asserts that the slipping tap drags
+  the rectangle, since Select moves a shape pressed on (a marquee only
+  starts on empty canvas), and `pen_tap_with_select_selects_instead_of_marquee`
+  also asserts that the rectangle stays put. Extra tests beyond the spec:
+  `find_pen_needs_both_the_pen_key_and_the_axes`,
+  `pen_tap_slop_is_positive_and_finite`. The badge is 16 px high: only
+  20 px are left under the buttons in the default 800 px window.
+- 2026-10-20 — `/proc/bus/input/devices` is readable inside the Flatpak
+  sandbox too (checked with `flatpak run --command=sh`), so detection works
+  for the installed Flatpak.
+- 2026-10-20 — `scripts/check.sh` and `scripts/check.sh --fuzz` green.
+  `docs/architecture/Architecture.md` updated (new modules `core::tap`,
+  `shell::tablet`, the filter in the data flow), as T33 did.
+- 2026-10-20 — AC-7, owner on the target (HUION 420, Hyprland, X11
+  backend): start-up line and `pen` badge shown; Select taps select
+  without moving, Rect taps make nothing, Text taps place the caret,
+  strokes draw normally. Status → review.
