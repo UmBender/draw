@@ -61,6 +61,8 @@ flowchart LR
   s27 --> s28
   s8 --> s34[34 Telling a tap from a drag]
   s28 --> s34
+  s34 --> s35[35 Reading a pen through a patched window library]
+  s24 --> s35
 ```
 
 | Step | Tutorial | Task | Status |
@@ -99,3 +101,4 @@ flowchart LR
 | 32 | [[32 Batching glyphs into the document mesh]] | [[T32 Fast text rendering]] | done |
 | 33 | [[33 Typesetting with a proportional math font]] | [[T33 Math font for formulas]] | done |
 | 34 | [[34 Telling a tap from a drag]] | [[T34 Pen tablet input]] | done |
+| 35 | [[35 Reading a pen through a patched window library]] | [[T35 Pen pressure and native Wayland tablets]] | done |

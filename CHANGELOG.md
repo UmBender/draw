@@ -6,6 +6,28 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Pen pressure: with the Pen tool, pressing harder draws a thicker line. A
+  normal (half) press gives the width chosen with `[` / `]`, a light touch
+  down to a quarter of it and a hard press up to twice, and the width
+  changes along the stroke. Works on the X11 and native Wayland backends.
+  Mouse strokes and the other tools are unchanged.
+- Pen tablets on the experimental native Wayland backend
+  (`DRAW_BACKEND=wayland`): the pen now draws, and both barrel buttons
+  work (middle = pan, right = erase).
+
+### Changed
+
+- draw now builds against a patched copy of its window library, miniquad
+  0.4.11, in `vendor/miniquad` (pen tablet input; changes listed in
+  `vendor/miniquad/PATCHED.md`). No new runtime libraries are needed.
+
+### Fixed
+
+- On the native Wayland backend the second barrel button of a pen, which
+  Xwayland drops, now reaches draw (as the right button, erasing).
+
 ## [1.2.0] - 2026-10-20
 
 ### Added

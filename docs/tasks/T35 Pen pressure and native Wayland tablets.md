@@ -1,7 +1,7 @@
 ---
 id: T35
 title: Pen pressure and native Wayland tablets
-status: review
+status: done
 wave: 23
 branch: task/T35-pen-pressure
 depends_on: [T34]
@@ -215,3 +215,4 @@ Step 35 — requires step 34 (telling a tap from a drag) and step 24
   path dependency). Fixed in the vendored copy (`PATCHED.md`): the
   Android-only `set_or_replace_display` is compiled only for Android, and
   the X11 clipboard reads `MESSAGE` through `addr_of!`.
+- 2026-10-20 — Integrated into `main`. Status → done.

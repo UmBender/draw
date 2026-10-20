@@ -11,7 +11,7 @@ tags: [tutorial]
 
 > **Learning path step 34.** Requires: step 8 (editor as an input-driven
 > state machine), step 28 (choosing a backend at start-up) · Next: step 35
-> (pen pressure, planned).
+> ([[35 Reading a pen through a patched window library]]).
 
 ## Why this matters here
 

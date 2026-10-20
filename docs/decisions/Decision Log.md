@@ -22,7 +22,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 11 | [[ADR-0011 Git workflow]] | accepted | decision | 0001, 0008 | — |
 | 12 | [[ADR-0012 Fixed palette and theme tokens]] | accepted | decision | 0004 | amended by 0015 |
 | 13 | [[ADR-0013 World-space widths and zoom limits]] | accepted | decision | 0004 | — |
-| 14 | [[ADR-0014 Minimal dependencies and no unsafe]] | accepted | decision | 0002, 0003 | amended by T32-1 |
+| 14 | [[ADR-0014 Minimal dependencies and no unsafe]] | accepted | decision | 0002, 0003 | amended by T32-1, T35-1 |
 | 15 | [[ADR-0015 Kanagawa Dragon theme]] | accepted | decision | 0012 | amends 0012 |
 | 16 | [[ADR-T06-1 Self-checking edits and rollback atomicity]] | accepted | decision | 0005 | — |
 | 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | amended by T24-4 |
@@ -48,7 +48,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 37 | [[ADR-T24-1 Document layer keyed by a document revision]] | accepted | decision | 0006, T12-1, T15-1, T08-1 | amends T12-1; amended by T24-2, T24-3, T26-1 |
 | 38 | [[ADR-T24-2 Overlay drawn straight to the window]] | accepted | decision | T24-1, T12-1 | amends T24-1, T15-1 |
 | 39 | [[ADR-T24-3 Batched meshes and append-only document updates]] | accepted | decision | T07-1, T24-1, 0014 | amends T24-1; amended by T32-2 |
-| 40 | [[ADR-T24-4 Strokes as one strip with sparse round joins]] | accepted | decision | T07-1, T24-3 | amends T07-1 |
+| 40 | [[ADR-T24-4 Strokes as one strip with sparse round joins]] | accepted | decision | T07-1, T24-3 | amends T07-1; amended by T35-2 |
 | 41 | [[ADR-T24-5 Redraw budgets]] | accepted | decision | T24-1, T24-2, T24-3, T24-4 | amends T14-1; amended by T26-2 |
 | 42 | [[ADR-T25-1 Lazy position index and batched edit runs]] | accepted | decision | 0004, 0005, T06-1 | — |
 | 43 | [[ADR-T25-2 Id hasher and selection-scale budgets]] | accepted | decision | T25-1, T14-1, 0014 | amends T14-1 |
@@ -68,3 +68,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 57 | [[ADR-T27-3 Crash report from a panic hook and split debug symbols]] | accepted | decision | 0002, 0014 | — |
 | 58 | [[ADR-T28-1 Opt-in native Wayland backend]] | accepted | decision | T12-1, T26-1, T27-2 | — |
 | 59 | [[ADR-T34-1 Tap slop for pen tablets detected at start-up]] | accepted | decision | 0003, T28-1 | — |
+| 60 | [[ADR-T35-1 Vendored miniquad with a pen tablet patch]] | accepted | decision | T12-1, T28-1, T34-1 | amends 0014 |
+| 61 | [[ADR-T35-2 Pressure as per-point width factors on pen strokes]] | accepted | decision | 0007, 0013, T35-1 | amends T24-4 |
