@@ -9,4 +9,5 @@ pub mod glyphs;
 pub mod input_map;
 pub mod preflight;
 pub mod render;
+pub mod tablet;
 pub mod toolbar;

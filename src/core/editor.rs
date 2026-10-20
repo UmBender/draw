@@ -28,6 +28,7 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
+use crate::core::tap::TapFilter;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -159,6 +160,8 @@ pub struct Editor {
     /// block (ADR-T29-2).
     reedit: Option<(Vec2, ShapeId)>,
     keymap: Keymap,
+    /// Holds pen taps still before the events reach the tools (ADR-T34-1).
+    tap: TapFilter,
     /// Grows whenever the document may have changed (ADR-T24-1).
     doc_revision: u64,
     /// `doc_revision` of the latest change that was not a pure append of
@@ -193,9 +196,24 @@ impl Editor {
             gesture: None,
             reedit: None,
             keymap: keymap::resolve,
+            tap: TapFilter::new(0.0),
             doc_revision: 0,
             doc_base_revision: 0,
         }
+    }
+
+    /// Sets the tap slop in screen pixels: a press released within it is a
+    /// click at the press point; `0` turns it off (ADR-T34-1).
+    #[must_use]
+    pub fn with_tap_slop(mut self, slop_px: f32) -> Self {
+        self.tap = TapFilter::new(slop_px);
+        self
+    }
+
+    /// The tap slop in screen pixels, `0` when off.
+    #[must_use]
+    pub fn tap_slop(&self) -> f32 {
+        self.tap.slop()
     }
 
     /// Replaces the keymap (used by tests and alternative bindings).
@@ -218,7 +236,18 @@ impl Editor {
     }
 
     /// Handles one input event. Returns whether the view needs a redraw.
+    ///
+    /// Events go through the tap filter first (ADR-T34-1).
     pub fn handle(&mut self, event: InputEvent) -> bool {
+        let mut redraw = false;
+        for event in self.tap.filter(event).into_iter().flatten() {
+            redraw |= self.handle_filtered(event);
+        }
+        redraw
+    }
+
+    /// [`Editor::handle`] for one event that left the tap filter.
+    fn handle_filtered(&mut self, event: InputEvent) -> bool {
         match event {
             InputEvent::PointerDown { pos, button, mods } => self
                 .track_cursor(pos)
@@ -984,6 +1013,7 @@ mod tests {
     use crate::core::shape::GRID_MAX_CELLS;
     use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
     use crate::core::smoothing::SmoothingLevel;
+    use crate::core::tap::PEN_TAP_SLOP_PX;
 
     const NONE: Modifiers = Modifiers::NONE;
 
@@ -3604,5 +3634,128 @@ mod tests {
         assert_eq!(ed.helpers().next_number, 2);
         ed.apply(Command::Redo);
         assert_eq!(ed.helpers().next_number, 2);
+    }
+
+    // ---- T34 pen taps -----------------------------------------------------
+
+    /// A tap that slips 12 px right and 5 px down between press and
+    /// release, as a pen tip does: further than the tools' own click
+    /// thresholds, inside the pen slop.
+    fn slipping_tap(ed: &mut Editor, at: Vec2) {
+        down(ed, PointerButton::Left, at.x, at.y);
+        move_to(ed, at.x + 6.0, at.y + 2.0);
+        move_to(ed, at.x + 12.0, at.y + 5.0);
+        up(ed, PointerButton::Left, at.x + 12.0, at.y + 5.0);
+    }
+
+    fn pen_editor(shapes: Vec<Shape>) -> Editor {
+        editor_with(shapes).with_tap_slop(PEN_TAP_SLOP_PX)
+    }
+
+    #[test]
+    fn tap_slop_is_off_by_default() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        ed.apply(Command::SetTool(Tool::Select));
+        let at = origin_on_screen(&ed) + Vec2::new(0.0, 50.0);
+
+        // Act: the slip drags the rectangle along.
+        slipping_tap(&mut ed, at);
+
+        // Assert
+        assert!(ed.tap_slop().abs() < f32::EPSILON);
+        assert!(ed.can_undo());
+        assert!(
+            ed.document()
+                .shapes()
+                .all(|(_, s)| *s != rect(0.0, 0.0, 100.0, 100.0))
+        );
+    }
+
+    #[test]
+    fn pen_tap_with_select_selects_instead_of_marquee() {
+        // Arrange
+        let mut ed = pen_editor(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+        ed.apply(Command::SetTool(Tool::Select));
+        let at = origin_on_screen(&ed) + Vec2::new(0.0, 50.0);
+
+        // Act
+        slipping_tap(&mut ed, at);
+
+        // Assert
+        assert!(approx_eq(ed.tap_slop(), PEN_TAP_SLOP_PX, 1e-6));
+        assert_eq!(ed.selection(), ids(&ed).as_slice());
+        assert_eq!(ed.selection().len(), 1);
+        assert!(
+            ed.document()
+                .shapes()
+                .all(|(_, s)| *s == rect(0.0, 0.0, 100.0, 100.0))
+        );
+    }
+
+    #[test]
+    fn pen_tap_with_rect_makes_no_shape() {
+        // Arrange
+        let mut ed = pen_editor(Vec::new());
+        ed.apply(Command::SetTool(Tool::Rect));
+
+        // Act
+        slipping_tap(&mut ed, Vec2::new(200.0, 200.0));
+
+        // Assert
+        assert!(ed.document().is_empty());
+        assert!(ed.preview().is_none());
+    }
+
+    #[test]
+    fn pen_tap_with_pen_commits_a_dot() {
+        // Arrange
+        let mut ed = pen_editor(Vec::new());
+        ed.apply(Command::SetTool(Tool::Pen));
+        let at = Vec2::new(200.0, 200.0);
+
+        // Act
+        slipping_tap(&mut ed, at);
+
+        // Assert
+        let shapes: Vec<_> = ed.document().shapes().map(|(_, s)| s.clone()).collect();
+        let [Shape::Stroke { points, .. }] = shapes.as_slice() else {
+            panic!("expected one stroke, got {shapes:?}");
+        };
+        let press = ed.camera().screen_to_world(at);
+        assert!(
+            points.iter().all(|p| p.approx_eq(press, 1e-3)),
+            "{points:?}"
+        );
+    }
+
+    #[test]
+    fn pen_stroke_beyond_slop_runs_from_press_to_release() {
+        // Arrange
+        let mut ed = pen_editor(Vec::new());
+        ed.apply(Command::SetTool(Tool::Pen));
+
+        // Act
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+        move_to(&mut ed, 105.0, 100.0);
+        move_to(&mut ed, 140.0, 100.0);
+        move_to(&mut ed, 200.0, 100.0);
+        up(&mut ed, PointerButton::Left, 200.0, 100.0);
+
+        // Assert
+        let shapes: Vec<_> = ed.document().shapes().map(|(_, s)| s.clone()).collect();
+        let [Shape::Stroke { points, .. }] = shapes.as_slice() else {
+            panic!("expected one stroke, got {shapes:?}");
+        };
+        let first = ed.camera().screen_to_world(Vec2::new(100.0, 100.0));
+        let last = ed.camera().screen_to_world(Vec2::new(200.0, 100.0));
+        assert!(
+            points.first().is_some_and(|p| p.approx_eq(first, 1e-3)),
+            "{points:?}"
+        );
+        assert!(
+            points.last().is_some_and(|p| p.approx_eq(last, 1e-3)),
+            "{points:?}"
+        );
     }
 }
