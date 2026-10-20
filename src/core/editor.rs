@@ -302,8 +302,10 @@ impl Editor {
                 }
             }
             InputEvent::Pressure { pressure } => {
-                let _ = pressure;
-                todo!()
+                self.pressure = pressure
+                    .filter(|p| p.is_finite())
+                    .map(|p| p.clamp(0.0, 1.0));
+                false
             }
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {

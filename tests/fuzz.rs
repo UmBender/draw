@@ -221,24 +221,28 @@ fn arb_event() -> impl Strategy<Value = InputEvent> {
     ]
 }
 
-/// A pen pressure: mostly in range, sometimes out of it, non-finite or absent.
+/// A pen pressure: mostly in range, sometimes out of it, non-finite or
+/// absent. Decoded from one byte: nested unions overflow the test thread's
+/// stack in debug builds.
 fn arb_pressure() -> impl Strategy<Value = Option<f32>> {
-    prop_oneof![
-        6 => (0.0f32..=1.0).prop_map(Some),
-        1 => arb_coord().prop_map(Some),
-        1 => Just(None),
-    ]
+    any::<u8>().prop_map(|b| match b {
+        0..=199 => Some(f32::from(b) / 199.0),
+        200..=219 => Some(f32::from(b) - 210.0),
+        220..=229 => Some(f32::NAN),
+        230..=239 => Some(f32::INFINITY),
+        _ => None,
+    })
 }
 
 /// [`arb_session`] with a pen: a pressure before most pointer events (T35).
 fn arb_pressure_session() -> impl Strategy<Value = Vec<InputEvent>> {
     (
         arb_session(),
-        prop::collection::vec(prop::option::of(arb_pressure()), MAX_SESSION_LEN),
+        prop::collection::vec(prop::option::of(arb_pressure()), 1..16),
     )
         .prop_map(|(session, pressures)| {
             let mut events = Vec::with_capacity(session.len() * 2);
-            for (event, pressure) in session.into_iter().zip(pressures) {
+            for (event, pressure) in session.into_iter().zip(pressures.into_iter().cycle()) {
                 let pointer = matches!(
                     event,
                     InputEvent::PointerDown { .. }

@@ -150,6 +150,10 @@ impl HeldMods {
     }
 }
 
+/// Largest distance in physical pixels, per axis, between a pointer event
+/// and the pen sample it is paired with.
+const PEN_MATCH_PX: f32 = 0.01;
+
 /// A pen sample from the window library: where a pen pointer event
 /// happened and how hard the tip pressed (ADR-T35-1).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -212,8 +216,8 @@ impl Collector {
 
     /// Replaces the queued pen samples with this frame's (ADR-T35-1).
     pub fn set_pen_samples(&mut self, samples: impl IntoIterator<Item = PenSample>) {
-        let _ = samples.into_iter();
-        todo!()
+        self.pen.clear();
+        self.pen.extend(samples);
     }
 
     /// Sets the DPI scale used for the following pointer events.
@@ -224,6 +228,23 @@ impl Collector {
     /// Removes and yields the collected events, oldest first.
     pub fn drain(&mut self) -> impl Iterator<Item = InputEvent> + '_ {
         self.events.drain(..)
+    }
+
+    /// Pairs a pointer event at physical `(x, y)` with the oldest queued pen
+    /// sample there, dropping older samples, and emits
+    /// [`InputEvent::Pressure`] if the pressure changed (ADR-T35-1).
+    fn pair_pen(&mut self, x: f32, y: f32) {
+        let near = |s: &PenSample| {
+            (s.pos.x - x).abs() <= PEN_MATCH_PX && (s.pos.y - y).abs() <= PEN_MATCH_PX
+        };
+        let pressure = self.pen.iter().position(near).and_then(|i| {
+            self.pen.drain(..i);
+            self.pen.pop_front().map(|s| s.pressure)
+        });
+        if pressure.map(f32::to_bits) != self.pressure.map(f32::to_bits) {
+            self.pressure = pressure;
+            self.events.push(InputEvent::Pressure { pressure });
+        }
     }
 
     /// Converts a physical position and remembers it as the pointer.
@@ -239,6 +260,7 @@ impl EventHandler for Collector {
     fn draw(&mut self) {}
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.pair_pen(x, y);
         let pos = self.track(x, y);
         let mods = self.held.modifiers();
         self.events.push(InputEvent::PointerMove { pos, mods });
@@ -256,6 +278,7 @@ impl EventHandler for Collector {
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
+            self.pair_pen(x, y);
             let mods = self.held.modifiers();
             self.events
                 .push(InputEvent::PointerDown { pos, button, mods });
@@ -265,6 +288,7 @@ impl EventHandler for Collector {
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
+            self.pair_pen(x, y);
             let mods = self.held.modifiers();
             self.events
                 .push(InputEvent::PointerUp { pos, button, mods });

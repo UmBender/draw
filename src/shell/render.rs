@@ -153,15 +153,23 @@ impl<S: MeshSink> Batch<S> {
     /// ([`stroke_needs_joints`]) get round discs at breaks and ends. A
     /// single point is a dot (ADR-T24-4).
     pub fn polyline(&mut self, points: impl IntoIterator<Item = Vec2>, width: f32, color: Color) {
-        let h = width * 0.5;
-        let round = stroke_needs_joints(width);
+        self.polyline_widths(points.into_iter().map(|p| (p, width)), color);
+    }
+
+    /// [`Batch::polyline`] with a width per point: each strip pair is
+    /// offset by its own point's half-width, and caps and breaks are discs
+    /// of that point's width (ADR-T35-2).
+    pub fn polyline_widths(&mut self, points: impl IntoIterator<Item = (Vec2, f32)>, color: Color) {
         let mut points = points.into_iter();
-        let Some(first) = points.next() else {
+        let Some((first, first_width)) = points.next() else {
             return;
         };
-        let (mut prev, mut prev_normal) = (first, None::<Vec2>);
+        // The previous kept point, its half-width and whether it gets discs.
+        let (mut prev, mut h, mut round) =
+            (first, first_width * 0.5, stroke_needs_joints(first_width));
+        let mut prev_normal = None::<Vec2>;
         let mut last = None;
-        for p in points {
+        for (p, width) in points {
             let d = p - prev;
             let len = d.length();
             // Also skips non-finite steps.
@@ -192,6 +200,7 @@ impl<S: MeshSink> Batch<S> {
                 }
             }
             (prev, prev_normal) = (p, Some(n));
+            (h, round) = (width * 0.5, stroke_needs_joints(width));
         }
         match prev_normal {
             None => self.disc(first, h, color),
@@ -202,14 +211,6 @@ impl<S: MeshSink> Batch<S> {
                 }
             }
         }
-    }
-
-    /// [`Batch::polyline`] with a width per point: each strip pair is
-    /// offset by its own point's half-width, and caps and breaks are discs
-    /// of that point's width (ADR-T35-2).
-    pub fn polyline_widths(&mut self, points: impl IntoIterator<Item = (Vec2, f32)>, color: Color) {
-        let _ = (points.into_iter(), color);
-        todo!()
     }
 
     /// Adds a filled disc of `radius` pixels centred at `center`.
@@ -996,6 +997,17 @@ fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
     let color = color_of(style.color);
     let to_screen = |p: Vec2| camera.world_to_screen(p);
     match shape {
+        Shape::Stroke {
+            points,
+            widths: Some(widths),
+            style,
+        } => batch.polyline_widths(
+            points.iter().zip(widths).map(|(p, factor)| {
+                let width = stroke_point_width(style.width, *factor, camera.zoom());
+                (camera.world_to_screen(*p), width)
+            }),
+            color,
+        ),
         Shape::Stroke { points, .. } => draw_polyline(batch, points, camera, width, color),
         Shape::Line { a, b, .. } => {
             draw_segment(batch, to_screen(*a), to_screen(*b), width, color);
@@ -1211,8 +1223,7 @@ fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32
 /// stroke's world width times the point's factor (ADR-T35-2).
 #[must_use]
 pub fn stroke_point_width(world_width: f32, factor: f32, zoom: f32) -> f32 {
-    let _ = (world_width, factor, zoom);
-    todo!()
+    screen_width(world_width * factor, zoom)
 }
 
 /// Draws a screen-space segment with round caps when thick.

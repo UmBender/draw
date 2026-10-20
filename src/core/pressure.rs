@@ -16,8 +16,11 @@ pub const MAX_WIDTH_FACTOR: f32 = 2.0;
 /// non-finite pressure gives `1`.
 #[must_use]
 pub fn width_factor(p: f32) -> f32 {
-    let _ = p;
-    todo!()
+    if p.is_finite() {
+        (2.0 * p).clamp(MIN_WIDTH_FACTOR, MAX_WIDTH_FACTOR)
+    } else {
+        1.0
+    }
 }
 
 #[cfg(test)]

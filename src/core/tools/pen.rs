@@ -3,11 +3,13 @@
 //! `Down` starts a [`Smoother`] at the current level and scale, `Move` feeds it
 //! world positions, `Up` finishes the stroke and commits it as one undo step
 //! (ADR-0007, ADR-T08-1). The width is chosen in screen pixels and stored in
-//! world units at the zoom of the `Down` (ADR-0013).
+//! world units at the zoom of the `Down` (ADR-0013). A pen with pressure
+//! gives every point a width factor (ADR-T35-2).
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::tx_insert;
 use crate::core::geom::Vec2;
+use crate::core::pressure::width_factor;
 use crate::core::shape::{Shape, Style};
 use crate::core::smoothing::Smoother;
 
@@ -34,22 +36,23 @@ struct LiveStroke {
 /// ignored.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     let world = ctx.camera.screen_to_world(pointer.pos);
+    let width = pointer.pressure.map(width_factor);
     match pointer.phase {
         Phase::Down => {
             let mut stroke = begin(ctx);
-            stroke.smoother.push(world);
+            stroke.smoother.push_width(world, width);
             state.stroke = Some(stroke);
             true
         }
         Phase::Move => state
             .stroke
             .as_mut()
-            .is_some_and(|stroke| stroke.smoother.push(world)),
+            .is_some_and(|stroke| stroke.smoother.push_width(world, width)),
         Phase::Up => {
             let Some(mut stroke) = state.stroke.take() else {
                 return false;
             };
-            stroke.smoother.push(world);
+            stroke.smoother.push_width(world, width);
             let (points, widths) = stroke.smoother.finish_with_widths();
             if points.is_empty() {
                 // Only non-finite positions were pushed: just drop the preview.

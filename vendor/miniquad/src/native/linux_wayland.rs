@@ -64,6 +64,69 @@ struct WaylandPayload {
     keyboard_context: KeyboardContext,
     drag_n_drop: drag_n_drop::WaylandDnD,
     update_requested: bool,
+    // draw patch (ADR-T35-1): pen tablets through zwp_tablet_v2.
+    tablet: TabletContext,
+}
+
+/// Pen tablets (draw patch, ADR-T35-1).
+///
+/// A tool's events are buffered until its `frame` and then sent as pointer
+/// events: motion as motion, the tip as the left button, `BTN_STYLUS` as
+/// the middle button and `BTN_STYLUS2` as the right one. Each comes with a
+/// [`crate::pen`] sample of the tool's latest pressure.
+struct TabletContext {
+    manager: *mut extensions::tablet::zwp_tablet_manager_v2,
+    seat: *mut extensions::tablet::zwp_tablet_seat_v2,
+    /// Tools by proxy address.
+    tools: HashMap<usize, PenTool>,
+}
+
+impl TabletContext {
+    fn new() -> Self {
+        Self {
+            manager: std::ptr::null_mut(),
+            seat: std::ptr::null_mut(),
+            tools: HashMap::new(),
+        }
+    }
+}
+
+/// One tablet tool (a pen, or its eraser end).
+struct PenTool {
+    /// Whether the tool is in proximity of our surface.
+    focused: bool,
+    /// Last position in physical pixels.
+    position: (f32, f32),
+    /// Last pressure in `[0, 1]`.
+    pressure: f32,
+    /// Whether the tip touches the tablet, as last sent.
+    tip_down: bool,
+    /// The tool's cursor shape device, if the compositor has cursor shapes.
+    cursor_device: *mut extensions::cursor::wp_cursor_shape_device_v1,
+    /// Events since the last `frame`.
+    frame: PenFrame,
+}
+
+impl PenTool {
+    fn new() -> Self {
+        Self {
+            focused: false,
+            position: (0.0, 0.0),
+            pressure: 0.0,
+            tip_down: false,
+            cursor_device: std::ptr::null_mut(),
+            frame: PenFrame::default(),
+        }
+    }
+}
+
+/// A tool's events between two `frame`s.
+#[derive(Default)]
+struct PenFrame {
+    motion: Option<(f32, f32)>,
+    tip: Option<bool>,
+    buttons: Vec<(MouseButton, bool)>,
+    proximity_out: bool,
 }
 
 impl WaylandPayload {
@@ -165,6 +228,29 @@ impl WaylandPayload {
         (self.client.wl_proxy_add_listener)(
             self.data_device as _,
             &DATA_DEVICE_LISTENER as *const _ as _,
+            self as *mut _ as _,
+        );
+    }
+    /// Takes the tablet seat of our seat, if the compositor has tablets
+    /// (draw patch, ADR-T35-1).
+    unsafe fn init_tablet_seat(&mut self) {
+        if self.tablet.manager.is_null() || self.seat.is_null() {
+            return;
+        }
+        self.tablet.seat = wl_request_constructor!(
+            self.client,
+            self.tablet.manager,
+            extensions::tablet::TABLET_MANAGER_GET_TABLET_SEAT,
+            &extensions::tablet::zwp_tablet_seat_v2_interface,
+            self.seat
+        );
+        if self.tablet.seat.is_null() {
+            return;
+        }
+        TABLET_SEAT_LISTENER.tool_added = tablet_seat_handle_tool_added;
+        (self.client.wl_proxy_add_listener)(
+            self.tablet.seat as _,
+            &TABLET_SEAT_LISTENER as *const _ as _,
             self as *mut _ as _,
         );
     }
@@ -458,6 +544,10 @@ static mut DATA_DEVICE_LISTENER: wl_data_device_listener = wl_data_device_listen
 static mut DATA_OFFER_LISTENER: wl_data_offer_listener = wl_data_offer_listener::dummy();
 static mut XDG_WM_BASE_LISTENER: extensions::xdg_shell::xdg_wm_base_listener =
     extensions::xdg_shell::xdg_wm_base_listener::dummy();
+static mut TABLET_SEAT_LISTENER: extensions::tablet::zwp_tablet_seat_v2_listener =
+    extensions::tablet::zwp_tablet_seat_v2_listener::dummy();
+static mut TABLET_TOOL_LISTENER: extensions::tablet::zwp_tablet_tool_v2_listener =
+    extensions::tablet::zwp_tablet_tool_v2_listener::dummy();
 static mut RELATIVE_POINTER_LISTENER: extensions::cursor::zwp_relative_pointer_v1_listener =
     extensions::cursor::zwp_relative_pointer_v1_listener::dummy();
 
@@ -536,6 +626,8 @@ enum WaylandEvent {
     PointerMotion(f32, f32),
     RawMotion(f32, f32),
     PointerButton(MouseButton, bool),
+    // draw patch (ADR-T35-1): a pen button, with the pen's position.
+    PenButton(MouseButton, bool, f32, f32),
     PointerAxis(f32, f32),
     Touch(crate::TouchPhase, u64, f32, f32),
     FilesDropped(String),
@@ -765,6 +857,226 @@ unsafe extern "C" fn pointer_handle_axis(
     }
 }
 
+// ---- draw patch (ADR-T35-1): pen tablets ----
+
+unsafe extern "C" fn tablet_seat_handle_tool_added(
+    data: *mut ::core::ffi::c_void,
+    _seat: *mut extensions::tablet::zwp_tablet_seat_v2,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+) {
+    let display: &mut WaylandPayload = &mut *(data as *mut _);
+    if tool.is_null() {
+        return;
+    }
+    display.tablet.tools.insert(tool as usize, PenTool::new());
+    TABLET_TOOL_LISTENER.removed = tablet_tool_handle_removed;
+    TABLET_TOOL_LISTENER.proximity_in = tablet_tool_handle_proximity_in;
+    TABLET_TOOL_LISTENER.proximity_out = tablet_tool_handle_proximity_out;
+    TABLET_TOOL_LISTENER.down = tablet_tool_handle_down;
+    TABLET_TOOL_LISTENER.up = tablet_tool_handle_up;
+    TABLET_TOOL_LISTENER.motion = tablet_tool_handle_motion;
+    TABLET_TOOL_LISTENER.pressure = tablet_tool_handle_pressure;
+    TABLET_TOOL_LISTENER.button = tablet_tool_handle_button;
+    TABLET_TOOL_LISTENER.frame = tablet_tool_handle_frame;
+    (display.client.wl_proxy_add_listener)(
+        tool as _,
+        &TABLET_TOOL_LISTENER as *const _ as _,
+        data,
+    );
+}
+
+/// The state of `tool`, if it is one of ours.
+unsafe fn pen_tool<'a>(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+) -> Option<&'a mut PenTool> {
+    let display: &mut WaylandPayload = &mut *(data as *mut _);
+    display.tablet.tools.get_mut(&(tool as usize))
+}
+
+unsafe extern "C" fn tablet_tool_handle_removed(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+) {
+    let display: &mut WaylandPayload = &mut *(data as *mut _);
+    if let Some(state) = display.tablet.tools.remove(&(tool as usize)) {
+        if !state.cursor_device.is_null() {
+            wl_request!(display.client, state.cursor_device, 0);
+            (display.client.wl_proxy_destroy)(state.cursor_device as _);
+        }
+    }
+    wl_request!(
+        display.client,
+        tool,
+        extensions::tablet::TABLET_TOOL_DESTROY
+    );
+    (display.client.wl_proxy_destroy)(tool as _);
+}
+
+unsafe extern "C" fn tablet_tool_handle_proximity_in(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+    serial: core::ffi::c_uint,
+    _tablet: *mut extensions::tablet::zwp_tablet_v2,
+    surface: *mut wl_surface,
+) {
+    let display: &mut WaylandPayload = &mut *(data as *mut _);
+    let Some(state) = display.tablet.tools.get_mut(&(tool as usize)) else {
+        return;
+    };
+    state.focused = surface == display.surface;
+    state.frame.proximity_out = false;
+    if !state.focused {
+        return;
+    }
+    // Show the window's cursor for the pen too.
+    let manager = display.pointer_context.cursor_shape_manager;
+    if state.cursor_device.is_null() && !manager.is_null() {
+        state.cursor_device = wl_request_constructor!(
+            display.client,
+            manager,
+            2, // wp_cursor_shape_manager_v1.get_tablet_tool_v2
+            &extensions::cursor::wp_cursor_shape_device_v1_interface,
+            tool
+        );
+    }
+    match display.pointer_context.cursor_icon {
+        Some(icon) if !state.cursor_device.is_null() => {
+            wl_request!(
+                display.client,
+                state.cursor_device,
+                extensions::cursor::CURSOR_SHAPE_DEVICE_SET_SHAPE,
+                serial,
+                extensions::cursor::translate_cursor(icon)
+            );
+        }
+        Some(_) => {}
+        None => {
+            wl_request!(
+                display.client,
+                tool,
+                extensions::tablet::TABLET_TOOL_SET_CURSOR,
+                serial,
+                std::ptr::null_mut::<wl_surface>(),
+                0,
+                0
+            );
+        }
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_proximity_out(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+) {
+    if let Some(state) = pen_tool(data, tool) {
+        state.frame.proximity_out = true;
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_down(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+    _serial: core::ffi::c_uint,
+) {
+    if let Some(state) = pen_tool(data, tool) {
+        state.frame.tip = Some(true);
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_up(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+) {
+    if let Some(state) = pen_tool(data, tool) {
+        state.frame.tip = Some(false);
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_motion(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+    x: wl_fixed_t,
+    y: wl_fixed_t,
+) {
+    if let Some(state) = pen_tool(data, tool) {
+        let scale = crate::native_display().lock().unwrap().dpi_scale;
+        state.frame.motion = Some((wl_fixed_to_double(x) * scale, wl_fixed_to_double(y) * scale));
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_pressure(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+    pressure: core::ffi::c_uint,
+) {
+    if let Some(state) = pen_tool(data, tool) {
+        state.pressure =
+            (pressure as f32 / extensions::tablet::TOOL_PRESSURE_MAX).clamp(0.0, 1.0);
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_button(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+    _serial: core::ffi::c_uint,
+    button: core::ffi::c_uint,
+    state: core::ffi::c_uint,
+) {
+    // linux/input-event-codes.h: BTN_STYLUS, BTN_STYLUS2.
+    let button = match button {
+        0x14b => MouseButton::Middle,
+        0x14c => MouseButton::Right,
+        _ => return,
+    };
+    if let Some(tool_state) = pen_tool(data, tool) {
+        tool_state.frame.buttons.push((button, state == 1));
+    }
+}
+
+unsafe extern "C" fn tablet_tool_handle_frame(
+    data: *mut ::core::ffi::c_void,
+    tool: *mut extensions::tablet::zwp_tablet_tool_v2,
+    _time: core::ffi::c_uint,
+) {
+    let display: &mut WaylandPayload = &mut *(data as *mut _);
+    let Some(state) = display.tablet.tools.get_mut(&(tool as usize)) else {
+        return;
+    };
+    let frame = std::mem::take(&mut state.frame);
+    if !state.focused {
+        return;
+    }
+    let pressure = state.pressure;
+    let events = &mut display.events;
+    let mut send = |event: WaylandEvent, (x, y): (f32, f32)| {
+        crate::pen::push(x, y, pressure);
+        events.push(event);
+    };
+    if let Some((x, y)) = frame.motion {
+        state.position = (x, y);
+        send(WaylandEvent::PointerMotion(x, y), (x, y));
+    }
+    let (x, y) = state.position;
+    if let Some(down) = frame.tip {
+        if down != state.tip_down {
+            state.tip_down = down;
+            send(WaylandEvent::PenButton(MouseButton::Left, down, x, y), (x, y));
+        }
+    }
+    for (button, pressed) in frame.buttons {
+        send(WaylandEvent::PenButton(button, pressed, x, y), (x, y));
+    }
+    if frame.proximity_out {
+        if state.tip_down {
+            state.tip_down = false;
+            send(WaylandEvent::PenButton(MouseButton::Left, false, x, y), (x, y));
+        }
+        state.focused = false;
+    }
+    display.pointer_context.position = state.position;
+}
+
 unsafe extern "C" fn relative_pointer_handle_relative_motion(
     data: *mut ::core::ffi::c_void,
     _relative_pointer: *mut extensions::cursor::zwp_relative_pointer_v1,
@@ -979,6 +1291,14 @@ unsafe extern "C" fn registry_add_object(
                 1,
             ) as _;
         }
+        "zwp_tablet_manager_v2" => {
+            display.tablet.manager = display.client.wl_registry_bind(
+                registry,
+                name,
+                &extensions::tablet::zwp_tablet_manager_v2_interface as _,
+                1,
+            ) as _;
+        }
         "wl_shm" => {
             display.shm =
                 display
@@ -1103,6 +1423,7 @@ where
             keyboard_context: KeyboardContext::new(),
             drag_n_drop: Default::default(),
             update_requested: true,
+            tablet: TabletContext::new(),
         };
 
         let mut registry_listener = wl_registry_listener::dummy();
@@ -1127,6 +1448,7 @@ where
 
         display.init_data_device();
         display.init_pointer_context();
+        display.init_tablet_seat();
 
         let mut libegl = egl::LibEgl::try_load().ok()?;
         let (context, config, egl_display) = egl::create_egl_context(
@@ -1275,6 +1597,13 @@ where
                     }
                     WaylandEvent::PointerButton(button, state) => {
                         let (x, y) = display.pointer_context.position;
+                        if state {
+                            event_handler.mouse_button_down_event(button, x, y);
+                        } else {
+                            event_handler.mouse_button_up_event(button, x, y);
+                        }
+                    }
+                    WaylandEvent::PenButton(button, state, x, y) => {
                         if state {
                             event_handler.mouse_button_down_event(button, x, y);
                         } else {

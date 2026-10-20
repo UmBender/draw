@@ -279,7 +279,19 @@ impl Shape {
     /// other shape (ADR-T35-2).
     #[must_use]
     pub fn max_width_factor(&self) -> f32 {
-        todo!()
+        let Self::Stroke {
+            widths: Some(widths),
+            ..
+        } = self
+        else {
+            return 1.0;
+        };
+        let max = widths.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+        if max.is_finite() && max > 0.0 {
+            max
+        } else {
+            1.0
+        }
     }
 
     /// `true` for shapes with an interior ([`Shape::Rect`], [`Shape::Ellipse`]).
@@ -328,7 +340,7 @@ impl Shape {
                 Aabb::from_corners(*a, *b).union(&Aabb::from_corners(*a - cell, *a - cell))
             }
         };
-        geometry.expand(half_width(self.style().width))
+        geometry.expand(half_width(self.style().width * self.max_width_factor()))
     }
 
     /// `true` if `p` is within `tol + width / 2` of the outline, or inside a
@@ -345,7 +357,7 @@ impl Shape {
     /// counts.
     #[must_use]
     pub fn hit_outline(&self, p: Vec2, tol: f32) -> bool {
-        let reach = tol + half_width(self.style().width);
+        let reach = tol + half_width(self.style().width * self.max_width_factor());
         if !p.is_finite() || !reach.is_finite() || !self.bounds().expand(tol).contains(p) {
             return false;
         }
@@ -715,7 +727,13 @@ impl Shape {
     pub fn is_finite(&self) -> bool {
         self.style().width.is_finite()
             && match self {
-                Self::Stroke { points, .. } => points.iter().all(|p| p.is_finite()),
+                Self::Stroke { points, widths, .. } => {
+                    points.iter().all(|p| p.is_finite())
+                        && widths.as_ref().is_none_or(|widths| {
+                            widths.len() == points.len()
+                                && widths.iter().all(|w| w.is_finite() && *w > 0.0)
+                        })
+                }
                 Self::Line { a, b, .. }
                 | Self::Arrow { a, b, .. }
                 | Self::Rect { a, b, .. }

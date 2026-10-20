@@ -27,11 +27,16 @@ const MAX_SAMPLES: usize = 4096;
 
 /// Removes and returns the samples pushed so far, oldest first.
 pub fn take_samples() -> Vec<PenSample> {
-    todo!()
+    let mut samples = SAMPLES.lock().unwrap_or_else(|e| e.into_inner());
+    std::mem::take(&mut *samples)
 }
 
 /// Queues a sample for the pointer event the backend is about to send.
+#[allow(dead_code)] // only the Linux backends push samples
 pub(crate) fn push(x: f32, y: f32, pressure: f32) {
-    let _ = (x, y, pressure, MAX_SAMPLES, &SAMPLES);
-    todo!()
+    let mut samples = SAMPLES.lock().unwrap_or_else(|e| e.into_inner());
+    if samples.len() >= MAX_SAMPLES {
+        samples.drain(..MAX_SAMPLES / 2);
+    }
+    samples.push(PenSample { x, y, pressure });
 }

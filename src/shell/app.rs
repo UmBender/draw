@@ -16,6 +16,7 @@ use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
+use macroquad::miniquad::pen;
 use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
@@ -421,6 +422,7 @@ pub async fn run() {
             dirty |= editor.handle(InputEvent::Resize { size: viewport });
         }
         collector.set_dpi(dpi);
+        collector.set_pen_samples(pen_samples());
         repeat_all_miniquad_input(&mut collector, subscriber);
         for event in collector.drain() {
             dirty |= dispatch(&mut editor, event);
@@ -433,7 +435,13 @@ pub async fn run() {
 /// The pen samples the window library pushed since the last call
 /// (ADR-T35-1).
 fn pen_samples() -> Vec<PenSample> {
-    todo!()
+    pen::take_samples()
+        .into_iter()
+        .map(|s| PenSample {
+            pos: Vec2::new(s.x, s.y),
+            pressure: s.pressure,
+        })
+        .collect()
 }
 
 /// Sends one event to the toolbar or the editor. Returns whether the view

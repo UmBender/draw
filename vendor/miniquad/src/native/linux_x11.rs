@@ -53,9 +53,19 @@ pub struct X11Display {
     cursor_visible: bool,
     update_requested: bool,
     drag_n_drop: drag_n_drop::X11DnD,
+    // draw patch (ADR-T35-1): pressure of the pen that moved last.
+    pen: xi_input::PenTracker,
 }
 
 impl X11Display {
+    /// Queues a pen sample for a pointer event at `(x, y)` if the pen
+    /// moved last (draw patch, ADR-T35-1).
+    fn push_pen_sample(&self, x: f32, y: f32) {
+        if let Some(pressure) = self.pen.pressure() {
+            crate::pen::push(x, y, pressure);
+        }
+    }
+
     unsafe fn process_event(&mut self, event: &mut XEvent, event_handler: &mut dyn EventHandler) {
         match event.type_0 {
             2 => {
@@ -93,6 +103,7 @@ impl X11Display {
                 let y = event.xmotion.y as libc::c_float;
 
                 if btn != crate::event::MouseButton::Unknown {
+                    self.push_pen_sample(x, y);
                     event_handler.mouse_button_down_event(btn, x, y);
                 } else {
                     match event.xbutton.button {
@@ -118,12 +129,14 @@ impl X11Display {
                 let y = event.xmotion.y as libc::c_float;
 
                 if btn != crate::event::MouseButton::Unknown {
+                    self.push_pen_sample(x, y);
                     event_handler.mouse_button_up_event(btn, x, y);
                 }
             }
             6 => {
                 let x = event.xmotion.x as libc::c_float;
                 let y = event.xmotion.y as libc::c_float;
+                self.push_pen_sample(x, y);
                 event_handler.mouse_motion_event(x, y);
             }
             7 => {
@@ -241,7 +254,12 @@ impl X11Display {
             // GenericEvent
             35 if Some(event.xcookie.extension) == self.libxi.xi_extension_opcode => {
                 if event.xcookie.evtype == xi_input::XI_RawMotion {
-                    let (dx, dy) = self.libxi.read_cookie(&mut event.xcookie, self.display);
+                    let (dx, dy) = self.libxi.read_cookie(
+                        &mut event.xcookie,
+                        self.display,
+                        &mut self.pen,
+                        &mut self.libx11,
+                    );
                     event_handler.raw_mouse_motion(dx as f32, dy as f32);
                 }
             }
@@ -691,6 +709,7 @@ where
             drag_n_drop: Default::default(),
             cursor_icon: CursorIcon::Default,
             cursor_visible: true,
+            pen: Default::default(),
         };
 
         display
