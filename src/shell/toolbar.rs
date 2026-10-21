@@ -818,8 +818,10 @@ mod tests {
         let chord = crate::core::keymap::BINDINGS
             .iter()
             .find(|&&(chord, c, _)| c == command && chord.mods == Modifiers::NONE)
-            .map(|&(chord, _, _)| chord)
-            .unwrap_or_else(|| panic!("{command:?} has no bare key"));
+            .map(|&(chord, _, _)| chord);
+        let Some(chord) = chord else {
+            panic!("{command:?} has no bare key");
+        };
         format!("{:?}", chord.key)
     }
 
