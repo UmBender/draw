@@ -1,7 +1,7 @@
 ---
 id: T37
 title: Remember the text size
-status: in-progress
+status: review
 wave: 24
 branch: task/T37-text-size-memory
 depends_on: [T29, T31]
@@ -109,11 +109,11 @@ resized edit is finished, read by `text::State::new_size_px(width)`.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T37): specify remembered text size`
-- [ ] tests — `test(T37): add failing tests for the remembered text size`
-- [ ] models — `feat(T37): keep the last text size in the editor`
-- [ ] behaviour — `feat(T37): start new blocks at the remembered size`
-- [ ] quality — `chore(T37): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T37): update feature note and add tutorial`
+- [x] tests — `test(T37): add failing tests for the remembered text size`
+- [x] models — `feat(T37): keep the last text size in the editor`
+- [x] behaviour — `feat(T37): start new blocks at the remembered size`
+- [x] quality — `chore(T37): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T37): update feature note and add tutorial`
 
 ## Learning path
 
@@ -124,3 +124,12 @@ Step 37 — requires step 29 (text blocks) and step 31 (text in shapes).
 - 2026-10-21 — Created from the owner's request: "I want the font size
   be remembered from the last block, so I do not need to make the font
   bigger every time." Runs in wave 24 in parallel with T36 and T38.
+- 2026-10-21 — Spec: the open question settled as proposed (only an
+  explicit `Ctrl+[` / `Ctrl+]` counts); ADR-T37-1 amends ADR-T29-3. The
+  memory lives in `text::State::size_px` rather than a new editor field
+  so the Text tool reads it directly.
+- 2026-10-21 — Implemented. Quality step produced no changes
+  (`scripts/check.sh` green after the behaviour commit), so no `chore`
+  commit. The toolbar was not changed: it shows no text size and
+  `src/shell/` is not owned; README and the feature note describe the
+  rule.

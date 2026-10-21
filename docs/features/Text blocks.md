@@ -1,7 +1,7 @@
 ---
 title: Text blocks
 task: "[[T29 Text blocks]]"
-adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-T29-3 Resize text while typing]]"]
+adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-T29-3 Resize text while typing]]", "[[ADR-T37-1 Remember the last text size]]"]
 tutorial: "[[29 Typing on a canvas without losing the shortcuts]]"
 shortcuts: ["T", "Esc", "Ctrl+Enter", "Enter", "Tab", "Ctrl+Z", "Ctrl+[", "Ctrl+]"]
 tags: [feature]
@@ -33,11 +33,14 @@ back.
 | Edit a block again | Text tool: click it · Select tool: double-click it (or click it when it is already selected) |
 | Text size | `[` / `]` before clicking (the stroke width ladder: 14–76 px) |
 | Bigger / smaller while typing | `Ctrl+]` / `Ctrl+[` (one step of the same ladder) |
+| Keep that size for the next blocks | automatic after `Ctrl+]` / `Ctrl+[`; `[` / `]` go back to the width size |
 | Text colour | `1`–`6` before clicking |
 
 Finishing an edit is one undo step: `Ctrl+Z` afterwards removes the new
 block or restores the old text. A block left empty (or only spaces)
-disappears. With grid or smart snap on, the clicked corner snaps like the
+disappears. Once you resize a block with `Ctrl+]` / `Ctrl+[` and finish
+it, new blocks start at its on-screen size until you press `[` or `]`
+([[T37 Remember the text size]]). With grid or smart snap on, the clicked corner snaps like the
 start of a shape, and other shapes snap to a block's edges and centre.
 
 ## How it works
@@ -57,11 +60,15 @@ drawn as textured quads in the same batched meshes as the shapes
 (`src/shell/render.rs`); the number labels and grid indices use the same
 font and path ([[ADR-T32-1 Own glyph atlas rasterized with fontdue]],
 [[ADR-T32-2 Shapes and glyphs share one textured batch]]).
+The remembered size is `text::State::size_px`, in on-screen pixels so it
+survives a zoom; `State::new_size_px` gives it or the width rule
+([[ADR-T37-1 Remember the last text size]]).
 While typing, only the overlay is redrawn and the caret does not blink, so
 the app stays idle between keys.
 
 ## Limits
 
+- The remembered size lasts for the session only.
 - One monospaced font, one style; no word wrap, alignment, rich text or
   font choice.
 - No pasting from the system clipboard and no IME composition (dead keys
