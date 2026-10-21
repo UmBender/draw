@@ -2669,10 +2669,29 @@ mod tests {
             ch: 'p',
             mods: NONE,
         });
-        key(&mut ed, Key::P);
+        key(&mut ed, Key::D);
 
         assert_eq!(ed.tool(), Tool::Pen);
         assert_eq!(texts(&ed), ["p"]);
+    }
+
+    #[test]
+    fn text_left_hand_keys_type_letters() {
+        // Arrange
+        let mut ed = text_editor();
+        click(&mut ed, 100.0, 50.0);
+
+        // Act: the shell sends a key press and a character for each.
+        for (k, ch) in [(Key::D, 'd'), (Key::W, 'w'), (Key::X, 'x')] {
+            key(&mut ed, k);
+            ed.handle(InputEvent::Char { ch, mods: NONE });
+        }
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(ed.tool(), Tool::Text);
+        assert_eq!(ed.helpers().smart_snap, Editor::new().helpers().smart_snap);
+        assert_eq!(texts(&ed), ["dwx"]);
     }
 
     #[test]

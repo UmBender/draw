@@ -802,4 +802,42 @@ mod tests {
         assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
         assert_eq!(route(false, true, VIEWPORT, event), Route::Forward(event));
     }
+
+    /// The key bound bare to `command` in the keymap, as the toolbar spells it.
+    fn bound_key(command: Command) -> String {
+        let chord = crate::core::keymap::BINDINGS
+            .iter()
+            .find(|&&(chord, c, _)| c == command && chord.mods == Modifiers::NONE)
+            .map(|&(chord, _, _)| chord)
+            .unwrap_or_else(|| panic!("{command:?} has no bare key"));
+        format!("{:?}", chord.key)
+    }
+
+    #[test]
+    fn tool_labels_match_keymap() {
+        for tool in [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Arrow,
+            Tool::Rect,
+            Tool::Ellipse,
+            Tool::Grid,
+            Tool::Text,
+            Tool::Eraser,
+            Tool::Bucket,
+            Tool::Select,
+            Tool::Hand,
+        ] {
+            assert_eq!(
+                tool_label(tool),
+                bound_key(Command::SetTool(tool)),
+                "{tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn smart_snap_label_matches_keymap() {
+        assert_eq!(SMART_SNAP_LABEL, bound_key(Command::ToggleSmartSnap));
+    }
 }

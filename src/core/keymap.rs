@@ -342,8 +342,8 @@ mod tests {
     fn documented() -> Vec<(Key, Modifiers, Command)> {
         vec![
             // Tools
-            (Key::P, NONE, Command::SetTool(Tool::Pen)),
-            (Key::L, NONE, Command::SetTool(Tool::Line)),
+            (Key::D, NONE, Command::SetTool(Tool::Pen)),
+            (Key::W, NONE, Command::SetTool(Tool::Line)),
             (Key::A, NONE, Command::SetTool(Tool::Arrow)),
             (Key::R, NONE, Command::SetTool(Tool::Rect)),
             (Key::C, NONE, Command::SetTool(Tool::Ellipse)),
@@ -381,7 +381,7 @@ mod tests {
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
             // Helpers
-            (Key::M, NONE, Command::ToggleSmartSnap),
+            (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),
             (Key::N, NONE, Command::ToggleNumbering),
             (Key::N, SHIFT, Command::ResetNumbering),
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn helper_bindings() {
         assert_eq!(resolve(Key::G, NONE), Some(Command::SetTool(Tool::Grid)));
-        assert_eq!(resolve(Key::M, NONE), Some(Command::ToggleSmartSnap));
+        assert_eq!(resolve(Key::X, NONE), Some(Command::ToggleSmartSnap));
         assert_eq!(resolve(Key::G, SHIFT), Some(Command::ToggleGridSnap));
         assert_eq!(resolve(Key::N, NONE), Some(Command::ToggleNumbering));
         assert_eq!(resolve(Key::N, SHIFT), Some(Command::ResetNumbering));
@@ -451,6 +451,35 @@ mod tests {
         assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
         assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
         assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn left_hand_keys_select_pen_line_and_smart_snap() {
+        assert_eq!(resolve(Key::D, NONE), Some(Command::SetTool(Tool::Pen)));
+        assert_eq!(resolve(Key::W, NONE), Some(Command::SetTool(Tool::Line)));
+        assert_eq!(resolve(Key::X, NONE), Some(Command::ToggleSmartSnap));
+        for key in [Key::D, Key::W, Key::X] {
+            for mods in [SHIFT, ALT, CTRL_SHIFT] {
+                assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn left_hand_keys_keep_their_ctrl_chords() {
+        assert_eq!(resolve(Key::D, CTRL), Some(Command::Duplicate));
+        assert_eq!(resolve(Key::X, CTRL), Some(Command::Cut));
+        assert_eq!(resolve(Key::W, CTRL), None);
+    }
+
+    #[test]
+    fn p_l_m_are_unbound() {
+        // T38: pen, line and smart snap moved to the left hand.
+        for key in [Key::P, Key::L, Key::M] {
+            for mods in all_mods() {
+                assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
+            }
+        }
     }
 
     #[test]
@@ -483,7 +512,7 @@ mod tests {
         assert_eq!(KeyChord::shift(Key::G).mods, SHIFT);
         assert_eq!(resolve(Key::G, CTRL_SHIFT), None);
         assert_eq!(resolve(Key::N, CTRL), None);
-        assert_eq!(resolve(Key::M, SHIFT), None);
+        assert_eq!(resolve(Key::X, SHIFT), None);
         assert_eq!(resolve(Key::ArrowLeft, SHIFT), None);
     }
 
