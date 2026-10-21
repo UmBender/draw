@@ -6,6 +6,13 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Pen, line and smart snap moved to the left hand, so they can be picked
+  while the right hand holds the mouse or the pen: pen `P` → `D`, line
+  `L` → `W`, smart snap `M` → `X`. `P`, `L` and `M` no longer do anything.
+  The toolbar shows the new keys.
+
 ## [1.3.0] - 2026-10-20
 
 ### Added

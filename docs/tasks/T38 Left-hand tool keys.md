@@ -1,7 +1,7 @@
 ---
 id: T38
 title: Left-hand tool keys
-status: review
+status: done
 wave: 24
 branch: task/T38-left-hand-keys
 depends_on: [T11, T12]
@@ -160,3 +160,4 @@ Step 38 — requires step 11 (keymaps) and step 12 (toolbar).
   line `L`→`W`, smart snap `M`→`X`) and step 35's "Next" link in the
   Learning Path. The in-app check on the target is **pending the owner**.
   Status → review.
+- 2026-10-21 — Integrated into `main`. Status → done.

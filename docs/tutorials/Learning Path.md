@@ -63,6 +63,8 @@ flowchart LR
   s28 --> s34
   s34 --> s35[35 Reading a pen through a patched window library]
   s24 --> s35
+  s11 --> s38[38 Laying out shortcuts for one hand]
+  s12 --> s38
 ```
 
 | Step | Tutorial | Task | Status |
@@ -102,3 +104,4 @@ flowchart LR
 | 33 | [[33 Typesetting with a proportional math font]] | [[T33 Math font for formulas]] | done |
 | 34 | [[34 Telling a tap from a drag]] | [[T34 Pen tablet input]] | done |
 | 35 | [[35 Reading a pen through a patched window library]] | [[T35 Pen pressure and native Wayland tablets]] | done |
+| 38 | [[38 Laying out shortcuts for one hand]] | [[T38 Left-hand tool keys]] | done |

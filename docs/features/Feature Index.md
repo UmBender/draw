@@ -15,7 +15,7 @@ One note per user-visible feature, created by the task that implements it
 | [[Undo and redo]] | [[T06 Document and history]], [[T08 Editor core and input model]], [[T11 Keymap and macros]] | [[06 Undo and redo with a transaction log]] | done |
 | [[Drawing tools]] | [[T09 Creation tools]] | [[09 Building drawing tools]] | done |
 | [[Editing tools]] | [[T10 Editing tools]] | [[10 Selection, clipboard and fill]] | done |
-| [[Shortcuts and macros]] | [[T11 Keymap and macros]] | [[11 Keymaps and gesture macros]] | done |
+| [[Shortcuts and macros]] | [[T11 Keymap and macros]], [[T38 Left-hand tool keys]] | [[11 Keymaps and gesture macros]], [[38 Laying out shortcuts for one hand]] | done |
 | [[Toolbar]] | [[T12 App shell and toolbar]] | [[12 The app loop, idle redraw and UI]] | done |
 | [[Theme and palette]] | [[T02 Palette and theme tokens]] | [[02 Palettes and design tokens]] | done |
 | [[Anti-aliasing]] | [[T15 Anti-aliasing]] | [[15 Anti-aliasing and multisampling]] | done |

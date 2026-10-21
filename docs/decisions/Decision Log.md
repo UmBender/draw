@@ -70,3 +70,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 59 | [[ADR-T34-1 Tap slop for pen tablets detected at start-up]] | accepted | decision | 0003, T28-1 | — |
 | 60 | [[ADR-T35-1 Vendored miniquad with a pen tablet patch]] | accepted | decision | T12-1, T28-1, T34-1 | amends 0014 |
 | 61 | [[ADR-T35-2 Pressure as per-point width factors on pen strokes]] | accepted | decision | 0007, 0013, T35-1 | amends T24-4 |
+| 62 | [[ADR-T38-1 Left-hand keys for pen, line and smart snap]] | accepted | decision | T11-1 | — |

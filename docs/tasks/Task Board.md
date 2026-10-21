@@ -144,4 +144,4 @@ flowchart TD
 | [[T35 Pen pressure and native Wayland tablets]] | done | T34 | `task/T35-pen-pressure` |
 | [[T36 Integrals in formulas]] | todo | T33 | `task/T36-integrals` |
 | [[T37 Remember the text size]] | todo | T29, T31 | `task/T37-text-size-memory` |
-| [[T38 Left-hand tool keys]] | todo | T11, T12 | `task/T38-left-hand-keys` |
+| [[T38 Left-hand tool keys]] | done | T11, T12 | `task/T38-left-hand-keys` |
