@@ -838,4 +838,57 @@ mod tests {
         };
         assert!(TextEdit::open_in(id, &line, TextSlot::Shape, 10.0).is_none());
     }
+
+    // ---- T37 remembered text size ------------------------------------------
+
+    #[test]
+    fn edit_step_size_marks_edit_resized() {
+        // Arrange: 18 px at zoom 1; the top of the ladder is 76 px.
+        let mut e = TextEdit::new(Vec2::ZERO, 18.0, STYLE);
+        let mut top = TextEdit::new(Vec2::ZERO, 76.0, STYLE);
+        assert!(!e.resized());
+
+        // Act
+        let stepped = e.step_size(true, 1.0);
+        let clamped = top.step_size(true, 1.0);
+
+        // Assert: only a step that changed the size counts.
+        assert!(stepped && e.resized());
+        assert!(!clamped && !top.resized());
+    }
+
+    #[test]
+    fn state_new_size_px_prefers_remembered_size() {
+        // Arrange
+        let fresh = State::default();
+        let remembered = State {
+            size_px: Some(30.0),
+            ..State::default()
+        };
+
+        // Act / Assert: the width rule, then the remembered size.
+        assert!(approx_eq(fresh.new_size_px(3.0), 18.0, 1e-6));
+        assert!(approx_eq(remembered.new_size_px(3.0), 30.0, 1e-6));
+    }
+
+    proptest! {
+        #[test]
+        fn edit_random_steps_keep_size_finite_and_flag_resized(
+            start in 0.1f32..200.0,
+            steps in prop::collection::vec((any::<bool>(), 0.05f32..20.0), 0..40),
+        ) {
+            // Arrange
+            let mut e = TextEdit::new(Vec2::ZERO, start, STYLE);
+            let mut any_step = false;
+
+            // Act
+            for (grow, zoom) in steps {
+                any_step |= e.step_size(grow, zoom);
+
+                // Assert
+                prop_assert!(e.size.is_finite() && e.size > 0.0);
+                prop_assert_eq!(e.resized(), any_step);
+            }
+        }
+    }
 }
