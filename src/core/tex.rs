@@ -1725,6 +1725,91 @@ mod tests {
     }
 
     #[test]
+    fn tex_parse_integrals_are_symbols() {
+        // Act
+        let nodes = math("\\int\\iint\\iiint\\oint\\oiint");
+
+        // Assert
+        let names = ["int", "iint", "iiint", "oint", "oiint"];
+        assert_eq!(nodes, names.map(sym).to_vec());
+        let texts = names.map(|name| symbol(name).map(|s| (s.text, s.class)));
+        assert_eq!(
+            texts,
+            ["∫", "∬", "∭", "∮", "∯"].map(|t| Some((t, Class::Integral)))
+        );
+        assert_eq!(math("\\intx"), vec![Node::Literal("\\intx".to_owned())]);
+    }
+
+    #[test]
+    fn tex_parse_physics_symbols_have_their_text_and_class() {
+        // Arrange: the *Physics symbols* table of T36, and `\,`.
+        let table = [
+            ("partial", "∂", Class::Ord),
+            ("nabla", "∇", Class::Ord),
+            ("hbar", "ℏ", Class::Ord),
+            ("ell", "ℓ", Class::Ord),
+            ("Re", "ℜ", Class::Ord),
+            ("Im", "ℑ", Class::Ord),
+            ("AA", "Å", Class::Ord),
+            ("degree", "°", Class::Ord),
+            ("forall", "∀", Class::Ord),
+            ("exists", "∃", Class::Ord),
+            ("emptyset", "∅", Class::Ord),
+            ("prime", "′", Class::Ord),
+            ("vdots", "⋮", Class::Ord),
+            ("ddots", "⋱", Class::Ord),
+            ("vert", "|", Class::Ord),
+            ("Vert", "‖", Class::Ord),
+            ("propto", "∝", Class::Rel),
+            ("sim", "∼", Class::Rel),
+            ("simeq", "≃", Class::Rel),
+            ("cong", "≅", Class::Rel),
+            ("ll", "≪", Class::Rel),
+            ("gg", "≫", Class::Rel),
+            ("lesssim", "≲", Class::Rel),
+            ("gtrsim", "≳", Class::Rel),
+            ("doteq", "≐", Class::Rel),
+            ("coloneqq", "≔", Class::Rel),
+            ("parallel", "∥", Class::Rel),
+            ("perp", "⊥", Class::Rel),
+            ("mid", "∣", Class::Rel),
+            ("rightarrow", "→", Class::Rel),
+            ("leftrightarrow", "↔", Class::Rel),
+            ("Leftarrow", "⇐", Class::Rel),
+            ("Leftrightarrow", "⇔", Class::Rel),
+            ("uparrow", "↑", Class::Rel),
+            ("downarrow", "↓", Class::Rel),
+            ("mapsto", "↦", Class::Rel),
+            ("rightleftharpoons", "⇌", Class::Rel),
+            ("mp", "∓", Class::Bin),
+            ("otimes", "⊗", Class::Bin),
+            ("wedge", "∧", Class::Bin),
+            ("vee", "∨", Class::Bin),
+            ("circ", "∘", Class::Bin),
+            ("ast", "∗", Class::Bin),
+            ("star", "⋆", Class::Bin),
+            ("bullet", "∙", Class::Bin),
+            ("dagger", "†", Class::Bin),
+            ("langle", "⟨", Class::Open),
+            ("rangle", "⟩", Class::Close),
+            (",", "\u{2006}", Class::Ord),
+        ];
+
+        for (name, text, class) in table {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn tex_parse_text_command_keeps_its_raw_body() {
         assert_eq!(
             math("\\text{a {b} c}"),
@@ -1748,8 +1833,8 @@ mod tests {
         // A control symbol outside the table; a `\` before the closing
         // `$` would escape it instead.
         assert_eq!(
-            math("\\,x"),
-            vec![Node::Literal("\\,".to_owned()), Node::Char('x')]
+            math("\\;x"),
+            vec![Node::Literal("\\;".to_owned()), Node::Char('x')]
         );
     }
 
@@ -1840,7 +1925,8 @@ mod tests {
                 "$", "$", "\\$", "{", "}", "^", "_", "\\", " ", "\n", "x", "1", "-", "=",
                 "\\frac", "\\sqrt", "\\binom", "\\text", "\\pmod", "\\alpha", "\\sum",
                 "\\min", "\\log", "\\le", "\\{", "\\}", "\\foo", "(", ")", "|",
-                "\\mathcal", "f", "j", "\\text{日}",
+                "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
+                "\\partial",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -2119,6 +2205,80 @@ mod tests {
             "{k:?}"
         );
         assert!(k.y > -mm('n').y_min);
+    }
+
+    #[test]
+    fn tex_layout_integral_is_enlarged_like_sum() {
+        // Act
+        let int = boxed("\\int");
+        let sum = boxed("\\sum");
+
+        // Assert
+        let (s, k) = glyph(&int.ink, '∫');
+        let (_, sum_k) = glyph(&sum.ink, '∑');
+        assert!(approx_eq(k, BIG_OP_SCALE, EPS));
+        assert!(approx_eq(k, sum_k, EPS));
+        // Its middle on the axis (y down).
+        let middle = s.y - (mm('∫').y_max + mm('∫').y_min) * k / 2.0;
+        assert!(approx_eq(middle, -AXIS, EPS), "{middle}");
+        assert!(approx_eq(int.width, mm('∫').advance * k, EPS));
+    }
+
+    #[test]
+    fn tex_layout_integral_scripts_sit_beside_the_sign() {
+        // Act
+        let b = boxed("\\int_a^b");
+
+        // Assert
+        let (s, k) = glyph(&b.ink, '∫');
+        let (lo, _) = glyph(&b.ink, A);
+        let (hi, _) = glyph(&b.ink, B);
+        let advance = mm('∫').advance * k;
+        let italic = mm('∫').italic * k;
+        assert!(italic > 0.0);
+        assert!(approx_eq(hi.x, s.x + advance + italic, EPS), "{hi:?}");
+        assert!(approx_eq(lo.x, s.x + advance - italic, EPS), "{lo:?}");
+        assert!(lo.x > s.x && hi.x > lo.x);
+        assert!(hi.y < 0.0 && lo.y > 0.0, "{hi:?} {lo:?}");
+        // Beside, not above and below: the scripts overlap the sign's
+        // height.
+        let top = s.y - mm('∫').y_max * k;
+        let bottom = s.y - mm('∫').y_min * k;
+        assert!(hi.y > top && lo.y < bottom, "{hi:?} {lo:?} {top} {bottom}");
+        // The other integrals too.
+        let o = boxed("\\oint_C");
+        let (s, k) = glyph(&o.ink, '∮');
+        let (c, _) = glyph(&o.ink, '\u{1D436}');
+        let shift = (mm('∮').advance - mm('∮').italic) * k;
+        assert!(approx_eq(c.x, s.x + shift, EPS), "{c:?}");
+    }
+
+    #[test]
+    fn tex_layout_integral_gets_operator_space() {
+        // Act
+        let w = boxed("\\int f").width;
+
+        // Assert
+        let int = mm('∫').advance * BIG_OP_SCALE;
+        assert!(approx_eq(w, int + OP_SPACE + mm(F).advance, EPS), "{w}");
+        // A minus after the sign is unary.
+        let w = boxed("\\int -f").width;
+        let minus = adv("\u{2212}");
+        assert!(
+            approx_eq(w, int + OP_SPACE + minus + mm(F).advance, EPS),
+            "{w}"
+        );
+    }
+
+    #[test]
+    fn tex_layout_thin_space_is_a_sixth_of_an_em() {
+        // Act
+        let w = boxed("a\\,b").width;
+
+        // Assert
+        let thin = w - mm(A).advance - mm(B).advance;
+        assert!(approx_eq(thin, mm('\u{2006}').advance, EPS), "{thin}");
+        assert!(approx_eq(thin, 1.0 / 6.0, 1e-3), "{thin}");
     }
 
     #[test]

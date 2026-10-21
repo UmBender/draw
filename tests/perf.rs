@@ -684,11 +684,13 @@ const TEX_BUDGET: Duration = Duration::from_millis(2);
 /// `FORMULA_BLOCKS` texts built from the goal's example formulas, each
 /// numbered so no two are equal.
 fn formula_texts() -> Vec<String> {
-    const FORMULAS: [&str; 4] = [
+    const FORMULAS: [&str; 5] = [
         "dp: $dp_{i,j} = \\min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$",
         "$O(n \\log n)$ time",
         "$\\sum_{k=1}^{n} k^2$\nsum of squares",
         "$\\frac{n(n+1)}{2}$ and $\\sqrt{x} \\le \\binom{n}{k}$",
+        // T36: an integral with scripts beside it and physics symbols.
+        "$\\int_0^1 f(x)\\,dx$ and $i\\hbar\\partial_t\\psi = \\langle a \\rangle$",
     ];
     (0..FORMULA_BLOCKS)
         .map(|i| format!("{} #{i}", FORMULAS[i % FORMULAS.len()]))
