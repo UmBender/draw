@@ -2305,30 +2305,30 @@ mod tests {
     #[test]
     fn tex_layout_integral_scripts_sit_beside_the_sign() {
         // Act
-        let b = boxed("\\int_a^b");
+        let int = boxed("\\int_a^b");
 
         // Assert
-        let (s, k) = glyph(&b.ink, '∫');
-        let (lo, _) = glyph(&b.ink, A);
-        let (hi, _) = glyph(&b.ink, B);
+        let (sign, k) = glyph(&int.ink, '∫');
+        let (lo, _) = glyph(&int.ink, A);
+        let (hi, _) = glyph(&int.ink, B);
         let advance = mm('∫').advance * k;
         let italic = mm('∫').italic * k;
         assert!(italic > 0.0);
-        assert!(approx_eq(hi.x, s.x + advance + italic, EPS), "{hi:?}");
-        assert!(approx_eq(lo.x, s.x + advance - italic, EPS), "{lo:?}");
-        assert!(lo.x > s.x && hi.x > lo.x);
+        assert!(approx_eq(hi.x, sign.x + advance + italic, EPS), "{hi:?}");
+        assert!(approx_eq(lo.x, sign.x + advance - italic, EPS), "{lo:?}");
+        assert!(lo.x > sign.x && hi.x > lo.x);
         assert!(hi.y < 0.0 && lo.y > 0.0, "{hi:?} {lo:?}");
         // Beside, not above and below: the scripts overlap the sign's
         // height.
-        let top = s.y - mm('∫').y_max * k;
-        let bottom = s.y - mm('∫').y_min * k;
+        let top = sign.y - mm('∫').y_max * k;
+        let bottom = sign.y - mm('∫').y_min * k;
         assert!(hi.y > top && lo.y < bottom, "{hi:?} {lo:?} {top} {bottom}");
         // The other integrals too.
-        let o = boxed("\\oint_C");
-        let (s, k) = glyph(&o.ink, '∮');
-        let (c, _) = glyph(&o.ink, '\u{1D436}');
+        let oint = boxed("\\oint_C");
+        let (sign, k) = glyph(&oint.ink, '∮');
+        let (c, _) = glyph(&oint.ink, '\u{1D436}');
         let shift = (mm('∮').advance - mm('∮').italic) * k;
-        assert!(approx_eq(c.x, s.x + shift, EPS), "{c:?}");
+        assert!(approx_eq(c.x, sign.x + shift, EPS), "{c:?}");
     }
 
     #[test]
