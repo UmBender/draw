@@ -816,11 +816,16 @@ impl Editor {
 
     /// Ends the open text block, committing it as one undo step: a new
     /// block is inserted, a changed one replaced, a blank one removed
-    /// (ADR-T29-2). Returns whether there was a block.
+    /// (ADR-T29-2). A resized block's on-screen size becomes the size of
+    /// new blocks (ADR-T37-1). Returns whether there was a block.
     fn finish_text(&mut self) -> bool {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
+        let px = edit.size * self.camera.zoom();
+        if edit.resized() && px.is_finite() && px > 0.0 {
+            self.tools.text.size_px = Some(px);
+        }
         if let Some(host) = edit.host().copied() {
             self.track_document(false, |ed| {
                 let Some(shape) = ed.doc.get(host.id) else {
@@ -922,7 +927,7 @@ impl Editor {
         let at = self.camera.screen_to_world(pos);
         let size = self
             .camera
-            .world_len(text::text_size_px(self.style.width_px));
+            .world_len(self.tools.text.new_size_px(self.style.width_px));
         let hosts = self.experimental().shape_text;
         self.tools.text.edit = self
             .doc
@@ -947,8 +952,11 @@ impl Editor {
         }
     }
 
-    /// Sets the stroke width if `width` is `Some`. Returns whether it changed.
+    /// Sets the stroke width if `width` is `Some`, and forgets the
+    /// remembered text size either way (ADR-T37-1). Returns whether the
+    /// width changed.
     fn set_width(&mut self, width: Option<f32>) -> bool {
+        self.tools.text.size_px = None;
         width.is_some_and(|width| {
             self.style.width_px = width;
             true

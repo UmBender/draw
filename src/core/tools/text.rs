@@ -329,6 +329,7 @@ impl TextEdit {
         };
         next.is_some_and(|rung| {
             self.size = rung / zoom;
+            self.resized = true;
             true
         })
     }
@@ -364,13 +365,13 @@ impl State {
     /// the remembered size, else [`text_size_px`] of `width_px`.
     #[must_use]
     pub fn new_size_px(&self, width_px: f32) -> f32 {
-        todo!()
+        self.size_px.unwrap_or_else(|| text_size_px(width_px))
     }
 }
 
 /// Handles one pointer event of a Text-tool gesture: a `Down` opens the
-/// block under the pointer or a new one (the editor has already committed
-/// any previous edit). Returns whether a redraw is needed.
+/// block under the pointer or a new one, at the remembered size
+/// (ADR-T37-1) (the editor has already committed any previous edit). Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     if pointer.phase != Phase::Down {
         return false;
@@ -378,7 +379,7 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let world = ctx.camera.screen_to_world(pointer.pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     let view = ctx.view();
-    let size = ctx.camera.world_len(text_size_px(view.style.width_px));
+    let size = ctx.camera.world_len(state.new_size_px(view.style.width_px));
     // With shape text on, the interior of a rectangle or an ellipse and a
     // grid cell hold text too (ADR-T31-1).
     let hosts = view.style.helpers.experimental.shape_text;
