@@ -64,6 +64,8 @@ pub struct TextEdit {
     text: String,
     /// Byte index of the caret, always on a `char` boundary.
     caret: usize,
+    /// `Ctrl+[` / `Ctrl+]` changed the size during this edit (ADR-T37-1).
+    resized: bool,
 }
 
 impl TextEdit {
@@ -78,6 +80,7 @@ impl TextEdit {
             host: None,
             text: String::new(),
             caret: 0,
+            resized: false,
         }
     }
 
@@ -111,6 +114,7 @@ impl TextEdit {
             }),
             caret: text.len(),
             text,
+            resized: false,
         })
     }
 
@@ -135,6 +139,7 @@ impl TextEdit {
             host: None,
             text: text.clone(),
             caret: 0,
+            resized: false,
         };
         edit.set_caret_at(at);
         Some(edit)
@@ -328,6 +333,12 @@ impl TextEdit {
         })
     }
 
+    /// Whether [`TextEdit::step_size`] changed the size during this edit.
+    #[must_use]
+    pub fn resized(&self) -> bool {
+        self.resized
+    }
+
     /// Moves the caret to `(line, col)` (clamped). Returns whether it moved.
     fn move_to(&mut self, line: usize, col: usize) -> bool {
         let caret = text_layout::caret_index(&self.text, line, col);
@@ -337,11 +348,24 @@ impl TextEdit {
     }
 }
 
-/// State of the Text tool: the block being edited, if any.
+/// State of the Text tool: the block being edited, if any, and the
+/// remembered size of new blocks.
 #[derive(Debug, Clone, Default)]
 pub struct State {
     /// The edit session; it outlives pointer gestures.
     pub edit: Option<TextEdit>,
+    /// On-screen font size in pixels of the last resized edit, which new
+    /// blocks start at; `None` follows the stroke width (ADR-T37-1).
+    pub size_px: Option<f32>,
+}
+
+impl State {
+    /// On-screen font size in pixels of a new block or empty shape slot:
+    /// the remembered size, else [`text_size_px`] of `width_px`.
+    #[must_use]
+    pub fn new_size_px(&self, width_px: f32) -> f32 {
+        todo!()
+    }
 }
 
 /// Handles one pointer event of a Text-tool gesture: a `Down` opens the
