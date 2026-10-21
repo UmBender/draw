@@ -17,8 +17,8 @@ One page to print and keep next to the keyboard. Source of truth:
 
 | Key | Tool | Key | Tool |
 |-----|------|-----|------|
-| `P` | Pen (smoothed) | `G` | Grid |
-| `L` | Line | `V` | Select / move |
+| `D` | Pen (smoothed) | `G` | Grid |
+| `W` | Line | `V` | Select / move |
 | `A` | Arrow | `E` | Eraser (on a fill: clears fills) |
 | `R` | Rectangle | `B` | Bucket (shape or grid cell) |
 | `C` | Circle / ellipse | `H` | Hand (pan) |
@@ -54,7 +54,7 @@ One page to print and keep next to the keyboard. Source of truth:
 
 | Key | Action | Key | Action |
 |-----|--------|-----|--------|
-| `M` | Smart snap on / off | `Shift+G` | Grid snap on / off |
+| `X` | Smart snap on / off | `Shift+G` | Grid snap on / off |
 | `N` | Numbering on / off (also grid indices) | `Shift+N` | Restart numbering at 1 |
 | `→` / `←` | Grid columns + / − | `↓` / `↑` | Grid rows + / − |
 
@@ -77,7 +77,7 @@ Edit again: Text click, or Select double-click.
 ## Recipes
 
 - **Graph**: `N` on, `C` for nodes (numbered 1, 2, …), `A` for directed
-  edges; `M` makes edges meet the circles' outlines.
+  edges; `X` makes edges meet the circles' outlines.
 - **DP table**: `G`, `→`/`↓` to size it while dragging, `N` for indices,
   `B` to fill cells, `E` on a fill to clear it.
 - **Start over**: `Ctrl+Backspace`, then `Shift+N`; `Ctrl+Z` brings it back.

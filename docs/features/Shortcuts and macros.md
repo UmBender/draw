@@ -1,9 +1,9 @@
 ---
 title: Shortcuts and macros
 task: "[[T11 Keymap and macros]]"
-adrs: ["[[ADR-T11-1 Exact modifier matching]]"]
+adrs: ["[[ADR-T11-1 Exact modifier matching]]", "[[ADR-T38-1 Left-hand keys for pen, line and smart snap]]"]
 tutorial: "[[11 Keymaps and gesture macros]]"
-shortcuts: [P, L, A, R, C, E, B, V, H, "1-6", "[", "]", S, Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D, Ctrl+A, Delete, Backspace, Ctrl+Backspace, Esc, "0", F, Tab]
+shortcuts: [D, W, A, R, C, E, B, V, H, "1-6", "[", "]", S, Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y, Ctrl+C, Ctrl+X, Ctrl+V, Ctrl+D, Ctrl+A, Delete, Backspace, Ctrl+Backspace, Esc, "0", F, Tab]
 tags: [feature]
 ---
 
@@ -20,7 +20,7 @@ two-step actions.
 
 | Action | Shortcut / gesture |
 |--------|--------------------|
-| Pen / line / arrow | `P` / `L` / `A` |
+| Pen / line / arrow | `D` / `W` / `A` |
 | Rectangle / circle-ellipse | `R` / `C` |
 | Eraser / bucket | `E` / `B` |
 | Select / hand | `V` / `H` |

@@ -15,7 +15,7 @@ Write notes straight on the canvas: a complexity, a recurrence, `n ≤ 2·10⁵`
 `dp[i][j]`, Greek letters and math symbols. Click with the Text tool and
 type; the block zooms with the canvas, stays sharp at every zoom, and moves,
 copies, erases, snaps and undoes like any other shape. While you type no
-shortcut fires — `P` is a `p`, `1` is a `1` — and one `Esc` gives the keys
+shortcut fires — `D` is a `d`, `1` is a `1` — and one `Esc` gives the keys
 back.
 
 ## How to use

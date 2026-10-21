@@ -156,7 +156,7 @@ everything to `dist/`.
 ## Quick start
 
 1. Press `C` and drag: an ellipse. Hold `Shift` for a circle.
-2. Press `A` and drag between two circles: an arrow. Press `M` so it snaps
+2. Press `A` and drag between two circles: an arrow. Press `X` so it snaps
    to their outlines.
 3. Press `N`, then draw more circles: they are numbered 1, 2, 3…
 4. Press `G`, start dragging a table and tap `→` / `↓` to add columns and
@@ -174,8 +174,8 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 
 | Key | Tool | Key | Tool |
 |-----|------|-----|------|
-| `P` | Pen (smoothed) | `G` | Grid |
-| `L` | Line | `V` | Select / move |
+| `D` | Pen (smoothed) | `G` | Grid |
+| `W` | Line | `V` | Select / move |
 | `A` | Arrow | `E` | Eraser (on a fill: clears fills) |
 | `R` | Rectangle | `B` | Bucket (shape or grid cell) |
 | `C` | Circle / ellipse | `H` | Hand (pan) |
@@ -211,7 +211,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 
 | Key | Action | Key | Action |
 |-----|--------|-----|--------|
-| `M` | Smart snap on / off | `Shift+G` | Grid snap on / off |
+| `X` | Smart snap on / off | `Shift+G` | Grid snap on / off |
 | `N` | Numbering on / off (also grid indices) | `Shift+N` | Restart numbering at 1 |
 | `→` / `←` | Grid columns + / − | `↓` / `↑` | Grid rows + / − |
 
@@ -271,11 +271,11 @@ A printable one-page version lives in
 
 ## Recipes
 
-- **Graph** — `N` on, `C` for nodes, `A` for directed edges (`L` for
-  undirected), `M` so edges meet the nodes' outlines.
+- **Graph** — `N` on, `C` for nodes, `A` for directed edges (`W` for
+  undirected), `X` so edges meet the nodes' outlines.
 - **DP table** — `G`, size it with the arrows while dragging, `N` for
   indices, `B` to fill cells, `E` on a fill to clear it.
-- **Geometry** — `Shift+G` for the snap grid, `L` and `C` with `Shift` for
+- **Geometry** — `Shift+G` for the snap grid, `W` and `C` with `Shift` for
   exact angles and circles.
 - **Start over** — `Ctrl+Backspace`, then `Shift+N`; `Ctrl+Z` brings it
   all back.

@@ -7,14 +7,15 @@ status: implemented
 # Keymap
 
 Bindings implemented by [[T11 Keymap and macros]] (`src/core/keymap.rs`); modifiers
-match exactly ([[ADR-T11-1 Exact modifier matching]]). Changes require an ADR.
+match exactly ([[ADR-T11-1 Exact modifier matching]]). Pen, line and smart
+snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart snap]]). Changes require an ADR.
 
 ## Tools (single key, no modifier)
 
 | Key | Tool |
 |-----|------|
-| `P` | Pen (freehand, smoothed) |
-| `L` | Line |
+| `D` | Pen (freehand, smoothed) |
+| `W` | Line |
 | `A` | Arrow |
 | `R` | Rectangle |
 | `C` | Circle / ellipse |
@@ -63,7 +64,7 @@ Added by [[T16 Shape model v2 and helper skeleton]]
 
 | Key | Action |
 |-----|--------|
-| `M` | Smart snap on / off |
+| `X` | Smart snap on / off |
 | `Shift+G` | Grid snap on / off |
 | `N` | Auto-numbering on / off (circles and squares get numbers, new grids get axis indices — [[ADR-T22-1 Numbering toggle drives grid indices]]) |
 | `Shift+N` | Restart numbering at 1 |

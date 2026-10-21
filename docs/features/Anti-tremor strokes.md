@@ -20,7 +20,7 @@ few points that matter. The line always ends exactly where the cursor was.
 
 | Action | Shortcut / gesture |
 |--------|--------------------|
-| Draw a smoothed stroke | Pen tool (`P`), drag |
+| Draw a smoothed stroke | Pen tool (`D`), drag |
 | Cycle strength off → low → medium → high | `S` |
 
 | Level | Feels like |

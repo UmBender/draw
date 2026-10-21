@@ -1,7 +1,7 @@
 ---
 id: T38
 title: Left-hand tool keys
-status: in-progress
+status: review
 wave: 24
 branch: task/T38-left-hand-keys
 depends_on: [T11, T12]
@@ -126,11 +126,11 @@ Acceptance criteria and the tests that prove them:
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T38): specify left-hand tool keys`
-- [ ] tests — `test(T38): add failing tests for left-hand bindings`
-- [ ] models — skipped if no new types are needed (record in the log)
-- [ ] behaviour — `feat(T38): bind tools to left-hand keys`
-- [ ] quality — `chore(T38): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T38): update shortcuts, cheat sheet and add tutorial`
+- [x] tests — `test(T38): add failing tests for left-hand bindings`
+- [x] models — `feat(T38): add the smart snap toggle label constant`
+- [x] behaviour — `feat(T38): bind tools to left-hand keys`
+- [x] quality — `chore(T38): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T38): update shortcuts, cheat sheet and add tutorial`
 
 ## Learning path
 
@@ -148,3 +148,15 @@ Step 38 — requires step 11 (keymaps) and step 12 (toolbar).
   other side of the keyboard from the hand left free while drawing with a
   mouse or pen; propose left-hand replacements. Runs in wave 24 in
   parallel with T36 and T37.
+- 2026-10-21 — Tests step: red for the right reason (`SMART_SNAP_LABEL`
+  missing). Models step: only the toolbar's smart snap label became a
+  named constant so `smart_snap_label_matches_keymap` can see it.
+- 2026-10-21 — Behaviour: three rows of `BINDINGS` and the toolbar labels
+  changed; all 958 lib tests and the fuzz and perf suites green. Quality:
+  clippy asked for let-else in a test helper. `scripts/check.sh` green.
+- 2026-10-21 — Docs: README (*Quick start*, *Keyboard reference*,
+  *Recipes*), cheat sheet, `Keymap.md` and the feature notes show `D`, `W`,
+  `X`. For the integrator: `CHANGELOG.md` *Changed* entry (pen `P`→`D`,
+  line `L`→`W`, smart snap `M`→`X`) and step 35's "Next" link in the
+  Learning Path. The in-app check on the target is **pending the owner**.
+  Status → review.
