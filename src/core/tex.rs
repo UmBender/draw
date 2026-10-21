@@ -1119,6 +1119,7 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
                     | Class::Op
                     | Class::Limits
                     | Class::BigOp
+                    | Class::Integral
                     | Class::Rel
                     | Class::Open
                     | Class::Punct
@@ -1145,7 +1146,12 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
 
 /// Space between neighbouring atoms of classes `a` and `b` at `scale`.
 fn spacing(a: Class, b: Class, scale: f32) -> f32 {
-    let op = |c| matches!(c, Class::Op | Class::Limits | Class::BigOp);
+    let op = |c| {
+        matches!(
+            c,
+            Class::Op | Class::Limits | Class::BigOp | Class::Integral
+        )
+    };
     // TeX's thin space around operators, in scripts too.
     if (op(a) && (b == Class::Ord || op(b))) || (op(b) && matches!(a, Class::Ord | Class::Close)) {
         return OP_SPACE * scale;
@@ -1214,10 +1220,14 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                     ScriptKind::Sub => sub = Some(b),
                 }
             }
-            let b = if matches!(class, Class::BigOp | Class::Limits) {
-                limits(&base, sup, sub, scale)
-            } else {
-                scripts(base, sup, sub, scale)
+            let b = match class {
+                Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
+                // The subscript tucks under the slant (ADR-T36-1).
+                Class::Integral => {
+                    let tuck = base.italic;
+                    scripts(base, sup, sub, tuck, scale)
+                }
+                _ => scripts(base, sup, sub, 0.0, scale),
             };
             (b, class)
         }
@@ -1247,17 +1257,18 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
 }
 
 /// The box of a table symbol: a glyph (lowercase Greek in italic), an
-/// enlarged big operator or an upright word.
+/// enlarged big operator or integral, or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32) -> MathBox {
     let mut chars = def.text.chars();
     match (chars.next(), chars.next(), def.class) {
-        (Some(ch), None, Class::BigOp) => big_operator(ch, scale),
+        (Some(ch), None, Class::BigOp | Class::Integral) => big_operator(ch, scale),
         (Some(ch), None, _) => MathBox::math(italic(ch), scale),
         _ => MathBox::upright(def.text, scale),
     }
 }
 
-/// `∑` or `∏`, enlarged and centred on the axis.
+/// `∑`, `∏` or `∫`, enlarged and centred on the axis, with the enlarged
+/// glyph's italic correction.
 fn big_operator(ch: char, scale: f32) -> MathBox {
     let k = BIG_OP_SCALE * scale;
     let glyph = MathBox::math(ch, k);
@@ -1267,7 +1278,7 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
         width: glyph.width,
         ascent: glyph.ascent - y,
         descent: glyph.descent + y,
-        italic: 0.0,
+        italic: glyph.italic,
         ink: Vec::new(),
     };
     out.put(&glyph, Vec2::new(0.0, y));
@@ -1275,8 +1286,15 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
 }
 
 /// Superscript and subscript to the right of `base` (ADR-T33-1): the
-/// superscript after the base's italic correction.
-fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
+/// superscript after the base's italic correction, the subscript `tuck`
+/// left of the base's advance (ADR-T36-1).
+fn scripts(
+    base: MathBox,
+    sup: Option<MathBox>,
+    sub: Option<MathBox>,
+    tuck: f32,
+    scale: f32,
+) -> MathBox {
     let mut up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
     if let Some(sup) = &sup {
         up = up.max(sup.descent + SUP_BOTTOM_MIN * scale);
@@ -1307,8 +1325,9 @@ fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32
         out.descent = out.descent.max(sup.descent - up);
     }
     if let Some(sub) = sub {
-        out.put(&sub, Vec2::new(x, down));
-        out.width = out.width.max(x + sub.width);
+        let at = x - tuck;
+        out.put(&sub, Vec2::new(at, down));
+        out.width = out.width.max(at + sub.width);
         out.ascent = out.ascent.max(sub.ascent - down);
         out.descent = out.descent.max(down + sub.descent);
     }
