@@ -104,7 +104,7 @@ prove them. Expected:
 - Other operators (`\bigcup`, `\bigoplus`, …) — the class makes them a
   one-line addition later.
 - Accents (`\vec`, `\hat`, `\dot`, `\ddot`, `\bar`) — common in physics
-  but a layout construct, not a symbol; candidate for its own task.
+  but a layout construct, not a symbol: [[T39 Accents in formulas]].
 - Widening the math-font subset (see the *Not added* list).
 
 ## Files owned
