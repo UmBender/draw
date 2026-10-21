@@ -84,8 +84,8 @@ const fn color(digit: u8) -> Command {
 /// edit, view, helpers (ADR-T16-2).
 pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     // Tools
-    (KeyChord::bare(Key::P), Command::SetTool(Tool::Pen), "Pen"),
-    (KeyChord::bare(Key::L), Command::SetTool(Tool::Line), "Line"),
+    (KeyChord::bare(Key::D), Command::SetTool(Tool::Pen), "Pen"),
+    (KeyChord::bare(Key::W), Command::SetTool(Tool::Line), "Line"),
     (
         KeyChord::bare(Key::A),
         Command::SetTool(Tool::Arrow),
@@ -196,7 +196,7 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     ),
     // Helpers
     (
-        KeyChord::bare(Key::M),
+        KeyChord::bare(Key::X),
         Command::ToggleSmartSnap,
         "Smart snap on / off",
     ),

@@ -337,13 +337,13 @@ fn step_label(delta: i32) -> &'static str {
 
 /// Label of the smart snap toggle: the key that toggles it (see
 /// `core::keymap`).
-const SMART_SNAP_LABEL: &str = "M";
+const SMART_SNAP_LABEL: &str = "X";
 
 /// The key that selects `tool`, shown as its label (see `core::keymap`).
 fn tool_label(tool: Tool) -> &'static str {
     match tool {
-        Tool::Pen => "P",
-        Tool::Line => "L",
+        Tool::Pen => "D",
+        Tool::Line => "W",
         Tool::Arrow => "A",
         Tool::Rect => "R",
         Tool::Ellipse => "C",
