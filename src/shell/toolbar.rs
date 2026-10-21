@@ -265,7 +265,13 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                 }
             }
             ButtonKind::SmartSnap => {
-                draw_toggle(rect, "M", editor.helpers().smart_snap, accent, text);
+                draw_toggle(
+                    rect,
+                    SMART_SNAP_LABEL,
+                    editor.helpers().smart_snap,
+                    accent,
+                    text,
+                );
             }
             ButtonKind::GridSnap => {
                 draw_toggle(rect, "#", editor.helpers().grid_snap, accent, text);
@@ -328,6 +334,10 @@ fn draw_flyout(editor: &Editor, viewport: Vec2) {
 fn step_label(delta: i32) -> &'static str {
     if delta < 0 { "-" } else { "+" }
 }
+
+/// Label of the smart snap toggle: the key that toggles it (see
+/// `core::keymap`).
+const SMART_SNAP_LABEL: &str = "M";
 
 /// The key that selects `tool`, shown as its label (see `core::keymap`).
 fn tool_label(tool: Tool) -> &'static str {
