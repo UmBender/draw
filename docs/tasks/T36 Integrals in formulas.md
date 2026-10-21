@@ -1,7 +1,7 @@
 ---
 id: T36
 title: Integrals in formulas
-status: in-progress
+status: review
 wave: 24
 branch: task/T36-integrals
 depends_on: [T33]
@@ -130,12 +130,12 @@ character of the subset, `∫ ∬ ∭ ∮ ∯` and every physics glyph included
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T36): specify integral acceptance criteria`
-- [ ] tests — `test(T36): add failing tests for integrals`
-- [ ] models — `feat(T36): add integral and physics symbols, class and metrics`
-- [ ] behaviour — `feat(T36): place integral limits beside the sign`
-- [ ] quality — `chore(T36): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T36): update feature note and add tutorial`
+- [x] spec — `docs(T36): specify integral acceptance criteria`
+- [x] tests — `test(T36): add failing tests for integrals`
+- [x] models — `feat(T36): add integral and physics symbols, class and metrics`
+- [x] behaviour — `feat(T36): place integral limits beside the sign`
+- [x] quality — `chore(T36): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T36): update feature note and add tutorial`
 
 ## Learning path
 
@@ -152,3 +152,17 @@ Step 36 — requires step 30 (TeX formulas) and step 33 (math font).
   most common used symbols from physics to be added." Added the
   *Physics symbols* table (all inside the current font subset), the five
   integral signs and AC-1b; accents and subset growth left out of scope.
+- 2026-10-21 — Spec: `Class::Integral` with scripts beside the sign
+  (ADR-T36-1). The *Known fact* about missing metrics rows was wrong:
+  the table already has one row per subset character, so
+  `math_metrics.rs` and `scripts/math_metrics.py` are unchanged (fontTools
+  not needed). `\,` added as a row (U+2006) since the goal's example uses
+  it; the old unknown-control-symbol test now uses `\;`.
+- 2026-10-21 — Tests, models, behaviour, quality done. No shell change
+  needed: `tex_symbols_all_have_glyphs_in_the_math_font` iterates
+  `SYMBOLS` and passes with the new rows. Perf (release, one thread):
+  tex parse + layout of 200 blocks 1.07 ms (budget 2 ms; 0.87 ms on
+  `main`, whose benchmark lacks the new, longer integral formula),
+  tessellation 0.18 ms (budget 1 ms). Run in parallel, four unrelated
+  10k-shape benchmarks exceed 1 ms from contention; all pass
+  single-threaded.

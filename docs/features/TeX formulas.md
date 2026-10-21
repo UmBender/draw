@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -24,6 +24,14 @@ and calligraphic capitals with `\mathcal`. Plain text around them stays
 in the monospaced text font. (Since [[T33 Math font for formulas]];
 tutorial [[33 Typesetting with a proportional math font]].)
 
+Integrals — `$\int_0^1 f(x)\,dx$`, `\oint`, `\iint` — are enlarged like
+`\sum` with their limits as scripts beside the slanted sign, as in inline
+LaTeX, and the symbols most used in physics are there too:
+Schrödinger's `$i\hbar\,\partial_t\psi = H\psi$`, Maxwell's
+`$\nabla \times E = -\partial_t B$`, bra–kets `$\langle a \mid b \rangle$`.
+(Since [[T36 Integrals in formulas]]; tutorial
+[[36 Operators whose limits sit beside them]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -33,11 +41,20 @@ tutorial [[33 Typesetting with a proportional math font]].)
 | Superscript / subscript | `x^2`, `x_i`, `x_{i,j}^{2k}` |
 | Fraction, binomial, root | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` (`\frac12` works too) |
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
+| Integrals (limits beside) | `\int_0^1`, `\iint`, `\iiint`, `\oint`, `\oiint` |
 | Functions (upright) | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` |
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
-| Brackets | `\lfloor \rfloor \lceil \rceil \{ \} |` |
+| Brackets | `\lfloor \rfloor \lceil \rceil \{ \} | \langle \rangle` |
+| Calculus, vectors | `\partial \nabla` |
+| Letters, constants | `\hbar \ell \Re \Im \AA \degree` |
+| Logic, sets | `\forall \exists \emptyset \prime` |
+| Dots, bars | `\vdots \ddots \vert \Vert` |
+| More relations | `\propto \sim \simeq \cong \ll \gg \lesssim \gtrsim \doteq \coloneqq \parallel \perp \mid` |
+| More arrows | `\rightarrow \leftrightarrow \Leftarrow \Leftrightarrow \uparrow \downarrow \mapsto \rightleftharpoons` |
+| More binary operators | `\mp \otimes \wedge \vee \circ \ast \star \bullet \dagger` |
+| Thin space | `\,` (as in `f(x)\,dx`) |
 | Upright text | `\text{if } x > 0` |
 
 Anything else is drawn as typed, in red (yellow on a red block), so a
@@ -66,6 +83,10 @@ of the same batch.
 
 - No display mode (`$$…$$`), matrices, environments, macros, accents or
   `\left`/`\right` — brackets do not grow (only `\binom`'s do).
+- No `\limits` / `\nolimits`; integrals are always the inline size.
+- Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
+  literals); `\longrightarrow`, `\implies` and `\triangle` are not in
+  the font subset.
 - `\mathcal` has capitals only (as in TeX); no `\mathbb`, `\mathfrak`
   or bold math.
 - A character the math font lacks (e.g. CJK in `\text{…}`) falls back to
