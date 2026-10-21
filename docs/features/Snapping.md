@@ -3,7 +3,7 @@ title: Snapping
 task: "[[T17 Snapping]]"
 adrs: ["[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T16-2 Helper key bindings]]"]
 tutorial: "[[17 Snapping and alignment guides]]"
-shortcuts: ["M", "Shift+G", "Alt (hold while dragging)"]
+shortcuts: ["X", "Shift+G", "Alt (hold while dragging)"]
 tags: [feature]
 ---
 
@@ -22,7 +22,7 @@ guide shows every alignment. With **grid snap** on, points land on a
 
 | Action | Shortcut / gesture |
 |--------|--------------------|
-| Toggle smart snap (round, sizes, alignment) | `M` or the toolbar |
+| Toggle smart snap (round, sizes, alignment) | `X` or the toolbar |
 | Toggle grid snap and the dot grid | `Shift+G` or the toolbar |
 | Draw without snapping | hold `Alt` while dragging |
 | Exact square / circle / 45° line | hold `Shift` (grid snap still applies) |

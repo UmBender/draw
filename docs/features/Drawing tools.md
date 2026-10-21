@@ -3,7 +3,7 @@ title: Drawing tools
 task: "[[T09 Creation tools]]"
 adrs: ["[[ADR-0007 Anti-tremor pipeline]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T08-1 Tool context and gesture overlay]]"]
 tutorial: "[[09 Building drawing tools]]"
-shortcuts: ["P", "L", "A", "R", "C", "Shift", "Esc"]
+shortcuts: ["D", "W", "A", "R", "C", "Shift", "Esc"]
 tags: [feature]
 ---
 
@@ -21,8 +21,8 @@ see the shape being drawn; releasing commits it as a single undo step.
 
 | Action | Shortcut / gesture |
 |--------|--------------------|
-| Pen (freehand, smoothed) | `P`, then left drag; a click makes a dot |
-| Line / Arrow | `L` / `A`, then drag from start to end (arrow head at the release point) |
+| Pen (freehand, smoothed) | `D`, then left drag; a click makes a dot |
+| Line / Arrow | `W` / `A`, then drag from start to end (arrow head at the release point) |
 | Rectangle / Ellipse | `R` / `C`, then drag corner to corner |
 | Square, circle, 45° line or arrow | hold `Shift` while dragging (checked on every move) |
 | Abandon the shape being drawn | `Esc` or switch tool |

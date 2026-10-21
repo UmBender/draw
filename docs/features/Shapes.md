@@ -25,7 +25,7 @@ note with their shortcuts.
 
 | Action | Shortcut / gesture |
 |--------|--------------------|
-| Draw a line, arrow, rectangle or ellipse | `L` / `A` / `R` / `C`, then drag — see [[Drawing tools]] |
+| Draw a line, arrow, rectangle or ellipse | `W` / `A` / `R` / `C`, then drag — see [[Drawing tools]] |
 
 ## How it works
 

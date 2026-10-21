@@ -265,7 +265,13 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                 }
             }
             ButtonKind::SmartSnap => {
-                draw_toggle(rect, "M", editor.helpers().smart_snap, accent, text);
+                draw_toggle(
+                    rect,
+                    SMART_SNAP_LABEL,
+                    editor.helpers().smart_snap,
+                    accent,
+                    text,
+                );
             }
             ButtonKind::GridSnap => {
                 draw_toggle(rect, "#", editor.helpers().grid_snap, accent, text);
@@ -329,11 +335,15 @@ fn step_label(delta: i32) -> &'static str {
     if delta < 0 { "-" } else { "+" }
 }
 
+/// Label of the smart snap toggle: the key that toggles it (see
+/// `core::keymap`).
+const SMART_SNAP_LABEL: &str = "X";
+
 /// The key that selects `tool`, shown as its label (see `core::keymap`).
 fn tool_label(tool: Tool) -> &'static str {
     match tool {
-        Tool::Pen => "P",
-        Tool::Line => "L",
+        Tool::Pen => "D",
+        Tool::Line => "W",
         Tool::Arrow => "A",
         Tool::Rect => "R",
         Tool::Ellipse => "C",
@@ -801,5 +811,45 @@ mod tests {
         let event = press(minus_cols, PointerButton::Left);
         assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
         assert_eq!(route(false, true, VIEWPORT, event), Route::Forward(event));
+    }
+
+    /// The key bound bare to `command` in the keymap, as the toolbar spells it.
+    fn bound_key(command: Command) -> String {
+        let chord = crate::core::keymap::BINDINGS
+            .iter()
+            .find(|&&(chord, c, _)| c == command && chord.mods == Modifiers::NONE)
+            .map(|&(chord, _, _)| chord);
+        let Some(chord) = chord else {
+            panic!("{command:?} has no bare key");
+        };
+        format!("{:?}", chord.key)
+    }
+
+    #[test]
+    fn tool_labels_match_keymap() {
+        for tool in [
+            Tool::Pen,
+            Tool::Line,
+            Tool::Arrow,
+            Tool::Rect,
+            Tool::Ellipse,
+            Tool::Grid,
+            Tool::Text,
+            Tool::Eraser,
+            Tool::Bucket,
+            Tool::Select,
+            Tool::Hand,
+        ] {
+            assert_eq!(
+                tool_label(tool),
+                bound_key(Command::SetTool(tool)),
+                "{tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn smart_snap_label_matches_keymap() {
+        assert_eq!(SMART_SNAP_LABEL, bound_key(Command::ToggleSmartSnap));
     }
 }

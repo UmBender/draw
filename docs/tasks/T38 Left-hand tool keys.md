@@ -1,11 +1,11 @@
 ---
 id: T38
 title: Left-hand tool keys
-status: todo
+status: review
 wave: 24
 branch: task/T38-left-hand-keys
 depends_on: [T11, T12]
-adrs: []
+adrs: ["[[ADR-T38-1 Left-hand keys for pen, line and smart snap]]"]
 feature: "[[Shortcuts and macros]]"
 tutorial: "[[38 Laying out shortcuts for one hand]]"
 tags: [task]
@@ -73,16 +73,38 @@ Questions for the owner:
 
 ## Spec
 
-To be written in the spec step. Expected:
+[[ADR-T38-1 Left-hand keys for pen, line and smart snap]] records the new
+keys and why the old ones are freed instead of kept as aliases.
 
-- **AC-1** — The new bare keys resolve to their commands; the aliases
-  (if kept) still resolve; no chord appears twice in `BINDINGS`
-  (existing uniqueness test).
-- **AC-2** — Text edit mode is unchanged: the new keys type their
-  letters while a block is open.
-- **AC-3** — The toolbar labels show the new keys.
-- **AC-4** — README *Keyboard reference*, *Recipes*, the cheat sheet,
-  `docs/architecture/Keymap.md` and the feature notes list the new keys.
+Acceptance criteria and the tests that prove them:
+
+- **AC-1 — New keys.** Bare `D` selects the pen, bare `W` the line tool,
+  bare `X` toggles smart snap; `Ctrl+D` (duplicate) and `Ctrl+X` (cut)
+  are unchanged; `Shift`/`Ctrl`/`Alt` + `D`, `W`, `X` resolve to nothing
+  else (exact modifiers, ADR-T11-1).
+  Tests (`src/core/keymap.rs`): `left_hand_keys_select_pen_line_and_smart_snap`,
+  `left_hand_keys_keep_their_ctrl_chords`.
+- **AC-2 — Old keys freed.** `P`, `L` and `M` resolve to nothing with any
+  modifiers.
+  Test (`src/core/keymap.rs`): `p_l_m_are_unbound`.
+- **AC-3 — Documented table.** The independent table in the keymap tests
+  (mirror of `docs/architecture/Keymap.md`) lists the new keys; every
+  chord resolves as documented and chords stay unique.
+  Tests (`src/core/keymap.rs`, updated): `every_documented_binding`,
+  `helper_bindings`, `shift_chords_are_exact`,
+  `resolve_matches_documented_table_for_all_chords`,
+  `bindings_have_unique_chords`.
+- **AC-4 — Text edit mode.** While a block is open `d`, `w`, `x` type their
+  letters; after `Esc` they are shortcuts again.
+  Tests (`src/core/editor.rs`): `text_left_hand_keys_type_letters`;
+  `text_after_escape_keys_act_as_shortcuts_again` (now presses `D`).
+- **AC-5 — Toolbar labels.** Each tool button shows the key its tool is
+  bound to in `BINDINGS`, and the smart snap toggle shows `X`.
+  Tests (`src/shell/toolbar.rs`): `tool_labels_match_keymap`,
+  `smart_snap_label_matches_keymap`.
+- **AC-6 — Docs.** README *Quick start*, *Keyboard reference* and *Recipes*,
+  `docs/architecture/Keymap.md`, the cheat sheet and the feature notes
+  that name `P`, `L` or `M` show `D`, `W`, `X`.
 
 ## Out of scope
 
@@ -92,21 +114,23 @@ To be written in the spec step. Expected:
 ## Files owned
 
 - `src/core/keymap.rs`, `src/shell/toolbar.rs`
-- `README.md` — sections *Keyboard reference* and *Recipes* only
+- `src/core/editor.rs` — tests only (one existing test presses `P`)
+- `README.md` — sections *Quick start*, *Keyboard reference* and *Recipes* only
 - `docs/architecture/Keymap.md`, `docs/features/Shortcuts and macros.md`,
   `docs/features/Contest cheat sheet.md`, `docs/features/Drawing tools.md`,
-  `docs/features/Shapes.md`, `docs/features/Anti-tremor strokes.md`
+  `docs/features/Shapes.md`, `docs/features/Anti-tremor strokes.md`,
+  `docs/features/Text blocks.md`, `docs/features/Snapping.md`
 - tutorial `docs/tutorials/38 Laying out shortcuts for one hand.md`, new
   `ADR-T38-*`
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T38): specify left-hand tool keys`
-- [ ] tests — `test(T38): add failing tests for left-hand bindings`
-- [ ] models — skipped if no new types are needed (record in the log)
-- [ ] behaviour — `feat(T38): bind tools to left-hand keys`
-- [ ] quality — `chore(T38): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T38): update shortcuts, cheat sheet and add tutorial`
+- [x] spec — `docs(T38): specify left-hand tool keys`
+- [x] tests — `test(T38): add failing tests for left-hand bindings`
+- [x] models — `feat(T38): add the smart snap toggle label constant`
+- [x] behaviour — `feat(T38): bind tools to left-hand keys`
+- [x] quality — `chore(T38): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T38): update shortcuts, cheat sheet and add tutorial`
 
 ## Learning path
 
@@ -114,9 +138,25 @@ Step 38 — requires step 11 (keymaps) and step 12 (toolbar).
 
 ## Log
 
+- 2026-10-21 — Spec step: `src/core/editor.rs` (one test pressed `P`),
+  `docs/features/Text blocks.md` and `docs/features/Snapping.md` (name
+  `P` / `M`) added to the files owned. Tutorials of earlier steps keep the
+  keys of their time.
 - 2026-10-21 — Owner chose pen `D`, line `W`, smart snap `X`; the
   optional hand and numbering moves were not taken.
 - 2026-10-21 — Created from the owner's request: `P` and `L` are on the
   other side of the keyboard from the hand left free while drawing with a
   mouse or pen; propose left-hand replacements. Runs in wave 24 in
   parallel with T36 and T37.
+- 2026-10-21 — Tests step: red for the right reason (`SMART_SNAP_LABEL`
+  missing). Models step: only the toolbar's smart snap label became a
+  named constant so `smart_snap_label_matches_keymap` can see it.
+- 2026-10-21 — Behaviour: three rows of `BINDINGS` and the toolbar labels
+  changed; all 958 lib tests and the fuzz and perf suites green. Quality:
+  clippy asked for let-else in a test helper. `scripts/check.sh` green.
+- 2026-10-21 — Docs: README (*Quick start*, *Keyboard reference*,
+  *Recipes*), cheat sheet, `Keymap.md` and the feature notes show `D`, `W`,
+  `X`. For the integrator: `CHANGELOG.md` *Changed* entry (pen `P`→`D`,
+  line `L`→`W`, smart snap `M`→`X`) and step 35's "Next" link in the
+  Learning Path. The in-app check on the target is **pending the owner**.
+  Status → review.
