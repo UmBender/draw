@@ -96,6 +96,20 @@ pub const SQRT_SIGN: f32 = 0.55;
 /// Largest scale of a binomial's parentheses.
 pub const BINOM_MAX_SCALE: f32 = 3.0;
 
+/// Gap between an accent's ink and the top of its argument (ADR-T39-1).
+pub const ACCENT_GAP: f32 = 0.06;
+
+/// Rightward shift of an accent over one italic letter per em of the
+/// letter's height: the top of a slanted letter lies right of its middle
+/// (ADR-T39-1).
+pub const ACCENT_SKEW: f32 = 0.1;
+
+/// Length of the rule `\bar` draws: the ink width of the font's macron.
+pub const ACCENT_BAR: f32 = 0.36;
+
+/// Scale of the arrow `\vec` draws.
+pub const VEC_SCALE: f32 = 0.5;
+
 /// Space on each side of a relation: TeX's thick space, 5/18 em.
 pub const REL_SPACE: f32 = 5.0 / 18.0;
 
@@ -148,7 +162,8 @@ pub enum Node {
         /// The second script, of the other kind.
         second: Option<Script>,
     },
-    /// `\frac`, `\binom`, `\sqrt` or `\pmod` with all its arguments.
+    /// `\frac`, `\binom`, `\sqrt`, `\pmod`, `\mathcal` or an accent
+    /// ([`ACCENTS`]) with all its arguments.
     Command {
         /// Name without the backslash.
         name: String,
@@ -387,6 +402,64 @@ pub const SYMBOLS: &[SymbolDef] = &[
 #[must_use]
 pub fn symbol(name: &str) -> Option<&'static SymbolDef> {
     SYMBOLS.iter().find(|s| s.name == name)
+}
+
+/// What an accent draws over its argument (ADR-T39-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Mark {
+    /// A math-face glyph at this fraction of the argument's scale.
+    Glyph(char, f32),
+    /// A rule [`ACCENT_BAR`] long, centred over the argument: `\bar`.
+    Bar,
+    /// A rule from the argument's left edge to its advance: `\overline`.
+    Overline,
+}
+
+/// One accent command: a one-argument [`Node::Command`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AccentDef {
+    /// Command name without the backslash.
+    pub name: &'static str,
+    /// What it draws.
+    pub mark: Mark,
+}
+
+/// Every accent command of the subset (ADR-T39-1).
+pub const ACCENTS: &[AccentDef] = &[
+    AccentDef {
+        name: "vec",
+        mark: Mark::Glyph('\u{2192}', VEC_SCALE),
+    },
+    AccentDef {
+        name: "hat",
+        mark: Mark::Glyph('^', 1.0),
+    },
+    AccentDef {
+        name: "tilde",
+        mark: Mark::Glyph('~', 1.0),
+    },
+    AccentDef {
+        name: "dot",
+        mark: Mark::Glyph('\u{B7}', 1.0),
+    },
+    AccentDef {
+        name: "ddot",
+        mark: Mark::Glyph('\u{A8}', 1.0),
+    },
+    AccentDef {
+        name: "bar",
+        mark: Mark::Bar,
+    },
+    AccentDef {
+        name: "overline",
+        mark: Mark::Overline,
+    },
+];
+
+/// The accent command `name` (without the backslash).
+#[must_use]
+pub fn accent(name: &str) -> Option<&'static AccentDef> {
+    ACCENTS.iter().find(|a| a.name == name)
 }
 
 /// Which embedded font draws a glyph (ADR-T33-1).
