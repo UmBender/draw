@@ -1,11 +1,11 @@
 ---
 id: T41
 title: Integral superscript at the advance
-status: ready
+status: in-progress
 wave: 27
 branch: fix/integral-superscript
 depends_on: [T36]
-adrs: []
+adrs: ["[[ADR-T41-1 Integral superscript at the advance]]"]
 feature: "[[TeX formulas]]"
 tutorial: "[[36 Operators whose limits sit beside them]]"
 tags: [task]
@@ -47,6 +47,21 @@ the advance; the subscript stays at advance − italic. Other bases keep
 
 ## Spec
 
+Decision: [[ADR-T41-1 Integral superscript at the advance]] — the
+proposal is taken.
+
+- **AC-1** — on every integral (`\int \iint \iiint \oint \oiint`) the
+  superscript starts at the enlarged sign's advance, and the subscript
+  stays at advance − italic correction:
+  `tex_layout_integral_superscript_starts_at_the_advance`, and the
+  corrected `tex_layout_integral_scripts_sit_beside_the_sign`.
+- **AC-2** — the superscript clears the sign's ink but sits within
+  0.1 em of it: `tex_layout_integral_superscript_hugs_the_sign`.
+- **AC-3** — italic letters keep the superscript after the correction:
+  `tex_layout_superscript_clears_the_italic_correction` (unchanged).
+- **AC-4** — owner check: `$\int_{0}^{\pi} f(x) \, dx$` looks like inline
+  LaTeX (see *Log*).
+
 ## Out of scope
 
 - Display-size integrals, `\limits` / `\nolimits`.
@@ -61,7 +76,7 @@ the advance; the subscript stays at advance − italic. Other bases keep
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T41): specify integral superscript placement`
+- [x] spec — `docs(T41): specify integral superscript placement`
 - [ ] tests — `test(T41): add failing tests for the integral superscript`
 - [ ] models — `feat(T41): …`
 - [ ] behaviour — `fix(T41): put an integral's superscript at its advance`
