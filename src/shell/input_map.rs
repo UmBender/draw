@@ -858,4 +858,96 @@ mod tests {
             ]
         );
     }
+
+    // ---- T40 copied wl_pointer input on Wayland ---------------------------
+
+    use macroquad::miniquad::pen::pointer_shadowed_by_pen;
+
+    /// A `wl_pointer.motion` the compositor copied from the pen, as the
+    /// Wayland backend forwards it given each tool's proximity.
+    fn copied_pointer_motion(c: &mut Collector, in_proximity: &[bool], x: f32, y: f32) {
+        if !pointer_shadowed_by_pen(in_proximity.iter().copied()) {
+            c.mouse_motion_event(x, y);
+        }
+    }
+
+    #[test]
+    fn pointer_shadowed_by_pen_with_a_tool_in_proximity_is_true() {
+        // Arrange: a pen in proximity, its eraser end not.
+        let tools = [false, true];
+
+        // Act
+        let dropped = pointer_shadowed_by_pen(tools);
+
+        // Assert
+        assert!(dropped);
+    }
+
+    #[test]
+    fn pointer_shadowed_by_pen_without_tools_in_proximity_is_false() {
+        // Arrange
+        let none: [bool; 0] = [];
+        let away = [false, false];
+
+        // Act
+        let dropped_none = pointer_shadowed_by_pen(none);
+        let dropped_away = pointer_shadowed_by_pen(away);
+
+        // Assert
+        assert!(!dropped_none);
+        assert!(!dropped_away);
+    }
+
+    #[test]
+    fn collector_replayed_wayland_down_with_pen_in_proximity_gets_pressure() {
+        // Arrange: Hyprland's tip-down from the T40 log. The tool frame
+        // pushed two samples (motion, down) at the copied motion's spot.
+        let (x, y) = (226.605_47, 121.929_69);
+        let p = 10_539.0 / 65_535.0;
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![sample(x, y, p), sample(x, y, p)]);
+
+        // Act: wl_pointer copy, tool motion, tool down.
+        copied_pointer_motion(&mut c, &[true], x, y);
+        c.mouse_motion_event(x, y);
+        c.mouse_button_down_event(MouseButton::Left, x, y);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(p)),
+                moved(x, y),
+                InputEvent::PointerDown {
+                    pos: Vec2::new(x, y),
+                    button: PointerButton::Left,
+                    mods: Modifiers::NONE,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_replayed_wayland_motion_after_proximity_out_has_no_pressure() {
+        // Arrange: the pen has left; the mouse moves.
+        let mut c = Collector::new();
+        c.set_pen_samples(vec![sample(1.0, 1.0, 0.5)]);
+        c.mouse_motion_event(1.0, 1.0);
+
+        // Act
+        copied_pointer_motion(&mut c, &[false], 30.0, 40.0);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                pressure(Some(0.5)),
+                moved(1.0, 1.0),
+                pressure(None),
+                moved(30.0, 40.0),
+            ]
+        );
+    }
 }
