@@ -1,7 +1,7 @@
 ---
 id: T39
 title: Accents in formulas
-status: in-progress
+status: review
 wave: 25
 branch: task/T39-accents
 depends_on: [T36]
@@ -122,12 +122,12 @@ Placement (all lengths times the argument's scale):
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T39): specify accent acceptance criteria`
-- [ ] tests — `test(T39): add failing tests for accents`
-- [ ] models — `feat(T39): add accent commands and node`
-- [ ] behaviour — `feat(T39): place accents over their argument`
-- [ ] quality — `chore(T39): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T39): update feature note and add tutorial`
+- [x] spec — `docs(T39): specify accent acceptance criteria`
+- [x] tests — `test(T39): add failing tests for accents`
+- [x] models — `feat(T39): add accent commands and node`
+- [x] behaviour — `feat(T39): place accents over their argument`
+- [x] quality — `chore(T39): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T39): update feature note and add tutorial`
 
 ## Learning path
 
@@ -141,3 +141,16 @@ limits sit beside them).
   writing: the subset has no combining accents, but the spacing glyphs
   listed above are in the font and the metrics table. Runs in wave 25,
   after T36, because both own `src/core/tex.rs`.
+- 2026-10-21 — Spec: accents reuse `Node::Command`; a new `ACCENTS`
+  table names each command's `Mark`; `\bar` is a fixed short rule
+  (LaTeX's macron), `\overline` spans the argument; skew
+  `ACCENT_SKEW × ascent` over one italic letter
+  ([[ADR-T39-1 Accents from spacing glyphs with a slant skew]]).
+- 2026-10-21 — Tests, models and behaviour committed; `src/shell/glyphs.rs`
+  needed no change (the glyph coverage test lives in `src/shell/render.rs`).
+  Perf (release, one thread): tex parse + layout of 200 blocks 1.08 ms
+  (budget 2 ms), tessellating 200 formula blocks 0.17 ms (budget 1 ms).
+  Quality: one clippy fix (`f32::midpoint`).
+- 2026-10-21 — `scripts/check.sh` green; `PROPTEST_CASES=20000 cargo
+  test --release --test fuzz` passed (19 tests, 212 s). Docs: feature
+  note, README *Formulas in text blocks*, tutorial step 39.

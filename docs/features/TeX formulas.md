@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -32,6 +32,13 @@ Schrödinger's `$i\hbar\,\partial_t\psi = H\psi$`, Maxwell's
 (Since [[T36 Integrals in formulas]]; tutorial
 [[36 Operators whose limits sit beside them]].)
 
+Accents sit centred on their letter, as in LaTeX: Newton's
+`$\vec{F} = m\ddot{x}$`, a unit vector `$\hat{n}$`, an average
+`$\bar{v}$`, a segment `$\overline{AB}$`. Over a slanted letter the
+accent moves right with the slant, and scripts attach after the accented
+letter (`$\vec{F}_x$`, `$\dot{x}^2$`). (Since [[T39 Accents in formulas]];
+tutorial [[39 Accents that sit on their letters]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -45,6 +52,8 @@ Schrödinger's `$i\hbar\,\partial_t\psi = H\psi$`, Maxwell's
 | Functions (upright) | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` |
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
+| Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
+| Overline | `\overline{AB}` (as wide as its argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
 | Brackets | `\lfloor \rfloor \lceil \rceil \{ \} | \langle \rangle` |
 | Calculus, vectors | `\partial \nabla` |
@@ -81,8 +90,14 @@ of the same batch.
 
 ## Limits
 
-- No display mode (`$$…$$`), matrices, environments, macros, accents or
+- No display mode (`$$…$$`), matrices, environments, macros or
   `\left`/`\right` — brackets do not grow (only `\binom`'s do).
+- Accents do not grow: no `\widehat`, `\widetilde`, `\overrightarrow`,
+  and no under-accents (`\underline`, `\underbrace`). An accent takes
+  one letter, a symbol or a `{group}`, not another accent without braces
+  (`\hat{\vec{x}}` works, `\hat\vec x` does not). Their horizontal
+  placement over italic letters is approximated (the font's top-accent
+  points are not embedded).
 - No `\limits` / `\nolimits`; integrals are always the inline size.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
   literals); `\longrightarrow`, `\implies` and `\triangle` are not in
