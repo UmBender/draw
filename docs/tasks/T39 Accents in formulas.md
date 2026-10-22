@@ -1,11 +1,11 @@
 ---
 id: T39
 title: Accents in formulas
-status: todo
+status: in-progress
 wave: 25
 branch: task/T39-accents
 depends_on: [T36]
-adrs: []
+adrs: ["[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]"]
 feature: "[[TeX formulas]]"
 tutorial: "[[39 Accents that sit on their letters]]"
 tags: [task]
@@ -58,24 +58,50 @@ drawn as literal text.
 
 ## Spec
 
-To be written in the spec step: acceptance criteria and the tests that
-prove them. Expected:
+Decided in [[ADR-T39-1 Accents from spacing glyphs with a slant skew]].
+An accent is a `Node::Command` with one argument, like `\sqrt` — no new
+node kind, so printing stays lossless for free. A new table
+`tex::ACCENTS` (name → `Mark`) lists the commands; the parser and the
+layout look accents up there, and the shell test reads the glyphs from
+it.
 
-- **AC-1 — Parse.** Every accent command parses to a one-argument node
-  and prints back losslessly; `\vecx` and a missing argument stay
-  literals.
-- **AC-2 — Placement.** The accent is above the argument's ink and
-  horizontally centred on it (within a tolerance; skewed for one italic
-  letter); `\overline` is as wide as its argument.
-- **AC-3 — Box.** The accented box contains all ink (existing
-  proptests), its width equals the argument's, and scripts attach after
-  it.
-- **AC-4 — Glyphs.** Every glyph an accent draws is in the math font and
-  in `core::math_metrics` (existing shell tests extended).
-- **AC-5 — Budgets and fuzz.** T30/T33 perf thresholds kept; the fuzz
-  text sessions also type accents.
-- **AC-6 — Docs.** README *Formulas in text blocks* and the feature note
-  list the accent commands.
+| Command | `Mark` | Drawn as |
+|---------|--------|----------|
+| `\vec` | `Glyph('→', VEC_SCALE)` | the arrow at half size |
+| `\hat` | `Glyph('^', 1.0)` | U+005E |
+| `\tilde` | `Glyph('~', 1.0)` | U+007E |
+| `\dot` | `Glyph('·', 1.0)` | U+00B7 |
+| `\ddot` | `Glyph('¨', 1.0)` | U+00A8 |
+| `\bar` | `Bar` | a rule `ACCENT_BAR` long (the macron's ink width), centred |
+| `\overline` | `Overline` | a rule from the argument's left to its advance |
+
+Placement (all lengths times the argument's scale):
+
+- The mark's ink bottom sits `ACCENT_GAP` above the argument's ascent; a
+  rule's lower edge likewise (rule width `RULE`).
+- Glyphs and `\bar` are centred on the argument's ink span; when the
+  argument is one italic letter (a letter, or a lowercase Greek symbol,
+  that the style maps to another glyph) the centre moves right by
+  `ACCENT_SKEW × ascent` — the approximation of the dropped top-accent
+  attachment.
+- The accented box has the argument's width, descent and italic
+  correction; its ascent reaches the mark's top. It is `Class::Ord`, so
+  scripts attach to it like to any nucleus.
+
+| AC | Criterion | Test(s) |
+|----|-----------|---------|
+| AC-1 | Every `ACCENTS` command parses to `Node::Command` with one argument, braced or one token (with its lead whitespace); no two rows share a name, nor a `SYMBOLS` name | `core::tex::tests::tex_parse_accents_take_one_argument` |
+| AC-1b | `\vecx`, `\vec` at the end and `\hat^2` stay literals | `tex_parse_accent_without_argument_is_literal` |
+| AC-1c | Lossless printing and totality with accents in the source | proptest `tex_parse_never_panics_and_prints_back_the_source` (`arb_source` tokens gain `\vec \hat \bar \dot \ddot \tilde \overline`) |
+| AC-2 | Every mark's ink lies `ACCENT_GAP` above the argument's ascent | `tex_layout_accent_sits_above_its_argument` |
+| AC-2b | Over an upright or multi-letter argument the mark is centred on the argument's ink | `tex_layout_accent_is_centred_on_an_upright_argument` |
+| AC-2c | Over one italic letter the centre is skewed right by `ACCENT_SKEW × ascent` | `tex_layout_accent_over_an_italic_letter_is_skewed` |
+| AC-2d | `\bar` is one rule `ACCENT_BAR` long; `\overline` one rule from 0 to the argument's width | `tex_layout_bar_is_a_short_rule`, `tex_layout_overline_spans_its_argument` |
+| AC-3 | The accented box keeps the argument's width and descent; its ascent contains the mark | `tex_layout_accent_keeps_the_argument_width_and_descent`, proptests `tex_layout_bounds_contain_every_ink`, `tex_layout_is_finite` |
+| AC-3b | `\vec{F}_x`, `\dot{x}^2` put their scripts after the accented box; an accent in a script is drawn at script scale | `tex_layout_accent_takes_scripts` |
+| AC-4 | Every glyph an accent draws is in the math font and in `core::math_metrics` | `shell::render::tests::tex_symbols_all_have_glyphs_in_the_math_font` (extended with `ACCENTS`) |
+| AC-5 | T30/T33 perf thresholds kept with an accent formula in the benchmark; the fuzz text sessions type accents | `tests/perf.rs` `formula_texts` gains `$\vec{F} = m\ddot{x}$ and $\overline{AB}$`; `tests/fuzz.rs` `arb_formula_text` tokens |
+| AC-6 | README *Formulas in text blocks* and the feature note list the accent commands | review |
 
 ## Out of scope
 
