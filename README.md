@@ -255,11 +255,19 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `x^2`, `x_i`, `x_{i,j}^{2k}` | Superscript, subscript (one character or `{group}`) |
 | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` | Fraction, binomial, root |
 | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
+| `\int_0^1 f(x)\,dx`, `\iint`, `\iiint`, `\oint`, `\oiint` | Integrals, limits beside the sign; `\,` is a thin space |
 | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` | Upright functions |
 | `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
 | `\mathcal{F}` | Calligraphic capitals |
 | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` | Relations and operators |
-| `\lfloor \rfloor \lceil \rceil \{ \} \|` | Brackets |
+| `\lfloor \rfloor \lceil \rceil \{ \} \| \langle \rangle` | Brackets |
+| `\partial \nabla` | Calculus, vectors |
+| `\hbar \ell \Re \Im \AA \degree` | Letters, constants |
+| `\forall \exists \emptyset \prime` | Logic, sets |
+| `\vdots \ddots \vert \Vert` | Dots, bars |
+| `\propto \sim \simeq \cong \ll \gg \lesssim \gtrsim \doteq \coloneqq \parallel \perp \mid` | More relations |
+| `\rightarrow \leftrightarrow \Leftarrow \Leftrightarrow \uparrow \downarrow \mapsto \rightleftharpoons` | More arrows |
+| `\mp \otimes \wedge \vee \circ \ast \star \bullet \dagger` | More binary operators |
 | `\text{…}` | Upright text inside a formula |
 | `\$` | A literal dollar sign (a lone `$` also stays plain) |
 

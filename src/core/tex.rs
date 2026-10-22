@@ -206,6 +206,9 @@ pub enum Class {
     Limits,
     /// A big operator with limits, drawn enlarged: `∑`, `∏`.
     BigOp,
+    /// An integral, drawn enlarged with its scripts beside it: `∫`, `∮`
+    /// (ADR-T36-1).
+    Integral,
     /// A binary operator: `+`, `×`.
     Bin,
     /// A relation: `=`, `≤`.
@@ -315,9 +318,65 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("$", "$", Class::Ord),
     def("sum", "∑", Class::BigOp),
     def("prod", "∏", Class::BigOp),
+    def("int", "∫", Class::Integral),
+    def("iint", "∬", Class::Integral),
+    def("iiint", "∭", Class::Integral),
+    def("oint", "∮", Class::Integral),
+    def("oiint", "∯", Class::Integral),
     def("min", "min", Class::Limits),
     def("max", "max", Class::Limits),
     def("lim", "lim", Class::Limits),
+    // Physics symbols (T36).
+    def("partial", "∂", Class::Ord),
+    def("nabla", "∇", Class::Ord),
+    def("hbar", "ℏ", Class::Ord),
+    def("ell", "ℓ", Class::Ord),
+    def("Re", "ℜ", Class::Ord),
+    def("Im", "ℑ", Class::Ord),
+    def("AA", "Å", Class::Ord),
+    def("degree", "°", Class::Ord),
+    def("forall", "∀", Class::Ord),
+    def("exists", "∃", Class::Ord),
+    def("emptyset", "∅", Class::Ord),
+    def("prime", "′", Class::Ord),
+    def("vdots", "⋮", Class::Ord),
+    def("ddots", "⋱", Class::Ord),
+    def("vert", "|", Class::Ord),
+    def("Vert", "‖", Class::Ord),
+    def("propto", "∝", Class::Rel),
+    def("sim", "∼", Class::Rel),
+    def("simeq", "≃", Class::Rel),
+    def("cong", "≅", Class::Rel),
+    def("ll", "≪", Class::Rel),
+    def("gg", "≫", Class::Rel),
+    def("lesssim", "≲", Class::Rel),
+    def("gtrsim", "≳", Class::Rel),
+    def("doteq", "≐", Class::Rel),
+    def("coloneqq", "≔", Class::Rel),
+    def("parallel", "∥", Class::Rel),
+    def("perp", "⊥", Class::Rel),
+    def("mid", "∣", Class::Rel),
+    def("rightarrow", "→", Class::Rel),
+    def("leftrightarrow", "↔", Class::Rel),
+    def("Leftarrow", "⇐", Class::Rel),
+    def("Leftrightarrow", "⇔", Class::Rel),
+    def("uparrow", "↑", Class::Rel),
+    def("downarrow", "↓", Class::Rel),
+    def("mapsto", "↦", Class::Rel),
+    def("rightleftharpoons", "⇌", Class::Rel),
+    def("mp", "∓", Class::Bin),
+    def("otimes", "⊗", Class::Bin),
+    def("wedge", "∧", Class::Bin),
+    def("vee", "∨", Class::Bin),
+    def("circ", "∘", Class::Bin),
+    def("ast", "∗", Class::Bin),
+    def("star", "⋆", Class::Bin),
+    def("bullet", "∙", Class::Bin),
+    def("dagger", "†", Class::Bin),
+    def("langle", "⟨", Class::Open),
+    def("rangle", "⟩", Class::Close),
+    // TeX's thin space `\,`: the six-per-em space (ADR-T36-1).
+    def(",", "\u{2006}", Class::Ord),
     def("log", "log", Class::Op),
     def("ln", "ln", Class::Op),
     def("gcd", "gcd", Class::Op),
@@ -1060,6 +1119,7 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
                     | Class::Op
                     | Class::Limits
                     | Class::BigOp
+                    | Class::Integral
                     | Class::Rel
                     | Class::Open
                     | Class::Punct
@@ -1086,7 +1146,12 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
 
 /// Space between neighbouring atoms of classes `a` and `b` at `scale`.
 fn spacing(a: Class, b: Class, scale: f32) -> f32 {
-    let op = |c| matches!(c, Class::Op | Class::Limits | Class::BigOp);
+    let op = |c| {
+        matches!(
+            c,
+            Class::Op | Class::Limits | Class::BigOp | Class::Integral
+        )
+    };
     // TeX's thin space around operators, in scripts too.
     if (op(a) && (b == Class::Ord || op(b))) || (op(b) && matches!(a, Class::Ord | Class::Close)) {
         return OP_SPACE * scale;
@@ -1155,10 +1220,14 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                     ScriptKind::Sub => sub = Some(b),
                 }
             }
-            let b = if matches!(class, Class::BigOp | Class::Limits) {
-                limits(&base, sup, sub, scale)
-            } else {
-                scripts(base, sup, sub, scale)
+            let b = match class {
+                Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
+                // The subscript tucks under the slant (ADR-T36-1).
+                Class::Integral => {
+                    let tuck = base.italic;
+                    scripts(base, sup, sub, tuck, scale)
+                }
+                _ => scripts(base, sup, sub, 0.0, scale),
             };
             (b, class)
         }
@@ -1188,17 +1257,18 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
 }
 
 /// The box of a table symbol: a glyph (lowercase Greek in italic), an
-/// enlarged big operator or an upright word.
+/// enlarged big operator or integral, or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32) -> MathBox {
     let mut chars = def.text.chars();
     match (chars.next(), chars.next(), def.class) {
-        (Some(ch), None, Class::BigOp) => big_operator(ch, scale),
+        (Some(ch), None, Class::BigOp | Class::Integral) => big_operator(ch, scale),
         (Some(ch), None, _) => MathBox::math(italic(ch), scale),
         _ => MathBox::upright(def.text, scale),
     }
 }
 
-/// `∑` or `∏`, enlarged and centred on the axis.
+/// `∑`, `∏` or `∫`, enlarged and centred on the axis, with the enlarged
+/// glyph's italic correction.
 fn big_operator(ch: char, scale: f32) -> MathBox {
     let k = BIG_OP_SCALE * scale;
     let glyph = MathBox::math(ch, k);
@@ -1208,7 +1278,7 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
         width: glyph.width,
         ascent: glyph.ascent - y,
         descent: glyph.descent + y,
-        italic: 0.0,
+        italic: glyph.italic,
         ink: Vec::new(),
     };
     out.put(&glyph, Vec2::new(0.0, y));
@@ -1216,8 +1286,15 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
 }
 
 /// Superscript and subscript to the right of `base` (ADR-T33-1): the
-/// superscript after the base's italic correction.
-fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) -> MathBox {
+/// superscript after the base's italic correction, the subscript `tuck`
+/// left of the base's advance (ADR-T36-1).
+fn scripts(
+    base: MathBox,
+    sup: Option<MathBox>,
+    sub: Option<MathBox>,
+    tuck: f32,
+    scale: f32,
+) -> MathBox {
     let mut up = (SUP_SHIFT * scale).max(base.ascent - SUP_DROP * scale);
     if let Some(sup) = &sup {
         up = up.max(sup.descent + SUP_BOTTOM_MIN * scale);
@@ -1248,8 +1325,9 @@ fn scripts(base: MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32
         out.descent = out.descent.max(sup.descent - up);
     }
     if let Some(sub) = sub {
-        out.put(&sub, Vec2::new(x, down));
-        out.width = out.width.max(x + sub.width);
+        let at = x - tuck;
+        out.put(&sub, Vec2::new(at, down));
+        out.width = out.width.max(at + sub.width);
         out.ascent = out.ascent.max(sub.ascent - down);
         out.descent = out.descent.max(down + sub.descent);
     }
@@ -1725,6 +1803,91 @@ mod tests {
     }
 
     #[test]
+    fn tex_parse_integrals_are_symbols() {
+        // Act
+        let nodes = math("\\int\\iint\\iiint\\oint\\oiint");
+
+        // Assert
+        let names = ["int", "iint", "iiint", "oint", "oiint"];
+        assert_eq!(nodes, names.map(sym).to_vec());
+        let texts = names.map(|name| symbol(name).map(|s| (s.text, s.class)));
+        assert_eq!(
+            texts,
+            ["∫", "∬", "∭", "∮", "∯"].map(|t| Some((t, Class::Integral)))
+        );
+        assert_eq!(math("\\intx"), vec![Node::Literal("\\intx".to_owned())]);
+    }
+
+    #[test]
+    fn tex_parse_physics_symbols_have_their_text_and_class() {
+        // Arrange: the *Physics symbols* table of T36, and `\,`.
+        let table = [
+            ("partial", "∂", Class::Ord),
+            ("nabla", "∇", Class::Ord),
+            ("hbar", "ℏ", Class::Ord),
+            ("ell", "ℓ", Class::Ord),
+            ("Re", "ℜ", Class::Ord),
+            ("Im", "ℑ", Class::Ord),
+            ("AA", "Å", Class::Ord),
+            ("degree", "°", Class::Ord),
+            ("forall", "∀", Class::Ord),
+            ("exists", "∃", Class::Ord),
+            ("emptyset", "∅", Class::Ord),
+            ("prime", "′", Class::Ord),
+            ("vdots", "⋮", Class::Ord),
+            ("ddots", "⋱", Class::Ord),
+            ("vert", "|", Class::Ord),
+            ("Vert", "‖", Class::Ord),
+            ("propto", "∝", Class::Rel),
+            ("sim", "∼", Class::Rel),
+            ("simeq", "≃", Class::Rel),
+            ("cong", "≅", Class::Rel),
+            ("ll", "≪", Class::Rel),
+            ("gg", "≫", Class::Rel),
+            ("lesssim", "≲", Class::Rel),
+            ("gtrsim", "≳", Class::Rel),
+            ("doteq", "≐", Class::Rel),
+            ("coloneqq", "≔", Class::Rel),
+            ("parallel", "∥", Class::Rel),
+            ("perp", "⊥", Class::Rel),
+            ("mid", "∣", Class::Rel),
+            ("rightarrow", "→", Class::Rel),
+            ("leftrightarrow", "↔", Class::Rel),
+            ("Leftarrow", "⇐", Class::Rel),
+            ("Leftrightarrow", "⇔", Class::Rel),
+            ("uparrow", "↑", Class::Rel),
+            ("downarrow", "↓", Class::Rel),
+            ("mapsto", "↦", Class::Rel),
+            ("rightleftharpoons", "⇌", Class::Rel),
+            ("mp", "∓", Class::Bin),
+            ("otimes", "⊗", Class::Bin),
+            ("wedge", "∧", Class::Bin),
+            ("vee", "∨", Class::Bin),
+            ("circ", "∘", Class::Bin),
+            ("ast", "∗", Class::Bin),
+            ("star", "⋆", Class::Bin),
+            ("bullet", "∙", Class::Bin),
+            ("dagger", "†", Class::Bin),
+            ("langle", "⟨", Class::Open),
+            ("rangle", "⟩", Class::Close),
+            (",", "\u{2006}", Class::Ord),
+        ];
+
+        for (name, text, class) in table {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn tex_parse_text_command_keeps_its_raw_body() {
         assert_eq!(
             math("\\text{a {b} c}"),
@@ -1748,8 +1911,8 @@ mod tests {
         // A control symbol outside the table; a `\` before the closing
         // `$` would escape it instead.
         assert_eq!(
-            math("\\,x"),
-            vec![Node::Literal("\\,".to_owned()), Node::Char('x')]
+            math("\\;x"),
+            vec![Node::Literal("\\;".to_owned()), Node::Char('x')]
         );
     }
 
@@ -1840,7 +2003,8 @@ mod tests {
                 "$", "$", "\\$", "{", "}", "^", "_", "\\", " ", "\n", "x", "1", "-", "=",
                 "\\frac", "\\sqrt", "\\binom", "\\text", "\\pmod", "\\alpha", "\\sum",
                 "\\min", "\\log", "\\le", "\\{", "\\}", "\\foo", "(", ")", "|",
-                "\\mathcal", "f", "j", "\\text{日}",
+                "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
+                "\\partial",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -2119,6 +2283,80 @@ mod tests {
             "{k:?}"
         );
         assert!(k.y > -mm('n').y_min);
+    }
+
+    #[test]
+    fn tex_layout_integral_is_enlarged_like_sum() {
+        // Act
+        let int = boxed("\\int");
+        let sum = boxed("\\sum");
+
+        // Assert
+        let (s, k) = glyph(&int.ink, '∫');
+        let (_, sum_k) = glyph(&sum.ink, '∑');
+        assert!(approx_eq(k, BIG_OP_SCALE, EPS));
+        assert!(approx_eq(k, sum_k, EPS));
+        // Its middle on the axis (y down).
+        let middle = s.y - (mm('∫').y_max + mm('∫').y_min) * k / 2.0;
+        assert!(approx_eq(middle, -AXIS, EPS), "{middle}");
+        assert!(approx_eq(int.width, mm('∫').advance * k, EPS));
+    }
+
+    #[test]
+    fn tex_layout_integral_scripts_sit_beside_the_sign() {
+        // Act
+        let int = boxed("\\int_a^b");
+
+        // Assert
+        let (sign, k) = glyph(&int.ink, '∫');
+        let (lo, _) = glyph(&int.ink, A);
+        let (hi, _) = glyph(&int.ink, B);
+        let advance = mm('∫').advance * k;
+        let italic = mm('∫').italic * k;
+        assert!(italic > 0.0);
+        assert!(approx_eq(hi.x, sign.x + advance + italic, EPS), "{hi:?}");
+        assert!(approx_eq(lo.x, sign.x + advance - italic, EPS), "{lo:?}");
+        assert!(lo.x > sign.x && hi.x > lo.x);
+        assert!(hi.y < 0.0 && lo.y > 0.0, "{hi:?} {lo:?}");
+        // Beside, not above and below: the scripts overlap the sign's
+        // height.
+        let top = sign.y - mm('∫').y_max * k;
+        let bottom = sign.y - mm('∫').y_min * k;
+        assert!(hi.y > top && lo.y < bottom, "{hi:?} {lo:?} {top} {bottom}");
+        // The other integrals too.
+        let oint = boxed("\\oint_C");
+        let (sign, k) = glyph(&oint.ink, '∮');
+        let (c, _) = glyph(&oint.ink, '\u{1D436}');
+        let shift = (mm('∮').advance - mm('∮').italic) * k;
+        assert!(approx_eq(c.x, sign.x + shift, EPS), "{c:?}");
+    }
+
+    #[test]
+    fn tex_layout_integral_gets_operator_space() {
+        // Act
+        let w = boxed("\\int f").width;
+
+        // Assert
+        let int = mm('∫').advance * BIG_OP_SCALE;
+        assert!(approx_eq(w, int + OP_SPACE + mm(F).advance, EPS), "{w}");
+        // A minus after the sign is unary.
+        let w = boxed("\\int -f").width;
+        let minus = adv("\u{2212}");
+        assert!(
+            approx_eq(w, int + OP_SPACE + minus + mm(F).advance, EPS),
+            "{w}"
+        );
+    }
+
+    #[test]
+    fn tex_layout_thin_space_is_a_sixth_of_an_em() {
+        // Act
+        let w = boxed("a\\,b").width;
+
+        // Assert
+        let thin = w - mm(A).advance - mm(B).advance;
+        assert!(approx_eq(thin, mm('\u{2006}').advance, EPS), "{thin}");
+        assert!(approx_eq(thin, 1.0 / 6.0, 1e-3), "{thin}");
     }
 
     #[test]

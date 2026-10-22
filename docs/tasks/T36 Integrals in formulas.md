@@ -1,11 +1,11 @@
 ---
 id: T36
 title: Integrals in formulas
-status: todo
+status: review
 wave: 24
 branch: task/T36-integrals
 depends_on: [T33]
-adrs: []
+adrs: [ADR-T36-1]
 feature: "[[TeX formulas]]"
 tutorial: "[[36 Operators whose limits sit beside them]]"
 tags: [task]
@@ -79,24 +79,35 @@ without literals.
 
 ## Spec
 
-To be written in the spec step: acceptance criteria and the tests that
-prove them. Expected:
+Decided in [[ADR-T36-1 Integral class with scripts beside the sign]].
+`\int` and its kin get a new `Class::Integral`: the glyph is enlarged and
+centred on the axis like `\sum` (`BIG_OP_SCALE`), keeps its italic
+correction, and `_` / `^` attach as scripts beside it — the superscript
+after the italic correction, the subscript that far to the left of the
+advance, tucked under the slant (the OpenType `MATH` rule for operators
+without limits). For spacing and the unary-minus rule it is an operator,
+like `\sum`.
 
-- **AC-1 — Symbols.** `\int`, `\iint`, `\iiint`, `\oint`, `\oiint`
-  parse to their symbols; `\intx` stays a literal.
-- **AC-1b — Physics symbols.** Every command of the *Physics symbols*
-  table parses to its character with its class (one table-driven test);
-  no two `SYMBOLS` rows share a name.
-- **AC-2 — Size.** The sign is enlarged by the same factor as `\sum`.
-- **AC-3 — Limits beside.** `\int_a^b` puts `a` and `b` to the right of
-  the sign, the superscript to the right of the italic correction, and
-  the box contains all ink (existing proptests).
-- **AC-4 — Glyphs and metrics.** Every new glyph is in the math font
-  and in `core::math_metrics` (existing shell tests extended).
-- **AC-5 — Budgets and fuzz.** T30/T33 perf thresholds kept; the fuzz
-  text sessions also type `\int_…^…`.
-- **AC-6 — Docs.** README *Formulas in text blocks* and the feature note
-  list the new commands (grouped as in the table above).
+The *Physics symbols* table is added as proposed. One more row:
+`\,` → U+2006 (six-per-em space, 1/6 em in the font, already in the
+subset), because the goal's own example `\int_0^1 f(x)\,dx` needs it; the
+other spacing commands (`\;`, `\:`, `\!`, `\quad`) stay literals.
+
+Correction of a *Known fact*: `core::math_metrics` already has one row per
+character of the subset, `∫ ∬ ∭ ∮ ∯` and every physics glyph included
+(italic correction of `∫`: 0.332 em). No regeneration is needed;
+`scripts/math_metrics.py` and `src/core/math_metrics.rs` stay unchanged.
+
+| AC | Criterion | Test(s) |
+|----|-----------|---------|
+| AC-1 | `\int \iint \iiint \oint \oiint` parse to `Node::Symbol` with `∫ ∬ ∭ ∮ ∯`, `Class::Integral`; `\intx` stays a literal | `core::tex::tests::tex_parse_integrals_are_symbols` |
+| AC-1b | Every command of the *Physics symbols* table and `\,` parses to its symbol, text and class (table-driven); no two `SYMBOLS` rows share a name | `tex_parse_physics_symbols_have_their_text_and_class`, `tex_parse_symbols_come_from_the_table` (uniqueness, existing); `tex_parse_unknown_command_is_literal` now uses `\;` |
+| AC-1c | `\,` is a space 1/6 em wide | `tex_layout_thin_space_is_a_sixth_of_an_em` |
+| AC-2 | The sign is drawn at `BIG_OP_SCALE`, its middle on the axis, like `∑` | `tex_layout_integral_is_enlarged_like_sum` |
+| AC-3 | `\int_a^b`: the superscript starts at advance + italic correction, the subscript at advance − italic correction, both right of the sign's left edge; superscript above, subscript below the baseline; no limits above/below; an operator thin space before an ordinary atom (`\int f`); the box contains all ink | `tex_layout_integral_scripts_sit_beside_the_sign`, `tex_layout_integral_gets_operator_space`, proptests `tex_layout_bounds_contain_every_ink`, `tex_layout_is_finite` (source tokens extended with `\int`, `\oint`, `\,`, `\partial`) |
+| AC-4 | Every new glyph is in the math font and in `core::math_metrics` | `shell::render::tests::tex_symbols_all_have_glyphs_in_the_math_font` (existing, iterates `SYMBOLS`, so it covers the new rows) |
+| AC-5 | T30/T33 perf thresholds kept with an integral formula in the benchmark; the fuzz text sessions type `\int_…^…` and physics symbols | `tests/perf.rs` `perf_tex_layout_200_blocks_is_under_2ms`, `perf_tessellate_200_formula_blocks_is_under_1ms` (formula list gains an integral); `tests/fuzz.rs` `arb_formula_text` tokens |
+| AC-6 | README *Formulas in text blocks* and the feature note list the new commands, grouped as in the table | review |
 
 ## Out of scope
 
@@ -119,12 +130,12 @@ prove them. Expected:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T36): specify integral acceptance criteria`
-- [ ] tests — `test(T36): add failing tests for integrals`
-- [ ] models — `feat(T36): add integral and physics symbols, class and metrics`
-- [ ] behaviour — `feat(T36): place integral limits beside the sign`
-- [ ] quality — `chore(T36): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T36): update feature note and add tutorial`
+- [x] spec — `docs(T36): specify integral acceptance criteria`
+- [x] tests — `test(T36): add failing tests for integrals`
+- [x] models — `feat(T36): add integral and physics symbols, class and metrics`
+- [x] behaviour — `feat(T36): place integral limits beside the sign`
+- [x] quality — `chore(T36): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T36): update feature note and add tutorial`
 
 ## Learning path
 
@@ -141,3 +152,17 @@ Step 36 — requires step 30 (TeX formulas) and step 33 (math font).
   most common used symbols from physics to be added." Added the
   *Physics symbols* table (all inside the current font subset), the five
   integral signs and AC-1b; accents and subset growth left out of scope.
+- 2026-10-21 — Spec: `Class::Integral` with scripts beside the sign
+  (ADR-T36-1). The *Known fact* about missing metrics rows was wrong:
+  the table already has one row per subset character, so
+  `math_metrics.rs` and `scripts/math_metrics.py` are unchanged (fontTools
+  not needed). `\,` added as a row (U+2006) since the goal's example uses
+  it; the old unknown-control-symbol test now uses `\;`.
+- 2026-10-21 — Tests, models, behaviour, quality done. No shell change
+  needed: `tex_symbols_all_have_glyphs_in_the_math_font` iterates
+  `SYMBOLS` and passes with the new rows. Perf (release, one thread):
+  tex parse + layout of 200 blocks 1.07 ms (budget 2 ms; 0.87 ms on
+  `main`, whose benchmark lacks the new, longer integral formula),
+  tessellation 0.18 ms (budget 1 ms). Run in parallel, four unrelated
+  10k-shape benchmarks exceed 1 ms from contention; all pass
+  single-threaded.
