@@ -96,6 +96,20 @@ pub const SQRT_SIGN: f32 = 0.55;
 /// Largest scale of a binomial's parentheses.
 pub const BINOM_MAX_SCALE: f32 = 3.0;
 
+/// Gap between an accent's ink and the top of its argument (ADR-T39-1).
+pub const ACCENT_GAP: f32 = 0.06;
+
+/// Rightward shift of an accent over one italic letter per em of the
+/// letter's height: the top of a slanted letter lies right of its middle
+/// (ADR-T39-1).
+pub const ACCENT_SKEW: f32 = 0.1;
+
+/// Length of the rule `\bar` draws: the ink width of the font's macron.
+pub const ACCENT_BAR: f32 = 0.36;
+
+/// Scale of the arrow `\vec` draws.
+pub const VEC_SCALE: f32 = 0.5;
+
 /// Space on each side of a relation: TeX's thick space, 5/18 em.
 pub const REL_SPACE: f32 = 5.0 / 18.0;
 
@@ -148,7 +162,8 @@ pub enum Node {
         /// The second script, of the other kind.
         second: Option<Script>,
     },
-    /// `\frac`, `\binom`, `\sqrt` or `\pmod` with all its arguments.
+    /// `\frac`, `\binom`, `\sqrt`, `\pmod`, `\mathcal` or an accent
+    /// ([`ACCENTS`]) with all its arguments.
     Command {
         /// Name without the backslash.
         name: String,
@@ -387,6 +402,64 @@ pub const SYMBOLS: &[SymbolDef] = &[
 #[must_use]
 pub fn symbol(name: &str) -> Option<&'static SymbolDef> {
     SYMBOLS.iter().find(|s| s.name == name)
+}
+
+/// What an accent draws over its argument (ADR-T39-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Mark {
+    /// A math-face glyph at this fraction of the argument's scale.
+    Glyph(char, f32),
+    /// A rule [`ACCENT_BAR`] long, centred over the argument: `\bar`.
+    Bar,
+    /// A rule from the argument's left edge to its advance: `\overline`.
+    Overline,
+}
+
+/// One accent command: a one-argument [`Node::Command`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AccentDef {
+    /// Command name without the backslash.
+    pub name: &'static str,
+    /// What it draws.
+    pub mark: Mark,
+}
+
+/// Every accent command of the subset (ADR-T39-1).
+pub const ACCENTS: &[AccentDef] = &[
+    AccentDef {
+        name: "vec",
+        mark: Mark::Glyph('\u{2192}', VEC_SCALE),
+    },
+    AccentDef {
+        name: "hat",
+        mark: Mark::Glyph('^', 1.0),
+    },
+    AccentDef {
+        name: "tilde",
+        mark: Mark::Glyph('~', 1.0),
+    },
+    AccentDef {
+        name: "dot",
+        mark: Mark::Glyph('\u{B7}', 1.0),
+    },
+    AccentDef {
+        name: "ddot",
+        mark: Mark::Glyph('\u{A8}', 1.0),
+    },
+    AccentDef {
+        name: "bar",
+        mark: Mark::Bar,
+    },
+    AccentDef {
+        name: "overline",
+        mark: Mark::Overline,
+    },
+];
+
+/// The accent command `name` (without the backslash).
+#[must_use]
+pub fn accent(name: &str) -> Option<&'static AccentDef> {
+    ACCENTS.iter().find(|a| a.name == name)
 }
 
 /// Which embedded font draws a glyph (ADR-T33-1).
@@ -937,10 +1010,12 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 args,
             }),
-            "sqrt" | "pmod" | "mathcal" => self.args(1, end).map(|args| Node::Command {
-                name: name.clone(),
-                args,
-            }),
+            n if matches!(n, "sqrt" | "pmod" | "mathcal") || accent(n).is_some() => {
+                self.args(1, end).map(|args| Node::Command {
+                    name: name.clone(),
+                    args,
+                })
+            }
             "text" => self.text_body(end),
             _ => None,
         };
@@ -1246,7 +1321,10 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                     layout_styled(arg(0), scale, style),
                     MathBox::math(')', scale),
                 ]),
-                _ => MathBox::word(&format!("\\{name}"), scale, true),
+                _ => match accent(name) {
+                    Some(def) => accented(def, arg(0), scale, style),
+                    None => MathBox::word(&format!("\\{name}"), scale, true),
+                },
             };
             (b, Class::Ord)
         }
@@ -1449,6 +1527,68 @@ fn root(content: &[Node], scale: f32, style: Style) -> MathBox {
     out
 }
 
+/// The mark of accent `def` over `content` (ADR-T39-1): a gap above its
+/// ascent, centred on its ink and skewed right over one italic letter.
+/// The box keeps the content's width, descent and italic correction.
+fn accented(def: &AccentDef, content: &[Node], scale: f32, style: Style) -> MathBox {
+    let c = layout_styled(content, scale, style);
+    let (lo, hi) = c.ink_span();
+    let mut centre = f32::midpoint(lo, hi);
+    if slanted(content, style) {
+        centre += ACCENT_SKEW * c.ascent;
+    }
+    let bottom = -(c.ascent + ACCENT_GAP * scale);
+    let mut out = MathBox {
+        width: c.width,
+        ascent: c.ascent,
+        descent: c.descent,
+        italic: c.italic,
+        ink: c.ink,
+    };
+    let rule = |a: f32, b: f32| {
+        let width = RULE * scale;
+        let y = bottom - width / 2.0;
+        Ink::Rule {
+            a: Vec2::new(a, y),
+            b: Vec2::new(b, y),
+            width,
+        }
+    };
+    match def.mark {
+        Mark::Glyph(ch, k) => {
+            let mark = MathBox::math(ch, k * scale);
+            let (lo, hi) = mark.ink_span();
+            let y = bottom - mark.descent;
+            out.put(&mark, Vec2::new(centre - f32::midpoint(lo, hi), y));
+            out.ascent = out.ascent.max(mark.ascent - y);
+        }
+        Mark::Bar => {
+            let half = ACCENT_BAR * scale / 2.0;
+            out.ink.push(rule(centre - half, centre + half));
+            out.ascent = out.ascent.max(RULE * scale - bottom);
+        }
+        Mark::Overline => {
+            out.ink.push(rule(0.0, c.width));
+            out.ascent = out.ascent.max(RULE * scale - bottom);
+        }
+    }
+    out
+}
+
+/// Whether `nodes` are one letter that `style` draws slanted: the
+/// letters an accent is skewed over.
+fn slanted(nodes: &[Node], style: Style) -> bool {
+    let mut atoms = nodes.iter().filter(|n| !matches!(n, Node::Space(_)));
+    match (atoms.next(), atoms.next()) {
+        (Some(Node::Char(ch)), None) => style.map(*ch) != *ch,
+        (Some(Node::Symbol(name)), None) => symbol(name).is_some_and(|def| {
+            let mut chars = def.text.chars();
+            matches!((chars.next(), chars.next()), (Some(ch), None) if italic(ch) != ch)
+        }),
+        _ => false,
+    }
+}
+
 /// One line of a block being laid out.
 struct Line {
     ink: Vec<Ink>,
@@ -1527,7 +1667,7 @@ pub fn layout(segments: &[Segment]) -> Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::geom::{Vec2, approx_eq};
+    use crate::core::geom::{Aabb, Vec2, approx_eq};
     use crate::core::math_metrics::{self, GlyphMetrics};
     use crate::core::text_layout;
     use proptest::prelude::*;
@@ -1781,6 +1921,62 @@ mod tests {
     }
 
     #[test]
+    fn tex_parse_accents_take_one_argument() {
+        for def in ACCENTS {
+            // Act
+            let braced_arg = math(&format!("\\{}{{x}}", def.name));
+            let token_arg = math(&format!("\\{} \\alpha", def.name));
+
+            // Assert
+            assert_eq!(
+                braced_arg,
+                vec![Node::Command {
+                    name: def.name.to_owned(),
+                    args: vec![braced(vec![Node::Char('x')])],
+                }],
+                "{}",
+                def.name
+            );
+            assert_eq!(
+                token_arg,
+                vec![Node::Command {
+                    name: def.name.to_owned(),
+                    args: vec![Arg {
+                        lead: " ".to_owned(),
+                        braced: false,
+                        nodes: vec![sym("alpha")],
+                    }],
+                }],
+                "{}",
+                def.name
+            );
+            assert!(symbol(def.name).is_none(), "{} is also a symbol", def.name);
+            let rows = ACCENTS.iter().filter(|a| a.name == def.name).count();
+            assert_eq!(rows, 1, "{} has one row", def.name);
+            assert_eq!(accent(def.name), Some(def));
+        }
+        let names: Vec<&str> = ACCENTS.iter().map(|a| a.name).collect();
+        assert_eq!(
+            names,
+            ["vec", "hat", "tilde", "dot", "ddot", "bar", "overline"]
+        );
+    }
+
+    #[test]
+    fn tex_parse_accent_without_argument_is_literal() {
+        assert_eq!(math("\\vecx"), vec![Node::Literal("\\vecx".to_owned())]);
+        assert_eq!(math("\\vec"), vec![Node::Literal("\\vec".to_owned())]);
+        assert_eq!(
+            math("\\hat^2"),
+            vec![Node::Scripts {
+                base: Some(Box::new(Node::Literal("\\hat".to_owned()))),
+                first: script(ScriptKind::Sup, tok(Node::Char('2'))),
+                second: None,
+            }]
+        );
+    }
+
+    #[test]
     fn tex_parse_symbols_come_from_the_table() {
         // Act
         let nodes = math("\\alpha\\le\\sum");
@@ -2004,7 +2200,8 @@ mod tests {
                 "\\frac", "\\sqrt", "\\binom", "\\text", "\\pmod", "\\alpha", "\\sum",
                 "\\min", "\\log", "\\le", "\\{", "\\}", "\\foo", "(", ")", "|",
                 "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
-                "\\partial",
+                "\\partial", "\\vec", "\\hat", "\\bar", "\\dot", "\\ddot", "\\tilde",
+                "\\overline",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -2521,6 +2718,190 @@ mod tests {
                 b.contains(ib.min) && b.contains(ib.max)
             }));
         }
+    }
+
+    // ---- T39 accents (ADR-T39-1) -------------------------------------------
+
+    /// The ink accent `def` adds: its glyph, or its rule.
+    fn mark_ink(ink: &[Ink], def: &AccentDef) -> Vec<Ink> {
+        ink.iter()
+            .copied()
+            .filter(|ink| match (*ink, def.mark) {
+                (Ink::Glyph { ch, .. }, Mark::Glyph(mark, _)) => ch == mark,
+                (Ink::Rule { .. }, Mark::Bar | Mark::Overline) => true,
+                _ => false,
+            })
+            .collect()
+    }
+
+    /// The bounds of all of `ink`; panics without ink.
+    fn ink_box(ink: &[Ink]) -> Aabb {
+        match ink.iter().map(Ink::bounds).reduce(|a, b| a.union(&b)) {
+            Some(b) => b,
+            None => panic!("no ink"),
+        }
+    }
+
+    /// `\name{arg}`.
+    fn accented(def: &AccentDef, arg: &str) -> MathBox {
+        boxed(&format!("\\{}{{{arg}}}", def.name))
+    }
+
+    #[test]
+    fn tex_layout_accent_sits_above_its_argument() {
+        for def in ACCENTS {
+            for arg in ["x", "F", "2", "AB"] {
+                // Arrange
+                let plain = boxed(arg);
+
+                // Act
+                let b = accented(def, arg);
+
+                // Assert: the mark's bottom is the gap above the argument.
+                let mark = mark_ink(&b.ink, def);
+                assert_eq!(mark.len(), 1, "\\{}{{{arg}}}: {:?}", def.name, b.ink);
+                let m = ink_box(&mark);
+                let top = -(plain.ascent + ACCENT_GAP);
+                assert!(
+                    approx_eq(m.max.y, top, EPS),
+                    "\\{}{{{arg}}}: {m:?}",
+                    def.name
+                );
+                assert!(
+                    m.max.y < ink_box(&plain.ink).min.y,
+                    "\\{}{{{arg}}}",
+                    def.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_is_centred_on_an_upright_argument() {
+        for def in ACCENTS.iter().filter(|d| d.mark != Mark::Overline) {
+            for arg in ["2", "AB", "\\Gamma", "xy"] {
+                // Arrange
+                let centre = ink_box(&boxed(arg).ink).center().x;
+
+                // Act
+                let b = accented(def, arg);
+
+                // Assert
+                let m = ink_box(&mark_ink(&b.ink, def));
+                assert!(
+                    approx_eq(m.center().x, centre, EPS),
+                    "\\{}{{{arg}}}: {} vs {centre}",
+                    def.name,
+                    m.center().x
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_over_an_italic_letter_is_skewed() {
+        for def in ACCENTS.iter().filter(|d| d.mark != Mark::Overline) {
+            for arg in ["x", "F", "\\alpha", " v "] {
+                // Arrange
+                let plain = boxed(arg);
+                let centre = ink_box(&plain.ink).center().x;
+
+                // Act
+                let b = accented(def, arg);
+
+                // Assert: the top of a slanted letter lies right of its
+                // middle.
+                let m = ink_box(&mark_ink(&b.ink, def));
+                let want = centre + ACCENT_SKEW * plain.ascent;
+                assert!(
+                    approx_eq(m.center().x, want, EPS),
+                    "\\{}{{{arg}}}: {} vs {want}",
+                    def.name,
+                    m.center().x
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_bar_is_a_short_rule() {
+        // Act
+        let b = boxed("\\bar{AB}");
+
+        // Assert: as long as the macron, whatever the argument.
+        let strokes = rules(&b.ink);
+        assert_eq!(strokes.len(), 1);
+        let (p, q, width) = strokes[0];
+        assert!(approx_eq(p.y, q.y, EPS), "horizontal");
+        assert!(approx_eq((q.x - p.x).abs(), ACCENT_BAR, EPS), "{p:?} {q:?}");
+        assert!(approx_eq(width, RULE, EPS));
+    }
+
+    #[test]
+    fn tex_layout_overline_spans_its_argument() {
+        for arg in ["AB", "x", "x^2"] {
+            // Arrange
+            let plain = boxed(arg);
+
+            // Act
+            let b = boxed(&format!("\\overline{{{arg}}}"));
+
+            // Assert
+            let strokes = rules(&b.ink);
+            assert_eq!(strokes.len(), 1, "{arg}");
+            let (p, q, width) = strokes[0];
+            assert!(approx_eq(p.y, q.y, EPS), "{arg}: horizontal");
+            assert!(approx_eq(p.x.min(q.x), 0.0, EPS), "{arg}: {p:?}");
+            assert!(approx_eq(p.x.max(q.x), plain.width, EPS), "{arg}: {q:?}");
+            assert!(approx_eq(width, RULE, EPS));
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_keeps_the_argument_width_and_descent() {
+        for def in ACCENTS {
+            for arg in ["y", "F", "AB", "x_i"] {
+                // Arrange
+                let plain = boxed(arg);
+
+                // Act
+                let b = accented(def, arg);
+
+                // Assert: the ascent reaches the mark's top.
+                let name = def.name;
+                assert!(approx_eq(b.width, plain.width, EPS), "\\{name}{{{arg}}}");
+                assert!(
+                    approx_eq(b.descent, plain.descent, EPS),
+                    "\\{name}{{{arg}}}"
+                );
+                assert!(approx_eq(b.italic, plain.italic, EPS), "\\{name}{{{arg}}}");
+                let m = ink_box(&mark_ink(&b.ink, def));
+                assert!(approx_eq(b.ascent, -m.min.y, EPS), "\\{name}{{{arg}}}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_takes_scripts() {
+        // Arrange
+        let vec_f = boxed("\\vec{F}");
+        let dot_x = boxed("\\dot{x}");
+
+        // Act
+        let sub = boxed("\\vec{F}_x");
+        let sup = boxed("\\dot{x}^2");
+        let inner = boxed("x^{\\hat a}");
+
+        // Assert: scripts start after the accented box, the superscript
+        // above its accent's reach.
+        let (x, _) = glyph(&sub.ink, X);
+        assert!(approx_eq(x.x, vec_f.width, EPS), "{x:?}");
+        assert!(x.y > 0.0);
+        let (two, _) = glyph(&sup.ink, '2');
+        assert!(approx_eq(two.x, dot_x.width + dot_x.italic, EPS), "{two:?}");
+        assert!(-two.y >= dot_x.ascent - SUP_DROP - EPS, "{two:?}");
+        let (hat, scale) = glyph(&inner.ink, '^');
+        assert!(approx_eq(scale, SCRIPT_SCALE, EPS), "{hat:?}");
     }
 
     // ---- AC-3 faces and mapping (ADR-T33-1) --------------------------------

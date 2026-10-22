@@ -1307,7 +1307,7 @@ mod tests {
     use crate::core::geom::{Aabb, Vec2, approx_eq};
     use crate::core::math_metrics;
     use crate::core::palette::{ColorId, Rgba, palette};
-    use crate::core::tex::{Face, MINUS, SYMBOLS, calligraphic, italic};
+    use crate::core::tex::{ACCENTS, Face, MINUS, Mark, SYMBOLS, calligraphic, italic};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -2571,6 +2571,10 @@ mod tests {
             .flat_map(|s| s.text.chars())
             .chain([MINUS, '(', ')'])
             .map(italic)
+            .chain(ACCENTS.iter().filter_map(|a| match a.mark {
+                Mark::Glyph(ch, _) => Some(ch),
+                Mark::Bar | Mark::Overline => None,
+            }))
             .chain(letters.clone().map(italic))
             .chain(letters.map(calligraphic))
             .filter(|&ch| font.lookup_glyph_index(ch) == 0 || math_metrics::get(ch).is_none())

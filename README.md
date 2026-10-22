@@ -262,6 +262,7 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` | Upright functions |
 | `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
 | `\mathcal{F}` | Calligraphic capitals |
+| `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}`, `\overline{AB}` | Accents centred over their argument |
 | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` | Relations and operators |
 | `\lfloor \rfloor \lceil \rceil \{ \} \| \langle \rangle` | Brackets |
 | `\partial \nabla` | Calculus, vectors |
