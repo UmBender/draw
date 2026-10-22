@@ -1,7 +1,7 @@
 ---
 id: T39
 title: Accents in formulas
-status: review
+status: done
 wave: 25
 branch: task/T39-accents
 depends_on: [T36]
@@ -154,3 +154,4 @@ limits sit beside them).
 - 2026-10-21 — `scripts/check.sh` green; `PROPTEST_CASES=20000 cargo
   test --release --test fuzz` passed (19 tests, 212 s). Docs: feature
   note, README *Formulas in text blocks*, tutorial step 39.
+- 2026-10-21 — Integrated into `main`. Status → done.

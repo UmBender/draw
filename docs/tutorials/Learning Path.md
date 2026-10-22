@@ -67,6 +67,8 @@ flowchart LR
   s12 --> s38
   s33 --> s36[36 Operators whose limits sit beside them]
   s30 --> s36
+  s33 --> s39[39 Accents that sit on their letters]
+  s36 --> s39
   s29 --> s37[37 Settings that follow what you last did]
   s31 --> s37
 ```
@@ -111,3 +113,4 @@ flowchart LR
 | 36 | [[36 Operators whose limits sit beside them]] | [[T36 Integrals in formulas]] | done |
 | 37 | [[37 Settings that follow what you last did]] | [[T37 Remember the text size]] | done |
 | 38 | [[38 Laying out shortcuts for one hand]] | [[T38 Left-hand tool keys]] | done |
+| 39 | [[39 Accents that sit on their letters]] | [[T39 Accents in formulas]] | done |

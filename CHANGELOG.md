@@ -20,6 +20,9 @@ All notable changes to draw are listed here. The format follows
 - New text blocks start at the size of the last block resized with
   `Ctrl+]` / `Ctrl+[`, so a bigger font no longer has to be set again for
   every block; `[` / `]` go back to sizing text by the stroke width.
+- Accents in formulas: `\vec`, `\hat`, `\tilde`, `\dot`, `\ddot`, `\bar`
+  and `\overline` sit centred over their letter or group, leaning with
+  italic letters (`$\vec{F} = m\ddot{x}$`, `$\hat{n}$`, `$\overline{AB}$`).
 
 ### Changed
 

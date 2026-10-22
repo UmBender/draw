@@ -73,3 +73,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 62 | [[ADR-T38-1 Left-hand keys for pen, line and smart snap]] | accepted | decision | T11-1 | — |
 | 63 | [[ADR-T36-1 Integral class with scripts beside the sign]] | accepted | decision | T30-1, T33-1 | — |
 | 64 | [[ADR-T37-1 Remember the last text size]] | accepted | decision | 0013, T29-2, T31-1 | amends T29-3 |
+| 65 | [[ADR-T39-1 Accents from spacing glyphs with a slant skew]] | accepted | decision | T30-1, T33-1 | — |

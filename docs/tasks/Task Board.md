@@ -147,4 +147,4 @@ flowchart TD
 | [[T36 Integrals in formulas]] | done | T33 | `task/T36-integrals` |
 | [[T37 Remember the text size]] | done | T29, T31 | `task/T37-text-size-memory` |
 | [[T38 Left-hand tool keys]] | done | T11, T12 | `task/T38-left-hand-keys` |
-| [[T39 Accents in formulas]] | todo | T36 | `task/T39-accents` |
+| [[T39 Accents in formulas]] | done | T36 | `task/T39-accents` |
