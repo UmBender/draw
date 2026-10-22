@@ -1,7 +1,7 @@
 ---
 id: T40
 title: Pen pressure on native Wayland
-status: in-progress
+status: review
 wave: 26
 branch: fix/wayland-pen-pressure
 depends_on: [T35]
@@ -131,10 +131,11 @@ it in `pointer_handle_motion` and `pointer_handle_button` with
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T40): specify pen pressure on native Wayland`
-- [ ] tests — `test(T40): ...`
-- [ ] behaviour — `fix(T40): ...`
-- [ ] quality — `chore(T40): pass clippy and rustfmt`
-- [ ] docs — `docs(T40): ...`
+- [x] tests — `test(T40): add failing tests for copied wl_pointer input`
+- [x] models — `feat(T40): add pointer_shadowed_by_pen signature`
+- [x] behaviour — `fix(T40): drop wl_pointer input while a pen is in proximity`
+- [x] quality — skipped: `scripts/check.sh` was green with no changes
+- [x] docs — `docs(T40): document the copied wl_pointer stream`
 
 ## Learning path
 
@@ -147,7 +148,13 @@ window library) with the copied `wl_pointer` stream.
   native Wayland backend in the 1.4.1 Flatpak (the Flatpak override set
   `DRAW_BACKEND=wayland`; the owner unset it to use X11 meanwhile).
   Diagnosed from a `WAYLAND_DEBUG=client` log of one session.
-- Owner check after the fix: on `DRAW_BACKEND=wayland` with the HUION 420,
+- 2026-10-22 — Implemented per ADR-T40-1: the Wayland backend drops
+  `wl_pointer` motion and buttons while a tool is in proximity. A models
+  commit (the helper's signature) was added between tests and behaviour;
+  the quality step produced no changes and was skipped. Tutorial step 35
+  extended; README and feature note state that the mouse is ignored while
+  the pen hovers on native Wayland. AC-5 awaits the owner check below.
+- Owner check after the fix (pending): on `DRAW_BACKEND=wayland` with the HUION 420,
   light and hard presses give thin and thick strokes; the mouse still
   works after the pen leaves proximity; barrel buttons still pan and
   erase.

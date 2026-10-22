@@ -342,7 +342,8 @@ normal (half) press gives the width chosen with `[` / `]`, a light touch
 down to a quarter of it, a hard press up to twice. Mouse strokes and the
 other tools are unchanged. Pressure works on the default X11 backend and on
 the native Wayland backend (`DRAW_BACKEND=wayland`), where the pen also
-draws and both barrel buttons pan and erase. Tilt, rotation and the eraser
+draws and both barrel buttons pan and erase; there the mouse is ignored
+while the pen hovers over the window. Tilt, rotation and the eraser
 end of the pen are not used. draw ships a patched copy of its window
 library for this (`vendor/miniquad`).
 

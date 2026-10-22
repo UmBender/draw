@@ -78,6 +78,16 @@ protocol tables are written by hand: libwayland must know the interface of
 every object an event creates (`tool_added` creates a tool, `pad_added` a
 pad, which creates groups, rings and strips), even the ones draw ignores.
 
+**Two streams for one pen** (T40). The compositor may *also* send the pen
+as plain `wl_pointer` events. Hyprland copies hover motion, and right
+before every tip-down a `wl_pointer.motion` with time `0` at the pen's
+position. That copy has no sample, but pairing is by position, so it took
+the tool motion's sample, the tool motion took the down's, and the press
+got none; a stroke whose first point has no factor never gets widths.
+The backend now drops `wl_pointer` motion and buttons while any tool is
+in proximity (`pen::pointer_shadowed_by_pen`): one device, one stream.
+The `Collector` tests replay the logged sequence through that filter.
+
 **Pairing** (`Collector::pair_pen` in `src/shell/input_map.rs`) runs in
 physical pixels, before the conversion to logical pixels, so the
 comparison is exact up to 0.01 px.
@@ -105,11 +115,17 @@ checks that the mesh for mouse strokes stays exactly the same.
 3. Run `WAYLAND_DEBUG=client DRAW_BACKEND=wayland draw 2>&1 | grep tablet`
    and bring the pen near the tablet: you see `tool_added`,
    `proximity_in`, then `motion`/`pressure`/`frame` bursts.
+4. Run `WAYLAND_DEBUG=client DRAW_BACKEND=wayland draw 2>&1 | grep -E
+   'wl_pointer.motion|tablet_tool_v2.(motion|down)'` and touch down: on
+   Hyprland a `wl_pointer.motion` copy comes right before the tool's
+   `motion` and `down`. Make `pointer_shadowed_by_pen` return `false` and
+   run `cargo test replayed_wayland` to see the press lose its pressure.
 
 ## Further reading
 
 - [[ADR-T35-1 Vendored miniquad with a pen tablet patch]],
-  [[ADR-T35-2 Pressure as per-point width factors on pen strokes]]
+  [[ADR-T35-2 Pressure as per-point width factors on pen strokes]],
+  [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]
 - Wayland tablet protocol: `tablet-v2.xml` in wayland-protocols.
 - XInput 2 raw events: `XI2proto.txt`, section *Raw events*.
 - The Cargo Book, *Overriding dependencies* (`[patch]`).
