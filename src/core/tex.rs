@@ -2511,7 +2511,7 @@ mod tests {
         let advance = mm('∫').advance * k;
         let italic = mm('∫').italic * k;
         assert!(italic > 0.0);
-        assert!(approx_eq(hi.x, sign.x + advance + italic, EPS), "{hi:?}");
+        assert!(approx_eq(hi.x, sign.x + advance, EPS), "{hi:?}");
         assert!(approx_eq(lo.x, sign.x + advance - italic, EPS), "{lo:?}");
         assert!(lo.x > sign.x && hi.x > lo.x);
         assert!(hi.y < 0.0 && lo.y > 0.0, "{hi:?} {lo:?}");
@@ -2526,6 +2526,44 @@ mod tests {
         let (c, _) = glyph(&oint.ink, '\u{1D436}');
         let shift = (mm('∮').advance - mm('∮').italic) * k;
         assert!(approx_eq(c.x, sign.x + shift, EPS), "{c:?}");
+    }
+
+    #[test]
+    fn tex_layout_integral_superscript_starts_at_the_advance() {
+        for (src, ch) in [
+            ("\\int", '∫'),
+            ("\\iint", '∬'),
+            ("\\iiint", '∭'),
+            ("\\oint", '∮'),
+            ("\\oiint", '∯'),
+        ] {
+            // Act
+            let int = boxed(&format!("{src}_a^b"));
+
+            // Assert: the font's advance already holds the correction.
+            let (sign, k) = glyph(&int.ink, ch);
+            let (lo, _) = glyph(&int.ink, A);
+            let (hi, _) = glyph(&int.ink, B);
+            let advance = mm(ch).advance * k;
+            let italic = mm(ch).italic * k;
+            assert!(approx_eq(hi.x, sign.x + advance, EPS), "{src} {hi:?}");
+            assert!(
+                approx_eq(lo.x, sign.x + advance - italic, EPS),
+                "{src} {lo:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_integral_superscript_hugs_the_sign() {
+        // Act
+        let int = boxed("\\int^b");
+
+        // Assert: it starts right of the ink, but not by more than 0.1 em.
+        let (sign, k) = glyph(&int.ink, '∫');
+        let (hi, _) = glyph(&int.ink, B);
+        let gap = hi.x - (sign.x + mm('∫').x_max * k);
+        assert!(gap > 0.0 && gap < 0.1, "{gap}");
     }
 
     #[test]
