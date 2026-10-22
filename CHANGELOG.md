@@ -17,6 +17,9 @@ All notable changes to draw are listed here. The format follows
   \mid`, arrows such as `\rightarrow \leftrightarrow \mapsto
   \rightleftharpoons`, operators such as `\mp \otimes \circ \dagger`, and
   `\langle \rangle`.
+- New text blocks start at the size of the last block resized with
+  `Ctrl+]` / `Ctrl+[`, so a bigger font no longer has to be set again for
+  every block; `[` / `]` go back to sizing text by the stroke width.
 
 ### Changed
 

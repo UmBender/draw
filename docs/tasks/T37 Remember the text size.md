@@ -1,7 +1,7 @@
 ---
 id: T37
 title: Remember the text size
-status: review
+status: done
 wave: 24
 branch: task/T37-text-size-memory
 depends_on: [T29, T31]
@@ -133,3 +133,4 @@ Step 37 — requires step 29 (text blocks) and step 31 (text in shapes).
   commit. The toolbar was not changed: it shows no text size and
   `src/shell/` is not owned; README and the feature note describe the
   rule.
+- 2026-10-21 — Integrated into `main`. Status → done.

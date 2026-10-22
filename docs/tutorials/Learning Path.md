@@ -67,6 +67,8 @@ flowchart LR
   s12 --> s38
   s33 --> s36[36 Operators whose limits sit beside them]
   s30 --> s36
+  s29 --> s37[37 Settings that follow what you last did]
+  s31 --> s37
 ```
 
 | Step | Tutorial | Task | Status |
@@ -107,4 +109,5 @@ flowchart LR
 | 34 | [[34 Telling a tap from a drag]] | [[T34 Pen tablet input]] | done |
 | 35 | [[35 Reading a pen through a patched window library]] | [[T35 Pen pressure and native Wayland tablets]] | done |
 | 36 | [[36 Operators whose limits sit beside them]] | [[T36 Integrals in formulas]] | done |
+| 37 | [[37 Settings that follow what you last did]] | [[T37 Remember the text size]] | done |
 | 38 | [[38 Laying out shortcuts for one hand]] | [[T38 Left-hand tool keys]] | done |
