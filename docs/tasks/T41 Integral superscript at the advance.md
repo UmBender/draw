@@ -1,0 +1,79 @@
+---
+id: T41
+title: Integral superscript at the advance
+status: ready
+wave: 27
+branch: fix/integral-superscript
+depends_on: [T36]
+adrs: []
+feature: "[[TeX formulas]]"
+tutorial: "[[36 Operators whose limits sit beside them]]"
+tags: [task]
+---
+
+# T41 Integral superscript at the advance
+
+## Goal
+
+In `$\int_{0}^{\pi} f(x) \, dx$` the upper limit sits right beside the
+top of the sign, as in inline LaTeX. Today (1.4.2) it floats about half
+an em to the right of the sign's ink, while the lower limit is fine.
+
+## Known facts (2026-10-22, owner's screenshot of 1.4.2)
+
+- `scripts` (`src/core/tex.rs`) puts a superscript at
+  `base.width + base.italic` for every base, integrals included
+  (ADR-T36-1: "The superscript starts after the italic correction as for
+  any base").
+- Latin Modern Math's `∫` (U+222B): advance 0.665 em, ink right edge
+  `x_max` 0.609 em, italic correction 0.332 em. The ink ends **inside**
+  the advance: in an OpenType `MATH` font the advance of a large
+  operator already includes its italic correction, which only says how
+  far the subscript moves left under the slant. The same holds for
+  `∬ ∭ ∮ ∯`.
+- **Root cause.** Adding the correction again puts the superscript
+  `(0.665 + 0.332 − 0.609) × 1.3 ≈ 0.50 em` right of the ink instead of
+  `(0.665 − 0.609) × 1.3 ≈ 0.07 em`.
+- `tex_layout_integral_scripts_sit_beside_the_sign` asserts the wrong
+  position (`sign.x + advance + italic`), so the suite is green.
+- Italic letters (`𝑓^2`) are right: their advance does not include the
+  correction, so they keep `width + italic`.
+
+## Proposal (settle in the spec step)
+
+A new ADR amending ADR-T36-1: on an integral the superscript starts at
+the advance; the subscript stays at advance − italic. Other bases keep
+`width + italic`.
+
+## Spec
+
+## Out of scope
+
+- Display-size integrals, `\limits` / `\nolimits`.
+- Script placement on other bases.
+
+## Files owned
+
+- `src/core/tex.rs`
+- `docs/features/TeX formulas.md`,
+  `docs/tutorials/36 Operators whose limits sit beside them.md`
+- new ADR `ADR-T41-*`
+
+## Subtasks (one commit each)
+
+- [ ] spec — `docs(T41): specify integral superscript placement`
+- [ ] tests — `test(T41): add failing tests for the integral superscript`
+- [ ] models — `feat(T41): …`
+- [ ] behaviour — `fix(T41): put an integral's superscript at its advance`
+- [ ] quality — `chore(T41): …`
+- [ ] docs — `docs(T41): …`
+
+## Learning path
+
+No new tutorial step; correct step 36 (operators whose limits sit beside
+them).
+
+## Log
+
+- 2026-10-22 — Created from the owner's report: the upper limit of
+  `$\int_{0}^{\pi} f(x) \, dx$` sits too far from the sign.
