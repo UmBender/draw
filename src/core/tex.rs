@@ -1010,10 +1010,12 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 args,
             }),
-            "sqrt" | "pmod" | "mathcal" => self.args(1, end).map(|args| Node::Command {
-                name: name.clone(),
-                args,
-            }),
+            n if matches!(n, "sqrt" | "pmod" | "mathcal") || accent(n).is_some() => {
+                self.args(1, end).map(|args| Node::Command {
+                    name: name.clone(),
+                    args,
+                })
+            }
             "text" => self.text_body(end),
             _ => None,
         };
@@ -1319,7 +1321,10 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                     layout_styled(arg(0), scale, style),
                     MathBox::math(')', scale),
                 ]),
-                _ => MathBox::word(&format!("\\{name}"), scale, true),
+                _ => match accent(name) {
+                    Some(def) => accented(def, arg(0), scale, style),
+                    None => MathBox::word(&format!("\\{name}"), scale, true),
+                },
             };
             (b, Class::Ord)
         }
@@ -1520,6 +1525,68 @@ fn root(content: &[Node], scale: f32, style: Style) -> MathBox {
         width,
     }));
     out
+}
+
+/// The mark of accent `def` over `content` (ADR-T39-1): a gap above its
+/// ascent, centred on its ink and skewed right over one italic letter.
+/// The box keeps the content's width, descent and italic correction.
+fn accented(def: &AccentDef, content: &[Node], scale: f32, style: Style) -> MathBox {
+    let c = layout_styled(content, scale, style);
+    let (lo, hi) = c.ink_span();
+    let mut centre = (lo + hi) / 2.0;
+    if slanted(content, style) {
+        centre += ACCENT_SKEW * c.ascent;
+    }
+    let bottom = -(c.ascent + ACCENT_GAP * scale);
+    let mut out = MathBox {
+        width: c.width,
+        ascent: c.ascent,
+        descent: c.descent,
+        italic: c.italic,
+        ink: c.ink,
+    };
+    let rule = |a: f32, b: f32| {
+        let width = RULE * scale;
+        let y = bottom - width / 2.0;
+        Ink::Rule {
+            a: Vec2::new(a, y),
+            b: Vec2::new(b, y),
+            width,
+        }
+    };
+    match def.mark {
+        Mark::Glyph(ch, k) => {
+            let mark = MathBox::math(ch, k * scale);
+            let (lo, hi) = mark.ink_span();
+            let y = bottom - mark.descent;
+            out.put(&mark, Vec2::new(centre - (lo + hi) / 2.0, y));
+            out.ascent = out.ascent.max(mark.ascent - y);
+        }
+        Mark::Bar => {
+            let half = ACCENT_BAR * scale / 2.0;
+            out.ink.push(rule(centre - half, centre + half));
+            out.ascent = out.ascent.max(RULE * scale - bottom);
+        }
+        Mark::Overline => {
+            out.ink.push(rule(0.0, c.width));
+            out.ascent = out.ascent.max(RULE * scale - bottom);
+        }
+    }
+    out
+}
+
+/// Whether `nodes` are one letter that `style` draws slanted: the
+/// letters an accent is skewed over.
+fn slanted(nodes: &[Node], style: Style) -> bool {
+    let mut atoms = nodes.iter().filter(|n| !matches!(n, Node::Space(_)));
+    match (atoms.next(), atoms.next()) {
+        (Some(Node::Char(ch)), None) => style.map(*ch) != *ch,
+        (Some(Node::Symbol(name)), None) => symbol(name).is_some_and(|def| {
+            let mut chars = def.text.chars();
+            matches!((chars.next(), chars.next()), (Some(ch), None) if italic(ch) != ch)
+        }),
+        _ => false,
+    }
 }
 
 /// One line of a block being laid out.
