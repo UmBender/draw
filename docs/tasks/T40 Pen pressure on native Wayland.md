@@ -1,11 +1,11 @@
 ---
 id: T40
 title: Pen pressure on native Wayland
-status: todo
+status: in-progress
 wave: 26
 branch: fix/wayland-pen-pressure
 depends_on: [T35]
-adrs: []
+adrs: ["[[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]"]
 feature: "[[Pen tablets]]"
 tutorial: "[[35 Reading a pen through a patched window library]]"
 tags: [task]
@@ -84,7 +84,34 @@ sends pressure.
 
 ## Spec
 
-To be written in the spec step.
+Decision: [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]].
+Proposal 1 is taken; the regression test is a pure helper in
+`vendor/miniquad/src/pen.rs` tested from draw plus a `Collector` replay
+of the logged sequence (proposal 3); proposal 4 is not taken (T35 AC-5
+stays).
+
+`miniquad::pen::pointer_shadowed_by_pen(in_proximity)` takes whether each
+known tablet tool is in proximity of the window and returns whether a
+`wl_pointer` motion or button event is dropped. The Wayland backend calls
+it in `pointer_handle_motion` and `pointer_handle_button` with
+`PenTool::focused` of every tool.
+
+- **AC-1** — a `wl_pointer` event is dropped while at least one tool is
+  in proximity: `pointer_shadowed_by_pen_with_a_tool_in_proximity_is_true`.
+- **AC-2** — it is kept with no tools, or with no tool in proximity, so
+  the mouse works after the pen leaves:
+  `pointer_shadowed_by_pen_without_tools_in_proximity_is_false`.
+- **AC-3** — replaying the logged Hyprland tip-down (copied
+  `wl_pointer.motion`, tool motion, tool down; two samples at that
+  position) through the filter, the `PointerDown` is paired with the
+  down's pressure and no `Pressure { None }` is emitted:
+  `collector_replayed_wayland_down_with_pen_in_proximity_gets_pressure`.
+- **AC-4** — after proximity out the same `wl_pointer.motion` passes the
+  filter and carries no pressure:
+  `collector_replayed_wayland_motion_after_proximity_out_has_no_pressure`.
+- **AC-5** — owner check on the HUION 420 (see *Log*): light and hard
+  presses give thin and thick strokes on `DRAW_BACKEND=wayland`, the mouse
+  works after the pen leaves, barrel buttons still pan and erase.
 
 ## Out of scope
 
@@ -103,7 +130,7 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T40): specify pen pressure on native Wayland`
+- [x] spec — `docs(T40): specify pen pressure on native Wayland`
 - [ ] tests — `test(T40): ...`
 - [ ] behaviour — `fix(T40): ...`
 - [ ] quality — `chore(T40): pass clippy and rustfmt`
