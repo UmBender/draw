@@ -50,6 +50,5 @@ pub(crate) fn push(x: f32, y: f32, pressure: f32) {
 /// so it would steal the sample of the pen event at the same position.
 /// `in_proximity` holds, for every known tool, whether it is in proximity.
 pub fn pointer_shadowed_by_pen(in_proximity: impl IntoIterator<Item = bool>) -> bool {
-    let _ = in_proximity;
-    todo!()
+    in_proximity.into_iter().any(|focused| focused)
 }

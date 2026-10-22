@@ -89,6 +89,12 @@ impl TabletContext {
             tools: HashMap::new(),
         }
     }
+
+    /// Whether `wl_pointer` motion and buttons are copies of a tool in
+    /// proximity and must be dropped (ADR-T40-1).
+    fn pointer_shadowed(&self) -> bool {
+        crate::pen::pointer_shadowed_by_pen(self.tools.values().map(|tool| tool.focused))
+    }
 }
 
 /// One tablet tool (a pen, or its eraser end).
@@ -805,6 +811,10 @@ unsafe extern "C" fn pointer_handle_motion(
     surface_y: i32,
 ) {
     let display: &mut WaylandPayload = &mut *(data as *mut _);
+    // draw patch (ADR-T35-1, ADR-T40-1): the pen arrives through its tool.
+    if display.tablet.pointer_shadowed() {
+        return;
+    }
     if display.focused_window == display.surface {
         // From wl_fixed_to_double(), it simply divides by 256
         let d = crate::native_display().lock().unwrap();
@@ -823,6 +833,10 @@ unsafe extern "C" fn pointer_handle_button(
     state: u32,
 ) {
     let display: &mut WaylandPayload = &mut *(data as *mut _);
+    // draw patch (ADR-T35-1, ADR-T40-1): the pen arrives through its tool.
+    if display.tablet.pointer_shadowed() {
+        return;
+    }
     if display.focused_window == display.surface {
         // The code is defined in the kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT
         let button = match button {
