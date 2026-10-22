@@ -1,7 +1,7 @@
 ---
 id: T41
 title: Integral superscript at the advance
-status: review
+status: done
 wave: 27
 branch: fix/integral-superscript
 depends_on: [T36]
@@ -100,3 +100,6 @@ them).
   so counted its side bearing). The quality step produced no changes
   and was skipped. Tutorial step 36 corrected. AC-4 awaits the owner
   check.
+- Owner check (2026-10-22): `$\int_{0}^{\pi} f(x) \, dx$` now shows the
+  upper limit beside the top of the sign, as in inline LaTeX (AC-4).
+- 2026-10-22 — Integrated into `main`. Status → done.

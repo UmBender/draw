@@ -6,6 +6,11 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The upper limit of an integral in a formula (`$\int_0^\pi$`) sits right
+  beside the top of the sign instead of half a letter width away.
+
 ## [1.4.2] - 2026-10-22
 
 ### Fixed

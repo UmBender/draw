@@ -72,6 +72,7 @@ flowchart TD
   T12 --> T38[T38 Left-hand tool keys]
   T36 --> T39[T39 Accents in formulas]
   T35 --> T40[T40 Pen pressure on native Wayland]
+  T36 --> T41[T41 Integral superscript at the advance]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -105,6 +106,7 @@ flowchart TD
 | 24 | [[T36 Integrals in formulas]] · [[T37 Remember the text size]] · [[T38 Left-hand tool keys]] |
 | 25 | [[T39 Accents in formulas]] |
 | 26 | [[T40 Pen pressure on native Wayland]] |
+| 27 | [[T41 Integral superscript at the advance]] |
 
 ## Status
 
@@ -151,3 +153,4 @@ flowchart TD
 | [[T38 Left-hand tool keys]] | done | T11, T12 | `task/T38-left-hand-keys` |
 | [[T39 Accents in formulas]] | done | T36 | `task/T39-accents` |
 | [[T40 Pen pressure on native Wayland]] | done | T35 | `fix/wayland-pen-pressure` |
+| [[T41 Integral superscript at the advance]] | done | T36 | `fix/integral-superscript` |
