@@ -13,7 +13,10 @@ tags: [feature]
 
 A pen tablet draws like a mouse: the tip drives the current tool, hovering
 moves the cursor, and the barrel buttons act as the middle (pan) and right
-(erase) buttons when the compositor passes them on. With the Pen tool,
+(erase) buttons when the compositor passes them on. Holding one and
+touching down pans or erases even when the tablet reports the tip just
+before the button, as the HUION 420 does: a middle or right press that
+comes before the tip has moved takes over the tip's press. With the Pen tool,
 **pressure** sets the width along the stroke: a normal (half) press draws
 the chosen width, a light touch down to ¼ of it, a hard press up to 2×
 (T35). This works on both backends, and the pen also draws on the native
@@ -84,5 +87,7 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
 - On the owner's HUION 420 under Hyprland only one barrel button reaches
   Xwayland apps (as middle), although the kernel reports both. The native
   Wayland backend gets both.
+- The takeover cannot undo a Bucket fill, which happens on the tip's
+  press.
 - miniquad cannot tell a pen from a mouse, so with a tablet attached the
   mouse gets the 16 px slop too: drags shorter than that become clicks.
