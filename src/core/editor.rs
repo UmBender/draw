@@ -1340,6 +1340,57 @@ mod tests {
         assert_eq!(ed.active_gesture(), None);
     }
 
+    #[test]
+    fn barrel_pan_press_right_after_the_tip_takes_over() {
+        // Arrange: a pen reports the tip before a held barrel button.
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+
+        // Act
+        down(&mut ed, PointerButton::Middle, 10.0, 10.0);
+        move_to(&mut ed, 30.0, 40.0);
+        up(&mut ed, PointerButton::Left, 30.0, 40.0);
+        let panning = ed.active_gesture();
+        up(&mut ed, PointerButton::Middle, 30.0, 40.0);
+
+        // Assert
+        assert_eq!(panning, Some(ActiveGesture::Pan));
+        assert!(origin_on_screen(&ed).approx_eq(Vec2::new(20.0, 30.0), 1e-4));
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.active_gesture(), None);
+    }
+
+    #[test]
+    fn barrel_erase_press_right_after_the_tip_takes_over() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        down(&mut ed, PointerButton::Left, 0.0, 5.0);
+
+        // Act
+        down(&mut ed, PointerButton::Right, 0.0, 5.0);
+        move_to(&mut ed, 0.0, 6.0);
+        up(&mut ed, PointerButton::Left, 0.0, 6.0);
+        up(&mut ed, PointerButton::Right, 0.0, 6.0);
+
+        // Assert: the shape is erased and no pen stroke was added.
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.active_gesture(), None);
+    }
+
+    #[test]
+    fn barrel_press_after_the_tip_moved_does_not_take_over() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 0.0, 0.0);
+        move_to(&mut ed, 20.0, 0.0);
+
+        // Act
+        down(&mut ed, PointerButton::Middle, 20.0, 0.0);
+
+        // Assert
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Pen)));
+    }
+
     fn test_keymap(key: Key, mods: Modifiers) -> Option<Command> {
         match (key, mods.ctrl) {
             (Key::R, false) => Some(Command::SetTool(Tool::Rect)),
