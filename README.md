@@ -238,7 +238,10 @@ While a block is open every key types; only these act:
 
 Edit a block again with the Text tool (click it) or Select (double-click
 it). Its size starts from `[` / `]` and its colour from `1`–`6` when you
-click; `Ctrl+]` / `Ctrl+[` resize it while you type.
+click; `Ctrl+]` / `Ctrl+[` resize it while you type. After you resize a
+block, the next new blocks (and empty shapes or cells) start at that
+on-screen size, even after a zoom; press `[` or `]` to go back to the
+stroke-width size.
 
 ### Formulas in text blocks
 

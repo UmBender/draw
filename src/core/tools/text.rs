@@ -64,6 +64,8 @@ pub struct TextEdit {
     text: String,
     /// Byte index of the caret, always on a `char` boundary.
     caret: usize,
+    /// `Ctrl+[` / `Ctrl+]` changed the size during this edit (ADR-T37-1).
+    resized: bool,
 }
 
 impl TextEdit {
@@ -78,6 +80,7 @@ impl TextEdit {
             host: None,
             text: String::new(),
             caret: 0,
+            resized: false,
         }
     }
 
@@ -111,6 +114,7 @@ impl TextEdit {
             }),
             caret: text.len(),
             text,
+            resized: false,
         })
     }
 
@@ -135,6 +139,7 @@ impl TextEdit {
             host: None,
             text: text.clone(),
             caret: 0,
+            resized: false,
         };
         edit.set_caret_at(at);
         Some(edit)
@@ -324,8 +329,15 @@ impl TextEdit {
         };
         next.is_some_and(|rung| {
             self.size = rung / zoom;
+            self.resized = true;
             true
         })
+    }
+
+    /// Whether [`TextEdit::step_size`] changed the size during this edit.
+    #[must_use]
+    pub fn resized(&self) -> bool {
+        self.resized
     }
 
     /// Moves the caret to `(line, col)` (clamped). Returns whether it moved.
@@ -337,16 +349,29 @@ impl TextEdit {
     }
 }
 
-/// State of the Text tool: the block being edited, if any.
+/// State of the Text tool: the block being edited, if any, and the
+/// remembered size of new blocks.
 #[derive(Debug, Clone, Default)]
 pub struct State {
     /// The edit session; it outlives pointer gestures.
     pub edit: Option<TextEdit>,
+    /// On-screen font size in pixels of the last resized edit, which new
+    /// blocks start at; `None` follows the stroke width (ADR-T37-1).
+    pub size_px: Option<f32>,
+}
+
+impl State {
+    /// On-screen font size in pixels of a new block or empty shape slot:
+    /// the remembered size, else [`text_size_px`] of `width_px`.
+    #[must_use]
+    pub fn new_size_px(&self, width_px: f32) -> f32 {
+        self.size_px.unwrap_or_else(|| text_size_px(width_px))
+    }
 }
 
 /// Handles one pointer event of a Text-tool gesture: a `Down` opens the
-/// block under the pointer or a new one (the editor has already committed
-/// any previous edit). Returns whether a redraw is needed.
+/// block under the pointer or a new one, at the remembered size
+/// (ADR-T37-1) (the editor has already committed any previous edit). Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     if pointer.phase != Phase::Down {
         return false;
@@ -354,7 +379,7 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let world = ctx.camera.screen_to_world(pointer.pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     let view = ctx.view();
-    let size = ctx.camera.world_len(text_size_px(view.style.width_px));
+    let size = ctx.camera.world_len(state.new_size_px(view.style.width_px));
     // With shape text on, the interior of a rectangle or an ellipse and a
     // grid cell hold text too (ADR-T31-1).
     let hosts = view.style.helpers.experimental.shape_text;
@@ -837,5 +862,58 @@ mod tests {
             style: STYLE,
         };
         assert!(TextEdit::open_in(id, &line, TextSlot::Shape, 10.0).is_none());
+    }
+
+    // ---- T37 remembered text size ------------------------------------------
+
+    #[test]
+    fn edit_step_size_marks_edit_resized() {
+        // Arrange: 18 px at zoom 1; the top of the ladder is 76 px.
+        let mut e = TextEdit::new(Vec2::ZERO, 18.0, STYLE);
+        let mut top = TextEdit::new(Vec2::ZERO, 76.0, STYLE);
+        assert!(!e.resized());
+
+        // Act
+        let stepped = e.step_size(true, 1.0);
+        let clamped = top.step_size(true, 1.0);
+
+        // Assert: only a step that changed the size counts.
+        assert!(stepped && e.resized());
+        assert!(!clamped && !top.resized());
+    }
+
+    #[test]
+    fn state_new_size_px_prefers_remembered_size() {
+        // Arrange
+        let fresh = State::default();
+        let remembered = State {
+            size_px: Some(30.0),
+            ..State::default()
+        };
+
+        // Act / Assert: the width rule, then the remembered size.
+        assert!(approx_eq(fresh.new_size_px(3.0), 18.0, 1e-6));
+        assert!(approx_eq(remembered.new_size_px(3.0), 30.0, 1e-6));
+    }
+
+    proptest! {
+        #[test]
+        fn edit_random_steps_keep_size_finite_and_flag_resized(
+            start in 0.1f32..200.0,
+            steps in prop::collection::vec((any::<bool>(), 0.05f32..20.0), 0..40),
+        ) {
+            // Arrange
+            let mut e = TextEdit::new(Vec2::ZERO, start, STYLE);
+            let mut any_step = false;
+
+            // Act
+            for (grow, zoom) in steps {
+                any_step |= e.step_size(grow, zoom);
+
+                // Assert
+                prop_assert!(e.size.is_finite() && e.size > 0.0);
+                prop_assert_eq!(e.resized(), any_step);
+            }
+        }
     }
 }

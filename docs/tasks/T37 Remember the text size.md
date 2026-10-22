@@ -1,11 +1,11 @@
 ---
 id: T37
 title: Remember the text size
-status: todo
+status: review
 wave: 24
 branch: task/T37-text-size-memory
 depends_on: [T29, T31]
-adrs: []
+adrs: [ADR-T37-1]
 feature: "[[Text blocks]]"
 tutorial: "[[37 Settings that follow what you last did]]"
 tags: [task]
@@ -54,15 +54,44 @@ big. Today every new block starts at `text_size_px(stroke width)`
 
 ## Spec
 
-To be written in the spec step. Expected:
+Decided in [[ADR-T37-1 Remember the last text size]]; the owner's open
+question is settled as proposed: only an explicit `Ctrl+[` / `Ctrl+]`
+counts. The memory is `text::State::size_px` (on-screen px), set when a
+resized edit is finished, read by `text::State::new_size_px(width)`.
 
-- **AC-1** — After a block is grown with `Ctrl+]` and committed, the next
-  new block starts at that on-screen size.
-- **AC-2** — Zooming between the two blocks keeps the on-screen size.
-- **AC-3** — `[` / `]` outside edit mode reset to the width rule.
-- **AC-4** — Opening an existing block, and fitted text in shapes, keep
-  their current behaviour.
-- **AC-5** — Fuzz invariants hold; the toolbar/README describe it.
+- **AC-1 — Next block at the remembered size.** After a block is grown
+  with `Ctrl+]` and finished, the next new block starts at that on-screen
+  size; a later block typed without resizing does not change it; an edit
+  thrown away with `Ctrl+Z` is not remembered; undoing the resized block
+  keeps it.
+  Tests: `text_size_memory_next_block_starts_at_last_resized_size`,
+  `text_size_memory_unresized_block_keeps_it`,
+  `text_size_memory_cancelled_edit_is_not_remembered`,
+  `text_size_memory_survives_undo` (editor);
+  `edit_step_size_marks_edit_resized`,
+  `state_new_size_px_prefers_remembered_size` (text).
+- **AC-2 — On-screen size across zoom.** Zooming between the two blocks
+  keeps the on-screen size: the second block's world size is the
+  remembered px divided by the new zoom.
+  Test: `text_size_memory_keeps_on_screen_size_across_zoom`.
+- **AC-3 — `[` / `]` reset.** `WidthUp` / `WidthDown` outside edit mode
+  clear the memory; the next block follows `text_size_px(width)`.
+  Tests: `text_size_memory_width_up_resets_to_width_rule`,
+  `text_size_memory_width_key_at_ladder_end_still_resets`.
+- **AC-4 — Existing text unchanged; empty slots use it.** Re-opening a
+  block keeps its own size; an empty rectangle slot (Text tool or Select
+  click) starts at the remembered size; existing shape text keeps its
+  size.
+  Tests: `text_size_memory_reopened_block_keeps_its_size`,
+  `text_size_memory_empty_shape_slot_starts_at_it`,
+  `text_size_memory_select_click_in_empty_slot_starts_at_it`,
+  `text_size_memory_existing_shape_text_keeps_its_size`.
+- **AC-5 — Invariants and docs.** `step_size` at random zooms keeps the
+  size finite and positive and marks the edit resized exactly when a step
+  succeeded (`edit_random_steps_keep_size_finite_and_flag_resized`);
+  the existing fuzz sessions (`tests/fuzz.rs`) pass unchanged. README
+  *Typing in a text block* describes the rule. The toolbar is not
+  touched: it shows no text size and `src/shell/` is not owned.
 
 ## Out of scope
 
@@ -79,12 +108,12 @@ To be written in the spec step. Expected:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T37): specify remembered text size`
-- [ ] tests — `test(T37): add failing tests for the remembered text size`
-- [ ] models — `feat(T37): keep the last text size in the editor`
-- [ ] behaviour — `feat(T37): start new blocks at the remembered size`
-- [ ] quality — `chore(T37): pass clippy, rustfmt and rustdoc`
-- [ ] docs — `docs(T37): update feature note and add tutorial`
+- [x] spec — `docs(T37): specify remembered text size`
+- [x] tests — `test(T37): add failing tests for the remembered text size`
+- [x] models — `feat(T37): keep the last text size in the editor`
+- [x] behaviour — `feat(T37): start new blocks at the remembered size`
+- [x] quality — `chore(T37): pass clippy, rustfmt and rustdoc`
+- [x] docs — `docs(T37): update feature note and add tutorial`
 
 ## Learning path
 
@@ -95,3 +124,12 @@ Step 37 — requires step 29 (text blocks) and step 31 (text in shapes).
 - 2026-10-21 — Created from the owner's request: "I want the font size
   be remembered from the last block, so I do not need to make the font
   bigger every time." Runs in wave 24 in parallel with T36 and T38.
+- 2026-10-21 — Spec: the open question settled as proposed (only an
+  explicit `Ctrl+[` / `Ctrl+]` counts); ADR-T37-1 amends ADR-T29-3. The
+  memory lives in `text::State::size_px` rather than a new editor field
+  so the Text tool reads it directly.
+- 2026-10-21 — Implemented. Quality step produced no changes
+  (`scripts/check.sh` green after the behaviour commit), so no `chore`
+  commit. The toolbar was not changed: it shows no text size and
+  `src/shell/` is not owned; README and the feature note describe the
+  rule.

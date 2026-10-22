@@ -816,11 +816,16 @@ impl Editor {
 
     /// Ends the open text block, committing it as one undo step: a new
     /// block is inserted, a changed one replaced, a blank one removed
-    /// (ADR-T29-2). Returns whether there was a block.
+    /// (ADR-T29-2). A resized block's on-screen size becomes the size of
+    /// new blocks (ADR-T37-1). Returns whether there was a block.
     fn finish_text(&mut self) -> bool {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
+        let px = edit.size * self.camera.zoom();
+        if edit.resized() && px.is_finite() && px > 0.0 {
+            self.tools.text.size_px = Some(px);
+        }
         if let Some(host) = edit.host().copied() {
             self.track_document(false, |ed| {
                 let Some(shape) = ed.doc.get(host.id) else {
@@ -922,7 +927,7 @@ impl Editor {
         let at = self.camera.screen_to_world(pos);
         let size = self
             .camera
-            .world_len(text::text_size_px(self.style.width_px));
+            .world_len(self.tools.text.new_size_px(self.style.width_px));
         let hosts = self.experimental().shape_text;
         self.tools.text.edit = self
             .doc
@@ -947,8 +952,11 @@ impl Editor {
         }
     }
 
-    /// Sets the stroke width if `width` is `Some`. Returns whether it changed.
+    /// Sets the stroke width if `width` is `Some`, and forgets the
+    /// remembered text size either way (ADR-T37-1). Returns whether the
+    /// width changed.
     fn set_width(&mut self, width: Option<f32>) -> bool {
+        self.tools.text.size_px = None;
         width.is_some_and(|width| {
             self.style.width_px = width;
             true
@@ -3896,5 +3904,228 @@ mod tests {
 
         // Assert
         assert_eq!(only_shape(&plain), only_shape(&pressed));
+    }
+
+    // ---- T37 remembered text size -------------------------------------------
+
+    /// The world size of every text block in the document, bottom first.
+    fn block_sizes(ed: &Editor) -> Vec<f32> {
+        ed.document()
+            .shapes()
+            .filter_map(|(_, shape)| match shape {
+                Shape::Text { size, .. } => Some(*size),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Types `s` in a new block at screen `(x, y)`, grows it `steps` rungs
+    /// with `Ctrl+]` and finishes it.
+    fn place_grown(ed: &mut Editor, x: f32, y: f32, s: &str, steps: usize) {
+        place(ed, x, y, s);
+        for _ in 0..steps {
+            assert!(key_with(ed, Key::BracketRight, CTRL));
+        }
+        key(ed, Key::Escape);
+    }
+
+    /// The world size of the open edit.
+    fn open_size(ed: &Editor) -> f32 {
+        let Some(edit) = ed.text_edit() else {
+            panic!("a text edit is open");
+        };
+        edit.size
+    }
+
+    #[test]
+    fn text_size_memory_next_block_starts_at_last_resized_size() {
+        // Arrange: 18 → 20 → 24 px.
+        let mut ed = text_editor();
+        place_grown(&mut ed, 100.0, 50.0, "a", 2);
+
+        // Act
+        place(&mut ed, 100.0, 300.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 2);
+        assert!(approx_eq(sizes[1], 24.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_unresized_block_keeps_it() {
+        // Arrange: a grown block, then one typed without resizing.
+        let mut ed = text_editor();
+        place_grown(&mut ed, 100.0, 50.0, "a", 2);
+        place(&mut ed, 100.0, 200.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Act
+        place(&mut ed, 100.0, 350.0, "c");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 3);
+        assert!(approx_eq(sizes[2], 24.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_cancelled_edit_is_not_remembered() {
+        // Arrange: grow a block, then throw the edit away.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+        key_with(&mut ed, Key::BracketRight, CTRL);
+        key_with(&mut ed, Key::Z, CTRL);
+        assert!(ed.text_edit().is_none());
+
+        // Act
+        place(&mut ed, 100.0, 300.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Assert: the width rule, 18 px.
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 1);
+        assert!(approx_eq(sizes[0], 18.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_survives_undo() {
+        // Arrange: grow a block, then undo it.
+        let mut ed = text_editor();
+        place_grown(&mut ed, 100.0, 50.0, "a", 2);
+        key_with(&mut ed, Key::Z, CTRL);
+        assert!(block_sizes(&ed).is_empty());
+
+        // Act
+        place(&mut ed, 100.0, 300.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 1);
+        assert!(approx_eq(sizes[0], 24.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_keeps_on_screen_size_across_zoom() {
+        // Arrange: 20 px at zoom 1, then one notch of zoom.
+        let mut ed = text_editor();
+        place_grown(&mut ed, 100.0, 50.0, "a", 1);
+        ed.handle(InputEvent::Scroll {
+            pos: Vec2::new(10.0, 10.0),
+            delta: 1.0,
+        });
+
+        // Act
+        place(&mut ed, 100.0, 300.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Assert: still 20 px on screen.
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 2);
+        assert!(approx_eq(sizes[1], 20.0 / ZOOM_STEP, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_width_up_resets_to_width_rule() {
+        // Arrange
+        let mut ed = text_editor();
+        place_grown(&mut ed, 100.0, 50.0, "a", 3);
+
+        // Act: width 3 → 4 px.
+        ed.apply(Command::WidthUp);
+        place(&mut ed, 100.0, 300.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Assert: 12 + 2 × 4 = 20 px.
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 2);
+        assert!(approx_eq(sizes[1], 20.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_width_key_at_ladder_end_still_resets() {
+        // Arrange: the thinnest width (14 px text), a block grown to 18 px.
+        let mut ed = text_editor();
+        ed.apply(Command::WidthDown);
+        ed.apply(Command::WidthDown);
+        assert!(approx_eq(ed.style().width_px, MIN_WIDTH_PX, 1e-6));
+        place_grown(&mut ed, 100.0, 50.0, "a", 2);
+
+        // Act: the width cannot go lower.
+        ed.apply(Command::WidthDown);
+        place(&mut ed, 100.0, 300.0, "b");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 2);
+        assert!(approx_eq(sizes[0], 18.0, 1e-4), "{sizes:?}");
+        assert!(approx_eq(sizes[1], 14.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_reopened_block_keeps_its_size() {
+        // Arrange: an 18 px block, then a block grown to 24 px.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "abcd");
+        key(&mut ed, Key::Escape);
+        place_grown(&mut ed, 100.0, 300.0, "b", 2);
+
+        // Act: re-open the first block.
+        click(&mut ed, column_x(100.0, 1.0), 55.0);
+
+        // Assert
+        assert_eq!(editing(&ed).as_deref(), Some("abcd"));
+        assert!(approx_eq(open_size(&ed), 18.0, 1e-4));
+    }
+
+    #[test]
+    fn text_size_memory_empty_shape_slot_starts_at_it() {
+        // Arrange: a block grown to 24 px away from the rectangle.
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        place_grown(&mut ed, 400.0, 300.0, "a", 2);
+
+        // Act
+        click(&mut ed, 100.0, 50.0);
+
+        // Assert
+        assert!(editing_host(&ed).is_some());
+        assert!(approx_eq(open_size(&ed), 24.0, 1e-4));
+    }
+
+    #[test]
+    fn text_size_memory_select_click_in_empty_slot_starts_at_it() {
+        // Arrange: a block grown to 24 px, then the rectangle selected.
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        place_grown(&mut ed, 400.0, 300.0, "a", 2);
+        ed.apply(Command::SetTool(Tool::Select));
+        click(&mut ed, 0.0, 50.0);
+        assert_eq!(ed.selection().len(), 1);
+
+        // Act
+        click(&mut ed, 100.0, 50.0);
+
+        // Assert
+        assert!(editing_host(&ed).is_some());
+        assert!(approx_eq(open_size(&ed), 24.0, 1e-4));
+    }
+
+    #[test]
+    fn text_size_memory_existing_shape_text_keeps_its_size() {
+        // Arrange: a rectangle holding 18 px text, a block grown to 24 px.
+        let held = ShapeText::new("ab".to_owned(), 18.0);
+        let boxed = rect(0.0, 0.0, 200.0, 100.0).with_slot_text(TextSlot::Shape, held);
+        let mut ed = shape_text_editor(vec![boxed], true, Tool::Text);
+        place_grown(&mut ed, 400.0, 300.0, "a", 2);
+
+        // Act
+        click(&mut ed, 100.0, 50.0);
+
+        // Assert
+        assert_eq!(editing(&ed).as_deref(), Some("ab"));
+        assert!(approx_eq(open_size(&ed), 18.0, 1e-4));
     }
 }
