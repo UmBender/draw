@@ -1533,7 +1533,7 @@ fn root(content: &[Node], scale: f32, style: Style) -> MathBox {
 fn accented(def: &AccentDef, content: &[Node], scale: f32, style: Style) -> MathBox {
     let c = layout_styled(content, scale, style);
     let (lo, hi) = c.ink_span();
-    let mut centre = (lo + hi) / 2.0;
+    let mut centre = f32::midpoint(lo, hi);
     if slanted(content, style) {
         centre += ACCENT_SKEW * c.ascent;
     }
@@ -1559,7 +1559,7 @@ fn accented(def: &AccentDef, content: &[Node], scale: f32, style: Style) -> Math
             let mark = MathBox::math(ch, k * scale);
             let (lo, hi) = mark.ink_span();
             let y = bottom - mark.descent;
-            out.put(&mark, Vec2::new(centre - (lo + hi) / 2.0, y));
+            out.put(&mark, Vec2::new(centre - f32::midpoint(lo, hi), y));
             out.ascent = out.ascent.max(mark.ascent - y);
         }
         Mark::Bar => {
