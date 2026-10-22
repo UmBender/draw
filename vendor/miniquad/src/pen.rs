@@ -40,3 +40,15 @@ pub(crate) fn push(x: f32, y: f32, pressure: f32) {
     }
     samples.push(PenSample { x, y, pressure });
 }
+
+/// Whether the backend drops a plain pointer motion or button event because
+/// a tablet tool is in proximity of the window (draw patch, ADR-T35-1;
+/// ADR-T40-1).
+///
+/// Some compositors (Hyprland) copy the pen onto `wl_pointer` as well as
+/// sending it through the tablet protocol. The copy has no [`PenSample`],
+/// so it would steal the sample of the pen event at the same position.
+/// `in_proximity` holds, for every known tool, whether it is in proximity.
+pub fn pointer_shadowed_by_pen(in_proximity: impl IntoIterator<Item = bool>) -> bool {
+    in_proximity.into_iter().any(|focused| focused)
+}

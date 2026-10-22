@@ -1,11 +1,11 @@
 ---
 id: T40
 title: Pen pressure on native Wayland
-status: todo
+status: review
 wave: 26
 branch: fix/wayland-pen-pressure
 depends_on: [T35]
-adrs: []
+adrs: ["[[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]"]
 feature: "[[Pen tablets]]"
 tutorial: "[[35 Reading a pen through a patched window library]]"
 tags: [task]
@@ -84,7 +84,34 @@ sends pressure.
 
 ## Spec
 
-To be written in the spec step.
+Decision: [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]].
+Proposal 1 is taken; the regression test is a pure helper in
+`vendor/miniquad/src/pen.rs` tested from draw plus a `Collector` replay
+of the logged sequence (proposal 3); proposal 4 is not taken (T35 AC-5
+stays).
+
+`miniquad::pen::pointer_shadowed_by_pen(in_proximity)` takes whether each
+known tablet tool is in proximity of the window and returns whether a
+`wl_pointer` motion or button event is dropped. The Wayland backend calls
+it in `pointer_handle_motion` and `pointer_handle_button` with
+`PenTool::focused` of every tool.
+
+- **AC-1** — a `wl_pointer` event is dropped while at least one tool is
+  in proximity: `pointer_shadowed_by_pen_with_a_tool_in_proximity_is_true`.
+- **AC-2** — it is kept with no tools, or with no tool in proximity, so
+  the mouse works after the pen leaves:
+  `pointer_shadowed_by_pen_without_tools_in_proximity_is_false`.
+- **AC-3** — replaying the logged Hyprland tip-down (copied
+  `wl_pointer.motion`, tool motion, tool down; two samples at that
+  position) through the filter, the `PointerDown` is paired with the
+  down's pressure and no `Pressure { None }` is emitted:
+  `collector_replayed_wayland_down_with_pen_in_proximity_gets_pressure`.
+- **AC-4** — after proximity out the same `wl_pointer.motion` passes the
+  filter and carries no pressure:
+  `collector_replayed_wayland_motion_after_proximity_out_has_no_pressure`.
+- **AC-5** — owner check on the HUION 420 (see *Log*): light and hard
+  presses give thin and thick strokes on `DRAW_BACKEND=wayland`, the mouse
+  works after the pen leaves, barrel buttons still pan and erase.
 
 ## Out of scope
 
@@ -103,11 +130,12 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T40): specify pen pressure on native Wayland`
-- [ ] tests — `test(T40): ...`
-- [ ] behaviour — `fix(T40): ...`
-- [ ] quality — `chore(T40): pass clippy and rustfmt`
-- [ ] docs — `docs(T40): ...`
+- [x] spec — `docs(T40): specify pen pressure on native Wayland`
+- [x] tests — `test(T40): add failing tests for copied wl_pointer input`
+- [x] models — `feat(T40): add pointer_shadowed_by_pen signature`
+- [x] behaviour — `fix(T40): drop wl_pointer input while a pen is in proximity`
+- [x] quality — skipped: `scripts/check.sh` was green with no changes
+- [x] docs — `docs(T40): document the copied wl_pointer stream`
 
 ## Learning path
 
@@ -120,7 +148,13 @@ window library) with the copied `wl_pointer` stream.
   native Wayland backend in the 1.4.1 Flatpak (the Flatpak override set
   `DRAW_BACKEND=wayland`; the owner unset it to use X11 meanwhile).
   Diagnosed from a `WAYLAND_DEBUG=client` log of one session.
-- Owner check after the fix: on `DRAW_BACKEND=wayland` with the HUION 420,
+- 2026-10-22 — Implemented per ADR-T40-1: the Wayland backend drops
+  `wl_pointer` motion and buttons while a tool is in proximity. A models
+  commit (the helper's signature) was added between tests and behaviour;
+  the quality step produced no changes and was skipped. Tutorial step 35
+  extended; README and feature note state that the mouse is ignored while
+  the pen hovers on native Wayland. AC-5 awaits the owner check below.
+- Owner check after the fix (pending): on `DRAW_BACKEND=wayland` with the HUION 420,
   light and hard presses give thin and thick strokes; the mouse still
   works after the pen leaves proximity; barrel buttons still pan and
   erase.

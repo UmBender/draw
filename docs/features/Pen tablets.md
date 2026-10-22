@@ -1,7 +1,7 @@
 ---
 title: Pen tablets
 task: "[[T34 Pen tablet input]]"
-adrs: ["[[ADR-T34-1 Tap slop for pen tablets detected at start-up]]", "[[ADR-T35-1 Vendored miniquad with a pen tablet patch]]", "[[ADR-T35-2 Pressure as per-point width factors on pen strokes]]"]
+adrs: ["[[ADR-T34-1 Tap slop for pen tablets detected at start-up]]", "[[ADR-T35-1 Vendored miniquad with a pen tablet patch]]", "[[ADR-T35-2 Pressure as per-point width factors on pen strokes]]", "[[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]"]
 tutorial: "[[34 Telling a tap from a drag]]"
 shortcuts: []
 tags: [feature]
@@ -71,6 +71,11 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
   events. Before each pen pointer event it queues a `miniquad::pen`
   sample; `shell::input_map::Collector` pairs samples with events by
   position and emits `InputEvent::Pressure`.
+- Hyprland also copies the pen onto `wl_pointer`; the copy before each
+  tip-down stole the press's sample, so native Wayland strokes had no
+  pressure until T40. While a tool is in proximity the Wayland backend
+  drops `wl_pointer` motion and buttons (`miniquad::pen::pointer_shadowed_by_pen`,
+  [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]).
 - The editor hands the pressure to every tool in `Pointer::pressure`; only
   the Pen tool uses it, storing `core::pressure::width_factor` per point in
   `Shape::Stroke::widths`
@@ -87,6 +92,8 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
 - On the owner's HUION 420 under Hyprland only one barrel button reaches
   Xwayland apps (as middle), although the kernel reports both. The native
   Wayland backend gets both.
+- On native Wayland the mouse is ignored while the pen is in proximity
+  of the window.
 - The takeover cannot undo a Bucket fill, which happens on the tip's
   press.
 - miniquad cannot tell a pen from a mouse, so with a tablet attached the

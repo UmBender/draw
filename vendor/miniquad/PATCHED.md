@@ -14,6 +14,8 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   `take_samples()`. Backends push a sample just before they hand a pen's
   pointer motion, press or release to the event handler. At most 4096
   samples are kept between two `take_samples()` calls.
+  `pointer_shadowed_by_pen()` says whether a plain pointer event is
+  dropped because a tablet tool is in proximity (ADR-T40-1).
 - `src/native/linux_x11/xi_input.rs`: `XIQueryDevice` and
   `XIFreeDeviceInfo` with their structs, and `PenTracker`, which finds a
   source device's valuator labelled `Abs Pressure` and keeps the
@@ -28,6 +30,9 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   tablet seat of the `wl_seat`, and turns each tool frame into pointer
   events (tip → left, `BTN_STYLUS` → middle, `BTN_STYLUS2` → right) with
   samples; a tool in proximity gets the window's cursor.
+  While any tool is in proximity, `wl_pointer` motion and button events
+  are dropped: Hyprland copies the pen onto `wl_pointer`, and the copy
+  would steal the tip-down's sample (ADR-T40-1).
 
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
