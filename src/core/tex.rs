@@ -1297,9 +1297,11 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             }
             let b = match class {
                 Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
-                // The subscript tucks under the slant (ADR-T36-1).
+                // The advance already holds the italic correction
+                // (ADR-T41-1); the subscript tucks under the slant
+                // (ADR-T36-1).
                 Class::Integral => {
-                    let (kern, tuck) = (base.italic, base.italic);
+                    let (kern, tuck) = (0.0, base.italic);
                     scripts(base, sup, sub, kern, tuck, scale)
                 }
                 _ => {
