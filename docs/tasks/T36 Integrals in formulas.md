@@ -1,7 +1,7 @@
 ---
 id: T36
 title: Integrals in formulas
-status: review
+status: done
 wave: 24
 branch: task/T36-integrals
 depends_on: [T33]
@@ -166,3 +166,4 @@ Step 36 — requires step 30 (TeX formulas) and step 33 (math font).
   tessellation 0.18 ms (budget 1 ms). Run in parallel, four unrelated
   10k-shape benchmarks exceed 1 ms from contention; all pass
   single-threaded.
+- 2026-10-21 — Integrated into `main`. Status → done.

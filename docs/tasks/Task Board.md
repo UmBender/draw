@@ -144,7 +144,7 @@ flowchart TD
 | [[T28 Experimental native Wayland backend]] | done | T27 | `task/T28-wayland` |
 | [[T34 Pen tablet input]] | done | T28 | `task/T34-pen-tablet` |
 | [[T35 Pen pressure and native Wayland tablets]] | done | T34 | `task/T35-pen-pressure` |
-| [[T36 Integrals in formulas]] | todo | T33 | `task/T36-integrals` |
+| [[T36 Integrals in formulas]] | done | T33 | `task/T36-integrals` |
 | [[T37 Remember the text size]] | todo | T29, T31 | `task/T37-text-size-memory` |
 | [[T38 Left-hand tool keys]] | done | T11, T12 | `task/T38-left-hand-keys` |
 | [[T39 Accents in formulas]] | todo | T36 | `task/T39-accents` |

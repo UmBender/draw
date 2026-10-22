@@ -6,6 +6,18 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Integrals in formulas: `\int`, `\iint`, `\iiint`, `\oint` and `\oiint`
+  are drawn large like `\sum`, with their limits beside the sign
+  (`$\int_0^1 f(x)\,dx$`), and `\,` is a thin space.
+- The symbols most used in physics: `\partial \nabla \hbar \ell \Re \Im
+  \AA \degree`, `\forall \exists \emptyset \prime`, `\vdots \ddots \vert
+  \Vert`, relations such as `\propto \sim \simeq \cong \ll \gg \perp
+  \mid`, arrows such as `\rightarrow \leftrightarrow \mapsto
+  \rightleftharpoons`, operators such as `\mp \otimes \circ \dagger`, and
+  `\langle \rangle`.
+
 ### Changed
 
 - Pen, line and smart snap moved to the left hand, so they can be picked
