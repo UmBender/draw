@@ -1,6 +1,6 @@
 [package]
 name = "draw"
-version = "1.4.2"
+version = "1.4.3"
 edition = "2024"
 rust-version = "1.85"
 description = "Minimal, fast, keyboard-first scratch canvas for competitive programming"
