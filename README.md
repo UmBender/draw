@@ -125,7 +125,7 @@ no Rust toolchain, and the build would leave root-owned files in
 
 ```sh
 # From a clone (or replace `--path .` with
-# `--git https://github.com/UmBender/draw --tag v1.4.1` to skip cloning)
+# `--git https://github.com/UmBender/draw --tag v1.4.2` to skip cloning)
 cargo install --path . --locked --root "$PWD/target/install"
 
 sudo install -Dm755 target/install/bin/draw /usr/local/bin/draw

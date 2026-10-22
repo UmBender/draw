@@ -6,6 +6,8 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-22
+
 ### Fixed
 
 - Pen pressure works on the native Wayland backend
@@ -163,7 +165,8 @@ First release.
   frame reuse during pan and zoom, smooth with thousands of shapes on an
   8th-gen i5 iGPU (`DRAW_FRAME_TIMES=1` logs frame times).
 
-[Unreleased]: https://github.com/UmBender/draw/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/UmBender/draw/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/UmBender/draw/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/UmBender/draw/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/UmBender/draw/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/UmBender/draw/compare/v1.2.0...v1.3.0
