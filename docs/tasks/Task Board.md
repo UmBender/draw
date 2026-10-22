@@ -71,6 +71,7 @@ flowchart TD
   T31 --> T37[T37 Remember the text size]
   T12 --> T38[T38 Left-hand tool keys]
   T36 --> T39[T39 Accents in formulas]
+  T35 --> T40[T40 Pen pressure on native Wayland]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -103,6 +104,7 @@ flowchart TD
 | 23 | [[T35 Pen pressure and native Wayland tablets]] |
 | 24 | [[T36 Integrals in formulas]] · [[T37 Remember the text size]] · [[T38 Left-hand tool keys]] |
 | 25 | [[T39 Accents in formulas]] |
+| 26 | [[T40 Pen pressure on native Wayland]] |
 
 ## Status
 
@@ -148,3 +150,4 @@ flowchart TD
 | [[T37 Remember the text size]] | done | T29, T31 | `task/T37-text-size-memory` |
 | [[T38 Left-hand tool keys]] | done | T11, T12 | `task/T38-left-hand-keys` |
 | [[T39 Accents in formulas]] | done | T36 | `task/T39-accents` |
+| [[T40 Pen pressure on native Wayland]] | todo | T35 | `fix/wayland-pen-pressure` |
