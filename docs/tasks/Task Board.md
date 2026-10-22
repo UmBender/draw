@@ -150,4 +150,4 @@ flowchart TD
 | [[T37 Remember the text size]] | done | T29, T31 | `task/T37-text-size-memory` |
 | [[T38 Left-hand tool keys]] | done | T11, T12 | `task/T38-left-hand-keys` |
 | [[T39 Accents in formulas]] | done | T36 | `task/T39-accents` |
-| [[T40 Pen pressure on native Wayland]] | todo | T35 | `fix/wayland-pen-pressure` |
+| [[T40 Pen pressure on native Wayland]] | done | T35 | `fix/wayland-pen-pressure` |

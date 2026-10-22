@@ -1,7 +1,7 @@
 ---
 id: T40
 title: Pen pressure on native Wayland
-status: review
+status: done
 wave: 26
 branch: fix/wayland-pen-pressure
 depends_on: [T35]
@@ -154,7 +154,9 @@ window library) with the copied `wl_pointer` stream.
   the quality step produced no changes and was skipped. Tutorial step 35
   extended; README and feature note state that the mouse is ignored while
   the pen hovers on native Wayland. AC-5 awaits the owner check below.
-- Owner check after the fix (pending): on `DRAW_BACKEND=wayland` with the HUION 420,
+- Owner check after the fix (2026-10-22: pressure confirmed on
+  `DRAW_BACKEND=wayland`): on `DRAW_BACKEND=wayland` with the HUION 420,
   light and hard presses give thin and thick strokes; the mouse still
   works after the pen leaves proximity; barrel buttons still pan and
   erase.
+- 2026-10-22 — Integrated into `main`. Status → done.

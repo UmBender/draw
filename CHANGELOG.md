@@ -6,6 +6,13 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Pen pressure works on the native Wayland backend
+  (`DRAW_BACKEND=wayland`): strokes no longer keep a constant width on
+  compositors that also send the pen as mouse input, such as Hyprland.
+  The mouse is ignored there while the pen hovers over the window.
+
 ## [1.4.1] - 2026-10-22
 
 ### Fixed

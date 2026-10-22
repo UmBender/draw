@@ -28,5 +28,5 @@ One note per user-visible feature, created by the task that implements it
 | [[Text in shapes (experimental)]] | [[T31 Text in rectangles and grid cells]] | [[31 Prototyping an interaction behind a switch]] | experimental |
 | [[Linux packages]] | [[T27 Linux packaging]] | [[27 Shipping a binary to other Linux machines]] | done |
 | [[Native Wayland (experimental)]] | [[T28 Experimental native Wayland backend]] | [[28 Choosing a window backend at startup]] | done |
-| [[Pen tablets]] | [[T34 Pen tablet input]], [[T35 Pen pressure and native Wayland tablets]] | [[34 Telling a tap from a drag]], [[35 Reading a pen through a patched window library]] | done |
+| [[Pen tablets]] | [[T34 Pen tablet input]], [[T35 Pen pressure and native Wayland tablets]], [[T40 Pen pressure on native Wayland]] | [[34 Telling a tap from a drag]], [[35 Reading a pen through a patched window library]] | done |
 | [[Contest cheat sheet]] | [[T14 Performance and release validation]] | [[14 Profiling and shipping a release build]] | done |
