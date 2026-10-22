@@ -6,6 +6,14 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-22
+
+### Fixed
+
+- Holding a pen's barrel button and touching the tablet pans or erases
+  again instead of drawing, on tablets that report the tip just before the
+  button (such as the HUION 420).
+
 ## [1.4.0] - 2026-10-21
 
 ### Added
@@ -148,7 +156,8 @@ First release.
   frame reuse during pan and zoom, smooth with thousands of shapes on an
   8th-gen i5 iGPU (`DRAW_FRAME_TIMES=1` logs frame times).
 
-[Unreleased]: https://github.com/UmBender/draw/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/UmBender/draw/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/UmBender/draw/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/UmBender/draw/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/UmBender/draw/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/UmBender/draw/compare/v1.1.1...v1.2.0
