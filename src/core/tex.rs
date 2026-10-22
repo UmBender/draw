@@ -1299,10 +1299,13 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                 Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
                 // The subscript tucks under the slant (ADR-T36-1).
                 Class::Integral => {
-                    let tuck = base.italic;
-                    scripts(base, sup, sub, tuck, scale)
+                    let (kern, tuck) = (base.italic, base.italic);
+                    scripts(base, sup, sub, kern, tuck, scale)
                 }
-                _ => scripts(base, sup, sub, 0.0, scale),
+                _ => {
+                    let kern = base.italic;
+                    scripts(base, sup, sub, kern, 0.0, scale)
+                }
             };
             (b, class)
         }
@@ -1364,12 +1367,13 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
 }
 
 /// Superscript and subscript to the right of `base` (ADR-T33-1): the
-/// superscript after the base's italic correction, the subscript `tuck`
-/// left of the base's advance (ADR-T36-1).
+/// superscript `kern` right of the base's advance (ADR-T41-1), the
+/// subscript `tuck` left of it (ADR-T36-1).
 fn scripts(
     base: MathBox,
     sup: Option<MathBox>,
     sub: Option<MathBox>,
+    kern: f32,
     tuck: f32,
     scale: f32,
 ) -> MathBox {
@@ -1396,7 +1400,7 @@ fn scripts(
         ink: base.ink,
     };
     if let Some(sup) = sup {
-        let at = x + base.italic;
+        let at = x + kern;
         out.put(&sup, Vec2::new(at, -up));
         out.width = out.width.max(at + sup.width);
         out.ascent = out.ascent.max(up + sup.ascent);
