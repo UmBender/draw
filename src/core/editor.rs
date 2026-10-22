@@ -133,7 +133,26 @@ enum Gesture {
         button: PointerButton,
         /// Tool receiving the events.
         tool: Tool,
+        /// No pointer motion since the press.
+        fresh: bool,
     },
+}
+
+impl Gesture {
+    /// Whether a press of `button` replaces this gesture: a pen reports
+    /// its tip just before a held barrel button, in the same spot, so a
+    /// right or middle press takes over a left tool press that has not
+    /// moved yet.
+    fn yields_to(self, button: PointerButton) -> bool {
+        matches!(
+            self,
+            Self::Tool {
+                button: PointerButton::Left,
+                fresh: true,
+                ..
+            }
+        ) && button != PointerButton::Left
+    }
 }
 
 /// All editor state: document, history, view, tools and settings.
@@ -595,12 +614,17 @@ impl Editor {
         Some(pos)
     }
 
-    /// Starts a gesture, unless one is already running. With a text block
-    /// open, a left press inside it moves the caret and any other press
-    /// that does not pan commits it first (ADR-T29-2).
+    /// Starts a gesture, unless one is already running and does not yield
+    /// to `button`. With a text block open, a left press inside it moves
+    /// the caret and any other press that does not pan commits it first
+    /// (ADR-T29-2).
     fn pointer_down(&mut self, pos: Vec2, button: PointerButton, mods: Modifiers) -> bool {
-        if self.gesture.is_some() {
-            return false;
+        let mut cancelled = false;
+        if let Some(gesture) = self.gesture {
+            if !gesture.yields_to(button) {
+                return false;
+            }
+            cancelled = self.cancel_gesture();
         }
         let pans = match button {
             PointerButton::Middle => true,
@@ -628,22 +652,27 @@ impl Editor {
                 button,
                 pan: Pan::new(pos),
             });
-            return false;
+            return cancelled;
         }
         let tool = if button == PointerButton::Right {
             Tool::Eraser
         } else {
             self.tool
         };
-        self.gesture = Some(Gesture::Tool { button, tool });
-        self.tool_pointer(tool, Phase::Down, pos, mods) || committed
+        self.gesture = Some(Gesture::Tool {
+            button,
+            tool,
+            fresh: true,
+        });
+        self.tool_pointer(tool, Phase::Down, pos, mods) || committed || cancelled
     }
 
     /// Continues the gesture in progress, if any.
     fn pointer_move(&mut self, pos: Vec2, mods: Modifiers) -> bool {
         match &mut self.gesture {
             Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.camera, pos),
-            Some(Gesture::Tool { tool, .. }) => {
+            Some(Gesture::Tool { tool, fresh, .. }) => {
+                *fresh = false;
                 let tool = *tool;
                 self.tool_pointer(tool, Phase::Move, pos, mods)
             }
@@ -658,7 +687,9 @@ impl Editor {
                 self.gesture = None;
                 pan.drag(&mut self.camera, pos)
             }
-            Some(Gesture::Tool { button: b, tool }) if b == button => {
+            Some(Gesture::Tool {
+                button: b, tool, ..
+            }) if b == button => {
                 self.gesture = None;
                 let numbering = self.helpers().numbering;
                 let next = self.helpers().next_number;
