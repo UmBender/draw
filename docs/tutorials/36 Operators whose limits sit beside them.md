@@ -29,24 +29,31 @@ between neighbours *and* how scripts attach. An integral is an operator
 for spacing (`\int f` gets a thin space, `\int -f` has a unary minus) but
 takes scripts like a letter. A new class says that in one place.
 
-**2. The italic correction is a horizontal offset per glyph.** A slanted
-glyph's top sticks out past its advance. The font stores how far, the
-*italic correction* (0.332 em for `∫` in Latin Modern Math). A script
-placed beside a slanted sign uses it twice:
+**2. The italic correction is a horizontal offset per glyph.** The font
+stores how far a slanted glyph leans, the *italic correction* (0.332 em
+for `∫` in Latin Modern Math). What it is measured from depends on the
+glyph. An italic letter's top sticks out past its advance, so `𝑓^2`
+puts the superscript *after* the correction (step 33). A large operator
+in an OpenType `MATH` font is different: its advance already **includes**
+the correction — the top of `∫` ends at 0.609 em, inside its 0.665 em
+advance. The correction then only says how far the subscript may move
+left:
 
 ```text
-        ┌── superscript at advance + italic
-   ╭─╮  b
+      ┌── superscript at the advance
+   ╭─╮b
    │
    │
  ╰─╯ a
      └── subscript at advance − italic (tucked under the slant)
 ```
 
-The superscript clears the top hook by starting after the correction (as
-for `𝑓^2`, step 33). The bottom of the sign curls *left*, so the space
-under the slant is free: the OpenType `MATH` rule moves the subscript
-left by the same correction.
+The bottom of the sign curls *left*, so the space under the slant is
+free: the OpenType `MATH` rule moves the subscript left by the
+correction and leaves the superscript at the advance. Adding the
+correction to the superscript as well counts it twice — draw did that
+until [[T41 Integral superscript at the advance]], and the upper limit
+floated half an em away from the sign.
 
 **3. Scale the correction with the glyph.** The sign is enlarged
 (`BIG_OP_SCALE` = 1.3), so the correction is the enlarged glyph's, not
@@ -62,9 +69,11 @@ re-reading the font keeps one source of truth.
   centres the enlarged glyph on the axis and now keeps its italic
   correction (zero for `∑` and `∏`, so they are unchanged).
 - In `atom`, a `Node::Scripts` whose base is a `BigOp` or `Limits` goes
-  to `limits`; an `Integral` goes to `scripts` with `tuck = base.italic`,
-  so the subscript starts at `width − tuck` and the superscript, as for
-  every base, at `width + italic`.
+  to `limits`; an `Integral` goes to `scripts` with `kern = 0` and
+  `tuck = base.italic`, so the superscript starts at `width + kern` (the
+  advance) and the subscript at `width − tuck`
+  ([[ADR-T41-1 Integral superscript at the advance]]). Every other base
+  passes `kern = base.italic`.
 - `spacing` and the unary-binary rule treat `Integral` like the other
   operators.
 - The physics symbols are plain table rows: a symbol is `(name, text,
@@ -72,6 +81,8 @@ re-reading the font keeps one source of truth.
   six-per-em space U+2006, 1/6 em wide, TeX's thin space.
 - Tests: `tex_layout_integral_is_enlarged_like_sum`,
   `tex_layout_integral_scripts_sit_beside_the_sign`,
+  `tex_layout_integral_superscript_starts_at_the_advance`,
+  `tex_layout_integral_superscript_hugs_the_sign`,
   `tex_layout_integral_gets_operator_space`; the bounds proptests type
   `\int` and `\oint`, so the tucked subscript is checked to stay inside
   the box.
@@ -81,9 +92,12 @@ re-reading the font keeps one source of truth.
 1. Set `tuck` to `0.0` for integrals in `atom` and type
    `$\int_0^1 x\,dx$`: the `0` floats away from the foot of the sign.
    `tex_layout_integral_scripts_sit_beside_the_sign` fails.
-2. Add `\bigcup` (`⋃`, U+22C3) as `Class::BigOp`: one row, and it takes
+2. Set `kern` to `base.italic` for integrals and type `$\int_0^\pi$`:
+   the `π` floats away from the top of the sign, the 1.4.2 bug.
+   `tex_layout_integral_superscript_hugs_the_sign` fails.
+3. Add `\bigcup` (`⋃`, U+22C3) as `Class::BigOp`: one row, and it takes
    limits above and below like `\sum`.
-3. Change `\oint` to `Class::BigOp` and compare `$\oint_C$` — that is
+4. Change `\oint` to `Class::BigOp` and compare `$\oint_C$` — that is
    what `\oint\limits_C` would look like in LaTeX.
 
 ## Further reading
@@ -92,3 +106,4 @@ re-reading the font keeps one source of truth.
 - OpenType `MATH` table specification: italic correction and "limits"
   placement of large operators.
 - [[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]
+- [[ADR-T41-1 Integral superscript at the advance]]

@@ -1,11 +1,11 @@
 ---
 id: T41
 title: Integral superscript at the advance
-status: ready
+status: review
 wave: 27
 branch: fix/integral-superscript
 depends_on: [T36]
-adrs: []
+adrs: ["[[ADR-T41-1 Integral superscript at the advance]]"]
 feature: "[[TeX formulas]]"
 tutorial: "[[36 Operators whose limits sit beside them]]"
 tags: [task]
@@ -47,6 +47,21 @@ the advance; the subscript stays at advance − italic. Other bases keep
 
 ## Spec
 
+Decision: [[ADR-T41-1 Integral superscript at the advance]] — the
+proposal is taken.
+
+- **AC-1** — on every integral (`\int \iint \iiint \oint \oiint`) the
+  superscript starts at the enlarged sign's advance, and the subscript
+  stays at advance − italic correction:
+  `tex_layout_integral_superscript_starts_at_the_advance`, and the
+  corrected `tex_layout_integral_scripts_sit_beside_the_sign`.
+- **AC-2** — the superscript clears the sign's ink but sits within
+  0.1 em of it: `tex_layout_integral_superscript_hugs_the_sign`.
+- **AC-3** — italic letters keep the superscript after the correction:
+  `tex_layout_superscript_clears_the_italic_correction` (unchanged).
+- **AC-4** — owner check: `$\int_{0}^{\pi} f(x) \, dx$` looks like inline
+  LaTeX (see *Log*).
+
 ## Out of scope
 
 - Display-size integrals, `\limits` / `\nolimits`.
@@ -61,12 +76,12 @@ the advance; the subscript stays at advance − italic. Other bases keep
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T41): specify integral superscript placement`
-- [ ] tests — `test(T41): add failing tests for the integral superscript`
-- [ ] models — `feat(T41): …`
-- [ ] behaviour — `fix(T41): put an integral's superscript at its advance`
-- [ ] quality — `chore(T41): …`
-- [ ] docs — `docs(T41): …`
+- [x] spec — `docs(T41): specify integral superscript placement`
+- [x] tests — `test(T41): add failing tests for the integral superscript`
+- [x] models — `feat(T41): give scripts a superscript kern argument`
+- [x] behaviour — `fix(T41): put an integral's superscript at its advance`
+- [x] quality — skipped: `scripts/check.sh` was green with no changes
+- [x] docs — `docs(T41): correct the integral superscript in tutorial 36`
 
 ## Learning path
 
@@ -77,3 +92,11 @@ them).
 
 - 2026-10-22 — Created from the owner's report: the upper limit of
   `$\int_{0}^{\pi} f(x) \, dx$` sits too far from the sign.
+- 2026-10-22 — Implemented per ADR-T41-1: `scripts` takes the
+  superscript's `kern`; integrals pass 0, every other base its italic
+  correction. The ink-to-script gap of `\int^b` went from 0.50 em to
+  0.07 em. The new hugging test measures from the sign's ink to the
+  script's pen position (first draft measured to the script's ink and
+  so counted its side bearing). The quality step produced no changes
+  and was skipped. Tutorial step 36 corrected. AC-4 awaits the owner
+  check.

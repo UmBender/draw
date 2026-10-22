@@ -1297,12 +1297,17 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             }
             let b = match class {
                 Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
-                // The subscript tucks under the slant (ADR-T36-1).
+                // The advance already holds the italic correction
+                // (ADR-T41-1); the subscript tucks under the slant
+                // (ADR-T36-1).
                 Class::Integral => {
-                    let tuck = base.italic;
-                    scripts(base, sup, sub, tuck, scale)
+                    let (kern, tuck) = (0.0, base.italic);
+                    scripts(base, sup, sub, kern, tuck, scale)
                 }
-                _ => scripts(base, sup, sub, 0.0, scale),
+                _ => {
+                    let kern = base.italic;
+                    scripts(base, sup, sub, kern, 0.0, scale)
+                }
             };
             (b, class)
         }
@@ -1364,12 +1369,13 @@ fn big_operator(ch: char, scale: f32) -> MathBox {
 }
 
 /// Superscript and subscript to the right of `base` (ADR-T33-1): the
-/// superscript after the base's italic correction, the subscript `tuck`
-/// left of the base's advance (ADR-T36-1).
+/// superscript `kern` right of the base's advance (ADR-T41-1), the
+/// subscript `tuck` left of it (ADR-T36-1).
 fn scripts(
     base: MathBox,
     sup: Option<MathBox>,
     sub: Option<MathBox>,
+    kern: f32,
     tuck: f32,
     scale: f32,
 ) -> MathBox {
@@ -1396,7 +1402,7 @@ fn scripts(
         ink: base.ink,
     };
     if let Some(sup) = sup {
-        let at = x + base.italic;
+        let at = x + kern;
         out.put(&sup, Vec2::new(at, -up));
         out.width = out.width.max(at + sup.width);
         out.ascent = out.ascent.max(up + sup.ascent);
@@ -2511,7 +2517,7 @@ mod tests {
         let advance = mm('∫').advance * k;
         let italic = mm('∫').italic * k;
         assert!(italic > 0.0);
-        assert!(approx_eq(hi.x, sign.x + advance + italic, EPS), "{hi:?}");
+        assert!(approx_eq(hi.x, sign.x + advance, EPS), "{hi:?}");
         assert!(approx_eq(lo.x, sign.x + advance - italic, EPS), "{lo:?}");
         assert!(lo.x > sign.x && hi.x > lo.x);
         assert!(hi.y < 0.0 && lo.y > 0.0, "{hi:?} {lo:?}");
@@ -2526,6 +2532,44 @@ mod tests {
         let (c, _) = glyph(&oint.ink, '\u{1D436}');
         let shift = (mm('∮').advance - mm('∮').italic) * k;
         assert!(approx_eq(c.x, sign.x + shift, EPS), "{c:?}");
+    }
+
+    #[test]
+    fn tex_layout_integral_superscript_starts_at_the_advance() {
+        for (src, ch) in [
+            ("\\int", '∫'),
+            ("\\iint", '∬'),
+            ("\\iiint", '∭'),
+            ("\\oint", '∮'),
+            ("\\oiint", '∯'),
+        ] {
+            // Act
+            let int = boxed(&format!("{src}_a^b"));
+
+            // Assert: the font's advance already holds the correction.
+            let (sign, k) = glyph(&int.ink, ch);
+            let (lo, _) = glyph(&int.ink, A);
+            let (hi, _) = glyph(&int.ink, B);
+            let advance = mm(ch).advance * k;
+            let italic = mm(ch).italic * k;
+            assert!(approx_eq(hi.x, sign.x + advance, EPS), "{src} {hi:?}");
+            assert!(
+                approx_eq(lo.x, sign.x + advance - italic, EPS),
+                "{src} {lo:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_integral_superscript_hugs_the_sign() {
+        // Act
+        let int = boxed("\\int^b");
+
+        // Assert: it starts right of the ink, but not by more than 0.1 em.
+        let (sign, k) = glyph(&int.ink, '∫');
+        let (hi, _) = glyph(&int.ink, B);
+        let gap = hi.x - (sign.x + mm('∫').x_max * k);
+        assert!(gap > 0.0 && gap < 0.1, "{gap}");
     }
 
     #[test]
