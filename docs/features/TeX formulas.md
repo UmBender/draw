@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -26,7 +26,8 @@ tutorial [[33 Typesetting with a proportional math font]].)
 
 Integrals — `$\int_0^1 f(x)\,dx$`, `\oint`, `\iint` — are enlarged like
 `\sum` with their limits as scripts beside the slanted sign, as in inline
-LaTeX, and the symbols most used in physics are there too:
+LaTeX — the upper limit right beside the top of the sign since
+[[T41 Integral superscript at the advance]] — and the symbols most used in physics are there too:
 Schrödinger's `$i\hbar\,\partial_t\psi = H\psi$`, Maxwell's
 `$\nabla \times E = -\partial_t B$`, bra–kets `$\langle a \mid b \rangle$`.
 (Since [[T36 Integrals in formulas]]; tutorial
