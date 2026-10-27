@@ -7,6 +7,7 @@
 //! them into the logical pixels used by the editor and the renderer.
 
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::{EventHandler, KeyMods};
@@ -164,6 +165,21 @@ pub struct PenSample {
     pub pressure: f32,
 }
 
+/// How long a pen's left release is held back in case the tip bounces
+/// straight down again (ADR-T42-1).
+pub const PEN_BOUNCE_WINDOW: Duration = Duration::from_millis(60);
+
+/// A pen release held back by the bounce window (ADR-T42-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct HeldRelease {
+    /// The `PointerUp` to emit if the tip stays up.
+    up: InputEvent,
+    /// Frame time of the release.
+    at: Instant,
+    /// The last pointer move since the release.
+    last_move: Option<InputEvent>,
+}
+
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
@@ -183,6 +199,12 @@ pub struct Collector {
     pen: VecDeque<PenSample>,
     /// Pressure of the last pointer event, as last emitted.
     pressure: Option<f32>,
+    /// Pen bounce window; zero holds nothing (ADR-T42-1).
+    bounce_window: Duration,
+    /// Frame time of the events being replayed.
+    now: Instant,
+    /// The pen release held back, if any.
+    bounce: Option<HeldRelease>,
 }
 
 impl Default for Collector {
@@ -203,6 +225,9 @@ impl Collector {
             wheel_units_per_notch: 1.0,
             pen: VecDeque::new(),
             pressure: None,
+            bounce_window: Duration::ZERO,
+            now: Instant::now(),
+            bounce: None,
         }
     }
 
@@ -218,6 +243,25 @@ impl Collector {
     pub fn set_pen_samples(&mut self, samples: impl IntoIterator<Item = PenSample>) {
         self.pen.clear();
         self.pen.extend(samples);
+    }
+
+    /// Sets the pen bounce window (ADR-T42-1); zero turns it off.
+    pub fn set_bounce_window(&mut self, window: Duration) {
+        let _ = window;
+        todo!()
+    }
+
+    /// Sets the frame time stamped on the following events.
+    pub fn set_now(&mut self, now: Instant) {
+        let _ = now;
+        todo!()
+    }
+
+    /// Emits the held pen release, and the last move after it, once the
+    /// bounce window has passed at the frame time. Returns whether a
+    /// release is still held, so the caller can wake again for it.
+    pub fn flush_bounce(&mut self) -> bool {
+        todo!()
     }
 
     /// Sets the DPI scale used for the following pointer events.
