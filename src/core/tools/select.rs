@@ -400,7 +400,7 @@ mod tests {
 
         click(&mut state, &mut fx, 100.0, 100.0, NONE);
 
-        assert!(fx.selection.is_empty());
+        assert_eq!(fx.selection, []);
     }
 
     #[test]
@@ -601,7 +601,7 @@ mod tests {
         send(&mut state, &mut fx, Phase::Move, 25.0, 5.0, ALT);
 
         let overlay = preview(&state, &fx.view(Tool::Select));
-        assert!(overlay.hidden.is_empty());
+        assert_eq!(overlay.hidden, []);
         assert_eq!(overlay.shapes.len(), 1);
     }
 
@@ -630,7 +630,7 @@ mod tests {
         assert!(delete_selection(&mut fx.ctx(Tool::Select)));
 
         assert_eq!(fx.ids(), vec![ids[1]]);
-        assert!(fx.selection.is_empty());
+        assert_eq!(fx.selection, []);
         assert_eq!(fx.history.undo_len(), 1);
         assert!(fx.history.undo(&mut fx.doc));
         assert_eq!(fx.ids(), ids);
@@ -662,7 +662,7 @@ mod tests {
 
         // Assert
         assert!(!copied && !deleted);
-        assert!(fx.clipboard.shapes().is_empty());
+        assert_eq!(fx.clipboard.shapes(), []);
         assert!(fx.selection.iter().all(|id| fx.doc.get(*id).is_some()));
         assert_eq!(fx.doc.len(), 3);
 
@@ -705,7 +705,7 @@ mod tests {
 
         click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
 
-        assert!(fx.selection.is_empty());
+        assert_eq!(fx.selection, []);
     }
 
     #[test]
@@ -716,6 +716,6 @@ mod tests {
 
         click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
 
-        assert!(fx.selection.is_empty());
+        assert_eq!(fx.selection, []);
     }
 }

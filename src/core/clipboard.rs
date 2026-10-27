@@ -391,7 +391,7 @@ mod tests {
 
         assert!(changed);
         assert_eq!(fx.ids(), vec![ids[0]]);
-        assert!(fx.selection.is_empty());
+        assert_eq!(fx.selection, []);
         assert_eq!(fx.clipboard.shapes(), &[cut_shape]);
         assert_eq!(fx.history.undo_len(), 1);
     }

@@ -1887,8 +1887,8 @@ mod tests {
         let plain = grid(Vec2::ZERO, Vec2::new(30.0, 40.0), 3, 2, 1.0);
         let other = rect(Vec2::ZERO, Vec2::new(30.0, 40.0), 1.0, None);
 
-        assert!(plain.axis_labels().is_empty());
-        assert!(other.axis_labels().is_empty());
+        assert_eq!(plain.axis_labels(), []);
+        assert_eq!(other.axis_labels(), []);
     }
 
     #[test]
@@ -2028,7 +2028,7 @@ mod tests {
 
         let r = rect(Vec2::ZERO, Vec2::new(10.0, 10.0), 1.0, None);
         assert_eq!(r.clone().with_cell_fill(0, 0, Some(red())), r);
-        assert!(r.cell_fills().is_empty());
+        assert_eq!(r.cell_fills(), []);
     }
 
     #[test]
@@ -2323,11 +2323,7 @@ mod tests {
         assert_eq!(placed[1].text, "b");
 
         // A shape without text places nothing.
-        assert!(
-            rect(v(0.0, 0.0), v(9.0, 9.0), 1.0, None)
-                .placed_texts()
-                .is_empty()
-        );
+        assert_eq!(rect(v(0.0, 0.0), v(9.0, 9.0), 1.0, None).placed_texts(), []);
     }
 
     #[test]

@@ -1147,7 +1147,7 @@ mod tests {
         assert_eq!(*ed.camera(), Camera::default());
         assert!(ed.toolbar_visible());
         assert!(ed.document().is_empty());
-        assert!(ed.selection().is_empty());
+        assert_eq!(ed.selection(), []);
         assert!(ed.selection_bounds().is_none());
         assert!(ed.preview().is_none());
         assert_eq!(ed.overlay(), Overlay::default());
@@ -1581,7 +1581,7 @@ mod tests {
 
         ed.apply(Command::Undo);
 
-        assert!(ed.selection().is_empty());
+        assert_eq!(ed.selection(), []);
     }
 
     #[test]
@@ -1644,7 +1644,7 @@ mod tests {
 
         ed.apply(Command::ClearAll);
 
-        assert!(ed.selection().is_empty());
+        assert_eq!(ed.selection(), []);
     }
 
     #[test]
@@ -1666,7 +1666,7 @@ mod tests {
 
         assert!(ed.apply(Command::Cancel));
 
-        assert!(ed.selection().is_empty());
+        assert_eq!(ed.selection(), []);
     }
 
     #[test]
@@ -2193,7 +2193,7 @@ mod tests {
         move_to(&mut ed, 20.0, 5.0);
         move_to(&mut ed, 40.0, 25.0);
         assert_eq!(ed.document_revision(), before);
-        assert!(!ed.overlay().hidden.is_empty());
+        assert_ne!(ed.overlay().hidden.len(), 0);
 
         // Act / Assert: releasing commits the move.
         up(&mut ed, PointerButton::Left, 40.0, 25.0);
@@ -3039,7 +3039,7 @@ mod tests {
         ed.apply(Command::Undo);
         assert_eq!(texts(&ed), ["abc"]);
         ed.apply(Command::Undo);
-        assert!(texts(&ed).is_empty());
+        assert_eq!(texts(&ed), Vec::<String>::new());
         ed.apply(Command::Redo);
         assert_eq!(texts(&ed), ["abc"]);
         ed.apply(Command::Redo);
@@ -3398,7 +3398,7 @@ mod tests {
 
         click(&mut ed, 100.0, 50.0);
 
-        assert!(ed.selection().is_empty());
+        assert_eq!(ed.selection(), []);
         assert!(ed.text_edit().is_none());
     }
 
@@ -3415,7 +3415,7 @@ mod tests {
         assert_eq!(editing_host(&ed), Some((id, TextSlot::Shape)));
         assert_eq!(editing(&ed).as_deref(), Some("ab"));
         key(&mut ed, Key::Escape);
-        assert!(texts(&ed).is_empty());
+        assert_eq!(texts(&ed), Vec::<String>::new());
         assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("ab"));
         let Some((_, shape)) = ed.document().shapes().next() else {
             panic!("the rectangle stays");
@@ -3432,7 +3432,7 @@ mod tests {
         key(&mut ed, Key::Escape);
 
         assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("3"));
-        assert!(texts(&ed).is_empty());
+        assert_eq!(texts(&ed), Vec::<String>::new());
     }
 
     #[test]
@@ -3447,7 +3447,7 @@ mod tests {
         // Assert
         assert_eq!(slot_text(&ed, 0, cell(1, 2)).as_deref(), Some("7"));
         assert_eq!(slot_text(&ed, 0, cell(0, 0)), None);
-        assert!(texts(&ed).is_empty());
+        assert_eq!(texts(&ed), Vec::<String>::new());
     }
 
     #[test]
@@ -4078,7 +4078,7 @@ mod tests {
         let mut ed = text_editor();
         place_grown(&mut ed, 100.0, 50.0, "a", 2);
         key_with(&mut ed, Key::Z, CTRL);
-        assert!(block_sizes(&ed).is_empty());
+        assert_eq!(block_sizes(&ed), []);
 
         // Act
         place(&mut ed, 100.0, 300.0, "b");

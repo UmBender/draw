@@ -2438,7 +2438,7 @@ mod tests {
         let b = boxed("\\binom{n}{k}");
 
         // Assert
-        assert!(rules(&b.ink).is_empty());
+        assert_eq!(rules(&b.ink), []);
         let g = glyphs(&b.ink);
         let (first, last) = (g[0], g[g.len() - 1]);
         assert_eq!((first.0, last.0), ('(', ')'));

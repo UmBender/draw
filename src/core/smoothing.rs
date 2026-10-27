@@ -614,7 +614,7 @@ mod tests {
         // px_to_world 0 → 1.0, so medium min_dist is 2.5 world units.
         assert!(c.points().len() < 10);
         for out in [a.finish(), b.finish(), c.finish()] {
-            assert!(!out.is_empty());
+            assert_ne!(out.len(), 0);
             assert!(out.iter().all(|p| p.is_finite()));
         }
     }
@@ -667,7 +667,7 @@ mod tests {
     fn finish_empty_is_empty() {
         let s = Smoother::new(medium(), 1.0);
 
-        assert!(s.finish().is_empty());
+        assert_eq!(s.finish(), []);
     }
 
     #[test]
@@ -736,7 +736,7 @@ mod tests {
     fn rdp_short_input_is_unchanged() {
         let two = [v(1.0, 1.0), v(1.0, 1.0)];
 
-        assert!(simplify_rdp(&[], 1.0).is_empty());
+        assert_eq!(simplify_rdp(&[], 1.0), []);
         assert_points_eq(&simplify_rdp(&[v(1.0, 2.0)], 1.0), &[v(1.0, 2.0)]);
         assert_points_eq(&simplify_rdp(&two, 1.0), &two);
     }

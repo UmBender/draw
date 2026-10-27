@@ -527,7 +527,7 @@ mod tests {
         f.send(Phase::Up, 253.0, 28.0);
 
         // Assert
-        assert!(!overlay.guides.is_empty());
+        assert_ne!(overlay.guides.len(), 0);
         let (a, _, _, _, _) = grid(f.last_shape());
         assert!(a.approx_eq(Vec2::new(200.0, 0.0), EPS), "{a:?}");
         assert!(f.overlay().is_empty(), "guides go away with the drag");
