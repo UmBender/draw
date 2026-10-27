@@ -247,21 +247,35 @@ impl Collector {
 
     /// Sets the pen bounce window (ADR-T42-1); zero turns it off.
     pub fn set_bounce_window(&mut self, window: Duration) {
-        let _ = window;
-        todo!()
+        self.bounce_window = window;
     }
 
     /// Sets the frame time stamped on the following events.
     pub fn set_now(&mut self, now: Instant) {
-        let _ = now;
-        todo!()
+        self.now = now;
     }
 
     /// Emits the held pen release, and the last move after it, once the
     /// bounce window has passed at the frame time. Returns whether a
     /// release is still held, so the caller can wake again for it.
     pub fn flush_bounce(&mut self) -> bool {
-        todo!()
+        if self.bounce.is_some_and(|held| !self.within_bounce(held)) {
+            self.release_bounce();
+        }
+        self.bounce.is_some()
+    }
+
+    /// Whether the frame time is still within the bounce window of `held`.
+    fn within_bounce(&self, held: HeldRelease) -> bool {
+        self.now.saturating_duration_since(held.at) <= self.bounce_window
+    }
+
+    /// Emits the held pen release, if any, and the last move after it.
+    fn release_bounce(&mut self) {
+        if let Some(held) = self.bounce.take() {
+            self.events.push(held.up);
+            self.events.extend(held.last_move);
+        }
     }
 
     /// Sets the DPI scale used for the following pointer events.
@@ -277,7 +291,8 @@ impl Collector {
     /// Pairs a pointer event at physical `(x, y)` with the oldest queued pen
     /// sample there, dropping older samples, and emits
     /// [`InputEvent::Pressure`] if the pressure changed (ADR-T35-1).
-    fn pair_pen(&mut self, x: f32, y: f32) {
+    /// Returns whether the event came from the pen.
+    fn pair_pen(&mut self, x: f32, y: f32) -> bool {
         let near = |s: &PenSample| {
             (s.pos.x - x).abs() <= PEN_MATCH_PX && (s.pos.y - y).abs() <= PEN_MATCH_PX
         };
@@ -289,6 +304,7 @@ impl Collector {
             self.pressure = pressure;
             self.events.push(InputEvent::Pressure { pressure });
         }
+        pressure.is_some()
     }
 
     /// Converts a physical position and remembers it as the pointer.
@@ -307,10 +323,15 @@ impl EventHandler for Collector {
         self.pair_pen(x, y);
         let pos = self.track(x, y);
         let mods = self.held.modifiers();
-        self.events.push(InputEvent::PointerMove { pos, mods });
+        let event = InputEvent::PointerMove { pos, mods };
+        match &mut self.bounce {
+            Some(held) => held.last_move = Some(event),
+            None => self.events.push(event),
+        }
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
+        self.release_bounce();
         if y != 0.0 {
             self.events.push(InputEvent::Scroll {
                 pos: self.pointer,
@@ -322,8 +343,18 @@ impl EventHandler for Collector {
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
-            self.pair_pen(x, y);
+            let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
+            let bounced = self
+                .bounce
+                .is_some_and(|held| pen && button == PointerButton::Left && self.within_bounce(held));
+            if bounced {
+                // The tip bounced: the stroke goes on (ADR-T42-1).
+                self.bounce = None;
+                self.events.push(InputEvent::PointerMove { pos, mods });
+                return;
+            }
+            self.release_bounce();
             self.events
                 .push(InputEvent::PointerDown { pos, button, mods });
         }
@@ -332,14 +363,24 @@ impl EventHandler for Collector {
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
-            self.pair_pen(x, y);
+            let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
-            self.events
-                .push(InputEvent::PointerUp { pos, button, mods });
+            let up = InputEvent::PointerUp { pos, button, mods };
+            self.release_bounce();
+            if pen && button == PointerButton::Left && !self.bounce_window.is_zero() {
+                self.bounce = Some(HeldRelease {
+                    up,
+                    at: self.now,
+                    last_move: None,
+                });
+            } else {
+                self.events.push(up);
+            }
         }
     }
 
     fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, _repeat: bool) {
+        self.release_bounce();
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
@@ -348,11 +389,13 @@ impl EventHandler for Collector {
     }
 
     fn char_event(&mut self, ch: char, mods: KeyMods, _repeat: bool) {
+        self.release_bounce();
         let mods = map_mods(mods);
         self.events.push(InputEvent::Char { ch, mods });
     }
 
     fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
+        self.release_bounce();
         self.held.set(code, false);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);

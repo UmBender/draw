@@ -42,7 +42,7 @@ use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
 use crate::shell::glyphs::GlyphAtlas;
-use crate::shell::input_map::{Collector, PenSample};
+use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
 use crate::shell::render::{self, TextStats, to_mq_color};
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -408,6 +408,10 @@ pub async fn run() {
     for line in tablet.warning.iter().chain(&tablet.notice) {
         eprintln!("{line}");
     }
+    if tablet.pen {
+        // Pen tip bounces join the stroke (ADR-T42-1).
+        collector.set_bounce_window(PEN_BOUNCE_WINDOW);
+    }
     let mut editor = Editor::new()
         .with_experimental(Experimental::from_env_value(experimental.as_deref()))
         .with_tap_slop(tablet.tap_slop_px());
@@ -423,7 +427,12 @@ pub async fn run() {
         }
         collector.set_dpi(dpi);
         collector.set_pen_samples(pen_samples());
+        collector.set_now(Instant::now());
         repeat_all_miniquad_input(&mut collector, subscriber);
+        if collector.flush_bounce() {
+            // Wake again to hand the held release on (ADR-T42-1).
+            schedule_update();
+        }
         for event in collector.drain() {
             dirty |= dispatch(&mut editor, event);
         }

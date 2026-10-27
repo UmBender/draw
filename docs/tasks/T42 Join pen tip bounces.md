@@ -103,7 +103,7 @@ is taken, with a window of 60 ms. Tests are `Collector` unit tests in
 - [x] spec — `docs(T42): specify pen tip bounce acceptance criteria`
 - [x] tests — `test(T42): add failing tests for pen tip bounces`
 - [x] models — `feat(T42): add the pen bounce window to Collector`
-- [ ] behaviour
+- [x] behaviour — `fix(T42): join pen tip bounces into one stroke`
 - [ ] quality
 - [ ] docs
 
