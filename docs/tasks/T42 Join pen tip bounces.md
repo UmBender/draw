@@ -101,7 +101,7 @@ is taken, with a window of 60 ms. Tests are `Collector` unit tests in
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T42): specify pen tip bounce acceptance criteria`
-- [ ] tests
+- [x] tests — `test(T42): add failing tests for pen tip bounces`
 - [ ] models
 - [ ] behaviour
 - [ ] quality
