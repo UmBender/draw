@@ -345,9 +345,9 @@ impl EventHandler for Collector {
         if let Some(button) = map_button(button) {
             let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
-            let bounced = self
-                .bounce
-                .is_some_and(|held| pen && button == PointerButton::Left && self.within_bounce(held));
+            let bounced = self.bounce.is_some_and(|held| {
+                pen && button == PointerButton::Left && self.within_bounce(held)
+            });
             if bounced {
                 // The tip bounced: the stroke goes on (ADR-T42-1).
                 self.bounce = None;
@@ -702,7 +702,7 @@ mod tests {
         c.mouse_button_down_event(MouseButton::Unknown, 1.0, 1.0);
         c.mouse_button_up_event(MouseButton::Unknown, 1.0, 1.0);
         // Assert
-        assert!(drain(&mut c).is_empty());
+        assert_eq!(drain(&mut c), []);
     }
 
     #[test]
@@ -1119,7 +1119,7 @@ mod tests {
         // Act
         pen_tip(&mut c, false, 10.0, 10.0);
         pen_move(&mut c, 15.0, 10.0);
-        c.set_now(t0 + PEN_BOUNCE_WINDOW - MS);
+        c.set_now(t0 + PEN_BOUNCE_WINDOW.saturating_sub(MS));
         let still_held = c.flush_bounce();
 
         // Assert

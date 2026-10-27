@@ -750,7 +750,7 @@ mod tests {
         let samples = pen_samples();
 
         // Assert
-        assert!(samples.is_empty());
+        assert_eq!(samples, []);
     }
 
     #[test]
