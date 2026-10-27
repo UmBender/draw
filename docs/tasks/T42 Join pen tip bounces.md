@@ -1,7 +1,7 @@
 ---
 id: T42
 title: Join pen tip bounces
-status: in-progress
+status: review
 wave: 28
 branch: fix/pen-tip-bounce
 depends_on: [T35]
@@ -104,8 +104,8 @@ is taken, with a window of 60 ms. Tests are `Collector` unit tests in
 - [x] tests — `test(T42): add failing tests for pen tip bounces`
 - [x] models — `feat(T42): add the pen bounce window to Collector`
 - [x] behaviour — `fix(T42): join pen tip bounces into one stroke`
-- [ ] quality
-- [ ] docs
+- [x] quality — `chore(T42): pass clippy and rustfmt`
+- [x] docs — `docs(T42): add feature note and tutorial`
 
 ## Learning path
 
@@ -115,3 +115,11 @@ No new tutorial step; extend step 35 with the bounce window.
 
 - 2026-10-27 — Created from the owner's report that pen lines break
   while drawing, with the traced gap histogram above.
+- 2026-10-27 — AC-1…AC-5 green (`cargo test`, 1033 tests). Quality:
+  rustfmt and the clippy 1.99 lints in the owned files are fixed. The
+  toolchain update to rustc 1.99.1 brings ~46 new clippy errors
+  (`assert_is_empty`, `manual_midpoint`, `double_must_use`) in files
+  T42 does not own, so `scripts/check.sh` still fails at clippy; this
+  needs a separate chore task. Feature note and tutorial step 35
+  extended. AC-6 (owner check on the HUION 420) is pending; ADR-T42-1
+  stays `proposed` until then.

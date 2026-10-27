@@ -1,7 +1,7 @@
 ---
 title: Pen tablets
 task: "[[T34 Pen tablet input]]"
-adrs: ["[[ADR-T34-1 Tap slop for pen tablets detected at start-up]]", "[[ADR-T35-1 Vendored miniquad with a pen tablet patch]]", "[[ADR-T35-2 Pressure as per-point width factors on pen strokes]]", "[[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]"]
+adrs: ["[[ADR-T34-1 Tap slop for pen tablets detected at start-up]]", "[[ADR-T35-1 Vendored miniquad with a pen tablet patch]]", "[[ADR-T35-2 Pressure as per-point width factors on pen strokes]]", "[[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]", "[[ADR-T42-1 Pen tip bounces join the stroke]]"]
 tutorial: "[[34 Telling a tap from a drag]]"
 shortcuts: []
 tags: [feature]
@@ -23,7 +23,9 @@ the chosen width, a light touch down to ¼ of it, a hard press up to 2×
 Wayland backend. When a tablet is
 attached draw switches to **pen mode**: a tap that stays within 16 px of
 where the tip landed counts as a clean click, so a tap selects with Select
-instead of dragging the shape, and makes no tiny shape with Rect.
+instead of dragging the shape, and makes no tiny shape with Rect. A line
+drawn in one movement stays **one stroke** even when the tip bounces off
+the tablet for a split second (T42).
 
 ## How to use
 
@@ -83,6 +85,14 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
   smoother carries the factors through resampling, EMA and RDP;
   `Batch::polyline_widths` draws them.
 
+- **Tip bounces** (T42). Some tablets report the tip lifting for 10–60 ms
+  mid-line. In pen mode `Collector` holds a pen's left release back for
+  `PEN_BOUNCE_WINDOW` (60 ms); a pen left press inside the window drops
+  both and emits a move to the press point, so the stroke goes on. The
+  app calls `flush_bounce` every frame and `schedule_update` while a
+  release is held; any key, wheel or other button flushes it first
+  ([[ADR-T42-1 Pen tip bounces join the stroke]]).
+
 ## Limits
 
 - **No tilt, rotation or eraser end.** Pressure only changes pen strokes;
@@ -96,5 +106,7 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
   of the window.
 - The takeover cannot undo a Bucket fill, which happens on the tip's
   press.
+- In pen mode a pen stroke ends up to 60 ms after the tip lifts, and two
+  pen strokes less than 60 ms apart join with a straight segment.
 - miniquad cannot tell a pen from a mouse, so with a tablet attached the
   mouse gets the 16 px slop too: drags shorter than that become clicks.

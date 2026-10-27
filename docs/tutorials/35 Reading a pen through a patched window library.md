@@ -3,7 +3,7 @@ title: Reading a pen through a patched window library
 step: 35
 requires: ["[[34 Telling a tap from a drag]]", "[[24 Layered redraws and measuring a frame]]"]
 feature: "[[Pen tablets]]"
-code: ["vendor/miniquad/src/pen.rs", "vendor/miniquad/src/native/linux_x11/xi_input.rs", "vendor/miniquad/src/native/linux_wayland.rs", "vendor/miniquad/src/native/linux_wayland/extensions/tablet.rs", "src/shell/input_map.rs", "src/core/pressure.rs", "src/core/smoothing.rs", "src/core/tools/pen.rs", "src/shell/render.rs"]
+code: ["vendor/miniquad/src/pen.rs", "vendor/miniquad/src/native/linux_x11/xi_input.rs", "vendor/miniquad/src/native/linux_wayland.rs", "vendor/miniquad/src/native/linux_wayland/extensions/tablet.rs", "src/shell/input_map.rs", "src/shell/app.rs", "src/core/pressure.rs", "src/core/smoothing.rs", "src/core/tools/pen.rs", "src/shell/render.rs"]
 tags: [tutorial]
 ---
 
@@ -88,6 +88,24 @@ The backend now drops `wl_pointer` motion and buttons while any tool is
 in proximity (`pen::pointer_shadowed_by_pen`): one device, one stream.
 The `Collector` tests replay the logged sequence through that filter.
 
+**Tip bounces** (T42). A tablet's tip switch can bounce: mid-line it
+reports up, then down 10–60 ms later and 40–90 px further on, and the
+editor dutifully ends the stroke. The core has no clock, so the shell
+debounces, the way firmware debounces a key switch:
+
+```
+pen:    Down  Move  Up(t0)  Move  Move  Down(t0+30ms)  Move  Up(t1) ... (60 ms) ...
+editor: Down  Move                      Move(press pt) Move              Up
+```
+
+`Collector` keeps the pen's left release, stamped with the frame time
+(`set_now`), plus only the last move after it. A pen press within
+`PEN_BOUNCE_WINDOW` cancels both; otherwise `flush_bounce` hands them on
+once the window has passed. Any other event flushes first, so order is
+kept. Because macroquad's loop blocks until input arrives, the app calls
+`schedule_update` while a release is held, or the last stroke of a
+drawing would never end ([[ADR-T42-1 Pen tip bounces join the stroke]]).
+
 **Pairing** (`Collector::pair_pen` in `src/shell/input_map.rs`) runs in
 physical pixels, before the conversion to logical pixels, so the
 comparison is exact up to 0.01 px.
@@ -121,11 +139,17 @@ checks that the mesh for mouse strokes stays exactly the same.
    `motion` and `down`. Make `pointer_shadowed_by_pen` return `false` and
    run `cargo test replayed_wayland` to see the press lose its pressure.
 
+5. Set `PEN_BOUNCE_WINDOW` to `Duration::ZERO`, draw quick lines with the
+   pen and watch them break into separate strokes (Ctrl+Z removes one
+   piece at a time). Then run `cargo test collector_pen` to see which
+   tests pin the window.
+
 ## Further reading
 
 - [[ADR-T35-1 Vendored miniquad with a pen tablet patch]],
   [[ADR-T35-2 Pressure as per-point width factors on pen strokes]],
-  [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]]
+  [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]],
+  [[ADR-T42-1 Pen tip bounces join the stroke]]
 - Wayland tablet protocol: `tablet-v2.xml` in wayland-protocols.
 - XInput 2 raw events: `XI2proto.txt`, section *Raw events*.
 - The Cargo Book, *Overriding dependencies* (`[patch]`).
