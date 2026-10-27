@@ -73,6 +73,8 @@ flowchart TD
   T36 --> T39[T39 Accents in formulas]
   T35 --> T40[T40 Pen pressure on native Wayland]
   T36 --> T41[T41 Integral superscript at the advance]
+  T35 --> T42[T42 Join pen tip bounces]
+  T43[T43 Adopt clippy 1.99 lints]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -107,6 +109,7 @@ flowchart TD
 | 25 | [[T39 Accents in formulas]] |
 | 26 | [[T40 Pen pressure on native Wayland]] |
 | 27 | [[T41 Integral superscript at the advance]] |
+| 28 | [[T42 Join pen tip bounces]] · [[T43 Adopt clippy 1.99 lints]] |
 
 ## Status
 
@@ -154,3 +157,5 @@ flowchart TD
 | [[T39 Accents in formulas]] | done | T36 | `task/T39-accents` |
 | [[T40 Pen pressure on native Wayland]] | done | T35 | `fix/wayland-pen-pressure` |
 | [[T41 Integral superscript at the advance]] | done | T36 | `fix/integral-superscript` |
+| [[T42 Join pen tip bounces]] | done | T35 | `fix/pen-tip-bounce` |
+| [[T43 Adopt clippy 1.99 lints]] | done | — | `chore/clippy-1-99` |

@@ -76,3 +76,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 65 | [[ADR-T39-1 Accents from spacing glyphs with a slant skew]] | accepted | decision | T30-1, T33-1 | — |
 | 66 | [[ADR-T40-1 Tablet stream wins over copied wl_pointer input]] | accepted | decision | T35-2 | amends T35-1 |
 | 67 | [[ADR-T41-1 Integral superscript at the advance]] | accepted | decision | T33-1 | amends T36-1 |
+| 68 | [[ADR-T42-1 Pen tip bounces join the stroke]] | accepted | decision | 0003, T34-1, T35-1 | — |

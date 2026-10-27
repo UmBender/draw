@@ -1,7 +1,7 @@
 ---
 id: T42
 title: Join pen tip bounces
-status: review
+status: done
 wave: 28
 branch: fix/pen-tip-bounce
 depends_on: [T35]
@@ -125,3 +125,4 @@ No new tutorial step; extend step 35 with the bounce window.
 - 2026-10-27 — AC-6 confirmed by the owner (HUION 420, Hyprland,
   `DRAW_BACKEND=wayland`): quick lines stay one stroke. ADR-T42-1
   accepted.
+- 2026-10-27 — Integrated into `main`. Status → done.

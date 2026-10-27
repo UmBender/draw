@@ -6,6 +6,11 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A pen line drawn in one movement stays one stroke (and one undo step)
+  when the tablet briefly reports the tip lifting mid-line.
+
 ## [1.4.3] - 2026-10-22
 
 ### Fixed

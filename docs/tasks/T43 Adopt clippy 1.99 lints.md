@@ -1,7 +1,7 @@
 ---
 id: T43
 title: Adopt clippy 1.99 lints
-status: review
+status: done
 wave: 28
 branch: chore/clippy-1-99
 depends_on: []
@@ -89,3 +89,4 @@ No tutorial: a lint cleanup teaches nothing new.
   T42 fixes. A test merge of both branches in a temporary worktree
   passed `scripts/check.sh` (fmt, clippy, 1033 tests, docs). Merge T42
   first or together: neither branch alone passes clippy.
+- 2026-10-27 — Integrated into `main`. Status → done.
