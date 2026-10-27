@@ -7,6 +7,7 @@
 //! them into the logical pixels used by the editor and the renderer.
 
 use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::{EventHandler, KeyMods};
@@ -164,6 +165,21 @@ pub struct PenSample {
     pub pressure: f32,
 }
 
+/// How long a pen's left release is held back in case the tip bounces
+/// straight down again (ADR-T42-1).
+pub const PEN_BOUNCE_WINDOW: Duration = Duration::from_millis(60);
+
+/// A pen release held back by the bounce window (ADR-T42-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct HeldRelease {
+    /// The `PointerUp` to emit if the tip stays up.
+    up: InputEvent,
+    /// Frame time of the release.
+    at: Instant,
+    /// The last pointer move since the release.
+    last_move: Option<InputEvent>,
+}
+
 /// Collects raw miniquad events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
@@ -183,6 +199,12 @@ pub struct Collector {
     pen: VecDeque<PenSample>,
     /// Pressure of the last pointer event, as last emitted.
     pressure: Option<f32>,
+    /// Pen bounce window; zero holds nothing (ADR-T42-1).
+    bounce_window: Duration,
+    /// Frame time of the events being replayed.
+    now: Instant,
+    /// The pen release held back, if any.
+    bounce: Option<HeldRelease>,
 }
 
 impl Default for Collector {
@@ -203,6 +225,9 @@ impl Collector {
             wheel_units_per_notch: 1.0,
             pen: VecDeque::new(),
             pressure: None,
+            bounce_window: Duration::ZERO,
+            now: Instant::now(),
+            bounce: None,
         }
     }
 
@@ -220,6 +245,39 @@ impl Collector {
         self.pen.extend(samples);
     }
 
+    /// Sets the pen bounce window (ADR-T42-1); zero turns it off.
+    pub fn set_bounce_window(&mut self, window: Duration) {
+        self.bounce_window = window;
+    }
+
+    /// Sets the frame time stamped on the following events.
+    pub fn set_now(&mut self, now: Instant) {
+        self.now = now;
+    }
+
+    /// Emits the held pen release, and the last move after it, once the
+    /// bounce window has passed at the frame time. Returns whether a
+    /// release is still held, so the caller can wake again for it.
+    pub fn flush_bounce(&mut self) -> bool {
+        if self.bounce.is_some_and(|held| !self.within_bounce(held)) {
+            self.release_bounce();
+        }
+        self.bounce.is_some()
+    }
+
+    /// Whether the frame time is still within the bounce window of `held`.
+    fn within_bounce(&self, held: HeldRelease) -> bool {
+        self.now.saturating_duration_since(held.at) <= self.bounce_window
+    }
+
+    /// Emits the held pen release, if any, and the last move after it.
+    fn release_bounce(&mut self) {
+        if let Some(held) = self.bounce.take() {
+            self.events.push(held.up);
+            self.events.extend(held.last_move);
+        }
+    }
+
     /// Sets the DPI scale used for the following pointer events.
     pub fn set_dpi(&mut self, dpi: f32) {
         self.dpi = dpi;
@@ -233,7 +291,8 @@ impl Collector {
     /// Pairs a pointer event at physical `(x, y)` with the oldest queued pen
     /// sample there, dropping older samples, and emits
     /// [`InputEvent::Pressure`] if the pressure changed (ADR-T35-1).
-    fn pair_pen(&mut self, x: f32, y: f32) {
+    /// Returns whether the event came from the pen.
+    fn pair_pen(&mut self, x: f32, y: f32) -> bool {
         let near = |s: &PenSample| {
             (s.pos.x - x).abs() <= PEN_MATCH_PX && (s.pos.y - y).abs() <= PEN_MATCH_PX
         };
@@ -245,6 +304,7 @@ impl Collector {
             self.pressure = pressure;
             self.events.push(InputEvent::Pressure { pressure });
         }
+        pressure.is_some()
     }
 
     /// Converts a physical position and remembers it as the pointer.
@@ -263,10 +323,15 @@ impl EventHandler for Collector {
         self.pair_pen(x, y);
         let pos = self.track(x, y);
         let mods = self.held.modifiers();
-        self.events.push(InputEvent::PointerMove { pos, mods });
+        let event = InputEvent::PointerMove { pos, mods };
+        match &mut self.bounce {
+            Some(held) => held.last_move = Some(event),
+            None => self.events.push(event),
+        }
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
+        self.release_bounce();
         if y != 0.0 {
             self.events.push(InputEvent::Scroll {
                 pos: self.pointer,
@@ -278,8 +343,18 @@ impl EventHandler for Collector {
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
-            self.pair_pen(x, y);
+            let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
+            let bounced = self.bounce.is_some_and(|held| {
+                pen && button == PointerButton::Left && self.within_bounce(held)
+            });
+            if bounced {
+                // The tip bounced: the stroke goes on (ADR-T42-1).
+                self.bounce = None;
+                self.events.push(InputEvent::PointerMove { pos, mods });
+                return;
+            }
+            self.release_bounce();
             self.events
                 .push(InputEvent::PointerDown { pos, button, mods });
         }
@@ -288,14 +363,24 @@ impl EventHandler for Collector {
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
-            self.pair_pen(x, y);
+            let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
-            self.events
-                .push(InputEvent::PointerUp { pos, button, mods });
+            let up = InputEvent::PointerUp { pos, button, mods };
+            self.release_bounce();
+            if pen && button == PointerButton::Left && !self.bounce_window.is_zero() {
+                self.bounce = Some(HeldRelease {
+                    up,
+                    at: self.now,
+                    last_move: None,
+                });
+            } else {
+                self.events.push(up);
+            }
         }
     }
 
     fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, _repeat: bool) {
+        self.release_bounce();
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
@@ -304,11 +389,13 @@ impl EventHandler for Collector {
     }
 
     fn char_event(&mut self, ch: char, mods: KeyMods, _repeat: bool) {
+        self.release_bounce();
         let mods = map_mods(mods);
         self.events.push(InputEvent::Char { ch, mods });
     }
 
     fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
+        self.release_bounce();
         self.held.set(code, false);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
@@ -615,7 +702,7 @@ mod tests {
         c.mouse_button_down_event(MouseButton::Unknown, 1.0, 1.0);
         c.mouse_button_up_event(MouseButton::Unknown, 1.0, 1.0);
         // Assert
-        assert!(drain(&mut c).is_empty());
+        assert_eq!(drain(&mut c), []);
     }
 
     #[test]
@@ -947,6 +1034,243 @@ mod tests {
                 moved(1.0, 1.0),
                 pressure(None),
                 moved(30.0, 40.0),
+            ]
+        );
+    }
+
+    // ---- T42 pen tip bounces -----------------------------------------------
+
+    use std::time::{Duration, Instant};
+
+    const MS: Duration = Duration::from_millis(1);
+
+    /// A collector in pen mode at frame time `t0`.
+    fn bouncing(t0: Instant) -> Collector {
+        let mut c = Collector::new();
+        c.set_bounce_window(PEN_BOUNCE_WINDOW);
+        c.set_now(t0);
+        c
+    }
+
+    /// The pen moves to `(x, y)`.
+    fn pen_move(c: &mut Collector, x: f32, y: f32) {
+        c.set_pen_samples(vec![sample(x, y, 0.5)]);
+        c.mouse_motion_event(x, y);
+    }
+
+    /// The pen tip goes down (`down`) or up at `(x, y)`.
+    fn pen_tip(c: &mut Collector, down: bool, x: f32, y: f32) {
+        c.set_pen_samples(vec![sample(x, y, 0.5)]);
+        if down {
+            c.mouse_button_down_event(MouseButton::Left, x, y);
+        } else {
+            c.mouse_button_up_event(MouseButton::Left, x, y);
+        }
+    }
+
+    /// The events without pressure updates.
+    fn actions(c: &mut Collector) -> Vec<InputEvent> {
+        drain(c)
+            .into_iter()
+            .filter(|e| !matches!(e, InputEvent::Pressure { .. }))
+            .collect()
+    }
+
+    fn button(down: bool, button: PointerButton, x: f32, y: f32) -> InputEvent {
+        let pos = Vec2::new(x, y);
+        let mods = Modifiers::NONE;
+        if down {
+            InputEvent::PointerDown { pos, button, mods }
+        } else {
+            InputEvent::PointerUp { pos, button, mods }
+        }
+    }
+
+    #[test]
+    fn collector_pen_bounce_within_window_joins_the_stroke() {
+        // Arrange: a stroke in progress.
+        let t0 = Instant::now();
+        let mut c = bouncing(t0);
+        pen_tip(&mut c, true, 10.0, 10.0);
+        pen_move(&mut c, 20.0, 10.0);
+        drain(&mut c);
+
+        // Act: the tip bounces 20 ms later, 40 px further along.
+        pen_tip(&mut c, false, 20.0, 10.0);
+        pen_move(&mut c, 40.0, 10.0);
+        c.set_now(t0 + 20 * MS);
+        pen_tip(&mut c, true, 60.0, 10.0);
+        let still_held = c.flush_bounce();
+        pen_move(&mut c, 70.0, 10.0);
+
+        // Assert
+        assert!(!still_held);
+        assert_eq!(actions(&mut c), [moved(60.0, 10.0), moved(70.0, 10.0)]);
+    }
+
+    #[test]
+    fn collector_pen_release_is_held_inside_the_window() {
+        // Arrange
+        let t0 = Instant::now();
+        let mut c = bouncing(t0);
+        pen_tip(&mut c, true, 10.0, 10.0);
+        drain(&mut c);
+
+        // Act
+        pen_tip(&mut c, false, 10.0, 10.0);
+        pen_move(&mut c, 15.0, 10.0);
+        c.set_now(t0 + PEN_BOUNCE_WINDOW.saturating_sub(MS));
+        let still_held = c.flush_bounce();
+
+        // Assert
+        assert!(still_held);
+        assert_eq!(actions(&mut c), []);
+    }
+
+    #[test]
+    fn collector_pen_release_after_the_window_is_handed_on() {
+        // Arrange
+        let t0 = Instant::now();
+        let mut c = bouncing(t0);
+        pen_tip(&mut c, true, 10.0, 10.0);
+        drain(&mut c);
+        pen_tip(&mut c, false, 10.0, 10.0);
+        pen_move(&mut c, 15.0, 10.0);
+        pen_move(&mut c, 18.0, 10.0);
+
+        // Act
+        c.set_now(t0 + PEN_BOUNCE_WINDOW + MS);
+        let still_held = c.flush_bounce();
+        pen_move(&mut c, 30.0, 10.0);
+
+        // Assert: the release, the last held move, then moves as usual.
+        assert!(!still_held);
+        assert_eq!(
+            actions(&mut c),
+            [
+                button(false, PointerButton::Left, 10.0, 10.0),
+                moved(18.0, 10.0),
+                moved(30.0, 10.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_pen_press_after_the_window_starts_a_new_stroke() {
+        // Arrange
+        let t0 = Instant::now();
+        let mut c = bouncing(t0);
+        pen_tip(&mut c, true, 10.0, 10.0);
+        drain(&mut c);
+        pen_tip(&mut c, false, 10.0, 10.0);
+
+        // Act: the next press comes 300 ms later, before any flush.
+        c.set_now(t0 + 300 * MS);
+        pen_tip(&mut c, true, 50.0, 50.0);
+
+        // Assert
+        assert_eq!(
+            actions(&mut c),
+            [
+                button(false, PointerButton::Left, 10.0, 10.0),
+                button(true, PointerButton::Left, 50.0, 50.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_key_flushes_the_held_release_first() {
+        // Arrange
+        let t0 = Instant::now();
+        let mut c = bouncing(t0);
+        pen_tip(&mut c, true, 10.0, 10.0);
+        drain(&mut c);
+        pen_tip(&mut c, false, 10.0, 10.0);
+        pen_move(&mut c, 12.0, 10.0);
+
+        // Act
+        c.key_down_event(KeyCode::Z, NO_MODS, false);
+        c.char_event('z', NO_MODS, false);
+        c.mouse_wheel_event(0.0, 1.0);
+
+        // Assert
+        let events = actions(&mut c);
+        assert_eq!(
+            events[..3],
+            [
+                button(false, PointerButton::Left, 10.0, 10.0),
+                moved(12.0, 10.0),
+                InputEvent::KeyDown {
+                    key: Key::Z,
+                    mods: Modifiers::NONE,
+                },
+            ]
+        );
+        assert_eq!(events.len(), 5, "{events:?}");
+        assert!(!c.flush_bounce());
+    }
+
+    #[test]
+    fn collector_other_button_flushes_the_held_release_first() {
+        // Arrange
+        let t0 = Instant::now();
+        let mut c = bouncing(t0);
+        pen_tip(&mut c, true, 10.0, 10.0);
+        drain(&mut c);
+        pen_tip(&mut c, false, 10.0, 10.0);
+
+        // Act: a barrel button, 5 ms later.
+        c.set_now(t0 + 5 * MS);
+        c.set_pen_samples(vec![sample(10.0, 10.0, 0.0)]);
+        c.mouse_button_down_event(MouseButton::Middle, 10.0, 10.0);
+
+        // Assert
+        assert_eq!(
+            actions(&mut c),
+            [
+                button(false, PointerButton::Left, 10.0, 10.0),
+                button(true, PointerButton::Middle, 10.0, 10.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_mouse_release_is_never_held() {
+        // Arrange: no pen samples, so these are mouse events.
+        let mut c = bouncing(Instant::now());
+        c.mouse_button_down_event(MouseButton::Left, 10.0, 10.0);
+        drain(&mut c);
+
+        // Act
+        c.mouse_button_up_event(MouseButton::Left, 10.0, 10.0);
+        let still_held = c.flush_bounce();
+
+        // Assert
+        assert!(!still_held);
+        assert_eq!(
+            actions(&mut c),
+            [button(false, PointerButton::Left, 10.0, 10.0)]
+        );
+    }
+
+    #[test]
+    fn collector_without_a_window_passes_pen_releases() {
+        // Arrange: no `set_bounce_window`.
+        let mut c = Collector::new();
+        c.set_now(Instant::now());
+        pen_tip(&mut c, true, 10.0, 10.0);
+        drain(&mut c);
+
+        // Act
+        pen_tip(&mut c, false, 10.0, 10.0);
+        pen_tip(&mut c, true, 20.0, 10.0);
+
+        // Assert
+        assert_eq!(
+            actions(&mut c),
+            [
+                button(false, PointerButton::Left, 10.0, 10.0),
+                button(true, PointerButton::Left, 20.0, 10.0),
             ]
         );
     }
