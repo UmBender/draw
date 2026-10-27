@@ -280,7 +280,6 @@ impl Document {
     }
 
     /// Shapes with their ids, bottom to top.
-    #[must_use]
     pub fn shapes(
         &self,
     ) -> impl DoubleEndedIterator<Item = (ShapeId, &Shape)> + ExactSizeIterator + '_ {
@@ -990,7 +989,7 @@ mod tests {
     fn apply_error_displays_message() {
         let err = ApplyError::UnknownId(ShapeId(3));
 
-        assert!(!err.to_string().is_empty());
+        assert_ne!(err.to_string().len(), 0);
     }
 
     // ---- AC-6: builders ----

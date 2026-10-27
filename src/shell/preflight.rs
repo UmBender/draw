@@ -553,7 +553,7 @@ libc.so.6            linked    glibc           libc6
             let message = problem.to_string();
 
             // Assert
-            assert!(!message.is_empty());
+            assert_ne!(message.len(), 0);
             assert!(!message.contains('\n'), "{message}");
         }
     }

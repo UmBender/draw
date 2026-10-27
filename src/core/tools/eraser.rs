@@ -241,7 +241,7 @@ mod tests {
         assert!(redraw);
         let overlay = preview(&state, &fx.view(Tool::Eraser));
         assert_eq!(overlay.hidden, vec![ids[0]]);
-        assert!(overlay.shapes.is_empty());
+        assert_eq!(overlay.shapes, []);
         assert_eq!(fx.doc.len(), 3);
     }
 
@@ -365,7 +365,7 @@ mod tests {
 
         // Assert
         assert_eq!(preview(&near, &fx.view(Tool::Eraser)).hidden, ids);
-        assert!(preview(&far, &fx.view(Tool::Eraser)).hidden.is_empty());
+        assert_eq!(preview(&far, &fx.view(Tool::Eraser)).hidden, []);
     }
 
     // ---- T21 clearing fills -------------------------------------------------
@@ -484,7 +484,7 @@ mod tests {
 
         // Assert: both fills gone, both shapes kept.
         assert_eq!(fx.doc.len(), 2);
-        assert!(fx.shape(ids[0]).cell_fills().is_empty());
+        assert_eq!(fx.shape(ids[0]).cell_fills(), []);
         assert_eq!(fx.shape(ids[1]).fill(), None);
     }
 

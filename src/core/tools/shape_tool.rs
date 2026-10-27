@@ -468,7 +468,7 @@ mod tests {
         assert!(matches!(overlay.shapes[0], Shape::Ellipse { .. }));
         let (_, b) = ends(&overlay.shapes[0]);
         assert!(b.approx_eq(Vec2::new(20.0, 10.0), 1e-4));
-        assert!(overlay.hidden.is_empty());
+        assert_eq!(overlay.hidden, []);
         assert!(overlay.marquee.is_none());
     }
 
@@ -700,7 +700,7 @@ mod tests {
         let (a, b) = ends(f.last_shape());
         assert!(a.approx_eq(Vec2::new(200.0, 0.0), 1e-4), "{a:?}");
         assert!(b.approx_eq(Vec2::new(250.0, 30.0), 1e-4), "{b:?}");
-        assert!(!overlay.guides.is_empty());
+        assert_ne!(overlay.guides.len(), 0);
         assert!(f.overlay().is_empty(), "guides go away with the drag");
     }
 
@@ -719,7 +719,7 @@ mod tests {
         let (a, b) = ends(f.last_shape());
         assert!(a.approx_eq(Vec2::new(200.0, 3.0), 1e-4), "{a:?}");
         assert!(b.approx_eq(Vec2::new(253.0, 28.0), 1e-4), "{b:?}");
-        assert!(overlay.guides.is_empty());
+        assert_eq!(overlay.guides, Vec::<[Vec2; 2]>::new());
     }
 
     #[test]
@@ -741,7 +741,7 @@ mod tests {
         let (a, b) = ends(f.last_shape());
         assert!(a.approx_eq(Vec2::new(200.0, 0.0), 1e-4), "{a:?}");
         assert!(b.approx_eq(Vec2::new(240.0, 40.0), 1e-4), "{b:?}");
-        assert!(overlay.guides.is_empty());
+        assert_eq!(overlay.guides, Vec::<[Vec2; 2]>::new());
     }
 
     #[test]

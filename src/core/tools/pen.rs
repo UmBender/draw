@@ -250,7 +250,7 @@ mod tests {
         assert!(f.doc.is_empty(), "nothing is committed before up");
         assert_eq!(overlay.shapes.len(), 1);
         assert_eq!(stroke_points(&overlay.shapes[0]).len(), 3);
-        assert!(overlay.hidden.is_empty());
+        assert_eq!(overlay.hidden, []);
         assert!(overlay.marquee.is_none());
     }
 

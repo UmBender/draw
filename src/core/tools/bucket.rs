@@ -231,7 +231,7 @@ mod tests {
 
         assert!(fx.history.undo(&mut fx.doc));
 
-        assert!(fx.shape(ids[0]).cell_fills().is_empty());
+        assert_eq!(fx.shape(ids[0]).cell_fills(), []);
     }
 
     #[test]
@@ -252,7 +252,7 @@ mod tests {
         // Assert
         assert_eq!(fx.shape(ids[0]).fill(), None);
         assert_eq!(fx.shape(ids[1]).cell_fill(0, 0), Some(red()));
-        assert!(fx.shape(ids[2]).cell_fills().is_empty());
+        assert_eq!(fx.shape(ids[2]).cell_fills(), []);
         assert_eq!(fx.shape(ids[3]).fill(), Some(red()));
     }
 
@@ -262,7 +262,7 @@ mod tests {
 
         assert!(!click(&mut fx, 150.0, 50.0));
 
-        assert!(fx.shape(ids[0]).cell_fills().is_empty());
+        assert_eq!(fx.shape(ids[0]).cell_fills(), []);
         assert_eq!(fx.history.undo_len(), 0);
     }
 }

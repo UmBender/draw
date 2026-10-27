@@ -1124,7 +1124,7 @@ mod tests {
                 .any(|[a, b]| approx_eq(a.y, 0.0, EPS) && approx_eq(b.y, 0.0, EPS)),
             "{snapped:?}"
         );
-        assert!(raw.guides.is_empty());
+        assert_eq!(raw.guides, Vec::<[Vec2; 2]>::new());
         assert!(raw.point.approx_eq(v(-250.0, 300.0), EPS));
     }
 
@@ -1170,7 +1170,7 @@ mod tests {
         assert!(approx_eq(GRID_STEP, 20.0, EPS));
         assert!(p.approx_eq(v(20.0, -20.0), EPS), "{p:?}");
         assert!(end.point.approx_eq(v(60.0, 60.0), EPS));
-        assert!(end.guides.is_empty());
+        assert_eq!(end.guides, Vec::<[Vec2; 2]>::new());
         assert!(start.approx_eq(v(20.0, 0.0), EPS), "{start:?}");
     }
 

@@ -1,7 +1,7 @@
 ---
 id: T43
 title: Adopt clippy 1.99 lints
-status: todo
+status: review
 wave: 28
 branch: chore/clippy-1-99
 depends_on: []
@@ -67,10 +67,10 @@ No new behaviour, so no new tests: the existing suite is the spec.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T43): specify the clippy 1.99 acceptance criteria`
-- [ ] tests — `test(T43): show values in empty and non-empty asserts`
-- [ ] behaviour — `refactor(T43): use f32::midpoint and drop a double must_use`
-- [ ] docs — `docs(T43): record the clippy 1.99 cleanup`
+- [x] spec — `docs(T43): specify the clippy 1.99 acceptance criteria`
+- [x] tests — `test(T43): show values in empty and non-empty asserts`
+- [x] behaviour — `refactor(T43): use f32::midpoint and drop a double must_use`
+- [x] docs — `docs(T43): record the clippy 1.99 cleanup`
 
 Models and quality have no separate commit: there are no new types, and
 the refactor commit is the quality step.
@@ -83,3 +83,9 @@ No tutorial: a lint cleanup teaches nothing new.
 
 - 2026-10-27 — Created while finishing T42, whose quality step found the
   gate broken by the toolchain update.
+- 2026-10-27 — Done. 42 asserts changed; where `[]` is ambiguous
+  (`Vec<String>`, `Vec<[Vec2; 2]>`) the empty side is a typed
+  `Vec::<…>::new()`. On this branch clippy reports only the 2 errors
+  T42 fixes. A test merge of both branches in a temporary worktree
+  passed `scripts/check.sh` (fmt, clippy, 1033 tests, docs). Merge T42
+  first or together: neither branch alone passes clippy.
