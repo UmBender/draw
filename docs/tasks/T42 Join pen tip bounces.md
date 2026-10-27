@@ -1,11 +1,11 @@
 ---
 id: T42
 title: Join pen tip bounces
-status: ready
+status: in-progress
 wave: 28
 branch: fix/pen-tip-bounce
 depends_on: [T35]
-adrs: []
+adrs: ["[[ADR-T42-1 Pen tip bounces join the stroke]]"]
 feature: "[[Pen tablets]]"
 tutorial: "[[35 Reading a pen through a patched window library]]"
 tags: [task]
@@ -58,7 +58,32 @@ blocking event loop must wake when the window closes (`schedule_update`).
 
 ## Spec
 
-_To be written in the spec step._
+Decision: [[ADR-T42-1 Pen tip bounces join the stroke]] — the proposal
+is taken, with a window of 60 ms. Tests are `Collector` unit tests in
+`src/shell/input_map.rs`; time is the frame time set with `set_now`.
+
+- **AC-1** — a pen left release followed by a pen left press within the
+  window emits neither; a move to the press position goes out instead:
+  `collector_pen_bounce_within_window_joins_the_stroke`.
+- **AC-2** — a held pen release, and the moves after it, stay back until
+  the window has passed; `flush_bounce` then emits the release and the
+  last held move, and says whether a release is still held:
+  `collector_pen_release_is_held_inside_the_window`,
+  `collector_pen_release_after_the_window_is_handed_on`.
+- **AC-3** — a pen press after the window gets the release first, then
+  starts a new stroke:
+  `collector_pen_press_after_the_window_starts_a_new_stroke`.
+- **AC-4** — a key, character, wheel or other button event while a
+  release is held emits the release first:
+  `collector_key_flushes_the_held_release_first`,
+  `collector_other_button_flushes_the_held_release_first`.
+- **AC-5** — a mouse release (no pen sample), and any release with no
+  window set, passes at once:
+  `collector_mouse_release_is_never_held`,
+  `collector_without_a_window_passes_pen_releases`.
+- **AC-6** — owner check: with `DRAW_BACKEND=wayland` and the HUION 420,
+  quick lines no longer break, and separate strokes stay separate (see
+  *Log*).
 
 ## Out of scope
 
@@ -75,7 +100,7 @@ _To be written in the spec step._
 
 ## Subtasks (one commit each)
 
-- [ ] spec
+- [x] spec — `docs(T42): specify pen tip bounce acceptance criteria`
 - [ ] tests
 - [ ] models
 - [ ] behaviour
