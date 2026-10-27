@@ -1,7 +1,7 @@
 ---
 id: T43
 title: Adopt clippy 1.99 lints
-status: todo
+status: in-progress
 wave: 28
 branch: chore/clippy-1-99
 depends_on: []
@@ -67,7 +67,7 @@ No new behaviour, so no new tests: the existing suite is the spec.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T43): specify the clippy 1.99 acceptance criteria`
+- [x] spec — `docs(T43): specify the clippy 1.99 acceptance criteria`
 - [ ] tests — `test(T43): show values in empty and non-empty asserts`
 - [ ] behaviour — `refactor(T43): use f32::midpoint and drop a double must_use`
 - [ ] docs — `docs(T43): record the clippy 1.99 cleanup`
