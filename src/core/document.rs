@@ -280,7 +280,6 @@ impl Document {
     }
 
     /// Shapes with their ids, bottom to top.
-    #[must_use]
     pub fn shapes(
         &self,
     ) -> impl DoubleEndedIterator<Item = (ShapeId, &Shape)> + ExactSizeIterator + '_ {

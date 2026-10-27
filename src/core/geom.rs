@@ -258,7 +258,7 @@ impl Aabb {
 fn expand_axis(min: f32, max: f32, margin: f32) -> (f32, f32) {
     let (lo, hi) = (min - margin, max + margin);
     if lo > hi {
-        let mid = (min + max) * 0.5;
+        let mid = f32::midpoint(min, max);
         (mid, mid)
     } else {
         (lo, hi)

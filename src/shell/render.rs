@@ -187,7 +187,7 @@ impl<S: MeshSink> Batch<S> {
                 Some(n0) => {
                     // cos² of half the turn; the mitre is h / cos(turn / 2).
                     let c = n0.dot(n);
-                    if (1.0 + c) * 0.5 * MITER_LIMIT * MITER_LIMIT >= 1.0 {
+                    if f32::midpoint(1.0, c) * MITER_LIMIT * MITER_LIMIT >= 1.0 {
                         let offset = (n0 + n) * (h / (1.0 + c));
                         last = Some(self.strip_push(last, (prev + offset, prev - offset), color));
                     } else {

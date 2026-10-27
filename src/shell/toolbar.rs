@@ -603,7 +603,7 @@ mod tests {
         let first = buttons[0].rect;
         let between = Vec2::new(
             first.center().x,
-            (first.max.y + buttons[1].rect.min.y) * 0.5,
+            f32::midpoint(first.max.y, buttons[1].rect.min.y),
         );
         for pos in [Vec2::new(600.0, 400.0), between, Vec2::new(-5.0, 10.0)] {
             assert_eq!(hit(&buttons, pos), None, "{pos:?}");
