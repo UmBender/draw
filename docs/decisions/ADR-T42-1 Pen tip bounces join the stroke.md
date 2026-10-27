@@ -1,7 +1,7 @@
 ---
 id: ADR-T42-1
 title: Pen tip bounces join the stroke
-status: proposed
+status: accepted
 kind: decision
 date: 2026-10-27
 task: T42

@@ -121,5 +121,7 @@ No new tutorial step; extend step 35 with the bounce window.
   (`assert_is_empty`, `manual_midpoint`, `double_must_use`) in files
   T42 does not own, so `scripts/check.sh` still fails at clippy; this
   needs a separate chore task. Feature note and tutorial step 35
-  extended. AC-6 (owner check on the HUION 420) is pending; ADR-T42-1
-  stays `proposed` until then.
+  extended.
+- 2026-10-27 — AC-6 confirmed by the owner (HUION 420, Hyprland,
+  `DRAW_BACKEND=wayland`): quick lines stay one stroke. ADR-T42-1
+  accepted.
