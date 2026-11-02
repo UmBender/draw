@@ -1,7 +1,7 @@
 ---
 id: T44
 title: One keyboard per Wayland seat
-status: review
+status: done
 wave: 29
 branch: fix/wayland-seat-devices
 depends_on: [T28]
@@ -147,3 +147,4 @@ No new tutorial; the vendored-backend tutorial of T35 covers the ground.
   trigger is still unknown.
 - AC-7 (owner check) pending: type in a text block and in a shape with
   `DRAW_BACKEND=wayland`, check the cursor shape and the pen.
+- 2026-11-02 — merged into `main` at the owner's request.

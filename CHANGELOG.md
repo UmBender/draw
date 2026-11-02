@@ -10,6 +10,9 @@ All notable changes to draw are listed here. The format follows
 
 - A pen line drawn in one movement stays one stroke (and one undo step)
   when the tablet briefly reports the tip lifting mid-line.
+- On the native Wayland backend (experimental), each key press is typed
+  once: a letter could show up three times when the compositor
+  re-announced the keyboard.
 
 ## [1.4.3] - 2026-10-22
 

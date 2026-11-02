@@ -161,4 +161,4 @@ flowchart TD
 | [[T41 Integral superscript at the advance]] | done | T36 | `fix/integral-superscript` |
 | [[T42 Join pen tip bounces]] | done | T35 | `fix/pen-tip-bounce` |
 | [[T43 Adopt clippy 1.99 lints]] | done | — | `chore/clippy-1-99` |
-| [[T44 One keyboard per Wayland seat]] | todo | T28 | `fix/wayland-seat-devices` |
+| [[T44 One keyboard per Wayland seat]] | done | T28 | `fix/wayland-seat-devices` |
