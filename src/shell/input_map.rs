@@ -1274,4 +1274,109 @@ mod tests {
             ]
         );
     }
+
+    // ---- T44 one device per Wayland seat capability ----------------------
+
+    use macroquad::miniquad::seat::{DeviceChange, device_change, has_release_request};
+
+    /// Replays `capabilities` events for one device, each saying whether
+    /// the capability is announced, as the Wayland backend applies them.
+    /// Returns the changes made and whether a device exists at the end.
+    fn replay_capabilities(announced: &[bool]) -> (Vec<DeviceChange>, bool) {
+        let mut exists = false;
+        let mut changes = Vec::new();
+        for &announced in announced {
+            let change = device_change(exists, announced);
+            match change {
+                DeviceChange::Create => exists = true,
+                DeviceChange::Release => exists = false,
+                DeviceChange::Keep => {}
+            }
+            changes.push(change);
+        }
+        (changes, exists)
+    }
+
+    #[test]
+    fn seat_device_change_announced_without_device_creates() {
+        // Act
+        let change = device_change(false, true);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Create);
+    }
+
+    #[test]
+    fn seat_device_change_announced_with_device_keeps() {
+        // Act
+        let change = device_change(true, true);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Keep);
+    }
+
+    #[test]
+    fn seat_device_change_withdrawn_with_device_releases() {
+        // Act
+        let change = device_change(true, false);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Release);
+    }
+
+    #[test]
+    fn seat_device_change_withdrawn_without_device_keeps() {
+        // Act
+        let change = device_change(false, false);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Keep);
+    }
+
+    #[test]
+    fn seat_capabilities_sent_three_times_create_one_device() {
+        // Arrange: the compositor announces the keyboard, then re-sends
+        // the same capabilities twice.
+        let announced = [true, true, true];
+
+        // Act
+        let (changes, exists) = replay_capabilities(&announced);
+
+        // Assert
+        let created = changes
+            .iter()
+            .filter(|&&c| c == DeviceChange::Create)
+            .count();
+        assert_eq!(created, 1);
+        assert!(exists);
+    }
+
+    #[test]
+    fn seat_capability_regained_creates_a_new_device() {
+        // Arrange: the keyboard is unplugged and plugged back in.
+        let announced = [true, false, true];
+
+        // Act
+        let (changes, exists) = replay_capabilities(&announced);
+
+        // Assert
+        assert_eq!(
+            changes,
+            [
+                DeviceChange::Create,
+                DeviceChange::Release,
+                DeviceChange::Create
+            ]
+        );
+        assert!(exists);
+    }
+
+    #[test]
+    fn seat_release_request_from_version_3() {
+        // Act + Assert
+        assert!(!has_release_request(1));
+        assert!(!has_release_request(2));
+        assert!(has_release_request(3));
+        assert!(has_release_request(4));
+    }
 }
