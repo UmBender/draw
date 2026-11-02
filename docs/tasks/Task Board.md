@@ -75,6 +75,7 @@ flowchart TD
   T36 --> T41[T41 Integral superscript at the advance]
   T35 --> T42[T42 Join pen tip bounces]
   T43[T43 Adopt clippy 1.99 lints]
+  T28 --> T44[T44 One keyboard per Wayland seat]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -110,6 +111,7 @@ flowchart TD
 | 26 | [[T40 Pen pressure on native Wayland]] |
 | 27 | [[T41 Integral superscript at the advance]] |
 | 28 | [[T42 Join pen tip bounces]] · [[T43 Adopt clippy 1.99 lints]] |
+| 29 | [[T44 One keyboard per Wayland seat]] |
 
 ## Status
 
@@ -159,3 +161,4 @@ flowchart TD
 | [[T41 Integral superscript at the advance]] | done | T36 | `fix/integral-superscript` |
 | [[T42 Join pen tip bounces]] | done | T35 | `fix/pen-tip-bounce` |
 | [[T43 Adopt clippy 1.99 lints]] | done | — | `chore/clippy-1-99` |
+| [[T44 One keyboard per Wayland seat]] | todo | T28 | `fix/wayland-seat-devices` |
