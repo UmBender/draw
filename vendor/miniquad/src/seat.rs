@@ -22,14 +22,16 @@ pub enum DeviceChange {
 /// A capability announced again keeps the device it already has, so a
 /// re-sent event adds no second listener.
 pub fn device_change(exists: bool, announced: bool) -> DeviceChange {
-    let _ = (exists, announced);
-    todo!()
+    match (exists, announced) {
+        (false, true) => DeviceChange::Create,
+        (true, false) => DeviceChange::Release,
+        _ => DeviceChange::Keep,
+    }
 }
 
 /// Whether seat devices of a `wl_seat` bound at `version` have the
 /// `release` request (version 3 and later); older ones are only
 /// destroyed.
 pub fn has_release_request(version: u32) -> bool {
-    let _ = version;
-    todo!()
+    version >= 3
 }
