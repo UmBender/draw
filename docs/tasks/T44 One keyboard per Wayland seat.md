@@ -1,7 +1,7 @@
 ---
 id: T44
 title: One keyboard per Wayland seat
-status: in-progress
+status: review
 wave: 29
 branch: fix/wayland-seat-devices
 depends_on: [T28]
@@ -123,11 +123,11 @@ cursor-shape device again.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T44): specify one keyboard per Wayland seat acceptance criteria`
-- [ ] tests — `test(T44): …`
-- [ ] models — `feat(T44): …`
-- [ ] behaviour — `fix(T44): …`
-- [ ] quality — `chore(T44): …`
-- [ ] docs — `docs(T44): …`
+- [x] tests — `test(T44): add failing tests for one device per Wayland seat`
+- [x] models — `feat(T44): add seat device_change and has_release_request signatures`
+- [x] behaviour — `fix(T44): keep one keyboard, pointer and touch per Wayland seat`
+- [x] quality — skipped, nothing to change (see *Log*)
+- [x] docs — `docs(T44): document one device per Wayland seat`
 
 ## Learning path
 
@@ -137,3 +137,13 @@ No new tutorial; the vendored-backend tutorial of T35 covers the ground.
 
 - 2026-11-02 — note written from the owner's report and code reading;
   not reproduced (see *Known facts*).
+- 2026-11-02 — implemented on `fix/wayland-seat-devices`. AC-1 to AC-6
+  pass. `scripts/check.sh` was green right after the behaviour commit, so
+  the quality step had nothing to commit. Smoke run with
+  `DRAW_BACKEND=wayland WAYLAND_DEBUG=client` on Hyprland 0.56.2: one
+  `capabilities(3)`, one `get_pointer`, one cursor-shape device (the
+  start-up `init_pointer_context` returns early) and one `get_keyboard`.
+  The release path could not be driven live, because the compositor
+  trigger is still unknown.
+- AC-7 (owner check) pending: type in a text block and in a shape with
+  `DRAW_BACKEND=wayland`, check the cursor shape and the pen.
