@@ -76,6 +76,7 @@ flowchart TD
   T35 --> T42[T42 Join pen tip bounces]
   T43[T43 Adopt clippy 1.99 lints]
   T28 --> T44[T44 One keyboard per Wayland seat]
+  T44 --> T45[T45 Doubled keys after a long idle on Wayland]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -112,6 +113,7 @@ flowchart TD
 | 27 | [[T41 Integral superscript at the advance]] |
 | 28 | [[T42 Join pen tip bounces]] · [[T43 Adopt clippy 1.99 lints]] |
 | 29 | [[T44 One keyboard per Wayland seat]] |
+| 30 | [[T45 Doubled keys after a long idle on Wayland]] |
 
 ## Status
 
@@ -162,3 +164,4 @@ flowchart TD
 | [[T42 Join pen tip bounces]] | done | T35 | `fix/pen-tip-bounce` |
 | [[T43 Adopt clippy 1.99 lints]] | done | — | `chore/clippy-1-99` |
 | [[T44 One keyboard per Wayland seat]] | done | T28 | `fix/wayland-seat-devices` |
+| [[T45 Doubled keys after a long idle on Wayland]] | todo | T44 | `fix/wayland-idle-doubled-keys` |
