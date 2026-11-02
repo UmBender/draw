@@ -34,6 +34,16 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   are dropped: Hyprland copies the pen onto `wl_pointer`, and the copy
   would steal the tip-down's sample (ADR-T40-1).
 
+- `src/seat.rs` (new), `src/lib.rs` (`pub mod seat`): `DeviceChange`,
+  `device_change()` and `has_release_request()` (ADR-T44-1).
+- `src/native/linux_wayland.rs`: `seat_handle_capabilities` keeps at
+  most one keyboard, pointer and touch device. Upstream asked for a new
+  device on every `wl_seat.capabilities`, so a compositor that re-sent it
+  delivered each key once per device. A device whose capability goes
+  away is released with what hangs off it (key repeat, cursor-shape
+  device, pointer lock, touch points); `init_pointer_context` runs once
+  per pointer, so a pointer that comes back gets its cursor shape.
+
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
   where it is used, and `respond_to_clipboard_request`

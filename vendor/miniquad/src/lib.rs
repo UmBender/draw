@@ -13,6 +13,8 @@ pub mod fs;
 pub mod graphics;
 pub mod native;
 pub mod pen;
+// draw patch (ADR-T35-1, ADR-T44-1): one device per seat capability.
+pub mod seat;
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 

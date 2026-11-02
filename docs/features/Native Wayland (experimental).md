@@ -1,7 +1,7 @@
 ---
 title: Native Wayland (experimental)
 task: "[[T28 Experimental native Wayland backend]]"
-adrs: ["[[ADR-T28-1 Opt-in native Wayland backend]]"]
+adrs: ["[[ADR-T28-1 Opt-in native Wayland backend]]", "[[ADR-T44-1 Wayland seat devices follow the announced capabilities]]"]
 tutorial: "[[28 Choosing a window backend at startup]]"
 shortcuts: []
 tags: [feature, experimental]
@@ -41,6 +41,14 @@ backend in `WindowSettings`; the `Conf` keeps the blocking event loop of
 `libxkbcommon`, `libEGL`) and does not need `DISPLAY`. `libdecor` is
 `optional`. The Flatpak manifest grants both the `x11` and `wayland`
 sockets. See [[ADR-T28-1 Opt-in native Wayland backend]].
+
+The vendored miniquad keeps at most one keyboard, pointer and touch
+device per seat. The compositor may send `wl_seat.capabilities` again
+when devices change; `miniquad::seat::device_change` then keeps the
+devices it already has, releases those whose capability went away and
+creates those that came back, so every key and button arrives once
+([[T44 One keyboard per Wayland seat]],
+[[ADR-T44-1 Wayland seat devices follow the announced capabilities]]).
 
 ## Limits
 

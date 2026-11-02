@@ -261,6 +261,13 @@ impl WaylandPayload {
         );
     }
     unsafe fn init_pointer_context(&mut self) {
+        // draw patch (ADR-T44-1): also called when a pointer is created, so
+        // it runs once per pointer.
+        if self.pointer_context.pointer.is_null()
+            || !self.pointer_context.cursor_shape_device.is_null()
+        {
+            return;
+        }
         if !self.pointer_context.cursor_shape_manager.is_null() {
             self.pointer_context.cursor_shape_device = wl_request_constructor!(
                 self.client,
@@ -557,71 +564,133 @@ static mut TABLET_TOOL_LISTENER: extensions::tablet::zwp_tablet_tool_v2_listener
 static mut RELATIVE_POINTER_LISTENER: extensions::cursor::zwp_relative_pointer_v1_listener =
     extensions::cursor::zwp_relative_pointer_v1_listener::dummy();
 
+// draw patch (ADR-T35-1, ADR-T44-1): keep at most one device per
+// capability. Upstream asked for a new device on every `capabilities`
+// event, so a compositor that re-sends it fed every key and button to the
+// listener once per device.
 unsafe extern "C" fn seat_handle_capabilities(
     data: *mut std::ffi::c_void,
     seat: *mut wl_seat,
     caps: wl_seat_capability,
 ) {
+    use crate::seat::{device_change, has_release_request, DeviceChange};
+
     let display: &mut WaylandPayload = &mut *(data as *mut _);
+    let release = has_release_request((display.client.wl_proxy_get_version)(seat as _));
 
-    if caps & wl_seat_capability_WL_SEAT_CAPABILITY_POINTER != 0 {
-        display.pointer_context.pointer = wl_request_constructor!(
-            display.client,
-            seat,
-            WL_SEAT_GET_POINTER,
-            display.client.wl_pointer_interface
-        );
-        assert!(!display.pointer_context.pointer.is_null());
-        POINTER_LISTENER.enter = pointer_handle_enter;
-        POINTER_LISTENER.axis = pointer_handle_axis;
-        POINTER_LISTENER.motion = pointer_handle_motion;
-        POINTER_LISTENER.button = pointer_handle_button;
-        POINTER_LISTENER.leave = pointer_handle_leave;
-        (display.client.wl_proxy_add_listener)(
-            display.pointer_context.pointer as _,
-            &POINTER_LISTENER as *const _ as _,
-            data,
-        );
+    let pointer = caps & wl_seat_capability_WL_SEAT_CAPABILITY_POINTER != 0;
+    match device_change(!display.pointer_context.pointer.is_null(), pointer) {
+        DeviceChange::Create => {
+            display.pointer_context.pointer = wl_request_constructor!(
+                display.client,
+                seat,
+                WL_SEAT_GET_POINTER,
+                display.client.wl_pointer_interface
+            );
+            assert!(!display.pointer_context.pointer.is_null());
+            POINTER_LISTENER.enter = pointer_handle_enter;
+            POINTER_LISTENER.axis = pointer_handle_axis;
+            POINTER_LISTENER.motion = pointer_handle_motion;
+            POINTER_LISTENER.button = pointer_handle_button;
+            POINTER_LISTENER.leave = pointer_handle_leave;
+            (display.client.wl_proxy_add_listener)(
+                display.pointer_context.pointer as _,
+                &POINTER_LISTENER as *const _ as _,
+                data,
+            );
+            // A pointer that came back needs its cursor-shape device again.
+            // At start-up the manager may not be bound yet; then
+            // `init_pointer_context` runs after the roundtrips.
+            if !display.pointer_context.cursor_shape_manager.is_null() {
+                display.init_pointer_context();
+            }
+        }
+        DeviceChange::Release => {
+            display.pointer_context.set_grab(data, false);
+            let device = display.pointer_context.cursor_shape_device;
+            if !device.is_null() {
+                wl_request!(display.client, device, 0);
+                (display.client.wl_proxy_destroy)(device as _);
+                display.pointer_context.cursor_shape_device = std::ptr::null_mut();
+            }
+            let proxy = display.pointer_context.pointer;
+            if release {
+                wl_request!(display.client, proxy, WL_POINTER_RELEASE);
+            }
+            (display.client.wl_proxy_destroy)(proxy as _);
+            display.pointer_context.pointer = std::ptr::null_mut();
+            display.pointer_context.enter_serial = None;
+        }
+        DeviceChange::Keep => {}
     }
 
-    if caps & wl_seat_capability_WL_SEAT_CAPABILITY_KEYBOARD != 0 {
-        display.keyboard = wl_request_constructor!(
-            display.client,
-            seat,
-            WL_SEAT_GET_KEYBOARD,
-            display.client.wl_keyboard_interface
-        );
-        assert!(!display.keyboard.is_null());
-        KEYBOARD_LISTENER.enter = keyboard_handle_enter;
-        KEYBOARD_LISTENER.keymap = keyboard_handle_keymap;
-        KEYBOARD_LISTENER.repeat_info = keyboard_handle_repeat_info;
-        KEYBOARD_LISTENER.key = keyboard_handle_key;
-        KEYBOARD_LISTENER.modifiers = keyboard_handle_modifiers;
-        KEYBOARD_LISTENER.leave = keyboard_handle_leave;
-        (display.client.wl_proxy_add_listener)(
-            display.keyboard as _,
-            &KEYBOARD_LISTENER as *const _ as _,
-            data,
-        );
+    let keyboard = caps & wl_seat_capability_WL_SEAT_CAPABILITY_KEYBOARD != 0;
+    match device_change(!display.keyboard.is_null(), keyboard) {
+        DeviceChange::Create => {
+            display.keyboard = wl_request_constructor!(
+                display.client,
+                seat,
+                WL_SEAT_GET_KEYBOARD,
+                display.client.wl_keyboard_interface
+            );
+            assert!(!display.keyboard.is_null());
+            KEYBOARD_LISTENER.enter = keyboard_handle_enter;
+            KEYBOARD_LISTENER.keymap = keyboard_handle_keymap;
+            KEYBOARD_LISTENER.repeat_info = keyboard_handle_repeat_info;
+            KEYBOARD_LISTENER.key = keyboard_handle_key;
+            KEYBOARD_LISTENER.modifiers = keyboard_handle_modifiers;
+            KEYBOARD_LISTENER.leave = keyboard_handle_leave;
+            (display.client.wl_proxy_add_listener)(
+                display.keyboard as _,
+                &KEYBOARD_LISTENER as *const _ as _,
+                data,
+            );
+        }
+        DeviceChange::Release => {
+            if let Some(key) = display.keyboard_context.repeated_key {
+                display.keyboard_context.track_key_up(key);
+            }
+            display.keyboard_context.enter_serial = None;
+            let proxy = display.keyboard;
+            if release {
+                wl_request!(display.client, proxy, WL_KEYBOARD_RELEASE);
+            }
+            (display.client.wl_proxy_destroy)(proxy as _);
+            display.keyboard = std::ptr::null_mut();
+        }
+        DeviceChange::Keep => {}
     }
 
-    if caps & wl_seat_capability_WL_SEAT_CAPABILITY_TOUCH != 0 {
-        display.touch = wl_request_constructor!(
-            display.client,
-            seat,
-            WL_SEAT_GET_TOUCH,
-            display.client.wl_touch_interface
-        );
-        assert!(!display.touch.is_null());
-        TOUCH_LISTENER.down = touch_handle_down;
-        TOUCH_LISTENER.up = touch_handle_up;
-        TOUCH_LISTENER.motion = touch_handle_motion;
-        TOUCH_LISTENER.cancel = touch_handle_cancel;
-        (display.client.wl_proxy_add_listener)(
-            display.touch as _,
-            &TOUCH_LISTENER as *const _ as _,
-            data,
-        );
+    let touch = caps & wl_seat_capability_WL_SEAT_CAPABILITY_TOUCH != 0;
+    match device_change(!display.touch.is_null(), touch) {
+        DeviceChange::Create => {
+            display.touch = wl_request_constructor!(
+                display.client,
+                seat,
+                WL_SEAT_GET_TOUCH,
+                display.client.wl_touch_interface
+            );
+            assert!(!display.touch.is_null());
+            TOUCH_LISTENER.down = touch_handle_down;
+            TOUCH_LISTENER.up = touch_handle_up;
+            TOUCH_LISTENER.motion = touch_handle_motion;
+            TOUCH_LISTENER.cancel = touch_handle_cancel;
+            (display.client.wl_proxy_add_listener)(
+                display.touch as _,
+                &TOUCH_LISTENER as *const _ as _,
+                data,
+            );
+        }
+        DeviceChange::Release => {
+            let proxy = display.touch;
+            if release {
+                wl_request!(display.client, proxy, WL_TOUCH_RELEASE);
+            }
+            (display.client.wl_proxy_destroy)(proxy as _);
+            display.touch = std::ptr::null_mut();
+            display.touch_positions.clear();
+        }
+        DeviceChange::Keep => {}
     }
 }
 

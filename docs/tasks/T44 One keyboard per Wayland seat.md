@@ -1,11 +1,11 @@
 ---
 id: T44
 title: One keyboard per Wayland seat
-status: todo
+status: review
 wave: 29
 branch: fix/wayland-seat-devices
 depends_on: [T28]
-adrs: []
+adrs: ["[[ADR-T44-1 Wayland seat devices follow the announced capabilities]]"]
 feature: "[[Native Wayland (experimental)]]"
 tutorial: ""
 tags: [task]
@@ -66,6 +66,45 @@ the seat's capabilities. Today a typed letter can show up three times
 4. Needs an ADR, or a short amendment to ADR-T35-1, recording that the
    vendored backend now also carries a seat fix that is not about pens.
 
+## Spec
+
+Decision: [[ADR-T44-1 Wayland seat devices follow the announced capabilities]].
+Proposals 1 to 4 are taken; the ADR amends ADR-T35-1.
+
+`miniquad::seat::device_change(exists, announced)` says what the Wayland
+backend does with one seat device (keyboard, pointer or touch) when
+`wl_seat.capabilities` arrives: `Create` it when the capability is
+announced and no device exists, `Release` it when the capability is gone
+and a device exists, `Keep` otherwise. `miniquad::seat::has_release_request(version)`
+says whether the bound `wl_seat` version has the devices' `release`
+request (3 and later); older seats only destroy the proxy.
+
+`seat_handle_capabilities` applies `device_change` to each device. A
+released keyboard also stops its key repeat; a released pointer also
+drops its cursor-shape device and any pointer lock; a released touch
+forgets its touch points. A pointer created after start-up gets a
+cursor-shape device again.
+
+- **AC-1** — a capability announced with no device creates one:
+  `seat_device_change_announced_without_device_creates`.
+- **AC-2** — a capability announced again with a device keeps it, so a
+  re-sent `capabilities` adds no second keyboard:
+  `seat_device_change_announced_with_device_keeps`.
+- **AC-3** — a capability gone with a device releases it; gone with no
+  device does nothing:
+  `seat_device_change_withdrawn_with_device_releases`,
+  `seat_device_change_withdrawn_without_device_keeps`.
+- **AC-4** — replaying `capabilities(keyboard)` three times creates
+  exactly one keyboard: `seat_capabilities_sent_three_times_create_one_device`.
+- **AC-5** — replaying keyboard announced, gone, announced creates,
+  releases and creates again, so a re-plugged keyboard is read:
+  `seat_capability_regained_creates_a_new_device`.
+- **AC-6** — `release` is used from seat version 3 on, and only destroy
+  below it: `seat_release_request_from_version_3`.
+- **AC-7** — owner check on Hyprland with `DRAW_BACKEND=wayland`: typing
+  in a text block and in a shape gives each character once, `Backspace`
+  removes one, the mouse cursor shape and pen still work (see *Log*).
+
 ## Out of scope
 
 - X11 (one keyboard, no such callback).
@@ -74,21 +113,21 @@ the seat's capabilities. Today a typed letter can show up three times
 
 ## Files owned
 
-- `vendor/miniquad/src/native/linux_wayland.rs`, a new helper module or
-  `vendor/miniquad/src/pen.rs`-style file in the vendored crate,
-  `vendor/miniquad/src/lib.rs`, `vendor/miniquad/PATCHED.md`
-- draw tests calling the helper (e.g. `src/shell/input_map.rs` tests)
+- `vendor/miniquad/src/native/linux_wayland.rs`,
+  `vendor/miniquad/src/seat.rs` (new), `vendor/miniquad/src/lib.rs`,
+  `vendor/miniquad/PATCHED.md`
+- `src/shell/input_map.rs` (tests)
 - `docs/features/Native Wayland (experimental).md`
 - new ADR `ADR-T44-*`
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T44): …`
-- [ ] tests — `test(T44): …`
-- [ ] models — `feat(T44): …`
-- [ ] behaviour — `fix(T44): …`
-- [ ] quality — `chore(T44): …`
-- [ ] docs — `docs(T44): …`
+- [x] spec — `docs(T44): specify one keyboard per Wayland seat acceptance criteria`
+- [x] tests — `test(T44): add failing tests for one device per Wayland seat`
+- [x] models — `feat(T44): add seat device_change and has_release_request signatures`
+- [x] behaviour — `fix(T44): keep one keyboard, pointer and touch per Wayland seat`
+- [x] quality — skipped, nothing to change (see *Log*)
+- [x] docs — `docs(T44): document one device per Wayland seat`
 
 ## Learning path
 
@@ -98,3 +137,13 @@ No new tutorial; the vendored-backend tutorial of T35 covers the ground.
 
 - 2026-11-02 — note written from the owner's report and code reading;
   not reproduced (see *Known facts*).
+- 2026-11-02 — implemented on `fix/wayland-seat-devices`. AC-1 to AC-6
+  pass. `scripts/check.sh` was green right after the behaviour commit, so
+  the quality step had nothing to commit. Smoke run with
+  `DRAW_BACKEND=wayland WAYLAND_DEBUG=client` on Hyprland 0.56.2: one
+  `capabilities(3)`, one `get_pointer`, one cursor-shape device (the
+  start-up `init_pointer_context` returns early) and one `get_keyboard`.
+  The release path could not be driven live, because the compositor
+  trigger is still unknown.
+- AC-7 (owner check) pending: type in a text block and in a shape with
+  `DRAW_BACKEND=wayland`, check the cursor shape and the pen.
