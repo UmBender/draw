@@ -77,6 +77,13 @@ flowchart TD
   T43[T43 Adopt clippy 1.99 lints]
   T28 --> T44[T44 One keyboard per Wayland seat]
   T44 --> T45[T45 Doubled keys after a long idle on Wayland]
+  T45 --> T46[T46 Native Wayland by default and Xwayland deprecated]
+  T47[T47 Always-on diagnostics log] --> T48[T48 Clean exit on Ctrl-C]
+  T47 --> T49[T49 Long-running stability]
+  T46 --> T50[T50 Version 2.0.0 refactor]
+  T47 --> T50
+  T48 --> T50
+  T49 --> T50
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -114,6 +121,9 @@ flowchart TD
 | 28 | [[T42 Join pen tip bounces]] · [[T43 Adopt clippy 1.99 lints]] |
 | 29 | [[T44 One keyboard per Wayland seat]] |
 | 30 | [[T45 Doubled keys after a long idle on Wayland]] |
+| 31 | [[T46 Native Wayland by default and Xwayland deprecated]] · [[T47 Always-on diagnostics log]] |
+| 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] |
+| 33 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -165,3 +175,8 @@ flowchart TD
 | [[T43 Adopt clippy 1.99 lints]] | done | — | `chore/clippy-1-99` |
 | [[T44 One keyboard per Wayland seat]] | done | T28 | `fix/wayland-seat-devices` |
 | [[T45 Doubled keys after a long idle on Wayland]] | todo | T44 | `fix/wayland-idle-doubled-keys` |
+| [[T46 Native Wayland by default and Xwayland deprecated]] | todo | T28, T44, T45 | `task/T46-wayland-default` |
+| [[T47 Always-on diagnostics log]] | todo | — | `task/T47-diagnostics-log` |
+| [[T48 Clean exit on Ctrl-C]] | todo | T47 | `fix/clean-exit-on-sigint` |
+| [[T49 Long-running stability]] | todo | T47 | `fix/long-running-stability` |
+| [[T50 Version 2.0.0 refactor]] | todo | T46–T49 | `task/T50-v2-refactor` |
