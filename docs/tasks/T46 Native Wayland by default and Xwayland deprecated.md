@@ -1,11 +1,11 @@
 ---
 id: T46
 title: Native Wayland by default and Xwayland deprecated
-status: todo
+status: in-progress
 wave: 31
 branch: task/T46-wayland-default
 depends_on: [T28, T44, T45]
-adrs: []
+adrs: [ADR-T46-1]
 feature: "[[Native Wayland (experimental)]]"
 tutorial: "[[28 Choosing a window backend at startup]]"
 tags: [task]
@@ -64,11 +64,71 @@ removal itself is [[T50 Version 2.0.0 refactor]].
 
 ## Spec
 
-To be written in the spec step. Expected ACs: unset variable on a
-Wayland session chooses Wayland (`backend::choose` tests); unset on an
-X11-only session chooses X11 with the deprecation notice; `x11` prints
-the notice; `wayland` prints no experimental notice; failed Wayland
-connection falls back to X11; owner check on Hyprland with the Flatpak.
+Decisions: [[ADR-T46-1 Native Wayland by default and X11 deprecated]]
+(amends [[ADR-T28-1 Opt-in native Wayland backend]]). 2.0.0 drops X11
+entirely, plain X11 sessions included.
+
+`backend::choose(value, wayland_display)` returns
+`Choice { backend, warning, notice }`; a *Wayland session* is a
+non-empty `WAYLAND_DISPLAY`.
+
+- **AC-1 — Wayland by default on a Wayland session.** Unset, empty or
+  blank `DRAW_BACKEND` with a Wayland session → `Backend::Wayland`, no
+  warning, no notice.
+  Tests (`backend.rs`): `choose_unset_on_wayland_session_is_wayland`.
+- **AC-2 — X11 session: X11 with the deprecation notice.** Unset
+  variable without a Wayland session (unset or empty `WAYLAND_DISPLAY`)
+  → `Backend::X11`, no warning, a notice naming 2.0.0 and saying a
+  Wayland session is needed.
+  Tests: `choose_unset_without_wayland_session_is_x11_with_deprecation`.
+- **AC-3 — `x11` prints the deprecation notice.** `DRAW_BACKEND=x11`
+  (any case, trimmed) → `Backend::X11`, notice naming 2.0.0; on a
+  Wayland session it also names `DRAW_BACKEND` (unset it for Wayland).
+  Tests: `choose_x11_on_wayland_session_is_x11_with_deprecation`,
+  `choose_ignores_case_and_surrounding_space`.
+- **AC-4 — `wayland` is not experimental.** `DRAW_BACKEND=wayland` on a
+  Wayland session → `Backend::Wayland`, no warning, no notice (nothing
+  says *experimental*); without a Wayland session miniquad will use X11,
+  so the deprecation notice is printed.
+  Tests: `choose_wayland_on_wayland_session_has_no_notice`,
+  `choose_wayland_without_wayland_session_warns_of_deprecation`.
+- **AC-5 — Unknown values use the session default.** Unknown or
+  non-UTF-8 values → the session's default backend plus one warning
+  naming the variable, the value and the default.
+  Tests: `choose_unknown_value_warns_and_uses_session_default`,
+  `choose_non_utf8_value_warns_and_uses_session_default`,
+  proptest `choose_any_value_follows_session`.
+- **AC-6 — Fallback to X11.** `Backend::Wayland` maps to
+  `WaylandWithX11Fallback`. Preflight on a Wayland session with
+  `Backend::Wayland`: missing `wayland` libraries with a working
+  Xwayland (`DISPLAY`, X11 libraries) → `Ok` (miniquad falls back);
+  missing `wayland` libraries and no Xwayland → `MissingLibs` naming the
+  `wayland` packages; missing `wayland` and X11 libraries → the
+  `wayland` ones.
+  Tests: `backend_linux_backend_maps_to_miniquad`;
+  (`preflight.rs`) `check_wayland_backend_without_wayland_libs_falls_back_to_xwayland`,
+  `check_wayland_backend_missing_lib_names_its_packages`,
+  `check_wayland_backend_missing_both_names_wayland_libs`.
+- **AC-7 — One line each.** Warning and notices start with `draw: ` and
+  contain no newline. `window_conf` prints the warning and the notice.
+  Tests: `warning_and_notice_are_one_line`.
+- **AC-8 — Packages recommend Wayland.** `.deb` `recommends` and
+  `[package.metadata.generate-rpm.recommends]` list exactly the packages
+  of `wayland`/`optional` libraries that are not already dependencies;
+  the Flatpak keeps `x11` and `wayland` sockets.
+  Tests (`preflight.rs`): `package_metadata_recommends_wayland_libs`,
+  `flatpak_manifest_allows_wayland_and_x11`.
+- **AC-9 — README.** The variable table says Wayland is the default on
+  Wayland sessions and X11 is deprecated for 2.0.0; native Wayland is no
+  longer under *Experimental*.
+  Tests (`backend.rs`): `readme_documents_wayland_default_and_x11_deprecation`.
+- **AC-10 — Owner check on Hyprland with the Flatpak.** Without the
+  variable draw runs natively (`hyprctl clients` shows `xwayland: 0`),
+  no notice; `--env=DRAW_BACKEND=x11` prints the deprecation line and
+  runs on Xwayland (`xwayland: 1`). (Manual.)
+- **AC-11 — Fractional scale (T28 AC-4).** Owner compares lines and
+  toolbar text at 125 % or 150 %, X11 vs Wayland; result in the *Log*.
+  Does not block the default (ADR-T46-1). (Manual.)
 
 ## Out of scope
 
