@@ -115,40 +115,90 @@ mod tests {
     use proptest::prelude::*;
     use std::ffi::OsStr;
 
-    fn choose_str(value: &str) -> Choice {
-        choose(Some(OsStr::new(value)))
+    fn session() -> Option<&'static OsStr> {
+        Some(OsStr::new("wayland-1"))
+    }
+
+    fn choose_str(value: &str, wayland_display: Option<&OsStr>) -> Choice {
+        choose(Some(OsStr::new(value)), wayland_display)
+    }
+
+    fn notice(choice: &Choice) -> String {
+        choice.notice.clone().unwrap_or_default()
     }
 
     #[test]
-    fn choose_unset_or_empty_is_x11_without_warning() {
+    fn choose_unset_on_wayland_session_is_wayland() {
         // Arrange / Act
-        let choices = [choose(None), choose_str(""), choose_str("  ")];
+        let choices = [
+            choose(None, session()),
+            choose_str("", session()),
+            choose_str("  ", session()),
+        ];
+
+        // Assert
+        for choice in choices {
+            assert_eq!(choice.backend, Backend::Wayland);
+            assert_eq!(choice.warning, None);
+            assert_eq!(choice.notice, None);
+        }
+    }
+
+    #[test]
+    fn choose_unset_without_wayland_session_is_x11_with_deprecation() {
+        // Arrange / Act
+        let choices = [
+            choose(None, None),
+            choose(None, Some(OsStr::new(""))),
+            choose_str("", None),
+        ];
 
         // Assert
         for choice in choices {
             assert_eq!(choice.backend, Backend::X11);
             assert_eq!(choice.warning, None);
+            let notice = notice(&choice);
+            assert!(notice.contains(REMOVAL_VERSION), "{notice}");
+            assert!(notice.contains("Wayland session"), "{notice}");
         }
     }
 
     #[test]
-    fn choose_x11_is_x11_without_warning() {
+    fn choose_x11_on_wayland_session_is_x11_with_deprecation() {
         // Arrange / Act
-        let choice = choose_str("x11");
+        let choice = choose_str("x11", session());
 
         // Assert
         assert_eq!(choice.backend, Backend::X11);
         assert_eq!(choice.warning, None);
+        let notice = notice(&choice);
+        assert!(notice.contains("deprecated"), "{notice}");
+        assert!(notice.contains(REMOVAL_VERSION), "{notice}");
+        assert!(notice.contains(BACKEND_ENV), "{notice}");
     }
 
     #[test]
-    fn choose_wayland_is_wayland_without_warning() {
+    fn choose_wayland_on_wayland_session_has_no_notice() {
         // Arrange / Act
-        let choice = choose_str("wayland");
+        let choice = choose_str("wayland", session());
 
         // Assert
         assert_eq!(choice.backend, Backend::Wayland);
         assert_eq!(choice.warning, None);
+        assert_eq!(choice.notice, None);
+    }
+
+    #[test]
+    fn choose_wayland_without_wayland_session_warns_of_deprecation() {
+        // Arrange / Act: miniquad falls back to X11 here
+        let choice = choose_str("wayland", None);
+
+        // Assert
+        assert_eq!(choice.backend, Backend::Wayland);
+        assert_eq!(choice.warning, None);
+        let notice = notice(&choice);
+        assert!(notice.contains(REMOVAL_VERSION), "{notice}");
+        assert!(!notice.contains("experimental"), "{notice}");
     }
 
     #[test]
@@ -162,33 +212,43 @@ mod tests {
 
         for (value, expected) in cases {
             // Act
-            let choice = choose_str(value);
+            let choice = choose_str(value, session());
 
             // Assert
             assert_eq!(choice.backend, expected, "{value:?}");
             assert_eq!(choice.warning, None, "{value:?}");
+            assert_eq!(
+                choice.notice.is_some(),
+                expected == Backend::X11,
+                "{value:?}"
+            );
         }
     }
 
     #[test]
-    fn choose_unknown_value_warns_and_keeps_x11() {
+    fn choose_unknown_value_warns_and_uses_session_default() {
         // Arrange
         let cases = ["wl", "xwayland", "way land", "1", "wayland,x11"];
 
         for value in cases {
             // Act
-            let choice = choose_str(value);
+            let on_wayland = choose_str(value, session());
+            let on_x11 = choose_str(value, None);
 
             // Assert
-            assert_eq!(choice.backend, Backend::X11, "{value:?}");
-            let warning = choice.warning.unwrap_or_default();
+            assert_eq!(on_wayland.backend, Backend::Wayland, "{value:?}");
+            assert_eq!(on_x11.backend, Backend::X11, "{value:?}");
+            let warning = on_wayland.warning.unwrap_or_default();
             assert!(warning.contains(BACKEND_ENV), "{warning}");
             assert!(warning.contains(value.trim()), "{warning}");
+            assert!(warning.contains("using wayland"), "{warning}");
+            let warning = on_x11.warning.unwrap_or_default();
+            assert!(warning.contains("using x11"), "{warning}");
         }
     }
 
     #[test]
-    fn choose_non_utf8_value_warns_and_keeps_x11() {
+    fn choose_non_utf8_value_warns_and_uses_session_default() {
         // Arrange
         #[cfg(unix)]
         let value = {
@@ -199,11 +259,14 @@ mod tests {
         let value = OsStr::new("\u{fffd}");
 
         // Act
-        let choice = choose(Some(value));
+        let on_wayland = choose(Some(value), session());
+        let on_x11 = choose(Some(value), None);
 
         // Assert
-        assert_eq!(choice.backend, Backend::X11);
-        assert!(choice.warning.is_some());
+        assert_eq!(on_wayland.backend, Backend::Wayland);
+        assert!(on_wayland.warning.is_some());
+        assert_eq!(on_x11.backend, Backend::X11);
+        assert!(on_x11.warning.is_some());
     }
 
     #[test]
@@ -214,43 +277,37 @@ mod tests {
             Backend::Wayland.linux_backend(),
             LinuxBackend::WaylandWithX11Fallback
         );
-        assert_eq!(Backend::default(), Backend::X11);
-    }
-
-    #[test]
-    fn backend_notice_only_for_wayland() {
-        // Arrange / Act
-        let x11 = Backend::X11.notice();
-        let wayland = Backend::Wayland.notice();
-
-        // Assert
-        assert_eq!(x11, None);
-        let wayland = wayland.unwrap_or_default();
-        assert!(wayland.contains("experimental"), "{wayland}");
-        assert!(wayland.contains(BACKEND_ENV), "{wayland}");
     }
 
     #[test]
     fn warning_and_notice_are_one_line() {
         // Arrange
         let lines = [
-            choose_str("bogus").warning.unwrap_or_default(),
-            Backend::Wayland.notice().unwrap_or_default().to_owned(),
+            choose_str("bogus", session()).warning,
+            choose_str("bogus", None).warning,
+            choose_str("x11", session()).notice,
+            choose(None, None).notice,
+            choose_str("wayland", None).notice,
         ];
 
         for line in lines {
             // Assert
+            let line = line.unwrap_or_default();
             assert!(line.starts_with("draw: "), "{line}");
             assert!(!line.contains('\n'), "{line}");
         }
     }
 
     #[test]
-    fn readme_documents_draw_backend_as_experimental() {
+    fn readme_documents_wayland_default_and_x11_deprecation() {
         // Arrange
         let readme = include_str!("../../README.md");
 
         // Act
+        let row = readme
+            .lines()
+            .find(|line| line.starts_with(&format!("| `{BACKEND_ENV}` |")))
+            .unwrap_or_default();
         let experimental = readme
             .split("### Experimental")
             .nth(1)
@@ -258,13 +315,12 @@ mod tests {
             .unwrap_or_default();
 
         // Assert
+        assert!(row.contains("`wayland` (default"), "{row}");
+        assert!(row.contains(REMOVAL_VERSION), "{row}");
+        assert!(!row.contains("experimental"), "{row}");
         assert!(
-            readme.contains(&format!("| `{BACKEND_ENV}` |")),
-            "variable table"
-        );
-        assert!(
-            experimental.contains(&format!("{BACKEND_ENV}=wayland")),
-            "Experimental section"
+            !experimental.contains(BACKEND_ENV),
+            "native Wayland is not experimental"
         );
     }
 
@@ -294,16 +350,21 @@ mod tests {
 
     proptest! {
         #[test]
-        fn choose_any_value_warns_unless_known(value in ".*") {
-            let choice = choose_str(&value);
-            let known = matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "" | "x11" | "wayland"
-            );
+        fn choose_any_value_follows_session(value in ".*", session in any::<bool>()) {
+            let display = session.then_some(OsStr::new("wayland-0"));
+            let choice = choose_str(&value, display);
+            let lowered = value.trim().to_ascii_lowercase();
+            let known = matches!(lowered.as_str(), "" | "x11" | "wayland");
             prop_assert_eq!(choice.warning.is_none(), known);
-            if choice.backend == Backend::Wayland {
-                prop_assert!(known);
-            }
+            let expected = match lowered.as_str() {
+                "x11" => Backend::X11,
+                "wayland" => Backend::Wayland,
+                _ if session => Backend::Wayland,
+                _ => Backend::X11,
+            };
+            prop_assert_eq!(choice.backend, expected);
+            let on_x11 = choice.backend == Backend::X11 || !session;
+            prop_assert_eq!(choice.notice.is_some(), on_x11);
         }
     }
 }

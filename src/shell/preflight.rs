@@ -309,6 +309,7 @@ impl std::error::Error for Problem {}
 mod tests {
     use super::*;
     use crate::shell::backend::Backend;
+    use std::collections::BTreeSet;
     use std::ffi::OsString;
 
     const LIBS: &str = "\
@@ -605,13 +606,11 @@ libc.so.6            linked    glibc           libc6
 
     #[test]
     fn check_wayland_backend_missing_lib_names_its_packages() {
-        // Arrange
-        let mut env = wayland();
-        env.display = Some(OsString::from(":0"));
+        // Arrange: no Xwayland to fall back to
         let found = |soname: &str| soname != "libwayland-client.so.0";
 
         // Act
-        let result = check(&env, Backend::Wayland, &libs(), found);
+        let result = check(&wayland(), Backend::Wayland, &libs(), found);
 
         // Assert
         let Err(Problem::MissingLibs(missing)) = result else {
@@ -623,6 +622,42 @@ libc.so.6            linked    glibc           libc6
         assert!(message.contains("libwayland-client.so.0"), "{message}");
         assert!(message.contains("`libwayland-client`"), "{message}");
         assert!(message.contains("`libwayland-client0`"), "{message}");
+    }
+
+    #[test]
+    fn check_wayland_backend_without_wayland_libs_falls_back_to_xwayland() {
+        // Arrange
+        let mut env = wayland();
+        env.display = Some(OsString::from(":0"));
+        let found = |soname: &str| soname != "libwayland-client.so.0";
+
+        // Act
+        let result = check(&env, Backend::Wayland, &libs(), found);
+
+        // Assert: miniquad falls back to X11, which has everything
+        assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn check_wayland_backend_missing_both_names_wayland_libs() {
+        // Arrange
+        let mut env = wayland();
+        env.display = Some(OsString::from(":0"));
+        let found = |soname: &str| !matches!(soname, "libwayland-egl.so.1" | "libXi.so.6");
+        let libs = parse_runtime_libs(&format!(
+            "{LIBS}libwayland-egl.so.1 wayland libwayland-egl libwayland-egl1\n"
+        ))
+        .unwrap_or_default();
+
+        // Act
+        let result = check(&env, Backend::Wayland, &libs, found);
+
+        // Assert: the Wayland libraries are the ones to install
+        let Err(Problem::MissingLibs(missing)) = result else {
+            panic!("expected missing libraries, got {result:?}");
+        };
+        let names: Vec<&str> = missing.iter().map(|lib| lib.soname.as_str()).collect();
+        assert_eq!(names, ["libwayland-egl.so.1"]);
     }
 
     #[test]
@@ -696,6 +731,61 @@ libc.so.6            linked    glibc           libc6
         assert!(has("libxkbcommon.so.0", Role::Required));
         assert!(has("libEGL.so.1", Role::Gl));
         assert!(!libs.iter().any(|lib| lib.role == Role::Unused));
+    }
+
+    /// Values of the `[name]` TOML table: `key = "a, b"` gives `a`, `b`
+    /// for `key`, and a table of `pkg = "*"` lines gives each `pkg`.
+    fn toml_names(text: &str, table: &str, key: Option<&str>) -> BTreeSet<String> {
+        let header = format!("[{table}]");
+        let lines = text
+            .lines()
+            .skip_while(|line| line.trim() != header)
+            .skip(1)
+            .take_while(|line| !line.trim_start().starts_with('['))
+            .map(str::trim);
+        match key {
+            Some(key) => lines
+                .filter_map(|line| line.strip_prefix(key)?.trim().strip_prefix('='))
+                .flat_map(|value| value.trim().trim_matches('"').split(','))
+                .map(|name| name.trim().to_owned())
+                .filter(|name| !name.is_empty())
+                .collect(),
+            None => lines
+                .filter(|line| !line.is_empty() && !line.starts_with('#'))
+                .filter_map(|line| line.split('=').next())
+                .map(|name| name.trim().to_owned())
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn package_metadata_recommends_wayland_libs() {
+        // Arrange
+        let cargo = include_str!("../../Cargo.toml");
+        let libs = parse_runtime_libs(RUNTIME_LIBS).unwrap_or_default();
+        let expected = |pick: fn(&RuntimeLib) -> &str| {
+            let depends: BTreeSet<&str> = libs
+                .iter()
+                .filter(|lib| matches!(lib.role, Role::Required | Role::Gl))
+                .map(pick)
+                .collect();
+            libs.iter()
+                .filter(|lib| matches!(lib.role, Role::Wayland | Role::Optional))
+                .map(pick)
+                .filter(|name| !depends.contains(name))
+                .map(str::to_owned)
+                .collect::<BTreeSet<String>>()
+        };
+
+        // Act
+        let deb = toml_names(cargo, "package.metadata.deb", Some("recommends"));
+        let rpm = toml_names(cargo, "package.metadata.generate-rpm.recommends", None);
+
+        // Assert
+        assert_eq!(deb, expected(|lib| &lib.debian));
+        assert_eq!(rpm, expected(|lib| &lib.fedora));
+        assert!(deb.contains("libwayland-client0"), "{deb:?}");
+        assert!(rpm.contains("libwayland-client"), "{rpm:?}");
     }
 
     #[test]
