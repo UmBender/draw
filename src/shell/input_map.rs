@@ -1379,4 +1379,87 @@ mod tests {
         assert!(has_release_request(3));
         assert!(has_release_request(4));
     }
+
+    // T47: flight recorder records (ADR-T47-1).
+
+    fn records(collector: &mut Collector) -> Vec<crate::shell::diag::event::Event> {
+        let mut out = Vec::new();
+        collector.take_records(&mut out);
+        out.into_iter().map(|(_, event)| event).collect()
+    }
+
+    #[test]
+    fn collector_records_held_key_pressed_again() {
+        // Arrange
+        use crate::shell::diag::event::{Anomaly, Event};
+        let mut collector = Collector::new();
+
+        // Act
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Assert
+        let recorded = records(&mut collector);
+        assert!(
+            recorded.contains(&Event::Anomaly(Anomaly::HeldKeyPressedAgain)),
+            "{recorded:?}"
+        );
+        assert!(records(&mut collector).is_empty(), "taken once");
+    }
+
+    #[test]
+    fn collector_records_text_keys_without_identity() {
+        // Arrange
+        use crate::shell::diag::event::{CharClass, Event, KeyTag};
+        let mut collector = Collector::new();
+
+        // Act
+        collector.key_down_event(KeyCode::S, NO_MODS, false);
+        collector.char_event('s', NO_MODS, false);
+        collector.key_up_event(KeyCode::S, NO_MODS);
+        collector.key_down_event(KeyCode::Escape, NO_MODS, false);
+        for x in 0..3 {
+            collector.mouse_motion_event(x as f32, 0.0);
+        }
+
+        // Assert
+        assert_eq!(
+            records(&mut collector),
+            vec![
+                Event::KeyDown {
+                    key: KeyTag::Text,
+                    repeat: false
+                },
+                Event::Char {
+                    class: CharClass::Letter,
+                    repeat: false
+                },
+                Event::KeyUp { key: KeyTag::Text },
+                Event::KeyDown {
+                    key: KeyTag::Named(KeyCode::Escape),
+                    repeat: false
+                },
+                Event::PointerMoves { count: 3 },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_focus_change_forgets_held_keys() {
+        // Arrange
+        use crate::shell::diag::event::Event;
+        let mut collector = Collector::new();
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Act
+        collector.focus_changed();
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Assert
+        let recorded = records(&mut collector);
+        assert!(
+            !recorded.iter().any(|e| matches!(e, Event::Anomaly(_))),
+            "{recorded:?}"
+        );
+    }
 }

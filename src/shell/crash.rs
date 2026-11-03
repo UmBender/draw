@@ -262,37 +262,52 @@ mod tests {
     }
 
     #[test]
-    fn crash_log_path_prefers_absolute_xdg_state_home() {
+    fn state_dir_prefers_absolute_xdg_state_home() {
         // Arrange / Act
-        let path = crash_log_path(Some(OsStr::new("/state")), Some(OsStr::new("/home/u")));
+        let dir = state_dir(Some(OsStr::new("/state")), Some(OsStr::new("/home/u")));
+
+        // Assert
+        assert_eq!(dir, Some(PathBuf::from("/state/draw")));
+    }
+
+    #[test]
+    fn state_dir_ignores_relative_or_empty_xdg_state_home() {
+        // Arrange
+        let expected = Some(PathBuf::from("/home/u/.local/state/draw"));
+
+        for xdg in [Some(OsStr::new("state")), Some(OsStr::new("")), None] {
+            // Act
+            let dir = state_dir(xdg, Some(OsStr::new("/home/u")));
+
+            // Assert
+            assert_eq!(dir, expected, "{xdg:?}");
+        }
+    }
+
+    #[test]
+    fn state_dir_without_home_is_none() {
+        // Arrange / Act / Assert
+        assert_eq!(state_dir(None, None), None);
+        assert_eq!(state_dir(None, Some(OsStr::new(""))), None);
+        assert_eq!(
+            state_dir(Some(OsStr::new("rel")), Some(OsStr::new("rel"))),
+            None
+        );
+    }
+
+    #[test]
+    fn crash_log_path_is_in_state_dir() {
+        // Arrange / Act
+        let path = crash_log_path(Some(OsStr::new("/state")), None);
 
         // Assert
         assert_eq!(path, Some(PathBuf::from("/state/draw/crash.log")));
     }
 
     #[test]
-    fn crash_log_path_ignores_relative_or_empty_xdg_state_home() {
-        // Arrange
-        let expected = Some(PathBuf::from("/home/u/.local/state/draw/crash.log"));
-
-        for xdg in [Some(OsStr::new("state")), Some(OsStr::new("")), None] {
-            // Act
-            let path = crash_log_path(xdg, Some(OsStr::new("/home/u")));
-
-            // Assert
-            assert_eq!(path, expected, "{xdg:?}");
-        }
-    }
-
-    #[test]
-    fn crash_log_path_without_home_is_none() {
+    fn build_id_prefix_is_bounded() {
         // Arrange / Act / Assert
-        assert_eq!(crash_log_path(None, None), None);
-        assert_eq!(crash_log_path(None, Some(OsStr::new(""))), None);
-        assert_eq!(
-            crash_log_path(Some(OsStr::new("rel")), Some(OsStr::new("rel"))),
-            None
-        );
+        assert_eq!(BUILD_ID_PREFIX, 64 * 1024);
     }
 
     #[test]

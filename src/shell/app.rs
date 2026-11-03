@@ -1457,4 +1457,37 @@ mod tests {
         let font = fontdue::Font::from_bytes(MATH_FONT, fontdue::FontSettings::default());
         assert!(font.is_ok());
     }
+
+    #[test]
+    fn dump_chord_is_ctrl_shift_l() {
+        // Arrange
+        use crate::core::input::{Key, Modifiers};
+        use crate::core::keymap::KeyChord;
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        };
+        let press = |key, mods| InputEvent::KeyDown { key, mods };
+
+        // Act / Assert
+        assert_eq!(DUMP_CHORD, KeyChord::ctrl_shift(Key::L));
+        assert!(is_dump_chord(&press(Key::L, ctrl_shift)));
+        assert!(!is_dump_chord(&press(Key::L, Modifiers { shift: false, ..ctrl_shift })));
+        assert!(!is_dump_chord(&press(Key::L, Modifiers { alt: true, ..ctrl_shift })));
+        assert!(!is_dump_chord(&press(Key::K, ctrl_shift)));
+        assert!(!is_dump_chord(&InputEvent::KeyUp {
+            key: Key::L,
+            mods: ctrl_shift
+        }));
+    }
+
+    #[test]
+    fn dump_chord_is_not_an_editor_command() {
+        // Arrange / Act / Assert
+        assert_eq!(
+            crate::core::keymap::resolve(DUMP_CHORD.key, DUMP_CHORD.mods),
+            None
+        );
+    }
 }
