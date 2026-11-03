@@ -1,4 +1,123 @@
 //! Backend diagnostics events (draw patch, ADR-T47-1).
+//!
+//! The Wayland backend pushes a [`BackendRecord`] for the seat, keyboard
+//! and tablet events that explain input bugs: capabilities, devices,
+//! focus, keys, key repeat and protocol errors. The application drains
+//! them once per frame with [`take_events_into`] and keeps what it needs
+//! in its own flight recorder. At most [`MAX_EVENTS`] are queued between
+//! two takes; older ones are dropped and counted.
+
+use std::sync::Mutex;
+use std::time::Instant;
+
+/// A seat device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Device {
+    /// `wl_keyboard`.
+    Keyboard,
+    /// `wl_pointer`.
+    Pointer,
+    /// `wl_touch`.
+    Touch,
+}
+
+/// One backend event worth recording.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendEvent {
+    /// `wl_seat.capabilities`, with the announced devices.
+    Capabilities {
+        /// The seat has a keyboard.
+        keyboard: bool,
+        /// The seat has a pointer.
+        pointer: bool,
+        /// The seat has a touch screen.
+        touch: bool,
+    },
+    /// The backend asked the seat for a device.
+    DeviceCreated(Device),
+    /// The backend released a device whose capability went away.
+    DeviceReleased(Device),
+    /// `wl_keyboard.enter`: the window got keyboard focus.
+    KeyboardEnter,
+    /// `wl_keyboard.leave`: the window lost keyboard focus.
+    KeyboardLeave,
+    /// `wl_keyboard.key`.
+    Key {
+        /// evdev scancode (the XKB keycode minus 8).
+        code: u32,
+        /// 0 released, 1 pressed, 2 repeated by the compositor.
+        state: u32,
+        /// `Ctrl` was held.
+        ctrl: bool,
+        /// `Alt` was held.
+        alt: bool,
+    },
+    /// `wl_keyboard.repeat_info`.
+    RepeatInfo {
+        /// Repeats per second; 0 turns repeat off.
+        rate: i32,
+        /// Delay before the first repeat, in milliseconds.
+        delay: i32,
+    },
+    /// The key repeat timer woke the loop.
+    RepeatTimer {
+        /// Timer expirations since the last read.
+        expirations: u64,
+    },
+    /// `wl_keyboard.keymap`.
+    Keymap,
+    /// A tablet tool was added.
+    ToolAdded,
+    /// A tablet tool was removed.
+    ToolRemoved,
+    /// A tablet tool came into proximity of the window.
+    ProximityIn,
+    /// A tablet tool left proximity.
+    ProximityOut,
+    /// The display connection failed with a protocol error.
+    ProtocolError {
+        /// `wl_display_get_error`.
+        errno: i32,
+    },
+}
+
+/// A [`BackendEvent`] and when it was pushed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BackendRecord {
+    /// When the backend saw the event.
+    pub at: Instant,
+    /// The event.
+    pub event: BackendEvent,
+}
+
+/// Most events queued between two [`take_events_into`] calls.
+pub const MAX_EVENTS: usize = 4096;
+
+struct Queue {
+    events: Vec<BackendRecord>,
+    dropped: u64,
+}
+
+static QUEUE: Mutex<Queue> = Mutex::new(Queue {
+    events: Vec::new(),
+    dropped: 0,
+});
+
+/// Moves the queued events, oldest first, into `out` (cleared first) and
+/// returns how many were dropped since the last call. The two buffers are
+/// swapped, so neither allocates once both have grown.
+pub fn take_events_into(out: &mut Vec<BackendRecord>) -> u64 {
+    let _ = out;
+    todo!()
+}
+
+/// Queues `event`, stamped now. When the queue is full the older half is
+/// dropped and counted.
+#[allow(dead_code)] // only the Wayland backend pushes events
+pub(crate) fn push(event: BackendEvent) {
+    let _ = (event, &QUEUE);
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {

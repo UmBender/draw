@@ -36,7 +36,8 @@ use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
 use crate::core::experimental::{EXPERIMENTAL_ENV, Experimental};
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::input::InputEvent;
+use crate::core::input::{InputEvent, Key};
+use crate::core::keymap::KeyChord;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
@@ -351,6 +352,17 @@ impl From<WindowSettings> for Conf {
             ..Conf::default()
         }
     }
+}
+
+/// The chord that writes a diagnostics dump, caught before the editor so
+/// it works in every mode (ADR-T47-1).
+pub const DUMP_CHORD: KeyChord = KeyChord::ctrl_shift(Key::L);
+
+/// Whether `event` is a press of [`DUMP_CHORD`].
+#[must_use]
+pub fn is_dump_chord(event: &InputEvent) -> bool {
+    let _ = event;
+    todo!()
 }
 
 /// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`

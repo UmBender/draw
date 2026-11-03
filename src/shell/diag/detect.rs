@@ -1,4 +1,157 @@
 //! Anomaly detectors and the per-topic line limiter (ADR-T47-1).
+//!
+//! The detectors are small state machines fed in event order. They see a
+//! key's real code only to keep the set of held keys; nothing they keep
+//! is written anywhere.
+
+use std::time::Duration;
+
+use macroquad::input::KeyCode;
+
+use crate::shell::diag::event::{Anomaly, Device, Event};
+
+/// Input after a gap longer than this writes an idle line.
+pub const IDLE_GAP: Duration = Duration::from_secs(300);
+
+/// Repeat timer expirations per wake that are still normal.
+pub const REPEAT_BURST: u32 = 2;
+
+/// Lines one [`Topic`] may write per session before it is suppressed.
+pub const LINES_PER_TOPIC: u32 = 10;
+
+/// Keys held right now, and the chars of the last press.
+#[derive(Debug, Clone, Default)]
+pub struct KeyWatch {
+    /// Keys down without a key up since.
+    held: Vec<KeyCode>,
+    /// Non-repeat chars since the last non-repeat key down; `None` after a
+    /// repeat or before the first press.
+    chars: Option<u8>,
+}
+
+impl KeyWatch {
+    /// No key held.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    /// A key went down. A non-repeat press of a held key is
+    /// [`Anomaly::HeldKeyPressedAgain`].
+    pub fn key_down(&mut self, code: KeyCode, repeat: bool) -> Option<Anomaly> {
+        let _ = (code, repeat);
+        todo!()
+    }
+
+    /// A key went up.
+    pub fn key_up(&mut self, code: KeyCode) {
+        let _ = code;
+        todo!()
+    }
+
+    /// A char arrived. The second non-repeat char of one press is
+    /// [`Anomaly::CharsPerPress`].
+    pub fn char(&mut self, repeat: bool) -> Option<Anomaly> {
+        let _ = repeat;
+        todo!()
+    }
+
+    /// Keyboard focus moved: key ups may have gone to another window.
+    pub fn focus_changed(&mut self) {
+        todo!()
+    }
+}
+
+/// When input last arrived.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct IdleWatch {
+    /// Microseconds since start of the last input.
+    last: Option<u64>,
+}
+
+impl IdleWatch {
+    /// No input yet.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    /// Input at `micros`; the gap since the last input when it is longer
+    /// than [`IDLE_GAP`].
+    pub fn input(&mut self, micros: u64) -> Option<Duration> {
+        let _ = micros;
+        todo!()
+    }
+}
+
+/// Backend events that should not happen.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BackendWatch {
+    /// Keyboards created so far.
+    keyboards: u32,
+}
+
+impl BackendWatch {
+    /// Nothing seen yet.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    /// The anomaly `event` shows, if any.
+    pub fn event(&mut self, event: &Event) -> Option<Anomaly> {
+        let _ = (event, Device::Keyboard);
+        todo!()
+    }
+}
+
+/// What a rate-limited line is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Topic {
+    /// One kind of anomaly.
+    Anomaly(Anomaly),
+    /// A frame of [`crate::shell::diag::SLOW_FRAME`] or more.
+    SlowFrame,
+}
+
+impl Topic {
+    /// Index into the limiter's counters.
+    const fn index(self) -> usize {
+        let _ = self;
+        todo!()
+    }
+}
+
+/// What to do with one more line of a topic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verdict {
+    /// Write the line.
+    Write,
+    /// Write a one-off "further lines suppressed" notice instead.
+    Notice,
+    /// Write nothing.
+    Skip,
+}
+
+/// Counts lines per [`Topic`].
+#[derive(Debug, Clone, Default)]
+pub struct Limiter {
+    counts: [u32; Anomaly::COUNT + 1],
+}
+
+impl Limiter {
+    /// Nothing written yet.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!()
+    }
+
+    /// Counts one more line of `topic` and says what to write.
+    pub fn check(&mut self, topic: Topic) -> Verdict {
+        let _ = (topic.index(), &self.counts);
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {

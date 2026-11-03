@@ -1,5 +1,113 @@
 //! Files on disk: UTC timestamps, the capped session log and dump files
 //! (ADR-T47-1).
+//!
+//! The session log is opened once and written one line at a time. A line
+//! that would push it past its cap first moves it to `<name>.1`, so the
+//! two files together never hold more than twice the cap.
+
+use std::fs::File;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use crate::shell::diag::Level;
+
+/// Largest size of the session log, and of its one backup.
+pub const LOG_CAP: u64 = 512 * 1024;
+
+/// Dump files kept in the state directory.
+pub const MAX_DUMPS: usize = 5;
+
+/// `since_epoch` as `YYYY-MM-DDTHH:MM:SS.mmmZ`.
+#[must_use]
+pub fn utc(since_epoch: Duration) -> String {
+    let _ = since_epoch;
+    todo!()
+}
+
+/// `unix_secs` as `YYYYMMDDTHHMMSSZ`, for file names.
+#[must_use]
+pub fn utc_stamp(unix_secs: u64) -> String {
+    let _ = unix_secs;
+    todo!()
+}
+
+/// One session log line: `<utc> +<uptime>s <LEVEL> <message>\n`.
+#[must_use]
+pub fn log_line(unix: Duration, uptime: Duration, level: Level, message: &str) -> String {
+    let _ = (unix, uptime, level, message);
+    todo!()
+}
+
+/// `dump-<stamp>-<reason>.log`, the reason lowercased, other characters
+/// than ASCII letters and digits turned into `-`, at most 32 of them.
+#[must_use]
+pub fn dump_name(unix_secs: u64, reason: &str) -> String {
+    let _ = (unix_secs, reason);
+    todo!()
+}
+
+/// Deletes the oldest `dump-*.log` files in `dir` (by name, which sorts by
+/// time) until `keep` are left.
+///
+/// # Errors
+///
+/// When `dir` cannot be read or a file cannot be removed.
+pub fn prune_dumps(dir: &Path, keep: usize) -> io::Result<()> {
+    let _ = (dir, keep);
+    todo!()
+}
+
+/// The session log file, rotated at its cap.
+#[derive(Debug)]
+pub struct SessionLog {
+    path: PathBuf,
+    file: File,
+    /// Bytes in the file.
+    len: u64,
+    cap: u64,
+}
+
+impl SessionLog {
+    /// Opens `path` for appending, creating it and its directory. A file
+    /// already at or over `cap` is rotated first.
+    ///
+    /// # Errors
+    ///
+    /// When the directory or the file cannot be created.
+    pub fn open(path: &Path, cap: u64) -> io::Result<Self> {
+        let _ = (path, cap);
+        todo!()
+    }
+
+    /// Appends `line` (cut to the cap), rotating first if it would not fit.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be renamed, reopened or written.
+    pub fn write_line(&mut self, line: &str) -> io::Result<()> {
+        let _ = (line, &self.file, self.cap);
+        todo!()
+    }
+
+    /// Bytes in the current file.
+    #[must_use]
+    pub fn len(&self) -> u64 {
+        self.len
+    }
+
+    /// Whether the current file is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// The file's path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -62,7 +170,7 @@ mod tests {
     #[test]
     fn session_log_rotates_before_cap() -> std::io::Result<()> {
         // Arrange
-        let dir = temp_dir("rotate");
+        let dir = temp_dir("rotate")?;
         let path = dir.join("draw.log");
         let mut log = SessionLog::open(&path, 100)?;
 
@@ -81,7 +189,7 @@ mod tests {
     #[test]
     fn session_log_rotates_oversized_file_at_open() -> std::io::Result<()> {
         // Arrange
-        let dir = temp_dir("oversized");
+        let dir = temp_dir("oversized")?;
         let path = dir.join("draw.log");
         std::fs::write(&path, line(150))?;
 
@@ -98,7 +206,7 @@ mod tests {
     #[test]
     fn session_log_appends_to_small_file_at_open() -> std::io::Result<()> {
         // Arrange
-        let dir = temp_dir("append");
+        let dir = temp_dir("append")?;
         let path = dir.join("draw.log");
         std::fs::write(&path, line(30))?;
 
@@ -115,7 +223,7 @@ mod tests {
     #[test]
     fn session_log_creates_its_directory() -> std::io::Result<()> {
         // Arrange
-        let dir = temp_dir("mkdir");
+        let dir = temp_dir("mkdir")?;
         let path = dir.join("state/draw/draw.log");
 
         // Act
@@ -134,7 +242,7 @@ mod tests {
             lines in proptest::collection::vec(0_usize..300, 1..40),
         ) {
             // Arrange
-            let dir = temp_dir("cap");
+            let dir = temp_dir("cap").map_err(|e| TestCaseError::fail(e.to_string()))?;
             let path = dir.join("draw.log");
             let mut log = SessionLog::open(&path, 256).map_err(|e| TestCaseError::fail(e.to_string()))?;
 
@@ -163,7 +271,7 @@ mod tests {
     #[test]
     fn prune_dumps_keeps_newest_five() -> std::io::Result<()> {
         // Arrange
-        let dir = temp_dir("prune");
+        let dir = temp_dir("prune")?;
         for second in 0..8 {
             std::fs::write(dir.join(dump_name(second, "x")), "")?;
         }

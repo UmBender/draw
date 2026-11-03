@@ -14,6 +14,8 @@ use macroquad::miniquad::{EventHandler, KeyMods};
 
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::shell::diag::detect::KeyWatch;
+use crate::shell::diag::event::Event;
 
 /// The editor key for a macroquad key code, `None` for keys the editor ignores.
 #[must_use]
@@ -205,6 +207,13 @@ pub struct Collector {
     now: Instant,
     /// The pen release held back, if any.
     bounce: Option<HeldRelease>,
+    /// Held keys and chars per press, for the anomaly detectors
+    /// (ADR-T47-1).
+    watch: KeyWatch,
+    /// Flight recorder records of the events replayed so far.
+    records: Vec<(Instant, Event)>,
+    /// Pointer moves replayed since the last [`Collector::take_records`].
+    moves: u32,
 }
 
 impl Default for Collector {
@@ -228,7 +237,22 @@ impl Collector {
             bounce_window: Duration::ZERO,
             now: Instant::now(),
             bounce: None,
+            watch: KeyWatch::new(),
+            records: Vec::new(),
+            moves: 0,
         }
+    }
+
+    /// Moves the flight recorder records of the replayed events into
+    /// `out`, ending with the frame's pointer move count (ADR-T47-1).
+    pub fn take_records(&mut self, out: &mut Vec<(Instant, Event)>) {
+        let _ = (out, self.moves, &self.records);
+        todo!()
+    }
+
+    /// Keyboard focus moved: the held keys are forgotten (ADR-T47-1).
+    pub fn focus_changed(&mut self) {
+        todo!()
     }
 
     /// Sets how many wheel units make one notch; ignored unless positive

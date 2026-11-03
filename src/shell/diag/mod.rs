@@ -12,6 +12,254 @@ pub mod event;
 pub mod file;
 pub mod ring;
 
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+use crate::shell::diag::detect::{BackendWatch, IdleWatch, Limiter};
+use crate::shell::diag::event::{Anomaly, Event, Record};
+use crate::shell::diag::file::SessionLog;
+use crate::shell::diag::ring::Ring;
+
+/// Environment variable that sets the [`Level`].
+pub const LEVEL_ENV: &str = "DRAW_LOG";
+
+/// Name of the session log in the state directory.
+pub const LOG_FILE: &str = "draw.log";
+
+/// Records the flight recorder keeps.
+pub const RING_CAPACITY: usize = 4096;
+
+/// Automatic dumps (anomalies) one session may write.
+pub const AUTO_DUMPS: usize = 3;
+
+/// Frames this slow write an `info` line.
+pub const SLOW_FRAME: Duration = Duration::from_millis(100);
+
+/// Frames over this budget write a `debug` line (ADR-T24-5).
+pub const FRAME_BUDGET: Duration = Duration::from_millis(16);
+
+/// How much the session log says. Each level includes the ones before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Level {
+    /// No session log and no automatic dumps.
+    Off,
+    /// Panics and protocol errors.
+    Error,
+    /// Anomalies.
+    Warn,
+    /// Start-up, devices, idle, slow frames, dumps and exit (the default).
+    Info,
+    /// Focus changes and frames over budget.
+    Debug,
+    /// Every flight recorder record.
+    Trace,
+}
+
+impl Level {
+    /// The level's name as `DRAW_LOG` spells it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        todo!()
+    }
+
+    /// The name in a log line: `ERROR`, `WARN`, …
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        todo!()
+    }
+}
+
+/// The level a `DRAW_LOG` value asks for, and a warning for an unknown
+/// one. Unset or blank is [`Level::Info`].
+#[must_use]
+pub fn parse_level(value: Option<&str>) -> (Level, Option<String>) {
+    let _ = value;
+    todo!()
+}
+
+/// How a [`Diag`] starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Settings {
+    /// Directory for the session log and dumps; `None` writes nothing.
+    pub dir: Option<PathBuf>,
+    /// What the session log says.
+    pub level: Level,
+    /// Wall-clock time at start, since the Unix epoch.
+    pub start_unix: Duration,
+    /// Records the ring keeps.
+    pub capacity: usize,
+}
+
+/// What the start-up line says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StartInfo<'a> {
+    /// Crate version.
+    pub version: &'a str,
+    /// GNU build id of the binary.
+    pub build_id: Option<&'a str>,
+    /// Process id.
+    pub pid: u32,
+    /// Window backend.
+    pub backend: &'a str,
+    /// `XDG_SESSION_TYPE`.
+    pub session: Option<&'a str>,
+    /// `XDG_CURRENT_DESKTOP`.
+    pub desktop: Option<&'a str>,
+    /// Pen tablet mode.
+    pub tablet: &'a str,
+    /// Log level.
+    pub level: Level,
+}
+
+/// The start-up line's message.
+#[must_use]
+pub fn start_line(info: &StartInfo<'_>) -> String {
+    let _ = info;
+    todo!()
+}
+
+/// The flight recorder, the session log and the detectors of one session.
+#[derive(Debug)]
+pub struct Diag {
+    level: Level,
+    ring: Ring<Record>,
+    start: Instant,
+    start_unix: Duration,
+    dir: Option<PathBuf>,
+    log: Option<SessionLog>,
+    limiter: Limiter,
+    backend: BackendWatch,
+    idle: IdleWatch,
+    /// Anomalies seen, per [`Anomaly::index`].
+    anomalies: [u32; Anomaly::COUNT],
+    /// Automatic dumps written.
+    auto_dumps: usize,
+}
+
+impl Diag {
+    /// A recorder starting now. Opens the session log in `settings.dir`
+    /// unless the level is [`Level::Off`]; a log that cannot be opened is
+    /// left out.
+    #[must_use]
+    pub fn new(settings: Settings) -> Self {
+        let _ = settings;
+        todo!()
+    }
+
+    /// When the recorder started.
+    #[must_use]
+    pub fn start(&self) -> Instant {
+        self.start
+    }
+
+    /// The session's level.
+    #[must_use]
+    pub fn level(&self) -> Level {
+        self.level
+    }
+
+    /// Records `event` at `at` and runs the detectors and the log rules on
+    /// it. Writes nothing unless the event's line is at or below the level.
+    pub fn record(&mut self, at: Instant, event: Event) {
+        let _ = (at, event, &self.ring, &self.limiter, &self.backend, &self.idle);
+        todo!()
+    }
+
+    /// Writes `message` to the session log if `level` is enabled.
+    pub fn log(&mut self, level: Level, message: &str) {
+        let _ = (level, message, &self.log, self.start_unix);
+        todo!()
+    }
+
+    /// Writes the ring to a dump file named for `reason` and returns its
+    /// path; `None` without a directory or when writing fails.
+    pub fn dump(&mut self, reason: &str) -> Option<PathBuf> {
+        let _ = (reason, &self.dir, self.auto_dumps);
+        todo!()
+    }
+
+    /// The panic hook's part: an `ERROR` line and a `panic` dump.
+    pub fn on_panic(&mut self, message: &str) {
+        let _ = message;
+        todo!()
+    }
+
+    /// The exit line's message for `reason` at `now`.
+    #[must_use]
+    pub fn exit_line(&self, reason: &str, now: Instant) -> String {
+        let _ = (reason, now);
+        todo!()
+    }
+
+    /// How often `anomaly` was seen.
+    #[must_use]
+    pub fn anomaly_count(&self, anomaly: Anomaly) -> u32 {
+        self.anomalies[anomaly.index()]
+    }
+}
+
+/// The session's recorder, reached by the app loop and the panic hook.
+static RECORDER: Mutex<Option<Diag>> = Mutex::new(None);
+
+/// Runs `f` on the recorder in `recorder`, waiting for the lock.
+pub fn with_in<R>(recorder: &Mutex<Option<Diag>>, f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
+    let _ = (recorder, f);
+    todo!()
+}
+
+/// Runs `f` on the recorder in `recorder` unless it is locked; `None` then
+/// or when there is no recorder. For the panic hook, which must not block.
+pub fn try_with_in<R>(
+    recorder: &Mutex<Option<Diag>>,
+    f: impl FnOnce(&mut Diag) -> R,
+) -> Option<R> {
+    let _ = (recorder, f);
+    todo!()
+}
+
+/// Runs `f` on the session's recorder.
+pub fn with<R>(f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
+    with_in(&RECORDER, f)
+}
+
+/// Runs `f` on the session's recorder unless it is locked.
+pub fn try_with<R>(f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
+    try_with_in(&RECORDER, f)
+}
+
+/// Starts the session's recorder from the environment (`DRAW_LOG`, the
+/// state directory, backend and tablet mode) and writes the start-up line.
+/// Call once in `main`, after the panic hook.
+pub fn init_from_env() {
+    todo!()
+}
+
+/// Records one frame's events under one lock and empties `records`.
+pub fn record_all(records: &mut Vec<(Instant, Event)>) {
+    let _ = records;
+    todo!()
+}
+
+/// Writes `message` to the session log at `level`.
+pub fn log(level: Level, message: &str) {
+    let _ = (level, message);
+    todo!()
+}
+
+/// Writes a dump for `reason` (also the entry point for T48's signal
+/// handling) and returns its path.
+pub fn dump(reason: &str) -> Option<PathBuf> {
+    let _ = reason;
+    todo!()
+}
+
+/// Writes the exit line for `reason`.
+pub fn finish(reason: &str) {
+    let _ = reason;
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

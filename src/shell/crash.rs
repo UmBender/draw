@@ -38,18 +38,30 @@ const NT_GNU_BUILD_ID: u32 = 3;
 /// ELF program header type of a note segment.
 const PT_NOTE: u32 = 4;
 
-/// Where the crash log goes: `$XDG_STATE_HOME/draw/crash.log` when that is
-/// an absolute path, else `$HOME/.local/state/draw/crash.log`; `None`
-/// without an absolute home either.
+/// Bytes of `/proc/self/exe` read for the build id at start-up; the
+/// `PT_NOTE` segment sits near the start of the file (ADR-T47-1).
+pub const BUILD_ID_PREFIX: u64 = 64 * 1024;
+
+/// draw's state directory, shared by `crash.log` and the diagnostics log
+/// (ADR-T47-1): `$XDG_STATE_HOME/draw` when that is an absolute path, else
+/// `$HOME/.local/state/draw`; `None` without an absolute home either.
+#[must_use]
+pub fn state_dir(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    let _ = (xdg_state_home, home);
+    todo!()
+}
+
+/// Where the crash log goes: `crash.log` in [`state_dir`].
 #[must_use]
 pub fn crash_log_path(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
-    fn absolute(dir: Option<&OsStr>) -> Option<&Path> {
-        dir.map(Path::new).filter(|dir| dir.is_absolute())
-    }
-    absolute(xdg_state_home)
-        .map(Path::to_path_buf)
-        .or_else(|| absolute(home).map(|home| home.join(".local/state")))
-        .map(|state| state.join("draw/crash.log"))
+    state_dir(xdg_state_home, home).map(|dir| dir.join("crash.log"))
+}
+
+/// The build id of the running binary, read from the first
+/// [`BUILD_ID_PREFIX`] bytes of `/proc/self/exe`.
+#[must_use]
+pub fn running_build_id() -> Option<String> {
+    todo!()
 }
 
 /// The report as text, one `key: value` line per field, ending in a

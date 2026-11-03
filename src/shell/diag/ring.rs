@@ -1,5 +1,60 @@
 //! A fixed-capacity ring that keeps the newest items (ADR-T47-1).
 
+/// The newest `capacity` items pushed, in a buffer allocated once.
+#[derive(Debug, Clone)]
+pub struct Ring<T> {
+    items: Vec<T>,
+    /// Where the next push goes once the buffer is full; the oldest item.
+    head: usize,
+    capacity: usize,
+}
+
+impl<T> Ring<T> {
+    /// An empty ring for `capacity` items (at least one).
+    #[must_use]
+    pub fn new(capacity: usize) -> Self {
+        let _ = capacity;
+        todo!()
+    }
+
+    /// Adds `item`, replacing the oldest one when full. Never allocates.
+    pub fn push(&mut self, item: T) {
+        let _ = item;
+        todo!()
+    }
+
+    /// Items held.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        todo!()
+    }
+
+    /// Whether nothing was pushed yet.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        todo!()
+    }
+
+    /// Most items held.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        todo!()
+    }
+
+    /// Items the buffer has room for without allocating.
+    #[must_use]
+    pub fn allocated(&self) -> usize {
+        todo!()
+    }
+
+    /// The items, oldest first.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        todo!();
+        #[allow(unreachable_code)]
+        self.items.iter()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

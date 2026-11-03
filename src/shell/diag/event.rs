@@ -1,4 +1,293 @@
 //! Flight recorder records and the privacy rules for keys (ADR-T47-1).
+//!
+//! A [`Record`] is small and `Copy`, so recording never allocates. Its
+//! text form (one line, at most [`MAX_LINE`] bytes) is made only when a
+//! dump or a `trace` log is written. Plain text keys are [`KeyTag::Text`]
+//! and characters are only a [`CharClass`]: nothing a user typed can be
+//! read back.
+
+use std::fmt;
+
+use macroquad::input::KeyCode;
+use macroquad::miniquad::KeyMods;
+use macroquad::miniquad::diag::BackendEvent;
+pub use macroquad::miniquad::diag::Device;
+
+use crate::core::command::Tool;
+use crate::core::input::PointerButton;
+
+/// Longest text form of a [`Record`], in bytes.
+pub const MAX_LINE: usize = 96;
+
+/// A key as recorded by the app: named keys and shortcuts keep their code,
+/// plain text keys do not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyTag {
+    /// A letter, digit, punctuation or space key without `Ctrl` or `Alt`.
+    Text,
+    /// Any other key, or a text key held with `Ctrl` or `Alt`.
+    Named(KeyCode),
+}
+
+/// A `wl_keyboard.key` code as recorded: the same rule as [`KeyTag`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendKey {
+    /// A text key without `Ctrl` or `Alt`.
+    Text,
+    /// The evdev scancode of any other key.
+    Code(u16),
+}
+
+/// What kind of character a char event carried, without the character.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharClass {
+    /// An alphabetic character.
+    Letter,
+    /// A decimal digit.
+    Digit,
+    /// A space.
+    Space,
+    /// ASCII punctuation or a symbol.
+    Punct,
+    /// Anything else (control characters, other scripts' marks, …).
+    Other,
+}
+
+/// What a drawn frame re-rendered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameKind {
+    /// The overlay only.
+    Overlay,
+    /// New shapes onto the cached layer.
+    Append,
+    /// The cached layer moved and scaled.
+    Moved,
+    /// The whole document layer.
+    Full,
+}
+
+/// Something that should not happen; logged and dumped (ADR-T47-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Anomaly {
+    /// A key went down again while held, without a repeat flag.
+    HeldKeyPressedAgain,
+    /// One key press delivered more than one character.
+    CharsPerPress,
+    /// One wake of the key repeat timer had more than two expirations.
+    RepeatBurst,
+    /// A second `wl_keyboard` was created in one session.
+    KeyboardRecreated,
+    /// The backend dropped events before the app took them.
+    BackendOverflow,
+}
+
+impl Anomaly {
+    /// Every anomaly, in [`Anomaly::index`] order.
+    pub const ALL: [Self; 5] = [
+        Self::HeldKeyPressedAgain,
+        Self::CharsPerPress,
+        Self::RepeatBurst,
+        Self::KeyboardRecreated,
+        Self::BackendOverflow,
+    ];
+
+    /// Number of anomalies.
+    pub const COUNT: usize = Self::ALL.len();
+
+    /// Position in [`Anomaly::ALL`].
+    #[must_use]
+    pub const fn index(self) -> usize {
+        todo!()
+    }
+
+    /// A few words for logs and dumps.
+    #[must_use]
+    pub const fn describe(self) -> &'static str {
+        todo!()
+    }
+
+    /// A short name for a dump file.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        todo!()
+    }
+}
+
+/// One thing the flight recorder keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Event {
+    /// The recorder started.
+    Start,
+    /// `wl_seat.capabilities`.
+    Capabilities {
+        /// The seat has a keyboard.
+        keyboard: bool,
+        /// The seat has a pointer.
+        pointer: bool,
+        /// The seat has a touch screen.
+        touch: bool,
+    },
+    /// The backend created a seat device.
+    DeviceCreated(Device),
+    /// The backend released a seat device.
+    DeviceReleased(Device),
+    /// The window got keyboard focus.
+    KeyboardEnter,
+    /// The window lost keyboard focus.
+    KeyboardLeave,
+    /// `wl_keyboard.key`.
+    WlKey {
+        /// The key, by the privacy rule.
+        key: BackendKey,
+        /// 0 released, 1 pressed, 2 repeated by the compositor.
+        state: u8,
+    },
+    /// `wl_keyboard.repeat_info`.
+    RepeatInfo {
+        /// Repeats per second.
+        rate: i32,
+        /// Delay before the first repeat.
+        delay_ms: i32,
+    },
+    /// The key repeat timer woke the loop.
+    RepeatTimer {
+        /// Expirations since the last read, saturated.
+        expirations: u32,
+    },
+    /// A new keymap.
+    Keymap,
+    /// A tablet tool was added.
+    ToolAdded,
+    /// A tablet tool was removed.
+    ToolRemoved,
+    /// A tablet tool came into proximity.
+    ProximityIn,
+    /// A tablet tool left proximity.
+    ProximityOut,
+    /// The display connection failed.
+    ProtocolError {
+        /// `wl_display_get_error`.
+        errno: i32,
+    },
+    /// The backend queue dropped events.
+    BackendDropped {
+        /// How many, saturated.
+        count: u32,
+    },
+    /// A key went down, as the app saw it.
+    KeyDown {
+        /// The key, by the privacy rule.
+        key: KeyTag,
+        /// The platform marked it as a repeat.
+        repeat: bool,
+    },
+    /// A key went up.
+    KeyUp {
+        /// The key, by the privacy rule.
+        key: KeyTag,
+    },
+    /// A character arrived.
+    Char {
+        /// Its class only.
+        class: CharClass,
+        /// The platform marked it as a repeat.
+        repeat: bool,
+    },
+    /// A pointer button went down.
+    PointerDown(PointerButton),
+    /// A pointer button went up.
+    PointerUp(PointerButton),
+    /// A wheel notch or scroll.
+    Wheel,
+    /// Pointer moves in one frame.
+    PointerMoves {
+        /// How many, saturated.
+        count: u32,
+    },
+    /// A frame re-rendered something.
+    Frame {
+        /// What it re-rendered.
+        kind: FrameKind,
+        /// CPU time of the frame, saturated.
+        micros: u32,
+        /// Shapes in the document.
+        shapes: u32,
+    },
+    /// The pointer tool changed.
+    Tool(Tool),
+    /// The document revision changed (an edit, undo or redo).
+    Revision(u32),
+    /// Input arrived after a long gap.
+    Idle {
+        /// Length of the gap.
+        secs: u32,
+    },
+    /// A detector fired.
+    Anomaly(Anomaly),
+    /// The user asked for a dump.
+    DumpRequested,
+}
+
+impl Event {
+    /// Whether the event is user input (for the idle detector).
+    #[must_use]
+    pub const fn is_input(&self) -> bool {
+        todo!()
+    }
+}
+
+/// An [`Event`] and when it happened, in microseconds since the recorder
+/// started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Record {
+    /// Microseconds since the recorder started.
+    pub micros: u64,
+    /// The event.
+    pub event: Event,
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _ = f;
+        todo!()
+    }
+}
+
+impl fmt::Display for Record {
+    /// `<seconds>.<micros> <event>`, one line.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let _ = f;
+        todo!()
+    }
+}
+
+/// The recorded form of a key `code` pressed with `mods`.
+#[must_use]
+pub fn key_tag(code: KeyCode, mods: KeyMods) -> KeyTag {
+    let _ = (code, mods);
+    todo!()
+}
+
+/// The recorded form of a `wl_keyboard.key` evdev `code`.
+#[must_use]
+pub fn backend_key(code: u32, ctrl: bool, alt: bool) -> BackendKey {
+    let _ = (code, ctrl, alt);
+    todo!()
+}
+
+/// The class of `ch`.
+#[must_use]
+pub fn char_class(ch: char) -> CharClass {
+    let _ = ch;
+    todo!()
+}
+
+/// The record of a backend event, with keys by the privacy rule.
+#[must_use]
+pub fn from_backend(event: BackendEvent) -> Event {
+    let _ = event;
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {
