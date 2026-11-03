@@ -97,19 +97,37 @@ impl Anomaly {
     /// Position in [`Anomaly::ALL`].
     #[must_use]
     pub const fn index(self) -> usize {
-        todo!()
+        match self {
+            Self::HeldKeyPressedAgain => 0,
+            Self::CharsPerPress => 1,
+            Self::RepeatBurst => 2,
+            Self::KeyboardRecreated => 3,
+            Self::BackendOverflow => 4,
+        }
     }
 
     /// A few words for logs and dumps.
     #[must_use]
     pub const fn describe(self) -> &'static str {
-        todo!()
+        match self {
+            Self::HeldKeyPressedAgain => "held key pressed again",
+            Self::CharsPerPress => "several chars for one key press",
+            Self::RepeatBurst => "key repeat burst",
+            Self::KeyboardRecreated => "keyboard re-created",
+            Self::BackendOverflow => "backend queue overflow",
+        }
     }
 
     /// A short name for a dump file.
     #[must_use]
     pub const fn slug(self) -> &'static str {
-        todo!()
+        match self {
+            Self::HeldKeyPressedAgain => "held-key",
+            Self::CharsPerPress => "chars-per-press",
+            Self::RepeatBurst => "repeat-burst",
+            Self::KeyboardRecreated => "keyboard-recreated",
+            Self::BackendOverflow => "backend-overflow",
+        }
     }
 }
 
@@ -232,7 +250,16 @@ impl Event {
     /// Whether the event is user input (for the idle detector).
     #[must_use]
     pub const fn is_input(&self) -> bool {
-        todo!()
+        matches!(
+            self,
+            Self::KeyDown { .. }
+                | Self::KeyUp { .. }
+                | Self::Char { .. }
+                | Self::PointerDown(_)
+                | Self::PointerUp(_)
+                | Self::Wheel
+                | Self::PointerMoves { .. }
+        )
     }
 }
 
@@ -246,47 +273,236 @@ pub struct Record {
     pub event: Event,
 }
 
+impl fmt::Display for KeyTag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Text => f.write_str("text"),
+            Self::Named(code) => write!(f, "{code:?}"),
+        }
+    }
+}
+
+impl fmt::Display for BackendKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Text => f.write_str("text"),
+            Self::Code(code) => write!(f, "code {code}"),
+        }
+    }
+}
+
+impl CharClass {
+    /// The class's name in a record.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Letter => "letter",
+            Self::Digit => "digit",
+            Self::Space => "space",
+            Self::Punct => "punct",
+            Self::Other => "other",
+        }
+    }
+}
+
+impl FrameKind {
+    /// The kind's name in a record.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Overlay => "overlay",
+            Self::Append => "append",
+            Self::Moved => "moved",
+            Self::Full => "full",
+        }
+    }
+}
+
+/// The name of a seat device in a record.
+const fn device_name(device: Device) -> &'static str {
+    match device {
+        Device::Keyboard => "keyboard",
+        Device::Pointer => "pointer",
+        Device::Touch => "touch",
+    }
+}
+
+/// `" repeat"` for a repeat, else nothing.
+const fn repeat_suffix(repeat: bool) -> &'static str {
+    if repeat { " repeat" } else { "" }
+}
+
 impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let _ = f;
-        todo!()
+        match *self {
+            Self::Start => f.write_str("start"),
+            Self::Capabilities {
+                keyboard,
+                pointer,
+                touch,
+            } => {
+                f.write_str("seat")?;
+                for (has, name) in [(keyboard, "keyboard"), (pointer, "pointer"), (touch, "touch")] {
+                    if has {
+                        write!(f, " {name}")?;
+                    }
+                }
+                if !(keyboard || pointer || touch) {
+                    f.write_str(" none")?;
+                }
+                Ok(())
+            }
+            Self::DeviceCreated(device) => write!(f, "device created {}", device_name(device)),
+            Self::DeviceReleased(device) => write!(f, "device released {}", device_name(device)),
+            Self::KeyboardEnter => f.write_str("focus in"),
+            Self::KeyboardLeave => f.write_str("focus out"),
+            Self::WlKey { key, state } => {
+                let state = match state {
+                    0 => "up",
+                    1 => "down",
+                    2 => "repeat",
+                    _ => "state?",
+                };
+                write!(f, "wl-key {key} {state}")
+            }
+            Self::RepeatInfo { rate, delay_ms } => {
+                write!(f, "repeat info {rate}/s after {delay_ms} ms")
+            }
+            Self::RepeatTimer { expirations } => write!(f, "repeat timer x{expirations}"),
+            Self::Keymap => f.write_str("keymap"),
+            Self::ToolAdded => f.write_str("tablet tool added"),
+            Self::ToolRemoved => f.write_str("tablet tool removed"),
+            Self::ProximityIn => f.write_str("pen in"),
+            Self::ProximityOut => f.write_str("pen out"),
+            Self::ProtocolError { errno } => write!(f, "protocol error errno {errno}"),
+            Self::BackendDropped { count } => write!(f, "backend dropped {count}"),
+            Self::KeyDown { key, repeat } => {
+                write!(f, "key-down {key}{}", repeat_suffix(repeat))
+            }
+            Self::KeyUp { key } => write!(f, "key-up {key}"),
+            Self::Char { class, repeat } => {
+                write!(f, "char {}{}", class.name(), repeat_suffix(repeat))
+            }
+            Self::PointerDown(button) => write!(f, "pointer-down {button:?}"),
+            Self::PointerUp(button) => write!(f, "pointer-up {button:?}"),
+            Self::Wheel => f.write_str("wheel"),
+            Self::PointerMoves { count } => write!(f, "moves {count}"),
+            Self::Frame {
+                kind,
+                micros,
+                shapes,
+            } => write!(
+                f,
+                "frame {} {}.{:03} ms {shapes} shapes",
+                kind.name(),
+                micros / 1000,
+                micros % 1000
+            ),
+            Self::Tool(tool) => write!(f, "tool {tool:?}"),
+            Self::Revision(revision) => write!(f, "revision {revision}"),
+            Self::Idle { secs } => write!(f, "idle {secs} s"),
+            Self::Anomaly(anomaly) => write!(f, "anomaly: {}", anomaly.describe()),
+            Self::DumpRequested => f.write_str("dump requested"),
+        }
     }
 }
 
 impl fmt::Display for Record {
     /// `<seconds>.<micros> <event>`, one line.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let _ = f;
-        todo!()
+        write!(
+            f,
+            "{:>8}.{:06} {}",
+            self.micros / 1_000_000,
+            self.micros % 1_000_000,
+            self.event
+        )
     }
 }
 
 /// The recorded form of a key `code` pressed with `mods`.
 #[must_use]
 pub fn key_tag(code: KeyCode, mods: KeyMods) -> KeyTag {
-    let _ = (code, mods);
-    todo!()
+    // The key codes follow X11 keysyms (`KeyCode` is `repr(u16)`): printable
+    // ASCII, the two "world" keys and the keypad's digits and operators.
+    let text = matches!(code as u16, 0x0020..=0x0060 | 0x0100..=0x0101 | 0xffaa..=0xffb9 | 0xffbd);
+    if text && !mods.ctrl && !mods.alt {
+        KeyTag::Text
+    } else {
+        KeyTag::Named(code)
+    }
 }
 
 /// The recorded form of a `wl_keyboard.key` evdev `code`.
 #[must_use]
 pub fn backend_key(code: u32, ctrl: bool, alt: bool) -> BackendKey {
-    let _ = (code, ctrl, alt);
-    todo!()
+    // evdev: digits to `=`, `q` to `]`, `a` to `` ` ``, `\` to `/`, keypad
+    // `*`, space, the keypad block, the 102nd key, keypad `/`, `=` and `,`.
+    let text = matches!(
+        code,
+        2..=13 | 16..=27 | 30..=41 | 43..=53 | 55 | 57 | 71..=83 | 86 | 98 | 117 | 121
+    );
+    if text && !ctrl && !alt {
+        BackendKey::Text
+    } else {
+        BackendKey::Code(u16::try_from(code).unwrap_or(u16::MAX))
+    }
 }
 
 /// The class of `ch`.
 #[must_use]
 pub fn char_class(ch: char) -> CharClass {
-    let _ = ch;
-    todo!()
+    if ch.is_alphabetic() {
+        CharClass::Letter
+    } else if ch.is_numeric() {
+        CharClass::Digit
+    } else if ch == ' ' {
+        CharClass::Space
+    } else if ch.is_control() || ch.is_whitespace() {
+        CharClass::Other
+    } else {
+        CharClass::Punct
+    }
 }
 
 /// The record of a backend event, with keys by the privacy rule.
 #[must_use]
 pub fn from_backend(event: BackendEvent) -> Event {
-    let _ = event;
-    todo!()
+    match event {
+        BackendEvent::Capabilities {
+            keyboard,
+            pointer,
+            touch,
+        } => Event::Capabilities {
+            keyboard,
+            pointer,
+            touch,
+        },
+        BackendEvent::DeviceCreated(device) => Event::DeviceCreated(device),
+        BackendEvent::DeviceReleased(device) => Event::DeviceReleased(device),
+        BackendEvent::KeyboardEnter => Event::KeyboardEnter,
+        BackendEvent::KeyboardLeave => Event::KeyboardLeave,
+        BackendEvent::Key {
+            code,
+            state,
+            ctrl,
+            alt,
+        } => Event::WlKey {
+            key: backend_key(code, ctrl, alt),
+            state: u8::try_from(state).unwrap_or(u8::MAX),
+        },
+        BackendEvent::RepeatInfo { rate, delay } => Event::RepeatInfo {
+            rate,
+            delay_ms: delay,
+        },
+        BackendEvent::RepeatTimer { expirations } => Event::RepeatTimer {
+            expirations: u32::try_from(expirations).unwrap_or(u32::MAX),
+        },
+        BackendEvent::Keymap => Event::Keymap,
+        BackendEvent::ToolAdded => Event::ToolAdded,
+        BackendEvent::ToolRemoved => Event::ToolRemoved,
+        BackendEvent::ProximityIn => Event::ProximityIn,
+        BackendEvent::ProximityOut => Event::ProximityOut,
+        BackendEvent::ProtocolError { errno } => Event::ProtocolError { errno },
+    }
 }
 
 #[cfg(test)]
@@ -412,22 +628,25 @@ mod tests {
             ('\u{7}', CharClass::Other),
         ];
 
-        for (ch, class) in cases {
-            // Act
-            let record = Record {
+        let line = |ch| {
+            Record {
                 micros: 0,
                 event: Event::Char {
                     class: char_class(ch),
                     repeat: false,
                 },
-            };
-
-            // Assert
-            assert_eq!(char_class(ch), class, "{ch:?}");
-            if ch.is_alphanumeric() {
-                assert!(!record.to_string().contains(ch), "{record}");
             }
+            .to_string()
+        };
+
+        for (ch, class) in cases {
+            // Act / Assert
+            assert_eq!(char_class(ch), class, "{ch:?}");
         }
+        // Characters of one class leave the same record.
+        assert_eq!(line('q'), line('Z'));
+        assert_eq!(line('1'), line('9'));
+        assert_eq!(line(','), line('#'));
     }
 
     #[test]

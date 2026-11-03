@@ -19,6 +19,9 @@ pub const REPEAT_BURST: u32 = 2;
 /// Lines one [`Topic`] may write per session before it is suppressed.
 pub const LINES_PER_TOPIC: u32 = 10;
 
+/// Most keys tracked as held at once; the buffer never grows past it.
+const HELD_KEYS: usize = 32;
+
 /// Keys held right now, and the chars of the last press.
 #[derive(Debug, Clone, Default)]
 pub struct KeyWatch {
@@ -33,32 +36,49 @@ impl KeyWatch {
     /// No key held.
     #[must_use]
     pub fn new() -> Self {
-        todo!()
+        Self {
+            held: Vec::with_capacity(HELD_KEYS),
+            chars: None,
+        }
     }
 
     /// A key went down. A non-repeat press of a held key is
     /// [`Anomaly::HeldKeyPressedAgain`].
     pub fn key_down(&mut self, code: KeyCode, repeat: bool) -> Option<Anomaly> {
-        let _ = (code, repeat);
-        todo!()
+        if repeat {
+            self.chars = None;
+            return None;
+        }
+        self.chars = Some(0);
+        if self.held.contains(&code) {
+            return Some(Anomaly::HeldKeyPressedAgain);
+        }
+        if self.held.len() < HELD_KEYS {
+            self.held.push(code);
+        }
+        None
     }
 
     /// A key went up.
     pub fn key_up(&mut self, code: KeyCode) {
-        let _ = code;
-        todo!()
+        self.held.retain(|held| *held != code);
     }
 
     /// A char arrived. The second non-repeat char of one press is
     /// [`Anomaly::CharsPerPress`].
     pub fn char(&mut self, repeat: bool) -> Option<Anomaly> {
-        let _ = repeat;
-        todo!()
+        if repeat {
+            return None;
+        }
+        let chars = self.chars.as_mut()?;
+        *chars = chars.saturating_add(1);
+        (*chars == 2).then_some(Anomaly::CharsPerPress)
     }
 
     /// Keyboard focus moved: key ups may have gone to another window.
     pub fn focus_changed(&mut self) {
-        todo!()
+        self.held.clear();
+        self.chars = None;
     }
 }
 
@@ -73,14 +93,15 @@ impl IdleWatch {
     /// No input yet.
     #[must_use]
     pub fn new() -> Self {
-        todo!()
+        Self { last: None }
     }
 
     /// Input at `micros`; the gap since the last input when it is longer
     /// than [`IDLE_GAP`].
     pub fn input(&mut self, micros: u64) -> Option<Duration> {
-        let _ = micros;
-        todo!()
+        let last = self.last.replace(micros.max(self.last.unwrap_or(0)))?;
+        let gap = Duration::from_micros(micros.saturating_sub(last));
+        (gap > IDLE_GAP).then_some(gap)
     }
 }
 
@@ -95,13 +116,22 @@ impl BackendWatch {
     /// Nothing seen yet.
     #[must_use]
     pub fn new() -> Self {
-        todo!()
+        Self { keyboards: 0 }
     }
 
     /// The anomaly `event` shows, if any.
     pub fn event(&mut self, event: &Event) -> Option<Anomaly> {
-        let _ = (event, Device::Keyboard);
-        todo!()
+        match *event {
+            Event::RepeatTimer { expirations } if expirations > REPEAT_BURST => {
+                Some(Anomaly::RepeatBurst)
+            }
+            Event::DeviceCreated(Device::Keyboard) => {
+                self.keyboards = self.keyboards.saturating_add(1);
+                (self.keyboards > 1).then_some(Anomaly::KeyboardRecreated)
+            }
+            Event::BackendDropped { count } if count > 0 => Some(Anomaly::BackendOverflow),
+            _ => None,
+        }
     }
 }
 
@@ -117,8 +147,10 @@ pub enum Topic {
 impl Topic {
     /// Index into the limiter's counters.
     const fn index(self) -> usize {
-        let _ = self;
-        todo!()
+        match self {
+            Self::Anomaly(anomaly) => anomaly.index(),
+            Self::SlowFrame => Anomaly::COUNT,
+        }
     }
 }
 
@@ -143,13 +175,18 @@ impl Limiter {
     /// Nothing written yet.
     #[must_use]
     pub fn new() -> Self {
-        todo!()
+        Self::default()
     }
 
     /// Counts one more line of `topic` and says what to write.
     pub fn check(&mut self, topic: Topic) -> Verdict {
-        let _ = (topic.index(), &self.counts);
-        todo!()
+        let count = &mut self.counts[topic.index()];
+        *count = count.saturating_add(1);
+        match (*count).cmp(&LINES_PER_TOPIC) {
+            std::cmp::Ordering::Less | std::cmp::Ordering::Equal => Verdict::Write,
+            std::cmp::Ordering::Greater if *count == LINES_PER_TOPIC + 1 => Verdict::Notice,
+            std::cmp::Ordering::Greater => Verdict::Skip,
+        }
     }
 }
 

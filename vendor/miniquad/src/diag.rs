@@ -107,16 +107,23 @@ static QUEUE: Mutex<Queue> = Mutex::new(Queue {
 /// returns how many were dropped since the last call. The two buffers are
 /// swapped, so neither allocates once both have grown.
 pub fn take_events_into(out: &mut Vec<BackendRecord>) -> u64 {
-    let _ = out;
-    todo!()
+    out.clear();
+    let mut queue = QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+    std::mem::swap(&mut queue.events, out);
+    std::mem::take(&mut queue.dropped)
 }
 
 /// Queues `event`, stamped now. When the queue is full the older half is
 /// dropped and counted.
 #[allow(dead_code)] // only the Wayland backend pushes events
 pub(crate) fn push(event: BackendEvent) {
-    let _ = (event, &QUEUE);
-    todo!()
+    let at = Instant::now();
+    let mut queue = QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+    if queue.events.len() >= MAX_EVENTS {
+        queue.events.drain(..MAX_EVENTS / 2);
+        queue.dropped += (MAX_EVENTS / 2) as u64;
+    }
+    queue.events.push(BackendRecord { at, event });
 }
 
 #[cfg(test)]

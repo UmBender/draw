@@ -12,14 +12,18 @@ pub mod event;
 pub mod file;
 pub mod ring;
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::sync::{Mutex, PoisonError, TryLockError};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::shell::diag::detect::{BackendWatch, IdleWatch, Limiter};
-use crate::shell::diag::event::{Anomaly, Event, Record};
-use crate::shell::diag::file::SessionLog;
+use macroquad::miniquad::diag as backend_diag;
+
+use crate::shell::diag::detect::{BackendWatch, IdleWatch, Limiter, Topic, Verdict};
+use crate::shell::diag::event::{Anomaly, Event, Record, from_backend};
+use crate::shell::diag::file::{LOG_CAP, MAX_DUMPS, SessionLog, dump_name, log_line, prune_dumps, utc};
 use crate::shell::diag::ring::Ring;
+use crate::shell::{backend, crash, tablet};
 
 /// Environment variable that sets the [`Level`].
 pub const LEVEL_ENV: &str = "DRAW_LOG";
@@ -57,16 +61,40 @@ pub enum Level {
 }
 
 impl Level {
+    /// Every level, quietest first.
+    const ALL: [Self; 6] = [
+        Self::Off,
+        Self::Error,
+        Self::Warn,
+        Self::Info,
+        Self::Debug,
+        Self::Trace,
+    ];
+
     /// The level's name as `DRAW_LOG` spells it.
     #[must_use]
     pub const fn name(self) -> &'static str {
-        todo!()
+        match self {
+            Self::Off => "off",
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+            Self::Trace => "trace",
+        }
     }
 
     /// The name in a log line: `ERROR`, `WARN`, …
     #[must_use]
     pub const fn tag(self) -> &'static str {
-        todo!()
+        match self {
+            Self::Off => "OFF",
+            Self::Error => "ERROR",
+            Self::Warn => "WARN",
+            Self::Info => "INFO",
+            Self::Debug => "DEBUG",
+            Self::Trace => "TRACE",
+        }
     }
 }
 
@@ -74,8 +102,21 @@ impl Level {
 /// one. Unset or blank is [`Level::Info`].
 #[must_use]
 pub fn parse_level(value: Option<&str>) -> (Level, Option<String>) {
-    let _ = value;
-    todo!()
+    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return (Level::Info, None);
+    };
+    match Level::ALL
+        .into_iter()
+        .find(|level| level.name().eq_ignore_ascii_case(value))
+    {
+        Some(level) => (level, None),
+        None => (
+            Level::Info,
+            Some(format!(
+                "{LEVEL_ENV}={value} is not off, error, warn, info, debug or trace; using info"
+            )),
+        ),
+    }
 }
 
 /// How a [`Diag`] starts.
@@ -115,8 +156,31 @@ pub struct StartInfo<'a> {
 /// The start-up line's message.
 #[must_use]
 pub fn start_line(info: &StartInfo<'_>) -> String {
-    let _ = info;
-    todo!()
+    let unknown = |value: Option<&str>| value.unwrap_or("unknown").to_owned();
+    format!(
+        "start: draw {} build {} pid {} backend {} session {} desktop {} tablet {} log {}",
+        info.version,
+        unknown(info.build_id),
+        info.pid,
+        info.backend,
+        unknown(info.session),
+        unknown(info.desktop),
+        info.tablet,
+        info.level.name()
+    )
+}
+
+/// `3h02m05s`, `4m10s` or `12s`.
+fn uptime(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    let (hours, minutes, seconds) = (secs / 3600, secs / 60 % 60, secs % 60);
+    if hours > 0 {
+        format!("{hours}h{minutes:02}m{seconds:02}s")
+    } else if minutes > 0 {
+        format!("{minutes}m{seconds:02}s")
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 /// The flight recorder, the session log and the detectors of one session.
@@ -128,6 +192,7 @@ pub struct Diag {
     start_unix: Duration,
     dir: Option<PathBuf>,
     log: Option<SessionLog>,
+    build_id: Option<String>,
     limiter: Limiter,
     backend: BackendWatch,
     idle: IdleWatch,
@@ -143,8 +208,29 @@ impl Diag {
     /// left out.
     #[must_use]
     pub fn new(settings: Settings) -> Self {
-        let _ = settings;
-        todo!()
+        let log = (settings.level != Level::Off)
+            .then(|| settings.dir.as_ref())
+            .flatten()
+            .and_then(|dir| SessionLog::open(&dir.join(LOG_FILE), LOG_CAP).ok());
+        let mut ring = Ring::new(settings.capacity);
+        ring.push(Record {
+            micros: 0,
+            event: Event::Start,
+        });
+        Self {
+            level: settings.level,
+            ring,
+            start: Instant::now(),
+            start_unix: settings.start_unix,
+            dir: settings.dir,
+            log,
+            build_id: None,
+            limiter: Limiter::new(),
+            backend: BackendWatch::new(),
+            idle: IdleWatch::new(),
+            anomalies: [0; Anomaly::COUNT],
+            auto_dumps: 0,
+        }
     }
 
     /// When the recorder started.
@@ -159,37 +245,194 @@ impl Diag {
         self.level
     }
 
+    /// Writes the start-up line and keeps the build id for dumps.
+    pub fn log_start(&mut self, info: &StartInfo<'_>) {
+        self.build_id = info.build_id.map(str::to_owned);
+        self.log(Level::Info, &start_line(info));
+    }
+
+    /// Microseconds from the start to `at`.
+    fn micros(&self, at: Instant) -> u64 {
+        u64::try_from(at.saturating_duration_since(self.start).as_micros()).unwrap_or(u64::MAX)
+    }
+
+    /// Whether lines at `level` are written.
+    fn enabled(&self, level: Level) -> bool {
+        level != Level::Off && level <= self.level && self.log.is_some()
+    }
+
     /// Records `event` at `at` and runs the detectors and the log rules on
     /// it. Writes nothing unless the event's line is at or below the level.
     pub fn record(&mut self, at: Instant, event: Event) {
-        let _ = (at, event, &self.ring, &self.limiter, &self.backend, &self.idle);
-        todo!()
+        let micros = self.micros(at);
+        let record = Record { micros, event };
+        self.ring.push(record);
+        if self.enabled(Level::Trace) {
+            self.log(Level::Trace, &format!("record {record}"));
+        }
+        match event {
+            Event::Anomaly(anomaly) => self.anomaly(anomaly),
+            Event::Frame { micros, .. } => self.frame(Duration::from_micros(u64::from(micros)), event),
+            Event::Capabilities { .. }
+            | Event::DeviceCreated(_)
+            | Event::DeviceReleased(_)
+            | Event::RepeatInfo { .. }
+            | Event::ToolAdded
+            | Event::ToolRemoved => {
+                if self.enabled(Level::Info) {
+                    self.log(Level::Info, &event.to_string());
+                }
+            }
+            Event::KeyboardEnter | Event::KeyboardLeave => {
+                if self.enabled(Level::Debug) {
+                    self.log(Level::Debug, &event.to_string());
+                }
+            }
+            Event::ProtocolError { .. } => self.log(Level::Error, &event.to_string()),
+            _ => {}
+        }
+        if event.is_input() {
+            if let Some(gap) = self.idle.input(micros) {
+                let secs = u32::try_from(gap.as_secs()).unwrap_or(u32::MAX);
+                self.ring.push(Record {
+                    micros,
+                    event: Event::Idle { secs },
+                });
+                if self.enabled(Level::Info) {
+                    self.log(Level::Info, &format!("input after {} idle", uptime(gap)));
+                }
+            }
+        }
+        if let Some(anomaly) = self.backend.event(&event) {
+            self.record(at, Event::Anomaly(anomaly));
+        }
     }
 
-    /// Writes `message` to the session log if `level` is enabled.
+    /// Counts `anomaly`, writes its line under the limiter and dumps the
+    /// first one of each kind, up to [`AUTO_DUMPS`] per session.
+    fn anomaly(&mut self, anomaly: Anomaly) {
+        let count = &mut self.anomalies[anomaly.index()];
+        *count = count.saturating_add(1);
+        let first = *count == 1;
+        match self.limiter.check(Topic::Anomaly(anomaly)) {
+            Verdict::Write => {
+                self.log(Level::Warn, &format!("anomaly: {}", anomaly.describe()));
+            }
+            Verdict::Notice => self.log(
+                Level::Warn,
+                &format!("further anomaly lines suppressed: {}", anomaly.describe()),
+            ),
+            Verdict::Skip => {}
+        }
+        if first && self.auto_dumps < AUTO_DUMPS && self.level != Level::Off {
+            self.auto_dumps += 1;
+            self.dump(anomaly.slug());
+        }
+    }
+
+    /// Writes the slow-frame or over-budget line of a frame of `time`.
+    fn frame(&mut self, time: Duration, event: Event) {
+        if time >= SLOW_FRAME && self.enabled(Level::Info) {
+            match self.limiter.check(Topic::SlowFrame) {
+                Verdict::Write => self.log(Level::Info, &format!("slow {event}")),
+                Verdict::Notice => self.log(Level::Info, "further slow frame lines suppressed"),
+                Verdict::Skip => {}
+            }
+        } else if time > FRAME_BUDGET && self.enabled(Level::Debug) {
+            self.log(Level::Debug, &format!("over budget: {event}"));
+        }
+    }
+
+    /// Wall-clock time now, since the Unix epoch.
+    fn unix_now(&self) -> Duration {
+        self.start_unix + self.start.elapsed()
+    }
+
+    /// Writes `message` to the session log if `level` is enabled. A log
+    /// that fails to write is closed for the rest of the session.
     pub fn log(&mut self, level: Level, message: &str) {
-        let _ = (level, message, &self.log, self.start_unix);
-        todo!()
+        if !self.enabled(level) {
+            return;
+        }
+        let line = log_line(self.unix_now(), self.start.elapsed(), level, message);
+        if let Some(log) = &mut self.log {
+            if log.write_line(&line).is_err() {
+                self.log = None;
+            }
+        }
+    }
+
+    /// The dump's text: header, records oldest first, anomaly counts.
+    fn dump_text(&self, reason: &str, now: Duration) -> String {
+        let mut text = String::with_capacity(64 * (self.ring.len() + 16));
+        // Writing to a String cannot fail.
+        let _ = write!(
+            text,
+            "draw diagnostics dump\nreason: {reason}\nversion: {}\nbuild id: {}\nstarted: {}\nwritten: {}\nlevel: {}\nrecords: {} (oldest first, seconds since start)\n",
+            env!("CARGO_PKG_VERSION"),
+            self.build_id.as_deref().unwrap_or("unknown"),
+            utc(self.start_unix),
+            utc(now),
+            self.level.name(),
+            self.ring.len(),
+        );
+        for record in self.ring.iter() {
+            let _ = writeln!(text, "{record}");
+        }
+        text.push_str("anomalies:");
+        let mut any = false;
+        for anomaly in Anomaly::ALL {
+            let count = self.anomaly_count(anomaly);
+            if count > 0 {
+                let _ = write!(text, " {} {count};", anomaly.describe());
+                any = true;
+            }
+        }
+        if !any {
+            text.push_str(" none");
+        }
+        text.push('\n');
+        text
     }
 
     /// Writes the ring to a dump file named for `reason` and returns its
     /// path; `None` without a directory or when writing fails.
     pub fn dump(&mut self, reason: &str) -> Option<PathBuf> {
-        let _ = (reason, &self.dir, self.auto_dumps);
-        todo!()
+        let dir = self.dir.clone()?;
+        let now = self.unix_now();
+        let name = dump_name(now.as_secs(), reason);
+        let mut path = dir.join(&name);
+        for n in 2..100 {
+            if !path.exists() {
+                break;
+            }
+            path = dir.join(name.replace(".log", &format!("-{n}.log")));
+        }
+        std::fs::create_dir_all(&dir).ok()?;
+        std::fs::write(&path, self.dump_text(reason, now)).ok()?;
+        // A dump that cannot prune the old ones is still written.
+        let _ = prune_dumps(&dir, MAX_DUMPS);
+        self.log(Level::Info, &format!("dump written: {}", path.display()));
+        Some(path)
     }
 
     /// The panic hook's part: an `ERROR` line and a `panic` dump.
     pub fn on_panic(&mut self, message: &str) {
-        let _ = message;
-        todo!()
+        self.log(Level::Error, &format!("panic: {message}"));
+        if self.level != Level::Off {
+            self.dump("panic");
+        }
     }
 
     /// The exit line's message for `reason` at `now`.
     #[must_use]
     pub fn exit_line(&self, reason: &str, now: Instant) -> String {
-        let _ = (reason, now);
-        todo!()
+        let total: u32 = self.anomalies.iter().sum();
+        let noun = if total == 1 { "anomaly" } else { "anomalies" };
+        format!(
+            "exit: {reason} after {} with {total} {noun}",
+            uptime(now.saturating_duration_since(self.start))
+        )
     }
 
     /// How often `anomaly` was seen.
@@ -204,8 +447,11 @@ static RECORDER: Mutex<Option<Diag>> = Mutex::new(None);
 
 /// Runs `f` on the recorder in `recorder`, waiting for the lock.
 pub fn with_in<R>(recorder: &Mutex<Option<Diag>>, f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
-    let _ = (recorder, f);
-    todo!()
+    recorder
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_mut()
+        .map(f)
 }
 
 /// Runs `f` on the recorder in `recorder` unless it is locked; `None` then
@@ -214,8 +460,12 @@ pub fn try_with_in<R>(
     recorder: &Mutex<Option<Diag>>,
     f: impl FnOnce(&mut Diag) -> R,
 ) -> Option<R> {
-    let _ = (recorder, f);
-    todo!()
+    let mut guard = match recorder.try_lock() {
+        Ok(guard) => guard,
+        Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(TryLockError::WouldBlock) => return None,
+    };
+    guard.as_mut().map(f)
 }
 
 /// Runs `f` on the session's recorder.
@@ -232,32 +482,103 @@ pub fn try_with<R>(f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
 /// state directory, backend and tablet mode) and writes the start-up line.
 /// Call once in `main`, after the panic hook.
 pub fn init_from_env() {
-    todo!()
+    let (level, warning) = parse_level(std::env::var(LEVEL_ENV).ok().as_deref());
+    let dir = crash::state_dir(
+        std::env::var_os("XDG_STATE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    );
+    let start_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let mut diag = Diag::new(Settings {
+        dir,
+        level,
+        start_unix,
+        capacity: RING_CAPACITY,
+    });
+    let build_id = crash::running_build_id();
+    let backend = format!("{:?}", backend::from_env().backend).to_lowercase();
+    let session = std::env::var("XDG_SESSION_TYPE").ok();
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
+    let tablet = if tablet::from_env().pen { "pen" } else { "mouse" };
+    diag.log_start(&StartInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        build_id: build_id.as_deref(),
+        pid: std::process::id(),
+        backend: &backend,
+        session: session.as_deref(),
+        desktop: desktop.as_deref(),
+        tablet,
+        level,
+    });
+    if let Some(warning) = warning {
+        eprintln!("draw: {warning}");
+        diag.log(Level::Warn, &warning);
+    }
+    *RECORDER.lock().unwrap_or_else(PoisonError::into_inner) = Some(diag);
 }
 
 /// Records one frame's events under one lock and empties `records`.
 pub fn record_all(records: &mut Vec<(Instant, Event)>) {
-    let _ = records;
-    todo!()
+    with(|diag| {
+        for (at, event) in records.drain(..) {
+            diag.record(at, event);
+        }
+    });
+    records.clear();
+}
+
+/// Moves the backend's queued events into `out` as records, keys hidden
+/// by the privacy rule, with a [`Event::BackendDropped`] record if the
+/// queue dropped any. `buffer` is reused between frames.
+pub fn take_backend(
+    buffer: &mut Vec<backend_diag::BackendRecord>,
+    out: &mut Vec<(Instant, Event)>,
+) {
+    let dropped = backend_diag::take_events_into(buffer);
+    if dropped > 0 {
+        let count = u32::try_from(dropped).unwrap_or(u32::MAX);
+        out.push((Instant::now(), Event::BackendDropped { count }));
+    }
+    out.extend(buffer.drain(..).map(|r| (r.at, from_backend(r.event))));
 }
 
 /// Writes `message` to the session log at `level`.
 pub fn log(level: Level, message: &str) {
-    let _ = (level, message);
-    todo!()
+    with(|diag| diag.log(level, message));
 }
 
 /// Writes a dump for `reason` (also the entry point for T48's signal
 /// handling) and returns its path.
 pub fn dump(reason: &str) -> Option<PathBuf> {
-    let _ = reason;
-    todo!()
+    with(|diag| {
+        diag.record(Instant::now(), Event::DumpRequested);
+        diag.dump(reason)
+    })
+    .flatten()
+}
+
+/// The panic hook's part (ADR-T27-3, ADR-T47-1): takes the backend's last
+/// events, then writes the `ERROR` line and the `panic` dump. Skips both
+/// if the recorder is locked.
+pub fn on_panic(message: &str) {
+    try_with(|diag| {
+        let mut buffer = Vec::new();
+        let mut records = Vec::new();
+        take_backend(&mut buffer, &mut records);
+        for (at, event) in records {
+            diag.record(at, event);
+        }
+        diag.on_panic(message);
+    });
 }
 
 /// Writes the exit line for `reason`.
 pub fn finish(reason: &str) {
-    let _ = reason;
-    todo!()
+    with(|diag| {
+        let line = diag.exit_line(reason, Instant::now());
+        diag.log(Level::Info, &line);
+    });
 }
 
 #[cfg(test)]

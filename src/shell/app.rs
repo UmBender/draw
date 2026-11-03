@@ -42,6 +42,8 @@ use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
+use crate::shell::diag::{self, Level};
+use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
 use crate::shell::render::{self, TextStats, to_mq_color};
@@ -361,8 +363,18 @@ pub const DUMP_CHORD: KeyChord = KeyChord::ctrl_shift(Key::L);
 /// Whether `event` is a press of [`DUMP_CHORD`].
 #[must_use]
 pub fn is_dump_chord(event: &InputEvent) -> bool {
-    let _ = event;
-    todo!()
+    matches!(event, InputEvent::KeyDown { key, mods } if *key == DUMP_CHORD.key && *mods == DUMP_CHORD.mods)
+}
+
+/// The flight recorder's kind of a frame that re-rendered something.
+fn frame_kind(redraw: Redraw) -> Option<FrameKind> {
+    match redraw {
+        Redraw::None => None,
+        Redraw::Overlay => Some(FrameKind::Overlay),
+        Redraw::Append { .. } => Some(FrameKind::Append),
+        Redraw::Moved => Some(FrameKind::Moved),
+        Redraw::Full => Some(FrameKind::Full),
+    }
 }
 
 /// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`
@@ -381,6 +393,7 @@ pub fn window_conf() -> WindowSettings {
         .chain(choice.backend.notice())
     {
         eprintln!("{line}");
+        diag::log(Level::Warn, line);
     }
     WindowSettings {
         window_title: "draw".to_owned(),
@@ -400,12 +413,16 @@ pub async fn run() {
             Ok(atlas) => render::set_glyph_atlas(atlas),
             Err(err) => {
                 eprintln!("draw: math font not loaded, formulas in the text font: {err}");
+                diag::log(Level::Error, &format!("math font not loaded: {err}"));
                 if let Ok(atlas) = GlyphAtlas::new(TEXT_FONT) {
                     render::set_glyph_atlas(atlas);
                 }
             }
         },
-        Err(err) => eprintln!("draw: embedded font not loaded, text hidden: {err}"),
+        Err(err) => {
+            eprintln!("draw: embedded font not loaded, text hidden: {err}");
+            diag::log(Level::Error, &format!("embedded font not loaded: {err}"));
+        }
     }
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
@@ -430,6 +447,11 @@ pub async fn run() {
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
+    // Flight recorder buffers, reused every frame (ADR-T47-1).
+    let mut records: Vec<(Instant, Event)> = Vec::with_capacity(256);
+    let mut backend_records = Vec::with_capacity(256);
+    let mut tool = editor.tool();
+    let mut revision = editor.document_revision();
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -440,15 +462,57 @@ pub async fn run() {
         collector.set_dpi(dpi);
         collector.set_pen_samples(pen_samples());
         collector.set_now(Instant::now());
+        diag::take_backend(&mut backend_records, &mut records);
+        if records
+            .iter()
+            .any(|(_, e)| matches!(e, Event::KeyboardEnter | Event::KeyboardLeave))
+        {
+            collector.focus_changed();
+        }
         repeat_all_miniquad_input(&mut collector, subscriber);
         if collector.flush_bounce() {
             // Wake again to hand the held release on (ADR-T42-1).
             schedule_update();
         }
+        let mut dump_asked = false;
         for event in collector.drain() {
-            dirty |= dispatch(&mut editor, event);
+            if is_dump_chord(&event) {
+                dump_asked = true;
+            } else {
+                dirty |= dispatch(&mut editor, event);
+            }
         }
-        frame.present(&editor, viewport, dpi, dirty);
+        collector.take_records(&mut records);
+        let now = Instant::now();
+        if editor.tool() != tool {
+            tool = editor.tool();
+            records.push((now, Event::Tool(tool)));
+        }
+        if editor.document_revision() != revision {
+            revision = editor.document_revision();
+            records.push((now, Event::Revision(revision as u32)));
+        }
+        if let Some((redraw, time)) = frame.present(&editor, viewport, dpi, dirty) {
+            if let Some(kind) = frame_kind(redraw) {
+                let micros = u32::try_from(time.as_micros()).unwrap_or(u32::MAX);
+                let shapes = u32::try_from(editor.document().len()).unwrap_or(u32::MAX);
+                records.push((
+                    now,
+                    Event::Frame {
+                        kind,
+                        micros,
+                        shapes,
+                    },
+                ));
+            }
+        }
+        diag::record_all(&mut records);
+        if dump_asked {
+            match diag::dump("manual") {
+                Some(path) => eprintln!("draw: diagnostics dump written to {}", path.display()),
+                None => eprintln!("draw: diagnostics dump not written (no state directory)"),
+            }
+        }
         next_frame().await;
     }
 }
@@ -525,8 +589,15 @@ impl CachedFrame {
     /// Updates the document layer as [`plan_redraw`], [`reuse_if_slow`] and
     /// [`settle`] say,
     /// then blits it to the window and draws the overlay on top. `dirty`
-    /// says whether input changed editor state.
-    fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
+    /// says whether input changed editor state. Returns what the frame
+    /// re-rendered and its CPU time, for the flight recorder (ADR-T47-1).
+    fn present(
+        &mut self,
+        editor: &Editor,
+        viewport: Vec2,
+        dpi: f32,
+        dirty: bool,
+    ) -> Option<(Redraw, Duration)> {
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
         let camera = *editor.camera();
@@ -554,7 +625,7 @@ impl CachedFrame {
         };
         let cleared = render::begin_text_frame();
         render::take_text_stats();
-        let started = self.timed.then(Instant::now);
+        let started = Instant::now();
         let from = match redraw {
             Redraw::Full => Some(0),
             Redraw::Append { from } => Some(from),
@@ -585,7 +656,7 @@ impl CachedFrame {
             self.key = Some(key);
         }
         let (Some(document), Some(cached)) = (&self.document, &self.key) else {
-            return;
+            return None;
         };
         if redraw == Redraw::Moved {
             // The moved layer may not cover the window; wake again until the
@@ -609,14 +680,16 @@ impl CachedFrame {
             schedule_update();
         }
         let text = render::take_text_stats();
-        if let Some(started) = started.filter(|_| redraw != Redraw::None) {
+        if redraw == Redraw::None {
+            return None;
+        }
+        let elapsed = started.elapsed();
+        if self.timed {
             let shapes = editor.document().len();
             let text = (text != TextStats::default()).then_some(text);
-            eprintln!(
-                "{}",
-                frame_log_line(redraw, started.elapsed(), text, shapes)
-            );
+            eprintln!("{}", frame_log_line(redraw, elapsed, text, shapes));
         }
+        Some((redraw, elapsed))
     }
 
     /// A render target of `size` physical pixels with this cache's sample

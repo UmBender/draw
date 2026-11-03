@@ -13,45 +13,52 @@ impl<T> Ring<T> {
     /// An empty ring for `capacity` items (at least one).
     #[must_use]
     pub fn new(capacity: usize) -> Self {
-        let _ = capacity;
-        todo!()
+        let capacity = capacity.max(1);
+        Self {
+            items: Vec::with_capacity(capacity),
+            head: 0,
+            capacity,
+        }
     }
 
     /// Adds `item`, replacing the oldest one when full. Never allocates.
     pub fn push(&mut self, item: T) {
-        let _ = item;
-        todo!()
+        if self.items.len() < self.capacity {
+            self.items.push(item);
+        } else {
+            self.items[self.head] = item;
+            self.head = (self.head + 1) % self.capacity;
+        }
     }
 
     /// Items held.
     #[must_use]
     pub fn len(&self) -> usize {
-        todo!()
+        self.items.len()
     }
 
     /// Whether nothing was pushed yet.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        todo!()
+        self.items.is_empty()
     }
 
     /// Most items held.
     #[must_use]
     pub fn capacity(&self) -> usize {
-        todo!()
+        self.capacity
     }
 
     /// Items the buffer has room for without allocating.
     #[must_use]
     pub fn allocated(&self) -> usize {
-        todo!()
+        self.items.capacity()
     }
 
     /// The items, oldest first.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        todo!();
-        #[allow(unreachable_code)]
-        self.items.iter()
+        let (newer, older) = self.items.split_at(self.head);
+        older.iter().chain(newer)
     }
 }
 

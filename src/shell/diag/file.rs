@@ -5,8 +5,9 @@
 //! that would push it past its cap first moves it to `<name>.1`, so the
 //! two files together never hold more than twice the cap.
 
-use std::fs::File;
-use std::io;
+use std::ffi::OsString;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -21,30 +22,84 @@ pub const MAX_DUMPS: usize = 5;
 /// `since_epoch` as `YYYY-MM-DDTHH:MM:SS.mmmZ`.
 #[must_use]
 pub fn utc(since_epoch: Duration) -> String {
-    let _ = since_epoch;
-    todo!()
+    let (date, time) = civil(since_epoch.as_secs());
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        date.0,
+        date.1,
+        date.2,
+        time.0,
+        time.1,
+        time.2,
+        since_epoch.subsec_millis()
+    )
 }
 
 /// `unix_secs` as `YYYYMMDDTHHMMSSZ`, for file names.
 #[must_use]
 pub fn utc_stamp(unix_secs: u64) -> String {
-    let _ = unix_secs;
-    todo!()
+    let (date, time) = civil(unix_secs);
+    format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        date.0, date.1, date.2, time.0, time.1, time.2
+    )
 }
 
-/// One session log line: `<utc> +<uptime>s <LEVEL> <message>\n`.
+/// `(year, month, day)` and `(hour, minute, second)` of `unix_secs`, in
+/// UTC: Howard Hinnant's `civil_from_days`, for days after the epoch.
+fn civil(unix_secs: u64) -> ((u64, u64, u64), (u64, u64, u64)) {
+    let days = unix_secs / 86_400;
+    let secs = unix_secs % 86_400;
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z % 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    ((year, month, day), (secs / 3600, secs / 60 % 60, secs % 60))
+}
+
+/// One session log line: `<utc> +<uptime>s <LEVEL> <message>\n`. Line
+/// breaks in `message` become spaces.
 #[must_use]
 pub fn log_line(unix: Duration, uptime: Duration, level: Level, message: &str) -> String {
-    let _ = (unix, uptime, level, message);
-    todo!()
+    format!(
+        "{} +{}.{:03}s {} {}\n",
+        utc(unix),
+        uptime.as_secs(),
+        uptime.subsec_millis(),
+        level.tag(),
+        message.replace(['\n', '\r'], " ")
+    )
 }
+
+/// Most characters of a dump's reason in its file name.
+const REASON_CHARS: usize = 32;
 
 /// `dump-<stamp>-<reason>.log`, the reason lowercased, other characters
 /// than ASCII letters and digits turned into `-`, at most 32 of them.
 #[must_use]
 pub fn dump_name(unix_secs: u64, reason: &str) -> String {
-    let _ = (unix_secs, reason);
-    todo!()
+    let reason: String = reason
+        .chars()
+        .take(REASON_CHARS)
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    format!("dump-{}-{reason}.log", utc_stamp(unix_secs))
+}
+
+/// Whether `name` is a dump file's name.
+fn is_dump(name: &str) -> bool {
+    name.starts_with("dump-") && name.ends_with(".log")
 }
 
 /// Deletes the oldest `dump-*.log` files in `dir` (by name, which sorts by
@@ -54,8 +109,19 @@ pub fn dump_name(unix_secs: u64, reason: &str) -> String {
 ///
 /// When `dir` cannot be read or a file cannot be removed.
 pub fn prune_dumps(dir: &Path, keep: usize) -> io::Result<()> {
-    let _ = (dir, keep);
-    todo!()
+    let mut dumps = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let name = entry?.file_name();
+        if name.to_str().is_some_and(is_dump) {
+            dumps.push(name);
+        }
+    }
+    dumps.sort();
+    let extra = dumps.len().saturating_sub(keep);
+    for name in &dumps[..extra] {
+        std::fs::remove_file(dir.join(name))?;
+    }
+    Ok(())
 }
 
 /// The session log file, rotated at its cap.
@@ -76,8 +142,21 @@ impl SessionLog {
     ///
     /// When the directory or the file cannot be created.
     pub fn open(path: &Path, cap: u64) -> io::Result<Self> {
-        let _ = (path, cap);
-        todo!()
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let existing = std::fs::metadata(path).map_or(0, |meta| meta.len());
+        if existing >= cap && existing > 0 {
+            std::fs::rename(path, backup(path))?;
+        }
+        let file = append(path)?;
+        let len = file.metadata()?.len();
+        Ok(Self {
+            path: path.to_path_buf(),
+            file,
+            len,
+            cap,
+        })
     }
 
     /// Appends `line` (cut to the cap), rotating first if it would not fit.
@@ -86,8 +165,16 @@ impl SessionLog {
     ///
     /// When the file cannot be renamed, reopened or written.
     pub fn write_line(&mut self, line: &str) -> io::Result<()> {
-        let _ = (line, &self.file, self.cap);
-        todo!()
+        let line = cut(line, usize::try_from(self.cap).unwrap_or(usize::MAX));
+        let size = line.len() as u64;
+        if self.len > 0 && self.len + size > self.cap {
+            std::fs::rename(&self.path, backup(&self.path))?;
+            self.file = append(&self.path)?;
+            self.len = 0;
+        }
+        self.file.write_all(line.as_bytes())?;
+        self.len += size;
+        Ok(())
     }
 
     /// Bytes in the current file.
@@ -107,6 +194,28 @@ impl SessionLog {
     pub fn path(&self) -> &Path {
         &self.path
     }
+}
+
+/// `<path>.1`, where a rotated log goes.
+fn backup(path: &Path) -> PathBuf {
+    let mut name = OsString::from(path.as_os_str());
+    name.push(".1");
+    PathBuf::from(name)
+}
+
+/// `path` opened for appending, created if missing.
+fn append(path: &Path) -> io::Result<File> {
+    OpenOptions::new().create(true).append(true).open(path)
+}
+
+/// The longest prefix of `text` of at most `max` bytes that ends on a char
+/// boundary.
+fn cut(text: &str, max: usize) -> &str {
+    if text.len() <= max {
+        return text;
+    }
+    let end = (0..=max).rev().find(|&at| text.is_char_boundary(at)).unwrap_or(0);
+    &text[..end]
 }
 
 #[cfg(test)]

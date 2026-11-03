@@ -4,8 +4,9 @@
 //! The release build aborts on panic and ships stripped, so the hook
 //! writes the panic message, its source location, the app version and
 //! the GNU build id (which pairs the binary with its `draw.debug`) to
-//! stderr and appends them to [`crash_log_path`]. Everything but the hook
-//! itself is a pure function.
+//! stderr and appends them to [`crash_log_path`]. Then it hands the panic
+//! to the diagnostics recorder, which logs it and writes a dump
+//! (ADR-T47-1). Everything but the hook itself is a pure function.
 
 use std::any::Any;
 use std::backtrace::{Backtrace, BacktraceStatus};
@@ -47,8 +48,13 @@ pub const BUILD_ID_PREFIX: u64 = 64 * 1024;
 /// `$HOME/.local/state/draw`; `None` without an absolute home either.
 #[must_use]
 pub fn state_dir(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
-    let _ = (xdg_state_home, home);
-    todo!()
+    fn absolute(dir: Option<&OsStr>) -> Option<&Path> {
+        dir.map(Path::new).filter(|dir| dir.is_absolute())
+    }
+    absolute(xdg_state_home)
+        .map(Path::to_path_buf)
+        .or_else(|| absolute(home).map(|home| home.join(".local/state")))
+        .map(|state| state.join("draw"))
 }
 
 /// Where the crash log goes: `crash.log` in [`state_dir`].
@@ -61,7 +67,14 @@ pub fn crash_log_path(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> O
 /// [`BUILD_ID_PREFIX`] bytes of `/proc/self/exe`.
 #[must_use]
 pub fn running_build_id() -> Option<String> {
-    todo!()
+    use std::io::Read as _;
+    let mut prefix = Vec::new();
+    std::fs::File::open("/proc/self/exe")
+        .ok()?
+        .take(BUILD_ID_PREFIX)
+        .read_to_end(&mut prefix)
+        .ok()?;
+    build_id(&prefix)
 }
 
 /// The report as text, one `key: value` line per field, ending in a
@@ -176,9 +189,8 @@ pub fn install_hook() {
         let location = info
             .location()
             .map(|at| format!("{}:{}:{}", at.file(), at.line(), at.column()));
-        let build_id = std::fs::read("/proc/self/exe")
-            .ok()
-            .and_then(|exe| build_id(&exe));
+        let report_location = location.clone();
+        let build_id = running_build_id();
         let unix_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs());
@@ -205,6 +217,12 @@ pub fn install_hook() {
                 let _ = writeln!(stderr, "crash report appended to {}", path.display());
             }
         }
+        // The flight recorder's last moments (ADR-T47-1).
+        let message = match &report_location {
+            Some(at) => format!("{} at {at}", panic_message(info.payload())),
+            None => panic_message(info.payload()).to_owned(),
+        };
+        crate::shell::diag::on_panic(&message);
     }));
 }
 
