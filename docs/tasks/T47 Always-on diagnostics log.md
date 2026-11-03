@@ -1,7 +1,7 @@
 ---
 id: T47
 title: Always-on diagnostics log
-status: in-progress
+status: review
 wave: 31
 branch: task/T47-diagnostics-log
 depends_on: []
@@ -152,15 +152,16 @@ of those files (`diag::*::tests`).
   detector. `event::tests::backend_event_maps_every_kind`. The queue
   bound is tested in the vendored crate,
   `vendor/miniquad/src/diag.rs` `tests::queue_keeps_newest_and_counts_dropped`.
-  `scripts/check.sh` does not run it, so it is run by hand
-  (`cargo test -p miniquad --lib diag`).
+  `scripts/check.sh` does not run it, and Cargo cannot test a patched
+  path dependency from draw's workspace. So it is run by hand on a copy
+  of `vendor/miniquad` (`cargo test --lib diag` there).
 - **AC-13 Cost.** Recording at the default level touches no file. In a
   release build a record costs under 1 µs on average.
   `mod::tests::recording_at_info_writes_no_file`, and
   `mod::tests::record_cost_is_under_a_microsecond`, which is ignored
   and checked only in release builds, as in `tests/perf.rs`. Manual
-  check: frame times with `DRAW_FRAME_TIMES=1` on the [[Perf scenes]]
-  scene, before and after, recorded in *Log*.
+  check: frame times with `DRAW_FRAME_TIMES=1` on the scene of
+  [[ADR-T24-5 Redraw budgets]], before and after, recorded in *Log*.
 
 Not in this task (moved to [[T48 Clean exit on Ctrl-C]], which owns
 the `unsafe` signal handling): `SIGUSR1` dumps and dumps on
@@ -179,12 +180,12 @@ the `unsafe` signal handling): `SIGUSR1` dumps and dumps on
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T47): …`
-- [ ] tests — `test(T47): …`
-- [ ] models — `feat(T47): …`
-- [ ] behaviour — `feat(T47): …`
-- [ ] quality — `chore(T47): …`
-- [ ] docs — `docs(T47): …`
+- [x] spec — `docs(T47): …`
+- [x] tests — `test(T47): …`
+- [x] models — `feat(T47): …`
+- [x] behaviour — `feat(T47): …`
+- [x] quality — `chore(T47): …`
+- [x] docs — `docs(T47): …`
 
 ## Learning path
 
@@ -194,3 +195,27 @@ Possibly a tutorial on a lock-free ring buffer / flight recorder.
 
 - 2026-11-02 — note written at the owner's request, first step of the
   road to 2.0.0 ([[T50 Version 2.0.0 refactor]]).
+- 2026-11-02 — spec and [[ADR-T47-1 Flight recorder and capped session log]].
+  `SIGUSR1` and fatal-signal dumps moved to [[T48 Clean exit on Ctrl-C]],
+  which owns the `unsafe` signal code. T48 calls `diag::dump`.
+- 2026-11-02 — implemented. The miniquad queue test
+  (`queue_keeps_newest_and_counts_dropped`) passed on a copy of
+  `vendor/miniquad`. `record_cost_is_under_a_microsecond` in release:
+  **21 ns per record**. Smoke run on Hyprland (native Wayland, Huion
+  tablet): `draw.log` got the start-up line with the build id, the seat
+  capabilities, pointer and keyboard creation and the repeat info
+  (25/s after 600 ms). `DRAW_LOG=trace` copied every record, with keys
+  as `text`.
+- Deviations from the spec: the char-class test now checks that two
+  characters of one class leave the same record, instead of searching
+  for the character in the line (`'a'` is in "char"). `AC-12`'s
+  hand-run command was corrected. A notice from the backend choice is
+  logged at `info` and its warning at `warn`.
+- Not yet measured: the ADR-T24-5 redraw budgets with
+  `DRAW_FRAME_TIMES=1` on the 5 120-stroke scene, before and after
+  T47. The record cost is 21 ns and frames take one lock each, so no
+  change is expected. The owner checks it on the target before the
+  release.
+- Integration note: T46 (`task/T46-wayland-default`, not yet on `main`)
+  also touches `src/shell/app.rs` and `src/main.rs`. Expect small
+  conflicts around `window_conf` and the backend notice lines.

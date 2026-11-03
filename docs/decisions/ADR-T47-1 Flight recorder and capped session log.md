@@ -1,7 +1,7 @@
 ---
 id: ADR-T47-1
 title: Flight recorder and capped session log
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-02
 task: T47
