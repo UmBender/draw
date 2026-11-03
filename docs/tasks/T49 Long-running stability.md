@@ -104,7 +104,7 @@ its changes and the editor compares that count.
   `history::tests::history_over_byte_budget_drops_oldest`,
   `history_keeps_newest_entry_over_budget`,
   `history_bytes_follow_commit_undo_redo_and_clear`,
-  `history_bytes_never_exceed_budget_with_two_entries` (proptest).
+  `history_bytes_stay_exact_and_within_budget` (proptest).
 - **AC-3 Change count.** `History::changes` grows by one on every commit,
   undo and redo that changes the document, and not on an empty commit,
   a failed commit, or an undo/redo with nothing to do.

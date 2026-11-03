@@ -4210,4 +4210,30 @@ mod tests {
         assert_eq!(editing(&ed).as_deref(), Some("ab"));
         assert!(approx_eq(open_size(&ed), 18.0, 1e-4));
     }
+
+    // ---- T49 AC-4 revision under the byte budget ---------------------------
+
+    #[test]
+    fn editor_commit_dropping_old_entries_bumps_revision() {
+        // Arrange: a budget of two and a half pen dots.
+        let mut probe = Editor::new();
+        click(&mut probe, 0.0, 0.0);
+        let dot = probe.history_bytes();
+        assert!(dot > 0);
+        let mut ed = Editor::new();
+        ed.history = History::with_limits(HISTORY_LIMIT, dot * 5 / 2);
+        click(&mut ed, 0.0, 0.0);
+        click(&mut ed, 10.0, 0.0);
+        let lengths = (ed.history.undo_len(), ed.history.redo_len());
+        assert_eq!(lengths, (2, 0));
+        let before = ed.document_revision();
+
+        // Act: the third dot drops the first one.
+        click(&mut ed, 20.0, 0.0);
+
+        // Assert
+        assert_eq!((ed.history.undo_len(), ed.history.redo_len()), lengths);
+        assert!(ed.document_revision() > before);
+        assert_eq!(ed.document().len(), 3);
+    }
 }

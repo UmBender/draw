@@ -2381,4 +2381,111 @@ mod tests {
         assert_vec_eq(r.placed_texts()[0].origin, r0 + v(5.0, -3.0));
         assert_vec_eq(g.placed_texts()[0].origin, g0 + v(5.0, -3.0));
     }
+
+    // ---- T49 AC-1 heap estimate --------------------------------------------
+
+    #[test]
+    fn shape_heap_bytes_counts_points_widths_and_text() {
+        // Arrange
+        let points = vec![v(0.0, 0.0); 10];
+        let widths = vec![1.0_f32; 10];
+        let stroke_bytes = points.capacity() * std::mem::size_of::<Vec2>()
+            + widths.capacity() * std::mem::size_of::<f32>();
+        let stroke = Shape::Stroke {
+            points,
+            widths: Some(widths),
+            style: style(2.0),
+        };
+        let words = String::from("hello");
+        let words_bytes = words.capacity();
+        let text = Shape::Text {
+            origin: v(0.0, 0.0),
+            text: words,
+            size: 10.0,
+            style: style(1.0),
+        };
+        let label = ShapeText::new(String::from("abc"), 12.0);
+        let label_bytes = label.as_ref().map_or(0, |t| t.text.capacity());
+        let rect = Shape::Rect {
+            a: v(0.0, 0.0),
+            b: v(10.0, 10.0),
+            style: style(1.0),
+            fill: None,
+            label: None,
+            text: label,
+        };
+        let fills = vec![
+            CellFill {
+                col: 0,
+                row: 0,
+                color: color(1),
+            };
+            2
+        ];
+        let cell = ShapeText::new(String::from("ab"), 12.0);
+        let cell_bytes = cell.as_ref().map_or(0, |t| t.text.capacity());
+        let texts: Vec<CellText> = cell
+            .into_iter()
+            .map(|content| CellText {
+                col: 1,
+                row: 0,
+                content,
+            })
+            .collect();
+        let grid_bytes = fills.capacity() * std::mem::size_of::<CellFill>()
+            + texts.capacity() * std::mem::size_of::<CellText>()
+            + cell_bytes;
+        let grid = Shape::Grid {
+            a: v(0.0, 0.0),
+            b: v(20.0, 10.0),
+            cols: 2,
+            rows: 1,
+            style: style(1.0),
+            axes: false,
+            fills,
+            texts,
+        };
+
+        // Act / Assert
+        assert_eq!(stroke.heap_bytes(), stroke_bytes);
+        assert_eq!(text.heap_bytes(), words_bytes);
+        assert_eq!(rect.heap_bytes(), label_bytes);
+        assert_eq!(grid.heap_bytes(), grid_bytes);
+        assert!(label_bytes > 0 && cell_bytes > 0);
+    }
+
+    #[test]
+    fn shape_heap_bytes_of_plain_shapes_is_zero() {
+        // Arrange
+        let shapes = [
+            Shape::Line {
+                a: v(0.0, 0.0),
+                b: v(1.0, 1.0),
+                style: style(1.0),
+            },
+            Shape::Arrow {
+                a: v(0.0, 0.0),
+                b: v(1.0, 1.0),
+                style: style(1.0),
+            },
+            Shape::Ellipse {
+                a: v(0.0, 0.0),
+                b: v(1.0, 1.0),
+                style: style(1.0),
+                fill: Some(color(1)),
+                label: Some(3),
+                text: None,
+            },
+            Shape::Stroke {
+                points: Vec::new(),
+                widths: None,
+                style: style(1.0),
+            },
+        ];
+
+        // Act / Assert
+        for shape in &shapes {
+            assert_eq!(shape.heap_bytes(), 0, "{shape:?}");
+        }
+    }
 }

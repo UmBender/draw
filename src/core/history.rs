@@ -343,4 +343,174 @@ mod tests {
             prop_assert_eq!(snapshot(&doc), final_state);
         }
     }
+
+    // ---- T49 AC-2, AC-3 byte budget and change count -------------------------
+
+    fn stroke(n: usize) -> Shape {
+        Shape::Stroke {
+            points: vec![Vec2::new(1.0, 2.0); n.max(1)],
+            widths: None,
+            style: Style {
+                color: ColorId::INK,
+                width: 2.0,
+            },
+        }
+    }
+
+    /// Commits one stroke of `n` points; returns the transaction's bytes.
+    fn commit_stroke(history: &mut History, doc: &mut Document, n: usize) -> usize {
+        let tx = tx_insert(doc, [stroke(n)]);
+        let bytes = tx.heap_bytes();
+        assert!(history.commit(doc, tx).is_ok());
+        bytes
+    }
+
+    /// Bytes of a one-stroke transaction of `n` points.
+    fn stroke_tx_bytes(n: usize) -> usize {
+        tx_insert(&mut Document::new(), [stroke(n)]).heap_bytes()
+    }
+
+    /// Bytes held by both stacks, recomputed from scratch.
+    fn held(history: &History) -> usize {
+        history
+            .undo
+            .iter()
+            .chain(&history.redo)
+            .map(Transaction::heap_bytes)
+            .sum()
+    }
+
+    #[test]
+    fn history_over_byte_budget_drops_oldest() {
+        // Arrange
+        let one = stroke_tx_bytes(100);
+        let mut doc = Document::new();
+        let mut history = History::with_limits(HISTORY_LIMIT, one * 3);
+
+        // Act
+        for _ in 0..5 {
+            commit_stroke(&mut history, &mut doc, 100);
+        }
+
+        // Assert
+        assert_eq!(history.undo_len(), 3);
+        assert!(history.bytes() <= one * 3);
+        while history.undo(&mut doc) {}
+        assert_eq!(doc.len(), 2);
+    }
+
+    #[test]
+    fn history_keeps_newest_entry_over_budget() {
+        // Arrange
+        let mut doc = Document::new();
+        let mut history = History::with_limits(HISTORY_LIMIT, 10);
+
+        // Act
+        commit_stroke(&mut history, &mut doc, 100);
+        let newest = commit_stroke(&mut history, &mut doc, 200);
+
+        // Assert
+        assert_eq!(history.undo_len(), 1);
+        assert_eq!(history.bytes(), newest);
+        assert!(history.undo(&mut doc));
+        assert_eq!(doc.len(), 1);
+        assert!(history.redo(&mut doc));
+        assert_eq!(doc.len(), 2);
+    }
+
+    #[test]
+    fn history_bytes_follow_commit_undo_redo_and_clear() {
+        // Arrange
+        let mut doc = Document::new();
+        let mut history = History::new();
+        assert_eq!(history.bytes(), 0);
+
+        // Act / Assert
+        let a = commit_stroke(&mut history, &mut doc, 10);
+        let b = commit_stroke(&mut history, &mut doc, 20);
+        assert_eq!(history.bytes(), a + b);
+        assert!(history.undo(&mut doc));
+        assert_eq!(history.bytes(), a + b);
+        assert!(history.redo(&mut doc));
+        assert_eq!(history.bytes(), a + b);
+        assert!(history.undo(&mut doc));
+        let c = commit_stroke(&mut history, &mut doc, 30);
+        assert_eq!(history.bytes(), a + c);
+        history.clear();
+        assert_eq!(history.bytes(), 0);
+    }
+
+    #[test]
+    fn history_changes_count_every_document_change() {
+        // Arrange
+        let mut doc = Document::new();
+        let mut history = History::new();
+        assert_eq!(history.changes(), 0);
+
+        // Act / Assert: changes.
+        commit_stroke(&mut history, &mut doc, 3);
+        assert_eq!(history.changes(), 1);
+        assert!(history.undo(&mut doc));
+        assert_eq!(history.changes(), 2);
+        assert!(history.redo(&mut doc));
+        assert_eq!(history.changes(), 3);
+
+        // Act / Assert: no change.
+        assert_eq!(history.commit(&mut doc, Transaction::default()), Ok(()));
+        let bad = Transaction(vec![Edit::Remove {
+            index: 9,
+            id: ShapeId(0),
+            shape: line(0.0),
+        }]);
+        assert!(history.commit(&mut doc, bad).is_err());
+        assert!(!history.redo(&mut doc));
+        assert!(history.undo(&mut doc));
+        assert!(!history.undo(&mut doc));
+        assert_eq!(history.changes(), 4);
+    }
+
+    #[derive(Debug, Clone)]
+    enum Step {
+        Commit(usize),
+        Undo,
+        Redo,
+    }
+
+    fn step() -> impl Strategy<Value = Step> {
+        prop_oneof![
+            4 => (1_usize..300).prop_map(Step::Commit),
+            2 => Just(Step::Undo),
+            1 => Just(Step::Redo),
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn history_bytes_stay_exact_and_within_budget(
+            steps in prop::collection::vec(step(), 0..60),
+            budget in 0_usize..8_000,
+        ) {
+            let mut doc = Document::new();
+            let mut history = History::with_limits(8, budget);
+            for step in &steps {
+                match step {
+                    Step::Commit(n) => {
+                        commit_stroke(&mut history, &mut doc, *n);
+                    }
+                    Step::Undo => {
+                        history.undo(&mut doc);
+                    }
+                    Step::Redo => {
+                        history.redo(&mut doc);
+                    }
+                }
+                prop_assert_eq!(history.bytes(), held(&history));
+                prop_assert!(history.undo_len() <= 8);
+                prop_assert!(
+                    history.bytes() <= budget
+                        || history.undo_len() + history.redo_len() == 1
+                );
+            }
+        }
+    }
 }
