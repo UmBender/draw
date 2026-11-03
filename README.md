@@ -65,18 +65,20 @@ installed already:
 
 ```sh
 # Fedora / RHEL
-sudo dnf install libX11 libXi libxkbcommon libglvnd-glx
+sudo dnf install libX11 libXi libxkbcommon libglvnd-glx libwayland-client libwayland-egl libdecor
 # Debian / Ubuntu
-sudo apt install libx11-6 libxi6 libxkbcommon0 libgl1
+sudo apt install libx11-6 libxi6 libxkbcommon0 libgl1 libwayland-client0 libwayland-egl1 libdecor-0-0
 ```
 
 `SHA256SUMS` lists the checksum of every file; `draw.debug` holds the debug
 symbols that turn a crash address back into a source line.
 
-The window uses X11: on a Wayland session it runs through XWayland, which
-must be installed (`xorg-x11-server-Xwayland` on Fedora, `xwayland` on
-Debian / Ubuntu). If a display or a library is missing, draw says which
-and what to install instead of opening a window;
+On a Wayland session the window talks to the compositor directly; the
+`.rpm` and `.deb` recommend the Wayland libraries for it. Without them draw
+falls back to X11 through XWayland. On an X11 session draw uses X11, which
+is deprecated and will be removed in draw 2.0.0 (see
+[Window backend](#window-backend)). If a display or a library is missing,
+draw says which and what to install instead of opening a window;
 `DRAW_SKIP_PREFLIGHT=1 draw` skips that check (for instance when libraries
 live somewhere unusual, as on NixOS).
 
@@ -295,7 +297,7 @@ A printable one-page version lives in
 ## Configuration
 
 There is no config file: shortcuts, palette and theme are fixed on purpose.
-Four environment variables exist for troubleshooting, and two turn on
+Five environment variables exist for troubleshooting, and one turns on
 experimental features:
 
 | Variable | Values | Effect |
@@ -303,12 +305,29 @@ experimental features:
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
 | `DRAW_EXPERIMENTAL` | feature names, comma-separated | Turn on experimental features (below) |
-| `DRAW_BACKEND` | `x11` (default), `wayland` | Window backend on Linux; `wayland` is experimental (below) |
+| `DRAW_BACKEND` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` is deprecated and removed in 2.0.0 (see [Window backend](#window-backend)) |
 | `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
 | `DRAW_TABLET` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
 
 ```sh
 DRAW_MSAA=off draw
+```
+
+### Window backend
+
+On a Wayland session draw is a native Wayland app; if the connection to
+the compositor fails or its libraries are missing, it falls back to X11
+through XWayland. Without `libdecor` the window may have no title bar on
+GNOME.
+
+**X11 is deprecated and will be removed in draw 2.0.0**, both XWayland on
+Wayland sessions and plain X11 sessions; 2.0.0 needs a Wayland session.
+Until then `DRAW_BACKEND=x11` still forces X11 (for instance if text looks
+blurrier under fractional scaling), and every start on X11 prints one line
+saying so.
+
+```sh
+DRAW_BACKEND=x11 draw
 ```
 
 ### Pen tablets
@@ -340,10 +359,9 @@ monitor name) in the `input:tablet` section; on X11 use
 **Pressure.** With the Pen tool, pressing harder draws a thicker line: a
 normal (half) press gives the width chosen with `[` / `]`, a light touch
 down to a quarter of it, a hard press up to twice. Mouse strokes and the
-other tools are unchanged. Pressure works on the default X11 backend and on
-the native Wayland backend (`DRAW_BACKEND=wayland`), where the pen also
-draws and both barrel buttons pan and erase; there the mouse is ignored
-while the pen hovers over the window. Tilt, rotation and the eraser
+other tools are unchanged. Pressure works on native Wayland, where the pen
+also draws and both barrel buttons pan and erase and the mouse is ignored
+while the pen hovers over the window, and on the deprecated X11 backend. Tilt, rotation and the eraser
 end of the pen are not used. draw ships a patched copy of its window
 library for this (`vendor/miniquad`).
 
@@ -362,19 +380,6 @@ may change or disappear in any release.
 
 ```sh
 DRAW_EXPERIMENTAL=shape-text draw
-```
-
-- **Native Wayland — `DRAW_BACKEND=wayland`.** By default draw is an X11
-  app and runs on Wayland sessions through XWayland. With this variable it
-  talks to the Wayland compositor directly, which can help on sessions
-  without XWayland; if the Wayland connection fails it falls back to X11.
-  It prints a one-line warning at start-up, is not yet tested on every
-  compositor and may not be sharper under fractional scaling. Without
-  `libdecor` the window may have no title bar on GNOME. Unset the
-  variable to go back to X11.
-
-```sh
-DRAW_BACKEND=wayland draw
 ```
 
 ## Limitations

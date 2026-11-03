@@ -27,7 +27,7 @@ pub enum Role {
     Required,
     /// One of the OpenGL loaders; at least one of the group is needed.
     Gl,
-    /// Loaded by the Wayland backend (`DRAW_BACKEND=wayland`); a library
+    /// Loaded by the Wayland backend (the default on Wayland sessions); a library
     /// both backends need also has a `required` or `gl` line.
     Wayland,
     /// Loaded when present, never checked (e.g. `libdecor`).
@@ -150,13 +150,15 @@ fn is_set(value: Option<&OsString>) -> bool {
 /// Decides whether the window can open in `env` with `backend`, given
 /// which sonames `found` reports as installed.
 ///
-/// With [`Backend::Wayland`] in a Wayland session the `wayland` libraries
-/// are checked and `DISPLAY` is not needed; elsewhere miniquad falls back
-/// to X11, so the X11 check runs (ADR-T28-1).
+/// With [`Backend::Wayland`] in a Wayland session the `wayland`
+/// libraries are checked first and `DISPLAY` is not needed; when one is
+/// missing miniquad falls back to X11, so the window still opens if the
+/// X11 check passes (ADR-T46-1). Elsewhere only the X11 check runs.
 ///
 /// # Errors
 ///
-/// The first [`Problem`]: display problems before missing libraries.
+/// The first [`Problem`]: display problems before missing libraries; the
+/// missing `wayland` libraries when neither backend can start.
 pub fn check(
     env: &Environment,
     backend: Backend,
@@ -166,8 +168,28 @@ pub fn check(
     if is_set(env.skip.as_ref()) {
         return Ok(());
     }
-    let native_wayland = backend == Backend::Wayland && is_set(env.wayland_display.as_ref());
-    if !native_wayland && !is_set(env.display.as_ref()) {
+    if backend == Backend::Wayland && is_set(env.wayland_display.as_ref()) {
+        let missing: Vec<RuntimeLib> = libs
+            .iter()
+            .filter(|lib| lib.role == Role::Wayland && !found(&lib.soname))
+            .cloned()
+            .collect();
+        if missing.is_empty() || check_x11(env, libs, &found).is_ok() {
+            return Ok(());
+        }
+        return Err(Problem::MissingLibs(missing));
+    }
+    check_x11(env, libs, &found)
+}
+
+/// The X11 (or Xwayland) part of [`check`]: a `DISPLAY`, every `required`
+/// library and one of the `gl` group.
+fn check_x11(
+    env: &Environment,
+    libs: &[RuntimeLib],
+    found: &impl Fn(&str) -> bool,
+) -> Result<(), Problem> {
+    if !is_set(env.display.as_ref()) {
         return Err(if is_set(env.wayland_display.as_ref()) {
             Problem::NoXWayland
         } else {
@@ -180,10 +202,9 @@ pub fn check(
     let missing: Vec<RuntimeLib> = libs
         .iter()
         .filter(|lib| match lib.role {
-            Role::Wayland => native_wayland && !found(&lib.soname),
-            Role::Required => !native_wayland && !found(&lib.soname),
-            Role::Gl => !native_wayland && !gl_found,
-            Role::Optional | Role::Unused | Role::Linked => false,
+            Role::Required => !found(&lib.soname),
+            Role::Gl => !gl_found,
+            Role::Wayland | Role::Optional | Role::Unused | Role::Linked => false,
         })
         .cloned()
         .collect();

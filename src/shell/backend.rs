@@ -67,8 +67,58 @@ impl Backend {
 /// `wayland_display`.
 #[must_use]
 pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice {
-    let _ = (value, wayland_display);
-    todo!("T46 behaviour step")
+    let session = is_wayland_session(wayland_display);
+    let default = if session {
+        Backend::Wayland
+    } else {
+        Backend::X11
+    };
+    let text = value.map(OsStr::to_string_lossy).unwrap_or_default();
+    let text = text.trim();
+    let (backend, warning) = if text.is_empty() {
+        (default, None)
+    } else if text.eq_ignore_ascii_case(Backend::X11.name()) {
+        (Backend::X11, None)
+    } else if text.eq_ignore_ascii_case(Backend::Wayland.name()) {
+        (Backend::Wayland, None)
+    } else {
+        let warning = format!(
+            "draw: unknown {BACKEND_ENV} value {text:?}, using {} \
+             (expected x11 or wayland)",
+            default.name()
+        );
+        (default, Some(warning))
+    };
+    Choice {
+        backend,
+        warning,
+        notice: deprecation_notice(backend, session),
+    }
+}
+
+/// Whether `wayland_display` (the value of [`WAYLAND_DISPLAY_ENV`])
+/// names a Wayland session.
+fn is_wayland_session(wayland_display: Option<&OsStr>) -> bool {
+    wayland_display.is_some_and(|value| !value.is_empty())
+}
+
+/// The deprecation line when `backend` in this session ends up on X11:
+/// [`Backend::X11`] anywhere, or [`Backend::Wayland`] whose fallback
+/// miniquad takes without a Wayland session.
+fn deprecation_notice(backend: Backend, wayland_session: bool) -> Option<String> {
+    if !wayland_session {
+        Some(format!(
+            "draw: X11 is deprecated and will be removed in draw \
+             {REMOVAL_VERSION}, which needs a Wayland session"
+        ))
+    } else if backend == Backend::X11 {
+        Some(format!(
+            "draw: X11 (Xwayland) is deprecated and will be removed in draw \
+             {REMOVAL_VERSION}; unset {BACKEND_ENV} to use native Wayland"
+        ))
+    } else {
+        None
+    }
 }
 
 /// [`choose`] applied to the real environment.
@@ -93,8 +143,7 @@ pub const WAYLAND_WHEEL_UNITS_PER_NOTCH: f32 = 15.0;
 /// Wayland session).
 #[must_use]
 pub fn wheel_units_per_notch(backend: Backend, wayland_display: Option<&OsStr>) -> f32 {
-    let wayland_session = wayland_display.is_some_and(|value| !value.is_empty());
-    if backend == Backend::Wayland && wayland_session {
+    if backend == Backend::Wayland && is_wayland_session(wayland_display) {
         WAYLAND_WHEEL_UNITS_PER_NOTCH
     } else {
         1.0
