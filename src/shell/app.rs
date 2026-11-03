@@ -29,6 +29,7 @@ use macroquad::window::{
 };
 
 use std::collections::HashSet;
+use std::io::Write as _;
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -386,37 +387,54 @@ pub const WM_CLASS: &str = "draw";
 /// (ADR-T48-1).
 #[must_use]
 pub fn exit_reason(received: Option<QuitSignal>) -> &'static str {
-    let _ = received;
-    todo!()
+    received.map_or("window closed", QuitSignal::name)
 }
 
 /// The session-log line for a quit signal that closed the window.
 #[must_use]
 pub fn signal_line(signal: QuitSignal) -> String {
-    let _ = signal;
-    todo!()
+    format!("signal: {}, window closed in order", signal.name())
 }
 
 /// The dump name's reason for a fatal signal: its lowercase name.
 #[must_use]
 pub fn fatal_dump_reason(signal: FatalSignal) -> &'static str {
-    let _ = signal;
-    todo!()
+    match signal {
+        FatalSignal::Segv => "sigsegv",
+        FatalSignal::Bus => "sigbus",
+        FatalSignal::Ill => "sigill",
+        FatalSignal::Fpe => "sigfpe",
+        FatalSignal::Abrt => "sigabrt",
+    }
 }
 
 /// The session-log line for a fatal signal.
 #[must_use]
 pub fn fatal_line(signal: FatalSignal) -> String {
-    let _ = signal;
-    todo!()
+    format!("fatal signal: {}", signal.name())
 }
 
 /// The fatal-signal hook (ADR-T48-1): an `ERROR` line and a dump, unless
 /// a panic is in progress (the panic hook has already dumped) or the
 /// recorder is locked.
 pub fn on_fatal_signal(signal: FatalSignal) {
-    let _ = signal;
-    todo!()
+    if std::thread::panicking() {
+        return;
+    }
+    let path = diag::try_with(|diag| {
+        diag.log(Level::Error, &fatal_line(signal));
+        diag.dump(fatal_dump_reason(signal))
+    })
+    .flatten();
+    if let Some(path) = path {
+        // Runs inside a signal handler: a failed write is ignored.
+        let _ = writeln!(
+            std::io::stderr(),
+            "draw: {}, diagnostics dump written to {}",
+            signal.name(),
+            path.display()
+        );
+    }
 }
 
 /// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and

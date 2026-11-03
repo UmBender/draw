@@ -522,13 +522,14 @@ where
 
         let mut count = (display.libx11.XPending)(display.display);
         let block_on_wait = conf.platform.blocking_event_loop && !display.update_requested;
-        if block_on_wait {
-            // if there are multiple events pending, it is still desired to process
-            // them all in one frame.
-            // However, when there are no events in the queue, +1 hack
-            // will block main thread and release the cpu until the new event.
-            count += 1;
+        // draw patch (ADR-T48-1): with nothing queued, sleep in `poll` on the
+        // X socket and the signal pipe instead of inside `XNextEvent` (the
+        // upstream "+1 hack"), so a quit signal can wake the loop.
+        if block_on_wait && count == 0 {
+            crate::signal::wait_readable((display.libx11.XConnectionNumber)(display.display));
+            count = (display.libx11.XPending)(display.display);
         }
+        crate::signal::order_quit_if_received();
 
         for _ in 0..count {
             let mut xevent = _XEvent { type_0: 0 };
@@ -633,10 +634,12 @@ where
 
         let mut count = (display.libx11.XPending)(display.display);
         let block_on_wait = conf.platform.blocking_event_loop && !display.update_requested;
-        if block_on_wait {
-            // same thing as in glx loop, explained there
-            count += 1;
+        // draw patch (ADR-T48-1): same wait as in the glx loop, explained there.
+        if block_on_wait && count == 0 {
+            crate::signal::wait_readable((display.libx11.XConnectionNumber)(display.display));
+            count = (display.libx11.XPending)(display.display);
         }
+        crate::signal::order_quit_if_received();
         for _ in 0..count {
             let mut xevent = _XEvent { type_0: 0 };
             (display.libx11.XNextEvent)(display.display, &mut xevent);

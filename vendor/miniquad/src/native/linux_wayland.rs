@@ -152,12 +152,18 @@ impl WaylandPayload {
                 events: libc::POLLIN,
                 revents: 0,
             },
+            // draw patch (ADR-T48-1): a quit signal wakes the loop.
+            libc::pollfd {
+                fd: crate::signal::wake_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            },
         ];
         (self.client.wl_display_flush)(self.display);
         while (self.client.wl_display_prepare_read)(self.display) != 0 {
             (self.client.wl_display_dispatch_pending)(self.display);
         }
-        if libc::poll(fds.as_mut_ptr(), 2, if blocking { i32::MAX } else { 0 }) > 0 {
+        if libc::poll(fds.as_mut_ptr(), 3, if blocking { i32::MAX } else { 0 }) > 0 {
             // if the Wayland display has events available
             if fds[0].revents & libc::POLLIN == 1 {
                 (self.client.wl_display_read_events)(self.display);
@@ -1702,6 +1708,8 @@ where
             // new events but continue without blocking
             let blocking = conf.platform.blocking_event_loop && !display.update_requested;
             display.poll_new_event(blocking);
+            // draw patch (ADR-T48-1): a quit signal ends the loop in order.
+            crate::signal::order_quit_if_received();
 
             for event in display.events.drain(..) {
                 match event {
