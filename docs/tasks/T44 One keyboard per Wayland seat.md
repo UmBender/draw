@@ -6,7 +6,7 @@ wave: 29
 branch: fix/wayland-seat-devices
 depends_on: [T28]
 adrs: ["[[ADR-T44-1 Wayland seat devices follow the announced capabilities]]"]
-feature: "[[Native Wayland (experimental)]]"
+feature: "[[Native Wayland]]"
 tutorial: ""
 tags: [task]
 ---

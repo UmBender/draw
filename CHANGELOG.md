@@ -6,6 +6,16 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Native Wayland is the default on Wayland sessions; the .deb and .rpm
+  recommend the Wayland libraries.
+
+### Deprecated
+
+- The X11 backend (XWayland on Wayland sessions and plain X11 sessions),
+  removed in 2.0.0; `DRAW_BACKEND=x11` prints a notice.
+
 ### Fixed
 
 - A pen line drawn in one movement stays one stroke (and one undo step)

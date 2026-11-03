@@ -78,3 +78,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 67 | [[ADR-T41-1 Integral superscript at the advance]] | accepted | decision | T33-1 | amends T36-1 |
 | 68 | [[ADR-T42-1 Pen tip bounces join the stroke]] | accepted | decision | 0003, T34-1, T35-1 | — |
 | 69 | [[ADR-T44-1 Wayland seat devices follow the announced capabilities]] | accepted | decision | T28-1 | amends T35-1 |
+| 70 | [[ADR-T46-1 Native Wayland by default and X11 deprecated]] | accepted | decision | T27-2, T44-1 | amends T28-1 |

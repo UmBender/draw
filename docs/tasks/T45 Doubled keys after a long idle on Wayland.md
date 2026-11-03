@@ -6,7 +6,7 @@ wave: 30
 branch: fix/wayland-idle-doubled-keys
 depends_on: [T44]
 adrs: []
-feature: "[[Native Wayland (experimental)]]"
+feature: "[[Native Wayland]]"
 tutorial: ""
 tags: [task]
 ---

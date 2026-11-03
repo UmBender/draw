@@ -6,7 +6,7 @@ wave: 21
 branch: task/T28-wayland
 depends_on: [T27]
 adrs: [ADR-T28-1]
-feature: "[[Native Wayland (experimental)]]"
+feature: "[[Native Wayland]]"
 tutorial: "[[28 Choosing a window backend at startup]]"
 tags: [task, experimental]
 ---

@@ -1,11 +1,11 @@
 ---
 id: T46
 title: Native Wayland by default and Xwayland deprecated
-status: review
+status: done
 wave: 31
 branch: task/T46-wayland-default
 depends_on: [T28, T44, T45]
-adrs: [ADR-T46-1]
+adrs: ["[[ADR-T46-1 Native Wayland by default and X11 deprecated]]"]
 feature: "[[Native Wayland]]"
 tutorial: "[[28 Choosing a window backend at startup]]"
 tags: [task]
