@@ -156,8 +156,8 @@ mod tests {
     use proptest::prelude::*;
     use std::ffi::OsStr;
 
-    fn session() -> Option<&'static OsStr> {
-        Some(OsStr::new("wayland-1"))
+    fn display() -> &'static OsStr {
+        OsStr::new("wayland-1")
     }
 
     fn choose_str(value: &str, wayland_display: Option<&OsStr>) -> Choice {
@@ -172,9 +172,9 @@ mod tests {
     fn choose_unset_on_wayland_session_is_wayland() {
         // Arrange / Act
         let choices = [
-            choose(None, session()),
-            choose_str("", session()),
-            choose_str("  ", session()),
+            choose(None, Some(display())),
+            choose_str("", Some(display())),
+            choose_str("  ", Some(display())),
         ];
 
         // Assert
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn choose_x11_on_wayland_session_is_x11_with_deprecation() {
         // Arrange / Act
-        let choice = choose_str("x11", session());
+        let choice = choose_str("x11", Some(display()));
 
         // Assert
         assert_eq!(choice.backend, Backend::X11);
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn choose_wayland_on_wayland_session_has_no_notice() {
         // Arrange / Act
-        let choice = choose_str("wayland", session());
+        let choice = choose_str("wayland", Some(display()));
 
         // Assert
         assert_eq!(choice.backend, Backend::Wayland);
@@ -253,7 +253,7 @@ mod tests {
 
         for (value, expected) in cases {
             // Act
-            let choice = choose_str(value, session());
+            let choice = choose_str(value, Some(display()));
 
             // Assert
             assert_eq!(choice.backend, expected, "{value:?}");
@@ -273,7 +273,7 @@ mod tests {
 
         for value in cases {
             // Act
-            let on_wayland = choose_str(value, session());
+            let on_wayland = choose_str(value, Some(display()));
             let on_x11 = choose_str(value, None);
 
             // Assert
@@ -300,7 +300,7 @@ mod tests {
         let value = OsStr::new("\u{fffd}");
 
         // Act
-        let on_wayland = choose(Some(value), session());
+        let on_wayland = choose(Some(value), Some(display()));
         let on_x11 = choose(Some(value), None);
 
         // Assert
@@ -324,9 +324,9 @@ mod tests {
     fn warning_and_notice_are_one_line() {
         // Arrange
         let lines = [
-            choose_str("bogus", session()).warning,
+            choose_str("bogus", Some(display())).warning,
             choose_str("bogus", None).warning,
-            choose_str("x11", session()).notice,
+            choose_str("x11", Some(display())).notice,
             choose(None, None).notice,
             choose_str("wayland", None).notice,
         ];

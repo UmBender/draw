@@ -27,8 +27,8 @@ pub enum Role {
     Required,
     /// One of the OpenGL loaders; at least one of the group is needed.
     Gl,
-    /// Loaded by the Wayland backend (the default on Wayland sessions); a library
-    /// both backends need also has a `required` or `gl` line.
+    /// Loaded by the Wayland backend (the default on Wayland sessions);
+    /// a library both backends need also has a `required` or `gl` line.
     Wayland,
     /// Loaded when present, never checked (e.g. `libdecor`).
     Optional,
