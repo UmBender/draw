@@ -358,16 +358,12 @@ impl From<WindowSettings> for Conf {
 pub const WM_CLASS: &str = "draw";
 
 /// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and
-/// prints its warning or the experimental notice on stderr (ADR-T28-1).
+/// prints its warning and the X11 deprecation notice on stderr
+/// (ADR-T28-1, ADR-T46-1).
 #[must_use]
 pub fn window_conf() -> WindowSettings {
     let choice = backend::from_env();
-    for line in choice
-        .warning
-        .as_deref()
-        .into_iter()
-        .chain(choice.backend.notice())
-    {
+    for line in choice.warning.iter().chain(&choice.notice) {
         eprintln!("{line}");
     }
     WindowSettings {
@@ -399,7 +395,7 @@ pub async fn run() {
     let mut collector = Collector::new();
     collector.set_wheel_units_per_notch(backend::wheel_units_per_notch(
         backend::from_env().backend,
-        std::env::var_os("WAYLAND_DISPLAY").as_deref(),
+        std::env::var_os(backend::WAYLAND_DISPLAY_ENV).as_deref(),
     ));
     // Experimental features are read once (ADR-T31-1).
     let experimental = std::env::var(EXPERIMENTAL_ENV).ok();

@@ -1,10 +1,11 @@
-//! Window backend chosen at start-up from `DRAW_BACKEND` (T28,
-//! ADR-T28-1).
+//! Window backend chosen at start-up from `DRAW_BACKEND` and the session
+//! (T28, ADR-T28-1, T46, ADR-T46-1).
 //!
-//! [`choose`] is a pure function over the variable's value; [`from_env`]
-//! feeds it the real one. X11 (on Wayland sessions through Xwayland) is
-//! the default; the native Wayland backend is experimental and falls back
-//! to X11 when it cannot connect.
+//! [`choose`] is a pure function over the variable's value and
+//! `WAYLAND_DISPLAY`; [`from_env`] feeds it the real ones. Native Wayland
+//! is the default on Wayland sessions and falls back to X11 when it
+//! cannot connect; X11 (Xwayland on Wayland sessions) is deprecated and
+//! goes away in draw [`REMOVAL_VERSION`].
 
 use std::ffi::OsStr;
 
@@ -13,23 +14,32 @@ use macroquad::miniquad::conf::LinuxBackend;
 /// Environment variable naming the window backend.
 pub const BACKEND_ENV: &str = "DRAW_BACKEND";
 
+/// Environment variable set in a Wayland session.
+pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
+
+/// The draw release that removes the X11 backend (ADR-T46-1).
+pub const REMOVAL_VERSION: &str = "2.0.0";
+
 /// The window backend draw asks miniquad for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Backend {
-    /// X11 only, through Xwayland on Wayland sessions (the default).
-    #[default]
+    /// X11 only, through Xwayland on Wayland sessions (deprecated).
     X11,
-    /// Native Wayland, falling back to X11 (experimental).
+    /// Native Wayland, falling back to X11 (the default on Wayland
+    /// sessions).
     Wayland,
 }
 
-/// The backend picked from [`BACKEND_ENV`] and what to tell the user.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// The backend picked from [`BACKEND_ENV`] and the session, and what to
+/// tell the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
     /// The backend to use.
     pub backend: Backend,
     /// One stderr line when the value was not understood.
     pub warning: Option<String>,
+    /// One stderr line when draw will run on the deprecated X11 backend.
+    pub notice: Option<String>,
 }
 
 impl Backend {
@@ -42,50 +52,32 @@ impl Backend {
         }
     }
 
-    /// One stderr line to print at start-up, if this backend needs one.
+    /// The value of [`BACKEND_ENV`] that names this backend.
     #[must_use]
-    pub fn notice(self) -> Option<&'static str> {
+    pub fn name(self) -> &'static str {
         match self {
-            Self::X11 => None,
-            Self::Wayland => Some(
-                "draw: DRAW_BACKEND=wayland is experimental; \
-                 unset it to go back to X11 if something misbehaves",
-            ),
+            Self::X11 => "x11",
+            Self::Wayland => "wayland",
         }
     }
 }
 
 /// Picks the backend from the value of [`BACKEND_ENV`] (`None` when
-/// unset).
+/// unset) in a session whose [`WAYLAND_DISPLAY_ENV`] is
+/// `wayland_display`.
 #[must_use]
-pub fn choose(value: Option<&OsStr>) -> Choice {
-    let Some(value) = value else {
-        return Choice::default();
-    };
-    let text = value.to_string_lossy();
-    let text = text.trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("x11") {
-        Choice::default()
-    } else if text.eq_ignore_ascii_case("wayland") {
-        Choice {
-            backend: Backend::Wayland,
-            warning: None,
-        }
-    } else {
-        Choice {
-            backend: Backend::X11,
-            warning: Some(format!(
-                "draw: unknown {BACKEND_ENV} value {text:?}, using x11 \
-                 (expected x11 or wayland)"
-            )),
-        }
-    }
+pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice {
+    let _ = (value, wayland_display);
+    todo!("T46 behaviour step")
 }
 
 /// [`choose`] applied to the real environment.
 #[must_use]
 pub fn from_env() -> Choice {
-    choose(std::env::var_os(BACKEND_ENV).as_deref())
+    choose(
+        std::env::var_os(BACKEND_ENV).as_deref(),
+        std::env::var_os(WAYLAND_DISPLAY_ENV).as_deref(),
+    )
 }
 
 /// Wheel units a native Wayland compositor reports per wheel notch.
