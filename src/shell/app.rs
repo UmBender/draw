@@ -17,6 +17,7 @@ use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_inp
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::pen;
+use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
 use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
@@ -380,6 +381,43 @@ fn frame_kind(redraw: Redraw) -> Option<FrameKind> {
 /// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`
 /// matches it so launchers show the app's icon (ADR-T27-2).
 pub const WM_CLASS: &str = "draw";
+
+/// The exit line's reason: the quit signal's name, or `window closed`
+/// (ADR-T48-1).
+#[must_use]
+pub fn exit_reason(received: Option<QuitSignal>) -> &'static str {
+    let _ = received;
+    todo!()
+}
+
+/// The session-log line for a quit signal that closed the window.
+#[must_use]
+pub fn signal_line(signal: QuitSignal) -> String {
+    let _ = signal;
+    todo!()
+}
+
+/// The dump name's reason for a fatal signal: its lowercase name.
+#[must_use]
+pub fn fatal_dump_reason(signal: FatalSignal) -> &'static str {
+    let _ = signal;
+    todo!()
+}
+
+/// The session-log line for a fatal signal.
+#[must_use]
+pub fn fatal_line(signal: FatalSignal) -> String {
+    let _ = signal;
+    todo!()
+}
+
+/// The fatal-signal hook (ADR-T48-1): an `ERROR` line and a dump, unless
+/// a panic is in progress (the panic hook has already dumped) or the
+/// recorder is locked.
+pub fn on_fatal_signal(signal: FatalSignal) {
+    let _ = signal;
+    todo!()
+}
 
 /// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and
 /// prints its warning and the X11 deprecation notice on stderr
@@ -857,7 +895,7 @@ mod tests {
     use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
     use crate::core::geom::approx_eq;
     use macroquad::miniquad::conf::LinuxBackend;
-    use macroquad::miniquad::signal::{self, FatalSignal, QuitSignal};
+    use macroquad::miniquad::signal;
     use proptest::prelude::*;
 
     #[test]

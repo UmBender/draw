@@ -17,6 +17,9 @@ pub mod diag;
 pub mod pen;
 // draw patch (ADR-T35-1, ADR-T44-1): one device per seat capability.
 pub mod seat;
+// draw patch (ADR-T48-1): quit and fatal signal handling.
+#[cfg(target_os = "linux")]
+pub mod signal;
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 
