@@ -2,9 +2,9 @@
 id: T50
 title: Version 2.0.0 refactor
 status: todo
-wave: 33
+wave: 34
 branch: task/T50-v2-refactor
-depends_on: [T46, T47, T48, T49]
+depends_on: [T46, T47, T48, T49, T51, T52, T53]
 adrs: []
 feature: ""
 tutorial: ""
@@ -19,8 +19,10 @@ draw 2.0.0: the X11/Xwayland backend deprecated in
 [[T46 Native Wayland by default and Xwayland deprecated]] is removed,
 and the codebase is reshaped around what the app has become since 1.0
 (text and formulas, pen tablets, native Wayland, layered rendering),
-with better performance and the bugs found on the way fixed. This is an
-epic: the spec step splits it into its own tasks (T51+), each with the
+with better performance and the bugs found on the way fixed. 2.0.0 is
+a *finished* version: it adds no features. Every feature it has ships
+first in 1.5.0 ([[T53 Release 1.5.0]]), and after 2.0.0 only bug fixes
+follow. This is an epic: the spec step splits it into its own tasks (T51+), each with the
 usual SDD/TDD workflow.
 
 ## Known facts (2026-11-02)
@@ -70,7 +72,10 @@ child tasks; it does not implement code.
 
 ## Out of scope
 
-- New user-facing features (separate tasks after or alongside 2.0.0).
+- New user-facing features. The last ones (build-time themes,
+  [[T51 Build-time themes]]; text in shapes by default,
+  [[T52 Text in shapes by default]]) ship in 1.5.0. After 2.0.0 only
+  bug fixes follow (owner's decision, 2026-11-02).
 
 ## Files owned
 
@@ -88,3 +93,6 @@ Decided per child task.
 ## Log
 
 - 2026-11-02 — epic written at the owner's request.
+- 2026-11-02 — owner: 2.0.0 adds no features and is followed only by bug
+  fixes. Starts after the 1.5.0 release (T53), which carries T46–T49,
+  T51 and T52.

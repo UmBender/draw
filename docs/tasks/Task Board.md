@@ -80,10 +80,15 @@ flowchart TD
   T45 --> T46[T46 Native Wayland by default and Xwayland deprecated]
   T47[T47 Always-on diagnostics log] --> T48[T48 Clean exit on Ctrl-C]
   T47 --> T49[T49 Long-running stability]
-  T46 --> T50[T50 Version 2.0.0 refactor]
-  T47 --> T50
-  T48 --> T50
-  T49 --> T50
+  T51[T51 Build-time themes]
+  T52[T52 Text in shapes by default]
+  T46 --> T53[T53 Release 1.5.0]
+  T47 --> T53
+  T48 --> T53
+  T49 --> T53
+  T51 --> T53
+  T52 --> T53
+  T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -122,8 +127,9 @@ flowchart TD
 | 29 | [[T44 One keyboard per Wayland seat]] |
 | 30 | [[T45 Doubled keys after a long idle on Wayland]] |
 | 31 | [[T46 Native Wayland by default and Xwayland deprecated]] · [[T47 Always-on diagnostics log]] |
-| 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] |
-| 33 | [[T50 Version 2.0.0 refactor]] |
+| 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] · [[T51 Build-time themes]] · [[T52 Text in shapes by default]] |
+| 33 | [[T53 Release 1.5.0]] |
+| 34 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -179,4 +185,7 @@ flowchart TD
 | [[T47 Always-on diagnostics log]] | todo | — | `task/T47-diagnostics-log` |
 | [[T48 Clean exit on Ctrl-C]] | todo | T47 | `fix/clean-exit-on-sigint` |
 | [[T49 Long-running stability]] | todo | T47 | `fix/long-running-stability` |
-| [[T50 Version 2.0.0 refactor]] | todo | T46–T49 | `task/T50-v2-refactor` |
+| [[T51 Build-time themes]] | todo | — | `task/T51-build-time-themes` |
+| [[T52 Text in shapes by default]] | todo | — | `task/T52-shape-text-default` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52 | `chore/release-1.5.0` |
+| [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T53 | `task/T50-v2-refactor` |
