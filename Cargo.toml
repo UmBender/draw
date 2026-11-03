@@ -66,6 +66,8 @@ opt-level = 3
 # them with dlopen, so no tool can infer them (tests/packaging.rs).
 [package.metadata.deb]
 depends = "libx11-6, libxi6, libxkbcommon0, libgl1, libegl1"
+# Native Wayland, the default on Wayland sessions (ADR-T46-1).
+recommends = "libwayland-client0, libwayland-egl1, libdecor-0-0"
 maintainer = "Gustavo Bender <gustavo.benderr@gmail.com>"
 copyright = "Gustavo Bender"
 section = "graphics"
@@ -109,3 +111,9 @@ libXi = "*"
 libxkbcommon = "*"
 libglvnd-glx = "*"
 libglvnd-egl = "*"
+
+# Native Wayland, the default on Wayland sessions (ADR-T46-1).
+[package.metadata.generate-rpm.recommends]
+libwayland-client = "*"
+libwayland-egl = "*"
+libdecor = "*"

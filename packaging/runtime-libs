@@ -1,10 +1,10 @@
 # Shared libraries the draw binary may load, one per line (ADR-T27-2,
-# ADR-T28-1).
+# ADR-T28-1, ADR-T46-1).
 #
-# role:  required  loaded by the X11 backend (the default), the app cannot start without it
+# role:  required  loaded by the X11 backend (deprecated, the fallback), needed to start on X11
 #        gl        X11 backend: at least one of the group is needed (GLX, falling back to EGL)
-#        wayland   loaded by the experimental Wayland backend (DRAW_BACKEND=wayland);
-#                  not a package dependency
+#        wayland   loaded by the native Wayland backend (the default on Wayland sessions);
+#                  a package recommendation, not a dependency
 #        optional  loaded when present, never checked (libdecor: title bar on
 #                  compositors without server-side decorations)
 #        unused    named in the binary but not loaded by any backend
@@ -15,6 +15,9 @@
 # The .deb `depends` and .rpm `requires` in Cargo.toml list the fedora and
 # debian packages of every `required` and `gl` line; tests/packaging.rs
 # fails when they drift or when the binary names a library missing here.
+# The .deb and .rpm `recommends` list those of the `wayland` and
+# `optional` lines that are not dependencies already (tested in
+# src/shell/preflight.rs).
 #
 # soname                 role      fedora                    debian
 libX11.so.6              required  libX11                    libx11-6
