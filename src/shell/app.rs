@@ -17,6 +17,7 @@ use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_inp
 use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::pen;
+use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
 use macroquad::miniquad::window::schedule_update;
 use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
@@ -28,6 +29,7 @@ use macroquad::window::{
 };
 
 use std::collections::HashSet;
+use std::io::Write as _;
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -380,6 +382,60 @@ fn frame_kind(redraw: Redraw) -> Option<FrameKind> {
 /// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`
 /// matches it so launchers show the app's icon (ADR-T27-2).
 pub const WM_CLASS: &str = "draw";
+
+/// The exit line's reason: the quit signal's name, or `window closed`
+/// (ADR-T48-1).
+#[must_use]
+pub fn exit_reason(received: Option<QuitSignal>) -> &'static str {
+    received.map_or("window closed", QuitSignal::name)
+}
+
+/// The session-log line for a quit signal that closed the window.
+#[must_use]
+pub fn signal_line(signal: QuitSignal) -> String {
+    format!("signal: {}, window closed in order", signal.name())
+}
+
+/// The dump name's reason for a fatal signal: its lowercase name.
+#[must_use]
+pub fn fatal_dump_reason(signal: FatalSignal) -> &'static str {
+    match signal {
+        FatalSignal::Segv => "sigsegv",
+        FatalSignal::Bus => "sigbus",
+        FatalSignal::Ill => "sigill",
+        FatalSignal::Fpe => "sigfpe",
+        FatalSignal::Abrt => "sigabrt",
+    }
+}
+
+/// The session-log line for a fatal signal.
+#[must_use]
+pub fn fatal_line(signal: FatalSignal) -> String {
+    format!("fatal signal: {}", signal.name())
+}
+
+/// The fatal-signal hook (ADR-T48-1): an `ERROR` line and a dump, unless
+/// a panic is in progress (the panic hook has already dumped) or the
+/// recorder is locked.
+pub fn on_fatal_signal(signal: FatalSignal) {
+    if std::thread::panicking() {
+        return;
+    }
+    let path = diag::try_with(|diag| {
+        diag.log(Level::Error, &fatal_line(signal));
+        diag.dump(fatal_dump_reason(signal))
+    })
+    .flatten();
+    if let Some(path) = path {
+        // Runs inside a signal handler: a failed write is ignored.
+        let _ = writeln!(
+            std::io::stderr(),
+            "draw: {}, diagnostics dump written to {}",
+            signal.name(),
+            path.display()
+        );
+    }
+}
 
 /// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and
 /// prints its warning and the X11 deprecation notice on stderr
@@ -857,6 +913,7 @@ mod tests {
     use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
     use crate::core::geom::approx_eq;
     use macroquad::miniquad::conf::LinuxBackend;
+    use macroquad::miniquad::signal;
     use proptest::prelude::*;
 
     #[test]
@@ -1616,5 +1673,112 @@ mod tests {
             crate::core::keymap::resolve(DUMP_CHORD.key, DUMP_CHORD.mods),
             None
         );
+    }
+
+    #[test]
+    fn quit_signal_numbers_and_names_match_linux() {
+        // Arrange
+        let cases = [
+            (QuitSignal::Interrupt, 2, "SIGINT"),
+            (QuitSignal::Terminate, 15, "SIGTERM"),
+        ];
+
+        for (signal, number, name) in cases {
+            // Act / Assert
+            assert_eq!(signal.number(), number);
+            assert_eq!(signal.name(), name);
+            assert_eq!(QuitSignal::from_number(number), Some(signal));
+        }
+    }
+
+    #[test]
+    fn fatal_signal_numbers_and_names_match_linux() {
+        // Arrange
+        let cases = [
+            (FatalSignal::Segv, 11, "SIGSEGV"),
+            (FatalSignal::Bus, 7, "SIGBUS"),
+            (FatalSignal::Ill, 4, "SIGILL"),
+            (FatalSignal::Fpe, 8, "SIGFPE"),
+            (FatalSignal::Abrt, 6, "SIGABRT"),
+        ];
+
+        for (signal, number, name) in cases {
+            // Act / Assert
+            assert_eq!(signal.number(), number);
+            assert_eq!(signal.name(), name);
+            assert_eq!(FatalSignal::from_number(number), Some(signal));
+        }
+    }
+
+    #[test]
+    fn signal_from_unknown_number_is_none() {
+        // Arrange / Act / Assert
+        for number in [0, 1, 3, 9, 14, 64, -1] {
+            assert_eq!(QuitSignal::from_number(number), None, "{number}");
+        }
+        for number in [0, 2, 9, 15, 64, -1] {
+            assert_eq!(FatalSignal::from_number(number), None, "{number}");
+        }
+    }
+
+    #[test]
+    fn install_quit_records_a_sent_sigterm() -> std::io::Result<()> {
+        // Arrange
+        assert!(signal::install_quit());
+        let pid = std::process::id().to_string();
+
+        // Act: the handler catches it instead of the default action, which
+        // would end the test binary.
+        let status = std::process::Command::new("kill")
+            .args(["-TERM", &pid])
+            .status()?;
+        assert!(status.success());
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while signal::received().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        // Assert
+        assert_eq!(signal::received(), Some(QuitSignal::Terminate));
+        Ok(())
+    }
+
+    #[test]
+    fn exit_reason_without_signal_is_window_closed() {
+        // Arrange / Act / Assert
+        assert_eq!(exit_reason(None), "window closed");
+    }
+
+    #[test]
+    fn exit_reason_with_signal_is_its_name() {
+        // Arrange / Act / Assert
+        assert_eq!(exit_reason(Some(QuitSignal::Interrupt)), "SIGINT");
+        assert_eq!(exit_reason(Some(QuitSignal::Terminate)), "SIGTERM");
+    }
+
+    #[test]
+    fn signal_line_names_the_signal() {
+        // Arrange / Act
+        let line = signal_line(QuitSignal::Interrupt);
+
+        // Assert
+        assert_eq!(line, "signal: SIGINT, window closed in order");
+    }
+
+    #[test]
+    fn fatal_dump_reason_is_lowercase_name() {
+        // Arrange / Act / Assert
+        assert_eq!(fatal_dump_reason(FatalSignal::Segv), "sigsegv");
+        assert_eq!(fatal_dump_reason(FatalSignal::Abrt), "sigabrt");
+        assert_eq!(fatal_dump_reason(FatalSignal::Bus), "sigbus");
+    }
+
+    #[test]
+    fn fatal_line_names_the_signal() {
+        // Arrange / Act
+        let line = fatal_line(FatalSignal::Segv);
+
+        // Assert
+        assert_eq!(line, "fatal signal: SIGSEGV");
     }
 }

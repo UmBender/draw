@@ -54,6 +54,21 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   expiration count, tablet tools added/removed, proximity in/out, and a
   display error just before its panic. Marked `draw patch (ADR-T47-1)`.
 
+- `src/signal.rs` (new), `src/lib.rs` (`pub mod signal`, Linux only):
+  `QuitSignal`, `FatalSignal`, `install_quit()`, `received()`,
+  `reraise()` and `install_fatal()`. The `SIGINT`/`SIGTERM` handler
+  records the signal and writes to a self-pipe; the fatal handler runs
+  one hook under `alarm(2)` on a 256 KiB alternate stack, then hands the
+  signal back to the previous action (ADR-T48-1).
+- `src/native/linux_wayland.rs`: `poll_new_event` polls the self-pipe as
+  a third descriptor, and the loop orders the quit after the wait once a
+  quit signal arrived. Marked `draw patch (ADR-T48-1)`.
+- `src/native/linux_x11.rs`, `src/native/linux_x11/libx11.rs`
+  (`XConnectionNumber`): with nothing queued, the GLX and EGL loops
+  `poll` the X socket and the self-pipe instead of blocking inside
+  `XNextEvent` (the upstream "+1 hack"), then order the quit the same
+  way. Marked `draw patch (ADR-T48-1)`.
+
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
   where it is used, and `respond_to_clipboard_request`

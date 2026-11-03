@@ -903,6 +903,8 @@ crate::declare_module!(
     pub fn XResizeWindow(*mut Display, Window, c_int, c_int) -> c_int,
     pub fn XMoveWindow(*mut Display, Window, c_int, c_int) -> c_int,
     pub fn XPending(*mut Display) -> c_int,
+    // draw patch (ADR-T48-1): the X socket, polled next to the signal pipe.
+    pub fn XConnectionNumber(*mut Display) -> c_int,
     pub fn XNextEvent(*mut Display, *mut XEvent) -> c_int,
     pub fn XGetKeyboardMapping(*mut Display, KeyCode, c_int, *mut c_int) -> *mut KeySym,
     pub fn XGetWindowProperty(*mut Display, Window, Atom, c_long, c_long, c_int, Atom, *mut Atom, *mut c_int, *mut c_ulong, *mut c_ulong, *mut *mut c_uchar) -> c_int,
