@@ -1,7 +1,7 @@
 ---
 title: Undo and redo
 task: "[[T06 Document and history]]"
-adrs: ["[[ADR-0005 Undo via transaction log]]", "[[ADR-T06-1 Self-checking edits and rollback atomicity]]"]
+adrs: ["[[ADR-0005 Undo via transaction log]]", "[[ADR-T06-1 Self-checking edits and rollback atomicity]]", "[[ADR-T49-1 Undo history capped by bytes]]"]
 tutorial: "[[06 Undo and redo with a transaction log]]"
 shortcuts: []
 tags: [feature]
@@ -13,7 +13,9 @@ tags: [feature]
 
 Every action on the canvas (drawing a shape, erasing, moving, pasting,
 clearing) can be undone and redone, one whole action at a time. Undo goes back
-up to 500 actions; starting a new action after undoing discards the redo steps.
+up to 500 actions, fewer when actions on very large selections fill its
+64 MiB memory budget; starting a new action after undoing discards the redo
+steps.
 
 ## How to use
 
@@ -43,6 +45,13 @@ are bound by [[T11 Keymap and macros]] and the toolbar buttons by
   it on an undo stack (capped at `HISTORY_LIMIT = 500`, oldest dropped); undo
   applies `Transaction::inverse()` and moves it to the redo stack
   ([[ADR-0005 Undo via transaction log]]).
+- Both stacks together also stay within `HISTORY_BYTES = 64 MiB`, estimated
+  with `Transaction::heap_bytes` / `Shape::heap_bytes`: past it the oldest
+  entries go, but the newest is always kept. `History::changes` counts every
+  commit, undo and redo that changed the document; the editor's document
+  revision follows it ([[ADR-T49-1 Undo history capped by bytes]]).
+- `tests/soak.rs` drives long sessions through the editor and checks the
+  budget holds (T49).
 - Property test `undo_all_redo_all_symmetry`: any commit sequence, undone
   entirely, gives the empty document; redone entirely, gives the same shapes
   and ids.
@@ -52,4 +61,6 @@ are bound by [[T11 Keymap and macros]] and the toolbar buttons by
 - The history lives in memory only; it is not saved (persistence is out of
   scope).
 - Selection is not part of the history.
-- Beyond 500 actions the oldest ones can no longer be undone.
+- Beyond 500 actions, or 64 MiB of history, the oldest ones can no longer
+  be undone. Moving a 5 000-stroke selection a few times can already use
+  that budget.

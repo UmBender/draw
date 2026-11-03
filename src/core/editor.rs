@@ -21,7 +21,7 @@ use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
 use crate::core::experimental::Experimental;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::history::{HISTORY_LIMIT, History};
+use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
@@ -601,6 +601,12 @@ impl Editor {
         self.history.can_redo()
     }
 
+    /// Estimated heap bytes held by the undo history (ADR-T49-1).
+    #[must_use]
+    pub fn history_bytes(&self) -> usize {
+        self.history.bytes()
+    }
+
     /// Viewport size in pixels, as last reported by [`InputEvent::Resize`].
     #[must_use]
     pub fn viewport(&self) -> Vec2 {
@@ -726,18 +732,15 @@ impl Editor {
     }
 
     /// Runs `edit`, which may change the document through the history, and
-    /// bumps the document revision if it did (ADR-T24-1). A commit on a full
-    /// undo stack keeps both stack lengths, so there `edit`'s result decides.
-    /// Unless `appends` (the edit only ever inserts shapes on top) and the
-    /// document grew, the base revision follows (ADR-T24-3).
+    /// bumps the document revision if it did (ADR-T24-1): the history's
+    /// change count moved (ADR-T49-1). Unless `appends` (the edit only ever
+    /// inserts shapes on top) and the document grew, the base revision
+    /// follows (ADR-T24-3).
     fn track_document(&mut self, appends: bool, edit: impl FnOnce(&mut Self) -> bool) -> bool {
-        let lengths = |history: &History| (history.undo_len(), history.redo_len());
-        let before = lengths(&self.history);
+        let before = self.history.changes();
         let len = self.doc.len();
         let changed = edit(self);
-        let after = lengths(&self.history);
-        let full = after.0 >= HISTORY_LIMIT;
-        if before != after || (changed && full) {
+        if self.history.changes() != before {
             self.doc_revision = self.doc_revision.wrapping_add(1);
             if !(appends && self.doc.len() > len) {
                 self.doc_base_revision = self.doc_revision;
@@ -1067,6 +1070,7 @@ mod tests {
     use crate::core::document::tx_insert;
     use crate::core::experimental::Experimental;
     use crate::core::geom::{Vec2, approx_eq};
+    use crate::core::history::HISTORY_LIMIT;
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
@@ -4209,5 +4213,31 @@ mod tests {
         // Assert
         assert_eq!(editing(&ed).as_deref(), Some("ab"));
         assert!(approx_eq(open_size(&ed), 18.0, 1e-4));
+    }
+
+    // ---- T49 AC-4 revision under the byte budget ---------------------------
+
+    #[test]
+    fn editor_commit_dropping_old_entries_bumps_revision() {
+        // Arrange: a budget of two and a half pen dots.
+        let mut probe = Editor::new();
+        click(&mut probe, 0.0, 0.0);
+        let dot = probe.history_bytes();
+        assert!(dot > 0);
+        let mut ed = Editor::new();
+        ed.history = History::with_limits(HISTORY_LIMIT, dot * 5 / 2);
+        click(&mut ed, 0.0, 0.0);
+        click(&mut ed, 10.0, 0.0);
+        let lengths = (ed.history.undo_len(), ed.history.redo_len());
+        assert_eq!(lengths, (2, 0));
+        let before = ed.document_revision();
+
+        // Act: the third dot drops the first one.
+        click(&mut ed, 20.0, 0.0);
+
+        // Assert
+        assert_eq!((ed.history.undo_len(), ed.history.redo_len()), lengths);
+        assert!(ed.document_revision() > before);
+        assert_eq!(ed.document().len(), 3);
     }
 }

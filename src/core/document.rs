@@ -134,6 +134,21 @@ impl Transaction {
         &self.0
     }
 
+    /// Estimated heap bytes this transaction holds: its edit buffer plus
+    /// every shape in it (a `Replace` holds two) (ADR-T49-1).
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        let shapes: usize = self
+            .0
+            .iter()
+            .map(|edit| match edit {
+                Edit::Insert { shape, .. } | Edit::Remove { shape, .. } => shape.heap_bytes(),
+                Edit::Replace { before, after, .. } => before.heap_bytes() + after.heap_bytes(),
+            })
+            .sum();
+        self.0.capacity() * std::mem::size_of::<Edit>() + shapes
+    }
+
     /// The transaction that undoes this one: inverse edits in reverse order.
     #[must_use]
     pub fn inverse(&self) -> Self {
@@ -1355,5 +1370,42 @@ mod tests {
                 assert_lookups_match_scan(&doc, 64);
             }
         }
+    }
+
+    // ---- T49 AC-1 heap estimate --------------------------------------------
+
+    #[test]
+    fn transaction_heap_bytes_sums_edit_buffer_and_shapes() {
+        // Arrange
+        let stroke = |n: usize| Shape::Stroke {
+            points: vec![Vec2::ZERO; n],
+            widths: None,
+            style: Style {
+                color: ColorId::INK,
+                width: 2.0,
+            },
+        };
+        let (a, b, c) = (stroke(4), stroke(8), stroke(16));
+        let shapes = a.heap_bytes() + b.heap_bytes() + c.heap_bytes();
+        let tx = Transaction(vec![
+            Edit::Insert {
+                index: 0,
+                id: ShapeId(1),
+                shape: a,
+            },
+            Edit::Replace {
+                id: ShapeId(1),
+                before: b,
+                after: c,
+            },
+        ]);
+        let buffer = tx.0.capacity() * std::mem::size_of::<Edit>();
+
+        // Act
+        let bytes = tx.heap_bytes();
+
+        // Assert
+        assert_eq!(bytes, buffer + shapes);
+        assert!(shapes > 0);
     }
 }
