@@ -44,6 +44,16 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   device, pointer lock, touch points); `init_pointer_context` runs once
   per pointer, so a pointer that comes back gets its cursor shape.
 
+- `src/diag.rs` (new), `src/lib.rs` (`pub mod diag`): `BackendEvent`,
+  `BackendRecord`, `take_events_into()` and a queue of at most 4096
+  events that counts the ones it drops (ADR-T47-1).
+- `src/native/linux_wayland.rs`: pushes a `BackendEvent` for
+  `wl_seat.capabilities` and each device created or released, keyboard
+  enter/leave, keymap, every `wl_keyboard.key` (evdev code, state,
+  `Ctrl`/`Alt`), repeat info, each repeat timer wake with its
+  expiration count, tablet tools added/removed, proximity in/out, and a
+  display error just before its panic. Marked `draw patch (ADR-T47-1)`.
+
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
   where it is used, and `respond_to_clipboard_request`

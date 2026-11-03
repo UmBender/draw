@@ -14,6 +14,8 @@ use macroquad::miniquad::{EventHandler, KeyMods};
 
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::shell::diag::detect::KeyWatch;
+use crate::shell::diag::event::{Event, char_class, key_tag};
 
 /// The editor key for a macroquad key code, `None` for keys the editor ignores.
 #[must_use]
@@ -205,6 +207,13 @@ pub struct Collector {
     now: Instant,
     /// The pen release held back, if any.
     bounce: Option<HeldRelease>,
+    /// Held keys and chars per press, for the anomaly detectors
+    /// (ADR-T47-1).
+    watch: KeyWatch,
+    /// Flight recorder records of the events replayed so far.
+    records: Vec<(Instant, Event)>,
+    /// Pointer moves replayed since the last [`Collector::take_records`].
+    moves: u32,
 }
 
 impl Default for Collector {
@@ -228,7 +237,30 @@ impl Collector {
             bounce_window: Duration::ZERO,
             now: Instant::now(),
             bounce: None,
+            watch: KeyWatch::new(),
+            records: Vec::new(),
+            moves: 0,
         }
+    }
+
+    /// Moves the flight recorder records of the replayed events into
+    /// `out`, ending with the frame's pointer move count (ADR-T47-1).
+    pub fn take_records(&mut self, out: &mut Vec<(Instant, Event)>) {
+        out.append(&mut self.records);
+        if self.moves > 0 {
+            let count = std::mem::take(&mut self.moves);
+            out.push((self.now, Event::PointerMoves { count }));
+        }
+    }
+
+    /// Keyboard focus moved: the held keys are forgotten (ADR-T47-1).
+    pub fn focus_changed(&mut self) {
+        self.watch.focus_changed();
+    }
+
+    /// Adds a flight recorder record at the frame time.
+    fn record(&mut self, event: Event) {
+        self.records.push((self.now, event));
     }
 
     /// Sets how many wheel units make one notch; ignored unless positive
@@ -320,6 +352,7 @@ impl EventHandler for Collector {
     fn draw(&mut self) {}
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.moves = self.moves.saturating_add(1);
         self.pair_pen(x, y);
         let pos = self.track(x, y);
         let mods = self.held.modifiers();
@@ -331,6 +364,7 @@ impl EventHandler for Collector {
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
+        self.record(Event::Wheel);
         self.release_bounce();
         if y != 0.0 {
             self.events.push(InputEvent::Scroll {
@@ -343,6 +377,7 @@ impl EventHandler for Collector {
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
+            self.record(Event::PointerDown(button));
             let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
             let bounced = self.bounce.is_some_and(|held| {
@@ -363,6 +398,7 @@ impl EventHandler for Collector {
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
+            self.record(Event::PointerUp(button));
             let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
             let up = InputEvent::PointerUp { pos, button, mods };
@@ -379,7 +415,14 @@ impl EventHandler for Collector {
         }
     }
 
-    fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, _repeat: bool) {
+    fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, repeat: bool) {
+        self.record(Event::KeyDown {
+            key: key_tag(code, mods),
+            repeat,
+        });
+        if let Some(anomaly) = self.watch.key_down(code, repeat) {
+            self.record(Event::Anomaly(anomaly));
+        }
         self.release_bounce();
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
@@ -388,13 +431,24 @@ impl EventHandler for Collector {
         }
     }
 
-    fn char_event(&mut self, ch: char, mods: KeyMods, _repeat: bool) {
+    fn char_event(&mut self, ch: char, mods: KeyMods, repeat: bool) {
+        self.record(Event::Char {
+            class: char_class(ch),
+            repeat,
+        });
+        if let Some(anomaly) = self.watch.char(repeat) {
+            self.record(Event::Anomaly(anomaly));
+        }
         self.release_bounce();
         let mods = map_mods(mods);
         self.events.push(InputEvent::Char { ch, mods });
     }
 
     fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
+        self.record(Event::KeyUp {
+            key: key_tag(code, mods),
+        });
+        self.watch.key_up(code);
         self.release_bounce();
         self.held.set(code, false);
         if let Some(key) = map_key(code) {
@@ -1378,5 +1432,88 @@ mod tests {
         assert!(!has_release_request(2));
         assert!(has_release_request(3));
         assert!(has_release_request(4));
+    }
+
+    // T47: flight recorder records (ADR-T47-1).
+
+    fn records(collector: &mut Collector) -> Vec<crate::shell::diag::event::Event> {
+        let mut out = Vec::new();
+        collector.take_records(&mut out);
+        out.into_iter().map(|(_, event)| event).collect()
+    }
+
+    #[test]
+    fn collector_records_held_key_pressed_again() {
+        // Arrange
+        use crate::shell::diag::event::{Anomaly, Event};
+        let mut collector = Collector::new();
+
+        // Act
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Assert
+        let recorded = records(&mut collector);
+        assert!(
+            recorded.contains(&Event::Anomaly(Anomaly::HeldKeyPressedAgain)),
+            "{recorded:?}"
+        );
+        assert!(records(&mut collector).is_empty(), "taken once");
+    }
+
+    #[test]
+    fn collector_records_text_keys_without_identity() {
+        // Arrange
+        use crate::shell::diag::event::{CharClass, Event, KeyTag};
+        let mut collector = Collector::new();
+
+        // Act
+        collector.key_down_event(KeyCode::S, NO_MODS, false);
+        collector.char_event('s', NO_MODS, false);
+        collector.key_up_event(KeyCode::S, NO_MODS);
+        collector.key_down_event(KeyCode::Escape, NO_MODS, false);
+        for x in 0..3 {
+            collector.mouse_motion_event(x as f32, 0.0);
+        }
+
+        // Assert
+        assert_eq!(
+            records(&mut collector),
+            vec![
+                Event::KeyDown {
+                    key: KeyTag::Text,
+                    repeat: false
+                },
+                Event::Char {
+                    class: CharClass::Letter,
+                    repeat: false
+                },
+                Event::KeyUp { key: KeyTag::Text },
+                Event::KeyDown {
+                    key: KeyTag::Named(KeyCode::Escape),
+                    repeat: false
+                },
+                Event::PointerMoves { count: 3 },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_focus_change_forgets_held_keys() {
+        // Arrange
+        use crate::shell::diag::event::Event;
+        let mut collector = Collector::new();
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Act
+        collector.focus_changed();
+        collector.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Assert
+        let recorded = records(&mut collector);
+        assert!(
+            !recorded.iter().any(|e| matches!(e, Event::Anomaly(_))),
+            "{recorded:?}"
+        );
     }
 }

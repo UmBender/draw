@@ -36,11 +36,14 @@ use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
 use crate::core::experimental::{EXPERIMENTAL_ENV, Experimental};
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::input::InputEvent;
+use crate::core::input::{InputEvent, Key};
+use crate::core::keymap::KeyChord;
 use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
+use crate::shell::diag::event::{Event, FrameKind};
+use crate::shell::diag::{self, Level};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
 use crate::shell::render::{self, TextStats, to_mq_color};
@@ -353,6 +356,27 @@ impl From<WindowSettings> for Conf {
     }
 }
 
+/// The chord that writes a diagnostics dump, caught before the editor so
+/// it works in every mode (ADR-T47-1).
+pub const DUMP_CHORD: KeyChord = KeyChord::ctrl_shift(Key::L);
+
+/// Whether `event` is a press of [`DUMP_CHORD`].
+#[must_use]
+pub fn is_dump_chord(event: &InputEvent) -> bool {
+    matches!(event, InputEvent::KeyDown { key, mods } if *key == DUMP_CHORD.key && *mods == DUMP_CHORD.mods)
+}
+
+/// The flight recorder's kind of a frame that re-rendered something.
+fn frame_kind(redraw: Redraw) -> Option<FrameKind> {
+    match redraw {
+        Redraw::None => None,
+        Redraw::Overlay => Some(FrameKind::Overlay),
+        Redraw::Append { .. } => Some(FrameKind::Append),
+        Redraw::Moved => Some(FrameKind::Moved),
+        Redraw::Full => Some(FrameKind::Full),
+    }
+}
+
 /// X11 `WM_CLASS` of the window; the desktop entry's `StartupWMClass`
 /// matches it so launchers show the app's icon (ADR-T27-2).
 pub const WM_CLASS: &str = "draw";
@@ -363,8 +387,11 @@ pub const WM_CLASS: &str = "draw";
 #[must_use]
 pub fn window_conf() -> WindowSettings {
     let choice = backend::from_env();
-    for line in choice.warning.iter().chain(&choice.notice) {
+    let warning = choice.warning.as_deref().map(|line| (Level::Warn, line));
+    let notice = choice.notice.as_deref().map(|line| (Level::Info, line));
+    for (level, line) in warning.into_iter().chain(notice) {
         eprintln!("{line}");
+        diag::log(level, line);
     }
     WindowSettings {
         window_title: "draw".to_owned(),
@@ -384,12 +411,16 @@ pub async fn run() {
             Ok(atlas) => render::set_glyph_atlas(atlas),
             Err(err) => {
                 eprintln!("draw: math font not loaded, formulas in the text font: {err}");
+                diag::log(Level::Error, &format!("math font not loaded: {err}"));
                 if let Ok(atlas) = GlyphAtlas::new(TEXT_FONT) {
                     render::set_glyph_atlas(atlas);
                 }
             }
         },
-        Err(err) => eprintln!("draw: embedded font not loaded, text hidden: {err}"),
+        Err(err) => {
+            eprintln!("draw: embedded font not loaded, text hidden: {err}");
+            diag::log(Level::Error, &format!("embedded font not loaded: {err}"));
+        }
     }
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
@@ -414,6 +445,7 @@ pub async fn run() {
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
+    let mut recorder = FrameRecorder::new(&editor);
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -424,16 +456,94 @@ pub async fn run() {
         collector.set_dpi(dpi);
         collector.set_pen_samples(pen_samples());
         collector.set_now(Instant::now());
+        recorder.begin(&mut collector);
         repeat_all_miniquad_input(&mut collector, subscriber);
         if collector.flush_bounce() {
             // Wake again to hand the held release on (ADR-T42-1).
             schedule_update();
         }
+        let mut dump_asked = false;
         for event in collector.drain() {
-            dirty |= dispatch(&mut editor, event);
+            if is_dump_chord(&event) {
+                dump_asked = true;
+            } else {
+                dirty |= dispatch(&mut editor, event);
+            }
         }
-        frame.present(&editor, viewport, dpi, dirty);
+        let presented = frame.present(&editor, viewport, dpi, dirty);
+        recorder.end(&mut collector, &editor, presented, dump_asked);
         next_frame().await;
+    }
+}
+
+/// Collects one frame's flight recorder records and hands them to
+/// [`diag`] under one lock (ADR-T47-1). Its buffers are reused every
+/// frame.
+struct FrameRecorder {
+    records: Vec<(Instant, Event)>,
+    backend: Vec<macroquad::miniquad::diag::BackendRecord>,
+    tool: Tool,
+    revision: u64,
+}
+
+impl FrameRecorder {
+    /// Buffers for a session that starts with `editor`.
+    fn new(editor: &Editor) -> Self {
+        Self {
+            records: Vec::with_capacity(256),
+            backend: Vec::with_capacity(256),
+            tool: editor.tool(),
+            revision: editor.document_revision(),
+        }
+    }
+
+    /// Takes the backend's events before the input is replayed; a focus
+    /// change makes the collector forget its held keys.
+    fn begin(&mut self, collector: &mut Collector) {
+        diag::take_backend(&mut self.backend, &mut self.records);
+        let focus = |(_, event): &(Instant, Event)| {
+            matches!(event, Event::KeyboardEnter | Event::KeyboardLeave)
+        };
+        if self.records.iter().any(focus) {
+            collector.focus_changed();
+        }
+    }
+
+    /// Adds the input, tool, revision and frame records, records them,
+    /// and writes the dump the user asked for.
+    fn end(
+        &mut self,
+        collector: &mut Collector,
+        editor: &Editor,
+        presented: Option<(Redraw, Duration)>,
+        dump_asked: bool,
+    ) {
+        collector.take_records(&mut self.records);
+        let now = Instant::now();
+        if editor.tool() != self.tool {
+            self.tool = editor.tool();
+            self.records.push((now, Event::Tool(self.tool)));
+        }
+        if editor.document_revision() != self.revision {
+            self.revision = editor.document_revision();
+            let revision = u32::try_from(self.revision).unwrap_or(u32::MAX);
+            self.records.push((now, Event::Revision(revision)));
+        }
+        if let Some((kind, time)) = presented.and_then(|(r, t)| frame_kind(r).zip(Some(t))) {
+            let event = Event::Frame {
+                kind,
+                micros: u32::try_from(time.as_micros()).unwrap_or(u32::MAX),
+                shapes: u32::try_from(editor.document().len()).unwrap_or(u32::MAX),
+            };
+            self.records.push((now, event));
+        }
+        diag::record_all(&mut self.records);
+        if dump_asked {
+            match diag::dump("manual") {
+                Some(path) => eprintln!("draw: diagnostics dump written to {}", path.display()),
+                None => eprintln!("draw: diagnostics dump not written (no state directory)"),
+            }
+        }
     }
 }
 
@@ -509,8 +619,15 @@ impl CachedFrame {
     /// Updates the document layer as [`plan_redraw`], [`reuse_if_slow`] and
     /// [`settle`] say,
     /// then blits it to the window and draws the overlay on top. `dirty`
-    /// says whether input changed editor state.
-    fn present(&mut self, editor: &Editor, viewport: Vec2, dpi: f32, dirty: bool) {
+    /// says whether input changed editor state. Returns what the frame
+    /// re-rendered and its CPU time, for the flight recorder (ADR-T47-1).
+    fn present(
+        &mut self,
+        editor: &Editor,
+        viewport: Vec2,
+        dpi: f32,
+        dirty: bool,
+    ) -> Option<(Redraw, Duration)> {
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
         let camera = *editor.camera();
@@ -538,7 +655,7 @@ impl CachedFrame {
         };
         let cleared = render::begin_text_frame();
         render::take_text_stats();
-        let started = self.timed.then(Instant::now);
+        let started = Instant::now();
         let from = match redraw {
             Redraw::Full => Some(0),
             Redraw::Append { from } => Some(from),
@@ -569,7 +686,7 @@ impl CachedFrame {
             self.key = Some(key);
         }
         let (Some(document), Some(cached)) = (&self.document, &self.key) else {
-            return;
+            return None;
         };
         if redraw == Redraw::Moved {
             // The moved layer may not cover the window; wake again until the
@@ -593,14 +710,16 @@ impl CachedFrame {
             schedule_update();
         }
         let text = render::take_text_stats();
-        if let Some(started) = started.filter(|_| redraw != Redraw::None) {
+        if redraw == Redraw::None {
+            return None;
+        }
+        let elapsed = started.elapsed();
+        if self.timed {
             let shapes = editor.document().len();
             let text = (text != TextStats::default()).then_some(text);
-            eprintln!(
-                "{}",
-                frame_log_line(redraw, started.elapsed(), text, shapes)
-            );
+            eprintln!("{}", frame_log_line(redraw, elapsed, text, shapes));
         }
+        Some((redraw, elapsed))
     }
 
     /// A render target of `size` physical pixels with this cache's sample
@@ -1452,5 +1571,50 @@ mod tests {
         assert!(MATH_FONT.len() < 200_000, "{} bytes", MATH_FONT.len());
         let font = fontdue::Font::from_bytes(MATH_FONT, fontdue::FontSettings::default());
         assert!(font.is_ok());
+    }
+
+    #[test]
+    fn dump_chord_is_ctrl_shift_l() {
+        // Arrange
+        use crate::core::input::{Key, Modifiers};
+        use crate::core::keymap::KeyChord;
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        };
+        let press = |key, mods| InputEvent::KeyDown { key, mods };
+
+        // Act / Assert
+        assert_eq!(DUMP_CHORD, KeyChord::ctrl_shift(Key::L));
+        assert!(is_dump_chord(&press(Key::L, ctrl_shift)));
+        assert!(!is_dump_chord(&press(
+            Key::L,
+            Modifiers {
+                shift: false,
+                ..ctrl_shift
+            }
+        )));
+        assert!(!is_dump_chord(&press(
+            Key::L,
+            Modifiers {
+                alt: true,
+                ..ctrl_shift
+            }
+        )));
+        assert!(!is_dump_chord(&press(Key::K, ctrl_shift)));
+        assert!(!is_dump_chord(&InputEvent::KeyUp {
+            key: Key::L,
+            mods: ctrl_shift
+        }));
+    }
+
+    #[test]
+    fn dump_chord_is_not_an_editor_command() {
+        // Arrange / Act / Assert
+        assert_eq!(
+            crate::core::keymap::resolve(DUMP_CHORD.key, DUMP_CHORD.mods),
+            None
+        );
     }
 }

@@ -4,8 +4,9 @@
 //! The release build aborts on panic and ships stripped, so the hook
 //! writes the panic message, its source location, the app version and
 //! the GNU build id (which pairs the binary with its `draw.debug`) to
-//! stderr and appends them to [`crash_log_path`]. Everything but the hook
-//! itself is a pure function.
+//! stderr and appends them to [`crash_log_path`]. Then it hands the panic
+//! to the diagnostics recorder, which logs it and writes a dump
+//! (ADR-T47-1). Everything but the hook itself is a pure function.
 
 use std::any::Any;
 use std::backtrace::{Backtrace, BacktraceStatus};
@@ -38,18 +39,42 @@ const NT_GNU_BUILD_ID: u32 = 3;
 /// ELF program header type of a note segment.
 const PT_NOTE: u32 = 4;
 
-/// Where the crash log goes: `$XDG_STATE_HOME/draw/crash.log` when that is
-/// an absolute path, else `$HOME/.local/state/draw/crash.log`; `None`
-/// without an absolute home either.
+/// Bytes of `/proc/self/exe` read for the build id at start-up; the
+/// `PT_NOTE` segment sits near the start of the file (ADR-T47-1).
+pub const BUILD_ID_PREFIX: u64 = 64 * 1024;
+
+/// draw's state directory, shared by `crash.log` and the diagnostics log
+/// (ADR-T47-1): `$XDG_STATE_HOME/draw` when that is an absolute path, else
+/// `$HOME/.local/state/draw`; `None` without an absolute home either.
 #[must_use]
-pub fn crash_log_path(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+pub fn state_dir(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
     fn absolute(dir: Option<&OsStr>) -> Option<&Path> {
         dir.map(Path::new).filter(|dir| dir.is_absolute())
     }
     absolute(xdg_state_home)
         .map(Path::to_path_buf)
         .or_else(|| absolute(home).map(|home| home.join(".local/state")))
-        .map(|state| state.join("draw/crash.log"))
+        .map(|state| state.join("draw"))
+}
+
+/// Where the crash log goes: `crash.log` in [`state_dir`].
+#[must_use]
+pub fn crash_log_path(xdg_state_home: Option<&OsStr>, home: Option<&OsStr>) -> Option<PathBuf> {
+    state_dir(xdg_state_home, home).map(|dir| dir.join("crash.log"))
+}
+
+/// The build id of the running binary, read from the first
+/// [`BUILD_ID_PREFIX`] bytes of `/proc/self/exe`.
+#[must_use]
+pub fn running_build_id() -> Option<String> {
+    use std::io::Read as _;
+    let mut prefix = Vec::new();
+    std::fs::File::open("/proc/self/exe")
+        .ok()?
+        .take(BUILD_ID_PREFIX)
+        .read_to_end(&mut prefix)
+        .ok()?;
+    build_id(&prefix)
 }
 
 /// The report as text, one `key: value` line per field, ending in a
@@ -164,9 +189,8 @@ pub fn install_hook() {
         let location = info
             .location()
             .map(|at| format!("{}:{}:{}", at.file(), at.line(), at.column()));
-        let build_id = std::fs::read("/proc/self/exe")
-            .ok()
-            .and_then(|exe| build_id(&exe));
+        let report_location = location.clone();
+        let build_id = running_build_id();
         let unix_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs());
@@ -193,6 +217,12 @@ pub fn install_hook() {
                 let _ = writeln!(stderr, "crash report appended to {}", path.display());
             }
         }
+        // The flight recorder's last moments (ADR-T47-1).
+        let message = match &report_location {
+            Some(at) => format!("{} at {at}", panic_message(info.payload())),
+            None => panic_message(info.payload()).to_owned(),
+        };
+        crate::shell::diag::on_panic(&message);
     }));
 }
 
@@ -262,37 +292,52 @@ mod tests {
     }
 
     #[test]
-    fn crash_log_path_prefers_absolute_xdg_state_home() {
+    fn state_dir_prefers_absolute_xdg_state_home() {
         // Arrange / Act
-        let path = crash_log_path(Some(OsStr::new("/state")), Some(OsStr::new("/home/u")));
+        let dir = state_dir(Some(OsStr::new("/state")), Some(OsStr::new("/home/u")));
+
+        // Assert
+        assert_eq!(dir, Some(PathBuf::from("/state/draw")));
+    }
+
+    #[test]
+    fn state_dir_ignores_relative_or_empty_xdg_state_home() {
+        // Arrange
+        let expected = Some(PathBuf::from("/home/u/.local/state/draw"));
+
+        for xdg in [Some(OsStr::new("state")), Some(OsStr::new("")), None] {
+            // Act
+            let dir = state_dir(xdg, Some(OsStr::new("/home/u")));
+
+            // Assert
+            assert_eq!(dir, expected, "{xdg:?}");
+        }
+    }
+
+    #[test]
+    fn state_dir_without_home_is_none() {
+        // Arrange / Act / Assert
+        assert_eq!(state_dir(None, None), None);
+        assert_eq!(state_dir(None, Some(OsStr::new(""))), None);
+        assert_eq!(
+            state_dir(Some(OsStr::new("rel")), Some(OsStr::new("rel"))),
+            None
+        );
+    }
+
+    #[test]
+    fn crash_log_path_is_in_state_dir() {
+        // Arrange / Act
+        let path = crash_log_path(Some(OsStr::new("/state")), None);
 
         // Assert
         assert_eq!(path, Some(PathBuf::from("/state/draw/crash.log")));
     }
 
     #[test]
-    fn crash_log_path_ignores_relative_or_empty_xdg_state_home() {
-        // Arrange
-        let expected = Some(PathBuf::from("/home/u/.local/state/draw/crash.log"));
-
-        for xdg in [Some(OsStr::new("state")), Some(OsStr::new("")), None] {
-            // Act
-            let path = crash_log_path(xdg, Some(OsStr::new("/home/u")));
-
-            // Assert
-            assert_eq!(path, expected, "{xdg:?}");
-        }
-    }
-
-    #[test]
-    fn crash_log_path_without_home_is_none() {
+    fn build_id_prefix_is_bounded() {
         // Arrange / Act / Assert
-        assert_eq!(crash_log_path(None, None), None);
-        assert_eq!(crash_log_path(None, Some(OsStr::new(""))), None);
-        assert_eq!(
-            crash_log_path(Some(OsStr::new("rel")), Some(OsStr::new("rel"))),
-            None
-        );
+        assert_eq!(BUILD_ID_PREFIX, 64 * 1024);
     }
 
     #[test]

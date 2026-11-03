@@ -177,6 +177,10 @@ impl WaylandPayload {
                     ),
                     n_bits as _
                 );
+                // draw patch (ADR-T47-1): a count above 2 is a repeat burst.
+                crate::diag::push(crate::diag::BackendEvent::RepeatTimer {
+                    expirations: count[0] as u64,
+                });
                 for _ in 0..count[0] {
                     self.keyboard_context.generate_key_repeat_events(
                         &mut self.xkb,
@@ -190,6 +194,10 @@ impl WaylandPayload {
             (self.client.wl_display_cancel_read)(self.display);
         }
         let errno = (self.client.wl_display_get_error)(self.display);
+        // draw patch (ADR-T47-1): record the error before the panic below.
+        if errno != 0 {
+            crate::diag::push(crate::diag::BackendEvent::ProtocolError { errno });
+        }
         // A non-zero errno means the compositor decided that we need to die.
         // Nothing more we can do at this point :(
         // If we want the detailed error message, we need to run with `WAYLAND_DEBUG=client`, since
@@ -573,13 +581,30 @@ unsafe extern "C" fn seat_handle_capabilities(
     seat: *mut wl_seat,
     caps: wl_seat_capability,
 ) {
+    use crate::diag::{push, BackendEvent, Device};
     use crate::seat::{device_change, has_release_request, DeviceChange};
 
     let display: &mut WaylandPayload = &mut *(data as *mut _);
     let release = has_release_request((display.client.wl_proxy_get_version)(seat as _));
 
     let pointer = caps & wl_seat_capability_WL_SEAT_CAPABILITY_POINTER != 0;
-    match device_change(!display.pointer_context.pointer.is_null(), pointer) {
+    let keyboard = caps & wl_seat_capability_WL_SEAT_CAPABILITY_KEYBOARD != 0;
+    let touch = caps & wl_seat_capability_WL_SEAT_CAPABILITY_TOUCH != 0;
+    // draw patch (ADR-T47-1): record the seat's devices and what changes.
+    push(BackendEvent::Capabilities {
+        keyboard,
+        pointer,
+        touch,
+    });
+    let record = |change: DeviceChange, device: Device| match change {
+        DeviceChange::Create => push(BackendEvent::DeviceCreated(device)),
+        DeviceChange::Release => push(BackendEvent::DeviceReleased(device)),
+        DeviceChange::Keep => {}
+    };
+
+    let change = device_change(!display.pointer_context.pointer.is_null(), pointer);
+    record(change, Device::Pointer);
+    match change {
         DeviceChange::Create => {
             display.pointer_context.pointer = wl_request_constructor!(
                 display.client,
@@ -624,8 +649,9 @@ unsafe extern "C" fn seat_handle_capabilities(
         DeviceChange::Keep => {}
     }
 
-    let keyboard = caps & wl_seat_capability_WL_SEAT_CAPABILITY_KEYBOARD != 0;
-    match device_change(!display.keyboard.is_null(), keyboard) {
+    let change = device_change(!display.keyboard.is_null(), keyboard);
+    record(change, Device::Keyboard);
+    match change {
         DeviceChange::Create => {
             display.keyboard = wl_request_constructor!(
                 display.client,
@@ -661,8 +687,9 @@ unsafe extern "C" fn seat_handle_capabilities(
         DeviceChange::Keep => {}
     }
 
-    let touch = caps & wl_seat_capability_WL_SEAT_CAPABILITY_TOUCH != 0;
-    match device_change(!display.touch.is_null(), touch) {
+    let change = device_change(!display.touch.is_null(), touch);
+    record(change, Device::Touch);
+    match change {
         DeviceChange::Create => {
             display.touch = wl_request_constructor!(
                 display.client,
@@ -737,6 +764,7 @@ unsafe extern "C" fn keyboard_handle_keymap(
     );
     libc::munmap(map_shm, size as usize);
     libc::close(fd);
+    crate::diag::push(crate::diag::BackendEvent::Keymap); // draw patch (ADR-T47-1)
     display.keymap.cache_mod_indices(&mut display.xkb);
     (display.xkb.xkb_state_unref)(display.xkb_state);
     display.xkb_state = (display.xkb.xkb_state_new)(display.keymap.xkb_keymap);
@@ -751,6 +779,7 @@ unsafe extern "C" fn keyboard_handle_enter(
     let display: &mut WaylandPayload = &mut *(data as *mut _);
     // Needed for setting the clipboard
     display.keyboard_context.enter_serial = Some(serial);
+    crate::diag::push(crate::diag::BackendEvent::KeyboardEnter); // draw patch (ADR-T47-1)
     display.events.push(WaylandEvent::WindowRestored);
 }
 unsafe extern "C" fn keyboard_handle_leave(
@@ -764,6 +793,7 @@ unsafe extern "C" fn keyboard_handle_leave(
     (display.xkb.xkb_state_update_mask)(display.xkb_state, 0, 0, 0, 0, 0, 0);
     display.keyboard_context.repeated_key = None;
     display.keyboard_context.enter_serial = None;
+    crate::diag::push(crate::diag::BackendEvent::KeyboardLeave); // draw patch (ADR-T47-1)
     display.events.push(WaylandEvent::WindowMinimized);
 }
 unsafe extern "C" fn keyboard_handle_key(
@@ -783,6 +813,13 @@ unsafe extern "C" fn keyboard_handle_key(
     let keysym = libxkb.keymap_key_get_sym_without_mod(xkb_keymap, key + 8);
     let keycode = keycodes::translate_keysym(keysym);
     let keymods = display.keymap.get_keymods(libxkb, xkb_state);
+    // draw patch (ADR-T47-1): draw hides text keys before recording them.
+    crate::diag::push(crate::diag::BackendEvent::Key {
+        code: key,
+        state,
+        ctrl: keymods.ctrl,
+        alt: keymods.alt,
+    });
     match state {
         0 => {
             display.keyboard_context.track_key_up(key);
@@ -835,6 +872,7 @@ unsafe extern "C" fn keyboard_handle_repeat_info(
     delay: i32,
 ) {
     let display: &mut WaylandPayload = &mut *(data as *mut _);
+    crate::diag::push(crate::diag::BackendEvent::RepeatInfo { rate, delay }); // draw patch (ADR-T47-1)
     display.keyboard_context.repeat_info = if rate == 0 {
         RepeatInfo::NoRepeat
     } else {
@@ -952,6 +990,7 @@ unsafe extern "C" fn tablet_seat_handle_tool_added(
         return;
     }
     display.tablet.tools.insert(tool as usize, PenTool::new());
+    crate::diag::push(crate::diag::BackendEvent::ToolAdded); // draw patch (ADR-T47-1)
     TABLET_TOOL_LISTENER.removed = tablet_tool_handle_removed;
     TABLET_TOOL_LISTENER.proximity_in = tablet_tool_handle_proximity_in;
     TABLET_TOOL_LISTENER.proximity_out = tablet_tool_handle_proximity_out;
@@ -982,6 +1021,7 @@ unsafe extern "C" fn tablet_tool_handle_removed(
     tool: *mut extensions::tablet::zwp_tablet_tool_v2,
 ) {
     let display: &mut WaylandPayload = &mut *(data as *mut _);
+    crate::diag::push(crate::diag::BackendEvent::ToolRemoved); // draw patch (ADR-T47-1)
     if let Some(state) = display.tablet.tools.remove(&(tool as usize)) {
         if !state.cursor_device.is_null() {
             wl_request!(display.client, state.cursor_device, 0);
@@ -1003,6 +1043,7 @@ unsafe extern "C" fn tablet_tool_handle_proximity_in(
     _tablet: *mut extensions::tablet::zwp_tablet_v2,
     surface: *mut wl_surface,
 ) {
+    crate::diag::push(crate::diag::BackendEvent::ProximityIn); // draw patch (ADR-T47-1)
     let display: &mut WaylandPayload = &mut *(data as *mut _);
     let Some(state) = display.tablet.tools.get_mut(&(tool as usize)) else {
         return;
@@ -1052,6 +1093,7 @@ unsafe extern "C" fn tablet_tool_handle_proximity_out(
     data: *mut ::core::ffi::c_void,
     tool: *mut extensions::tablet::zwp_tablet_tool_v2,
 ) {
+    crate::diag::push(crate::diag::BackendEvent::ProximityOut); // draw patch (ADR-T47-1)
     if let Some(state) = pen_tool(data, tool) {
         state.frame.proximity_out = true;
     }

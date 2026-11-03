@@ -12,6 +12,8 @@ mod event;
 pub mod fs;
 pub mod graphics;
 pub mod native;
+// draw patch (ADR-T47-1): backend diagnostics events.
+pub mod diag;
 pub mod pen;
 // draw patch (ADR-T35-1, ADR-T44-1): one device per seat capability.
 pub mod seat;
