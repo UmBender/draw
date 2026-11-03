@@ -42,7 +42,12 @@ usual SDD/TDD workflow.
   4. **Bugs**: findings of [[T45 Doubled keys after a long idle on
      Wayland]], [[T48 Clean exit on Ctrl-C]], [[T49 Long-running
      stability]].
-  5. **Observability** from [[T47 Always-on diagnostics log]] is in
+  5. **Command line**: only basic flags such as `--version` and
+     `--help` (owner, 2026-11-02). No option changes the app's
+     behaviour or looks; the colours are set before compiling
+     ([[T51 Build-time themes]]). Whether the `DRAW_*` environment
+     variables stay is decided in the audit.
+  6. **Observability** from [[T47 Always-on diagnostics log]] is in
      place before the refactor, so regressions are visible.
 - About 28.7k lines in `src/core` and `src/shell`, plus the vendored
   miniquad (`vendor/miniquad`, patched per ADR-T35-1, ADR-T40-1,
@@ -96,3 +101,5 @@ Decided per child task.
 - 2026-11-02 — owner: 2.0.0 adds no features and is followed only by bug
   fixes. Starts after the 1.5.0 release (T53), which carries T46–T49,
   T51 and T52.
+- 2026-11-02 — owner: the 2.0.0 command line takes only basic flags
+  (`--version`, `--help`).

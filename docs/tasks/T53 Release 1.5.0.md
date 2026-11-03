@@ -19,7 +19,7 @@ draw 1.5.0 is tagged and packaged: the last release before the 2.0.0
 refactor ([[T50 Version 2.0.0 refactor]]), with every feature 2.0.0
 will have. Native Wayland by default with X11 deprecated (T46), the
 diagnostics log (T47), the Ctrl-C and long-running fixes (T48, T49),
-build-time themes (T51), and text in shapes by default (T52).
+all colours in one theme file (T51), and text in shapes by default (T52).
 
 ## Known facts (2026-11-02)
 
@@ -38,8 +38,8 @@ build-time themes (T51), and text in shapes by default (T52).
    --fuzz` is green.
 2. Manual checks on the target (i5-8250U, UHD 620, Hyprland): redraw
    budgets with `DRAW_FRAME_TIMES=1`; one long session with the T47 log
-   showing no anomaly; `Ctrl-C` exits cleanly; a non-default theme
-   build; writing in rect/ellipse/grid cells, and a numbered shape
+   showing no anomaly; `Ctrl-C` exits cleanly; a build with a few colours
+   changed by following the theme docs; writing in rect/ellipse/grid cells, and a numbered shape
    refusing text.
 3. `CHANGELOG.md`: `Deprecated` lists X11/Xwayland (removed in 2.0.0).
    `Changed` lists text in shapes, no longer experimental.
