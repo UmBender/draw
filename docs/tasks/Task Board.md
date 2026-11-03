@@ -174,7 +174,7 @@ flowchart TD
 | [[T42 Join pen tip bounces]] | done | T35 | `fix/pen-tip-bounce` |
 | [[T43 Adopt clippy 1.99 lints]] | done | — | `chore/clippy-1-99` |
 | [[T44 One keyboard per Wayland seat]] | done | T28 | `fix/wayland-seat-devices` |
-| [[T45 Doubled keys after a long idle on Wayland]] | todo | T44 | `fix/wayland-idle-doubled-keys` |
+| [[T45 Doubled keys after a long idle on Wayland]] | done | T44 | `fix/wayland-idle-doubled-keys` |
 | [[T46 Native Wayland by default and Xwayland deprecated]] | todo | T28, T44, T45 | `task/T46-wayland-default` |
 | [[T47 Always-on diagnostics log]] | todo | — | `task/T47-diagnostics-log` |
 | [[T48 Clean exit on Ctrl-C]] | todo | T47 | `fix/clean-exit-on-sigint` |

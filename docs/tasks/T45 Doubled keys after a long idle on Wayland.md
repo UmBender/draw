@@ -1,7 +1,7 @@
 ---
 id: T45
 title: Doubled keys after a long idle on Wayland
-status: review
+status: done
 wave: 30
 branch: fix/wayland-idle-doubled-keys
 depends_on: [T44]
