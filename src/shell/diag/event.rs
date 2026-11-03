@@ -340,7 +340,11 @@ impl fmt::Display for Event {
                 touch,
             } => {
                 f.write_str("seat")?;
-                for (has, name) in [(keyboard, "keyboard"), (pointer, "pointer"), (touch, "touch")] {
+                for (has, name) in [
+                    (keyboard, "keyboard"),
+                    (pointer, "pointer"),
+                    (touch, "touch"),
+                ] {
                     if has {
                         write!(f, " {name}")?;
                     }
@@ -611,7 +615,10 @@ mod tests {
         assert_eq!(backend_key(44, false, true), BackendKey::Code(44));
         // Esc, Enter, Left Ctrl and F1 are not text.
         for code in [1, 28, 29, 59] {
-            assert_eq!(backend_key(code, false, false), BackendKey::Code(code as u16));
+            assert_eq!(
+                backend_key(code, false, false),
+                BackendKey::Code(code as u16)
+            );
         }
     }
 
@@ -810,7 +817,7 @@ mod tests {
             assert!(!line.contains('\n'), "{line}");
         }
         for anomaly in Anomaly::ALL {
-            assert!(!anomaly.describe().is_empty());
+            assert_ne!(anomaly.describe(), "");
         }
     }
 }

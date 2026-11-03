@@ -99,7 +99,7 @@ pub fn dump_name(unix_secs: u64, reason: &str) -> String {
 
 /// Whether `name` is a dump file's name.
 fn is_dump(name: &str) -> bool {
-    name.starts_with("dump-") && name.ends_with(".log")
+    name.starts_with("dump-") && Path::new(name).extension().is_some_and(|ext| ext == "log")
 }
 
 /// Deletes the oldest `dump-*.log` files in `dir` (by name, which sorts by
@@ -214,7 +214,10 @@ fn cut(text: &str, max: usize) -> &str {
     if text.len() <= max {
         return text;
     }
-    let end = (0..=max).rev().find(|&at| text.is_char_boundary(at)).unwrap_or(0);
+    let end = (0..=max)
+        .rev()
+        .find(|&at| text.is_char_boundary(at))
+        .unwrap_or(0);
     &text[..end]
 }
 
@@ -228,10 +231,8 @@ mod tests {
 
     /// An empty directory of its own for one test.
     fn temp_dir(name: &str) -> std::io::Result<PathBuf> {
-        let dir = std::env::temp_dir().join(format!(
-            "draw-diag-file-{}-{name}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("draw-diag-file-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
@@ -273,7 +274,10 @@ mod tests {
         );
 
         // Assert
-        assert_eq!(text, "2025-11-02T14:03:12.345Z +12.345s WARN seat: keyboard\n");
+        assert_eq!(
+            text,
+            "2025-11-02T14:03:12.345Z +12.345s WARN seat: keyboard\n"
+        );
     }
 
     #[test]

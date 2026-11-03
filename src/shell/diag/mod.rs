@@ -21,7 +21,9 @@ use macroquad::miniquad::diag as backend_diag;
 
 use crate::shell::diag::detect::{BackendWatch, IdleWatch, Limiter, Topic, Verdict};
 use crate::shell::diag::event::{Anomaly, Event, Record, from_backend};
-use crate::shell::diag::file::{LOG_CAP, MAX_DUMPS, SessionLog, dump_name, log_line, prune_dumps, utc};
+use crate::shell::diag::file::{
+    LOG_CAP, MAX_DUMPS, SessionLog, dump_name, log_line, prune_dumps, utc,
+};
 use crate::shell::diag::ring::Ring;
 use crate::shell::{backend, crash, tablet};
 
@@ -209,7 +211,7 @@ impl Diag {
     #[must_use]
     pub fn new(settings: Settings) -> Self {
         let log = (settings.level != Level::Off)
-            .then(|| settings.dir.as_ref())
+            .then_some(settings.dir.as_ref())
             .flatten()
             .and_then(|dir| SessionLog::open(&dir.join(LOG_FILE), LOG_CAP).ok());
         let mut ring = Ring::new(settings.capacity);
@@ -272,7 +274,9 @@ impl Diag {
         }
         match event {
             Event::Anomaly(anomaly) => self.anomaly(anomaly),
-            Event::Frame { micros, .. } => self.frame(Duration::from_micros(u64::from(micros)), event),
+            Event::Frame { micros, .. } => {
+                self.frame(Duration::from_micros(u64::from(micros)), event);
+            }
             Event::Capabilities { .. }
             | Event::DeviceCreated(_)
             | Event::DeviceReleased(_)
@@ -456,10 +460,7 @@ pub fn with_in<R>(recorder: &Mutex<Option<Diag>>, f: impl FnOnce(&mut Diag) -> R
 
 /// Runs `f` on the recorder in `recorder` unless it is locked; `None` then
 /// or when there is no recorder. For the panic hook, which must not block.
-pub fn try_with_in<R>(
-    recorder: &Mutex<Option<Diag>>,
-    f: impl FnOnce(&mut Diag) -> R,
-) -> Option<R> {
+pub fn try_with_in<R>(recorder: &Mutex<Option<Diag>>, f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
     let mut guard = match recorder.try_lock() {
         Ok(guard) => guard,
         Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
@@ -500,7 +501,11 @@ pub fn init_from_env() {
     let backend = format!("{:?}", backend::from_env().backend).to_lowercase();
     let session = std::env::var("XDG_SESSION_TYPE").ok();
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
-    let tablet = if tablet::from_env().pen { "pen" } else { "mouse" };
+    let tablet = if tablet::from_env().pen {
+        "pen"
+    } else {
+        "mouse"
+    };
     diag.log_start(&StartInfo {
         version: env!("CARGO_PKG_VERSION"),
         build_id: build_id.as_deref(),
@@ -550,6 +555,7 @@ pub fn log(level: Level, message: &str) {
 
 /// Writes a dump for `reason` (also the entry point for T48's signal
 /// handling) and returns its path.
+#[must_use = "tell the user where the dump went"]
 pub fn dump(reason: &str) -> Option<PathBuf> {
     with(|diag| {
         diag.record(Instant::now(), Event::DumpRequested);
@@ -602,10 +608,7 @@ mod tests {
 
     /// An empty directory of its own for one test.
     fn temp_dir(name: &str) -> io::Result<PathBuf> {
-        let dir = std::env::temp_dir().join(format!(
-            "draw-diag-{}-{name}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("draw-diag-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
         Ok(dir)
@@ -769,11 +772,17 @@ mod tests {
         // Assert
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
         let name = name.unwrap_or_default();
-        assert!(name.starts_with("dump-") && name.ends_with("-manual.log"), "{name}");
+        assert!(
+            name.starts_with("dump-") && name.ends_with("-manual.log"),
+            "{name}"
+        );
         let text = std::fs::read_to_string(&path)?;
         assert!(text.starts_with("draw diagnostics dump\n"), "{text}");
         assert!(text.contains("reason: manual"), "{text}");
-        assert!(text.contains(concat!("version: ", env!("CARGO_PKG_VERSION"))), "{text}");
+        assert!(
+            text.contains(concat!("version: ", env!("CARGO_PKG_VERSION"))),
+            "{text}"
+        );
         let escape = text.find("Escape").unwrap_or(usize::MAX);
         let frame = text.find("frame").unwrap_or(0);
         assert!(escape < frame, "oldest first: {text}");
@@ -882,7 +891,10 @@ mod tests {
 
         // Assert
         let text = log_text(&dir);
-        assert!(text.contains("ERROR panic: boom at src/core/shape.rs:1:2"), "{text}");
+        assert!(
+            text.contains("ERROR panic: boom at src/core/shape.rs:1:2"),
+            "{text}"
+        );
         let found = dumps(&dir)?;
         assert_eq!(found.len(), 1);
         assert!(found[0].to_string_lossy().ends_with("-panic.log"));
@@ -931,7 +943,9 @@ mod tests {
         });
 
         // Assert
-        for part in ["1.4.3", "abcdef", "4242", "wayland", "Hyprland", "pen", "debug"] {
+        for part in [
+            "1.4.3", "abcdef", "4242", "wayland", "Hyprland", "pen", "debug",
+        ] {
             assert!(line.contains(part), "{part}: {line}");
         }
         assert!(unknown.contains("unknown"), "{unknown}");
@@ -996,7 +1010,7 @@ mod tests {
         // Assert
         let after = std::fs::metadata(dir.join(LOG_FILE)).map_or(0, |m| m.len());
         assert_eq!(after, before);
-        assert!(dumps(&dir)?.is_empty());
+        assert_eq!(dumps(&dir)?, Vec::<PathBuf>::new());
         Ok(())
     }
 

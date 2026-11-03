@@ -42,8 +42,8 @@ use crate::core::palette::{THEME, palette};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
-use crate::shell::diag::{self, Level};
 use crate::shell::diag::event::{Event, FrameKind};
+use crate::shell::diag::{self, Level};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
 use crate::shell::render::{self, TextStats, to_mq_color};
@@ -386,14 +386,11 @@ pub const WM_CLASS: &str = "draw";
 #[must_use]
 pub fn window_conf() -> WindowSettings {
     let choice = backend::from_env();
-    for line in choice
-        .warning
-        .as_deref()
-        .into_iter()
-        .chain(choice.backend.notice())
-    {
+    let warning = choice.warning.as_deref().map(|line| (Level::Warn, line));
+    let notice = choice.backend.notice().map(|line| (Level::Info, line));
+    for (level, line) in warning.into_iter().chain(notice) {
         eprintln!("{line}");
-        diag::log(Level::Warn, line);
+        diag::log(level, line);
     }
     WindowSettings {
         window_title: "draw".to_owned(),
@@ -447,11 +444,7 @@ pub async fn run() {
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
-    // Flight recorder buffers, reused every frame (ADR-T47-1).
-    let mut records: Vec<(Instant, Event)> = Vec::with_capacity(256);
-    let mut backend_records = Vec::with_capacity(256);
-    let mut tool = editor.tool();
-    let mut revision = editor.document_revision();
+    let mut recorder = FrameRecorder::new(&editor);
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -462,13 +455,7 @@ pub async fn run() {
         collector.set_dpi(dpi);
         collector.set_pen_samples(pen_samples());
         collector.set_now(Instant::now());
-        diag::take_backend(&mut backend_records, &mut records);
-        if records
-            .iter()
-            .any(|(_, e)| matches!(e, Event::KeyboardEnter | Event::KeyboardLeave))
-        {
-            collector.focus_changed();
-        }
+        recorder.begin(&mut collector);
         repeat_all_miniquad_input(&mut collector, subscriber);
         if collector.flush_bounce() {
             // Wake again to hand the held release on (ADR-T42-1).
@@ -482,38 +469,80 @@ pub async fn run() {
                 dirty |= dispatch(&mut editor, event);
             }
         }
-        collector.take_records(&mut records);
+        let presented = frame.present(&editor, viewport, dpi, dirty);
+        recorder.end(&mut collector, &editor, presented, dump_asked);
+        next_frame().await;
+    }
+}
+
+/// Collects one frame's flight recorder records and hands them to
+/// [`diag`] under one lock (ADR-T47-1). Its buffers are reused every
+/// frame.
+struct FrameRecorder {
+    records: Vec<(Instant, Event)>,
+    backend: Vec<macroquad::miniquad::diag::BackendRecord>,
+    tool: Tool,
+    revision: u64,
+}
+
+impl FrameRecorder {
+    /// Buffers for a session that starts with `editor`.
+    fn new(editor: &Editor) -> Self {
+        Self {
+            records: Vec::with_capacity(256),
+            backend: Vec::with_capacity(256),
+            tool: editor.tool(),
+            revision: editor.document_revision(),
+        }
+    }
+
+    /// Takes the backend's events before the input is replayed; a focus
+    /// change makes the collector forget its held keys.
+    fn begin(&mut self, collector: &mut Collector) {
+        diag::take_backend(&mut self.backend, &mut self.records);
+        let focus = |(_, event): &(Instant, Event)| {
+            matches!(event, Event::KeyboardEnter | Event::KeyboardLeave)
+        };
+        if self.records.iter().any(focus) {
+            collector.focus_changed();
+        }
+    }
+
+    /// Adds the input, tool, revision and frame records, records them,
+    /// and writes the dump the user asked for.
+    fn end(
+        &mut self,
+        collector: &mut Collector,
+        editor: &Editor,
+        presented: Option<(Redraw, Duration)>,
+        dump_asked: bool,
+    ) {
+        collector.take_records(&mut self.records);
         let now = Instant::now();
-        if editor.tool() != tool {
-            tool = editor.tool();
-            records.push((now, Event::Tool(tool)));
+        if editor.tool() != self.tool {
+            self.tool = editor.tool();
+            self.records.push((now, Event::Tool(self.tool)));
         }
-        if editor.document_revision() != revision {
-            revision = editor.document_revision();
-            records.push((now, Event::Revision(revision as u32)));
+        if editor.document_revision() != self.revision {
+            self.revision = editor.document_revision();
+            let revision = u32::try_from(self.revision).unwrap_or(u32::MAX);
+            self.records.push((now, Event::Revision(revision)));
         }
-        if let Some((redraw, time)) = frame.present(&editor, viewport, dpi, dirty) {
-            if let Some(kind) = frame_kind(redraw) {
-                let micros = u32::try_from(time.as_micros()).unwrap_or(u32::MAX);
-                let shapes = u32::try_from(editor.document().len()).unwrap_or(u32::MAX);
-                records.push((
-                    now,
-                    Event::Frame {
-                        kind,
-                        micros,
-                        shapes,
-                    },
-                ));
-            }
+        if let Some((kind, time)) = presented.and_then(|(r, t)| frame_kind(r).zip(Some(t))) {
+            let event = Event::Frame {
+                kind,
+                micros: u32::try_from(time.as_micros()).unwrap_or(u32::MAX),
+                shapes: u32::try_from(editor.document().len()).unwrap_or(u32::MAX),
+            };
+            self.records.push((now, event));
         }
-        diag::record_all(&mut records);
+        diag::record_all(&mut self.records);
         if dump_asked {
             match diag::dump("manual") {
                 Some(path) => eprintln!("draw: diagnostics dump written to {}", path.display()),
                 None => eprintln!("draw: diagnostics dump not written (no state directory)"),
             }
         }
-        next_frame().await;
     }
 }
 
@@ -1558,8 +1587,20 @@ mod tests {
         // Act / Assert
         assert_eq!(DUMP_CHORD, KeyChord::ctrl_shift(Key::L));
         assert!(is_dump_chord(&press(Key::L, ctrl_shift)));
-        assert!(!is_dump_chord(&press(Key::L, Modifiers { shift: false, ..ctrl_shift })));
-        assert!(!is_dump_chord(&press(Key::L, Modifiers { alt: true, ..ctrl_shift })));
+        assert!(!is_dump_chord(&press(
+            Key::L,
+            Modifiers {
+                shift: false,
+                ..ctrl_shift
+            }
+        )));
+        assert!(!is_dump_chord(&press(
+            Key::L,
+            Modifiers {
+                alt: true,
+                ..ctrl_shift
+            }
+        )));
         assert!(!is_dump_chord(&press(Key::K, ctrl_shift)));
         assert!(!is_dump_chord(&InputEvent::KeyUp {
             key: Key::L,
