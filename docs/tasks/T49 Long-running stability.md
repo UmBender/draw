@@ -1,7 +1,7 @@
 ---
 id: T49
 title: Long-running stability
-status: in-progress
+status: review
 wave: 32
 branch: fix/long-running-stability
 depends_on: [T47]
@@ -150,12 +150,12 @@ its changes and the editor compares that count.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T49): …`
-- [ ] tests — `test(T49): …`
-- [ ] models — `feat(T49): …`
-- [ ] behaviour — `fix(T49): …`
-- [ ] quality — `chore(T49): …`
-- [ ] docs — `docs(T49): …`
+- [x] spec — `docs(T49): …`
+- [x] tests — `test(T49): …`
+- [x] models — `feat(T49): …`
+- [x] behaviour — `fix(T49): …`
+- [x] quality — `chore(T49): …`
+- [x] docs — `docs(T49): …`
 
 ## Learning path
 
@@ -164,3 +164,26 @@ None expected.
 ## Log
 
 - 2026-11-02 — note written from the owner's reports.
+- 2026-11-03 — evidence collected (see *Spec*): no real long-session crash
+  on record; the only fatal-signal dumps are T48's scripted checks.
+- 2026-11-03 — soak probe through `Editor`: 200 000 mixed cycles flat at
+  3.6 MiB resident; caches, glyph atlas, T47 ring and input queues bounded.
+- 2026-11-03 — **B1** found and fixed: undo history bounded by entries,
+  not bytes; repeated moves of a 1 000-stroke selection grew to 140 MiB
+  (gigabytes for 5 000 strokes, an OOM kill with no trace).
+  [[ADR-T49-1 Undo history capped by bytes]]: 64 MiB budget over both
+  stacks, newest entry always kept.
+- 2026-11-03 — **B2** fixed with B1: the editor tracked document changes by
+  undo/redo stack lengths, which a commit dropping several entries would
+  fool; it now follows `History::changes`.
+- 2026-11-03 — `tests/soak.rs`: mixed session and large-selection moves in
+  the default run (the latter reaches and holds the budget); the ignored
+  release run kept resident memory at 3 564 KiB from cycle 10 000 to
+  200 000. `scripts/check.sh` green.
+- 2026-11-03 — no feature or tutorial note: the task has none (`feature`
+  and `tutorial` empty, *Learning path* none); the existing
+  [[Undo and redo]] feature note gained the byte budget.
+- **Open — AC-6** (owner, on the target): idle, lock, suspend/resume,
+  re-plug and a contest-day session with the release build; record the
+  results and any new bug here. The doubled-letter reports (T44, T45) have
+  no new occurrence in the T47 log yet.
