@@ -1,12 +1,12 @@
 ---
 id: T46
 title: Native Wayland by default and Xwayland deprecated
-status: in-progress
+status: review
 wave: 31
 branch: task/T46-wayland-default
 depends_on: [T28, T44, T45]
 adrs: [ADR-T46-1]
-feature: "[[Native Wayland (experimental)]]"
+feature: "[[Native Wayland]]"
 tutorial: "[[28 Choosing a window backend at startup]]"
 tags: [task]
 ---
@@ -144,12 +144,12 @@ non-empty `WAYLAND_DISPLAY`.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T46): …`
-- [ ] tests — `test(T46): …`
-- [ ] models — `feat(T46): …`
-- [ ] behaviour — `feat(T46): …`
-- [ ] quality — `chore(T46): …`
-- [ ] docs — `docs(T46): …`
+- [x] spec — `docs(T46): …`
+- [x] tests — `test(T46): …`
+- [x] models — `feat(T46): …`
+- [x] behaviour — `feat(T46): …`
+- [x] quality — `chore(T46): …`
+- [x] docs — `docs(T46): …`
 
 ## Learning path
 
@@ -159,3 +159,28 @@ Update [[28 Choosing a window backend at startup]]; no new tutorial.
 
 - 2026-11-02 — note written at the owner's request; X11/Xwayland to be
   removed in 2.0.0.
+- 2026-11-02 — Spec: ADR-T46-1 (amends ADR-T28-1). 2.0.0 drops X11
+  entirely, plain X11 sessions included. The T28 preflight error for
+  missing Wayland libraries is replaced by a fallback to the X11 check,
+  since miniquad falls back to X11 when `try_load` fails
+  (`vendor/miniquad/src/native/linux_wayland.rs` `run`) and prints its
+  own line. Fractional scale (AC-11) does not block the default.
+- 2026-11-02 — Tests, models, behaviour, quality: AC-1–AC-9 covered by
+  unit tests in `backend.rs` and `preflight.rs`; `scripts/check.sh`
+  green. The recommends test lives in `preflight.rs` because
+  `tests/packaging.rs` is not owned by T46. `Backend` lost its `Default`
+  (the default now depends on the session) and `Backend::notice` (the
+  notice is in `Choice`).
+- 2026-11-02 — Docs: feature note renamed to *Native Wayland* with an
+  `aliases` entry for the old name; tutorial 28 updated.
+- Open: AC-10 (Hyprland + Flatpak) and AC-11 (fractional scale) are
+  owner checks, not yet run.
+- For the integrator: `CHANGELOG.md` under 1.5.0 / `[Unreleased]` —
+  `### Changed`: "Native Wayland is the default on Wayland sessions;
+  the .deb and .rpm recommend the Wayland libraries." and
+  `### Deprecated`: "The X11 backend (XWayland on Wayland sessions and
+  plain X11 sessions), removed in 2.0.0; `DRAW_BACKEND=x11` prints a
+  notice." Links `[[Native Wayland (experimental)]]` remain in the
+  Feature Index and in the T28, T44 and T45 notes (not owned); point
+  them at `[[Native Wayland]]`. ADR-T28-1 is amended by ADR-T46-1 (add
+  to the Decision Log).
