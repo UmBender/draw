@@ -1722,7 +1722,7 @@ mod tests {
     }
 
     #[test]
-    fn install_quit_records_a_sent_sigterm() {
+    fn install_quit_records_a_sent_sigterm() -> std::io::Result<()> {
         // Arrange
         assert!(signal::install_quit());
         let pid = std::process::id().to_string();
@@ -1731,8 +1731,7 @@ mod tests {
         // would end the test binary.
         let status = std::process::Command::new("kill")
             .args(["-TERM", &pid])
-            .status()
-            .expect("kill runs");
+            .status()?;
         assert!(status.success());
         let deadline = Instant::now() + Duration::from_secs(1);
         while signal::received().is_none() && Instant::now() < deadline {
@@ -1741,6 +1740,7 @@ mod tests {
 
         // Assert
         assert_eq!(signal::received(), Some(QuitSignal::Terminate));
+        Ok(())
     }
 
     #[test]

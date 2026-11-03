@@ -75,7 +75,10 @@ impl QuitSignal {
 
     /// The quit signal with Linux number `number`, if any.
     pub fn from_number(number: i32) -> Option<QuitSignal> {
-        QuitSignal::ALL.iter().copied().find(|s| s.number() == number)
+        QuitSignal::ALL
+            .iter()
+            .copied()
+            .find(|s| s.number() == number)
     }
 }
 
@@ -113,7 +116,10 @@ impl FatalSignal {
 
     /// The fatal signal with Linux number `number`, if any.
     pub fn from_number(number: i32) -> Option<FatalSignal> {
-        FatalSignal::ALL.iter().copied().find(|s| s.number() == number)
+        FatalSignal::ALL
+            .iter()
+            .copied()
+            .find(|s| s.number() == number)
     }
 
     /// Its position in [`FatalSignal::ALL`].
