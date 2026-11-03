@@ -242,9 +242,7 @@ impl Shape {
         use std::mem::size_of;
         let text = |t: &Option<ShapeText>| t.as_ref().map_or(0, |t| t.text.capacity());
         match self {
-            Self::Stroke {
-                points, widths, ..
-            } => {
+            Self::Stroke { points, widths, .. } => {
                 points.capacity() * size_of::<Vec2>()
                     + widths
                         .as_ref()
