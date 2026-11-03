@@ -1,7 +1,7 @@
 ---
 id: T45
 title: Doubled keys after a long idle on Wayland
-status: todo
+status: review
 wave: 30
 branch: fix/wayland-idle-doubled-keys
 depends_on: [T44]
@@ -76,7 +76,14 @@ back with two copies instead of three.
 
 ## Spec
 
-To be written once the cause is known (see *Proposal*).
+Closed as a duplicate of [[T44 One keyboard per Wayland seat]]: the
+report came from a Flatpak built before the T44 fix. With a Flatpak
+rebuilt from `main` (T44 included) the bug did not come back over a long
+run, so there is nothing to fix (Proposal, case 3).
+
+- **AC-1** — owner check with the rebuilt Flatpak and
+  `DRAW_BACKEND=wayland`, left open for a long time: each typed key gives
+  one character. Checked 2026-11-02 (see *Log*).
 
 ## Out of scope
 
@@ -92,12 +99,12 @@ To be written once the cause is known (see *Proposal*).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T45): …`
-- [ ] tests — `test(T45): …`
-- [ ] models — `feat(T45): …`
-- [ ] behaviour — `fix(T45): …`
-- [ ] quality — `chore(T45): …`
-- [ ] docs — `docs(T45): …`
+- [x] spec — `docs(T45): close as a duplicate of T44`
+- [x] tests — skipped: no code change
+- [x] models — skipped: no code change
+- [x] behaviour — skipped: no code change
+- [x] quality — skipped: no code change
+- [x] docs — same commit as the spec; the feature note needs no change
 
 ## Learning path
 
@@ -108,3 +115,11 @@ No new tutorial expected.
 - 2026-11-02 — note written from the owner's report; not investigated
   yet. The installed Flatpak predates the T44 fix, so check the build
   first.
+- 2026-11-02 — checked the build. The installed Flatpak (1.4.3,
+  committed 2026-10-28) predated the T44 fix, so the report came from a
+  binary without it. Rebuilt with `scripts/package.sh` and installed with
+  `flatpak update --user` (Flatpak commit `782c358…`, 2026-11-02 23:47
+  UTC, from `main` at `4222ca3`). The owner ran it for a long time: no
+  doubled letters. Closed as a duplicate of T44; T44's AC-7 (typing
+  gives one character) is checked by this run. No code, test, ADR or
+  feature-note change.

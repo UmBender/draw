@@ -148,3 +148,8 @@ No new tutorial; the vendored-backend tutorial of T35 covers the ground.
 - AC-7 (owner check) pending: type in a text block and in a shape with
   `DRAW_BACKEND=wayland`, check the cursor shape and the pen.
 - 2026-11-02 — merged into `main` at the owner's request.
+- 2026-11-02 — AC-7 typing part checked through
+  [[T45 Doubled keys after a long idle on Wayland]]: with a Flatpak
+  rebuilt from `main`, run for a long time on Hyprland, each key gave one
+  character. Backspace, cursor shape and pen were not reported
+  separately.
