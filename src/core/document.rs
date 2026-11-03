@@ -138,7 +138,15 @@ impl Transaction {
     /// every shape in it (a `Replace` holds two) (ADR-T49-1).
     #[must_use]
     pub fn heap_bytes(&self) -> usize {
-        todo!()
+        let shapes: usize = self
+            .0
+            .iter()
+            .map(|edit| match edit {
+                Edit::Insert { shape, .. } | Edit::Remove { shape, .. } => shape.heap_bytes(),
+                Edit::Replace { before, after, .. } => before.heap_bytes() + after.heap_bytes(),
+            })
+            .sum();
+        self.0.capacity() * std::mem::size_of::<Edit>() + shapes
     }
 
     /// The transaction that undoes this one: inverse edits in reverse order.

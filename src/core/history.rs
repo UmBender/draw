@@ -81,7 +81,10 @@ impl History {
             return Ok(());
         }
         doc.apply(&tx)?;
-        self.redo.clear();
+        let dropped: usize = self.redo.drain(..).map(|tx| tx.heap_bytes()).sum();
+        self.bytes = self.bytes.saturating_sub(dropped);
+        self.bytes += tx.heap_bytes();
+        self.changes += 1;
         self.push_undo(tx);
         Ok(())
     }
@@ -94,6 +97,7 @@ impl History {
         };
         if doc.apply(&tx.inverse()).is_ok() {
             self.redo.push(tx);
+            self.changes += 1;
             true
         } else {
             self.undo.push_back(tx);
@@ -108,6 +112,7 @@ impl History {
             return false;
         };
         if doc.apply(&tx).is_ok() {
+            self.changes += 1;
             self.push_undo(tx);
             true
         } else {
@@ -143,27 +148,32 @@ impl History {
     /// Estimated heap bytes held by both stacks.
     #[must_use]
     pub fn bytes(&self) -> usize {
-        todo!()
+        self.bytes
     }
 
     /// Number of commits, undos and redos that changed the document; the
     /// editor bumps its document revision when this moves (ADR-T49-1).
     #[must_use]
     pub fn changes(&self) -> u64 {
-        todo!()
+        self.changes
     }
 
     /// Forget both stacks (the document is untouched).
     pub fn clear(&mut self) {
         self.undo.clear();
         self.redo.clear();
+        self.bytes = 0;
     }
 
-    /// Push onto the undo stack, dropping the oldest entries beyond the limit.
+    /// Push onto the undo stack, whose bytes `self.bytes` already counts,
+    /// then drop the oldest entries beyond the entry limit or, keeping the
+    /// newest one, beyond the byte budget (ADR-T49-1).
     fn push_undo(&mut self, tx: Transaction) {
         self.undo.push_back(tx);
-        while self.undo.len() > self.limit {
-            self.undo.pop_front();
+        while self.undo.len() > self.limit || (self.bytes > self.budget && self.undo.len() > 1) {
+            if let Some(old) = self.undo.pop_front() {
+                self.bytes = self.bytes.saturating_sub(old.heap_bytes());
+            }
         }
     }
 }

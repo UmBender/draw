@@ -239,7 +239,29 @@ impl Shape {
     /// shape itself is not included (ADR-T49-1).
     #[must_use]
     pub fn heap_bytes(&self) -> usize {
-        todo!()
+        use std::mem::size_of;
+        let text = |t: &Option<ShapeText>| t.as_ref().map_or(0, |t| t.text.capacity());
+        match self {
+            Self::Stroke {
+                points, widths, ..
+            } => {
+                points.capacity() * size_of::<Vec2>()
+                    + widths
+                        .as_ref()
+                        .map_or(0, |w| w.capacity() * size_of::<f32>())
+            }
+            Self::Line { .. } | Self::Arrow { .. } => 0,
+            Self::Rect { text: t, .. } | Self::Ellipse { text: t, .. } => text(t),
+            Self::Grid { fills, texts, .. } => {
+                fills.capacity() * size_of::<CellFill>()
+                    + texts.capacity() * size_of::<CellText>()
+                    + texts
+                        .iter()
+                        .map(|cell| cell.content.text.capacity())
+                        .sum::<usize>()
+            }
+            Self::Text { text, .. } => text.capacity(),
+        }
     }
 
     /// The outline style.
