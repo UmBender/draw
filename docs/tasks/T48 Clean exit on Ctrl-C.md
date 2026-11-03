@@ -1,7 +1,7 @@
 ---
 id: T48
 title: Clean exit on Ctrl-C
-status: review
+status: done
 wave: 32
 branch: fix/clean-exit-on-sigint
 depends_on: [T47]
@@ -149,3 +149,4 @@ Step 48, [[48 Signals, self-pipes and async-signal safety]]: after step 47
     older).
   Deviation from the proposal: draw ends by re-raising the signal, not
   with `exit(130/143)`. The shell status is the same (ADR-T48-1).
+- 2026-11-03 — integrated on `main` (merge `5f5e955`), no conflicts.

@@ -26,6 +26,9 @@ All notable changes to draw are listed here. The format follows
 
 ### Fixed
 
+- `Ctrl-C` in the terminal and `SIGTERM` close the window in order and
+  note it in the diagnostics log; a second `Ctrl-C` quits at once. A
+  crash signal (segfault, abort) saves a diagnostics dump first.
 - A pen line drawn in one movement stays one stroke (and one undo step)
   when the tablet briefly reports the tip lifting mid-line.
 - On the native Wayland backend (experimental), each key press is typed

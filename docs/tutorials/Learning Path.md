@@ -73,6 +73,7 @@ flowchart LR
   s31 --> s37
   s12 --> s47[47 A flight recorder for rare bugs]
   s35 --> s47
+  s47 --> s48[48 Signals, self-pipes and async-signal safety]
 ```
 
 | Step | Tutorial | Task | Status |
@@ -117,3 +118,4 @@ flowchart LR
 | 38 | [[38 Laying out shortcuts for one hand]] | [[T38 Left-hand tool keys]] | done |
 | 39 | [[39 Accents that sit on their letters]] | [[T39 Accents in formulas]] | done |
 | 47 | [[47 A flight recorder for rare bugs]] | [[T47 Always-on diagnostics log]] | done |
+| 48 | [[48 Signals, self-pipes and async-signal safety]] | [[T48 Clean exit on Ctrl-C]] | done |
