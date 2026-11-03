@@ -601,6 +601,12 @@ impl Editor {
         self.history.can_redo()
     }
 
+    /// Estimated heap bytes held by the undo history (ADR-T49-1).
+    #[must_use]
+    pub fn history_bytes(&self) -> usize {
+        todo!()
+    }
+
     /// Viewport size in pixels, as last reported by [`InputEvent::Resize`].
     #[must_use]
     pub fn viewport(&self) -> Vec2 {

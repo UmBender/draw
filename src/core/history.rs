@@ -2,8 +2,9 @@
 //!
 //! [`History`] commits [`Transaction`]s to a [`Document`] and keeps them on an
 //! undo stack; undo applies the inverse transaction and moves it to the redo
-//! stack (ADR-0005). The undo stack is capped at [`HISTORY_LIMIT`] entries by
-//! default; the oldest entry is dropped first.
+//! stack (ADR-0005). The undo stack is capped at [`HISTORY_LIMIT`] entries and
+//! both stacks together at [`HISTORY_BYTES`] by default; the oldest entry is
+//! dropped first, the newest is always kept (ADR-T49-1).
 
 use std::collections::VecDeque;
 
@@ -11,6 +12,10 @@ use crate::core::document::{ApplyError, Document, Transaction};
 
 /// Default maximum number of undoable transactions.
 pub const HISTORY_LIMIT: usize = 500;
+
+/// Default budget, in estimated heap bytes, of both stacks together
+/// (ADR-T49-1).
+pub const HISTORY_BYTES: usize = 64 * 1024 * 1024;
 
 /// Undo and redo stacks of committed transactions.
 #[derive(Debug, Clone)]
@@ -21,6 +26,12 @@ pub struct History {
     redo: Vec<Transaction>,
     /// Maximum length of `undo` (at least 1).
     limit: usize,
+    /// Byte budget of both stacks; the newest entry is kept even above it.
+    budget: usize,
+    /// Estimated heap bytes held by both stacks.
+    bytes: usize,
+    /// Commits, undos and redos that changed the document.
+    changes: u64,
 }
 
 impl Default for History {
@@ -36,13 +47,24 @@ impl History {
         Self::with_limit(HISTORY_LIMIT)
     }
 
-    /// Empty history keeping up to `limit` transactions (at least 1).
+    /// Empty history keeping up to `limit` transactions (at least 1)
+    /// within [`HISTORY_BYTES`].
     #[must_use]
     pub fn with_limit(limit: usize) -> Self {
+        Self::with_limits(limit, HISTORY_BYTES)
+    }
+
+    /// Empty history keeping up to `limit` transactions (at least 1) and,
+    /// beyond the newest one, up to `budget` estimated heap bytes.
+    #[must_use]
+    pub fn with_limits(limit: usize, budget: usize) -> Self {
         Self {
             undo: VecDeque::new(),
             redo: Vec::new(),
             limit: limit.max(1),
+            budget,
+            bytes: 0,
+            changes: 0,
         }
     }
 
@@ -116,6 +138,19 @@ impl History {
     #[must_use]
     pub fn redo_len(&self) -> usize {
         self.redo.len()
+    }
+
+    /// Estimated heap bytes held by both stacks.
+    #[must_use]
+    pub fn bytes(&self) -> usize {
+        todo!()
+    }
+
+    /// Number of commits, undos and redos that changed the document; the
+    /// editor bumps its document revision when this moves (ADR-T49-1).
+    #[must_use]
+    pub fn changes(&self) -> u64 {
+        todo!()
     }
 
     /// Forget both stacks (the document is untouched).

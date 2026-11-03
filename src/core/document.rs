@@ -134,6 +134,13 @@ impl Transaction {
         &self.0
     }
 
+    /// Estimated heap bytes this transaction holds: its edit buffer plus
+    /// every shape in it (a `Replace` holds two) (ADR-T49-1).
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        todo!()
+    }
+
     /// The transaction that undoes this one: inverse edits in reverse order.
     #[must_use]
     pub fn inverse(&self) -> Self {

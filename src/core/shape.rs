@@ -234,6 +234,14 @@ pub struct AxisLabel {
 }
 
 impl Shape {
+    /// Estimated heap bytes this shape holds, by capacity: stroke points
+    /// and widths, texts, grid fills and cell texts. The inline size of the
+    /// shape itself is not included (ADR-T49-1).
+    #[must_use]
+    pub fn heap_bytes(&self) -> usize {
+        todo!()
+    }
+
     /// The outline style.
     #[must_use]
     pub fn style(&self) -> Style {
