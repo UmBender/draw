@@ -79,3 +79,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 68 | [[ADR-T42-1 Pen tip bounces join the stroke]] | accepted | decision | 0003, T34-1, T35-1 | — |
 | 69 | [[ADR-T44-1 Wayland seat devices follow the announced capabilities]] | accepted | decision | T28-1 | amends T35-1 |
 | 70 | [[ADR-T46-1 Native Wayland by default and X11 deprecated]] | accepted | decision | T27-2, T44-1 | amends T28-1 |
+| 71 | [[ADR-T47-1 Flight recorder and capped session log]] | accepted | decision | 0014, T27-3, T35-1, T44-1, T24-5 | — |

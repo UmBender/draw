@@ -1,7 +1,7 @@
 ---
 id: T47
 title: Always-on diagnostics log
-status: review
+status: done
 wave: 31
 branch: task/T47-diagnostics-log
 depends_on: []
@@ -219,3 +219,7 @@ Possibly a tutorial on a lock-free ring buffer / flight recorder.
 - Integration note: T46 (`task/T46-wayland-default`, not yet on `main`)
   also touches `src/shell/app.rs` and `src/main.rs`. Expect small
   conflicts around `window_conf` and the backend notice lines.
+- 2026-11-02 — integrated after T46. The one conflict, in
+  `window_conf`, was resolved by logging T46's `Choice::notice` at
+  `info`. Smoke run on `main`: the default is now `backend wayland`, with
+  no notice, and the seat lines are logged as before.

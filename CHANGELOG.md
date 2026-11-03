@@ -6,6 +6,14 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A diagnostics log that is always on: `~/.local/state/draw/draw.log`
+  (at most 1 MiB) records start-up, devices and anything unusual, and
+  the last moments before a crash, a doubled key or a key-repeat burst
+  are saved to a dump file. `Ctrl+Shift+L` saves one on demand.
+  `DRAW_LOG` sets how much is logged. Typed text is never recorded.
+
 ### Changed
 
 - Native Wayland is the default on Wayland sessions; the .deb and .rpm

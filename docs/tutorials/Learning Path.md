@@ -71,6 +71,8 @@ flowchart LR
   s36 --> s39
   s29 --> s37[37 Settings that follow what you last did]
   s31 --> s37
+  s12 --> s47[47 A flight recorder for rare bugs]
+  s35 --> s47
 ```
 
 | Step | Tutorial | Task | Status |
@@ -114,3 +116,4 @@ flowchart LR
 | 37 | [[37 Settings that follow what you last did]] | [[T37 Remember the text size]] | done |
 | 38 | [[38 Laying out shortcuts for one hand]] | [[T38 Left-hand tool keys]] | done |
 | 39 | [[39 Accents that sit on their letters]] | [[T39 Accents in formulas]] | done |
+| 47 | [[47 A flight recorder for rare bugs]] | [[T47 Always-on diagnostics log]] | done |
