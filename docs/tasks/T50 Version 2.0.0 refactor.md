@@ -45,8 +45,18 @@ usual SDD/TDD workflow.
   5. **Command line**: only basic flags such as `--version` and
      `--help` (owner, 2026-11-02). No option changes the app's
      behaviour or looks; the colours are set before compiling
-     ([[T51 Build-time themes]]). Whether the `DRAW_*` environment
-     variables stay is decided in the audit.
+     ([[T51 Build-time themes]]). The `DRAW_*` environment variables
+     stay, but **only for debugging** (owner, 2026-11-02): normal use
+     never needs one, and none is part of the user-facing docs except
+     a "Debugging" section. The audit sorts today's variables:
+     - debugging, kept: `DRAW_LOG` (T47), `DRAW_FRAME_TIMES`,
+       `DRAW_SKIP_PREFLIGHT`;
+     - removed with what they switch: `DRAW_BACKEND` (X11 goes away),
+       `DRAW_EXPERIMENTAL` (emptied by [[T52 Text in shapes by default]]);
+     - to decide: `DRAW_MSAA` (a weak-GPU workaround) and `DRAW_TABLET`
+       (pen mode override when auto-detection is wrong). Either the
+       default becomes right without them and they stay as debugging
+       overrides, or the audit finds another way.
   6. **Observability** from [[T47 Always-on diagnostics log]] is in
      place before the refactor, so regressions are visible.
 - About 28.7k lines in `src/core` and `src/shell`, plus the vendored
@@ -102,4 +112,5 @@ Decided per child task.
   fixes. Starts after the 1.5.0 release (T53), which carries T46–T49,
   T51 and T52.
 - 2026-11-02 — owner: the 2.0.0 command line takes only basic flags
-  (`--version`, `--help`).
+  (`--version`, `--help`). The `DRAW_*` variables stay, for debugging
+  only.
