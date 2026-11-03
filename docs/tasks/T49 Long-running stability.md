@@ -1,7 +1,7 @@
 ---
 id: T49
 title: Long-running stability
-status: review
+status: done
 wave: 32
 branch: fix/long-running-stability
 depends_on: [T47]
@@ -187,3 +187,5 @@ None expected.
   re-plug and a contest-day session with the release build; record the
   results and any new bug here. The doubled-letter reports (T44, T45) have
   no new occurrence in the T47 log yet.
+- 2026-11-03 — integrated on `main` (merge `00e6450`), no conflicts;
+  AC-6 (owner checks on the target) still open.

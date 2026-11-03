@@ -184,7 +184,7 @@ flowchart TD
 | [[T46 Native Wayland by default and Xwayland deprecated]] | done | T28, T44, T45 | `task/T46-wayland-default` |
 | [[T47 Always-on diagnostics log]] | done | — | `task/T47-diagnostics-log` |
 | [[T48 Clean exit on Ctrl-C]] | done | T47 | `fix/clean-exit-on-sigint` |
-| [[T49 Long-running stability]] | todo | T47 | `fix/long-running-stability` |
+| [[T49 Long-running stability]] | done | T47 | `fix/long-running-stability` |
 | [[T51 Build-time themes]] | todo | — | `task/T51-build-time-themes` |
 | [[T52 Text in shapes by default]] | todo | — | `task/T52-shape-text-default` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52 | `chore/release-1.5.0` |

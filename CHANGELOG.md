@@ -26,6 +26,9 @@ All notable changes to draw are listed here. The format follows
 
 ### Fixed
 
+- Long sessions no longer run out of memory: undo history is capped at
+  64 MiB, so moving a large selection again and again cannot grow
+  memory until the system kills draw.
 - `Ctrl-C` in the terminal and `SIGTERM` close the window in order and
   note it in the diagnostics log; a second `Ctrl-C` quits at once. A
   crash signal (segfault, abort) saves a diagnostics dump first.

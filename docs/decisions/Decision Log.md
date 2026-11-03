@@ -81,3 +81,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 70 | [[ADR-T46-1 Native Wayland by default and X11 deprecated]] | accepted | decision | T27-2, T44-1 | amends T28-1 |
 | 71 | [[ADR-T47-1 Flight recorder and capped session log]] | accepted | decision | 0014, T27-3, T35-1, T44-1, T24-5 | — |
 | 72 | [[ADR-T48-1 Signal handling in the vendored miniquad]] | accepted | decision | 0014, T35-1, T27-3, T47-1, T12-1 | — |
+| 73 | [[ADR-T49-1 Undo history capped by bytes]] | accepted | decision | 0005, T24-1 | amends 0005 |
