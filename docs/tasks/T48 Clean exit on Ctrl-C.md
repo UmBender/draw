@@ -1,13 +1,13 @@
 ---
 id: T48
 title: Clean exit on Ctrl-C
-status: in-progress
+status: review
 wave: 32
 branch: fix/clean-exit-on-sigint
 depends_on: [T47]
 adrs: [ADR-T48-1]
-feature: ""
-tutorial: ""
+feature: "[[Clean exit on signals]]"
+tutorial: "[[48 Signals, self-pipes and async-signal safety]]"
 tags: [task]
 ---
 
@@ -111,18 +111,41 @@ from `app::tests`, because Cargo does not run a path dependency's tests.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T48): …`
-- [ ] tests — `test(T48): …`
-- [ ] models — `feat(T48): …`
-- [ ] behaviour — `fix(T48): …`
-- [ ] quality — `chore(T48): …`
-- [ ] docs — `docs(T48): …`
+- [x] tests — `test(T48): …`
+- [x] models — `feat(T48): …`
+- [x] behaviour — `fix(T48): …`
+- [x] quality — `chore(T48): …`
+- [x] docs — `docs(T48): …`
 
 ## Learning path
 
-Possibly a tutorial on async-signal-safe handlers.
+Step 48, [[48 Signals, self-pipes and async-signal safety]]: after step 47
+(flight recorder); requires steps 12 and 35.
 
 ## Log
 
 - 2026-11-02 — note written from the owner's report; not reproduced yet.
 - 2026-11-02 — not reproduced on any backend or build (see *Spec*); owner
   chose a graceful quit anyway. ADR-T48-1 proposed.
+- 2026-11-03 — tests (red), models, behaviour (`fix(T48)`), quality and
+  docs committed; `scripts/check.sh` green. AC-5 on the target
+  (Hyprland 0.56.2, `target/release`), checked with a pty `Ctrl-C` and
+  `kill`:
+  - Wayland and X11: `Ctrl-C` ends draw ~0.1 s later, killed by
+    `SIGINT`; `kill -TERM` ends it killed by `SIGTERM`; no core dump. The
+    log has `signal: SIGINT, window closed in order` and `exit: SIGINT
+    after 2s ...` (likewise for `SIGTERM`).
+  - Closing the window (Hyprland `window.close`): exit 0 and
+    `exit: window closed` on both backends.
+  - `/proc/<pid>/status` `SigCgt` covers 2, 4, 6, 7, 8, 11, 15.
+  - `kill -SEGV` (Wayland): `ERROR fatal signal: SIGSEGV`, a
+    `sigsegv` dump, its path on stderr, killed by `SIGSEGV`, core dump
+    present. `kill -ABRT` (X11): `sigabrt` dump, killed by `SIGABRT`.
+  - The X11 loop change keeps input: `Ctrl+Shift+L` (xdotool on X11,
+    wtype on Wayland) still writes a manual dump.
+  - Second `Ctrl-C` while the loop cannot quit: not exercised on the
+    target (it needs a hung loop). It relies on `SA_RESETHAND`.
+  - Not run: the Flatpak with this build (the installed bundle is
+    older).
+  Deviation from the proposal: draw ends by re-raising the signal, not
+  with `exit(130/143)`. The shell status is the same (ADR-T48-1).

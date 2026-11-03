@@ -76,7 +76,7 @@ flowchart LR
 | `shell::{app,input_map,toolbar}` ([[T12 App shell and toolbar]]) | Window, event loop, toolbar UI |
 | `shell::diag` ([[T47 Always-on diagnostics log]]) | Flight recorder ring of the last 4 096 32-byte records (input with text keys hidden, backend events from `miniquad::diag`, frames, tool and revision changes), anomaly detectors, the capped `draw.log` and dump files in the state directory; fed once per frame by `app::FrameRecorder`, dumped by the panic hook and `Ctrl+Shift+L` ([[ADR-T47-1 Flight recorder and capped session log]]) |
 | `shell::tablet` ([[T34 Pen tablet input]]) | `DRAW_TABLET` and `/proc/bus/input/devices` → pen mode and the editor's tap slop, read once at start-up ([[ADR-T34-1 Tap slop for pen tablets detected at start-up]]) |
-| `vendor/miniquad` ([[T35 Pen pressure and native Wayland tablets]]) | miniquad 0.4.11 patched through `[patch.crates-io]`: `miniquad::pen` samples, pen pressure from X11 raw events, `zwp_tablet_v2` on Wayland; changes listed in `vendor/miniquad/PATCHED.md` ([[ADR-T35-1 Vendored miniquad with a pen tablet patch]]) |
+| `vendor/miniquad` ([[T35 Pen pressure and native Wayland tablets]]) | miniquad 0.4.11 patched through `[patch.crates-io]`: `miniquad::pen` samples, pen pressure from X11 raw events, `zwp_tablet_v2` on Wayland; `miniquad::signal` turns `SIGINT`/`SIGTERM` into an ordered quit through a self-pipe the event loops poll, and runs `app::on_fatal_signal` on fatal signals ([[ADR-T48-1 Signal handling in the vendored miniquad]]); changes listed in `vendor/miniquad/PATCHED.md` ([[ADR-T35-1 Vendored miniquad with a pen tablet patch]]) |
 | `tests/fuzz.rs` ([[T13 Fuzz harness]]) | Random input-sequence fuzzing of `Editor` |
 
 ## Data flow per frame

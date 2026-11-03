@@ -1,7 +1,7 @@
 ---
 id: ADR-T48-1
 title: Signal handling in the vendored miniquad
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-02
 task: T48
@@ -71,7 +71,9 @@ and `src/shell/app.rs`.
 **Fatal signals (`SIGSEGV`, `SIGBUS`, `SIGILL`, `SIGFPE`, `SIGABRT`)**
 - `signal::install_fatal(hook)` installs an `SA_SIGINFO | SA_ONSTACK |
   SA_RESETHAND` handler and keeps the previous action, such as Rust's
-  stack-overflow handler for `SIGSEGV` and `SIGBUS`.
+  stack-overflow handler for `SIGSEGV` and `SIGBUS`. It gives the main
+  thread a 256 KiB alternate signal stack, because Rust's own is too
+  small for the hook's formatting and file writes.
 - The handler first arms `alarm(2)`, then calls the hook once. draw's
   hook writes an `ERROR fatal signal: SIGSEGV` line and a `sigsegv` dump
   through `diag::try_with`. It skips both while a panic is in progress,
