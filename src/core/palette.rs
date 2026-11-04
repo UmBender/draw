@@ -1,13 +1,15 @@
-//! Drawing palette and UI theme tokens (Kanagawa Dragon).
+//! The drawing palette and colour helpers.
 //!
-//! This is the only place colours are defined (ADR-0012). Shapes store a
-//! [`ColorId`] — an index into the fixed drawing palette — so a theme change
-//! recolours every existing shape. Values come from the user's Kanagawa
-//! Dragon theme (ADR-0015) and are documented in `docs/architecture/Theme.md`.
+//! Shapes store a [`ColorId`] — an index into the fixed drawing palette — so
+//! a theme change recolours every existing shape (ADR-0012). The colour
+//! values live in [`crate::theme`], the one file that defines colours
+//! (ADR-T51-1).
 #![allow(
     clippy::unreadable_literal,
-    reason = "colours are written 0xRRGGBB to match #RRGGBB in Theme.md"
+    reason = "test colours are written 0xRRGGBB, as in the theme file"
 )]
+
+use crate::theme;
 
 /// Number of drawing colours, addressable with keys `1`–`6`.
 pub const PALETTE_LEN: usize = 6;
@@ -41,7 +43,10 @@ impl Rgba {
     /// `255` opaque); bits above the low 24 are ignored.
     #[must_use]
     pub const fn from_hex_alpha(hex: u32, alpha: u8) -> Self {
-        todo!()
+        Self {
+            a: alpha,
+            ..Self::from_hex(hex)
+        }
     }
 
     /// Opaque white. As a tint it leaves a texture's colours unchanged, so
@@ -57,7 +62,9 @@ impl Rgba {
     /// an opaque colour gets exactly `alpha`, `255` changes nothing.
     #[must_use]
     pub const fn faded(self, alpha: u8) -> Self {
-        todo!()
+        // At most 255 × 255 / 255 = 255, so the cast never truncates.
+        let a = (self.a as u16 * alpha as u16 / u8::MAX as u16) as u8;
+        Self { a, ..self }
     }
 
     /// Returns `[r, g, b, a]` scaled to `0.0..=1.0`, the form GPU APIs expect.
@@ -70,7 +77,16 @@ impl Rgba {
     /// black, `1.0` for white.
     #[must_use]
     pub fn relative_luminance(self) -> f32 {
-        todo!()
+        // sRGB channel to linear light (WCAG 2 definition).
+        let linear = |c: u8| {
+            let s = f32::from(c) / 255.0;
+            if s <= 0.039_28 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(self.r) + 0.7152 * linear(self.g) + 0.0722 * linear(self.b)
     }
 }
 
@@ -78,7 +94,8 @@ impl Rgba {
 /// to `21.0` (black and white); symmetric in its arguments.
 #[must_use]
 pub fn contrast_ratio(a: Rgba, b: Rgba) -> f32 {
-    todo!()
+    let (la, lb) = (a.relative_luminance(), b.relative_luminance());
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 /// Index of a colour in the drawing palette, always `< PALETTE_LEN`.
@@ -113,14 +130,15 @@ impl ColorId {
     }
 }
 
-/// The drawing colours in key order: ink, red, green, blue, yellow, magenta.
+/// The drawing colours in key order: ink, red, green, blue, yellow, magenta,
+/// as set in [`crate::theme`].
 pub const PALETTE: [Rgba; PALETTE_LEN] = [
-    Rgba::from_hex(0xc5c9c5), // ink
-    Rgba::from_hex(0xd16961), // red
-    Rgba::from_hex(0x8aa86e), // green
-    Rgba::from_hex(0x7fa8bc), // blue
-    Rgba::from_hex(0xceb680), // yellow
-    Rgba::from_hex(0xaa88ac), // magenta
+    Rgba::from_hex(theme::INK),
+    Rgba::from_hex(theme::RED),
+    Rgba::from_hex(theme::GREEN),
+    Rgba::from_hex(theme::BLUE),
+    Rgba::from_hex(theme::YELLOW),
+    Rgba::from_hex(theme::MAGENTA),
 ];
 
 /// Returns the colour for `id`. Total: every `ColorId` is a valid index.
@@ -130,38 +148,10 @@ pub const fn palette(id: ColorId) -> Rgba {
     PALETTE[id.index()]
 }
 
-/// UI colour tokens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Theme {
-    /// Canvas background.
-    pub bg: Rgba,
-    /// Toolbar background.
-    pub surface: Rgba,
-    /// Toolbar and button outlines.
-    pub border: Rgba,
-    /// Icons and labels.
-    pub text: Rgba,
-    /// Active tool and selection outline.
-    pub accent: Rgba,
-    /// Selection and marquee fill.
-    pub selection: Rgba,
-}
-
-/// The application theme.
-pub const THEME: Theme = Theme {
-    bg: Rgba::from_hex(0x181616),
-    surface: Rgba::from_hex(0x0d0c0c),
-    border: Rgba::from_hex(0xa6a69c),
-    text: Rgba::from_hex(0xc5c9c5),
-    accent: Rgba::from_hex(0x7fa8bc),
-    selection: Rgba::from_hex(0x2d4f67),
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::geom::approx_eq;
-    use crate::theme;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-6;

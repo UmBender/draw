@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use crate::core::camera::Camera;
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::palette::{ColorId, PALETTE, Rgba, THEME, palette};
+use crate::core::palette::{ColorId, Rgba, palette};
 use crate::core::shape::{
     GRID_MAX_CELLS, Shape, TextSlot, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
 };
@@ -34,6 +34,7 @@ use crate::core::text_layout::{bounds, glyphs, has_markup, typeset};
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
+use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
 /// capacity of 10 000 (ADR-T24-3).
@@ -384,9 +385,6 @@ pub const DOT_GRID_MIN_PX: f32 = 12.0;
 /// Side of one dot of the snap dot grid, in pixels.
 pub const DOT_SIZE_PX: f32 = 2.0;
 
-/// Opacity of the dot grid (the theme border colour, faded).
-pub const DOT_GRID_ALPHA: f32 = 0.35;
-
 /// Most dots drawn in one frame.
 pub const DOT_GRID_MAX_DOTS: usize = 100_000;
 
@@ -490,14 +488,14 @@ pub fn to_mq_color(rgba: Rgba) -> Color {
 /// (`crate::theme`).
 #[must_use]
 pub fn hex_color(hex: u32) -> Color {
-    todo!()
+    to_mq_color(Rgba::from_hex(hex))
 }
 
 /// The macroquad colour of a theme colour `0xRRGGBB` with opacity
 /// `alpha` (`crate::theme`).
 #[must_use]
 pub fn hex_color_alpha(hex: u32, alpha: u8) -> Color {
-    todo!()
+    to_mq_color(Rgba::from_hex_alpha(hex, alpha))
 }
 
 /// `true` if a stroke `width_px` wide needs round joints, i.e. it is wider
@@ -775,16 +773,17 @@ pub fn push_text_block<S: MeshSink>(
     }
 }
 
-/// Colour of literal source in a formula drawn in `color`: palette red,
-/// or palette yellow when `color` is already that red (ADR-T30-1).
+/// Colour of literal source in a formula drawn in `color`:
+/// `theme::FORMULA_SOURCE`, or `theme::FORMULA_SOURCE_ALT` when `color` is
+/// already that colour (ADR-T30-1, ADR-T51-1).
 #[must_use]
 pub fn warn_color(color: Color) -> Color {
-    let red = to_mq_color(PALETTE[1]);
+    let source = hex_color(theme::FORMULA_SOURCE);
     let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
-    if close(color.r, red.r) && close(color.g, red.g) && close(color.b, red.b) {
-        to_mq_color(PALETTE[4])
+    if close(color.r, source.r) && close(color.g, source.g) && close(color.b, source.b) {
+        hex_color(theme::FORMULA_SOURCE_ALT)
     } else {
-        red
+        source
     }
 }
 
@@ -909,8 +908,7 @@ pub fn draw_underlay(editor: &Editor, camera: &Camera, viewport: Vec2) {
     let Some(spacing) = dot_grid_spacing(camera.zoom()) else {
         return;
     };
-    let mut color = to_mq_color(THEME.border);
-    color.a *= DOT_GRID_ALPHA;
+    let color = hex_color_alpha(theme::DOT_GRID, theme::DOT_GRID_ALPHA);
     let half = Vec2::new(DOT_SIZE_PX / 2.0, DOT_SIZE_PX / 2.0);
     let mut batch = Batch::new(GlSink);
     for dot in dot_grid_points(camera.visible_world_rect(viewport), spacing) {
@@ -921,9 +919,9 @@ pub fn draw_underlay(editor: &Editor, camera: &Camera, viewport: Vec2) {
 }
 
 /// Draws alignment guides, world-space segments, on top of the overlay,
-/// [`GUIDE_WIDTH_PX`] wide in the theme accent colour.
+/// [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`.
 pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
-    let color = to_mq_color(THEME.accent);
+    let color = hex_color(theme::GUIDE);
     for [a, b] in guides {
         let (a, b) = (camera.world_to_screen(*a), camera.world_to_screen(*b));
         draw_line(a.x, a.y, b.x, b.y, GUIDE_WIDTH_PX, color);
@@ -985,7 +983,7 @@ pub fn draw_source_preview(shape: &Shape, camera: &Camera, on_fill: bool) {
 }
 
 /// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
-/// wide in the theme accent colour.
+/// wide in `theme::SELECTION_OUTLINE`.
 pub fn draw_selection(bounds: Aabb, camera: &Camera) {
     let rect = selection_rect(bounds, camera);
     let mut batch = Batch::new(GlSink);
@@ -993,7 +991,7 @@ pub fn draw_selection(bounds: Aabb, camera: &Camera) {
         &mut batch,
         rect,
         SELECTION_WIDTH_PX,
-        to_mq_color(THEME.accent),
+        hex_color(theme::SELECTION_OUTLINE),
     );
     batch.finish();
 }
@@ -1110,11 +1108,11 @@ pub fn shown_label(shape: &Shape) -> Option<u32> {
         .filter(|_| shape.slot_text(TextSlot::Shape).is_none())
 }
 
-/// Text colour of a label: the outline colour, or the background colour on a
+/// Text colour of a label: the outline colour, or `theme::TEXT_ON_FILL` on a
 /// filled shape so the number stays readable.
 fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
     if fill.is_some() {
-        to_mq_color(THEME.bg)
+        hex_color(theme::TEXT_ON_FILL)
     } else {
         outline
     }

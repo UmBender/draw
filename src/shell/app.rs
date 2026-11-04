@@ -11,7 +11,6 @@
 //! (ADR-T29-1); an open text block's caret is part of the overlay.
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
-use macroquad::color::WHITE;
 use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::math::{Rect, vec2};
@@ -42,7 +41,7 @@ use crate::core::experimental::{EXPERIMENTAL_ENV, Experimental};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
-use crate::core::palette::{THEME, palette};
+use crate::core::palette::{Rgba, palette};
 use crate::core::snapshot::Snapshot;
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
@@ -51,12 +50,10 @@ use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
-use crate::shell::render::{self, TextStats, to_mq_color};
+use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
-
-/// Opacity of the marquee fill.
-const MARQUEE_FILL_ALPHA: f32 = 0.25;
+use crate::theme;
 
 /// Width of the text caret in pixels.
 const CARET_WIDTH_PX: f32 = 2.0;
@@ -840,7 +837,7 @@ impl CachedFrame {
         if redraw == Redraw::Moved {
             // The moved layer may not cover the window; wake again until the
             // camera settles (ADR-T26-1).
-            clear_background(to_mq_color(THEME.bg));
+            clear_background(hex_color(theme::CANVAS));
             schedule_update();
         }
         let filter = blit_filter(redraw);
@@ -887,7 +884,7 @@ fn blit(texture: &Texture2D, dest: Aabb) {
         texture,
         dest.min.x,
         dest.min.y,
-        WHITE,
+        to_mq_color(Rgba::NO_TINT),
         DrawTextureParams {
             dest_size: Some(vec2(dest.width(), dest.height())),
             // GL textures start at the bottom row.
@@ -929,7 +926,7 @@ fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
 /// drawn over what the layer already holds (ADR-T24-3).
 fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: Vec2, from: usize) {
     if from == 0 {
-        clear_background(to_mq_color(THEME.bg));
+        clear_background(hex_color(theme::CANVAS));
         render::draw_underlay(editor, camera, viewport);
     }
     let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
@@ -967,7 +964,7 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         render::draw_selection(edit.bounds(), camera);
         let [top, bottom] = edit.caret_line().map(|p| camera.world_to_screen(p));
         let color = if on_fill {
-            to_mq_color(THEME.bg)
+            hex_color(theme::TEXT_ON_FILL)
         } else {
             to_mq_color(palette(edit.style.color))
         };
@@ -983,8 +980,7 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
             camera.world_to_screen(marquee.min),
             camera.world_to_screen(marquee.max),
         );
-        let mut fill = to_mq_color(THEME.selection);
-        fill.a *= MARQUEE_FILL_ALPHA;
+        let fill = hex_color_alpha(theme::MARQUEE_FILL, theme::MARQUEE_FILL_ALPHA);
         draw_rectangle(rect.min.x, rect.min.y, rect.width(), rect.height(), fill);
         draw_rectangle_lines(
             rect.min.x,
@@ -992,7 +988,7 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
             rect.width(),
             rect.height(),
             1.0,
-            to_mq_color(THEME.accent),
+            hex_color(theme::MARQUEE_OUTLINE),
         );
     }
     if editor.toolbar_visible() {
