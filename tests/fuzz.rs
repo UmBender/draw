@@ -207,6 +207,8 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\bm{\\alpha}",
             // T57: blackboard bold, and the \R shortcut left unknown.
             "\\mathbb", "\\mathds", "\\mathbb{R}", "\\mathds{1}", "\\R",
+            // T58: fraktur, a hole and a nested bold.
+            "\\mathfrak", "\\mathfrak{g}", "\\mathfrak{R}", "\\mathbf\\mathfrak",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),
