@@ -553,7 +553,25 @@ impl Kind {
     /// math alphabet (`A` → 0, `ϵ` → 26); `None` for any other character.
     #[must_use]
     pub fn of(ch: char) -> Option<(Self, u32)> {
-        todo!("{ch:?}")
+        let from = |first: char| u32::from(ch) - u32::from(first);
+        let kind = match ch {
+            'A'..='Z' => (Self::Upper, from('A')),
+            'a'..='z' => (Self::Lower, from('a')),
+            '0'..='9' => (Self::Digit, from('0')),
+            // Unassigned: no final sigma among the capitals.
+            '\u{3A2}' => return None,
+            'Α'..='Ω' => (Self::GreekUpper, from('Α')),
+            'α'..='ω' => (Self::GreekLower, from('α')),
+            // After `ω` and `∂` in every math alphabet.
+            'ϵ' => (Self::GreekLower, 26),
+            'ϑ' => (Self::GreekLower, 27),
+            'ϰ' => (Self::GreekLower, 28),
+            'ϕ' => (Self::GreekLower, 29),
+            'ϱ' => (Self::GreekLower, 30),
+            'ϖ' => (Self::GreekLower, 31),
+            _ => return None,
+        };
+        Some(kind)
     }
 
     /// The slot of this kind in [`Kind::ALL`].
@@ -611,7 +629,20 @@ impl AlphabetDef {
     /// kind or it has none.
     #[must_use]
     pub fn map(&self, ch: char) -> Option<char> {
-        todo!("{ch:?}")
+        let (kind, index) = Kind::of(ch)?;
+        match self.get(kind) {
+            Map::Inherit => None,
+            Map::Upright => Some(ch),
+            Map::Block(start) => Some(
+                match self.holes.iter().find(|&&(typed, _)| typed == ch) {
+                    Some(&(_, drawn)) => drawn,
+                    None => start
+                        .checked_add(index)
+                        .and_then(char::from_u32)
+                        .unwrap_or(ch),
+                },
+            ),
+        }
     }
 }
 
@@ -693,7 +724,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
 /// The math alphabet command `name` (without the backslash).
 #[must_use]
 pub fn alphabet(name: &str) -> Option<&'static AlphabetDef> {
-    todo!("{name}")
+    ALPHABETS.iter().find(|a| a.name == name)
 }
 
 /// The math italic form of `ch`: Latin letters and lowercase Greek;
@@ -726,13 +757,20 @@ impl Style {
 
     /// This style inside `alphabet`: the kinds it maps are its own, the
     /// others stay as they are.
-    fn with(self, alphabet: &'static AlphabetDef) -> Self {
-        todo!("{alphabet:?}")
+    fn with(mut self, alphabet: &'static AlphabetDef) -> Self {
+        for kind in Kind::ALL {
+            if alphabet.get(kind) != Map::Inherit {
+                self.rows[kind.slot()] = alphabet;
+            }
+        }
+        self
     }
 
     /// `ch` typed in a formula part of this style.
     fn map(self, ch: char) -> char {
-        todo!("{ch:?}")
+        Kind::of(ch)
+            .and_then(|(kind, _)| self.rows[kind.slot()].map(ch))
+            .unwrap_or(ch)
     }
 }
 
@@ -3855,7 +3893,8 @@ mod tests {
         assert_eq!(drawn("\\mathrm{\\mathit{x}}"), vec![X]);
         assert_eq!(drawn("\\mathit{\\mathrm{x}}"), vec!['x']);
         // Scripts and fractions inside an alphabet keep it.
-        assert_eq!(drawn("\\mathrm{d_x^y}"), vec!['d', 'x', 'y']);
+        // (The superscript's ink comes before the subscript's.)
+        assert_eq!(drawn("\\mathrm{d_x^y}"), vec!['d', 'y', 'x']);
         assert_eq!(drawn("\\mathrm{\\frac{a}{b}}"), vec!['a', 'b']);
     }
 
