@@ -37,11 +37,48 @@ impl Rgba {
         }
     }
 
+    /// Builds a colour from `0xRRGGBB` with opacity `alpha` (`0` invisible,
+    /// `255` opaque); bits above the low 24 are ignored.
+    #[must_use]
+    pub const fn from_hex_alpha(hex: u32, alpha: u8) -> Self {
+        todo!()
+    }
+
+    /// Opaque white. As a tint it leaves a texture's colours unchanged, so
+    /// it is not a theme colour (ADR-T51-1).
+    pub const NO_TINT: Self = Self {
+        r: u8::MAX,
+        g: u8::MAX,
+        b: u8::MAX,
+        a: u8::MAX,
+    };
+
+    /// This colour with its alpha scaled by `alpha / 255`, rounded down:
+    /// an opaque colour gets exactly `alpha`, `255` changes nothing.
+    #[must_use]
+    pub const fn faded(self, alpha: u8) -> Self {
+        todo!()
+    }
+
     /// Returns `[r, g, b, a]` scaled to `0.0..=1.0`, the form GPU APIs expect.
     #[must_use]
     pub fn to_f32(self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a].map(|c| f32::from(c) / 255.0)
     }
+
+    /// WCAG 2 relative luminance of the colour (alpha ignored): `0.0` for
+    /// black, `1.0` for white.
+    #[must_use]
+    pub fn relative_luminance(self) -> f32 {
+        todo!()
+    }
+}
+
+/// WCAG 2 contrast ratio of two colours, from `1.0` (the same luminance)
+/// to `21.0` (black and white); symmetric in its arguments.
+#[must_use]
+pub fn contrast_ratio(a: Rgba, b: Rgba) -> f32 {
+    todo!()
 }
 
 /// Index of a colour in the drawing palette, always `< PALETTE_LEN`.

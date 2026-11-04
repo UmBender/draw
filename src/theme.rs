@@ -1,4 +1,87 @@
-//! The theme: every colour draw shows (ADR-T51-1).
+//! The theme: every colour draw shows, in one place (ADR-T51-1).
+//!
+//! To restyle draw, change the values below and rebuild
+//! (`cargo build --release`, or `scripts/package.sh` for the packaged
+//! binary). There is no other way to set a colour: no option, variable or
+//! file is read at run time.
+//!
+//! - A colour is `0xRRGGBB`: paste `#7fa8bc` from any palette as
+//!   `0x7fa8bc`.
+//! - An `_ALPHA` is the opacity of the colour above it: `0` is invisible,
+//!   `255` is opaque.
+//! - A light canvas needs a dark `INK` (and dark text on fills is then
+//!   light): `cargo test theme` checks the contrast and says which pair is
+//!   too close.
+//!
+//! The shipped values are Kanagawa Dragon (ADR-0015).
+#![allow(
+    clippy::unreadable_literal,
+    reason = "colours are written 0xRRGGBB, as in a palette"
+)]
+
+// ---- Canvas -----------------------------------------------------------------
+
+/// Canvas background.
+pub const CANVAS: u32 = 0x181616;
+/// Numbers, text and the text caret on a filled shape or grid cell.
+pub const TEXT_ON_FILL: u32 = 0x181616;
+
+// ---- Drawing colours (keys 1-6, in this order) ------------------------------
+
+/// Key `1`: the default ink.
+pub const INK: u32 = 0xc5c9c5;
+/// Key `2`.
+pub const RED: u32 = 0xd16961;
+/// Key `3`.
+pub const GREEN: u32 = 0x8aa86e;
+/// Key `4`.
+pub const BLUE: u32 = 0x7fa8bc;
+/// Key `5`.
+pub const YELLOW: u32 = 0xceb680;
+/// Key `6`.
+pub const MAGENTA: u32 = 0xaa88ac;
+
+// ---- Selection and marquee --------------------------------------------------
+
+/// Outline around the selection and around the text block being edited.
+pub const SELECTION_OUTLINE: u32 = 0x7fa8bc;
+/// Outline of the marquee (the box dragged to select).
+pub const MARQUEE_OUTLINE: u32 = 0x7fa8bc;
+/// Fill of the marquee.
+pub const MARQUEE_FILL: u32 = 0x2d4f67;
+/// Opacity of the marquee fill.
+pub const MARQUEE_FILL_ALPHA: u8 = 63;
+
+// ---- Snapping ---------------------------------------------------------------
+
+/// Alignment guides shown while smart snap lines shapes up.
+pub const GUIDE: u32 = 0x7fa8bc;
+/// Dots of the snap grid (shown while grid snap is on).
+pub const DOT_GRID: u32 = 0xa6a69c;
+/// Opacity of the dot grid.
+pub const DOT_GRID_ALPHA: u8 = 89;
+
+// ---- Formulas ---------------------------------------------------------------
+
+/// Formula source drawn as typed because it does not parse (`$\foo$`).
+pub const FORMULA_SOURCE: u32 = 0xd16961;
+/// The same, when the text itself is drawn in `FORMULA_SOURCE`.
+pub const FORMULA_SOURCE_ALT: u32 = 0xceb680;
+
+// ---- Toolbar ----------------------------------------------------------------
+
+/// Toolbar strip and grid size flyout background.
+pub const TOOLBAR_BACKGROUND: u32 = 0x0d0c0c;
+/// Edge of the toolbar strip and outlines of the flyout buttons.
+pub const TOOLBAR_BORDER: u32 = 0xa6a69c;
+/// Tool letters, labels and the undo/redo arrows.
+pub const TOOLBAR_TEXT: u32 = 0xc5c9c5;
+/// Active tool or helper, current colour outline and the `pen` badge.
+pub const TOOLBAR_ACTIVE: u32 = 0x7fa8bc;
+/// Fill behind an active tool or helper.
+pub const TOOLBAR_ACTIVE_FILL: u32 = 0x2d4f67;
+/// Opacity of undo/redo when there is nothing to undo or redo.
+pub const TOOLBAR_DISABLED_ALPHA: u8 = 76;
 
 #[cfg(test)]
 mod tests {

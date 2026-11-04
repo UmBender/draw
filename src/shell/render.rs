@@ -486,6 +486,20 @@ pub fn to_mq_color(rgba: Rgba) -> Color {
     Color::new(red, green, blue, alpha)
 }
 
+/// The macroquad colour of an opaque theme colour `0xRRGGBB`
+/// (`crate::theme`).
+#[must_use]
+pub fn hex_color(hex: u32) -> Color {
+    todo!()
+}
+
+/// The macroquad colour of a theme colour `0xRRGGBB` with opacity
+/// `alpha` (`crate::theme`).
+#[must_use]
+pub fn hex_color_alpha(hex: u32, alpha: u8) -> Color {
+    todo!()
+}
+
 /// `true` if a stroke `width_px` wide needs round joints, i.e. it is wider
 /// than [`JOINT_THRESHOLD_PX`]. Thinner strokes skip them to stay cheap.
 #[must_use]
