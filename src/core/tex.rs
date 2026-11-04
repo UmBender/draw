@@ -356,6 +356,15 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("min", "min", Class::Limits),
     def("max", "max", Class::Limits),
     def("lim", "lim", Class::Limits),
+    // Named operators with limits (T64); TeX's thin space between the
+    // words of `\liminf` and `\limsup`.
+    def("inf", "inf", Class::Limits),
+    def("sup", "sup", Class::Limits),
+    def("liminf", "lim\u{2006}inf", Class::Limits),
+    def("limsup", "lim\u{2006}sup", Class::Limits),
+    def("det", "det", Class::Limits),
+    def("Pr", "Pr", Class::Limits),
+    def("gcd", "gcd", Class::Limits),
     // Physics symbols (T36).
     def("partial", "∂", Class::Ord),
     def("nabla", "∇", Class::Ord),
@@ -409,8 +418,15 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def(",", "\u{2006}", Class::Ord),
     def("log", "log", Class::Op),
     def("ln", "ln", Class::Op),
-    def("gcd", "gcd", Class::Op),
     def("lcm", "lcm", Class::Op),
+    // Operator words with scripts beside them (T64).
+    def("exp", "exp", Class::Op),
+    def("lg", "lg", Class::Op),
+    def("deg", "deg", Class::Op),
+    def("dim", "dim", Class::Op),
+    def("ker", "ker", Class::Op),
+    def("hom", "hom", Class::Op),
+    def("arg", "arg", Class::Op),
     // Trigonometric and hyperbolic functions (T63).
     def("sin", "sin", Class::Op),
     def("cos", "cos", Class::Op),
@@ -1052,12 +1068,28 @@ impl<'a> Parser<'a> {
                 })
             }
             "text" => self.text_body(end),
+            "operatorname" => return self.operator_name(end),
             _ => None,
         };
         node.unwrap_or_else(|| {
             self.pos = after;
             Node::Literal(format!("\\{name}"))
         })
+    }
+
+    /// `\operatorname`, its name read: a `*` directly after it, then a
+    /// raw `{…}` body; literal (with its star) without a body
+    /// (ADR-T64-1).
+    fn operator_name(&mut self, end: usize) -> Node {
+        let star = self.pos < end && self.peek() == Some('*');
+        self.pos += usize::from(star);
+        let after = self.pos;
+        if let Some((lead, body)) = self.raw_body(end) {
+            return Node::OperatorName { star, lead, body };
+        }
+        self.pos = after;
+        let star = if star { "*" } else { "" };
+        Node::Literal(format!("\\operatorname{star}"))
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -1067,11 +1099,17 @@ impl<'a> Parser<'a> {
 
     /// The `{…}` body of `\text`, raw.
     fn text_body(&mut self, end: usize) -> Option<Node> {
+        self.raw_body(end).map(|(lead, body)| Node::Text { lead, body })
+    }
+
+    /// Whitespace and a raw `{…}` body at the cursor; `None` when no
+    /// closed group follows (the cursor may then have moved).
+    fn raw_body(&mut self, end: usize) -> Option<(String, String)> {
         let lead = self.whitespace(end);
         let close = self.group_close(end)?;
         let body = self.chars[self.pos + 1..close].iter().collect();
         self.pos = close + 1;
-        Some(Node::Text { lead, body })
+        Some((lead, body))
     }
 }
 
@@ -1176,7 +1214,16 @@ fn print_node(node: &Node, out: &mut String) {
             out.push_str(body);
             out.push('}');
         }
-        Node::OperatorName { .. } => todo!(),
+        Node::OperatorName { star, lead, body } => {
+            out.push_str("\\operatorname");
+            if *star {
+                out.push('*');
+            }
+            out.push_str(lead);
+            out.push('{');
+            out.push_str(body);
+            out.push('}');
+        }
     }
 }
 
@@ -1370,7 +1417,10 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (b, Class::Ord)
         }
         Node::Text { body, .. } => (MathBox::upright(body, scale), Class::Ord),
-        Node::OperatorName { .. } => todo!(),
+        Node::OperatorName { star, body, .. } => {
+            let class = if *star { Class::Limits } else { Class::Op };
+            (MathBox::upright(body, scale), class)
+        }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
