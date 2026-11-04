@@ -22,6 +22,9 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 ## Definition of Done (per task)
 
 - [ ] Every `AC-n` in the spec has at least one passing test.
+- [ ] Every bug fixed has a `regression_<ID>_<slug>` test (snapshot-based
+      once T74 is done) committed red before the fix (see
+      [[Workflow#Bug fixes: regression step]]).
 - [ ] `scripts/check.sh` is green on the branch head.
 - [ ] Only files in *Files owned* were touched.
 - [ ] Feature note + tutorial note written; learning-path position stated.

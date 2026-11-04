@@ -55,6 +55,30 @@ flowchart LR
    ADRs and git history. If the context cannot be cleared right away, the
    integrator must remind the user to do it.
 
+### Bug fixes: regression step
+
+A bug fix (branch `fix/<slug>`, or one bug found inside a larger task's
+*Log*) replaces the plain **Tests** step with a **Regression** step:
+
+1. Reproduce the bug and save the state just before it goes wrong as a
+   snapshot ([[T74 Editor snapshots for tests]]): `Ctrl+Shift+S` in the
+   running app, or `Editor::snapshot()` from a failing test. Commit it as
+   `tests/snapshots/regressions/<ID>-<slug>.snap`.
+2. Write a regression test, named `regression_<ID>_<slug>`, that loads
+   the snapshot, replays the input that triggers the bug, and checks the
+   correct outcome. If the bug only shows in the running app (window,
+   backend, input translation, rendering), add an e2e case
+   `tests/e2e/regression-<ID>-<slug>/` instead or as well
+   ([[T75 End-to-end test suite]]).
+3. Run it and confirm it fails for the bug's reason. Commit
+   `test(<ID>): add regression test for <bug>` (red, like step 3).
+
+The fix then follows as the **Behaviour** step. The regression test and
+its snapshot are never deleted. If a later format change breaks the
+snapshot, it is regenerated, not dropped. Until T74 is `done`, build the
+state from replayed events instead of a snapshot; until T75 is `done`,
+write app-only bugs up as a manual check in the task's *Log*.
+
 Steps may be skipped only if they produce nothing (e.g. a task with no new
 models); the task note must then say *why* it was skipped.
 

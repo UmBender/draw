@@ -54,6 +54,16 @@ open individual rule files when a rule is relevant.
    Arrange–Act–Assert. Compare floats with `geom::approx_eq`, never `==`.
    Run `cargo test` and confirm they fail (or don't compile) for the right
    reason. Commit `test(<ID>): add failing tests for <topic>`.
+   **Bug fixes** (a `fix/…` branch, or each bug found during a task): this
+   step is the *Regression* step of `docs/process/Workflow.md` → *Bug fixes:
+   regression step*. Save a snapshot of the state just before the bug at
+   `tests/snapshots/regressions/<ID>-<slug>.snap`, write
+   `regression_<ID>_<slug>` that loads it, replays the trigger and checks
+   the correct outcome (or an e2e case `tests/e2e/regression-<ID>-<slug>/`
+   for bugs that only show in the running app), confirm it fails, and
+   commit `test(<ID>): add regression test for <bug>`. Before T74 / T75 are
+   done, use the fallbacks the workflow lists. Never delete a regression
+   test.
 4. **Models** — types, structs, enums, signatures, docs (`missing_docs` is
    on). Bodies may be `todo!()`. `cargo build` must pass.
    Commit `feat(<ID>): add <types>`.

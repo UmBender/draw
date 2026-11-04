@@ -135,6 +135,13 @@ flowchart TD
   T71 --> T53
   T72[T72 Feature proposal]
   T72 --> T53
+  T73[T73 Continuous integration on GitHub]
+  T73 --> T53
+  T74[T74 Editor snapshots for tests]
+  T74 --> T53
+  T73 --> T75[T75 End-to-end test suite]
+  T74 --> T75
+  T75 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -175,8 +182,8 @@ flowchart TD
 | 30 | [[T45 Doubled keys after a long idle on Wayland]] |
 | 31 | [[T46 Native Wayland by default and Xwayland deprecated]] · [[T47 Always-on diagnostics log]] |
 | 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] · [[T51 Build-time themes]] · [[T52 Text in shapes by default]] |
-| 33 | [[T54 Math alphabet styles]] · [[T72 Feature proposal]] |
-| 34 | [[T55 Math font subset for alphabets and symbols]] |
+| 33 | [[T54 Math alphabet styles]] · [[T72 Feature proposal]] · [[T73 Continuous integration on GitHub]] · [[T74 Editor snapshots for tests]] |
+| 34 | [[T55 Math font subset for alphabets and symbols]] · [[T75 End-to-end test suite]] |
 | 35 | [[T56 Bold math]] |
 | 36 | [[T57 Blackboard bold]] |
 | 37 | [[T58 Fraktur letters]] |
@@ -271,5 +278,8 @@ flowchart TD
 | [[T70 Quantum notation]] | todo | T69 | `task/T70-quantum-notation` |
 | [[T71 Combinatorics notation]] | todo | T55 | `task/T71-combinatorics` |
 | [[T72 Feature proposal]] | todo | — | `docs/T72-feature-proposal` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T72 | `chore/release-1.5.0` |
+| [[T73 Continuous integration on GitHub]] | todo | — | `task/T73-github-ci` |
+| [[T74 Editor snapshots for tests]] | todo | — | `task/T74-editor-snapshots` |
+| [[T75 End-to-end test suite]] | todo | T73, T74 | `task/T75-e2e-tests` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T75 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

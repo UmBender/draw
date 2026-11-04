@@ -20,6 +20,7 @@ Refs: docs/tasks/<task-id> <Title>.md
 |------|------|---------|
 | Spec | `docs` | `docs(T04): specify smoothing acceptance criteria` |
 | Tests | `test` | `test(T04): add failing tests for RDP simplification` |
+| Regression (bug fixes) | `test` | `test(T45): add regression test for doubled keys after idle` |
 | Models | `feat` | `feat(T04): add Smoother and SmoothingLevel types` |
 | Behaviour | `feat` | `feat(T04): implement resampling, EMA and RDP` |
 | Quality | `refactor` / `chore` | `chore(T04): satisfy clippy and rustfmt` |
