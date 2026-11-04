@@ -6,7 +6,7 @@ wave: 19
 branch: task/T31-shape-text
 depends_on: [T29]
 adrs: ["[[ADR-T31-1 Shape text prototype behind a switch]]"]
-feature: "[[Text in shapes (experimental)]]"
+feature: "[[Text in shapes]]"
 tutorial: "[[31 Prototyping an interaction behind a switch]]"
 tags: [task, experimental]
 ---
@@ -149,7 +149,8 @@ trial, **ADR-T31-2 — Verdict** (promote / rework / remove).
   `src/core/mod.rs` (`pub mod experimental;`) fall under the same
   amendment
 - new ADRs `ADR-T31-*`, feature note
-  `docs/features/Text in shapes (experimental).md`, tutorial
+  `docs/features/Text in shapes.md` (named `… (experimental)` until
+  T52), tutorial
   `docs/tutorials/31 Prototyping an interaction behind a switch.md`
 
 ## Subtasks (one commit each)
@@ -193,3 +194,6 @@ step 19 (numbering).
 - 2026-10-15 — Integrated into `main` as an experimental feature, off
   by default. Status → done. AC-5 (owner trial) and AC-6 (ADR-T31-2
   verdict) remain open; the verdict will promote, rework or remove it.
+- 2026-11-04 — Promoted by [[T52 Text in shapes by default]]: the
+  switch is gone and [[ADR-T52-1 Text in shapes always on, numbered
+  shapes hold no text]] supersedes ADR-T31-1.

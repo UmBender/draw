@@ -1,20 +1,26 @@
 ---
-title: Text in shapes (experimental)
+title: Text in shapes
 task: "[[T31 Text in rectangles and grid cells]]"
-adrs: ["[[ADR-T31-1 Shape text prototype behind a switch]]"]
+adrs: ["[[ADR-T31-1 Shape text prototype behind a switch]]", "[[ADR-T52-1 Text in shapes always on, numbered shapes hold no text]]"]
 tutorial: "[[31 Prototyping an interaction behind a switch]]"
 shortcuts: ["T", "Tab", "Shift+Tab", "Enter", "Shift+Enter"]
-tags: [feature, experimental]
+tags: [feature]
 ---
 
-# Text in shapes (experimental)
+# Text in shapes
 
 ## What it does
 
 Type into a rectangle, an ellipse or a grid cell: name a graph node, fill
 a DP table cell by cell. The text sits centred in the shape, shrinks to
-fit and travels with it. It is **off by default**; start the app with
-`DRAW_EXPERIMENTAL=shape-text` to try it.
+fit and travels with it. It is always on
+([[T52 Text in shapes by default]]); it started as a prototype behind a
+switch ([[T31 Text in rectangles and grid cells]]).
+
+A **numbered** rectangle or ellipse ([[Numbered nodes]]) holds no text:
+its number is its content. Clicking inside one with the Text tool starts
+a free text block there, as on empty canvas. Grids keep text in their
+cells, with or without indices.
 
 ## How to use
 
@@ -35,25 +41,32 @@ each cell left with `Tab` / `Enter`, is one undo step. Formulas
 
 ## How it works
 
-- `core::experimental` parses `DRAW_EXPERIMENTAL`; the flags travel in
-  `Helpers::experimental`, set once by `Editor::with_experimental` from
-  `shell::app`.
 - `Shape::Rect` / `Shape::Ellipse` carry `text: Option<ShapeText>` and
   `Shape::Grid` carries `texts: Vec<CellText>` (`src/core/shape.rs`).
   `Shape::text_frame` is the box the text fits into and
   `Shape::placed_texts` the fitted blocks (`text_layout::fit`).
-- `tools::text::TextEdit` gains a `Host`; the edit is re-fitted into the
+- `Shape::text_host_at` is the slot under the pointer that may take
+  text: `text_slot_at` minus numbered rectangles and ellipses. The Text
+  tool, Select's second click and the press that keeps the only selected
+  shape all go through it.
+- The model keeps `label.is_some() ⇒ text.is_none()`: `with_slot_text`
+  never fills a numbered shape and `with_label` never numbers a shape
+  holding text (text wins; the numbering counter does not advance).
+  Snapshots with both are rejected; the fuzz harness checks it after
+  every event.
+- `tools::text::TextEdit` has a `Host`; the edit is re-fitted into the
   host's frame as it is typed. `Editor::finish_text` commits it as one
   `Replace`; `Editor::step_cell` walks cells (`Shape::grid_cell_step`).
-- The renderer draws `placed_texts` instead of the label
-  (`render::shown_label`), in the background colour on fills.
+- The renderer draws `placed_texts`, in the background colour on fills,
+  and the label of numbered shapes (`render::shown_label`).
 
-Decisions: [[ADR-T31-1 Shape text prototype behind a switch]].
+Decisions: [[ADR-T31-1 Shape text prototype behind a switch]] (superseded),
+[[ADR-T52-1 Text in shapes always on, numbered shapes hold no text]].
 
 ## Limits
 
-- Experimental: the verdict (promote, rework, remove) is ADR-T31-2,
-  after the owner's trial.
 - Text never grows the shape and is never clipped; long text gets small.
 - An unfilled shape is still selected by its outline, not by its text.
+- A numbered rectangle or ellipse cannot be named; draw it unnumbered
+  (`N` off) to write in it.
 - No text in lines, arrows or strokes; no spreadsheet features.

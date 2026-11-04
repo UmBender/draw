@@ -11,7 +11,6 @@ use draw::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use draw::core::command::{Command, Tool};
 use draw::core::document::ShapeId;
 use draw::core::editor::Editor;
-use draw::core::experimental::Experimental;
 use draw::core::geom::Vec2;
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -595,23 +594,16 @@ fn shapes_of(editor: &Editor) -> Vec<(ShapeId, Shape)> {
         .collect()
 }
 
-/// T31: shape text exists only with the switch on; it is non-blank and
-/// sized, and cell texts lie inside the grid, sorted by `(row, col)`,
-/// unique.
-fn check_shape_text(
-    editor: &Editor,
-    id: ShapeId,
-    shape: &Shape,
-    step: usize,
-) -> Result<(), TestCaseError> {
+/// T31, T52: shape text is non-blank and sized, a numbered rectangle or
+/// ellipse holds none (`label.is_some() ⇒ text.is_none()`), and cell texts
+/// lie inside the grid, sorted by `(row, col)`, unique.
+fn check_shape_text(id: ShapeId, shape: &Shape, step: usize) -> Result<(), TestCaseError> {
     let own = shape.slot_text(TextSlot::Shape);
     let cell_texts = shape.cell_texts();
-    if !editor.experimental().shape_text {
-        prop_assert!(
-            own.is_none() && cell_texts.is_empty(),
-            "step {step}: shape {id:?} has text with the switch off"
-        );
-    }
+    prop_assert!(
+        shape.label().is_none() || own.is_none(),
+        "step {step}: numbered shape {id:?} holds text"
+    );
     for content in own.into_iter().chain(cell_texts.iter().map(|c| &c.content)) {
         prop_assert!(
             !content.text.trim().is_empty() && content.size.is_finite() && content.size > 0.0,
@@ -708,7 +700,7 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
                 );
             }
         }
-        check_shape_text(editor, id, shape, step)?;
+        check_shape_text(id, shape, step)?;
         // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
         if let Some(label) = shape.label() {
             prop_assert!(
@@ -756,15 +748,7 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
 
 /// Runs `session`, checking invariants after every event.
 fn run_session(session: &[InputEvent]) -> Result<Editor, TestCaseError> {
-    run_session_with(session, Experimental::default())
-}
-
-/// [`run_session`] on an editor with the `experimental` switches.
-fn run_session_with(
-    session: &[InputEvent],
-    experimental: Experimental,
-) -> Result<Editor, TestCaseError> {
-    run_session_on(Editor::new().with_experimental(experimental), session)
+    run_session_on(Editor::new(), session)
 }
 
 /// [`run_session`] on `editor`.
@@ -1006,7 +990,54 @@ fn sessions_reach_text_edit_states() {
 }
 
 #[test]
-fn switch_on_sessions_reach_shape_text() {
+fn numbered_host_sessions_never_fill_numbered_shapes() {
+    // Arrange: T52, numbering is turned on before the host is drawn.
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_host_session();
+    let (mut numbered, mut blocks) = (0, 0);
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_host_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        editor.handle(InputEvent::Resize {
+            size: Vec2::new(1024.0, 768.0),
+        });
+        editor.handle(InputEvent::KeyDown {
+            key: Key::N,
+            mods: Modifiers::NONE,
+        });
+        for event in tree.current() {
+            editor.handle(event);
+            let shapes = || editor.document().shapes().map(|(_, shape)| shape);
+            assert!(
+                shapes().all(|s| s.label().is_none() || s.slot_text(TextSlot::Shape).is_none()),
+                "a numbered shape holds text"
+            );
+        }
+        let shapes = || editor.document().shapes().map(|(_, shape)| shape);
+        numbered += usize::from(shapes().any(|s| s.label().is_some()));
+        blocks += usize::from(
+            shapes().any(|s| s.label().is_some())
+                && shapes().any(|s| matches!(s, Shape::Text { .. })),
+        );
+    }
+
+    // Assert: typing inside a numbered node made free blocks instead.
+    assert!(
+        numbered >= 60,
+        "sessions with a numbered shape: {numbered}/200"
+    );
+    assert!(
+        blocks >= 20,
+        "sessions with a numbered shape and a text block: {blocks}/200"
+    );
+}
+
+#[test]
+fn sessions_reach_shape_text() {
     // Arrange
     let mut runner = TestRunner::deterministic();
     let strategy = arb_host_session();
@@ -1017,7 +1048,7 @@ fn switch_on_sessions_reach_shape_text() {
         let Ok(tree) = strategy.new_tree(&mut runner) else {
             panic!("arb_host_session failed to generate a value");
         };
-        let mut editor = Editor::new().with_experimental(SHAPE_TEXT_ON);
+        let mut editor = Editor::new();
         editor.handle(InputEvent::Resize {
             size: Vec2::new(1024.0, 768.0),
         });
@@ -1086,16 +1117,6 @@ proptest! {
     }
 
     #[test]
-    fn shape_text_sessions_never_panic_and_keep_invariants(session in arb_session()) {
-        run_session_with(&session, SHAPE_TEXT_ON)?;
-    }
-
-    #[test]
-    fn shape_text_undo_all_then_redo_all_is_symmetric(session in arb_session()) {
-        check_undo_redo_symmetric(&session, Editor::new().with_experimental(SHAPE_TEXT_ON))?;
-    }
-
-    #[test]
     fn pen_tap_sessions_never_panic_and_keep_invariants(session in arb_session()) {
         // T34: every event goes through the tap filter first.
         run_session_on(pen_editor(), &session)?;
@@ -1126,24 +1147,12 @@ proptest! {
     fn pressure_undo_all_then_redo_all_is_symmetric(session in arb_pressure_session()) {
         check_undo_redo_symmetric(&session, pen_editor())?;
     }
-
-    #[test]
-    fn switch_off_sessions_never_create_shape_text(session in arb_session()) {
-        let editor = run_session(&session)?;
-        let texts = editor.document().shapes().any(|(_, shape)| {
-            shape.slot_text(TextSlot::Shape).is_some() || !shape.cell_texts().is_empty()
-        });
-        prop_assert!(!texts);
-    }
 }
 
 /// An editor with the pen tap slop on (T34).
 fn pen_editor() -> Editor {
     Editor::new().with_tap_slop(PEN_TAP_SLOP_PX)
 }
-
-/// Shape text on (T31).
-const SHAPE_TEXT_ON: Experimental = Experimental { shape_text: true };
 
 /// Runs `session`, undoes everything (the document must be empty unless the
 /// history was capped) and redoes everything (the document must be back).
@@ -1417,15 +1426,6 @@ proptest! {
         check_snapshot_continues_equal(&session, cut, Editor::new())?;
     }
 
-    /// T74 AC-1 with text in shapes on.
-    #[test]
-    fn shape_text_snapshot_round_trip_continues_equal(
-        session in arb_session(),
-        cut in any::<prop::sample::Index>(),
-    ) {
-        check_snapshot_continues_equal(&session, cut, Editor::new().with_experimental(SHAPE_TEXT_ON))?;
-    }
-
     /// T74 AC-1 with the pen tap filter on (mid-tap states).
     #[test]
     fn pen_tap_snapshot_round_trip_continues_equal(
@@ -1456,7 +1456,7 @@ proptest! {
         more in arb_session(),
     ) {
         // Arrange
-        let editor = run_session_on(Editor::new().with_experimental(SHAPE_TEXT_ON), &session)?;
+        let editor = run_session_on(Editor::new(), &session)?;
         let text = mutate(&editor.snapshot().to_text(), &mutations);
 
         // Act

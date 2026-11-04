@@ -381,20 +381,19 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     let view = ctx.view();
     let size = ctx.camera.world_len(state.new_size_px(view.style.width_px));
-    // With shape text on, the interior of a rectangle or an ellipse and a
-    // grid cell hold text too (ADR-T31-1).
-    let hosts = view.style.helpers.experimental.shape_text;
+    // The interior of a rectangle or an ellipse and a grid cell hold text
+    // too, except a numbered rectangle or ellipse (ADR-T31-1, ADR-T52-1).
     let opened = view
         .doc
         .topmost_where(|shape| {
             let block = matches!(shape, Shape::Text { .. }) && shape.hit(world, tol);
-            block || (hosts && shape.text_slot_at(world).is_some())
+            block || shape.text_host_at(world).is_some()
         })
         .and_then(|id| {
             let shape = view.doc.get(id)?;
-            match shape.text_slot_at(world) {
-                Some(slot) if hosts => TextEdit::open_in(id, shape, slot, size),
-                _ => TextEdit::open(id, shape, world),
+            match shape.text_host_at(world) {
+                Some(slot) => TextEdit::open_in(id, shape, slot, size),
+                None => TextEdit::open(id, shape, world),
             }
         });
     state.edit = Some(opened.unwrap_or_else(|| {
@@ -882,7 +881,7 @@ mod tests {
                 width: 1.0,
             },
             fill: None,
-            label: Some(3),
+            label: None,
             text: None,
         }
     }

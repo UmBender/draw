@@ -2584,7 +2584,7 @@ mod tests {
     // ---- T31 shape text -----------------------------------------------------
 
     #[test]
-    fn label_is_hidden_by_shape_text() {
+    fn numbered_shape_shows_its_label() {
         // Arrange
         let numbered = Shape::Rect {
             a: Vec2::ZERO,
@@ -2602,9 +2602,10 @@ mod tests {
             .clone()
             .with_slot_text(crate::core::shape::TextSlot::Shape, text);
 
-        // Act / Assert
+        // Act / Assert: T52, a numbered shape takes no text and always
+        // shows its number.
+        assert_eq!(named, numbered);
         assert_eq!(shown_label(&numbered), Some(4));
-        assert_eq!(shown_label(&named), None);
-        assert_eq!(named.label(), Some(4), "the label is kept");
+        assert_eq!(shown_label(&named), Some(4));
     }
 }
