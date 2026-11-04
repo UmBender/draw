@@ -3938,6 +3938,147 @@ mod tests {
         }
     }
 
+    // ---- T62 complete Greek letters -----------------------------------------
+
+    /// `\varGamma` … `\varOmega`, the amsmath italic capitals.
+    const VAR_CAPITALS: [&str; 11] = [
+        "varGamma",
+        "varDelta",
+        "varTheta",
+        "varLambda",
+        "varXi",
+        "varPi",
+        "varSigma",
+        "varUpsilon",
+        "varPhi",
+        "varPsi",
+        "varOmega",
+    ];
+
+    /// The unicode-math capitals that look like Latin letters, with the
+    /// letter each draws.
+    const LATIN_LIKE_CAPITALS: [(&str, char); 13] = [
+        ("Alpha", 'Α'),
+        ("Beta", 'Β'),
+        ("Epsilon", 'Ε'),
+        ("Zeta", 'Ζ'),
+        ("Eta", 'Η'),
+        ("Iota", 'Ι'),
+        ("Kappa", 'Κ'),
+        ("Mu", 'Μ'),
+        ("Nu", 'Ν'),
+        ("Omicron", 'Ο'),
+        ("Rho", 'Ρ'),
+        ("Tau", 'Τ'),
+        ("Chi", 'Χ'),
+    ];
+
+    /// Whether `ch` is a Greek letter or a math alphanumeric Greek one.
+    fn is_greek(ch: char) -> bool {
+        matches!(ch, '\u{370}'..='\u{3FF}' | '\u{1D6A8}'..='\u{1D7CB}')
+    }
+
+    #[test]
+    fn tex_greek_every_letter_has_a_command() {
+        // Arrange
+        let letters = ('Α'..='ω')
+            .filter(|&c| c != '\u{3A2}' && !('\u{3AA}'..='\u{3B0}').contains(&c))
+            .chain("ϵϑϰϕϱϖ".chars());
+        let names = VAR_CAPITALS
+            .iter()
+            .copied()
+            .chain(LATIN_LIKE_CAPITALS.iter().map(|&(name, _)| name))
+            .chain(std::iter::once("varkappa"));
+
+        // Act / Assert
+        for ch in letters {
+            assert!(
+                SYMBOLS.iter().any(|s| s.text == ch.to_string()),
+                "no command for {ch:?} U+{:04X}",
+                u32::from(ch)
+            );
+        }
+        for name in names {
+            assert_eq!(math(&format!("\\{name}")), vec![sym(name)], "{name}");
+            assert_eq!(symbol(name).map(|s| s.class), Some(Class::Ord), "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_greek_commands_draw_glyphs_of_the_math_face() {
+        // Arrange
+        let greek: Vec<&SymbolDef> = SYMBOLS
+            .iter()
+            .filter(|s| s.text.chars().all(is_greek))
+            .collect();
+        assert!(greek.len() >= 30 + 11 + 11 + 13, "{}", greek.len());
+
+        for def in greek {
+            // Act
+            let b = boxed(&format!("\\{}", def.name));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{}", def.name);
+            assert!(!got[0].3, "{}", def.name);
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{}: {ch:?}", def.name);
+                assert!(math_metrics::get(ch).is_some(), "{}: {ch:?}", def.name);
+            }
+        }
+        assert_eq!(drawn("\\varkappa"), vec!['\u{1D718}']);
+    }
+
+    #[test]
+    fn tex_var_greek_capitals_are_italic() {
+        for name in VAR_CAPITALS {
+            // Arrange
+            let upright = name.trim_start_matches("var");
+
+            // Act
+            let got = drawn(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(
+                got,
+                drawn(&format!("\\mathnormal{{\\{upright}}}")),
+                "{name}"
+            );
+            assert_ne!(got, drawn(&format!("\\{upright}")), "{name}");
+            assert_eq!(drawn(&format!("\\mathrm{{\\{name}}}")), got, "{name}");
+        }
+        assert_eq!(drawn("\\varGamma"), vec!['\u{1D6E4}']);
+        assert_eq!(drawn("\\varOmega"), vec!['\u{1D6FA}']);
+    }
+
+    #[test]
+    fn tex_latin_like_greek_capitals_are_upright() {
+        for (name, ch) in LATIN_LIKE_CAPITALS {
+            // Act / Assert
+            assert_eq!(faces(&boxed(&format!("\\{name}")).ink), vec![(ch, Face::Math)]);
+        }
+        assert_eq!(drawn("\\mathnormal{\\Alpha}"), vec!['\u{1D6E2}']);
+        assert_eq!(drawn("\\mathit{\\Chi}"), vec!['\u{1D6F8}']);
+    }
+
+    #[test]
+    fn tex_digamma_is_not_a_command() {
+        for name in ["digamma", "Digamma"] {
+            // Arrange
+            assert!(symbol(name).is_none(), "{name}");
+
+            // Act
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+
+            // Assert: drawn as typed, in the warning colour.
+            assert_eq!(
+                got.iter().map(|g| g.0).collect::<String>(),
+                format!("\\{name}")
+            );
+            assert!(got.iter().all(|g| g.3), "{name}: {got:?}");
+        }
+    }
+
     #[test]
     fn tex_literals_and_plain_text_use_the_text_face() {
         // Act
