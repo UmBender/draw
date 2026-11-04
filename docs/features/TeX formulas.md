@@ -172,6 +172,20 @@ factorials are `$x^{\underline{k}}$` and `$x^{\overline{k}}$`;
 `\lvert A \rvert`. (Since [[T71 Combinatorics notation]],
 [[ADR-T71-1 Infix fraction commands split their group]].)
 
+Algebra and group theory read as in a first-year text: normal subgroups
+`$N \trianglelefteq G$` (also `\lhd \unlhd \rhd \unrhd \triangleleft
+\triangleright \trianglerighteq`, and `\ntriangleleft \ntriangleright`)
+are relations; semidirect products `$N \rtimes H$`, `\ltimes`, the
+wreath product `\wr` and `\odot \ominus \oslash \boxplus \boxtimes
+\amalg \diamond` are binary operators. `\triangleleft` and
+`\triangleright` draw the same `⊲ ⊳` as `\lhd \rhd`. The usual operator
+names are upright words, spaced exactly like `\operatorname{…}`:
+`$\Hom(A, B)$`, `\End \Aut \Inn \Gal \Ker \im \coker \id \sgn \tr
+\rank`. There is no `\char` (it is a TeX primitive): write
+`$\operatorname{char} k$`. Quotients, cosets, generated subgroups and
+indices need nothing new: `$G/N$`, `$gH$`, `$\langle g \rangle$`,
+`$[G:H]$`. (Since [[T67 Algebra and group theory symbols]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -214,6 +228,9 @@ factorials are `$x^{\underline{k}}$` and `$x^{\overline{k}}$`;
 | Sets | `\setminus \sqcup \sqcap \uplus`, `\supset \subseteq \supseteq \subsetneq \supsetneq \nsubseteq \ni`, `\complement \varnothing` |
 | Logic | `\lnot \veebar \barwedge \top \bot \nexists`, `\vdash \models`, `\implies \impliedby` (spaced wider) |
 | Absolute value, norm | `\lvert x \rvert`, `\lVert v \rVert` |
+| Group relations | `N \trianglelefteq G`, `\lhd \unlhd \rhd \unrhd \triangleleft \triangleright \trianglerighteq \ntriangleleft \ntriangleright` |
+| Algebra operators | `N \rtimes H`, `\ltimes \wr \odot \ominus \oslash \boxplus \boxtimes \amalg \diamond` |
+| Algebra names (upright) | `\Hom(A, B)`, `\End \Aut \Inn \Gal \Ker \im \coker \id \sgn \tr \rank`; `\operatorname{char}` |
 | Thin space | `\,` (as in `f(x)\,dx`) |
 | Upright text | `\text{if } x > 0` |
 

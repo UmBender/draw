@@ -1,7 +1,7 @@
 ---
 id: T67
 title: Algebra and group theory symbols
-status: in-progress
+status: review
 wave: 46
 branch: task/T67-algebra-symbols
 depends_on: [T55, T64]
@@ -134,12 +134,12 @@ subset, the pair is used together).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T67): …`
-- [ ] tests — `test(T67): …`
-- [ ] models — `feat(T67): …`
-- [ ] behaviour — `feat(T67): …`
-- [ ] quality — `chore(T67): …`
-- [ ] docs — `docs(T67): …`
+- [x] spec — `docs(T67): …`
+- [x] tests — `test(T67): …`
+- [x] models — `feat(T67): …` (no new types: one commit with behaviour)
+- [x] behaviour — `feat(T67): …`
+- [x] quality — `chore(T67): …` (nothing to change, no commit)
+- [x] docs — `docs(T67): …`
 
 ## Learning path
 
@@ -149,3 +149,20 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — tests, rows and docs done. 20 symbol rows and 12 `Op`
+  name rows in `SYMBOLS`; no new types, so models and behaviour are one
+  `feat` commit (as in T66). UNATTENDED CHOICE: `\triangleleft` /
+  `\triangleright` are `Rel` and draw `⊲ ⊳` (see *Spec*);
+  `\ntriangleright` added next to `\ntriangleleft`. No ADR. The quality
+  step changed nothing (no `chore` commit). `scripts/check.sh` green;
+  the first `--fuzz` run failed in `snapshot_round_trip_continues_equal`
+  (and its pen-tap / shape-text variants), outside T67 (no formula
+  typed): "own text rejected: line 26: text size out of range" after
+  Text tool, click, `Ctrl+[`, `Scroll { delta: 1771.5367 }` at the
+  origin, click, Space, click and drag at `x = 1983.8613`. proptest
+  wrote seed `cc 31c20d58…` to `tests/fuzz.proptest-regressions`; it was
+  removed again (a seed keeps the gates red and the fix is not this
+  task's) and the second `--fuzz` run was green. For the owner: a
+  `fix/…` task for the snapshot text-size range. No deviation from
+  *Files owned*; no tutorial. Manual checks for the owner:
+  `$N \trianglelefteq G$`, `$N \rtimes H$`, `$\Hom(A, B)$`.

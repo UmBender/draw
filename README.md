@@ -297,6 +297,9 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\setminus \sqcup \sqcap \uplus`, `\supset \subseteq \supseteq \subsetneq \supsetneq \nsubseteq \ni`, `\complement \varnothing` | Sets (`A \setminus B`) |
 | `\lnot \veebar \barwedge \top \bot \nexists`, `\vdash \models`, `\implies \impliedby` | Logic; `\implies` is spaced wider, as in amsmath |
 | `\lvert x \rvert`, `\lVert v \rVert` | Absolute value and norm bars |
+| `N \trianglelefteq G`, `\lhd \unlhd \rhd \unrhd \triangleleft \triangleright \trianglerighteq \ntriangleleft \ntriangleright` | Normal subgroup relations |
+| `N \rtimes H`, `\ltimes \wr \odot \ominus \oslash \boxplus \boxtimes \amalg \diamond` | Semidirect, wreath and other algebra operators |
+| `\Hom(A, B)`, `\End \Aut \Inn \Gal \Ker \im \coker \id \sgn \tr \rank` | Algebra operator names (upright); `\operatorname{char}` for the characteristic |
 | `\text{…}` | Upright text inside a formula |
 | `\$` | A literal dollar sign (a lone `$` also stays plain) |
 
