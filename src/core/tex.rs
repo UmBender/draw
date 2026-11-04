@@ -833,6 +833,14 @@ const MATHFRAK: AlphabetDef = AlphabetDef {
     slant: false,
 };
 
+/// `\mathscr`: the `\mathcal` row under its own name. Latin Modern Math
+/// has one script style and no script lowercase, so lowercase is
+/// inherited as in `\mathcal` (ADR-T59-1).
+const MATHSCR: AlphabetDef = AlphabetDef {
+    name: "mathscr",
+    ..MATHCAL
+};
+
 /// The math alphabet command `name` (without the backslash).
 #[must_use]
 pub fn alphabet(name: &str) -> Option<&'static AlphabetDef> {
