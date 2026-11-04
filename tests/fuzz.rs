@@ -212,6 +212,9 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\mathfrak", "\\mathfrak{g}", "\\mathfrak{R}", "\\mathbf\\mathfrak",
             // T59: script capitals, a hole and lowercase (no script glyph).
             "\\mathscr", "\\mathscr{L}", "\\mathscr{l}", "\\mathcal\\mathscr",
+            // T60: sans-serif and typewriter, bold sans and bold over mono.
+            "\\mathsf", "\\mathtt", "\\mathsf{G}", "\\mathtt{x1}", "\\mathbf\\mathsf",
+            "\\bm{\\mathsf{x}}", "\\mathsf\\mathbf", "\\mathbf\\mathtt",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),
