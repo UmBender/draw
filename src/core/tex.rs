@@ -638,6 +638,9 @@ pub struct AlphabetDef {
     /// Characters drawn from elsewhere than the block (Letterlike
     /// Symbols), as `(typed, drawn)`; used where the row maps a `Block`.
     pub holes: &'static [(char, char)],
+    /// Whether the glyphs this row maps lean right: an accent over one of
+    /// them is skewed (ADR-T56-1).
+    pub slant: bool,
 }
 
 impl AlphabetDef {
@@ -691,6 +694,7 @@ pub const MATH_ITALIC: AlphabetDef = AlphabetDef {
     greek_upper: Map::Upright,
     greek_lower: ITALIC_GREEK_LOWER,
     holes: ITALIC_HOLES,
+    slant: true,
 };
 
 /// `\mathcal`: script capitals, with the holes Unicode filled before the
@@ -712,6 +716,7 @@ const MATHCAL: AlphabetDef = AlphabetDef {
         ('M', '\u{2133}'),
         ('R', '\u{211B}'),
     ],
+    slant: true,
 };
 
 /// Every math alphabet command (ADR-T54-1).
@@ -726,6 +731,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_upper: Map::Inherit,
         greek_lower: Map::Inherit,
         holes: &[],
+        slant: false,
     },
     // Italic letters set as a word; digits as outside.
     AlphabetDef {
@@ -736,6 +742,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_upper: ITALIC_GREEK_UPPER,
         greek_lower: ITALIC_GREEK_LOWER,
         holes: ITALIC_HOLES,
+        slant: true,
     },
     // The default style, with italic Greek capitals.
     AlphabetDef {
@@ -788,6 +795,12 @@ impl Style {
             }
         }
         self
+    }
+
+    /// Whether `ch` typed in a formula part of this style is drawn as a
+    /// different, slanted glyph: an accent over it is skewed (ADR-T56-1).
+    fn slanted(self, ch: char) -> bool {
+        todo!("{ch:?} in {self:?}")
     }
 
     /// `ch` typed in a formula part of this style.
