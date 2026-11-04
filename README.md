@@ -264,6 +264,8 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
 | `\int_0^1 f(x)\,dx`, `\iint`, `\iiint`, `\oint`, `\oiint` | Integrals, limits beside the sign; `\,` is a thin space |
 | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` | Upright functions |
+| `\sin \cos \tan \cot \sec \csc`, `\arcsin \arccos \arctan`, `\sinh \cosh \tanh \coth` | Trigonometric and hyperbolic functions (`\sin^2\theta`) |
+| `\arccot \arcsec \arccsc \sech \csch` | More functions, not in LaTeX's base set |
 | `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
 | `\aleph \beth \gimel \daleth` | Hebrew letters (`\aleph_0`) |
 | `\mathcal{F}` | Calligraphic capitals |
