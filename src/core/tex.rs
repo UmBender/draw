@@ -194,9 +194,23 @@ pub enum Node {
         /// The body between the braces (balanced braces allowed).
         body: String,
     },
+    /// An infix command of [`INFIX`] that split its group (or the
+    /// formula) in two, as TeX's `\over` does (ADR-T71-1).
+    Infix {
+        /// Name without the backslash.
+        name: String,
+        /// The nodes before the command.
+        left: Vec<Node>,
+        /// The nodes after the command.
+        right: Vec<Node>,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
+
+/// The infix commands that split their group (ADR-T71-1): `\over`,
+/// `\atop`, `\choose`, `\brack`, `\brace`.
+pub const INFIX: &[&str] = &["over", "atop", "choose", "brack", "brace"];
 
 /// A superscript or subscript.
 #[derive(Debug, Clone, PartialEq)]
@@ -1650,6 +1664,12 @@ fn print_node(node: &Node, out: &mut String) {
             out.push_str(body);
             out.push('}');
         }
+        Node::Infix { name, left, right } => {
+            print_nodes(left, out);
+            out.push('\\');
+            out.push_str(name);
+            print_nodes(right, out);
+        }
     }
 }
 
@@ -1826,6 +1846,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                 "frac" => fraction(arg(0), arg(1), scale, true, style),
                 "binom" => binomial(arg(0), arg(1), scale, style),
                 "sqrt" => root(arg(0), scale, style),
+                "underline" => underlined(arg(0), scale, style),
                 // TeX's \pmod: a quad, "(mod", a third of a quad.
                 "pmod" => MathBox::row([
                     MathBox::gap(scale),
@@ -1847,6 +1868,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let class = if *star { Class::Limits } else { Class::Op };
             (MathBox::upright(body, scale), class)
         }
+        Node::Infix { name, left, right } => (infix(name, left, right, scale, style), Class::Ord),
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
@@ -2029,6 +2051,19 @@ fn binomial(n: &[Node], k: &[Node], scale: f32, style: Style) -> MathBox {
     out.put(&inner, Vec2::new(open.width, 0.0));
     out.put(&close, Vec2::new(open.width + inner.width, y));
     out
+}
+
+/// The infix command `name` (one of [`INFIX`]) between `left` and
+/// `right` (ADR-T71-1).
+fn infix(name: &str, left: &[Node], right: &[Node], scale: f32, style: Style) -> MathBox {
+    let _ = (name, left, right, scale, style);
+    todo!()
+}
+
+/// `\underline`: a rule under `content`, as wide as it.
+fn underlined(content: &[Node], scale: f32, style: Style) -> MathBox {
+    let _ = (content, scale, style);
+    todo!()
 }
 
 /// A root sign of four rules over `content`.
