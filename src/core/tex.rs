@@ -1785,7 +1785,8 @@ impl<'a> Parser<'a> {
         for _ in 1..def.templates.len() {
             let start = self.pos;
             self.whitespace(end);
-            let group = self.pos < end && self.peek() == Some('{') && self.group_close(end).is_some();
+            let group =
+                self.pos < end && self.peek() == Some('{') && self.group_close(end).is_some();
             self.pos = start;
             if !group {
                 break;
@@ -2855,7 +2856,9 @@ mod tests {
         let names: Vec<&str> = ACCENTS.iter().map(|a| a.name).collect();
         assert_eq!(
             names,
-            ["vec", "hat", "tilde", "dot", "ddot", "dddot", "bar", "overline"]
+            [
+                "vec", "hat", "tilde", "dot", "ddot", "dddot", "bar", "overline"
+            ]
         );
     }
 
@@ -6607,7 +6610,10 @@ mod tests {
         ("\\curl\\vb{A}", "\\nabla\\times\\mathbf{A}"),
         ("\\dd{x}\\,\\dd{y}", "\\,\\mathrm{d}x\\,\\,\\mathrm{d}y"),
         ("\\abs{\\vb{F}}", "\\lvert\\mathbf{F}\\rvert"),
-        ("\\dv{\\vb{r}}{t}", "\\frac{\\mathrm{d}\\mathbf{r}}{\\mathrm{d}t}"),
+        (
+            "\\dv{\\vb{r}}{t}",
+            "\\frac{\\mathrm{d}\\mathbf{r}}{\\mathrm{d}t}",
+        ),
         ("e^{\\abs{x}}", "e^{\\lvert x\\rvert}"),
         ("\\vb{F} = m\\dddot{x}", "\\mathbf{F} = m\\dddot{x}"),
         ("\\abs{\\curl x}", "\\lvert\\nabla\\times x\\rvert"),
@@ -6624,7 +6630,8 @@ mod tests {
                 first,
                 second,
             } => {
-                base.as_deref().is_some_and(|b| has_literal(std::slice::from_ref(b)))
+                base.as_deref()
+                    .is_some_and(|b| has_literal(std::slice::from_ref(b)))
                     || std::iter::once(first)
                         .chain(second)
                         .any(|s| has_literal(&s.arg.nodes))
@@ -6796,7 +6803,12 @@ mod tests {
             let src = format!("${short}$");
             assert_eq!(print(&parse(&src)), src);
         }
-        for src in ["$\\dd {x}$", "$\\pdv f {x} y$", "$\\curl^2$", "$\\dv{\\dv{x}}$"] {
+        for src in [
+            "$\\dd {x}$",
+            "$\\pdv f {x} y$",
+            "$\\curl^2$",
+            "$\\dv{\\dv{x}}$",
+        ] {
             assert_eq!(print(&parse(src)), src);
         }
     }
@@ -6843,10 +6855,7 @@ mod tests {
 
         // Assert
         assert_eq!(squared, boxed("{\\lvert x\\rvert}^2"));
-        assert_eq!(
-            derivative,
-            boxed("{\\frac{\\mathrm{d}f}{\\mathrm{d}x}}^2")
-        );
+        assert_eq!(derivative, boxed("{\\frac{\\mathrm{d}f}{\\mathrm{d}x}}^2"));
     }
 
     #[test]
@@ -6864,7 +6873,9 @@ mod tests {
             "operatorname",
         ];
         let names: Vec<&str> = EXPANSIONS.iter().map(|e| e.name).collect();
-        for name in ["dd", "dv", "pdv", "abs", "norm", "order", "vb", "vu", "curl"] {
+        for name in [
+            "dd", "dv", "pdv", "abs", "norm", "order", "vb", "vu", "curl",
+        ] {
             assert!(names.contains(&name), "{name} is an expansion");
         }
         for def in EXPANSIONS {
@@ -6913,7 +6924,10 @@ mod tests {
             expand(&command("abs", vec![braced(math("a+b"))])),
             Some(math("\\lvert a+b\\rvert"))
         );
-        assert_eq!(expand(&command("curl", vec![])), Some(math("\\nabla\\times")));
+        assert_eq!(
+            expand(&command("curl", vec![])),
+            Some(math("\\nabla\\times"))
+        );
         // Not an expansion, or not its argument count.
         assert_eq!(expand(&command("dv", vec![])), None);
         assert_eq!(expand(&command("abs", vec![f, x.clone()])), None);
