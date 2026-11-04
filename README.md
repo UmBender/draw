@@ -326,6 +326,8 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\rightrightarrows \leftleftarrows \leftrightarrows \rightleftarrows`, `\nearrow \searrow \swarrow \nwarrow`, `\Uparrow \Downarrow \Updownarrow \updownarrow` | Parallel, diagonal and double arrows |
 | `\vb{F} = m\dddot{x}`, `\Box \square \triangle \angle`, `\ohm \micro`, `\grad \curl` | Classical physics: triple dot, d'Alembertian, angle, units, gradient and curl |
 | `\dd{x}`, `\dv{f}{x}`, `\pdv{f}{x}`, `\dv{x}`, `\abs{x}`, `\norm{v}`, `\order{h^2}`, `\vu{n}` | `physics` shortcuts, drawn as their long form (`\frac{\mathrm{d}f}{\mathrm{d}x}`, …); `\div` stays `÷` |
+| `\bra{\psi}`, `\ket{0}`, `\braket{\phi}{\psi}`, `\ketbra{0}{1}`, `\expval{H}`, `\mel{n}{H}{m}` | Dirac notation (`⟨φ\|ψ⟩`); brackets keep their normal size |
+| `\comm{A}{B}`, `\acomm{A}{B}`, `A^\dag`, `\Tr\rho`, `\ket{0}\otimes\ket{1}` | Commutators `[A,B]`, anticommutators `{A,B}`, adjoint and trace |
 | `\text{…}` | Upright text inside a formula |
 | `\$` | A literal dollar sign (a lone `$` also stays plain) |
 
