@@ -186,6 +186,24 @@ names are upright words, spaced exactly like `\operatorname{…}`:
 indices need nothing new: `$G/N$`, `$gH$`, `$\langle g \rangle$`,
 `$[G:H]$`. (Since [[T67 Algebra and group theory symbols]].)
 
+Category theory has its arrows: `$f\colon A \to B$` (`\colon` is
+punctuation, so there is no space before it and a thin space after it,
+unlike a typed `:`), monos and epis `$A \hookrightarrow B$`,
+`\twoheadrightarrow \rightarrowtail` (and `\hookleftarrow
+\twoheadleftarrow \leftarrowtail`), long arrows `\longrightarrow
+\longleftarrow \longleftrightarrow \longmapsto \Longrightarrow
+\Longleftarrow \Longleftrightarrow`, parallel arrows `\rightrightarrows
+\leftleftarrows \leftrightarrows \rightleftarrows`, diagonal arrows
+`\nearrow \searrow \swarrow \nwarrow` and `\Uparrow \Downarrow
+\Updownarrow \updownarrow`, all relations. Adjunctions are
+`$F \dashv G$`, isomorphisms `$A \cong B$`. `\Ob`, `\Mor` and `\op` are
+upright names like `\operatorname{…}`: `$\Ob(\mathcal{C})$`,
+`$\mathcal{C}^{\op}$`. Named categories have no command of their own:
+write `$\mathbf{Set}$`, `$\mathbf{Grp}$`, `$\mathbf{Ab}$`,
+`$\mathbf{Top}$`. `\Longrightarrow` is a plain relation (`\implies`
+draws the same arrow with wider space). (Since
+[[T68 Category theory symbols]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -231,6 +249,9 @@ indices need nothing new: `$G/N$`, `$gH$`, `$\langle g \rangle$`,
 | Group relations | `N \trianglelefteq G`, `\lhd \unlhd \rhd \unrhd \triangleleft \triangleright \trianglerighteq \ntriangleleft \ntriangleright` |
 | Algebra operators | `N \rtimes H`, `\ltimes \wr \odot \ominus \oslash \boxplus \boxtimes \amalg \diamond` |
 | Algebra names (upright) | `\Hom(A, B)`, `\End \Aut \Inn \Gal \Ker \im \coker \id \sgn \tr \rank`; `\operatorname{char}` |
+| Category theory | `f\colon A \to B`, `F \dashv G`, `\Ob \Mor`, `\mathcal{C}^{\op}`, `\mathbf{Set}` |
+| Monos, epis, long arrows | `\hookrightarrow \twoheadrightarrow \rightarrowtail` (and `\hookleftarrow \twoheadleftarrow \leftarrowtail`), `\longrightarrow \longleftarrow \longleftrightarrow \longmapsto \Longrightarrow \Longleftarrow \Longleftrightarrow` |
+| Parallel, diagonal, double arrows | `\rightrightarrows \leftleftarrows \leftrightarrows \rightleftarrows`, `\nearrow \searrow \swarrow \nwarrow`, `\Uparrow \Downarrow \Updownarrow \updownarrow` |
 | Thin space | `\,` (as in `f(x)\,dx`) |
 | Upright text | `\text{if } x > 0` |
 
@@ -285,8 +306,10 @@ of the same batch.
 - No `\DeclareMathOperator`, `\varliminf`, `\varlimsup`, `\injlim` or
   `\projlim`; write `\operatorname{…}` instead.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
-  literals); `\longrightarrow` and `\triangle` have no command yet
-  (their glyphs are in the font subset since T55).
+  literals); `\triangle` has no command yet (its glyph is in the font
+  subset since T55).
+- No commutative diagrams (`tikz-cd`) and no labelled extensible arrows
+  (`\xrightarrow{f}`); arrows have a fixed length.
 - No `\not` prefix: only the negated relations listed (`\notin`,
   `\nsubseteq`, `\ne`) exist. `\varnothing` looks like `\emptyset`.
 - `\mathcal` and `\mathscr` have capitals only and look the same (the

@@ -1,7 +1,7 @@
 ---
 id: T68
 title: Category theory symbols
-status: in-progress
+status: review
 wave: 47
 branch: task/T68-category-symbols
 depends_on: [T55, T67]
@@ -146,12 +146,12 @@ standard in the same packages are added next to the listed ones:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T68): …`
-- [ ] tests — `test(T68): …`
-- [ ] models — `feat(T68): …`
-- [ ] behaviour — `feat(T68): …`
-- [ ] quality — `chore(T68): …`
-- [ ] docs — `docs(T68): …`
+- [x] spec — `docs(T68): …`
+- [x] tests — `test(T68): …`
+- [x] models — `feat(T68): …` (no new types: one commit with behaviour)
+- [x] behaviour — `feat(T68): …`
+- [x] quality — `chore(T68): …` (nothing to change, no commit)
+- [x] docs — `docs(T68): …`
 
 ## Learning path
 
@@ -161,3 +161,19 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — tests, rows and docs done. 27 symbol rows (26 `Rel`
+  arrows and `\dashv`, `\colon` as `Punct`) and 3 `Op` name rows
+  (`\op \Ob \Mor`) in `SYMBOLS`; every glyph has a `math_metrics` row
+  (no long arrow missing after T55). No new types, so models and
+  behaviour are one `feat` commit (as in T66, T67). No ADR: the
+  existing `Punct` spacing gives `\colon` no space before and a thin
+  space after. UNATTENDED CHOICE: siblings on the same subset glyphs
+  added (`\hookleftarrow \twoheadleftarrow \leftarrowtail
+  \longleftrightarrow \Longleftarrow \rightleftarrows \Updownarrow
+  \updownarrow`, see *Spec*). No `\Set \Grp \Ab \Top` (owner): the
+  feature note shows `\mathbf{Set}`. `\longrightarrow` removed from the
+  feature note's *Limits*; a *Limits* line for diagrams and
+  `\xrightarrow` added. The quality step changed nothing (no `chore`
+  commit). `scripts/check.sh` and `scripts/check.sh --fuzz` green. No
+  deviation from *Files owned*; no tutorial. Manual checks for the
+  owner: `$f\colon A \to B$`, `$F \dashv G$`, `$A \hookrightarrow B$`.
