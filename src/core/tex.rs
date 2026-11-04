@@ -1099,7 +1099,8 @@ impl<'a> Parser<'a> {
 
     /// The `{…}` body of `\text`, raw.
     fn text_body(&mut self, end: usize) -> Option<Node> {
-        self.raw_body(end).map(|(lead, body)| Node::Text { lead, body })
+        self.raw_body(end)
+            .map(|(lead, body)| Node::Text { lead, body })
     }
 
     /// Whitespace and a raw `{…}` body at the cursor; `None` when no
