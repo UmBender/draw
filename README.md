@@ -263,7 +263,9 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` | Fraction, binomial, root |
 | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
 | `\int_0^1 f(x)\,dx`, `\iint`, `\iiint`, `\oint`, `\oiint` | Integrals, limits beside the sign; `\,` is a thin space |
-| `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` | Upright functions |
+| `\inf \sup \liminf \limsup \det \Pr \gcd` | Named operators with limits below (`\limsup_{n\to\infty} a_n`) |
+| `\log \ln \lcm \exp \lg \deg \dim \ker \hom \arg`, `a \bmod m`, `\pmod{m}` | Upright functions |
+| `\operatorname{rank}`, `\operatorname*{argmin}_x` | Any other operator name; with `*` it takes limits |
 | `\sin \cos \tan \cot \sec \csc`, `\arcsin \arccos \arctan`, `\sinh \cosh \tanh \coth` | Trigonometric and hyperbolic functions (`\sin^2\theta`) |
 | `\arccot \arcsec \arccsc \sech \csch` | More functions, not in LaTeX's base set |
 | `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |

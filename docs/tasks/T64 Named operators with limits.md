@@ -1,7 +1,7 @@
 ---
 id: T64
 title: Named operators with limits
-status: in-progress
+status: review
 wave: 43
 branch: task/T64-named-operators
 depends_on: [T63]
@@ -125,12 +125,12 @@ expected `Op`). Algebra names (`\Hom \End …`) stay out (T66/T67).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T64): …`
-- [ ] tests — `test(T64): …`
-- [ ] models — `feat(T64): …`
-- [ ] behaviour — `feat(T64): …`
-- [ ] quality — `chore(T64): …`
-- [ ] docs — `docs(T64): …`
+- [x] spec — `docs(T64): …`
+- [x] tests — `test(T64): …`
+- [x] models — `feat(T64): …`
+- [x] behaviour — `feat(T64): …`
+- [x] quality — `chore(T64): …`
+- [x] docs — `docs(T64): …`
 
 ## Learning path
 
@@ -140,3 +140,27 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented in the unattended batch run, on top of
+  `task/T63-trig-functions`: seven `Limits` rows (`\gcd` moved from
+  `Op`; no existing test expected `Op`), seven `Op` rows, and
+  `Node::OperatorName` for `\operatorname` / `\operatorname*`
+  ([[ADR-T64-1 Operatorname with a star parsed as one command]]). The
+  raw-body reading of `\text` became `Parser::raw_body`, shared by both.
+  `\liminf`/`\limsup` use U+2006 (the glyph `\,` draws, advance 0.167 em
+  ≈ `OP_SPACE`) between the words; every character already had a
+  `math_metrics` row, so no font change. `scripts/check.sh --fuzz` green.
+- 2026-11-04 — UNATTENDED CHOICE: the fuzzer's T64 tokens are the
+  fourteen commands, `\limsup_n`, `\operatorname` and `\operatorname*`
+  (bodies and leads come from the existing `{` `x` `}` ` ` tokens).
+  Longer sets (`\operatorname{rank}`, `\operatorname*{argmin}_x`,
+  `\limsup_{n\to\infty}`, …) made `sessions_reach_deep_editor_states`
+  fail with 16–19/200 sessions reaching a selection (needs 20). Measured
+  over 2000 sessions the rate is the same with or without T64's tokens
+  (219 vs 214, about 11 %): the base branch sits exactly on the
+  threshold (20/200), so any token change shifts the deterministic
+  stream and fails about 4 times in 10. The check itself was left as is.
+  Recommended for the owner: make the check robust (e.g. more sessions,
+  or a threshold of 15/200) before T62/T54 add more tokens.
+- 2026-11-04 — manual checks left for the owner: look at
+  `$\limsup_{n\to\infty} a_n$` and `$\operatorname*{argmin}_x f(x)$` in
+  the app.
