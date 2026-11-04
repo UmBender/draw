@@ -152,6 +152,12 @@ opening and closing bars, so a minus right after `\lvert` is a sign.
 [[T65 Set and logic symbols]],
 [[ADR-T65-1 Wide relations padded with a thick space]].)
 
+Big set and logic operators take limits above and below like `\sum`:
+`$\bigcup_{i=1}^{n} A_i$`, `$\bigcap_{k} B_k$`, `$\bigoplus_{i} V_i$`,
+`$\bigwedge_{i} p_i$`, and also `\bigvee \bigotimes \bigodot \biguplus
+\bigsqcup \coprod`. They are drawn at the same enlarged size as `\sum`,
+centred on the axis. (Since [[T66 Big set and logic operators]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -161,6 +167,7 @@ opening and closing bars, so a minus right after `\lvert` is a sign.
 | Superscript / subscript | `x^2`, `x_i`, `x_{i,j}^{2k}` |
 | Fraction, binomial, root | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` (`\frac12` works too) |
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
+| Big set and logic operators | `\bigcup_{i=1}^{n} A_i`, `\bigcap \bigwedge \bigvee \bigoplus \bigotimes \bigodot \biguplus \bigsqcup \coprod` (limits above and below) |
 | Named operators with limits | `\inf \sup \liminf \limsup \det \Pr \gcd`, as in `\limsup_{n\to\infty}` |
 | Integrals (limits beside) | `\int_0^1`, `\iint`, `\iiint`, `\oint`, `\oiint` |
 | Functions (upright) | `\log \ln \lcm \exp \lg \deg \dim \ker \hom \arg`, `a \bmod m`, `\pmod{m}` |
@@ -237,7 +244,8 @@ of the same batch.
   (`\hat{\vec{x}}` works, `\hat\vec x` does not). Their horizontal
   placement over italic letters is approximated (the font's top-accent
   points are not embedded).
-- No `\limits` / `\nolimits`; integrals are always the inline size.
+- No `\limits` / `\nolimits`; integrals and big operators are always
+  the inline size.
 - No `\DeclareMathOperator`, `\varliminf`, `\varlimsup`, `\injlim` or
   `\projlim`; write `\operatorname{…}` instead.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
