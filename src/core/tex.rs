@@ -766,6 +766,12 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         name: "bm",
         ..BOLDSYMBOL
     },
+    // Blackboard bold; dsfont's \mathds is the same row (T57).
+    MATHBB,
+    AlphabetDef {
+        name: "mathds",
+        ..MATHBB
+    },
 ];
 
 /// Start of the bold digits `𝟎`.
@@ -3880,7 +3886,7 @@ mod tests {
         for name in ALPHABET_NAMES {
             assert_eq!(alphabet(name).map(|a| a.name), Some(name));
         }
-        assert!(alphabet("mathbb").is_none());
+        assert!(alphabet("mathbbb").is_none());
 
         for src in std::iter::once(all.clone()).chain(
             ALPHABETS
@@ -4540,7 +4546,10 @@ mod tests {
                 math(&format!("\\{name} N")),
                 vec![Node::Command {
                     name: name.to_owned(),
-                    args: vec![tok(Node::Char('N'))],
+                    args: vec![Arg {
+                        lead: " ".to_owned(),
+                        ..tok(Node::Char('N'))
+                    }],
                 }],
                 "{name}"
             );
