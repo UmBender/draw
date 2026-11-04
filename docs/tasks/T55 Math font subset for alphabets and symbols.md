@@ -1,7 +1,7 @@
 ---
 id: T55
 title: Math font subset for alphabets and symbols
-status: in-progress
+status: review
 wave: 34
 branch: task/T55-math-font-subset
 depends_on: [T54]
@@ -133,12 +133,12 @@ reproducible with the command in `assets/fonts/README.md`.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T55): …`
-- [ ] tests — `test(T55): …`
-- [ ] models — `feat(T55): …`
-- [ ] behaviour — `feat(T55): …`
-- [ ] quality — `chore(T55): …`
-- [ ] docs — `docs(T55): …`
+- [x] spec — `docs(T55): …`
+- [x] tests — `test(T55): …`
+- [x] models — skipped: no new types (see *Log*)
+- [x] behaviour — `feat(T55): …`
+- [x] quality — skipped: nothing to change (see *Log*)
+- [x] docs — `docs(T55): …`
 
 ## Learning path
 
@@ -154,3 +154,24 @@ None planned; the feature note is enough.
   encodes ADR-T33-1's "under 200 KB", which the 270 232-byte subset
   breaks; the owner's 300 KB budget (ADR-T55-1) needs it. No other line
   of `app.rs` changes. Owner: confirm or move the guard.
+- 2026-11-04 — tests: the spot-check and cmap-count tests failed on the
+  old table (127 rows in `U+1D400–1D7FF`, 945 expected) and passed
+  after the rebuild.
+- 2026-11-04 — models step skipped: the task adds no types or
+  signatures, only font data and table rows.
+- 2026-11-04 — behaviour: the subset was rebuilt with `python3 -m
+  fontTools.subset` and the README ranges; the old ranges reproduce the
+  old subset byte for byte (`cmp`). 270 232 bytes (was 139 336); table
+  1762 rows (was 888), the diff only adds rows (0 rows removed or
+  changed). `scripts/math_metrics.py` needed no fix.
+- 2026-11-04 — quality step skipped: `scripts/check.sh --fuzz` was green
+  with no change to make.
+- 2026-11-04 — performance ([[ADR-T14-1 Performance budgets]]),
+  `cargo test --release --test perf -- --ignored --test-threads=1`, all
+  15 green. Medians: tessellate 200 formula blocks 0.20 ms (budget 1 ms;
+  both fonts loaded as the app does), tex parse + layout 200 blocks
+  1.18 ms (budget 2 ms), tessellate 10k glyphs 0.44 ms, culling 0.23 ms,
+  snap drag 0.76 ms. The atlas rasterizes on first use, so its pages do
+  not grow with the subset. ADR-T14-1 has no start-up budget.
+- 2026-11-04 — manual checks left for the owner: start-up time, and a
+  formula with `\alpha \to x_1` looks as before.
