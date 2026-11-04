@@ -295,6 +295,11 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("Phi", "Φ", Class::Ord),
     def("Psi", "Ψ", Class::Ord),
     def("Omega", "Ω", Class::Ord),
+    // Hebrew letters of set theory (T61): upright, no style maps them.
+    def("aleph", "ℵ", Class::Ord),
+    def("beth", "ℶ", Class::Ord),
+    def("gimel", "ℷ", Class::Ord),
+    def("daleth", "ℸ", Class::Ord),
     def("le", "≤", Class::Rel),
     def("leq", "≤", Class::Rel),
     def("ge", "≥", Class::Rel),
@@ -2090,6 +2095,30 @@ mod tests {
     }
 
     #[test]
+    fn tex_parse_hebrew_letters_have_their_text_and_class() {
+        // Arrange: the table of T61.
+        let table = [
+            ("aleph", "\u{2135}"),
+            ("beth", "\u{2136}"),
+            ("gimel", "\u{2137}"),
+            ("daleth", "\u{2138}"),
+        ];
+
+        for (name, text) in table {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, Class::Ord)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn tex_parse_text_command_keeps_its_raw_body() {
         assert_eq!(
             math("\\text{a {b} c}"),
@@ -3020,6 +3049,57 @@ mod tests {
         );
         assert!(got.iter().all(|g| g.1 == Face::Math));
         assert!(math_metrics::get('\u{1D49C}').is_some());
+    }
+
+    #[test]
+    fn tex_hebrew_letters_are_upright_math() {
+        // Arrange
+        let hebrew = ['\u{2135}', '\u{2136}', '\u{2137}', '\u{2138}'];
+
+        // Act
+        let plain = boxed("\\aleph\\beth\\gimel\\daleth");
+        let cal = boxed("\\mathcal{\\aleph\\beth\\gimel\\daleth}");
+
+        // Assert: no style maps them, the math face draws them unwarned.
+        for b in [plain, cal] {
+            let got = glyphs(&b.ink);
+            assert_eq!(got.iter().map(|g| g.0).collect::<Vec<_>>(), hebrew);
+            assert!(got.iter().all(|g| !g.3), "{got:?}");
+            assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
+        }
+        for ch in hebrew {
+            assert_eq!(italic(ch), ch);
+            assert_eq!(calligraphic(ch), ch);
+            assert!(math_metrics::get(ch).is_some(), "{ch:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_hebrew_letter_takes_scripts() {
+        // Arrange
+        const ALEPH: char = '\u{2135}';
+        let s = SCRIPT_SCALE;
+
+        // Act
+        let sub = boxed("\\aleph_0");
+        let pow = boxed("2^{\\aleph_0}");
+
+        // Assert: the subscript sits at the letter's advance, lowered.
+        let down = SUB_SHIFT
+            .max(-mm(ALEPH).y_min - SUB_DROP)
+            .max(mm('0').y_max * s - SUB_TOP_MAX);
+        let (pos, scale) = glyph(&sub.ink, '0');
+        assert!(pos.approx_eq(v(mm(ALEPH).advance, down), EPS), "{pos:?}");
+        assert!(approx_eq(scale, s, EPS));
+        // As an exponent the letter is raised and scaled, and its own
+        // subscript is smaller still and below it.
+        let (aleph, a_scale) = glyph(&pow.ink, ALEPH);
+        let (zero, z_scale) = glyph(&pow.ink, '0');
+        assert!(aleph.y < 0.0, "{aleph:?}");
+        assert!(approx_eq(a_scale, s, EPS));
+        assert!(z_scale < a_scale);
+        assert!(zero.y > aleph.y, "{zero:?}");
+        assert!(zero.x > aleph.x, "{zero:?}");
     }
 
     #[test]
