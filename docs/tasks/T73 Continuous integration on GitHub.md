@@ -191,3 +191,8 @@ None expected.
   integrator runs `gh workflow run nightly.yml` after merging and pushing
   `main`, and links the run here.
 - 2026-11-04 — integrated on `main` (merge `6b7988b`), no conflicts.
+- 2026-11-04 — AC-4: manual `workflow_dispatch` of `nightly.yml` on
+  `main` green: fuzz (20 000 cases), soak and perf report
+  (https://github.com/UmBender/draw/actions/runs/41789023411). CI on the
+  merged `main` green too
+  (https://github.com/UmBender/draw/actions/runs/41788998134).
