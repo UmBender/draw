@@ -2,8 +2,8 @@
 title: Prototyping an interaction behind a switch
 step: 31
 requires: ["[[29 Typing on a canvas without losing the shortcuts]]", "[[18 A grid tool with live parameters]]", "[[19 Auto-numbering and undoable counters]]"]
-feature: "[[Text in shapes (experimental)]]"
-code: ["src/core/experimental.rs", "src/core/shape.rs", "src/core/text_layout.rs", "src/core/tools/text.rs", "src/core/editor.rs", "src/core/tools/select.rs", "src/core/tools/eraser.rs", "src/shell/render.rs", "src/shell/app.rs", "tests/fuzz.rs"]
+feature: "[[Text in shapes]]"
+code: ["src/core/shape.rs", "src/core/numbering.rs", "src/core/text_layout.rs", "src/core/tools/text.rs", "src/core/editor.rs", "src/core/tools/select.rs", "src/core/tools/eraser.rs", "src/shell/render.rs", "src/shell/app.rs", "tests/fuzz.rs"]
 tags: [tutorial]
 ---
 
@@ -50,7 +50,10 @@ Text tool press ──► topmost text block?  ──► TextEdit::open        (
 
 ## How draw implements it
 
-- `core::experimental` — the switch.
+The switch itself (`core::experimental`) is gone since T52; see *How
+the prototype graduated* below. The rest is still how the feature
+works.
+
 - `core::shape` — `TextSlot` names where text lives (interior or cell);
   `slot_text` / `with_slot_text` read and write it, mirroring the cell
   fills of step 21; `text_frame` is the box text fits into and
@@ -70,11 +73,35 @@ Text tool press ──► topmost text block?  ──► TextEdit::open        (
 - `core::tools::select` — a press inside the only selected shape counts
   as a hit, so the second click can reach its interior.
 - `tests/fuzz.rs` — `arb_host_session` draws a shape and types into it;
-  every property runs with the switch on and off.
+  while the switch existed, every property ran with it on and off.
+
+## How the prototype graduated
+
+[[T52 Text in shapes by default]] turned the experiment into a normal
+feature ([[ADR-T52-1 Text in shapes always on, numbered shapes hold no
+text]]). Two lessons:
+
+1. **Removing a switch is a deletion, not a default flip.** Leaving
+   `Experimental` with `shape_text: true` forever would keep a parser,
+   an environment variable and a second fuzz configuration alive for
+   nothing. T52 deletes the module, the `Helpers` field and the shell's
+   read, and the tests that pinned the *off* path go with them. One
+   thing stays: the snapshot format's `helpers` record keeps the old
+   token as a reserved, ignored value, so saved fixtures still load
+   byte for byte.
+2. **Graduating is when the open edges get a rule.** The prototype let
+   text hide a node's number. As a default that silently loses
+   information, so T52 states an **invariant** — a numbered rectangle or
+   ellipse holds no text — and enforces it in the model, not in the
+   tools: `with_slot_text` refuses to fill a numbered shape,
+   `with_label` refuses to number one holding text (text wins), and
+   `Shape::text_host_at` is the single question every entry point asks.
+   The fuzzer asserts `label.is_some() ⇒ text.is_none()` after every
+   event, and snapshot loading rejects a state that breaks it.
 
 ## Try it
 
-1. Run `DRAW_EXPERIMENTAL=shape-text cargo run --release`, draw a 5 × 5
+1. Run `cargo run --release`, draw a 5 × 5
    grid (`G`), press `T`, click the top-left cell and fill it with `Tab`.
    Time yourself, then do the same with plain text blocks.
 2. Change `SHAPE_TEXT_FILL` in `src/core/shape.rs` to `1.0` and run
@@ -83,9 +110,14 @@ Text tool press ──► topmost text block?  ──► TextEdit::open        (
 3. Make `Enter` at the bottom row wrap to the top of the next column:
    change the `CellStep::Down` arm of `Shape::grid_cell_step`, then fix
    `shape_text_enter_moves_down_and_stays_at_bottom_row`.
+4. Press `N`, draw a circle, then click inside it with `T` and type: a
+   free text block appears. Remove the `label` check from
+   `Shape::text_host_at` and run `cargo test numbered` — read which
+   tests catch it.
 
 ## Further reading
 
 - [[ADR-T31-1 Shape text prototype behind a switch]]
+- [[ADR-T52-1 Text in shapes always on, numbered shapes hold no text]]
 - Martin Fowler, *Feature Toggles (aka Feature Flags)* — release toggles
   vs. experiment toggles.

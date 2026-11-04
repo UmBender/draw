@@ -74,6 +74,13 @@ cancel · `Enter` new line · `Tab` 4 spaces · arrows, `Home`, `End` move ·
 `Backspace`, `Delete` delete · `Ctrl+]` / `Ctrl+[` bigger / smaller.
 Edit again: Text click, or Select double-click.
 
+## Typing in a shape
+
+`T` and click inside a box, circle or grid cell (or Select, click it
+twice). In a cell: `Tab` / `Shift+Tab` next / previous, `Enter` /
+`Shift+Enter` below / above. Numbered nodes keep their number: a click
+inside one starts a free text block.
+
 ## Recipes
 
 - **Graph**: `N` on, `C` for nodes (numbered 1, 2, …), `A` for directed

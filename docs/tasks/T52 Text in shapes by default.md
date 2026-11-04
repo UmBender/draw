@@ -1,7 +1,7 @@
 ---
 id: T52
 title: Text in shapes by default
-status: in-progress
+status: review
 wave: 32
 branch: task/T52-shape-text-default
 depends_on: []
@@ -36,7 +36,8 @@ indices]]), keep text in their cells.
   `text: Option<ShapeText>`. Today the text is "drawn centred inside
   *instead of* the label", so a numbered shape with text hides its
   number.
-- Feature note: [[Text in shapes (experimental)]], tutorial step 31.
+- Feature note: `Text in shapes (experimental)` (now [[Text in shapes]]),
+  tutorial step 31.
   The README lists `shape-text` under `DRAW_EXPERIMENTAL`.
 - There is no file format, so no saved documents have to keep working.
 
@@ -165,12 +166,12 @@ switch]]).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T52): …`
-- [ ] tests — `test(T52): …`
-- [ ] models — `feat(T52): …`
-- [ ] behaviour — `feat(T52): …`
-- [ ] quality — `chore(T52): …`
-- [ ] docs — `docs(T52): …`
+- [x] spec — `docs(T52): …`
+- [x] tests — `test(T52): …`
+- [x] models — `feat(T52): …`
+- [x] behaviour — `feat(T52): …`
+- [x] quality — `refactor(T52): …`
+- [x] docs — `docs(T52): …`
 
 ## Learning path
 
@@ -181,3 +182,43 @@ a prototype graduates: removing a switch and keeping an invariant.
 
 - 2026-11-02 — note written at the owner's request; ships in 1.5.0
   ([[T53 Release 1.5.0]]).
+- 2026-11-04 — Implemented on `task/T52-shape-text-default` (unattended
+  batch). Every AC-1..AC-10 test passes; `scripts/check.sh` and
+  `scripts/check.sh --fuzz` green. ADR-T52-1 added; ADR-T31-1 set to
+  `superseded` (`superseded_by: ADR-T52-1`), body untouched.
+- 2026-11-04 — UNATTENDED CHOICE: the snapshot `helpers` record keeps
+  its seventh token as a reserved value (written `0`, ignored on read)
+  instead of dropping it, because dropping it changes every fixture in
+  `tests/snapshots/` (not owned). `core::snapshot`'s `shape_text` reader
+  flag (not owned) stays; the editor always turns it on. A later
+  snapshot-format task may remove both.
+- 2026-11-04 — UNATTENDED CHOICE: the invariant lives in `Shape`
+  (`with_slot_text` / `with_label` guards, `text_host_at`) rather than
+  in each tool; `text_slot_at` is unchanged so the eraser's fill clearing
+  on numbered shapes keeps working. A press inside the only selected
+  *numbered* unfilled rect clears the selection (as before T31), since
+  it can host no text.
+- 2026-11-04 — Deviation: the T31 fixture `tools::text::tests::host_rect`
+  had `label: Some(3)`, a state the invariant now forbids; the label was
+  set to `None` in the behaviour step (the tests don't depend on it).
+  `render::tests::label_is_hidden_by_shape_text` became
+  `numbered_shape_shows_its_label`.
+- 2026-11-04 — Files beyond the list: `docs/features/Contest cheat
+  sheet.md` (per the plan), `docs/architecture/Architecture.md` (module
+  table and invariants), `docs/tasks/T31 …` and tutorial 31 (links,
+  addendum), `src/core/tools/text.rs` test fixture above.
+- 2026-11-04 — For the integrator: `docs/features/Feature Index.md`
+  links `[[Text in shapes (experimental)]]`; change it to
+  `[[Text in shapes]]`. `Decision Log` needs ADR-T52-1 and ADR-T31-1 →
+  superseded. `CHANGELOG.md`: text in shapes on by default,
+  `DRAW_EXPERIMENTAL` removed. The Task Board row may mention the old
+  name too.
+- 2026-11-04 — Stash `batch-T52-2026-11-04 pre-rename copy of Text in
+  shapes note` holds a copy of the new feature note made before the
+  `git mv` (the quoted form was refused); its content is committed, so
+  the stash can be dropped.
+- 2026-11-04 — Manual checks for the owner (need the running app):
+  without any env var, type in a rectangle, an ellipse and a grid cell;
+  number a rect, then try to type in it (a free text block appears);
+  `render::shown_label` still hides a label under text as a guard,
+  unreachable now.
