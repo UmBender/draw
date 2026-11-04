@@ -269,6 +269,9 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\sin \cos \tan \cot \sec \csc`, `\arcsin \arccos \arctan`, `\sinh \cosh \tanh \coth` | Trigonometric and hyperbolic functions (`\sin^2\theta`) |
 | `\arccot \arcsec \arccsc \sech \csch` | More functions, not in LaTeX's base set |
 | `\alpha` … `\omega`, `\Gamma` … `\Omega` | Greek letters |
+| `\varepsilon \vartheta \varkappa \varpi \varrho \varsigma \varphi` | Variant Greek letters |
+| `\varGamma` … `\varOmega` | Italic Greek capitals |
+| `\Alpha \Beta \Epsilon \Zeta \Eta \Iota \Kappa \Mu \Nu \Omicron \Rho \Tau \Chi` | Greek capitals that look like Latin letters (unicode-math names) |
 | `\aleph \beth \gimel \daleth` | Hebrew letters (`\aleph_0`) |
 | `\mathcal{F}` | Calligraphic capitals |
 | `\mathrm{d}x`, `\mathit{diff}`, `\mathnormal{\Gamma}` | Upright roman letters, an italic word, italic Greek capitals (the innermost alphabet wins) |

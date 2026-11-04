@@ -1,7 +1,7 @@
 ---
 id: T62
 title: Complete Greek letters
-status: in-progress
+status: review
 wave: 41
 branch: task/T62-complete-greek
 depends_on: [T54]
@@ -111,12 +111,12 @@ the rows are behaviour) and is skipped.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T62): …`
-- [ ] tests — `test(T62): …`
-- [ ] models — `feat(T62): …`
-- [ ] behaviour — `feat(T62): …`
-- [ ] quality — `chore(T62): …`
-- [ ] docs — `docs(T62): …`
+- [x] spec — `docs(T62): …`
+- [x] tests — `test(T62): …`
+- [x] models — skipped: no new types or signatures (rows only)
+- [x] behaviour — `feat(T62): …`
+- [x] quality — `chore(T62): …` (rustfmt only)
+- [x] docs — `docs(T62): …`
 
 ## Learning path
 
@@ -129,3 +129,12 @@ None planned; the feature note is enough.
 - 2026-11-04 — correction to *Known facts*: `ϝ U+03DD` is **not** in the
   font subset (neither is `Ϝ U+03DC`; no `math_metrics` rows), so
   `\digamma` / `\Digamma` are dropped (owner, batch plan).
+- 2026-11-04 — implemented in the unattended batch run: 25 `Ord` rows
+  (`\varkappa`, 11 `\var…` capitals stored as U+1D6E4 …, 13 upright
+  capitals U+0391 …); every glyph already had a `math_metrics` row, so
+  no font or mapping change. Models step skipped (no types). Quality:
+  rustfmt only; `scripts/check.sh --fuzz` green. No ADR, no tutorial
+  (plan defaults). Fuzzer tokens: `\varkappa \varGamma \Alpha
+  \mathnormal\Alpha`. README and feature note list the commands.
+- 2026-11-04 — manual checks left for the owner: `$\varGamma \ne \Gamma$`
+  shows two different shapes; `$\Alpha$` looks like an upright `A`.
