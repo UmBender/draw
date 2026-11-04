@@ -177,6 +177,16 @@ pub enum Node {
         /// The body between the braces (balanced braces allowed).
         body: String,
     },
+    /// `\operatorname{…}` or `\operatorname*{…}`: a raw body drawn as an
+    /// upright operator word (ADR-T64-1).
+    OperatorName {
+        /// Whether a `*` follows the name directly: the word takes limits.
+        star: bool,
+        /// Whitespace between the name (or star) and `{`.
+        lead: String,
+        /// The body between the braces (balanced braces allowed).
+        body: String,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -1166,6 +1176,7 @@ fn print_node(node: &Node, out: &mut String) {
             out.push_str(body);
             out.push('}');
         }
+        Node::OperatorName { .. } => todo!(),
     }
 }
 
@@ -1359,6 +1370,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (b, Class::Ord)
         }
         Node::Text { body, .. } => (MathBox::upright(body, scale), Class::Ord),
+        Node::OperatorName { .. } => todo!(),
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
