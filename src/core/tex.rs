@@ -455,6 +455,9 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("parallel", "∥", Class::Rel),
     def("perp", "⊥", Class::Rel),
     def("mid", "∣", Class::Rel),
+    // Combinatorics (T71).
+    def("nmid", "∤", Class::Rel),
+    def("#", "#", Class::Ord),
     def("rightarrow", "→", Class::Rel),
     def("leftrightarrow", "↔", Class::Rel),
     def("Leftarrow", "⇐", Class::Rel),
@@ -1344,19 +1347,45 @@ impl<'a> Parser<'a> {
     }
 
     /// Nodes up to `end`.
+    /// The first infix command of the list splits it in two; later ones
+    /// are literals (ADR-T71-1).
     fn list(&mut self, end: usize) -> Vec<Node> {
         let mut out: Vec<Node> = Vec::new();
+        let mut split: Option<(String, Vec<Node>)> = None;
         while self.pos < end {
             let ch = self.chars[self.pos];
             match ch {
                 '^' | '_' => self.script(ch, end, &mut out),
+                '\\' if split.is_none() && let Some(name) = self.infix(end) => {
+                    split = Some((name, std::mem::take(&mut out)));
+                }
                 _ => {
                     let node = self.atom(end);
                     out.push(node);
                 }
             }
         }
-        out
+        match split {
+            Some((name, left)) => vec![Node::Infix {
+                name,
+                left,
+                right: out,
+            }],
+            None => out,
+        }
+    }
+
+    /// The name of an infix command at the cursor (a `\`), read past;
+    /// `None` (cursor unchanged) for any other command.
+    fn infix(&mut self, end: usize) -> Option<String> {
+        let start = self.pos;
+        let name = self.name(end);
+        if INFIX.contains(&name.as_str()) {
+            Some(name)
+        } else {
+            self.pos = start;
+            None
+        }
     }
 
     /// One node that is not a script, at the cursor (which is before
@@ -1496,11 +1525,16 @@ impl<'a> Parser<'a> {
         }
         let after = self.pos;
         let node = match name.as_str() {
-            "frac" | "binom" => self.args(2, end).map(|args| Node::Command {
-                name: name.clone(),
-                args,
-            }),
-            n if matches!(n, "sqrt" | "pmod") || alphabet(n).is_some() || accent(n).is_some() => {
+            "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
+                self.args(2, end).map(|args| Node::Command {
+                    name: name.clone(),
+                    args,
+                })
+            }
+            n if matches!(n, "sqrt" | "pmod" | "underline")
+                || alphabet(n).is_some()
+                || accent(n).is_some() =>
+            {
                 self.args(1, end).map(|args| Node::Command {
                     name: name.clone(),
                     args,
@@ -1844,7 +1878,8 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
             let b = match name.as_str() {
                 "frac" => fraction(arg(0), arg(1), scale, true, style),
-                "binom" => binomial(arg(0), arg(1), scale, style),
+                "binom" | "tbinom" | "dbinom" => binomial(arg(0), arg(1), scale, style),
+                "multiset" => delimited(arg(0), arg(1), "((", "))", scale, style),
                 "sqrt" => root(arg(0), scale, style),
                 "underline" => underlined(arg(0), scale, style),
                 // TeX's \pmod: a quad, "(mod", a third of a quad.
@@ -2031,39 +2066,82 @@ fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool, style: Style) -> 
 
 /// `n` over `k` without a bar, in parentheses as tall as both.
 fn binomial(n: &[Node], k: &[Node], scale: f32, style: Style) -> MathBox {
+    delimited(n, k, "(", ")", scale, style)
+}
+
+/// `n` over `k` without a bar, between the brackets of `open` and
+/// `close` (side by side), all as tall as the stack.
+fn delimited(n: &[Node], k: &[Node], open: &str, close: &str, scale: f32, style: Style) -> MathBox {
     let inner = fraction(n, k, scale, false, style);
     let height = inner.ascent + inner.descent;
-    let unit = MathBox::math('(', 1.0);
+    let first = open.chars().next().unwrap_or('(');
+    let unit = MathBox::math(first, 1.0);
     let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
-    let paren = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
-    let (open, close) = (MathBox::math('(', paren), MathBox::math(')', paren));
-    // The parentheses' middle sits on the middle of the stack.
+    let size = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
+    let brackets = |s: &str| s.chars().map(|ch| MathBox::math(ch, size)).collect::<Vec<_>>();
+    let (opens, closes) = (brackets(open), brackets(close));
+    // The brackets' middle sits on the middle of the stack.
     let middle = (inner.descent - inner.ascent) / 2.0;
-    let y = middle + (open.ascent - open.descent) / 2.0;
     let mut out = MathBox {
-        width: open.width + inner.width + close.width,
-        ascent: inner.ascent.max(open.ascent - y),
-        descent: inner.descent.max(open.descent + y),
+        width: 0.0,
+        ascent: inner.ascent,
+        descent: inner.descent,
         italic: 0.0,
         ink: Vec::new(),
     };
-    out.put(&open, Vec2::new(0.0, y));
-    out.put(&inner, Vec2::new(open.width, 0.0));
-    out.put(&close, Vec2::new(open.width + inner.width, y));
+    let mut place = |b: &MathBox, centred: bool| {
+        let y = if centred {
+            middle + (b.ascent - b.descent) / 2.0
+        } else {
+            0.0
+        };
+        out.put(b, Vec2::new(out.width, y));
+        out.width += b.width;
+        out.ascent = out.ascent.max(b.ascent - y);
+        out.descent = out.descent.max(b.descent + y);
+    };
+    for b in &opens {
+        place(b, true);
+    }
+    place(&inner, false);
+    for b in &closes {
+        place(b, true);
+    }
     out
 }
 
 /// The infix command `name` (one of [`INFIX`]) between `left` and
 /// `right` (ADR-T71-1).
 fn infix(name: &str, left: &[Node], right: &[Node], scale: f32, style: Style) -> MathBox {
-    let _ = (name, left, right, scale, style);
-    todo!()
+    match name {
+        "over" => fraction(left, right, scale, true, style),
+        "atop" => fraction(left, right, scale, false, style),
+        "brack" => delimited(left, right, "[", "]", scale, style),
+        "brace" => delimited(left, right, "{", "}", scale, style),
+        _ => binomial(left, right, scale, style),
+    }
 }
 
-/// `\underline`: a rule under `content`, as wide as it.
+/// `\underline`: a rule under `content`, as wide as it, a gap below its
+/// descent (the mirror of `\overline`, ADR-T39-1). The box keeps the
+/// content's width, ascent and italic correction.
 fn underlined(content: &[Node], scale: f32, style: Style) -> MathBox {
-    let _ = (content, scale, style);
-    todo!()
+    let c = layout_styled(content, scale, style);
+    let width = RULE * scale;
+    let y = c.descent + ACCENT_GAP * scale + width / 2.0;
+    let mut out = MathBox {
+        width: c.width,
+        ascent: c.ascent,
+        descent: y + width / 2.0,
+        italic: c.italic,
+        ink: c.ink,
+    };
+    out.ink.push(Ink::Rule {
+        a: Vec2::new(0.0, y),
+        b: Vec2::new(c.width, y),
+        width,
+    });
+    out
 }
 
 /// A root sign of four rules over `content`.
