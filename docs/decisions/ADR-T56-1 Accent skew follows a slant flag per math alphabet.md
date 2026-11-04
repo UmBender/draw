@@ -30,10 +30,12 @@ it (the bold roman font has no skew character). Later alphabets
 
 ## Decision
 
-- `AlphabetDef` gains `slant: bool`, whether the glyphs the row maps
+- `AlphabetDef` gains `slant: bool`, whether the letters the row maps
   lean right.
 - An accent over one letter is skewed when the row that draws the letter
-  maps it to another character **and** that row is slanted.
+  maps it to another character **and** that row is slanted. Digits are
+  never skewed: every digit run of the Unicode math block is upright
+  (`\boldsymbol{1}` draws upright bold `𝟏`).
 - Existing rows: `MATH_ITALIC`, `\mathit`, `\mathnormal`, `\mathcal`
   are slanted, `\mathrm` is not (it maps to the character itself, so
   nothing changes). New rows: `\mathbf` upright, `\boldsymbol`/`\bm`
@@ -50,8 +52,8 @@ it (the bold roman font has no skew character). Later alphabets
   hidden knowledge outside the table; each new alphabet would need to
   touch it.
 - **A slant per kind** (`Map::Slanted(start)` vs `Map::Block(start)`) —
-  more precise than needed: no alphabet mixes slanted and upright blocks
-  among the kinds it maps.
+  more precise than needed: apart from digits, which are always upright,
+  no alphabet mixes slanted and upright blocks among the kinds it maps.
 
 ## Consequences
 

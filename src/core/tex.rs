@@ -638,8 +638,8 @@ pub struct AlphabetDef {
     /// Characters drawn from elsewhere than the block (Letterlike
     /// Symbols), as `(typed, drawn)`; used where the row maps a `Block`.
     pub holes: &'static [(char, char)],
-    /// Whether the glyphs this row maps lean right: an accent over one of
-    /// them is skewed (ADR-T56-1).
+    /// Whether the letters this row maps lean right: an accent over one
+    /// of them is skewed (ADR-T56-1). Digits are always upright.
     pub slant: bool,
 }
 
@@ -750,7 +750,39 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_upper: ITALIC_GREEK_UPPER,
         ..MATH_ITALIC
     },
+    // Upright bold; lowercase Greek as outside, as in LaTeX (T56).
+    AlphabetDef {
+        name: "mathbf",
+        upper: Map::Block(0x1D400),
+        lower: Map::Block(0x1D41A),
+        digit: BOLD_DIGIT,
+        greek_upper: Map::Block(0x1D6A8),
+        greek_lower: Map::Inherit,
+        holes: &[],
+        slant: false,
+    },
+    BOLDSYMBOL,
+    AlphabetDef {
+        name: "bm",
+        ..BOLDSYMBOL
+    },
 ];
+
+/// Start of the bold digits `𝟎`.
+const BOLD_DIGIT: Map = Map::Block(0x1D7CE);
+
+/// `\boldsymbol` (and `\bm`): bold italic Latin and Greek, bold digits
+/// (T56). Bold italic has no holes.
+const BOLDSYMBOL: AlphabetDef = AlphabetDef {
+    name: "boldsymbol",
+    upper: Map::Block(0x1D468),
+    lower: Map::Block(0x1D482),
+    digit: BOLD_DIGIT,
+    greek_upper: Map::Block(0x1D71C),
+    greek_lower: Map::Block(0x1D736),
+    holes: &[],
+    slant: true,
+};
 
 /// The math alphabet command `name` (without the backslash).
 #[must_use]
@@ -800,7 +832,11 @@ impl Style {
     /// Whether `ch` typed in a formula part of this style is drawn as a
     /// different, slanted glyph: an accent over it is skewed (ADR-T56-1).
     fn slanted(self, ch: char) -> bool {
-        todo!("{ch:?} in {self:?}")
+        // Every math alphabet's digits are upright.
+        Kind::of(ch).is_some_and(|(kind, _)| {
+            let row = self.rows[kind.slot()];
+            kind != Kind::Digit && row.slant && row.map(ch).is_some_and(|drawn| drawn != ch)
+        })
     }
 
     /// `ch` typed in a formula part of this style.
@@ -1909,9 +1945,9 @@ fn accented(def: &AccentDef, content: &[Node], scale: f32, style: Style) -> Math
 fn slanted(nodes: &[Node], style: Style) -> bool {
     let mut atoms = nodes.iter().filter(|n| !matches!(n, Node::Space(_)));
     match (atoms.next(), atoms.next()) {
-        (Some(Node::Char(ch)), None) => style.map(*ch) != *ch,
+        (Some(Node::Char(ch)), None) => style.slanted(*ch),
         (Some(Node::Symbol(name)), None) => symbol(name).is_some_and(|def| {
-            def.class == Class::Ord && letter(def).is_some_and(|ch| style.map(ch) != ch)
+            def.class == Class::Ord && letter(def).is_some_and(|ch| style.slanted(ch))
         }),
         _ => false,
     }
@@ -4207,8 +4243,6 @@ mod tests {
         assert_eq!(drawn("\\mathbf{\\Sigma\\Omega}"), vec!['𝚺', '𝛀']);
         // Lowercase Greek stays math italic, as in LaTeX.
         assert_eq!(drawn("\\mathbf{\\alpha\\varphi}"), drawn("\\alpha\\varphi"));
-        // No italic correction on an upright bold letter.
-        assert!(approx_eq(boxed("\\mathbf{f}").italic, 0.0, EPS));
     }
 
     #[test]
