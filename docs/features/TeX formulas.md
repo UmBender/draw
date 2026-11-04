@@ -100,6 +100,15 @@ declaration valid only outside math mode) is drawn as an unknown
 command. (Since [[T56 Bold math]],
 [[ADR-T56-1 Accent skew follows a slant flag per math alphabet]].)
 
+Blackboard bold names number sets: `$\mathbb{R}$`, `$\mathbb{Z}_p$`,
+`$\mathbb{F}_q$`. Capitals, lowercase and digits are double-struck
+(`ℂ ℍ ℕ ℙ ℚ ℝ ℤ` come from Letterlike Symbols, as Unicode places them);
+Greek stays as outside, and an accent is centred. `$\mathds{1}_A$`
+(dsfont's indicator function) is the same alphabet. draw accepts more
+than amssymb, whose `\mathbb` has capitals only; there are no `\R` or
+`\N` shortcuts. (Since [[T57 Blackboard bold]],
+[[ADR-T57-1 One double-struck alphabet for mathbb and mathds]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -120,6 +129,7 @@ command. (Since [[T56 Bold math]],
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
 | Math alphabets | `\mathrm{d}x` (upright roman), `\mathit{diff}` (italic word), `\mathnormal{\Gamma}` (italic Greek capitals); nested, the innermost wins |
 | Bold | `\mathbf{v}` (upright bold, also digits and Greek capitals), `\boldsymbol{\alpha}`, `\bm{x}` (bold italic) |
+| Blackboard bold | `\mathbb{R}`, `\mathbb{Z}_p`, `\mathds{1}_A` (capitals, lowercase and digits) |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
 | Overline | `\overline{AB}` (as wide as its argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
@@ -184,8 +194,8 @@ of the same batch.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
   literals); `\longrightarrow`, `\implies` and `\triangle` have no
   command yet (their glyphs are in the font subset since T55).
-- `\mathcal` has capitals only (as in TeX); no `\mathbb` or
-  `\mathfrak`. No bold operators, fraction bars or roots, no `\pmb` and
+- `\mathcal` has capitals only (as in TeX); no `\mathfrak`, no `\R` /
+  `\N` shortcuts and no double-struck Greek or italic (`ℾ ⅅ ⅆ`). No bold operators, fraction bars or roots, no `\pmb` and
   no `\boldmath`. `\mathit{diff}` has no text-italic ligatures or kerning
   (the letters are the math italic ones), and `\mathrm` has no upright
   lowercase Greek.

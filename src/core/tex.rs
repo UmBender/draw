@@ -766,6 +766,12 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         name: "bm",
         ..BOLDSYMBOL
     },
+    // Blackboard bold; dsfont's \mathds is the same row (T57).
+    MATHBB,
+    AlphabetDef {
+        name: "mathds",
+        ..MATHBB
+    },
 ];
 
 /// Start of the bold digits `𝟎`.
@@ -782,6 +788,27 @@ const BOLDSYMBOL: AlphabetDef = AlphabetDef {
     greek_lower: Map::Block(0x1D736),
     holes: &[],
     slant: true,
+};
+
+/// `\mathbb` (and `\mathds`): double-struck Latin and digits, upright;
+/// Greek as outside. More than amssymb's capitals (ADR-T57-1).
+const MATHBB: AlphabetDef = AlphabetDef {
+    name: "mathbb",
+    upper: Map::Block(0x1D538),
+    lower: Map::Block(0x1D552),
+    digit: Map::Block(0x1D7D8),
+    greek_upper: Map::Inherit,
+    greek_lower: Map::Inherit,
+    holes: &[
+        ('C', '\u{2102}'),
+        ('H', '\u{210D}'),
+        ('N', '\u{2115}'),
+        ('P', '\u{2119}'),
+        ('Q', '\u{211A}'),
+        ('R', '\u{211D}'),
+        ('Z', '\u{2124}'),
+    ],
+    slant: false,
 };
 
 /// The math alphabet command `name` (without the backslash).
@@ -3859,7 +3886,7 @@ mod tests {
         for name in ALPHABET_NAMES {
             assert_eq!(alphabet(name).map(|a| a.name), Some(name));
         }
-        assert!(alphabet("mathbb").is_none());
+        assert!(alphabet("mathbbb").is_none());
 
         for src in std::iter::once(all.clone()).chain(
             ALPHABETS
@@ -4410,5 +4437,214 @@ mod tests {
         assert!(alone.iter().all(|g| g.3), "{alone:?}");
         assert!(alphabet("boldmath").is_none());
         assert_eq!(before.last().copied(), Some(X));
+    }
+
+    // ---- T57 blackboard bold (ADR-T57-1) ----------------------------------
+
+    /// The blackboard bold alphabet commands of T57.
+    const BLACKBOARD_NAMES: [&str; 2] = ["mathbb", "mathds"];
+
+    /// The double-struck capitals Unicode placed in Letterlike Symbols.
+    const BLACKBOARD_HOLES: [(char, char); 7] = [
+        ('C', '\u{2102}'),
+        ('H', '\u{210D}'),
+        ('N', '\u{2115}'),
+        ('P', '\u{2119}'),
+        ('Q', '\u{211A}'),
+        ('R', '\u{211D}'),
+        ('Z', '\u{2124}'),
+    ];
+
+    /// Where `\mathbb` draws `ch`, or `None` when it inherits its kind.
+    fn mathbb_char(ch: char) -> Option<char> {
+        if let Some(&(_, drawn)) = BLACKBOARD_HOLES.iter().find(|h| h.0 == ch) {
+            return Some(drawn);
+        }
+        let (kind, index) = Kind::of(ch)?;
+        let start = match kind {
+            Kind::Upper => 0x1D538,
+            Kind::Lower => 0x1D552,
+            Kind::Digit => 0x1D7D8,
+            Kind::GreekUpper | Kind::GreekLower => return None,
+        };
+        Some(nth(start, index))
+    }
+
+    #[test]
+    fn tex_mathbb_maps_to_double_struck() {
+        // Arrange
+        let all = every_kind();
+        let want: Vec<char> = all
+            .chars()
+            .map(|ch| mathbb_char(ch).unwrap_or_else(|| italic(ch)))
+            .collect();
+
+        // Act
+        let got = drawn(&format!("\\mathbb{{{all}}}"));
+
+        // Assert
+        assert_eq!(got, want);
+        assert_eq!(drawn("\\mathbb{Ax0}"), vec!['𝔸', '𝕩', '𝟘']);
+        assert_eq!(drawn("\\mathbb{Fk9}"), vec!['𝔽', '𝕜', '𝟡']);
+        // Greek is not double-struck: as outside.
+        assert_eq!(drawn("\\mathbb{\\alpha\\Gamma}"), drawn("\\alpha\\Gamma"));
+    }
+
+    #[test]
+    fn tex_mathbb_holes_map_to_letterlike_symbols() {
+        for (typed, want) in BLACKBOARD_HOLES {
+            // Act
+            let got = drawn(&format!("\\mathbb{{{typed}}}"));
+
+            // Assert
+            assert_eq!(got, vec![want], "{typed}");
+        }
+        assert_eq!(drawn("\\mathbb{RNZQC}"), vec!['ℝ', 'ℕ', 'ℤ', 'ℚ', 'ℂ']);
+        // Lowercase has no holes.
+        assert_eq!(drawn("\\mathbb{rnz}"), vec!['𝕣', '𝕟', '𝕫']);
+    }
+
+    #[test]
+    fn tex_mathds_is_the_mathbb_row() {
+        // Arrange
+        let all = every_kind();
+
+        // Act
+        let ds = alphabet("mathds");
+        let bb = alphabet("mathbb");
+
+        // Assert
+        let rows = |a: Option<&AlphabetDef>| {
+            a.map(|a| {
+                let maps: Vec<Map> = Kind::ALL.iter().map(|&k| a.get(k)).collect();
+                (maps, a.holes, a.slant)
+            })
+        };
+        assert!(bb.is_some());
+        assert_eq!(rows(ds), rows(bb));
+        assert_eq!(drawn("\\mathds{1}"), vec!['𝟙']);
+        assert_eq!(drawn("\\mathds{1}_A"), vec!['𝟙', italic('A')]);
+        assert_eq!(
+            drawn(&format!("\\mathds{{{all}}}")),
+            drawn(&format!("\\mathbb{{{all}}}"))
+        );
+    }
+
+    #[test]
+    fn tex_parse_blackboard_commands_take_one_argument() {
+        for name in BLACKBOARD_NAMES {
+            // Act / Assert: braced or one token.
+            assert_eq!(
+                math(&format!("\\{name}{{R}}")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![braced(vec![Node::Char('R')])],
+                }],
+                "{name}"
+            );
+            assert_eq!(
+                math(&format!("\\{name} N")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![Arg {
+                        lead: " ".to_owned(),
+                        ..tok(Node::Char('N'))
+                    }],
+                }],
+                "{name}"
+            );
+            for src in [
+                format!("$\\{name}{{Z}}_p, \\{name}{{1}}_A$"),
+                format!("$x \\in \\{name} R^n$"),
+            ] {
+                assert_eq!(print(&parse(&src)), src);
+            }
+            // Without an argument: a literal in the warning colour.
+            let literal = Node::Literal(format!("\\{name}"));
+            assert_eq!(math(&format!("\\{name}")), vec![literal], "{name}");
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+            assert!(got.iter().all(|g| g.3), "{name}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn tex_blackboard_rows_draw_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        for name in BLACKBOARD_NAMES {
+            assert_eq!(alphabet(name).map(|a| a.name), Some(name));
+
+            // Act
+            let b = boxed(&format!("\\{name}{{{all}}}"));
+
+            // Assert: one math-face glyph per character, none warned.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), all.chars().count(), "{name}");
+            assert!(got.iter().all(|g| !g.3), "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_centred_over_blackboard_letters() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        for name in BLACKBOARD_NAMES {
+            for arg in ["R", "A", "x", "1"] {
+                let plain = boxed(&format!("\\{name}{{{arg}}}"));
+                let want = ink_box(&plain.ink).center().x;
+
+                // Act
+                let hatted = boxed(&format!("\\{name}{{\\hat{{{arg}}}}}"));
+                let got = ink_box(&mark_ink(&hatted.ink, hat)).center().x;
+
+                // Assert
+                assert!(
+                    approx_eq(got, want, EPS),
+                    "\\{name}{{{arg}}}: {got} vs {want}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_blackboard_nests_and_leaves_operators_alone() {
+        // Act / Assert: the innermost alphabet that maps a kind wins.
+        assert_eq!(drawn("\\mathbb{\\mathrm{x}}"), vec!['x']);
+        assert_eq!(drawn("\\mathbf{\\mathbb{R}}"), vec!['ℝ']);
+        assert_eq!(drawn("\\mathbb{\\mathbf{R}}"), vec!['𝐑']);
+        assert_eq!(drawn("\\mathbb{\\mathcal{A}B}"), vec!['𝒜', '𝔹']);
+        assert_eq!(drawn("\\mathbb{Z}_p"), vec!['ℤ', italic('p')]);
+        assert_eq!(drawn("\\mathbb{F_q}"), vec!['𝔽', '𝕢']);
+        for name in BLACKBOARD_NAMES {
+            for src in [
+                "\\log+\\sum\\text{ab}",
+                "\\operatorname{rank}",
+                "\\aleph\\partial\\nabla",
+            ] {
+                assert_eq!(
+                    boxed(&format!("\\{name}{{{src}}}")),
+                    boxed(src),
+                    "\\{name}{{{src}}}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_blackboard_shortcuts_are_unknown() {
+        for name in ["R", "N", "Z", "Q", "C"] {
+            // Act
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+
+            // Assert: drawn in the warning colour, no alphabet row.
+            assert!(got.iter().all(|g| g.3), "\\{name}: {got:?}");
+            assert!(alphabet(name).is_none(), "{name}");
+        }
     }
 }

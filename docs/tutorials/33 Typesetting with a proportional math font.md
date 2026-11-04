@@ -99,9 +99,10 @@ changes at run time.
 
 1. Change `SUP_SHIFT` in `src/core/tex.rs` to `0.5` and run
    `cargo test tex_layout_superscript`. Then draw `$x^2$` and compare.
-2. Add `\mathbb` for double-struck capitals (`ℝ ℕ ℤ` are holes again,
-   the rest at U+1D538): extend the subset command in
-   `assets/fonts/README.md`, regenerate the table, and add a `Style`.
+2. Add `\mathbffrak` for bold fraktur (U+1D56C for capitals, U+1D586
+   for lowercase, no holes): the glyphs are already in the subset, so it
+   is one more `AlphabetDef` row in `ALPHABETS` (see how `\mathbb` does
+   it, holes and all, since [[T57 Blackboard bold]]).
 3. Find the widest glyph: `TABLE.iter().max_by(|a, b| a.1.advance.total_cmp(&b.1.advance))`.
 
 ## Further reading
