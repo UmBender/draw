@@ -4712,7 +4712,10 @@ mod tests {
         assert_eq!(drawn("\\mathfrak{gpS}"), vec!['𝔤', '𝔭', '𝔖']);
         assert_eq!(drawn("\\mathfrak{Aaz}"), vec!['𝔄', '𝔞', '𝔷']);
         // Digits and Greek are not fraktur: as outside.
-        assert_eq!(drawn("\\mathfrak{1\\alpha\\Gamma}"), drawn("1\\alpha\\Gamma"));
+        assert_eq!(
+            drawn("\\mathfrak{1\\alpha\\Gamma}"),
+            drawn("1\\alpha\\Gamma")
+        );
     }
 
     #[test]
@@ -4755,7 +4758,10 @@ mod tests {
                 }],
             }]
         );
-        for src in ["$\\mathfrak{g}, \\mathfrak{S}_n$", "$\\mathfrak p \\subset R$"] {
+        for src in [
+            "$\\mathfrak{g}, \\mathfrak{S}_n$",
+            "$\\mathfrak p \\subset R$",
+        ] {
             assert_eq!(print(&parse(src)), src);
         }
         // Without an argument: a literal in the warning colour.
