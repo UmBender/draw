@@ -401,6 +401,26 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("ln", "ln", Class::Op),
     def("gcd", "gcd", Class::Op),
     def("lcm", "lcm", Class::Op),
+    // Trigonometric and hyperbolic functions (T63).
+    def("sin", "sin", Class::Op),
+    def("cos", "cos", Class::Op),
+    def("tan", "tan", Class::Op),
+    def("cot", "cot", Class::Op),
+    def("sec", "sec", Class::Op),
+    def("csc", "csc", Class::Op),
+    def("arcsin", "arcsin", Class::Op),
+    def("arccos", "arccos", Class::Op),
+    def("arctan", "arctan", Class::Op),
+    def("sinh", "sinh", Class::Op),
+    def("cosh", "cosh", Class::Op),
+    def("tanh", "tanh", Class::Op),
+    def("coth", "coth", Class::Op),
+    // Not in LaTeX's base set, but common (T63).
+    def("arccot", "arccot", Class::Op),
+    def("arcsec", "arcsec", Class::Op),
+    def("arccsc", "arccsc", Class::Op),
+    def("sech", "sech", Class::Op),
+    def("csch", "csch", Class::Op),
 ];
 
 /// The table entry of command `name` (without the backslash).
