@@ -214,6 +214,12 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             // T60: sans-serif and typewriter, bold sans and bold over mono.
             "\\mathsf", "\\mathtt", "\\mathsf{G}", "\\mathtt{x1}", "\\mathbf\\mathsf",
             "\\bm{\\mathsf{x}}", "\\mathsf\\mathbf", "\\mathbf\\mathtt",
+            // T65: set and logic symbols, padded implications and bars.
+            "\\setminus", "\\complement", "\\varnothing", "\\supset", "\\subseteq",
+            "\\supseteq", "\\subsetneq", "\\supsetneq", "\\nsubseteq", "\\ni", "\\sqcup",
+            "\\sqcap", "\\uplus", "\\lnot", "\\veebar", "\\barwedge", "\\top", "\\bot",
+            "\\nexists", "\\implies", "\\impliedby", "\\vdash", "\\models", "\\lvert",
+            "\\rvert", "\\lVert", "\\rVert", "x^{\\implies}",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

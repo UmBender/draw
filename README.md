@@ -310,6 +310,9 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\propto \sim \simeq \cong \ll \gg \lesssim \gtrsim \doteq \coloneqq \parallel \perp \mid` | More relations |
 | `\rightarrow \leftrightarrow \Leftarrow \Leftrightarrow \uparrow \downarrow \mapsto \rightleftharpoons` | More arrows |
 | `\mp \otimes \wedge \vee \circ \ast \star \bullet \dagger` | More binary operators |
+| `\setminus \sqcup \sqcap \uplus`, `\supset \subseteq \supseteq \subsetneq \supsetneq \nsubseteq \ni`, `\complement \varnothing` | Sets (`A \setminus B`) |
+| `\lnot \veebar \barwedge \top \bot \nexists`, `\vdash \models`, `\implies \impliedby` | Logic; `\implies` is spaced wider, as in amsmath |
+| `\lvert x \rvert`, `\lVert v \rVert` | Absolute value and norm bars |
 | `\text{…}` | Upright text inside a formula |
 | `\$` | A literal dollar sign (a lone `$` also stays plain) |
 

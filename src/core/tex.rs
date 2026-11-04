@@ -113,6 +113,13 @@ pub const VEC_SCALE: f32 = 0.5;
 /// Space on each side of a relation: TeX's thick space, 5/18 em.
 pub const REL_SPACE: f32 = 5.0 / 18.0;
 
+/// Extra space on each side of a wide relation, on top of
+/// [`REL_SPACE`]: amsmath's `\;`, a thick space (ADR-T65-1).
+pub const WIDE_REL_SPACE: f32 = 5.0 / 18.0;
+
+/// Relations amsmath pads with [`WIDE_REL_SPACE`] (ADR-T65-1).
+pub const WIDE_RELATIONS: &[&str] = &["implies", "impliedby"];
+
 /// Space on each side of a binary operator: TeX's medium space, 2/9 em.
 pub const BIN_SPACE: f32 = 2.0 / 9.0;
 
@@ -475,6 +482,36 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("arccsc", "arccsc", Class::Op),
     def("sech", "sech", Class::Op),
     def("csch", "csch", Class::Op),
+    // Set and logic symbols (T65); `\varnothing` and `\barwedge` use the
+    // subset's U+2205 and U+22BC.
+    def("setminus", "∖", Class::Bin),
+    def("complement", "∁", Class::Ord),
+    def("varnothing", "∅", Class::Ord),
+    def("supset", "⊃", Class::Rel),
+    def("subseteq", "⊆", Class::Rel),
+    def("supseteq", "⊇", Class::Rel),
+    def("subsetneq", "⊊", Class::Rel),
+    def("supsetneq", "⊋", Class::Rel),
+    def("nsubseteq", "⊈", Class::Rel),
+    def("ni", "∋", Class::Rel),
+    def("sqcup", "⊔", Class::Bin),
+    def("sqcap", "⊓", Class::Bin),
+    def("uplus", "⊎", Class::Bin),
+    def("lnot", "¬", Class::Ord),
+    def("veebar", "⊻", Class::Bin),
+    def("barwedge", "⊼", Class::Bin),
+    def("top", "⊤", Class::Ord),
+    def("bot", "⊥", Class::Ord),
+    def("nexists", "∄", Class::Ord),
+    // Wide relations: padded in `symbol_box` (ADR-T65-1).
+    def("implies", "⟹", Class::Rel),
+    def("impliedby", "⟸", Class::Rel),
+    def("vdash", "⊢", Class::Rel),
+    def("models", "⊨", Class::Rel),
+    def("lvert", "|", Class::Open),
+    def("rvert", "|", Class::Close),
+    def("lVert", "‖", Class::Open),
+    def("rVert", "‖", Class::Close),
 ];
 
 /// The table entry of command `name` (without the backslash).
@@ -1807,11 +1844,18 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
 /// The box of a table symbol: a glyph (a letter in `style`), an enlarged
 /// big operator or integral, or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32, style: Style) -> MathBox {
-    match (letter(def), def.class) {
+    let b = match (letter(def), def.class) {
         (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale),
         (Some(ch), Class::Ord) => MathBox::math(style.map(ch), scale),
         (Some(ch), _) => MathBox::math(ch, scale),
         (None, _) => MathBox::upright(def.text, scale),
+    };
+    if WIDE_RELATIONS.contains(&def.name) {
+        // amsmath's `\;` each side, at every size (ADR-T65-1).
+        let pad = WIDE_REL_SPACE * scale;
+        MathBox::row([MathBox::gap(pad), b, MathBox::gap(pad)])
+    } else {
+        b
     }
 }
 
@@ -5266,5 +5310,159 @@ mod tests {
                 );
             }
         }
+    }
+
+    // ---- T65 set and logic symbols -----------------------------------------
+
+    /// The *Spec* table of T65: name, text, class.
+    const SET_LOGIC: [(&str, &str, Class); 27] = [
+        ("setminus", "∖", Class::Bin),
+        ("complement", "∁", Class::Ord),
+        ("varnothing", "∅", Class::Ord),
+        ("supset", "⊃", Class::Rel),
+        ("subseteq", "⊆", Class::Rel),
+        ("supseteq", "⊇", Class::Rel),
+        ("subsetneq", "⊊", Class::Rel),
+        ("supsetneq", "⊋", Class::Rel),
+        ("nsubseteq", "⊈", Class::Rel),
+        ("ni", "∋", Class::Rel),
+        ("sqcup", "⊔", Class::Bin),
+        ("sqcap", "⊓", Class::Bin),
+        ("uplus", "⊎", Class::Bin),
+        ("lnot", "¬", Class::Ord),
+        ("veebar", "⊻", Class::Bin),
+        ("barwedge", "⊼", Class::Bin),
+        ("top", "⊤", Class::Ord),
+        ("bot", "⊥", Class::Ord),
+        ("nexists", "∄", Class::Ord),
+        ("implies", "⟹", Class::Rel),
+        ("impliedby", "⟸", Class::Rel),
+        ("vdash", "⊢", Class::Rel),
+        ("models", "⊨", Class::Rel),
+        ("lvert", "|", Class::Open),
+        ("rvert", "|", Class::Close),
+        ("lVert", "‖", Class::Open),
+        ("rVert", "‖", Class::Close),
+    ];
+
+    #[test]
+    fn tex_parse_set_and_logic_symbols_have_their_text_and_class() {
+        for (name, text, class) in SET_LOGIC {
+            // Arrange
+            let src = format!("$\\{name}$");
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_set_and_logic_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in SET_LOGIC {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert!(!got[0].3, "{name}");
+            assert_eq!(text.chars().collect::<Vec<_>>(), vec![got[0].0], "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_implies_pads_a_thick_space_beyond_rel() {
+        let p = mm('\u{1D45D}').advance;
+        let q = mm('\u{1D45E}').advance;
+        for (name, arrow) in [("implies", '⟹'), ("impliedby", '⟸')] {
+            // Arrange
+            let src = format!("p\\{name} q");
+
+            // Act
+            let b = boxed(&src);
+            let small = layout_math(&math(&src), SCRIPT_SCALE);
+
+            // Assert: relation space plus a thick space each side.
+            let wide = 2.0 * REL_SPACE + 2.0 * WIDE_REL_SPACE;
+            assert!(approx_eq(WIDE_REL_SPACE, 5.0 / 18.0, EPS));
+            assert!(
+                approx_eq(b.width, p + mm(arrow).advance + q + wide, EPS),
+                "{name}: {}",
+                b.width
+            );
+            let (pos, _) = glyph(&b.ink, arrow);
+            assert!(
+                approx_eq(pos.x, p + REL_SPACE + WIDE_REL_SPACE, EPS),
+                "{name}: {pos:?}"
+            );
+            // In a script only the padding stays.
+            let want = SCRIPT_SCALE * (p + mm(arrow).advance + q + 2.0 * WIDE_REL_SPACE);
+            assert!(approx_eq(small.width, want, EPS), "{name}: {}", small.width);
+        }
+        // A plain long arrow relation is not padded.
+        assert!(approx_eq(
+            boxed("p\\Rightarrow q").width,
+            p + adv("⇒") + q + 2.0 * REL_SPACE,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_layout_set_and_logic_symbols_space_by_class() {
+        let width = |src: &str| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
+
+        // Binary operators.
+        for (src, op) in [
+            ("a\\setminus b", "∖"),
+            ("a\\veebar b", "⊻"),
+            ("a\\sqcup b", "⊔"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(op) + 2.0 * BIN_SPACE, EPS),
+                "{src}"
+            );
+        }
+        // Relations.
+        for (src, rel) in [
+            ("a\\subseteq b", "⊆"),
+            ("a\\vdash b", "⊢"),
+            ("a\\ni b", "∋"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(rel) + 2.0 * REL_SPACE, EPS),
+                "{src}"
+            );
+        }
+        // Ordinary atoms get no space.
+        assert!(approx_eq(width("\\lnot a"), adv("¬") + mm(A).advance, EPS));
+        assert!(approx_eq(width("\\top\\bot"), adv("⊤⊥"), EPS));
+        // No space inside the bars; a minus after an opening bar is unary.
+        let bars = |src: &str, open: &str| {
+            assert!(
+                approx_eq(width(src), 2.0 * adv(open) + mm(A).advance, EPS),
+                "{src}"
+            );
+        };
+        bars("\\lvert a \\rvert", "|");
+        bars("\\lVert a \\rVert", "‖");
+        assert!(approx_eq(
+            width("\\lvert -a\\rvert"),
+            2.0 * adv("|") + adv("\u{2212}") + mm(A).advance,
+            EPS
+        ));
     }
 }
