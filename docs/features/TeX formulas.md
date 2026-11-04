@@ -225,6 +225,20 @@ divergence; write `\nabla\cdot`), and there is no `\laplacian` (write
 [[T69 Classical physics notation]],
 [[ADR-T69-1 Physics shortcuts expand to their long forms]].)
 
+Quantum mechanics has the Dirac notation of `physics`, through the same
+expansion table: `$\bra{\psi}$` is `\langle \psi\rvert`, `$\ket{0}$`
+is `\lvert 0\rangle`, `$\braket{\phi}{\psi}$` is
+`\langle \phi\vert \psi\rangle` (and `\braket{a}` is `⟨a|a⟩`),
+`$\ketbra{0}{1}$` is `|0⟩⟨1|`, `$\expval{H}$` is `\langle H\rangle`
+(`\expval{H}{\psi}` is `⟨ψ|H|ψ⟩`) and `$\mel{n}{H}{m}$` is
+`\langle n\vert H\vert m\rangle`. The inner bars are ordinary, with no
+space around them, as `physics` draws them. Commutators
+`$\comm{A}{B}$` and anticommutators `$\acomm{A}{B}$` are `[A,B]` and
+`\{A,B\}`; the adjoint is `$A^\dag$` (`\dag` is `†`, as `\dagger`), the
+trace `$\Tr\rho$` beside `\tr`, and products of kets use `\otimes`:
+`$\ket{0}\otimes\ket{1}$`. Brackets keep their normal size. (Since
+[[T70 Quantum notation]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -275,6 +289,7 @@ divergence; write `\nabla\cdot`), and there is no `\laplacian` (write
 | Parallel, diagonal, double arrows | `\rightrightarrows \leftleftarrows \leftrightarrows \rightleftarrows`, `\nearrow \searrow \swarrow \nwarrow`, `\Uparrow \Downarrow \Updownarrow \updownarrow` |
 | Classical physics | `\dddot{x}`, `\Box \square \triangle \angle`, units `\ohm \micro \degree \AA`, `\grad \curl` |
 | Physics shortcuts | `\dd{x}`, `\dv{f}{x}`, `\dv{x}`, `\pdv{f}{x}`, `\pdv{x}`, `\abs{x}`, `\norm{v}`, `\order{h^2}`, `\vb{F}`, `\vu{n}` (each draws its long form) |
+| Quantum notation | `\bra{\psi}`, `\ket{0}`, `\braket{\phi}{\psi}`, `\ketbra{0}{1}`, `\expval{H}`, `\mel{n}{H}{m}`, `\comm{A}{B}`, `\acomm{A}{B}`, `A^\dag`, `\Tr\rho` |
 | Thin space | `\,` (as in `f(x)\,dx`) |
 | Upright text | `\text{if } x > 0` |
 

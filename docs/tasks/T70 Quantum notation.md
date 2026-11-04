@@ -1,7 +1,7 @@
 ---
 id: T70
 title: Quantum notation
-status: in-progress
+status: review
 wave: 49
 branch: task/T70-quantum-notation
 depends_on: [T69]
@@ -117,12 +117,12 @@ Manual checks left for the owner: `$\braket{\phi}{\psi}$`,
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T70): …`
-- [ ] tests — `test(T70): …`
-- [ ] models — `feat(T70): …`
-- [ ] behaviour — `feat(T70): …`
-- [ ] quality — `chore(T70): …`
-- [ ] docs — `docs(T70): …`
+- [x] spec — `docs(T70): …`
+- [x] tests — `test(T70): …`
+- [x] models — `feat(T70): …` (the `\dag` and `\Tr` symbol rows)
+- [x] behaviour — `feat(T70): …` (the eight expansion rows)
+- [x] quality — `chore(T70): …` (rustfmt only)
+- [x] docs — `docs(T70): …`
 
 ## Learning path
 
@@ -132,3 +132,17 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented (batch run), branched from
+  `task/T69-classical-physics`. Two symbol rows (`\dag`, `\Tr`) and eight
+  rows of T69's `EXPANSIONS`; no parser, layout, font or `math_metrics`
+  change, no new ADR. `scripts/check.sh` and `scripts/check.sh --fuzz`
+  green.
+- 2026-11-04 — UNATTENDED CHOICE: the inner bars of `\braket`, `\expval`
+  and `\mel` are `\vert` (ordinary, no space), as `physics` draws them
+  with `\middle\vert`, not `\mid` (a relation with thick spaces); the
+  outer bars are `\lvert`/`\rvert`. `\braket`, `\ketbra` and `\expval`
+  take an optional braced second argument as in `physics`
+  (`\braket{a}` = `⟨a|a⟩`, `\expval{A}{\psi}` = `⟨ψ|A|ψ⟩`).
+- 2026-11-04 — Existing test changed: `tex_expansions_are_well_formed`
+  lists the eight new expansion names. Manual checks for the owner:
+  `$\braket{\phi}{\psi}$`, `$\mel{n}{H}{m}$`, `$\comm{A}{B}$`.
