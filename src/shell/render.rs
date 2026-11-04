@@ -1306,6 +1306,7 @@ mod tests {
     use crate::core::math_metrics;
     use crate::core::palette::{ColorId, Rgba, palette};
     use crate::core::tex::{ACCENTS, Face, MINUS, Mark, SYMBOLS, calligraphic, italic};
+    use crate::theme;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -2502,6 +2503,86 @@ mod tests {
         assert!(all.iter().all(|v| same_color(vertex_color(v), warn)));
         // A block already in the warning colour warns in another one.
         assert!(!same_color(warn_color(warn), warn));
+    }
+
+    // ---- T51 AC-5 same pixels, AC-6 derived rules ---------------------------
+
+    /// The bytes macroquad puts in a vertex for `color`.
+    fn vertex_bytes(color: Color) -> [u8; 4] {
+        Vertex::new(0.0, 0.0, 0.0, 0.0, 0.0, color).color
+    }
+
+    /// `hex` with its alpha scaled by `factor`, as before T51.
+    fn old_faded(hex: u32, factor: f32) -> Color {
+        let mut color = to_mq_color(Rgba::from_hex(hex));
+        color.a *= factor;
+        color
+    }
+
+    #[test]
+    fn theme_alphas_give_previous_vertex_bytes() {
+        // Arrange: (theme colour, theme alpha, old token, old factor).
+        let cases = [
+            (theme::MARQUEE_FILL, theme::MARQUEE_FILL_ALPHA, 0x2d4f67, 0.25),
+            (theme::DOT_GRID, theme::DOT_GRID_ALPHA, 0xa6a69c, 0.35),
+        ];
+
+        for (hex, alpha, old_hex, factor) in cases {
+            // Act
+            let new = hex_color_alpha(hex, alpha);
+
+            // Assert
+            assert_eq!(
+                vertex_bytes(new),
+                vertex_bytes(old_faded(old_hex, factor)),
+                "{hex:06x} at {alpha}"
+            );
+        }
+    }
+
+    #[test]
+    fn faded_text_gives_previous_vertex_bytes() {
+        // Arrange: the old toolbar faded `THEME.text` by 0.3.
+        let old = old_faded(0xc5c9c5, 0.3);
+
+        // Act
+        let new = to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT).faded(theme::TOOLBAR_DISABLED_ALPHA));
+
+        // Assert
+        assert_eq!(vertex_bytes(new), vertex_bytes(old));
+    }
+
+    #[test]
+    fn hex_color_is_opaque_theme_colour() {
+        let c = hex_color(theme::CANVAS);
+        assert!(same_color(c, to_mq_color(Rgba::from_hex(0x181616))));
+    }
+
+    #[test]
+    fn label_color_on_fill_is_text_on_fill() {
+        // Act
+        let c = label_color(Some(ColorId::INK), RED);
+
+        // Assert
+        assert!(same_color(c, hex_color(theme::TEXT_ON_FILL)));
+    }
+
+    #[test]
+    fn label_color_without_fill_is_outline() {
+        assert!(same_color(label_color(None, RED), RED));
+    }
+
+    #[test]
+    fn warn_color_uses_theme_formula_source() {
+        // Arrange
+        let source = hex_color(theme::FORMULA_SOURCE);
+
+        // Act / Assert
+        assert!(same_color(warn_color(hex_color(theme::INK)), source));
+        assert!(same_color(
+            warn_color(source),
+            hex_color(theme::FORMULA_SOURCE_ALT)
+        ));
     }
 
     #[test]

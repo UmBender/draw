@@ -123,6 +123,8 @@ pub const THEME: Theme = Theme {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::geom::approx_eq;
+    use crate::theme;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-6;
@@ -258,16 +260,108 @@ mod tests {
         }
     }
 
-    // AC-4
+    // ---- T51 AC-2: drawing colours come from the theme file ---------------
 
     #[test]
-    fn theme_matches_documented_tokens() {
-        assert_eq!(THEME.bg, Rgba::from_hex(0x181616));
-        assert_eq!(THEME.surface, Rgba::from_hex(0x0d0c0c));
-        assert_eq!(THEME.border, Rgba::from_hex(0xa6a69c));
-        assert_eq!(THEME.text, Rgba::from_hex(0xc5c9c5));
-        assert_eq!(THEME.accent, Rgba::from_hex(0x7fa8bc));
-        assert_eq!(THEME.selection, Rgba::from_hex(0x2d4f67));
+    fn palette_reads_drawing_colours_from_theme() {
+        // Arrange
+        let expected = [
+            theme::INK,
+            theme::RED,
+            theme::GREEN,
+            theme::BLUE,
+            theme::YELLOW,
+            theme::MAGENTA,
+        ];
+
+        // Act / Assert
+        for (i, hex) in expected.into_iter().enumerate() {
+            assert_eq!(PALETTE[i], Rgba::from_hex(hex), "index {i}");
+        }
+    }
+
+    // ---- T51 AC-4: colour helpers -----------------------------------------
+
+    #[test]
+    fn from_hex_alpha_keeps_channels_and_sets_alpha() {
+        // Act
+        let c = Rgba::from_hex_alpha(0x123456, 63);
+
+        // Assert
+        assert_eq!(
+            c,
+            Rgba {
+                r: 0x12,
+                g: 0x34,
+                b: 0x56,
+                a: 63
+            }
+        );
+    }
+
+    #[test]
+    fn faded_opaque_gives_alpha() {
+        for alpha in [0, 1, 63, 76, 89, 254, 255] {
+            assert_eq!(Rgba::from_hex(0xabcdef).faded(alpha).a, alpha);
+        }
+    }
+
+    #[test]
+    fn faded_scales_existing_alpha() {
+        // 128 × 128 / 255 = 64.25, truncated.
+        assert_eq!(Rgba::from_hex_alpha(0, 128).faded(128).a, 64);
+        assert_eq!(Rgba::from_hex_alpha(0x112233, 0).faded(200).a, 0);
+    }
+
+    #[test]
+    fn no_tint_is_opaque_white() {
+        assert_eq!(Rgba::NO_TINT, Rgba::from_hex(0xffffff));
+    }
+
+    #[test]
+    fn relative_luminance_of_black_and_white() {
+        assert!(approx_eq(Rgba::from_hex(0x000000).relative_luminance(), 0.0, EPS));
+        assert!(approx_eq(Rgba::from_hex(0xffffff).relative_luminance(), 1.0, EPS));
+    }
+
+    #[test]
+    fn relative_luminance_weights_green_most() {
+        // WCAG 2 weights: 0.2126 R + 0.7152 G + 0.0722 B.
+        let lum = |hex| Rgba::from_hex(hex).relative_luminance();
+        assert!(approx_eq(lum(0xff0000), 0.2126, 1e-4));
+        assert!(approx_eq(lum(0x00ff00), 0.7152, 1e-4));
+        assert!(approx_eq(lum(0x0000ff), 0.0722, 1e-4));
+    }
+
+    #[test]
+    fn contrast_ratio_black_on_white_is_21() {
+        // Act
+        let ratio = contrast_ratio(Rgba::from_hex(0x000000), Rgba::from_hex(0xffffff));
+
+        // Assert
+        assert!(approx_eq(ratio, 21.0, 1e-3), "{ratio}");
+    }
+
+    proptest! {
+        #[test]
+        fn faded_by_opaque_is_identity(r: u8, g: u8, b: u8, a: u8) {
+            let c = Rgba { r, g, b, a };
+            prop_assert_eq!(c.faded(u8::MAX), c);
+        }
+
+        #[test]
+        fn contrast_ratio_symmetric_and_bounded(x in 0_u32..=0xff_ffff, y in 0_u32..=0xff_ffff) {
+            // Arrange
+            let (a, b) = (Rgba::from_hex(x), Rgba::from_hex(y));
+
+            // Act
+            let (ab, ba) = (contrast_ratio(a, b), contrast_ratio(b, a));
+
+            // Assert
+            prop_assert!(approx_eq(ab, ba, EPS));
+            prop_assert!((1.0 - EPS..=21.0 + 1e-3).contains(&ab), "{}", ab);
+            prop_assert!(approx_eq(contrast_ratio(a, a), 1.0, EPS));
+        }
     }
 
     // AC-5
