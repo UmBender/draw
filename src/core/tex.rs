@@ -615,6 +615,10 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("ohm", "\u{2126}", Class::Ord),
     def("micro", "\u{B5}", Class::Ord),
     def("grad", "∇", Class::Ord),
+    // Quantum notation (T70): `\dag` as `physics` uses it in scripts,
+    // the trace beside `\tr`.
+    def("dag", "†", Class::Ord),
+    def("Tr", "Tr", Class::Op),
 ];
 
 /// The table entry of command `name` (without the backslash).
