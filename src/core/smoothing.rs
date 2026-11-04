@@ -243,12 +243,12 @@ impl Smoother {
             last_width,
             ..
         } = self;
-        if let (Some(end), Some(&last)) = (last_raw, points.last()) {
-            if end.distance(last) > 0.0 {
-                points.push(end);
-                if let (Some(widths), Some(width)) = (&mut widths, last_width) {
-                    widths.push(width);
-                }
+        if let (Some(end), Some(&last)) = (last_raw, points.last())
+            && end.distance(last) > 0.0
+        {
+            points.push(end);
+            if let (Some(widths), Some(width)) = (&mut widths, last_width) {
+                widths.push(width);
             }
         }
         match widths {

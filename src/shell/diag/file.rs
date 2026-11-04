@@ -253,7 +253,7 @@ mod tests {
         // Arrange / Act / Assert
         assert_eq!(utc(Duration::ZERO), "1970-01-01T00:00:00.000Z");
         assert_eq!(
-            utc(Duration::from_secs(951_782_400)),
+            utc(Duration::from_hours(264_384)),
             "2000-02-29T00:00:00.000Z"
         );
         assert_eq!(

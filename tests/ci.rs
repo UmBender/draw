@@ -22,9 +22,9 @@ fn indent(line: &str) -> usize {
 /// of indentation, up to the next line at that level or less.
 fn block<'a>(text: &'a str, level: usize, header: &str) -> Vec<&'a str> {
     let mut lines = text.lines();
-    let found = lines
-        .by_ref()
-        .any(|line| indent(line) == level && line.trim_end() == format!("{}{header}", " ".repeat(level)));
+    let found = lines.by_ref().any(|line| {
+        indent(line) == level && line.trim_end() == format!("{}{header}", " ".repeat(level))
+    });
     assert!(found, "no `{header}` at indent {level}");
     lines
         .take_while(|line| line.trim().is_empty() || indent(line) > level)
@@ -59,7 +59,10 @@ fn values<'a>(lines: &[&'a str], key: &str) -> Vec<&'a str> {
 /// `1.99.1` → `[1, 99, 1]`.
 fn version(text: &str) -> Vec<u32> {
     text.split('.')
-        .map(|part| part.parse().unwrap_or_else(|err| panic!("version {text}: {err}")))
+        .map(|part| {
+            part.parse()
+                .unwrap_or_else(|err| panic!("version {text}: {err}"))
+        })
         .collect()
 }
 
@@ -68,7 +71,10 @@ fn rust_version() -> String {
     read("Cargo.toml")
         .lines()
         .find_map(|line| {
-            let rest = line.strip_prefix("rust-version")?.trim_start().strip_prefix('=')?;
+            let rest = line
+                .strip_prefix("rust-version")?
+                .trim_start()
+                .strip_prefix('=')?;
             Some(rest.trim().trim_matches('"').to_owned())
         })
         .unwrap_or_else(|| panic!("Cargo.toml has no rust-version"))
@@ -85,8 +91,14 @@ fn ci_workflow_runs_on_push_and_pull_request() {
     // Assert
     assert!(on.iter().any(|l| l.trim() == "push:"), "{on:?}");
     assert!(on.iter().any(|l| l.trim() == "pull_request:"), "{on:?}");
-    assert!(on.iter().any(|l| l.contains("main")), "pull requests to main: {on:?}");
-    assert!(ci.lines().any(|l| l.trim_end() == "concurrency:"), "older runs are cancelled");
+    assert!(
+        on.iter().any(|l| l.contains("main")),
+        "pull requests to main: {on:?}"
+    );
+    assert!(
+        ci.lines().any(|l| l.trim_end() == "concurrency:"),
+        "older runs are cancelled"
+    );
     assert!(ci.contains("cancel-in-progress: true"));
 }
 
@@ -99,10 +111,16 @@ fn ci_gates_job_runs_check_script() {
     let gates = job(&ci, "gates");
 
     // Assert
-    assert!(values(&gates, "run").contains(&"scripts/check.sh"), "{gates:?}");
+    assert!(
+        values(&gates, "run").contains(&"scripts/check.sh"),
+        "{gates:?}"
+    );
     assert_eq!(values(&gates, "toolchain"), ["stable"]);
     let components = values(&gates, "components").join(",");
-    assert!(components.contains("rustfmt") && components.contains("clippy"), "{components}");
+    assert!(
+        components.contains("rustfmt") && components.contains("clippy"),
+        "{components}"
+    );
 }
 
 #[test]
@@ -162,11 +180,20 @@ fn nightly_runs_fuzz_and_soak_on_schedule_and_dispatch() {
     // Assert
     assert!(on.iter().any(|l| l.trim() == "schedule:"), "{on:?}");
     assert_eq!(values(&on, "cron").len(), 1, "{on:?}");
-    assert!(on.iter().any(|l| l.trim() == "workflow_dispatch:"), "{on:?}");
-    assert!(values(&fuzz, "run").contains(&"scripts/check.sh --fuzz"), "{fuzz:?}");
+    assert!(
+        on.iter().any(|l| l.trim() == "workflow_dispatch:"),
+        "{on:?}"
+    );
+    assert!(
+        values(&fuzz, "run").contains(&"scripts/check.sh --fuzz"),
+        "{fuzz:?}"
+    );
     let soak_run = values(&soak, "run").join(" ");
     assert!(soak_run.contains("--release --test soak"), "{soak_run}");
-    assert!(soak_run.contains("--ignored") && soak_run.contains("--test-threads=1"), "{soak_run}");
+    assert!(
+        soak_run.contains("--ignored") && soak_run.contains("--test-threads=1"),
+        "{soak_run}"
+    );
 }
 
 #[test]
@@ -180,10 +207,15 @@ fn nightly_uploads_fuzz_regressions_on_failure() {
     // Assert
     assert!(values(&fuzz, "if").contains(&"failure()"), "{fuzz:?}");
     assert!(
-        values(&fuzz, "uses").iter().any(|u| u.starts_with("actions/upload-artifact@")),
+        values(&fuzz, "uses")
+            .iter()
+            .any(|u| u.starts_with("actions/upload-artifact@")),
         "{fuzz:?}"
     );
-    assert!(values(&fuzz, "path").contains(&"tests/fuzz.proptest-regressions"), "{fuzz:?}");
+    assert!(
+        values(&fuzz, "path").contains(&"tests/fuzz.proptest-regressions"),
+        "{fuzz:?}"
+    );
 }
 
 #[test]

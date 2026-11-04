@@ -212,10 +212,10 @@ pub fn install_hook() {
             std::env::var_os("XDG_STATE_HOME").as_deref(),
             std::env::var_os("HOME").as_deref(),
         );
-        if let Some(path) = path {
-            if append(&path, &text).is_ok() {
-                let _ = writeln!(stderr, "crash report appended to {}", path.display());
-            }
+        if let Some(path) = path
+            && append(&path, &text).is_ok()
+        {
+            let _ = writeln!(stderr, "crash report appended to {}", path.display());
         }
         // The flight recorder's last moments (ADR-T47-1).
         let message = match &report_location {

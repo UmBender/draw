@@ -295,16 +295,16 @@ impl Diag {
             Event::ProtocolError { .. } => self.log(Level::Error, &event.to_string()),
             _ => {}
         }
-        if event.is_input() {
-            if let Some(gap) = self.idle.input(micros) {
-                let secs = u32::try_from(gap.as_secs()).unwrap_or(u32::MAX);
-                self.ring.push(Record {
-                    micros,
-                    event: Event::Idle { secs },
-                });
-                if self.enabled(Level::Info) {
-                    self.log(Level::Info, &format!("input after {} idle", uptime(gap)));
-                }
+        if event.is_input()
+            && let Some(gap) = self.idle.input(micros)
+        {
+            let secs = u32::try_from(gap.as_secs()).unwrap_or(u32::MAX);
+            self.ring.push(Record {
+                micros,
+                event: Event::Idle { secs },
+            });
+            if self.enabled(Level::Info) {
+                self.log(Level::Info, &format!("input after {} idle", uptime(gap)));
             }
         }
         if let Some(anomaly) = self.backend.event(&event) {
@@ -359,10 +359,10 @@ impl Diag {
             return;
         }
         let line = log_line(self.unix_now(), self.start.elapsed(), level, message);
-        if let Some(log) = &mut self.log {
-            if log.write_line(&line).is_err() {
-                self.log = None;
-            }
+        if let Some(log) = &mut self.log
+            && log.write_line(&line).is_err()
+        {
+            self.log = None;
         }
     }
 

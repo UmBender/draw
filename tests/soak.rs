@@ -119,7 +119,7 @@ fn cycle(ed: &mut Editor, k: usize) {
         mods: NONE,
     });
     commits += 1;
-    let delta = if k % 2 == 0 { 1.0 } else { -1.0 };
+    let delta = if k.is_multiple_of(2) { 1.0 } else { -1.0 };
     ed.handle(InputEvent::Scroll {
         pos: v(400.0, 300.0),
         delta,
