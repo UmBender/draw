@@ -388,9 +388,10 @@ pub fn is_snapshot_chord(event: &InputEvent) -> bool {
 /// `<state dir>/snapshots/snapshot-<UTC stamp>.snap`.
 #[must_use]
 pub fn snapshot_path(state_dir: &Path, unix_secs: u64) -> PathBuf {
-    state_dir
-        .join("snapshots")
-        .join(format!("snapshot-{}.snap", diag::file::utc_stamp(unix_secs)))
+    state_dir.join("snapshots").join(format!(
+        "snapshot-{}.snap",
+        diag::file::utc_stamp(unix_secs)
+    ))
 }
 
 /// The snapshot to start from, given the [`SNAPSHOT_ENV`] value and a way
@@ -569,17 +570,19 @@ pub async fn run() {
         .with_experimental(Experimental::from_env_value(experimental.as_deref()))
         .with_tap_slop(tablet.tap_slop_px());
     // A snapshot replaces the whole state, its switches included (T74).
-    let (snapshot, error) =
-        startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
-            std::fs::read_to_string(path)
-        });
+    let (snapshot, error) = startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
+        std::fs::read_to_string(path)
+    });
     if let Some(error) = error {
         eprintln!("draw: {error}");
         diag::log(Level::Error, &error);
     }
     if let Some(snapshot) = snapshot {
         editor = Editor::from_snapshot(snapshot);
-        diag::log(Level::Info, &format!("started from {SNAPSHOT_ENV} snapshot"));
+        diag::log(
+            Level::Info,
+            &format!("started from {SNAPSHOT_ENV} snapshot"),
+        );
     }
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
@@ -1961,7 +1964,10 @@ mod tests {
         // Assert
         assert!(snapshot.is_none());
         let error = error.unwrap_or_default();
-        assert!(error.contains("bad.snap") && error.contains("line 2"), "{error}");
+        assert!(
+            error.contains("bad.snap") && error.contains("line 2"),
+            "{error}"
+        );
     }
 
     #[test]

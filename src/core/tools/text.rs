@@ -444,9 +444,7 @@ impl Snap for Host {
             .bool(self.filled);
     }
 
-    fn read(
-        tokens: &mut crate::core::snapshot::Tokens<'_>,
-    ) -> Result<Self, SnapshotError> {
+    fn read(tokens: &mut crate::core::snapshot::Tokens<'_>) -> Result<Self, SnapshotError> {
         Ok(Self {
             id: tokens.get()?,
             slot: tokens.get()?,
@@ -515,7 +513,11 @@ impl State {
                 if !t.shape_text() {
                     return Err(t.error("text in a shape while the shape-text switch is off"));
                 }
-                if doc.get(host.id).and_then(|s| s.text_frame(host.slot)).is_none() {
+                if doc
+                    .get(host.id)
+                    .and_then(|s| s.text_frame(host.slot))
+                    .is_none()
+                {
                     return Err(t.error("host shape has no such text slot"));
                 }
             }

@@ -1266,24 +1266,63 @@ fn check_snapshot_continues_equal(
     for (i, &event) in tail.iter().enumerate() {
         editor.handle(event);
         loaded.handle(event);
-        prop_assert!(loaded == editor, "differs after event {} ({:?})", cut + i, event);
+        prop_assert!(
+            loaded == editor,
+            "differs after event {} ({:?})",
+            cut + i,
+            event
+        );
     }
     Ok(())
 }
 
 /// Tokens that appear in snapshot text, for mutations.
 const SNAPSHOT_TOKENS: [&str; 34] = [
-    "-", "0", "1", "2", "7", "64", "65", "999", "4294967295", "18446744073709551615",
-    "-1", "0.0", "-0.0", "1e38", "1e-45", "NaN", "inf", "\"\"", "\"x\\n\"", "\"\\u{0}\"",
-    "\"unterminated", "\\", "pen", "select", "left", "holding", "move", "marquee", "replace",
-    "insert", "stroke", "grid", "[tools]", "draw-snapshot",
+    "-",
+    "0",
+    "1",
+    "2",
+    "7",
+    "64",
+    "65",
+    "999",
+    "4294967295",
+    "18446744073709551615",
+    "-1",
+    "0.0",
+    "-0.0",
+    "1e38",
+    "1e-45",
+    "NaN",
+    "inf",
+    "\"\"",
+    "\"x\\n\"",
+    "\"\\u{0}\"",
+    "\"unterminated",
+    "\\",
+    "pen",
+    "select",
+    "left",
+    "holding",
+    "move",
+    "marquee",
+    "replace",
+    "insert",
+    "stroke",
+    "grid",
+    "[tools]",
+    "draw-snapshot",
 ];
 
 /// One edit of snapshot text.
 #[derive(Debug, Clone)]
 enum Mutation {
     /// Replace token `token` of line `line` with a pool token.
-    Token { line: prop::sample::Index, token: prop::sample::Index, with: &'static str },
+    Token {
+        line: prop::sample::Index,
+        token: prop::sample::Index,
+        with: &'static str,
+    },
     /// Drop a line.
     Drop(prop::sample::Index),
     /// Copy a line below itself.

@@ -16,6 +16,7 @@
 //! outside the block or any applied command commits it as one undo step.
 
 use crate::core::camera::Camera;
+use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
@@ -28,7 +29,6 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
-use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
 use crate::core::tools::navigate::{self, Pan};
@@ -337,30 +337,14 @@ impl Editor {
         let color = t.get()?;
         let width_px = t.f32("width")?;
         t.end()?;
-        if !WIDTH_LADDER_PX.iter().any(|w| w.to_bits() == width_px.to_bits()) {
+        if !WIDTH_LADDER_PX
+            .iter()
+            .any(|w| w.to_bits() == width_px.to_bits())
+        {
             return Err(t.error(format!("width {width_px} is not on the width ladder")));
         }
 
-        let mut t = r.record("helpers")?;
-        let helpers = Helpers {
-            smart_snap: t.bool("smart snap")?,
-            grid_snap: t.bool("grid snap")?,
-            numbering: t.bool("numbering")?,
-            next_number: t.number("next number")?,
-            grid_cols: t.number("grid columns")?,
-            grid_rows: t.number("grid rows")?,
-            experimental: Experimental {
-                shape_text: t.bool("shape text")?,
-            },
-        };
-        t.end()?;
-        let cells = 1..=GRID_MAX_CELLS;
-        if helpers.next_number < FIRST_NUMBER
-            || !cells.contains(&helpers.grid_cols)
-            || !cells.contains(&helpers.grid_rows)
-        {
-            return Err(t.error("helper settings out of range"));
-        }
+        let helpers = read_helpers(r)?;
         r.set_shape_text(helpers.experimental.shape_text);
 
         let mut t = r.record("smoothing")?;
@@ -391,24 +375,7 @@ impl Editor {
         let tap = t.get()?;
         t.end()?;
 
-        let mut t = r.record("gesture")?;
-        let gesture = if t.none() {
-            None
-        } else {
-            match t.word("gesture")? {
-                "pan" => Some(Gesture::Pan {
-                    button: t.get()?,
-                    pan: Pan::new(t.get()?),
-                }),
-                "tool" => Some(Gesture::Tool {
-                    button: t.get()?,
-                    tool: t.get()?,
-                    fresh: t.bool("fresh")?,
-                }),
-                other => return Err(t.error(format!("unknown gesture `{other}`"))),
-            }
-        };
-        t.end()?;
+        let gesture = read_gesture(r)?;
 
         let mut reedit_tokens = r.record("reedit")?;
         let reedit = if reedit_tokens.none() {
@@ -439,23 +406,7 @@ impl Editor {
             snapshot::check_ids(&reedit_tokens, &doc, &[id])?;
         }
 
-        r.section("history")?;
-        let mut t = r.record("limits")?;
-        let limit: usize = t.number("undo limit")?;
-        let budget: usize = t.number("byte budget")?;
-        t.end()?;
-        if limit == 0 {
-            return Err(t.error("undo limit is 0"));
-        }
-        let undo = snapshot::read_transactions(r, "undo")?;
-        if undo.len() > limit {
-            return Err(SnapshotError::new(
-                r.line(),
-                format!("{} undo entries above the limit {limit}", undo.len()),
-            ));
-        }
-        let redo = snapshot::read_transactions(r, "redo")?;
-        let history = History::from_parts(undo.into(), redo, limit, budget);
+        let history = read_history(r)?;
         let clipboard = Clipboard::from_shapes(snapshot::read_clipboard(r)?);
         let tools = ToolStates::read_snapshot(r, &doc)?;
 
@@ -1351,6 +1302,76 @@ fn step_cells(cells: &mut u32, delta: i32) -> bool {
     let changed = *cells != stepped;
     *cells = stepped;
     changed
+}
+
+/// Reads the `helpers` record (snapshots, ADR-T74-1).
+fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
+    let mut t = r.record("helpers")?;
+    let helpers = Helpers {
+        smart_snap: t.bool("smart snap")?,
+        grid_snap: t.bool("grid snap")?,
+        numbering: t.bool("numbering")?,
+        next_number: t.number("next number")?,
+        grid_cols: t.number("grid columns")?,
+        grid_rows: t.number("grid rows")?,
+        experimental: Experimental {
+            shape_text: t.bool("shape text")?,
+        },
+    };
+    t.end()?;
+    let cells = 1..=GRID_MAX_CELLS;
+    if helpers.next_number < FIRST_NUMBER
+        || !cells.contains(&helpers.grid_cols)
+        || !cells.contains(&helpers.grid_rows)
+    {
+        return Err(t.error("helper settings out of range"));
+    }
+    Ok(helpers)
+}
+
+/// Reads the `gesture` record (snapshots, ADR-T74-1).
+fn read_gesture(r: &mut Reader<'_>) -> Result<Option<Gesture>, SnapshotError> {
+    let mut t = r.record("gesture")?;
+    let gesture = if t.none() {
+        None
+    } else {
+        match t.word("gesture")? {
+            "pan" => Some(Gesture::Pan {
+                button: t.get()?,
+                pan: Pan::new(t.get()?),
+            }),
+            "tool" => Some(Gesture::Tool {
+                button: t.get()?,
+                tool: t.get()?,
+                fresh: t.bool("fresh")?,
+            }),
+            other => return Err(t.error(format!("unknown gesture `{other}`"))),
+        }
+    };
+    t.end()?;
+    Ok(gesture)
+}
+
+/// Reads the `[history]` section (snapshots, ADR-T74-1).
+fn read_history(r: &mut Reader<'_>) -> Result<History, SnapshotError> {
+    r.section("history")?;
+    let mut t = r.record("limits")?;
+    let limit: usize = t.number("undo limit")?;
+    let budget: usize = t.number("byte budget")?;
+    t.end()?;
+    if limit == 0 {
+        return Err(t.error("undo limit is 0"));
+    }
+    let undo = snapshot::read_transactions(r, "undo")?;
+    if undo.len() > limit {
+        return Err(SnapshotError::new(
+            r.line(),
+            format!("{} undo entries above the limit {limit}", undo.len()),
+        ));
+    }
+    let redo = snapshot::read_transactions(r, "redo")?;
+    let history = History::from_parts(undo.into(), redo, limit, budget);
+    Ok(history)
 }
 
 #[cfg(test)]

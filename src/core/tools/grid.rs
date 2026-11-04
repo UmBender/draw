@@ -12,13 +12,13 @@
 //! gets the values at release (ADR-T18-1). `Shift` makes the cells square.
 //! With numbering on, new grids show their axis indices (ADR-T22-1).
 
-use crate::core::snapshot::{Reader, SnapshotError, Writer};
 use crate::core::command::Tool;
 use crate::core::document::tx_insert;
 use crate::core::editor::Helpers;
 use crate::core::geom::Vec2;
 use crate::core::shape::{GRID_MAX_CELLS, Shape, Style};
 use crate::core::snap::{self, DragKind, Snapped};
+use crate::core::snapshot::{Reader, SnapshotError, Writer};
 use crate::core::tools::shape_tool::MIN_DRAG_PX;
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 

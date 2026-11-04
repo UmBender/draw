@@ -397,7 +397,12 @@ impl crate::core::snapshot::Snap for Smoother {
         if widths.as_ref().is_some_and(|w| w.len() != points.len()) {
             return Err(tokens.error("smoother widths out of step with its points"));
         }
-        if widths.iter().flatten().chain(&last_width).any(|w| *w <= 0.0) {
+        if widths
+            .iter()
+            .flatten()
+            .chain(&last_width)
+            .any(|w| *w <= 0.0)
+        {
             return Err(tokens.error("smoother width factor not positive"));
         }
         Ok(Self {

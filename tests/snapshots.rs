@@ -113,7 +113,9 @@ fn assert_snapshot_panics_with_diff_on_change() {
     }));
 
     // Assert
-    let payload = result.err().unwrap_or_else(|| panic!("a changed state matched"));
+    let payload = result
+        .err()
+        .unwrap_or_else(|| panic!("a changed state matched"));
     let message = payload
         .downcast_ref::<String>()
         .cloned()

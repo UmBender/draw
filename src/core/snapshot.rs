@@ -489,7 +489,9 @@ impl<'a> Tokens<'a> {
     pub fn string(&mut self, what: &str) -> Result<String, SnapshotError> {
         match self.take(what)? {
             Token::Str(text) => Ok(text),
-            Token::Word(word) => Err(self.error(format!("expected {what} (a string), found `{word}`"))),
+            Token::Word(word) => {
+                Err(self.error(format!("expected {what} (a string), found `{word}`")))
+            }
         }
     }
 
@@ -786,7 +788,10 @@ const TOOLS: [(Tool, &str); 11] = [
 
 impl Snap for Tool {
     fn write(&self, line: &mut Line<'_>) {
-        let name = TOOLS.iter().find(|(t, _)| t == self).map_or("pen", |(_, n)| n);
+        let name = TOOLS
+            .iter()
+            .find(|(t, _)| t == self)
+            .map_or("pen", |(_, n)| n);
         line.word(name);
     }
 
@@ -804,7 +809,10 @@ const BUTTONS: [(PointerButton, &str); 3] = [
 
 impl Snap for PointerButton {
     fn write(&self, line: &mut Line<'_>) {
-        let name = BUTTONS.iter().find(|(b, _)| b == self).map_or("left", |(_, n)| n);
+        let name = BUTTONS
+            .iter()
+            .find(|(b, _)| b == self)
+            .map_or("left", |(_, n)| n);
         line.word(name);
     }
 
@@ -852,7 +860,10 @@ const SMOOTHING: [(SmoothingLevel, &str); 4] = [
 
 impl Snap for SmoothingLevel {
     fn write(&self, line: &mut Line<'_>) {
-        let name = SMOOTHING.iter().find(|(l, _)| l == self).map_or("low", |(_, n)| n);
+        let name = SMOOTHING
+            .iter()
+            .find(|(l, _)| l == self)
+            .map_or("low", |(_, n)| n);
         line.word(name);
     }
 
@@ -944,7 +955,10 @@ impl Snap for Shape {
                 widths,
                 style,
             } => {
-                line.word("stroke").put(style).put(points).opt(widths.as_ref());
+                line.word("stroke")
+                    .put(style)
+                    .put(points)
+                    .opt(widths.as_ref());
             }
             Self::Line { a, b, style } => {
                 line.word("line").put(style).put(a).put(b);
@@ -1007,7 +1021,11 @@ impl Snap for Shape {
                 size,
                 style,
             } => {
-                line.word("text").put(style).put(origin).f32(*size).string(text);
+                line.word("text")
+                    .put(style)
+                    .put(origin)
+                    .f32(*size)
+                    .string(text);
             }
         }
     }
@@ -1017,26 +1035,7 @@ impl Snap for Shape {
         let kind = choice(tokens, "shape kind", &kinds)?;
         let style: Style = tokens.get()?;
         let shape = match kind {
-            0 => {
-                let points: Vec<Vec2> = tokens.get()?;
-                let widths: Option<Vec<f32>> = tokens.opt()?;
-                if points.is_empty() {
-                    return Err(tokens.error("stroke without points"));
-                }
-                if let Some(widths) = &widths {
-                    if widths.len() != points.len() {
-                        return Err(tokens.error("stroke widths out of step with its points"));
-                    }
-                    if widths.iter().any(|w| *w <= 0.0) {
-                        return Err(tokens.error("stroke width factor not positive"));
-                    }
-                }
-                Self::Stroke {
-                    points,
-                    widths,
-                    style,
-                }
-            }
+            0 => read_stroke(tokens, style)?,
             1 | 2 => {
                 let (a, b) = (tokens.get()?, tokens.get()?);
                 if kind == 1 {
@@ -1073,33 +1072,7 @@ impl Snap for Shape {
                     }
                 }
             }
-            5 => {
-                let (a, b) = (tokens.get()?, tokens.get()?);
-                let cols: u32 = tokens.number("columns")?;
-                let rows: u32 = tokens.number("rows")?;
-                let axes = tokens.bool("axes")?;
-                let fills: Vec<CellFill> = tokens.get()?;
-                let texts: Vec<CellText> = tokens.get()?;
-                let cells = 1..=GRID_MAX_CELLS;
-                if !cells.contains(&cols) || !cells.contains(&rows) {
-                    return Err(tokens.error(format!("grid of {cols} × {rows} cells")));
-                }
-                if !cells_ok(fills.iter().map(|f| (f.col, f.row)), cols, rows)
-                    || !cells_ok(texts.iter().map(|t| (t.col, t.row)), cols, rows)
-                {
-                    return Err(tokens.error("grid cells outside the grid, unsorted or repeated"));
-                }
-                Self::Grid {
-                    a,
-                    b,
-                    cols,
-                    rows,
-                    style,
-                    axes,
-                    fills,
-                    texts,
-                }
-            }
+            5 => read_grid(tokens, style)?,
             _ => {
                 let origin = tokens.get()?;
                 let size = tokens.f32("text size")?;
@@ -1124,6 +1097,57 @@ impl Snap for Shape {
         }
         Ok(shape)
     }
+}
+
+/// The rest of a `stroke` shape after its style.
+fn read_stroke(tokens: &mut Tokens<'_>, style: Style) -> Result<Shape, SnapshotError> {
+    let points: Vec<Vec2> = tokens.get()?;
+    let widths: Option<Vec<f32>> = tokens.opt()?;
+    if points.is_empty() {
+        return Err(tokens.error("stroke without points"));
+    }
+    if let Some(widths) = &widths {
+        if widths.len() != points.len() {
+            return Err(tokens.error("stroke widths out of step with its points"));
+        }
+        if widths.iter().any(|w| *w <= 0.0) {
+            return Err(tokens.error("stroke width factor not positive"));
+        }
+    }
+    Ok(Shape::Stroke {
+        points,
+        widths,
+        style,
+    })
+}
+
+/// The rest of a `grid` shape after its style.
+fn read_grid(tokens: &mut Tokens<'_>, style: Style) -> Result<Shape, SnapshotError> {
+    let (a, b) = (tokens.get()?, tokens.get()?);
+    let cols: u32 = tokens.number("columns")?;
+    let rows: u32 = tokens.number("rows")?;
+    let axes = tokens.bool("axes")?;
+    let fills: Vec<CellFill> = tokens.get()?;
+    let texts: Vec<CellText> = tokens.get()?;
+    let cells = 1..=GRID_MAX_CELLS;
+    if !cells.contains(&cols) || !cells.contains(&rows) {
+        return Err(tokens.error(format!("grid of {cols} × {rows} cells")));
+    }
+    if !cells_ok(fills.iter().map(|f| (f.col, f.row)), cols, rows)
+        || !cells_ok(texts.iter().map(|t| (t.col, t.row)), cols, rows)
+    {
+        return Err(tokens.error("grid cells outside the grid, unsorted or repeated"));
+    }
+    Ok(Shape::Grid {
+        a,
+        b,
+        cols,
+        rows,
+        style,
+        axes,
+        fills,
+        texts,
+    })
 }
 
 /// Writes `edit` as an `insert`, `remove` or `replace` record.
@@ -1320,7 +1344,7 @@ pub mod golden {
 
     /// A short line diff from `expected` to `actual`: the changed block
     /// between the common head and tail, `-` for expected lines and `+`
-    /// for actual ones, at most [`MAX_DIFF_LINES`] per side.
+    /// for actual ones, at most `MAX_DIFF_LINES` (20) per side.
     #[must_use]
     pub fn diff(expected: &str, actual: &str) -> String {
         let old: Vec<&str> = expected.lines().collect();
@@ -1396,7 +1420,10 @@ mod tests {
         down(ed, a);
         for i in 1..=8 {
             let t = i as f32 / 8.0;
-            move_to(ed, v(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t + t * 3.0));
+            move_to(
+                ed,
+                v(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t + t * 3.0),
+            );
         }
         up(ed, b);
     }
@@ -1586,7 +1613,10 @@ mod tests {
                     pos: v(150.0, 140.0),
                     mods: NONE,
                 },
-                InputEvent::Char { ch: 'z', mods: NONE },
+                InputEvent::Char {
+                    ch: 'z',
+                    mods: NONE,
+                },
                 InputEvent::PointerUp {
                     pos: v(150.0, 140.0),
                     button: PointerButton::Left,
@@ -1641,7 +1671,12 @@ mod tests {
                 Snapshot::parse(&text).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
 
             // Assert
-            assert_eq!(snapshot.to_text(), text, "{} is not canonical", path.display());
+            assert_eq!(
+                snapshot.to_text(),
+                text,
+                "{} is not canonical",
+                path.display()
+            );
         }
     }
 
@@ -1674,7 +1709,10 @@ mod tests {
 
         // Assert: one record per line, and the text comes back.
         assert_eq!(loaded, ed);
-        assert_eq!(loaded.text_edit().map(|e| e.text().to_owned()), ed.text_edit().map(|e| e.text().to_owned()));
+        assert_eq!(
+            loaded.text_edit().map(|e| e.text().to_owned()),
+            ed.text_edit().map(|e| e.text().to_owned())
+        );
         assert!(!text.contains('\t'), "tabs are escaped");
         assert!(!text.contains('\u{7f}'), "control characters are escaped");
     }
@@ -1721,7 +1759,10 @@ mod tests {
         // Assert
         let err = err.err().unwrap_or_else(|| panic!("bad camera accepted"));
         assert_eq!(err.line, line + 1);
-        assert!(err.to_string().starts_with(&format!("line {}: ", line + 1)), "{err}");
+        assert!(
+            err.to_string().starts_with(&format!("line {}: ", line + 1)),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1731,7 +1772,11 @@ mod tests {
         let text = ed.snapshot().to_text();
         let line = line_of(&text, "camera ");
 
-        for bad in ["camera NaN 0.0 1.0", "camera 0.0 inf 1.0", "camera 0.0 0.0 -inf"] {
+        for bad in [
+            "camera NaN 0.0 1.0",
+            "camera 0.0 inf 1.0",
+            "camera 0.0 0.0 -inf",
+        ] {
             // Act
             let result = Snapshot::parse(&edited(&ed, line, bad));
 
@@ -1824,9 +1869,16 @@ mod tests {
         type_text(&mut ed, "é");
         let text = ed.snapshot().to_text();
         let line = line_of(&text, "text ");
-        let bad = text.lines().nth(line).map(|l| l.replace("\"é\" 2 ", "\"é\" 1 "));
+        let bad = text
+            .lines()
+            .nth(line)
+            .map(|l| l.replace("\"é\" 2 ", "\"é\" 1 "));
         let bad = bad.unwrap_or_default();
-        assert_ne!(bad, text.lines().nth(line).unwrap_or_default(), "caret token not found");
+        assert_ne!(
+            bad,
+            text.lines().nth(line).unwrap_or_default(),
+            "caret token not found"
+        );
 
         // Act
         let result = Snapshot::parse(&edited(&ed, line, &bad));
@@ -1840,7 +1892,10 @@ mod tests {
         // Arrange
         let text = busy_editor().snapshot().to_text();
 
-        for end in (0..text.len()).filter(|&i| text.is_char_boundary(i)).step_by(7) {
+        for end in (0..text.len())
+            .filter(|&i| text.is_char_boundary(i))
+            .step_by(7)
+        {
             // Act
             let result = Snapshot::parse(&text[..end]);
 
@@ -1875,7 +1930,9 @@ mod tests {
         let result = Snapshot::parse(&edited(&ed, 0, &next));
 
         // Assert
-        let err = result.err().unwrap_or_else(|| panic!("version {} accepted", VERSION + 1));
+        let err = result
+            .err()
+            .unwrap_or_else(|| panic!("version {} accepted", VERSION + 1));
         assert_eq!(err.line, 1);
         assert!(err.message.contains("version"), "{err}");
     }
@@ -1891,7 +1948,9 @@ mod tests {
         let result = Snapshot::parse(&edited(&ed, line, "[pasteboard]"));
 
         // Assert
-        let err = result.err().unwrap_or_else(|| panic!("unknown section accepted"));
+        let err = result
+            .err()
+            .unwrap_or_else(|| panic!("unknown section accepted"));
         assert_eq!(err.line, line + 1);
         assert!(err.message.contains("section"), "{err}");
     }
@@ -1928,6 +1987,7 @@ mod tests {
 #[cfg(test)]
 mod golden_tests {
     use super::golden::{Golden, check, diff};
+    use std::fmt::Write as _;
 
     // AC-5
 
@@ -1962,7 +2022,10 @@ mod golden_tests {
         // Arrange / Act / Assert
         assert_eq!(check("new\n", Some("old\n"), true), Golden::Write);
         assert_eq!(check("new\n", None, true), Golden::Write);
-        assert!(matches!(check("new\n", Some("old\n"), false), Golden::Mismatch(_)));
+        assert!(matches!(
+            check("new\n", Some("old\n"), false),
+            Golden::Mismatch(_)
+        ));
     }
 
     #[test]
@@ -1974,8 +2037,11 @@ mod golden_tests {
     #[test]
     fn diff_caps_long_changes() {
         // Arrange
-        let expected: String = (0..1000).map(|i| format!("a{i}\n")).collect();
-        let actual: String = (0..1000).map(|i| format!("b{i}\n")).collect();
+        let (mut expected, mut actual) = (String::new(), String::new());
+        for i in 0..1000 {
+            let _ = writeln!(expected, "a{i}");
+            let _ = writeln!(actual, "b{i}");
+        }
 
         // Act
         let text = diff(&expected, &actual);

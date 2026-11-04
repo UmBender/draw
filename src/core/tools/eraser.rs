@@ -15,9 +15,9 @@ use std::collections::{HashMap, HashSet};
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{Document, ShapeId, Transaction, tx_remove, tx_replace};
-use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, TextSlot};
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
 /// Hit tolerance of the eraser in screen pixels.
 pub const ERASER_TOLERANCE_PX: f32 = 6.0;

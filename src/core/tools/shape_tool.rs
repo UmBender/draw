@@ -13,7 +13,6 @@
 //! With numbering on, rectangles and ellipses carry the next number, in the
 //! preview and when committed (ADR-T19-1); the editor moves the counter.
 
-use crate::core::snapshot::{Reader, SnapshotError, Writer};
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::command::Tool;
 use crate::core::document::tx_insert;
@@ -21,6 +20,7 @@ use crate::core::geom::Vec2;
 use crate::core::numbering;
 use crate::core::shape::{Shape, Style};
 use crate::core::snap::{self, DragKind, Snapped};
+use crate::core::snapshot::{Reader, SnapshotError, Writer};
 
 /// Shortest drag, in screen pixels, that creates a shape.
 pub const MIN_DRAG_PX: f32 = 2.0;
@@ -252,7 +252,10 @@ impl State {
                 l.none();
             }
             Some(drag) => {
-                let kind = KINDS.iter().find(|(k, _)| *k == drag.kind).map_or("line", |(_, n)| n);
+                let kind = KINDS
+                    .iter()
+                    .find(|(k, _)| *k == drag.kind)
+                    .map_or("line", |(_, n)| n);
                 l.word(kind)
                     .put(&drag.start)
                     .put(&drag.end)
