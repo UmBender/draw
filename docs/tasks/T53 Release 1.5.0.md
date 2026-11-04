@@ -2,9 +2,9 @@
 id: T53
 title: Release 1.5.0
 status: todo
-wave: 33
+wave: 51
 branch: chore/release-1.5.0
-depends_on: [T46, T47, T48, T49, T51, T52]
+depends_on: [T46, T47, T48, T49, T51, T52, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72]
 adrs: []
 feature: ""
 tutorial: ""
@@ -19,7 +19,11 @@ draw 1.5.0 is tagged and packaged: the last release before the 2.0.0
 refactor ([[T50 Version 2.0.0 refactor]]), with every feature 2.0.0
 will have. Native Wayland by default with X11 deprecated (T46), the
 diagnostics log (T47), the Ctrl-C and long-running fixes (T48, T49),
-all colours in one theme file (T51), and text in shapes by default (T52).
+all colours in one theme file (T51), text in shapes by default (T52),
+the TeX symbol series (math alphabets, Hebrew and Greek letters, named
+operators, set/logic, algebra, category theory, physics and
+combinatorics notation, T54–T71), and whatever the owner accepts from
+the feature proposal ([[T72 Feature proposal]]).
 
 ## Known facts (2026-11-02)
 
@@ -40,7 +44,8 @@ all colours in one theme file (T51), and text in shapes by default (T52).
    budgets with `DRAW_FRAME_TIMES=1`; one long session with the T47 log
    showing no anomaly; `Ctrl-C` exits cleanly; a build with a few colours
    changed by following the theme docs; writing in rect/ellipse/grid cells, and a numbered shape
-   refusing text.
+   refusing text; one formula per new
+   TeX task (T54–T71) checked against LaTeX output.
 3. `CHANGELOG.md`: `Deprecated` lists X11/Xwayland (removed in 2.0.0).
    `Changed` lists text in shapes, no longer experimental.
 4. Version bump, tag, packages, Flatpak, `SHA256SUMS`, `draw.debug`.
@@ -65,3 +70,5 @@ all colours in one theme file (T51), and text in shapes by default (T52).
 
 - 2026-11-02 — planned at the owner's request: 1.5.0 is the last
   feature release; 2.0.0 only removes X11, refactors and fixes bugs.
+- 2026-11-03 — owner: the TeX symbol series T54–T71 and the feature
+  proposal T72 ship in 1.5.0, which stays the last feature release.

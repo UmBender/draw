@@ -2,7 +2,7 @@
 id: T50
 title: Version 2.0.0 refactor
 status: todo
-wave: 34
+wave: 52
 branch: task/T50-v2-refactor
 depends_on: [T46, T47, T48, T49, T51, T52, T53]
 adrs: []
@@ -114,3 +114,5 @@ Decided per child task.
 - 2026-11-02 — owner: the 2.0.0 command line takes only basic flags
   (`--version`, `--help`). The `DRAW_*` variables stay, for debugging
   only.
+- 2026-11-03 — 1.5.0 (T53) now also carries T54–T72; T50 moves to
+  wave 52.

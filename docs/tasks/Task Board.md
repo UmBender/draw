@@ -88,6 +88,53 @@ flowchart TD
   T49 --> T53
   T51 --> T53
   T52 --> T53
+  T54[T54 Math alphabet styles]
+  T54 --> T53
+  T54 --> T55[T55 Math font subset for alphabets and symbols]
+  T55 --> T53
+  T54 --> T56[T56 Bold math]
+  T55 --> T56[T56 Bold math]
+  T56 --> T53
+  T54 --> T57[T57 Blackboard bold]
+  T55 --> T57[T57 Blackboard bold]
+  T57 --> T53
+  T54 --> T58[T58 Fraktur letters]
+  T55 --> T58[T58 Fraktur letters]
+  T58 --> T53
+  T54 --> T59[T59 Script letters]
+  T55 --> T59[T59 Script letters]
+  T59 --> T53
+  T54 --> T60[T60 Sans-serif and typewriter letters]
+  T55 --> T60[T60 Sans-serif and typewriter letters]
+  T60 --> T53
+  T61[T61 Hebrew letters]
+  T61 --> T53
+  T54 --> T62[T62 Complete Greek letters]
+  T62 --> T53
+  T63[T63 Trigonometric and hyperbolic functions]
+  T63 --> T53
+  T63 --> T64[T64 Named operators with limits]
+  T64 --> T53
+  T55 --> T65[T65 Set and logic symbols]
+  T65 --> T53
+  T55 --> T66[T66 Big set and logic operators]
+  T65 --> T66[T66 Big set and logic operators]
+  T66 --> T53
+  T55 --> T67[T67 Algebra and group theory symbols]
+  T64 --> T67[T67 Algebra and group theory symbols]
+  T67 --> T53
+  T55 --> T68[T68 Category theory symbols]
+  T67 --> T68[T68 Category theory symbols]
+  T68 --> T53
+  T55 --> T69[T69 Classical physics notation]
+  T56 --> T69[T69 Classical physics notation]
+  T69 --> T53
+  T69 --> T70[T70 Quantum notation]
+  T70 --> T53
+  T55 --> T71[T71 Combinatorics notation]
+  T71 --> T53
+  T72[T72 Feature proposal]
+  T72 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -128,8 +175,26 @@ flowchart TD
 | 30 | [[T45 Doubled keys after a long idle on Wayland]] |
 | 31 | [[T46 Native Wayland by default and Xwayland deprecated]] · [[T47 Always-on diagnostics log]] |
 | 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] · [[T51 Build-time themes]] · [[T52 Text in shapes by default]] |
-| 33 | [[T53 Release 1.5.0]] |
-| 34 | [[T50 Version 2.0.0 refactor]] |
+| 33 | [[T54 Math alphabet styles]] · [[T72 Feature proposal]] |
+| 34 | [[T55 Math font subset for alphabets and symbols]] |
+| 35 | [[T56 Bold math]] |
+| 36 | [[T57 Blackboard bold]] |
+| 37 | [[T58 Fraktur letters]] |
+| 38 | [[T59 Script letters]] |
+| 39 | [[T60 Sans-serif and typewriter letters]] |
+| 40 | [[T61 Hebrew letters]] |
+| 41 | [[T62 Complete Greek letters]] |
+| 42 | [[T63 Trigonometric and hyperbolic functions]] |
+| 43 | [[T64 Named operators with limits]] |
+| 44 | [[T65 Set and logic symbols]] |
+| 45 | [[T66 Big set and logic operators]] |
+| 46 | [[T67 Algebra and group theory symbols]] |
+| 47 | [[T68 Category theory symbols]] |
+| 48 | [[T69 Classical physics notation]] |
+| 49 | [[T70 Quantum notation]] |
+| 50 | [[T71 Combinatorics notation]] |
+| 51 | [[T53 Release 1.5.0]] |
+| 52 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -187,5 +252,24 @@ flowchart TD
 | [[T49 Long-running stability]] | done | T47 | `fix/long-running-stability` |
 | [[T51 Build-time themes]] | todo | — | `task/T51-build-time-themes` |
 | [[T52 Text in shapes by default]] | todo | — | `task/T52-shape-text-default` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52 | `chore/release-1.5.0` |
-| [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T53 | `task/T50-v2-refactor` |
+| [[T54 Math alphabet styles]] | todo | — | `task/T54-math-alphabets` |
+| [[T55 Math font subset for alphabets and symbols]] | todo | T54 | `task/T55-math-font-subset` |
+| [[T56 Bold math]] | todo | T54, T55 | `task/T56-bold-math` |
+| [[T57 Blackboard bold]] | todo | T54, T55 | `task/T57-blackboard-bold` |
+| [[T58 Fraktur letters]] | todo | T54, T55 | `task/T58-fraktur` |
+| [[T59 Script letters]] | todo | T54, T55 | `task/T59-script-letters` |
+| [[T60 Sans-serif and typewriter letters]] | todo | T54, T55 | `task/T60-sans-and-mono` |
+| [[T61 Hebrew letters]] | todo | — | `task/T61-hebrew-letters` |
+| [[T62 Complete Greek letters]] | todo | T54 | `task/T62-complete-greek` |
+| [[T63 Trigonometric and hyperbolic functions]] | todo | — | `task/T63-trig-functions` |
+| [[T64 Named operators with limits]] | todo | T63 | `task/T64-named-operators` |
+| [[T65 Set and logic symbols]] | todo | T55 | `task/T65-set-logic-symbols` |
+| [[T66 Big set and logic operators]] | todo | T55, T65 | `task/T66-big-operators` |
+| [[T67 Algebra and group theory symbols]] | todo | T55, T64 | `task/T67-algebra-symbols` |
+| [[T68 Category theory symbols]] | todo | T55, T67 | `task/T68-category-symbols` |
+| [[T69 Classical physics notation]] | todo | T55, T56 | `task/T69-classical-physics` |
+| [[T70 Quantum notation]] | todo | T69 | `task/T70-quantum-notation` |
+| [[T71 Combinatorics notation]] | todo | T55 | `task/T71-combinatorics` |
+| [[T72 Feature proposal]] | todo | — | `docs/T72-feature-proposal` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T72 | `chore/release-1.5.0` |
+| [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
