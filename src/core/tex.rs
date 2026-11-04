@@ -5267,4 +5267,158 @@ mod tests {
             }
         }
     }
+
+    // ---- T65 set and logic symbols -----------------------------------------
+
+    /// The *Spec* table of T65: name, text, class.
+    const SET_LOGIC: [(&str, &str, Class); 27] = [
+        ("setminus", "∖", Class::Bin),
+        ("complement", "∁", Class::Ord),
+        ("varnothing", "∅", Class::Ord),
+        ("supset", "⊃", Class::Rel),
+        ("subseteq", "⊆", Class::Rel),
+        ("supseteq", "⊇", Class::Rel),
+        ("subsetneq", "⊊", Class::Rel),
+        ("supsetneq", "⊋", Class::Rel),
+        ("nsubseteq", "⊈", Class::Rel),
+        ("ni", "∋", Class::Rel),
+        ("sqcup", "⊔", Class::Bin),
+        ("sqcap", "⊓", Class::Bin),
+        ("uplus", "⊎", Class::Bin),
+        ("lnot", "¬", Class::Ord),
+        ("veebar", "⊻", Class::Bin),
+        ("barwedge", "⊼", Class::Bin),
+        ("top", "⊤", Class::Ord),
+        ("bot", "⊥", Class::Ord),
+        ("nexists", "∄", Class::Ord),
+        ("implies", "⟹", Class::Rel),
+        ("impliedby", "⟸", Class::Rel),
+        ("vdash", "⊢", Class::Rel),
+        ("models", "⊨", Class::Rel),
+        ("lvert", "|", Class::Open),
+        ("rvert", "|", Class::Close),
+        ("lVert", "‖", Class::Open),
+        ("rVert", "‖", Class::Close),
+    ];
+
+    #[test]
+    fn tex_parse_set_and_logic_symbols_have_their_text_and_class() {
+        for (name, text, class) in SET_LOGIC {
+            // Arrange
+            let src = format!("$\\{name}$");
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_set_and_logic_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in SET_LOGIC {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert!(!got[0].3, "{name}");
+            assert_eq!(text.chars().collect::<Vec<_>>(), vec![got[0].0], "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_implies_pads_a_thick_space_beyond_rel() {
+        let p = mm('\u{1D45D}').advance;
+        let q = mm('\u{1D45E}').advance;
+        for (name, arrow) in [("implies", '⟹'), ("impliedby", '⟸')] {
+            // Arrange
+            let src = format!("p\\{name} q");
+
+            // Act
+            let b = boxed(&src);
+            let small = layout_math(&math(&src), SCRIPT_SCALE);
+
+            // Assert: relation space plus a thick space each side.
+            let wide = 2.0 * REL_SPACE + 2.0 * WIDE_REL_SPACE;
+            assert!(approx_eq(WIDE_REL_SPACE, 5.0 / 18.0, EPS));
+            assert!(
+                approx_eq(b.width, p + mm(arrow).advance + q + wide, EPS),
+                "{name}: {}",
+                b.width
+            );
+            let (pos, _) = glyph(&b.ink, arrow);
+            assert!(
+                approx_eq(pos.x, p + REL_SPACE + WIDE_REL_SPACE, EPS),
+                "{name}: {pos:?}"
+            );
+            // In a script only the padding stays.
+            let want = SCRIPT_SCALE * (p + mm(arrow).advance + q + 2.0 * WIDE_REL_SPACE);
+            assert!(approx_eq(small.width, want, EPS), "{name}: {}", small.width);
+        }
+        // A plain long arrow relation is not padded.
+        assert!(approx_eq(
+            boxed("p\\Rightarrow q").width,
+            p + adv("⇒") + q + 2.0 * REL_SPACE,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_layout_set_and_logic_symbols_space_by_class() {
+        let width = |src: &str| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
+
+        // Binary operators.
+        for (src, op) in [
+            ("a\\setminus b", "∖"),
+            ("a\\veebar b", "⊻"),
+            ("a\\sqcup b", "⊔"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(op) + 2.0 * BIN_SPACE, EPS),
+                "{src}"
+            );
+        }
+        // Relations.
+        for (src, rel) in [
+            ("a\\subseteq b", "⊆"),
+            ("a\\vdash b", "⊢"),
+            ("a\\ni b", "∋"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(rel) + 2.0 * REL_SPACE, EPS),
+                "{src}"
+            );
+        }
+        // Ordinary atoms get no space.
+        assert!(approx_eq(width("\\lnot a"), adv("¬") + mm(A).advance, EPS));
+        assert!(approx_eq(width("\\top\\bot"), adv("⊤⊥"), EPS));
+        // No space inside the bars; a minus after an opening bar is unary.
+        let bars = |src: &str, open: &str| {
+            assert!(
+                approx_eq(width(src), 2.0 * adv(open) + mm(A).advance, EPS),
+                "{src}"
+            );
+        };
+        bars("\\lvert a \\rvert", "|");
+        bars("\\lVert a \\rVert", "‖");
+        assert!(approx_eq(
+            width("\\lvert -a\\rvert"),
+            2.0 * adv("|") + adv("\u{2212}") + mm(A).advance,
+            EPS
+        ));
+    }
 }
