@@ -638,6 +638,9 @@ pub struct AlphabetDef {
     /// Characters drawn from elsewhere than the block (Letterlike
     /// Symbols), as `(typed, drawn)`; used where the row maps a `Block`.
     pub holes: &'static [(char, char)],
+    /// Whether the letters this row maps lean right: an accent over one
+    /// of them is skewed (ADR-T56-1). Digits are always upright.
+    pub slant: bool,
 }
 
 impl AlphabetDef {
@@ -691,6 +694,7 @@ pub const MATH_ITALIC: AlphabetDef = AlphabetDef {
     greek_upper: Map::Upright,
     greek_lower: ITALIC_GREEK_LOWER,
     holes: ITALIC_HOLES,
+    slant: true,
 };
 
 /// `\mathcal`: script capitals, with the holes Unicode filled before the
@@ -712,6 +716,7 @@ const MATHCAL: AlphabetDef = AlphabetDef {
         ('M', '\u{2133}'),
         ('R', '\u{211B}'),
     ],
+    slant: true,
 };
 
 /// Every math alphabet command (ADR-T54-1).
@@ -726,6 +731,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_upper: Map::Inherit,
         greek_lower: Map::Inherit,
         holes: &[],
+        slant: false,
     },
     // Italic letters set as a word; digits as outside.
     AlphabetDef {
@@ -736,6 +742,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_upper: ITALIC_GREEK_UPPER,
         greek_lower: ITALIC_GREEK_LOWER,
         holes: ITALIC_HOLES,
+        slant: true,
     },
     // The default style, with italic Greek capitals.
     AlphabetDef {
@@ -743,7 +750,39 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_upper: ITALIC_GREEK_UPPER,
         ..MATH_ITALIC
     },
+    // Upright bold; lowercase Greek as outside, as in LaTeX (T56).
+    AlphabetDef {
+        name: "mathbf",
+        upper: Map::Block(0x1D400),
+        lower: Map::Block(0x1D41A),
+        digit: BOLD_DIGIT,
+        greek_upper: Map::Block(0x1D6A8),
+        greek_lower: Map::Inherit,
+        holes: &[],
+        slant: false,
+    },
+    BOLDSYMBOL,
+    AlphabetDef {
+        name: "bm",
+        ..BOLDSYMBOL
+    },
 ];
+
+/// Start of the bold digits `𝟎`.
+const BOLD_DIGIT: Map = Map::Block(0x1D7CE);
+
+/// `\boldsymbol` (and `\bm`): bold italic Latin and Greek, bold digits
+/// (T56). Bold italic has no holes.
+const BOLDSYMBOL: AlphabetDef = AlphabetDef {
+    name: "boldsymbol",
+    upper: Map::Block(0x1D468),
+    lower: Map::Block(0x1D482),
+    digit: BOLD_DIGIT,
+    greek_upper: Map::Block(0x1D71C),
+    greek_lower: Map::Block(0x1D736),
+    holes: &[],
+    slant: true,
+};
 
 /// The math alphabet command `name` (without the backslash).
 #[must_use]
@@ -788,6 +827,16 @@ impl Style {
             }
         }
         self
+    }
+
+    /// Whether `ch` typed in a formula part of this style is drawn as a
+    /// different, slanted glyph: an accent over it is skewed (ADR-T56-1).
+    fn slanted(self, ch: char) -> bool {
+        // Every math alphabet's digits are upright.
+        Kind::of(ch).is_some_and(|(kind, _)| {
+            let row = self.rows[kind.slot()];
+            kind != Kind::Digit && row.slant && row.map(ch).is_some_and(|drawn| drawn != ch)
+        })
     }
 
     /// `ch` typed in a formula part of this style.
@@ -1896,9 +1945,9 @@ fn accented(def: &AccentDef, content: &[Node], scale: f32, style: Style) -> Math
 fn slanted(nodes: &[Node], style: Style) -> bool {
     let mut atoms = nodes.iter().filter(|n| !matches!(n, Node::Space(_)));
     match (atoms.next(), atoms.next()) {
-        (Some(Node::Char(ch)), None) => style.map(*ch) != *ch,
+        (Some(Node::Char(ch)), None) => style.slanted(*ch),
         (Some(Node::Symbol(name)), None) => symbol(name).is_some_and(|def| {
-            def.class == Class::Ord && letter(def).is_some_and(|ch| style.map(ch) != ch)
+            def.class == Class::Ord && letter(def).is_some_and(|ch| style.slanted(ch))
         }),
         _ => false,
     }
@@ -4137,5 +4186,229 @@ mod tests {
             assert!(approx_eq(b.width, ADVANCE, EPS));
             assert!(approx_eq(b.ascent, GLYPH_ASCENT, EPS));
         }
+    }
+
+    // ---- T56 bold math (ADR-T56-1) ----------------------------------------
+
+    /// The bold alphabet commands of T56.
+    const BOLD_NAMES: [&str; 3] = ["mathbf", "boldsymbol", "bm"];
+
+    /// The character `index` places after `start`.
+    fn nth(start: u32, index: u32) -> char {
+        char::from_u32(start + index).unwrap_or('\u{FFFD}')
+    }
+
+    /// Where `\mathbf` draws `ch`, or `None` when it inherits its kind.
+    fn mathbf_char(ch: char) -> Option<char> {
+        let (kind, index) = Kind::of(ch)?;
+        let start = match kind {
+            Kind::Upper => 0x1D400,
+            Kind::Lower => 0x1D41A,
+            Kind::Digit => 0x1D7CE,
+            Kind::GreekUpper => 0x1D6A8,
+            Kind::GreekLower => return None,
+        };
+        Some(nth(start, index))
+    }
+
+    /// Where `\boldsymbol` draws `ch`.
+    fn boldsymbol_char(ch: char) -> Option<char> {
+        let (kind, index) = Kind::of(ch)?;
+        let start = match kind {
+            Kind::Upper => 0x1D468,
+            Kind::Lower => 0x1D482,
+            Kind::Digit => 0x1D7CE,
+            Kind::GreekUpper => 0x1D71C,
+            Kind::GreekLower => 0x1D736,
+        };
+        Some(nth(start, index))
+    }
+
+    #[test]
+    fn tex_mathbf_maps_to_upright_bold() {
+        // Arrange
+        let all = every_kind();
+        let want: Vec<char> = all
+            .chars()
+            .map(|ch| mathbf_char(ch).unwrap_or_else(|| italic(ch)))
+            .collect();
+
+        // Act
+        let got = drawn(&format!("\\mathbf{{{all}}}"));
+
+        // Assert
+        assert_eq!(got, want);
+        assert_eq!(drawn("\\mathbf{Av0}"), vec!['𝐀', '𝐯', '𝟎']);
+        assert_eq!(drawn("\\mathbf\\Gamma"), vec!['𝚪']);
+        assert_eq!(drawn("\\mathbf{\\Sigma\\Omega}"), vec!['𝚺', '𝛀']);
+        // Lowercase Greek stays math italic, as in LaTeX.
+        assert_eq!(drawn("\\mathbf{\\alpha\\varphi}"), drawn("\\alpha\\varphi"));
+    }
+
+    #[test]
+    fn tex_boldsymbol_and_bm_map_to_bold_italic() {
+        // Arrange
+        let all = every_kind();
+        let want: Vec<char> = all.chars().filter_map(boldsymbol_char).collect();
+        assert_eq!(want.len(), all.chars().count());
+
+        for name in ["boldsymbol", "bm"] {
+            // Act
+            let got = drawn(&format!("\\{name}{{{all}}}"));
+
+            // Assert
+            assert_eq!(got, want, "{name}");
+            assert_eq!(
+                drawn(&format!("\\{name}{{xh1}}")),
+                vec!['𝒙', '𝒉', '𝟏'],
+                "{name}: bold italic h has no hole"
+            );
+            assert_eq!(
+                drawn(&format!("\\{name}{{\\alpha\\Gamma\\varepsilon\\epsilon}}")),
+                vec!['𝜶', '𝜞', '𝜺', '𝝐'],
+                "{name}"
+            );
+        }
+        assert_eq!(alphabet("bm").map(|a| (a.upper, a.lower, a.digit)), {
+            alphabet("boldsymbol").map(|a| (a.upper, a.lower, a.digit))
+        });
+        assert_eq!(boxed("\\bm{v_1}"), boxed("\\boldsymbol{v_1}"));
+    }
+
+    #[test]
+    fn tex_parse_bold_commands_take_one_argument() {
+        for name in BOLD_NAMES {
+            // Act / Assert: braced or one token.
+            assert_eq!(
+                math(&format!("\\{name}{{v}}")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![braced(vec![Node::Char('v')])],
+                }],
+                "{name}"
+            );
+            assert_eq!(
+                math(&format!("\\{name}\\alpha")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![tok(sym("alpha"))],
+                }],
+                "{name}"
+            );
+            for src in [
+                format!("$\\{name}{{v}} \\cdot \\bm{{\\alpha}}$"),
+                format!("$\\{name} x^2$"),
+            ] {
+                assert_eq!(print(&parse(&src)), src);
+            }
+            // Without an argument: a literal in the warning colour.
+            let literal = Node::Literal(format!("\\{name}"));
+            assert_eq!(math(&format!("\\{name}")), vec![literal], "{name}");
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+            assert!(got.iter().all(|g| g.3), "{name}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn tex_bold_rows_draw_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        for name in BOLD_NAMES {
+            assert_eq!(alphabet(name).map(|a| a.name), Some(name));
+
+            // Act
+            let b = boxed(&format!("\\{name}{{{all}}}"));
+
+            // Assert: one math-face glyph per character, none warned.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), all.chars().count(), "{name}");
+            assert!(got.iter().all(|g| !g.3), "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_skew_over_bold_letters() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        let mark_centre = |src: &str| ink_box(&mark_ink(&boxed(src).ink, hat)).center().x;
+        let check = |alphabet: &str, arg: &str, skewed: bool| {
+            let plain = boxed(&format!("\\{alphabet}{{{arg}}}"));
+            let skew = if skewed {
+                ACCENT_SKEW * plain.ascent
+            } else {
+                0.0
+            };
+            let want = ink_box(&plain.ink).center().x + skew;
+
+            // Act
+            let got = mark_centre(&format!("\\{alphabet}{{\\hat{{{arg}}}}}"));
+
+            // Assert
+            assert!(
+                approx_eq(got, want, EPS),
+                "\\{alphabet}{{{arg}}}: {got} vs {want}"
+            );
+        };
+
+        // Upright bold: centred.
+        for arg in ["v", "A", "\\Gamma", "1"] {
+            check("mathbf", arg, false);
+        }
+        // Lowercase Greek inside \mathbf is math italic: skewed.
+        check("mathbf", "\\alpha", true);
+        // Bold italic: skewed; digits stay centred.
+        for name in ["boldsymbol", "bm"] {
+            for arg in ["v", "A", "\\Gamma", "\\alpha"] {
+                check(name, arg, true);
+            }
+            check(name, "1", false);
+        }
+        // Existing alphabets keep their skew.
+        check("mathcal", "A", true);
+        check("mathit", "v", true);
+        check("mathrm", "v", false);
+    }
+
+    #[test]
+    fn tex_bold_alphabets_nest_and_leave_operators_alone() {
+        // Act / Assert: the innermost alphabet that maps a kind wins.
+        assert_eq!(drawn("\\mathbf{\\boldsymbol{x}}"), vec!['𝒙']);
+        assert_eq!(drawn("\\boldsymbol{\\mathbf{x}}"), vec!['𝐱']);
+        assert_eq!(drawn("\\boldsymbol{\\mathrm{x}}"), vec!['x']);
+        assert_eq!(drawn("\\boldsymbol{\\mathbf{\\alpha}}"), vec!['𝜶']);
+        assert_eq!(drawn("\\mathbf{\\mathcal{A}b}"), vec!['𝒜', '𝐛']);
+        assert_eq!(drawn("\\mathbf{v_1^2}"), vec!['𝐯', '𝟐', '𝟏']);
+        for name in BOLD_NAMES {
+            for src in [
+                "\\log+\\sum\\text{ab}",
+                "\\operatorname{rank}",
+                "\\sin\\gcd\\to\\infty",
+                "\\aleph\\partial\\nabla",
+            ] {
+                assert_eq!(
+                    boxed(&format!("\\{name}{{{src}}}")),
+                    boxed(src),
+                    "\\{name}{{{src}}}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_boldmath_is_an_unknown_command() {
+        // Act
+        let alone = glyphs(&boxed("\\boldmath").ink);
+        let before = drawn("\\boldmath x");
+
+        // Assert: drawn in the warning colour; the x after it is not bold.
+        assert!(alone.iter().all(|g| g.3), "{alone:?}");
+        assert!(alphabet("boldmath").is_none());
+        assert_eq!(before.last().copied(), Some(X));
     }
 }

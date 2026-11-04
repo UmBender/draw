@@ -1,11 +1,11 @@
 ---
 id: T56
 title: Bold math
-status: todo
+status: review
 wave: 35
 branch: task/T56-bold-math
 depends_on: [T54, T55]
-adrs: []
+adrs: ["[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]"]
 feature: "[[TeX formulas]]"
 tutorial: ""
 tags: [task, tex]
@@ -53,11 +53,59 @@ which makes the rest of its formula bold.
 
 ## Spec
 
-To be written in the spec step.
+Settled (owner, batch plan 2026-11-04; rows of
+[[ADR-T54-1 Math alphabets as a table of per-kind mappings]], skew rule
+in [[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]).
+
+| Command | Latin A–Z | Latin a–z | Digits | Greek capitals | Greek lowercase |
+|---------|-----------|-----------|--------|----------------|-----------------|
+| `\mathbf` | bold U+1D400… | bold U+1D41A… | bold U+1D7CE… | bold U+1D6A8… | inherit |
+| `\boldsymbol`, `\bm` | bold italic U+1D468… | bold italic U+1D482… | bold U+1D7CE… | bold italic U+1D71C… | bold italic U+1D736… |
+
+Bold italic has no hole (`h` → U+1D489, unlike italic `ℎ`). Both
+commands take one argument (braced or one token) and nest like every
+alphabet (innermost wins); operators, functions, `\text`, `\partial`
+and Hebrew letters are never bold (the font has no bold operators).
+
+`AlphabetDef` gains `slant: bool`: whether the glyphs the row maps lean
+right. An accent over one letter is skewed only when the row that draws
+it maps the letter to another character **and** is slanted, so
+`\hat{\mathbf{v}}` is centred while `\hat{\boldsymbol{v}}` and
+`\mathbf{\hat{\alpha}}` (italic α) are skewed. Existing rows keep their
+behaviour: `MATH_ITALIC`, `\mathit`, `\mathnormal`, `\mathcal` slanted,
+`\mathrm` upright.
+
+- **AC-1** `\mathbf` maps Latin, digits and Greek capitals to upright
+  bold; lowercase Greek stays math italic —
+  `tex_mathbf_maps_to_upright_bold`.
+- **AC-2** `\boldsymbol` and `\bm` are the same row and map Latin, digits
+  and all Greek (variants included) to bold italic / bold —
+  `tex_boldsymbol_and_bm_map_to_bold_italic`.
+- **AC-3** Both commands parse with one argument, are literals (warning
+  colour) without one, and print back unchanged —
+  `tex_parse_bold_commands_take_one_argument`; every glyph they draw is
+  in the math face and `math_metrics` —
+  `tex_bold_rows_draw_glyphs_of_the_math_face` (and the existing
+  `tex_alphabet_rows_draw_glyphs_of_the_math_face` over `ALPHABETS`).
+- **AC-4** Accent skew: centred over upright bold, skewed over bold italic
+  and over italic Greek inside `\mathbf`; existing skews unchanged —
+  `tex_layout_accent_skew_over_bold_letters` (plus
+  `tex_layout_accent_skew_follows_the_alphabet`).
+- **AC-5** Nesting and reach: `\mathbf{\boldsymbol{x}}` is bold italic,
+  `\boldsymbol{\mathrm{x}}` upright; operators, functions, `\text` and
+  `\partial` unchanged — `tex_bold_alphabets_nest_and_leave_operators_alone`.
+- **AC-6** `\boldmath` stays an unknown command drawn in the warning
+  colour — `tex_boldmath_is_an_unknown_command`.
+- **AC-7** The fuzzer types `\mathbf`, `\boldsymbol`, `\bm` and
+  `\boldmath` (`tests/fuzz.rs`).
 
 ## Out of scope
 
-- Bold operators, bold fraction bars or roots.
+- `\boldmath`: in LaTeX it is a declaration valid only *outside* math
+  mode, so inside `$…$` it does nothing; draw leaves it an unknown
+  command (owner, batch plan 2026-11-04).
+- Bold operators, bold fraction bars or roots (Latin Modern Math has no
+  bold operators).
 - `\pmb` (poor man's bold).
 
 ## Files owned
@@ -70,12 +118,12 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T56): …`
-- [ ] tests — `test(T56): …`
-- [ ] models — `feat(T56): …`
-- [ ] behaviour — `feat(T56): …`
-- [ ] quality — `chore(T56): …`
-- [ ] docs — `docs(T56): …`
+- [x] spec — `docs(T56): …`
+- [x] tests — `test(T56): …`
+- [x] models — `feat(T56): …`
+- [x] behaviour — `feat(T56): …`
+- [x] quality — `chore(T56): …` (nothing to change, no commit)
+- [x] docs — `docs(T56): …`
 
 ## Learning path
 
@@ -85,3 +133,17 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — spec written (batch run); `\boldmath` left out as the
+  owner decided. UNATTENDED CHOICE: new `AlphabetDef::slant` flag so an
+  accent is centred over upright bold (as in LaTeX), recorded in
+  ADR-T56-1.
+- 2026-11-04 — tests, `slant` field, `\mathbf`/`\boldsymbol`/`\bm` rows.
+  In the behaviour step two test assumptions turned out wrong and were
+  settled: the font gives bold `f` an italic correction (the assertion
+  that upright bold has none was dropped), and `\boldsymbol` digits are
+  upright, so digits are never skewed (added to ADR-T56-1).
+- 2026-11-04 — `scripts/check.sh` and `scripts/check.sh --fuzz` green
+  with no changes, so no quality commit. README row and feature note
+  section added; status `review`. Manual checks for the owner:
+  `$\mathbf{v} \cdot \bm{\alpha}$`, `$\mathbf{\Gamma}$`,
+  `$\hat{\mathbf{v}}$` (centred).
