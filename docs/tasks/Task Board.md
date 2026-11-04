@@ -257,26 +257,26 @@ flowchart TD
 | [[T47 Always-on diagnostics log]] | done | — | `task/T47-diagnostics-log` |
 | [[T48 Clean exit on Ctrl-C]] | done | T47 | `fix/clean-exit-on-sigint` |
 | [[T49 Long-running stability]] | done | T47 | `fix/long-running-stability` |
-| [[T51 Build-time themes]] | todo | — | `task/T51-build-time-themes` |
-| [[T52 Text in shapes by default]] | todo | — | `task/T52-shape-text-default` |
+| [[T51 Build-time themes]] | done | — | `task/T51-build-time-themes` |
+| [[T52 Text in shapes by default]] | done | — | `task/T52-shape-text-default` |
 | [[T54 Math alphabet styles]] | done | — | `task/T54-math-alphabets` |
-| [[T55 Math font subset for alphabets and symbols]] | todo | T54 | `task/T55-math-font-subset` |
-| [[T56 Bold math]] | todo | T54, T55 | `task/T56-bold-math` |
-| [[T57 Blackboard bold]] | todo | T54, T55 | `task/T57-blackboard-bold` |
-| [[T58 Fraktur letters]] | todo | T54, T55 | `task/T58-fraktur` |
-| [[T59 Script letters]] | todo | T54, T55 | `task/T59-script-letters` |
-| [[T60 Sans-serif and typewriter letters]] | todo | T54, T55 | `task/T60-sans-and-mono` |
+| [[T55 Math font subset for alphabets and symbols]] | done | T54 | `task/T55-math-font-subset` |
+| [[T56 Bold math]] | done | T54, T55 | `task/T56-bold-math` |
+| [[T57 Blackboard bold]] | done | T54, T55 | `task/T57-blackboard-bold` |
+| [[T58 Fraktur letters]] | done | T54, T55 | `task/T58-fraktur` |
+| [[T59 Script letters]] | done | T54, T55 | `task/T59-script-letters` |
+| [[T60 Sans-serif and typewriter letters]] | done | T54, T55 | `task/T60-sans-and-mono` |
 | [[T61 Hebrew letters]] | done | — | `task/T61-hebrew-letters` |
 | [[T62 Complete Greek letters]] | done | T54 | `task/T62-complete-greek` |
 | [[T63 Trigonometric and hyperbolic functions]] | done | — | `task/T63-trig-functions` |
 | [[T64 Named operators with limits]] | done | T63 | `task/T64-named-operators` |
-| [[T65 Set and logic symbols]] | todo | T55 | `task/T65-set-logic-symbols` |
-| [[T66 Big set and logic operators]] | todo | T55, T65 | `task/T66-big-operators` |
-| [[T67 Algebra and group theory symbols]] | todo | T55, T64 | `task/T67-algebra-symbols` |
-| [[T68 Category theory symbols]] | todo | T55, T67 | `task/T68-category-symbols` |
-| [[T69 Classical physics notation]] | todo | T55, T56 | `task/T69-classical-physics` |
-| [[T70 Quantum notation]] | todo | T69 | `task/T70-quantum-notation` |
-| [[T71 Combinatorics notation]] | todo | T55 | `task/T71-combinatorics` |
+| [[T65 Set and logic symbols]] | done | T55 | `task/T65-set-logic-symbols` |
+| [[T66 Big set and logic operators]] | done | T55, T65 | `task/T66-big-operators` |
+| [[T67 Algebra and group theory symbols]] | done | T55, T64 | `task/T67-algebra-symbols` |
+| [[T68 Category theory symbols]] | done | T55, T67 | `task/T68-category-symbols` |
+| [[T69 Classical physics notation]] | done | T55, T56 | `task/T69-classical-physics` |
+| [[T70 Quantum notation]] | done | T69 | `task/T70-quantum-notation` |
+| [[T71 Combinatorics notation]] | done | T55 | `task/T71-combinatorics` |
 | [[T72 Feature proposal]] | todo | — | `docs/T72-feature-proposal` |
 | [[T73 Continuous integration on GitHub]] | done | — | `task/T73-github-ci` |
 | [[T74 Editor snapshots for tests]] | done | — | `task/T74-editor-snapshots` |

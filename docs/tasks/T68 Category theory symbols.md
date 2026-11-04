@@ -1,7 +1,7 @@
 ---
 id: T68
 title: Category theory symbols
-status: review
+status: done
 wave: 47
 branch: task/T68-category-symbols
 depends_on: [T55, T67]
@@ -177,3 +177,4 @@ None planned; the feature note is enough.
   commit). `scripts/check.sh` and `scripts/check.sh --fuzz` green. No
   deviation from *Files owned*; no tutorial. Manual checks for the
   owner: `$f\colon A \to B$`, `$F \dashv G$`, `$A \hookrightarrow B$`.
+- 2026-11-04 — integrated on `main` (merge `8db8c1e`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

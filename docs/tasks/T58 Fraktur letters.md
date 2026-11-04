@@ -1,7 +1,7 @@
 ---
 id: T58
 title: Fraktur letters
-status: review
+status: done
 wave: 37
 branch: task/T58-fraktur
 depends_on: [T54, T55]
@@ -103,3 +103,4 @@ None planned; the feature note is enough.
   the T55 subset. The quality step only ran rustfmt on the tests.
   `scripts/check.sh` and `--fuzz` green. Manual check for the owner:
   `$\mathfrak{g}, \mathfrak{S}_n$`.
+- 2026-11-04 — integrated on `main` (merge `fc9e32e`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

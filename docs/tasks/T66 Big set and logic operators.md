@@ -1,7 +1,7 @@
 ---
 id: T66
 title: Big set and logic operators
-status: review
+status: done
 wave: 45
 branch: task/T66-big-operators
 depends_on: [T55, T65]
@@ -114,3 +114,4 @@ None planned; the feature note is enough.
   quality step changed nothing (no `chore` commit). `scripts/check.sh`
   and `--fuzz` green. No ADR, no tutorial, no deviation from *Files
   owned*. Manual check for the owner: `$\bigcup_{i=1}^{n} A_i$`.
+- 2026-11-04 — integrated on `main` (merge `ebe4767`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

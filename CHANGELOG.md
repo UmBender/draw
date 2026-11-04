@@ -24,12 +24,33 @@ All notable changes to draw are listed here. The format follows
   functions (`\exp`, `\dim`, `\ker`, …) and `\operatorname{…}` /
   `\operatorname*{…}`; and the alphabets `\mathrm`, `\mathit` and
   `\mathnormal` next to `\mathcal`.
+- More math alphabets: `\mathbf`, `\boldsymbol`, `\bm`, `\mathbb`,
+  `\mathds`, `\mathfrak`, `\mathscr` (capitals only: the font has no
+  script lowercase), `\mathsf` and `\mathtt`.
+- More symbols in formulas: set and logic symbols (`\implies`,
+  `\setminus`, `\lVert`…), big operators with limits (`\bigcup`,
+  `\bigoplus`, `\coprod`…), algebra and group theory (`\rtimes`,
+  `\trianglelefteq`, `\Hom`…) and category theory (`\hookrightarrow`,
+  `\dashv`, `\colon`…).
+- Combinatorics notation: the infix `\choose`, `\brack`, `\brace`,
+  `\over` and `\atop`, plus `\tbinom`, `\dbinom`, `\multiset`,
+  `\underline`, `\nmid` and `\#`.
+- Physics notation: `\dd`, `\dv`, `\pdv`, `\abs`, `\norm`, `\order`,
+  `\vb`, `\vu`, `\curl` and `\dddot`; quantum notation: `\bra`, `\ket`,
+  `\braket`, `\ketbra`, `\expval`, `\mel`, `\comm`, `\acomm`, `\dag` and
+  `\Tr`.
+- Build-time themes: every colour is a constant in `src/theme.rs`; edit
+  it and rebuild to restyle draw.
 
 ### Changed
 
 - Native Wayland is the default on Wayland sessions; the .deb and .rpm
   recommend the Wayland libraries.
 - Building from source needs Rust 1.99 or newer.
+- Text in rectangles, ellipses and grid cells is always on, and
+  `DRAW_EXPERIMENTAL` is gone. A numbered rectangle or ellipse holds no
+  text: typing there makes a free text block, and numbering a shape
+  that already holds text leaves it unnumbered.
 
 ### Deprecated
 

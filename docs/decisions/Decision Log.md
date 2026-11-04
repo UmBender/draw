@@ -20,10 +20,10 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 9 | [[ADR-0009 Fuzzing with proptest]] | accepted | decision | 0003, 0008 | — |
 | 10 | [[ADR-0010 Clippy lint policy]] | accepted | decision | 0008 | — |
 | 11 | [[ADR-0011 Git workflow]] | accepted | decision | 0001, 0008 | — |
-| 12 | [[ADR-0012 Fixed palette and theme tokens]] | accepted | decision | 0004 | amended by 0015 |
+| 12 | [[ADR-0012 Fixed palette and theme tokens]] | accepted | decision | 0004 | amended by 0015, T51-1 |
 | 13 | [[ADR-0013 World-space widths and zoom limits]] | accepted | decision | 0004 | — |
 | 14 | [[ADR-0014 Minimal dependencies and no unsafe]] | accepted | decision | 0002, 0003 | amended by T32-1, T35-1 |
-| 15 | [[ADR-0015 Kanagawa Dragon theme]] | accepted | decision | 0012 | amends 0012 |
+| 15 | [[ADR-0015 Kanagawa Dragon theme]] | accepted | decision | 0012 | amends 0012, amended by T51-1 |
 | 16 | [[ADR-T06-1 Self-checking edits and rollback atomicity]] | accepted | decision | 0005 | — |
 | 17 | [[ADR-T07-1 Screen-space tessellation in the renderer]] | accepted | decision | 0002, 0006, 0013 | amended by T24-4 |
 | 18 | [[ADR-T08-1 Tool context and gesture overlay]] | accepted | decision | 0003, 0005 | — |
@@ -61,8 +61,8 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 50 | [[ADR-T32-1 Own glyph atlas rasterized with fontdue]] | accepted | decision | 0014, T24-3, T29-1 | amends 0014 |
 | 51 | [[ADR-T32-2 Shapes and glyphs share one textured batch]] | accepted | decision | T24-3, T32-1 | amends T24-3 |
 | 52 | [[ADR-T30-1 TeX subset, box layout and metrics]] | accepted | decision | 0003, 0014, T29-1, T29-2, T32-1, T32-2 | — |
-| 53 | [[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]] | accepted | decision | 0003, 0014, T29-1, T32-1, T32-2 | amends T30-1 |
-| 54 | [[ADR-T31-1 Shape text prototype behind a switch]] | accepted | decision | T16-1, T16-3, T19-1, T21-1, T21-2, T29-1, T29-2, T29-3, T30-1 | amends T16-1, T21-2, T29-2 |
+| 53 | [[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]] | accepted | decision | 0003, 0014, T29-1, T32-1, T32-2 | amends T30-1, amended by T55-1 |
+| 54 | [[ADR-T31-1 Shape text prototype behind a switch]] | superseded | decision | T16-1, T16-3, T19-1, T21-1, T21-2, T29-1, T29-2, T29-3, T30-1 | amends T16-1, T21-2, T29-2, superseded by T52-1 |
 | 55 | [[ADR-T27-1 Build in an AlmaLinux 8 container for a glibc 2.28 floor]] | accepted | decision | 0002, 0014 | — |
 | 56 | [[ADR-T27-2 Package formats from one staging tree and one library list]] | accepted | decision | 0002, 0014, T12-1, T27-1 | — |
 | 57 | [[ADR-T27-3 Crash report from a panic hook and split debug symbols]] | accepted | decision | 0002, 0014 | — |
@@ -85,4 +85,14 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 74 | [[ADR-T73-1 Track the latest stable Rust]] | accepted | decision | T27-1, 0010 | — |
 | 75 | [[ADR-T74-1 Line-based editor snapshot format]] | accepted | decision | 0003, 0014, 0009, T49-1 | — |
 | 76 | [[ADR-T64-1 Operatorname with a star parsed as one command]] | accepted | decision | T30-1 | — |
-| 77 | [[ADR-T54-1 Math alphabets as a table of per-kind mappings]] | accepted | decision | T30-1 | amends T33-1 |
+| 77 | [[ADR-T54-1 Math alphabets as a table of per-kind mappings]] | accepted | decision | T30-1 | amends T33-1, amended by T56-1 |
+| 78 | [[ADR-T52-1 Text in shapes always on, numbered shapes hold no text]] | accepted | decision | T16-1, T16-3, T19-1, T74-1 | supersedes T31-1 |
+| 79 | [[ADR-T51-1 One theme file with every colour]] | accepted | decision | 0012, 0015 | amends 0012, 0015 |
+| 80 | [[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]] | accepted | decision | T14-1, T32-1 | amends T33-1 |
+| 81 | [[ADR-T56-1 Accent skew follows a slant flag per math alphabet]] | accepted | decision | T39-1 | amends T54-1 |
+| 82 | [[ADR-T57-1 One double-struck alphabet for mathbb and mathds]] | accepted | decision | T54-1, T56-1 | — |
+| 83 | [[ADR-T59-1 One script alphabet for mathscr and mathcal]] | accepted | decision | T54-1, T55-1 | — |
+| 84 | [[ADR-T60-1 Bold sans-serif inside a bold alphabet]] | accepted | decision | T54-1, T56-1 | — |
+| 85 | [[ADR-T65-1 Wide relations padded with a thick space]] | accepted | decision | T30-1 | — |
+| 86 | [[ADR-T71-1 Infix fraction commands split their group]] | accepted | decision | T30-1 | — |
+| 87 | [[ADR-T69-1 Physics shortcuts expand to their long forms]] | accepted | decision | T30-1, T39-1 | — |

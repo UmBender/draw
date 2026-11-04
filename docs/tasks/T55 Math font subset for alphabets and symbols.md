@@ -1,7 +1,7 @@
 ---
 id: T55
 title: Math font subset for alphabets and symbols
-status: review
+status: done
 wave: 34
 branch: task/T55-math-font-subset
 depends_on: [T54]
@@ -175,3 +175,4 @@ None planned; the feature note is enough.
   not grow with the subset. ADR-T14-1 has no start-up budget.
 - 2026-11-04 — manual checks left for the owner: start-up time, and a
   formula with `\alpha \to x_1` looks as before.
+- 2026-11-04 — integrated on `main` (merge `1f4b9c8`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

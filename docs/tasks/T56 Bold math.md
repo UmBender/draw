@@ -1,7 +1,7 @@
 ---
 id: T56
 title: Bold math
-status: review
+status: done
 wave: 35
 branch: task/T56-bold-math
 depends_on: [T54, T55]
@@ -147,3 +147,4 @@ None planned; the feature note is enough.
   section added; status `review`. Manual checks for the owner:
   `$\mathbf{v} \cdot \bm{\alpha}$`, `$\mathbf{\Gamma}$`,
   `$\hat{\mathbf{v}}$` (centred).
+- 2026-11-04 — integrated on `main` (merge `e2d7e8c`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

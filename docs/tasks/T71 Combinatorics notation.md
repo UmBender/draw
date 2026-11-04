@@ -1,7 +1,7 @@
 ---
 id: T71
 title: Combinatorics notation
-status: review
+status: done
 wave: 50
 branch: task/T71-combinatorics
 depends_on: [T55]
@@ -174,3 +174,4 @@ None planned; the feature note is enough.
   out of range`) so the regular gates stay green; it needs a `fix/`
   task. Manual checks for the owner: `${n \choose k}$`,
   `${n \brace k}$`, `$x^{\underline{k}}$`.
+- 2026-11-04 — integrated on `main` (merge `3c5fa88`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

@@ -1,7 +1,7 @@
 ---
 id: T51
 title: Build-time themes
-status: review
+status: done
 wave: 32
 branch: task/T51-build-time-themes
 depends_on: []
@@ -232,3 +232,4 @@ step 02, revisited) and on colour contrast.
   `docs/features/Theme and palette.md` still describes `THEME` and
   `core::palette` as the place colours live; the integrator should point
   it at [[Themes]]. The labelled screenshot was not made.
+- 2026-11-04 — integrated on `main` (merge `9c66295`), one conflict in `README.md` with T52 (the Configuration intro), resolved keeping both changes; the owner's manual checks and review of the unattended choices are still open.

@@ -1,7 +1,7 @@
 ---
 id: T57
 title: Blackboard bold
-status: review
+status: done
 wave: 36
 branch: task/T57-blackboard-bold
 depends_on: [T54, T55]
@@ -135,3 +135,4 @@ None planned; the feature note is enough.
   owned*). For the owner: `git rm proptest-regressions/shell/app.txt`,
   or keep it for a `fix/…` task that scales the width tolerance with the
   corner magnitude and checks the seed in with the fix.
+- 2026-11-04 — integrated on `main` (merge `1e109c7`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

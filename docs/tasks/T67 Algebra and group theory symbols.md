@@ -1,7 +1,7 @@
 ---
 id: T67
 title: Algebra and group theory symbols
-status: review
+status: done
 wave: 46
 branch: task/T67-algebra-symbols
 depends_on: [T55, T64]
@@ -166,3 +166,4 @@ None planned; the feature note is enough.
   `fix/…` task for the snapshot text-size range. No deviation from
   *Files owned*; no tutorial. Manual checks for the owner:
   `$N \trianglelefteq G$`, `$N \rtimes H$`, `$\Hom(A, B)$`.
+- 2026-11-04 — integrated on `main` (merge `e3f5632`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

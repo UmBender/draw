@@ -1,7 +1,7 @@
 ---
 id: T69
 title: Classical physics notation
-status: review
+status: done
 wave: 48
 branch: task/T69-classical-physics
 depends_on: [T55, T56]
@@ -178,3 +178,4 @@ None planned; the feature note is enough.
   in the behaviour commit to measure mark centres the way accents do
   (`Ink::bounds`). Manual checks for the owner: `$\dv{f}{x}$`,
   `$\pdv{f}{x}$`, `$\vb{F} = m\dddot{x}$`.
+- 2026-11-04 — integrated on `main` (merge `39bfc8d`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

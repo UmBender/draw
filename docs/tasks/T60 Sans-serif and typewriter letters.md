@@ -1,7 +1,7 @@
 ---
 id: T60
 title: Sans-serif and typewriter letters
-status: review
+status: done
 wave: 39
 branch: task/T60-sans-and-mono
 depends_on: [T54, T55]
@@ -123,3 +123,4 @@ None planned; the feature note is enough.
   tutorial. Manual check for the owner:
   `$\mathsf{G}, \mathtt{x1}, \mathbf{\mathsf{x}}, \hat{\mathsf{A}}$`
   (sans G, monospace x1, bold sans x, centred hat).
+- 2026-11-04 — integrated on `main` (merge `1f2889f`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

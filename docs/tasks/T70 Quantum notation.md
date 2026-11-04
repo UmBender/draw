@@ -1,7 +1,7 @@
 ---
 id: T70
 title: Quantum notation
-status: review
+status: done
 wave: 49
 branch: task/T70-quantum-notation
 depends_on: [T69]
@@ -146,3 +146,4 @@ None planned; the feature note is enough.
 - 2026-11-04 — Existing test changed: `tex_expansions_are_well_formed`
   lists the eight new expansion names. Manual checks for the owner:
   `$\braket{\phi}{\psi}$`, `$\mel{n}{H}{m}$`, `$\comm{A}{B}$`.
+- 2026-11-04 — integrated on `main` (merge `2db21d6`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

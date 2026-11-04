@@ -1,7 +1,7 @@
 ---
 id: T59
 title: Script letters
-status: review
+status: done
 wave: 38
 branch: task/T59-script-letters
 depends_on: [T54, T55]
@@ -131,3 +131,4 @@ None planned; the feature note is enough.
   step only ran rustfmt on the tests. `scripts/check.sh` and `--fuzz`
   green. No tutorial. Manual check for the owner:
   `$\mathscr{L}, \mathscr{l}$` (script L, italic l).
+- 2026-11-04 — integrated on `main` (merge `0f00316`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

@@ -1,7 +1,7 @@
 ---
 id: T52
 title: Text in shapes by default
-status: review
+status: done
 wave: 32
 branch: task/T52-shape-text-default
 depends_on: []
@@ -222,3 +222,4 @@ a prototype graduates: removing a switch and keeping an invariant.
   number a rect, then try to type in it (a free text block appears);
   `render::shown_label` still hides a label under text as a guard,
   unreachable now.
+- 2026-11-04 — integrated on `main` (merge `40643d9`), no conflicts; the owner's manual checks and review of the unattended choices are still open.

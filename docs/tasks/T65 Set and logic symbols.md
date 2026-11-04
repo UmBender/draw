@@ -1,7 +1,7 @@
 ---
 id: T65
 title: Set and logic symbols
-status: review
+status: done
 wave: 44
 branch: task/T65-set-logic-symbols
 depends_on: [T55]
@@ -159,3 +159,4 @@ None planned; the feature note is enough.
   from *Files owned*; no tutorial. Manual checks for the owner:
   `$p \implies q$` (visibly wider than `$p \Rightarrow q$`),
   `$A \setminus B$`, `$\lVert v \rVert$`.
+- 2026-11-04 — integrated on `main` (merge `eabf599`), no conflicts; the owner's manual checks and review of the unattended choices are still open.
