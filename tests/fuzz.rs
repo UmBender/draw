@@ -171,7 +171,7 @@ fn arb_char() -> impl Strategy<Value = char> {
     ]
 }
 
-/// Formula-ish source (T30, T33, T36, T39, T61, T63): TeX tokens, `$`s, braces and any `char`.
+/// Formula-ish source (T30, T33, T36, T39, T61, T63, T64): TeX tokens, `$`s, braces and any `char`.
 fn arb_formula_text() -> impl Strategy<Value = String> {
     let token = prop_oneof![
         6 => select(vec![
@@ -193,6 +193,12 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\sin", "\\cos", "\\tan", "\\cot", "\\sec", "\\csc", "\\arcsin", "\\arccos",
             "\\arctan", "\\sinh", "\\cosh", "\\tanh", "\\coth", "\\arccot", "\\arcsec",
             "\\arccsc", "\\sech", "\\csch", "\\sin^2\\theta",
+            // T64: named operators with limits, operator words and
+            // \operatorname with and without star; its bodies and lead
+            // come from the " ", "{", "x" and "}" tokens.
+            "\\inf", "\\sup", "\\liminf", "\\limsup", "\\det", "\\Pr", "\\gcd", "\\exp",
+            "\\lg", "\\deg", "\\dim", "\\ker", "\\hom", "\\arg", "\\limsup_n",
+            "\\operatorname", "\\operatorname*",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

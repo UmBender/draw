@@ -1,11 +1,11 @@
 ---
 id: T64
 title: Named operators with limits
-status: todo
+status: review
 wave: 43
 branch: task/T64-named-operators
 depends_on: [T63]
-adrs: []
+adrs: ["[[ADR-T64-1 Operatorname with a star parsed as one command]]"]
 feature: "[[TeX formulas]]"
 tutorial: ""
 tags: [task, tex]
@@ -55,7 +55,60 @@ write any other operator name.
 
 ## Spec
 
-To be written in the spec step.
+Settled (owner, batch plan 2026-11-04). Rows of `SYMBOLS` for the named
+operators, and one new command `\operatorname` with a starred form
+([[ADR-T64-1 Operatorname with a star parsed as one command]]).
+
+| Class | Commands | Drawn as |
+|-------|----------|----------|
+| `Limits` | `\inf \sup \det \Pr \gcd` | the name |
+| `Limits` | `\liminf \limsup` | "lim inf", "lim sup": U+2006 (the thin space `\,` draws) between the words |
+| `Op` | `\exp \lg \deg \dim \ker \hom \arg` | the name |
+
+`\gcd` moves from `Op` to `Limits`, as in LaTeX (no existing test
+expected `Op`). Algebra names (`\Hom \End …`) stay out (T66/T67).
+
+- **AC-1** — each `Limits` command parses to one `Node::Symbol` and
+  `symbol(name)` gives its text and `Class::Limits`.
+  Test: `tex_parse_named_limit_operators_take_limits`.
+- **AC-2** — each `Op` command parses to one `Node::Symbol` and
+  `symbol(name)` gives `(name, Class::Op)`.
+  Test: `tex_parse_named_function_operators_are_operator_words`.
+- **AC-3** — all fourteen are drawn upright from the math face (every
+  character has a `math_metrics` row, nothing warns), as wide as their
+  text; `\liminf`/`\limsup` have a gap of one thin space (`OP_SPACE`)
+  between "lim" and the second word.
+  Tests: `tex_named_operators_are_upright_math_words`,
+  `tex_layout_liminf_has_a_thin_space_between_the_words`.
+- **AC-4** — a subscript on a `Limits` command is centred below the word
+  (`\inf_k`, `\limsup_k`, `\gcd_k` … like `\min_k`), and a script on an
+  `Op` command sits beside it (`\exp^2` like `\log^2`); both kinds get
+  `OP_SPACE` before an ordinary atom (`\det A`, `\dim V`).
+  Test: `tex_layout_named_operators_place_scripts_by_class`.
+- **AC-5** — `\operatorname{rank}` parses to
+  `Node::OperatorName { star: false, lead: "", body: "rank" }`,
+  `\operatorname*{argmin}` to the same with `star: true`; the body is raw
+  (balanced braces and spaces kept), whitespace before `{` is `lead`, and
+  the star is taken only directly after the name. Printing gives the
+  source back.
+  Test: `tex_parse_operatorname_keeps_its_raw_body_and_star`.
+- **AC-6** — without a `{…}` body, `\operatorname` (or `\operatorname*`,
+  star included) is a `Node::Literal` drawn in the warning colour, and
+  what follows parses normally; `\operatorname *{x}` is the literal
+  `\operatorname` then a space, `*` and a group.
+  Test: `tex_parse_operatorname_without_body_is_literal`.
+- **AC-7** — `\operatorname{…}` lays out as the matching `Op` row and
+  `\operatorname*{…}` as the matching `Limits` row:
+  `\operatorname{log} x` equals `\log x`, `\operatorname*{max}_k` equals
+  `\max_k`; `\operatorname{rank}` is upright math-face letters with
+  `OP_SPACE` before `x`, and the `x` of `\operatorname*{argmin}_x` is
+  centred below the word.
+  Test: `tex_layout_operatorname_matches_the_named_operators`.
+- **AC-8** — the fuzzer types the new commands, `\operatorname` with and
+  without star and body, and a scripted `\limsup`; the existing fuzz
+  properties (total parse and layout, print round trip) stay green.
+  Test: `arb_formula_text` tokens in `tests/fuzz.rs`, run by
+  `scripts/check.sh` and `scripts/check.sh --fuzz`.
 
 ## Out of scope
 
@@ -72,12 +125,12 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T64): …`
-- [ ] tests — `test(T64): …`
-- [ ] models — `feat(T64): …`
-- [ ] behaviour — `feat(T64): …`
-- [ ] quality — `chore(T64): …`
-- [ ] docs — `docs(T64): …`
+- [x] spec — `docs(T64): …`
+- [x] tests — `test(T64): …`
+- [x] models — `feat(T64): …`
+- [x] behaviour — `feat(T64): …`
+- [x] quality — `chore(T64): …`
+- [x] docs — `docs(T64): …`
 
 ## Learning path
 
@@ -87,3 +140,27 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented in the unattended batch run, on top of
+  `task/T63-trig-functions`: seven `Limits` rows (`\gcd` moved from
+  `Op`; no existing test expected `Op`), seven `Op` rows, and
+  `Node::OperatorName` for `\operatorname` / `\operatorname*`
+  ([[ADR-T64-1 Operatorname with a star parsed as one command]]). The
+  raw-body reading of `\text` became `Parser::raw_body`, shared by both.
+  `\liminf`/`\limsup` use U+2006 (the glyph `\,` draws, advance 0.167 em
+  ≈ `OP_SPACE`) between the words; every character already had a
+  `math_metrics` row, so no font change. `scripts/check.sh --fuzz` green.
+- 2026-11-04 — UNATTENDED CHOICE: the fuzzer's T64 tokens are the
+  fourteen commands, `\limsup_n`, `\operatorname` and `\operatorname*`
+  (bodies and leads come from the existing `{` `x` `}` ` ` tokens).
+  Longer sets (`\operatorname{rank}`, `\operatorname*{argmin}_x`,
+  `\limsup_{n\to\infty}`, …) made `sessions_reach_deep_editor_states`
+  fail with 16–19/200 sessions reaching a selection (needs 20). Measured
+  over 2000 sessions the rate is the same with or without T64's tokens
+  (219 vs 214, about 11 %): the base branch sits exactly on the
+  threshold (20/200), so any token change shifts the deterministic
+  stream and fails about 4 times in 10. The check itself was left as is.
+  Recommended for the owner: make the check robust (e.g. more sessions,
+  or a threshold of 15/200) before T62/T54 add more tokens.
+- 2026-11-04 — manual checks left for the owner: look at
+  `$\limsup_{n\to\infty} a_n$` and `$\operatorname*{argmin}_x f(x)$` in
+  the app.

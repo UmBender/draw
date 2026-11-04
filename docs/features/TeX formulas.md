@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -54,6 +54,18 @@ that are *not in LaTeX's base set* work too: `\arccot \arcsec \arccsc
 \sech \csch` (in LaTeX they would need `\operatorname`). (Since
 [[T63 Trigonometric and hyperbolic functions]].)
 
+The other named operators of LaTeX are upright words too. Those that
+take limits put a subscript below the word, like `\min`:
+`$\inf_{x\in S} f(x)$`, `\sup`, `\det`, `\Pr`, `\gcd` and
+`$\limsup_{n\to\infty} a_n$` (`\liminf` and `\limsup` are drawn
+"lim inf", "lim sup" with a thin space between the words). `\exp \lg
+\deg \dim \ker \hom \arg` keep their scripts beside them, like `\log`.
+Any other name is `\operatorname{rank}` (scripts beside) or
+`\operatorname*{argmin}_x` (with the star it takes limits); the body is
+a raw word, like `\text{…}`, and the star counts only directly after
+`\operatorname`. (Since [[T64 Named operators with limits]],
+[[ADR-T64-1 Operatorname with a star parsed as one command]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -63,8 +75,10 @@ that are *not in LaTeX's base set* work too: `\arccot \arcsec \arccsc
 | Superscript / subscript | `x^2`, `x_i`, `x_{i,j}^{2k}` |
 | Fraction, binomial, root | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` (`\frac12` works too) |
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
+| Named operators with limits | `\inf \sup \liminf \limsup \det \Pr \gcd`, as in `\limsup_{n\to\infty}` |
 | Integrals (limits beside) | `\int_0^1`, `\iint`, `\iiint`, `\oint`, `\oiint` |
-| Functions (upright) | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` |
+| Functions (upright) | `\log \ln \lcm \exp \lg \deg \dim \ker \hom \arg`, `a \bmod m`, `\pmod{m}` |
+| Any operator name | `\operatorname{rank}`, `\operatorname*{argmin}_x` (`*`: limits below) |
 | Trigonometric, hyperbolic | `\sin \cos \tan \cot \sec \csc`, `\arcsin \arccos \arctan`, `\sinh \cosh \tanh \coth`; not in LaTeX's base set: `\arccot \arcsec \arccsc \sech \csch` |
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
 | Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
@@ -116,6 +130,8 @@ of the same batch.
   placement over italic letters is approximated (the font's top-accent
   points are not embedded).
 - No `\limits` / `\nolimits`; integrals are always the inline size.
+- No `\DeclareMathOperator`, `\varliminf`, `\varlimsup`, `\injlim` or
+  `\projlim`; write `\operatorname{…}` instead.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
   literals); `\longrightarrow`, `\implies` and `\triangle` are not in
   the font subset.

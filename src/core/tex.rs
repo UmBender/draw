@@ -177,6 +177,16 @@ pub enum Node {
         /// The body between the braces (balanced braces allowed).
         body: String,
     },
+    /// `\operatorname{…}` or `\operatorname*{…}`: a raw body drawn as an
+    /// upright operator word (ADR-T64-1).
+    OperatorName {
+        /// Whether a `*` follows the name directly: the word takes limits.
+        star: bool,
+        /// Whitespace between the name (or star) and `{`.
+        lead: String,
+        /// The body between the braces (balanced braces allowed).
+        body: String,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -346,6 +356,15 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("min", "min", Class::Limits),
     def("max", "max", Class::Limits),
     def("lim", "lim", Class::Limits),
+    // Named operators with limits (T64); TeX's thin space between the
+    // words of `\liminf` and `\limsup`.
+    def("inf", "inf", Class::Limits),
+    def("sup", "sup", Class::Limits),
+    def("liminf", "lim\u{2006}inf", Class::Limits),
+    def("limsup", "lim\u{2006}sup", Class::Limits),
+    def("det", "det", Class::Limits),
+    def("Pr", "Pr", Class::Limits),
+    def("gcd", "gcd", Class::Limits),
     // Physics symbols (T36).
     def("partial", "∂", Class::Ord),
     def("nabla", "∇", Class::Ord),
@@ -399,8 +418,15 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def(",", "\u{2006}", Class::Ord),
     def("log", "log", Class::Op),
     def("ln", "ln", Class::Op),
-    def("gcd", "gcd", Class::Op),
     def("lcm", "lcm", Class::Op),
+    // Operator words with scripts beside them (T64).
+    def("exp", "exp", Class::Op),
+    def("lg", "lg", Class::Op),
+    def("deg", "deg", Class::Op),
+    def("dim", "dim", Class::Op),
+    def("ker", "ker", Class::Op),
+    def("hom", "hom", Class::Op),
+    def("arg", "arg", Class::Op),
     // Trigonometric and hyperbolic functions (T63).
     def("sin", "sin", Class::Op),
     def("cos", "cos", Class::Op),
@@ -1042,12 +1068,28 @@ impl<'a> Parser<'a> {
                 })
             }
             "text" => self.text_body(end),
+            "operatorname" => return self.operator_name(end),
             _ => None,
         };
         node.unwrap_or_else(|| {
             self.pos = after;
             Node::Literal(format!("\\{name}"))
         })
+    }
+
+    /// `\operatorname`, its name read: a `*` directly after it, then a
+    /// raw `{…}` body; literal (with its star) without a body
+    /// (ADR-T64-1).
+    fn operator_name(&mut self, end: usize) -> Node {
+        let star = self.pos < end && self.peek() == Some('*');
+        self.pos += usize::from(star);
+        let after = self.pos;
+        if let Some((lead, body)) = self.raw_body(end) {
+            return Node::OperatorName { star, lead, body };
+        }
+        self.pos = after;
+        let star = if star { "*" } else { "" };
+        Node::Literal(format!("\\operatorname{star}"))
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -1057,11 +1099,18 @@ impl<'a> Parser<'a> {
 
     /// The `{…}` body of `\text`, raw.
     fn text_body(&mut self, end: usize) -> Option<Node> {
+        self.raw_body(end)
+            .map(|(lead, body)| Node::Text { lead, body })
+    }
+
+    /// Whitespace and a raw `{…}` body at the cursor; `None` when no
+    /// closed group follows (the cursor may then have moved).
+    fn raw_body(&mut self, end: usize) -> Option<(String, String)> {
         let lead = self.whitespace(end);
         let close = self.group_close(end)?;
         let body = self.chars[self.pos + 1..close].iter().collect();
         self.pos = close + 1;
-        Some(Node::Text { lead, body })
+        Some((lead, body))
     }
 }
 
@@ -1161,6 +1210,16 @@ fn print_node(node: &Node, out: &mut String) {
         }
         Node::Text { lead, body } => {
             out.push_str("\\text");
+            out.push_str(lead);
+            out.push('{');
+            out.push_str(body);
+            out.push('}');
+        }
+        Node::OperatorName { star, lead, body } => {
+            out.push_str("\\operatorname");
+            if *star {
+                out.push('*');
+            }
             out.push_str(lead);
             out.push('{');
             out.push_str(body);
@@ -1359,6 +1418,10 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (b, Class::Ord)
         }
         Node::Text { body, .. } => (MathBox::upright(body, scale), Class::Ord),
+        Node::OperatorName { star, body, .. } => {
+            let class = if *star { Class::Limits } else { Class::Op };
+            (MathBox::upright(body, scale), class)
+        }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
@@ -3217,6 +3280,235 @@ mod tests {
         assert!(approx_eq(t_scale, 1.0, EPS));
         let order: Vec<char> = glyphs(&b.ink).iter().map(|g| g.0).collect();
         assert_eq!(order, vec!['s', 'i', 'n', '2', theta]);
+    }
+
+    /// Named operators of T64 that take limits, with what they draw.
+    const NAMED_LIMITS: [(&str, &str); 7] = [
+        ("inf", "inf"),
+        ("sup", "sup"),
+        ("liminf", "lim\u{2006}inf"),
+        ("limsup", "lim\u{2006}sup"),
+        ("det", "det"),
+        ("Pr", "Pr"),
+        ("gcd", "gcd"),
+    ];
+
+    /// Named operators of T64 with scripts beside them.
+    const NAMED_OPS: [&str; 7] = ["exp", "lg", "deg", "dim", "ker", "hom", "arg"];
+
+    /// An `\operatorname` node.
+    fn opname(star: bool, lead: &str, body: &str) -> Node {
+        Node::OperatorName {
+            star,
+            lead: lead.to_owned(),
+            body: body.to_owned(),
+        }
+    }
+
+    #[test]
+    fn tex_parse_named_limit_operators_take_limits() {
+        for (name, text) in NAMED_LIMITS {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, Class::Limits)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_parse_named_function_operators_are_operator_words() {
+        for name in NAMED_OPS {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((name, Class::Op)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_named_operators_are_upright_math_words() {
+        let all = NAMED_LIMITS.into_iter().chain(NAMED_OPS.map(|n| (n, n)));
+        for (name, text) in all {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: its text, upright, from the math face.
+            let got = glyphs(&b.ink);
+            let chars: String = got.iter().map(|g| g.0).collect();
+            assert_eq!(chars, text, "{name}");
+            assert!(got.iter().all(|g| !g.3), "{name}: {got:?}");
+            assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math), "{name}");
+            for ch in text.chars() {
+                assert!(math_metrics::get(ch).is_some(), "{ch:?}");
+            }
+            assert!(approx_eq(b.width, adv(text), EPS), "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_liminf_has_a_thin_space_between_the_words() {
+        for (name, second) in [("liminf", "inf"), ("limsup", "sup")] {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: the second word starts one thin space after "lim".
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 7, "{name}: {got:?}");
+            let gap = got[4].1.x - adv("lim");
+            assert!(approx_eq(gap, OP_SPACE, 1e-3), "{name}: {gap}");
+            assert!(
+                approx_eq(b.width, adv("lim") + gap + adv(second), EPS),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_named_operators_place_scripts_by_class() {
+        for (name, text) in NAMED_LIMITS {
+            // Act
+            let b = boxed(&format!("\\{name}_k"));
+
+            // Assert: `k` centred below the word, like `\min_k`.
+            let word = boxed(&format!("\\{name}"));
+            let (k, ks) = glyph(&b.ink, K);
+            assert!(
+                approx_eq(k.x + mm(K).advance * ks / 2.0, adv(text) / 2.0, EPS),
+                "{name}: {k:?}"
+            );
+            assert!(k.y > word.descent, "{name}: {k:?}");
+            // The thin operator space before an ordinary atom.
+            let gap = boxed(&format!("\\{name} x")).width - adv(text) - mm(X).advance;
+            assert!(approx_eq(gap, OP_SPACE, EPS), "{name}: {gap}");
+        }
+        for name in NAMED_OPS {
+            // Act
+            let b = boxed(&format!("\\{name}^2"));
+
+            // Assert: the exponent beside the word, raised.
+            let word = boxed(&format!("\\{name}"));
+            let (two, _) = glyph(&b.ink, '2');
+            assert!(approx_eq(two.x, word.width + word.italic, EPS), "{name}");
+            assert!(two.y < 0.0, "{name}: {two:?}");
+            let gap = boxed(&format!("\\{name} x")).width - adv(name) - mm(X).advance;
+            assert!(approx_eq(gap, OP_SPACE, EPS), "{name}: {gap}");
+        }
+    }
+
+    #[test]
+    fn tex_parse_operatorname_keeps_its_raw_body_and_star() {
+        // Act / Assert
+        assert_eq!(
+            math("\\operatorname{rank}"),
+            vec![opname(false, "", "rank")]
+        );
+        assert_eq!(
+            math("\\operatorname*{argmin}"),
+            vec![opname(true, "", "argmin")]
+        );
+        assert_eq!(
+            math("\\operatorname {a {b} c}"),
+            vec![opname(false, " ", "a {b} c")]
+        );
+        assert_eq!(
+            math("\\operatorname*{argmin}_x"),
+            vec![Node::Scripts {
+                base: Some(Box::new(opname(true, "", "argmin"))),
+                first: script(ScriptKind::Sub, tok(Node::Char('x'))),
+                second: None,
+            }]
+        );
+        for src in [
+            "$\\operatorname{rank}$",
+            "$\\operatorname* {argmin}_x f$",
+            "$\\operatorname {a {b} c}^2$",
+        ] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_parse_operatorname_without_body_is_literal() {
+        // Act / Assert
+        assert_eq!(
+            math("\\operatorname x"),
+            vec![
+                Node::Literal("\\operatorname".to_owned()),
+                Node::Space(" ".to_owned()),
+                Node::Char('x'),
+            ]
+        );
+        assert_eq!(
+            math("\\operatorname*x"),
+            vec![Node::Literal("\\operatorname*".to_owned()), Node::Char('x')]
+        );
+        assert_eq!(
+            math("\\operatorname"),
+            vec![Node::Literal("\\operatorname".to_owned())]
+        );
+        assert_eq!(
+            math("\\operatorname{x"),
+            vec![
+                Node::Literal("\\operatorname".to_owned()),
+                Node::Literal("{".to_owned()),
+                Node::Char('x'),
+            ]
+        );
+        // The star only counts directly after the name.
+        assert_eq!(
+            math("\\operatorname *{x}"),
+            vec![
+                Node::Literal("\\operatorname".to_owned()),
+                Node::Space(" ".to_owned()),
+                Node::Char('*'),
+                Node::Group(vec![Node::Char('x')]),
+            ]
+        );
+        // Drawn in the warning colour.
+        let b = boxed("\\operatorname*");
+        let got = glyphs(&b.ink);
+        let chars: String = got.iter().map(|g| g.0).collect();
+        assert_eq!(chars, "\\operatorname*");
+        assert!(got.iter().all(|g| g.3), "{got:?}");
+    }
+
+    #[test]
+    fn tex_layout_operatorname_matches_the_named_operators() {
+        // Act / Assert: the same boxes as the table rows.
+        assert_eq!(boxed("\\operatorname{log} x"), boxed("\\log x"));
+        assert_eq!(boxed("\\operatorname*{max}_k"), boxed("\\max_k"));
+        assert_eq!(boxed("\\operatorname{exp}^2"), boxed("\\exp^2"));
+
+        // An upright word of math-face letters, thin space before `x`.
+        let b = boxed("\\operatorname{rank}x");
+        let got = glyphs(&b.ink);
+        let chars: String = got.iter().map(|g| g.0).collect();
+        assert_eq!(chars, format!("rank{X}"));
+        assert!(got.iter().all(|g| !g.3), "{got:?}");
+        assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
+        let (x, _) = glyph(&b.ink, X);
+        assert!(approx_eq(x.x, adv("rank") + OP_SPACE, EPS), "{x:?}");
+
+        // The starred form centres its limit below the word.
+        let m = boxed("\\operatorname*{argmin}_x");
+        let (x, xs) = glyph(&m.ink, X);
+        assert!(
+            approx_eq(x.x + mm(X).advance * xs / 2.0, adv("argmin") / 2.0, EPS),
+            "{x:?}"
+        );
+        assert!(x.y > 0.0, "{x:?}");
     }
 
     #[test]
