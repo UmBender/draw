@@ -2679,7 +2679,7 @@ mod tests {
         let names: Vec<&str> = ACCENTS.iter().map(|a| a.name).collect();
         assert_eq!(
             names,
-            ["vec", "hat", "tilde", "dot", "ddot", "bar", "overline"]
+            ["vec", "hat", "tilde", "dot", "ddot", "dddot", "bar", "overline"]
         );
     }
 
@@ -6393,5 +6393,349 @@ mod tests {
         assert!(got.iter().all(|g| !g.3), "{got:?}");
         assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
         assert!(got[1].1.y < got[0].1.y, "superscript is raised (y down)");
+    }
+
+    // ---- T69 classical physics notation ------------------------------------
+
+    /// The symbol rows of the T69 *Spec* table: name, text, class.
+    const PHYSICS: [(&str, &str, Class); 7] = [
+        ("Box", "□", Class::Ord),
+        ("square", "□", Class::Ord),
+        ("triangle", "△", Class::Ord),
+        ("angle", "∠", Class::Ord),
+        ("ohm", "\u{2126}", Class::Ord),
+        ("micro", "\u{B5}", Class::Ord),
+        ("grad", "∇", Class::Ord),
+    ];
+
+    /// Every physics shortcut source next to its long form (T69 AC-5).
+    const LONG_FORMS: [(&str, &str); 25] = [
+        ("\\dd", "\\,\\mathrm{d}"),
+        ("\\dd{x}", "\\,\\mathrm{d}x"),
+        ("\\dd x", "\\,\\mathrm{d} x"),
+        ("\\dv{x}", "\\frac{\\mathrm{d}}{\\mathrm{d}x}"),
+        ("\\dv{f}{x}", "\\frac{\\mathrm{d}f}{\\mathrm{d}x}"),
+        ("\\dv f{x}", "\\frac{\\mathrm{d}f}{\\mathrm{d}x}"),
+        ("\\pdv{x}", "\\frac{\\partial}{\\partial x}"),
+        ("\\pdv{f}{x}", "\\frac{\\partial f}{\\partial x}"),
+        ("\\pdv{f}{t}", "\\frac{\\partial f}{\\partial t}"),
+        ("\\abs{x}", "\\lvert x\\rvert"),
+        ("\\abs{a+b}", "\\lvert a+b\\rvert"),
+        ("\\norm{v}", "\\lVert v\\rVert"),
+        ("\\order{h^2}", "\\mathcal{O}(h^2)"),
+        ("\\vb{F}", "\\mathbf{F}"),
+        ("\\vu{n}", "\\hat{\\mathbf{n}}"),
+        ("\\curl", "\\nabla\\times"),
+        ("\\grad f", "\\nabla f"),
+        ("a\\abs{x}b", "a\\lvert x\\rvert b"),
+        ("\\curl\\vb{A}", "\\nabla\\times\\mathbf{A}"),
+        ("\\dd{x}\\,\\dd{y}", "\\,\\mathrm{d}x\\,\\,\\mathrm{d}y"),
+        ("\\abs{\\vb{F}}", "\\lvert\\mathbf{F}\\rvert"),
+        ("\\dv{\\vb{r}}{t}", "\\frac{\\mathrm{d}\\mathbf{r}}{\\mathrm{d}t}"),
+        ("e^{\\abs{x}}", "e^{\\lvert x\\rvert}"),
+        ("\\vb{F} = m\\dddot{x}", "\\mathbf{F} = m\\dddot{x}"),
+        ("\\abs{\\curl x}", "\\lvert\\nabla\\times x\\rvert"),
+    ];
+
+    /// Whether `nodes` hold a literal at any depth.
+    fn has_literal(nodes: &[Node]) -> bool {
+        nodes.iter().any(|node| match node {
+            Node::Literal(_) => true,
+            Node::Group(nodes) => has_literal(nodes),
+            Node::Command { args, .. } => args.iter().any(|a| has_literal(&a.nodes)),
+            Node::Scripts {
+                base,
+                first,
+                second,
+            } => {
+                base.as_deref().is_some_and(|b| has_literal(std::slice::from_ref(b)))
+                    || std::iter::once(first)
+                        .chain(second)
+                        .any(|s| has_literal(&s.arg.nodes))
+            }
+            Node::Infix { left, right, .. } => has_literal(left) || has_literal(right),
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn tex_parse_classical_physics_symbols_have_their_text_and_class() {
+        for (name, text, class) in PHYSICS {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_classical_physics_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in PHYSICS {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert!(!got[0].3, "{name}");
+            assert_eq!(text.chars().collect::<Vec<_>>(), vec![got[0].0], "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_units_stay_upright_in_every_style() {
+        for style in ["", "\\mathbf", "\\mathit", "\\mathrm", "\\boldsymbol"] {
+            for (name, ch) in [("ohm", '\u{2126}'), ("micro", '\u{B5}')] {
+                // Act
+                let b = boxed(&format!("{style}{{\\{name}}}"));
+
+                // Assert
+                let got: Vec<char> = glyphs(&b.ink).iter().map(|g| g.0).collect();
+                assert_eq!(got, vec![ch], "{style} {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_div_stays_division() {
+        assert_eq!(
+            symbol("div").map(|s| (s.text, s.class)),
+            Some(("÷", Class::Bin))
+        );
+        assert!(expansion("div").is_none());
+        assert!(symbol("laplacian").is_none() && expansion("laplacian").is_none());
+    }
+
+    #[test]
+    fn tex_layout_dddot_draws_three_dots_over_its_argument() {
+        // Arrange
+        let x = boxed("x");
+        let ddot = boxed("\\ddot{x}");
+        let three = '\u{20DB}';
+        let m = mm(three);
+
+        // Act
+        let b = boxed("\\dddot{x}");
+
+        // Assert: the mark is an unwarned math-face glyph at full size.
+        let got = glyphs(&b.ink);
+        assert_eq!(got.len(), 2, "{got:?}");
+        let (pos, scale) = glyph(&b.ink, three);
+        assert!(approx_eq(scale, 1.0, EPS));
+        assert!(got.iter().all(|g| !g.3));
+        assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
+        // Its ink sits above the letter (y down).
+        assert!(pos.y - m.y_min <= -x.ascent + EPS, "{pos:?}");
+        // Centred where `\ddot` centres its two dots.
+        let (dpos, _) = glyph(&ddot.ink, '\u{A8}');
+        let dm = mm('\u{A8}');
+        let centre = pos.x + f32::midpoint(m.x_min, m.x_max);
+        let dcentre = dpos.x + f32::midpoint(dm.x_min, dm.x_max);
+        assert!(approx_eq(centre, dcentre, EPS), "{centre} {dcentre}");
+        // The box keeps the letter's width and descent.
+        assert!(approx_eq(b.width, x.width, EPS));
+        assert!(approx_eq(b.descent, x.descent, EPS));
+        assert!(b.ascent > x.ascent);
+    }
+
+    #[test]
+    fn tex_parse_physics_shortcuts_take_their_arguments() {
+        let x = || braced(vec![Node::Char('x')]);
+        let command = |name: &str, args: Vec<Arg>| Node::Command {
+            name: name.to_owned(),
+            args,
+        };
+
+        // Act + Assert: required arguments, then braced optional ones.
+        assert_eq!(math("\\dv{x}"), vec![command("dv", vec![x()])]);
+        assert_eq!(
+            math("\\dv{f}{x}"),
+            vec![command("dv", vec![braced(vec![Node::Char('f')]), x()])]
+        );
+        assert_eq!(
+            math("\\dv f {x}"),
+            vec![command(
+                "dv",
+                vec![
+                    Arg {
+                        lead: " ".to_owned(),
+                        braced: false,
+                        nodes: vec![Node::Char('f')],
+                    },
+                    Arg {
+                        lead: " ".to_owned(),
+                        braced: true,
+                        nodes: vec![Node::Char('x')],
+                    },
+                ]
+            )]
+        );
+        assert_eq!(
+            math("\\dv{f}x"),
+            vec![
+                command("dv", vec![braced(vec![Node::Char('f')])]),
+                Node::Char('x')
+            ]
+        );
+        assert_eq!(math("\\dd"), vec![command("dd", vec![])]);
+        assert_eq!(math("\\dd{x}"), vec![command("dd", vec![x()])]);
+        assert_eq!(
+            math("\\dd x"),
+            vec![
+                command("dd", vec![]),
+                Node::Space(" ".to_owned()),
+                Node::Char('x')
+            ]
+        );
+        assert_eq!(math("\\curl"), vec![command("curl", vec![])]);
+        assert_eq!(
+            math("\\abs{x}{y}"),
+            vec![
+                command("abs", vec![x()]),
+                Node::Group(vec![Node::Char('y')])
+            ]
+        );
+        assert_eq!(
+            math("\\vb\\alpha"),
+            vec![command("vb", vec![tok(sym("alpha"))])]
+        );
+        for (short, _) in LONG_FORMS {
+            let src = format!("${short}$");
+            assert_eq!(print(&parse(&src)), src);
+        }
+        for src in ["$\\dd {x}$", "$\\pdv f {x} y$", "$\\curl^2$", "$\\dv{\\dv{x}}$"] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_parse_physics_shortcut_without_required_argument_is_literal() {
+        for name in ["dv", "pdv", "abs", "norm", "order", "vb", "vu"] {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![Node::Literal(format!("\\{name}"))], "{name}");
+            assert!(glyphs(&b.ink).iter().all(|g| g.3), "{name}");
+        }
+        assert_eq!(
+            math("\\vb^2"),
+            vec![Node::Scripts {
+                base: Some(Box::new(Node::Literal("\\vb".to_owned()))),
+                first: script(ScriptKind::Sup, tok(Node::Char('2'))),
+                second: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn tex_layout_physics_shortcuts_match_their_long_forms() {
+        for (short, long) in LONG_FORMS {
+            // Act
+            let got = boxed(short);
+            let want = boxed(long);
+
+            // Assert
+            assert_eq!(got, want, "{short} vs {long}");
+            assert!(glyphs(&got.ink).iter().all(|g| !g.3), "{short}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_physics_shortcut_as_script_base_is_one_atom() {
+        // Act
+        let squared = boxed("\\abs{x}^2");
+        let derivative = boxed("\\dv{f}{x}^2");
+
+        // Assert
+        assert_eq!(squared, boxed("{\\lvert x\\rvert}^2"));
+        assert_eq!(
+            derivative,
+            boxed("{\\frac{\\mathrm{d}f}{\\mathrm{d}x}}^2")
+        );
+    }
+
+    #[test]
+    fn tex_expansions_are_well_formed() {
+        let commands = [
+            "frac",
+            "binom",
+            "tbinom",
+            "dbinom",
+            "multiset",
+            "sqrt",
+            "pmod",
+            "underline",
+            "text",
+            "operatorname",
+        ];
+        let names: Vec<&str> = EXPANSIONS.iter().map(|e| e.name).collect();
+        for name in ["dd", "dv", "pdv", "abs", "norm", "order", "vb", "vu", "curl"] {
+            assert!(names.contains(&name), "{name} is an expansion");
+        }
+        for def in EXPANSIONS {
+            let name = def.name;
+            assert_eq!(expansion(name), Some(def), "{name}");
+            assert_eq!(names.iter().filter(|n| **n == name).count(), 1, "{name}");
+            assert!(symbol(name).is_none(), "{name} is also a symbol");
+            assert!(accent(name).is_none(), "{name} is also an accent");
+            assert!(alphabet(name).is_none(), "{name} is also an alphabet");
+            assert!(!commands.contains(&name), "{name} is also a command");
+            assert!(!INFIX.contains(&name), "{name} is also infix");
+            assert!(!def.templates.is_empty(), "{name}");
+            for (extra, template) in def.templates.iter().enumerate() {
+                // Each template is subset source without literals.
+                assert!(!has_literal(&math(template)), "{name}: {template}");
+                // Its slots are the arguments it is used with.
+                let count = def.required + extra;
+                let chars: Vec<char> = template.chars().collect();
+                for w in chars.windows(2).filter(|w| w[0] == '#') {
+                    let n = w[1].to_digit(10).unwrap_or(0) as usize;
+                    assert!((1..=count).contains(&n), "{name}: {template}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tex_expand_replaces_slots_with_arguments() {
+        let command = |name: &str, args: Vec<Arg>| Node::Command {
+            name: name.to_owned(),
+            args,
+        };
+        let f = braced(vec![Node::Char('f')]);
+        let x = braced(vec![Node::Char('x')]);
+
+        // Act + Assert
+        assert_eq!(
+            expand(&command("dv", vec![f.clone(), x.clone()])),
+            Some(math("\\frac{\\mathrm{d}f}{\\mathrm{d}x}"))
+        );
+        assert_eq!(
+            expand(&command("pdv", vec![x.clone()])),
+            Some(math("\\frac{\\partial}{\\partial x}"))
+        );
+        assert_eq!(
+            expand(&command("abs", vec![braced(math("a+b"))])),
+            Some(math("\\lvert a+b\\rvert"))
+        );
+        assert_eq!(expand(&command("curl", vec![])), Some(math("\\nabla\\times")));
+        // Not an expansion, or not its argument count.
+        assert_eq!(expand(&command("dv", vec![])), None);
+        assert_eq!(expand(&command("abs", vec![f, x.clone()])), None);
+        assert_eq!(expand(&command("frac", vec![x.clone(), x])), None);
+        assert_eq!(expand(&Node::Char('x')), None);
+        assert_eq!(expand(&sym("grad")), None);
     }
 }

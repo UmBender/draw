@@ -171,7 +171,8 @@ fn arb_char() -> impl Strategy<Value = char> {
     ]
 }
 
-/// Formula-ish source (T30, T33, T36, T39, T61, T63, T64, T54, T62, T56): TeX tokens, `$`s, braces and any `char`.
+/// Formula-ish source (T30, T33, T36, T39, T61, T63, T64, T54, T62, T56,
+/// T69): TeX tokens, `$`s, braces and any `char`.
 fn arb_formula_text() -> impl Strategy<Value = String> {
     let token = prop_oneof![
         6 => select(vec![
@@ -244,6 +245,12 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\leftrightarrows", "\\rightleftarrows", "\\nearrow", "\\searrow", "\\swarrow",
             "\\nwarrow", "\\Uparrow", "\\Downarrow", "\\Updownarrow", "\\updownarrow",
             "\\dashv", "\\op", "\\Ob", "\\Mor", "f\\colon A \\to B", "\\mathcal{C}^{\\op}",
+            // T69: classical physics symbols, \dddot and the expanded
+            // physics shortcuts with optional arguments.
+            "\\dddot", "\\Box", "\\square", "\\triangle", "\\angle", "\\ohm", "\\micro",
+            "\\grad", "\\curl", "\\dd", "\\dv", "\\pdv", "\\abs", "\\norm", "\\order",
+            "\\vb", "\\vu", "\\dd{x}", "\\dv{f}{x}", "\\pdv{x}", "\\abs{\\vb{F}}",
+            "\\curl\\vb{A}", "\\order{h^2}", "#", "#1",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),
