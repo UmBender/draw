@@ -757,6 +757,51 @@ pub const EXPANSIONS: &[ExpansionDef] = &[
         required: 0,
         templates: &["\\nabla\\times"],
     },
+    // Quantum notation (T70): Dirac brackets with ordinary inner bars,
+    // as `physics` draws them with `\middle\vert`, and commutators.
+    ExpansionDef {
+        name: "bra",
+        required: 1,
+        templates: &["\\langle #1\\rvert"],
+    },
+    ExpansionDef {
+        name: "ket",
+        required: 1,
+        templates: &["\\lvert #1\\rangle"],
+    },
+    ExpansionDef {
+        name: "braket",
+        required: 1,
+        templates: &["\\langle #1\\vert #1\\rangle", "\\langle #1\\vert #2\\rangle"],
+    },
+    ExpansionDef {
+        name: "ketbra",
+        required: 1,
+        templates: &[
+            "\\lvert #1\\rangle\\langle #1\\rvert",
+            "\\lvert #1\\rangle\\langle #2\\rvert",
+        ],
+    },
+    ExpansionDef {
+        name: "expval",
+        required: 1,
+        templates: &["\\langle #1\\rangle", "\\langle #2\\vert #1\\vert #2\\rangle"],
+    },
+    ExpansionDef {
+        name: "mel",
+        required: 3,
+        templates: &["\\langle #1\\vert #2\\vert #3\\rangle"],
+    },
+    ExpansionDef {
+        name: "comm",
+        required: 2,
+        templates: &["[#1,#2]"],
+    },
+    ExpansionDef {
+        name: "acomm",
+        required: 2,
+        templates: &["\\{#1,#2\\}"],
+    },
 ];
 
 /// The shortcut command `name` (without the backslash).
