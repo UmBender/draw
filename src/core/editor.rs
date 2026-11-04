@@ -400,18 +400,7 @@ impl Editor {
             selection.push(selection_tokens.get()?);
         }
 
-        let doc_line = r.line();
-        let doc = snapshot::read_document(r)?;
-        // A numbered rectangle or ellipse holds no text (ADR-T52-1).
-        if let Some((id, _)) = doc
-            .shapes()
-            .find(|(_, s)| s.label().is_some() && s.slot_text(TextSlot::Shape).is_some())
-        {
-            return Err(SnapshotError::new(
-                doc_line,
-                format!("numbered shape {id:?} holds text"),
-            ));
-        }
+        let doc = read_numbered_document(r)?;
         snapshot::check_ids(&selection_tokens, &doc, &selection)?;
         if let Some((_, id)) = reedit {
             snapshot::check_ids(&reedit_tokens, &doc, &[id])?;
@@ -1298,6 +1287,23 @@ fn step_cells(cells: &mut u32, delta: i32) -> bool {
     let changed = *cells != stepped;
     *cells = stepped;
     changed
+}
+
+/// Reads the `document` section and checks that no numbered rectangle or
+/// ellipse holds text (snapshots, ADR-T74-1, ADR-T52-1).
+fn read_numbered_document(r: &mut Reader<'_>) -> Result<Document, SnapshotError> {
+    let line = r.line();
+    let doc = snapshot::read_document(r)?;
+    let both = doc
+        .shapes()
+        .find(|(_, s)| s.label().is_some() && s.slot_text(TextSlot::Shape).is_some());
+    match both {
+        Some((id, _)) => Err(SnapshotError::new(
+            line,
+            format!("numbered shape {id:?} holds text"),
+        )),
+        None => Ok(doc),
+    }
 }
 
 /// Reads the `helpers` record (snapshots, ADR-T74-1).
@@ -4008,7 +4014,10 @@ mod tests {
 
     /// The label of the `index`-th shape (bottom first).
     fn label_of(ed: &Editor, index: usize) -> Option<u32> {
-        ed.document().shapes().nth(index).and_then(|(_, s)| s.label())
+        ed.document()
+            .shapes()
+            .nth(index)
+            .and_then(|(_, s)| s.label())
     }
 
     #[test]

@@ -1026,7 +1026,10 @@ fn numbered_host_sessions_never_fill_numbered_shapes() {
     }
 
     // Assert: typing inside a numbered node made free blocks instead.
-    assert!(numbered >= 60, "sessions with a numbered shape: {numbered}/200");
+    assert!(
+        numbered >= 60,
+        "sessions with a numbered shape: {numbered}/200"
+    );
     assert!(
         blocks >= 20,
         "sessions with a numbered shape and a text block: {blocks}/200"

@@ -485,12 +485,7 @@ impl Shape {
     /// shape holding text is never numbered: text wins (ADR-T52-1).
     #[must_use]
     pub fn with_label(mut self, label: Option<u32>) -> Self {
-        if let Self::Rect {
-            label: l, text, ..
-        }
-        | Self::Ellipse {
-            label: l, text, ..
-        } = &mut self
+        if let Self::Rect { label: l, text, .. } | Self::Ellipse { label: l, text, .. } = &mut self
             && (label.is_none() || text.is_none())
         {
             *l = label;
@@ -2256,7 +2251,9 @@ mod tests {
             let numbered = shape.with_label(Some(2));
 
             // Act
-            let with = numbered.clone().with_slot_text(TextSlot::Shape, st("ab", 5.0));
+            let with = numbered
+                .clone()
+                .with_slot_text(TextSlot::Shape, st("ab", 5.0));
 
             // Assert: unchanged, number kept, no text.
             assert_eq!(with, numbered);

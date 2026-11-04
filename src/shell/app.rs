@@ -1018,7 +1018,10 @@ mod tests {
         // Arrange: T52 removed the switch; spelled in two parts so this
         // test does not match itself.
         let name = concat!("DRAW_", "EXPERIMENTAL");
-        let reads = [concat!("EXPERIMENTAL", "_ENV"), concat!("with_", "experimental")];
+        let reads = [
+            concat!("EXPERIMENTAL", "_ENV"),
+            concat!("with_", "experimental"),
+        ];
         let app = include_str!("app.rs");
         let readme = include_str!("../../README.md");
 
