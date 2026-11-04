@@ -1,7 +1,7 @@
 ---
 id: T74
 title: Editor snapshots for tests
-status: in-progress
+status: review
 wave: 33
 branch: task/T74-editor-snapshots
 depends_on: []
@@ -163,6 +163,7 @@ Acceptance criteria:
   `keymap.rs`, `clipboard.rs`, `tap.rs`, `tools/*` as needed, and
   `smoothing.rs` (the live pen stroke holds a `Smoother`; added in the
   spec step)
+- `docs/architecture/Architecture.md` (module map row for `core::snapshot`)
 - `src/shell/app.rs`, `src/shell/input_map.rs` (debug key, `DRAW_SNAPSHOT`)
 - `tests/snapshots/` (new fixtures, and an empty `regressions/` with a README), `tests/common/` (helpers),
   `tests/snapshots.rs` (new: golden helper and fixture tests; added in the spec step),
@@ -173,12 +174,12 @@ Acceptance criteria:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T74): …`
-- [ ] tests — `test(T74): …`
-- [ ] models — `feat(T74): …` (format, parse, write)
-- [ ] behaviour — `feat(T74): …` (editor restore, shell key and env, fixtures)
-- [ ] quality — `chore(T74): …`
-- [ ] docs — `docs(T74): …`
+- [x] spec — `docs(T74): …`
+- [x] tests — `test(T74): …`
+- [x] models — `feat(T74): …` (format, parse, write)
+- [x] behaviour — `feat(T74): …` (editor restore, shell key and env, fixtures)
+- [x] quality — `chore(T74): …`
+- [x] docs — `docs(T74): …`
 
 ## Learning path
 
@@ -194,3 +195,47 @@ harness tutorial.
 - 2026-11-03 — spec: the keymap (a `fn` pointer), revisions and
   `History::{changes, bytes}` are not saved (ADR-T74-1). `smoothing.rs`
   and `tests/snapshots.rs` added to *Files owned*.
+- 2026-11-03 — tests: red at compile time (no snapshot API, no
+  `Editor: PartialEq`, no shell helpers, no golden macro). Two test fixes
+  in later steps: `AssertUnwindSafe` around the `catch_unwind` closure
+  (models; `Document` holds a `OnceCell`), and `history-at-limit` leaves
+  `HISTORY_LIMIT - 3` undo entries, not `HISTORY_LIMIT` (behaviour).
+- 2026-11-03 — bug found by the round-trip fuzz at 5 000 cases: a grid
+  or shape drag can hold an infinite world point (zoomed out, huge
+  screen position) until the commit drops the shape; the parser
+  rejected it. Live drag positions (shape, grid, select) are now read
+  without the finite check; shapes keep it. The two shrunk seeds stay in
+  `tests/fuzz.proptest-regressions`. Afterwards the five snapshot
+  properties passed at `PROPTEST_CASES=20000`.
+- 2026-11-03 — AC-7: the setups were not slow. In a debug build,
+  rebuilding `strokes-1000` from events takes ≈ 0.04 s and loading it
+  ≈ 0.03 s; `soak_large_selection_moves_keep_history_within_budget` takes
+  1.7 s before and after (its 600 selection moves dominate). The perf
+  typing test (release, ignored) loads `text-500`; median 346 ns. The
+  two large fixture tests are therefore not `#[ignore]`d: every
+  fixture is rebuilt from events and compared on each `cargo test`
+  (0.06 s for the whole `tests/snapshots.rs`). The value of the fixtures
+  is reaching mid-gesture states and regressions, not speed.
+- 2026-11-03 — sizes: `strokes-1000.snap` 324 KB, `text-500.snap` 84 KB,
+  `history-at-limit.snap` 52 KB, the rest under 1 KB. No full byte-budget
+  history fixture (64 MiB).
+- 2026-11-03 — no tutorial (frontmatter `tutorial: ""`; the optional
+  "Writing a test from a snapshot" is left for later);
+  `tests/snapshots/regressions/README.md` gives the steps.
+- 2026-11-03 — `src/shell/input_map.rs` needed no change: the collector
+  already delivers `Ctrl+Shift+S` as a `KeyDown`.
+- 2026-11-04 — `scripts/check.sh --fuzz` found two more bugs at 20 000
+  cases: an open text block at an infinite world origin was rejected on
+  load, and a loaded text size beyond the editor's range (1e30) let typing
+  overflow the block's bounds. Regression tests
+  `core::snapshot::tests::regression_T74_*` committed red (the grid-drag
+  one passes; that bug was fixed in the behaviour step before the
+  regression step existed for it), then `fix(T74)`: text origins read
+  loosely, text sizes capped at `snapshot::MAX_TEXT_SIZE` (76 px at zoom
+  0.05, + 1 %). `scripts/check.sh --fuzz` green afterwards.
+- 2026-11-04 — AC-6 manual, part 1: `DRAW_SNAPSHOT` with a missing file
+  and with `[nonsense]` print and log `ERROR … line 2: unknown section …;
+  starting empty`; with `tests/snapshots/text-mid-edit.snap` the log says
+  `INFO started from DRAW_SNAPSHOT snapshot`. Part 2, for the owner:
+  press `Ctrl+Shift+S` in the app, check the printed path, and reopen it
+  with `DRAW_SNAPSHOT` to see the same view and open block.
