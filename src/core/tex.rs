@@ -113,6 +113,13 @@ pub const VEC_SCALE: f32 = 0.5;
 /// Space on each side of a relation: TeX's thick space, 5/18 em.
 pub const REL_SPACE: f32 = 5.0 / 18.0;
 
+/// Extra space on each side of a wide relation, on top of
+/// [`REL_SPACE`]: amsmath's `\;`, a thick space (ADR-T65-1).
+pub const WIDE_REL_SPACE: f32 = 5.0 / 18.0;
+
+/// Relations amsmath pads with [`WIDE_REL_SPACE`] (ADR-T65-1).
+pub const WIDE_RELATIONS: &[&str] = &["implies", "impliedby"];
+
 /// Space on each side of a binary operator: TeX's medium space, 2/9 em.
 pub const BIN_SPACE: f32 = 2.0 / 9.0;
 
@@ -475,6 +482,36 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("arccsc", "arccsc", Class::Op),
     def("sech", "sech", Class::Op),
     def("csch", "csch", Class::Op),
+    // Set and logic symbols (T65); `\varnothing` and `\barwedge` use the
+    // subset's U+2205 and U+22BC.
+    def("setminus", "∖", Class::Bin),
+    def("complement", "∁", Class::Ord),
+    def("varnothing", "∅", Class::Ord),
+    def("supset", "⊃", Class::Rel),
+    def("subseteq", "⊆", Class::Rel),
+    def("supseteq", "⊇", Class::Rel),
+    def("subsetneq", "⊊", Class::Rel),
+    def("supsetneq", "⊋", Class::Rel),
+    def("nsubseteq", "⊈", Class::Rel),
+    def("ni", "∋", Class::Rel),
+    def("sqcup", "⊔", Class::Bin),
+    def("sqcap", "⊓", Class::Bin),
+    def("uplus", "⊎", Class::Bin),
+    def("lnot", "¬", Class::Ord),
+    def("veebar", "⊻", Class::Bin),
+    def("barwedge", "⊼", Class::Bin),
+    def("top", "⊤", Class::Ord),
+    def("bot", "⊥", Class::Ord),
+    def("nexists", "∄", Class::Ord),
+    // Wide relations: padded in `symbol_box` (ADR-T65-1).
+    def("implies", "⟹", Class::Rel),
+    def("impliedby", "⟸", Class::Rel),
+    def("vdash", "⊢", Class::Rel),
+    def("models", "⊨", Class::Rel),
+    def("lvert", "|", Class::Open),
+    def("rvert", "|", Class::Close),
+    def("lVert", "‖", Class::Open),
+    def("rVert", "‖", Class::Close),
 ];
 
 /// The table entry of command `name` (without the backslash).
