@@ -17,3 +17,4 @@ perf.data.old
 
 # Unattended batch runs (skill batch-tasks): plan, state, logs
 /.batch/
+/.batch-*/
