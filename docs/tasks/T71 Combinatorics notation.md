@@ -1,7 +1,7 @@
 ---
 id: T71
 title: Combinatorics notation
-status: in-progress
+status: review
 wave: 50
 branch: task/T71-combinatorics
 depends_on: [T55]
@@ -139,12 +139,12 @@ side next to each other at the scale `\binom` gives them.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T71): …`
-- [ ] tests — `test(T71): …`
-- [ ] models — `feat(T71): …`
-- [ ] behaviour — `feat(T71): …`
-- [ ] quality — `chore(T71): …`
-- [ ] docs — `docs(T71): …`
+- [x] spec — `docs(T71): …`
+- [x] tests — `test(T71): …`
+- [x] models — `feat(T71): …`
+- [x] behaviour — `feat(T71): …`
+- [x] quality — `chore(T71): …` (rustfmt only)
+- [x] docs — `docs(T71): …`
 
 ## Learning path
 
@@ -154,3 +154,23 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented (batch run). `Node::Infix` and the `INFIX`
+  table; `Parser::list` splits at the first infix command, no lexer
+  change, no existing test changed (ADR-T71-1). `binomial` now goes
+  through a general `delimited` (brackets side by side), used by
+  `\brack`, `\brace` and `\multiset`; `\underline` is its own
+  one-argument command, not an `ACCENTS` row. `scripts/check.sh` green.
+- 2026-11-04 — UNATTENDED CHOICE: two infix commands in one group — the
+  first splits it, the rest are literals in the warning colour (plan
+  default). `\multiset`'s two parentheses each side touch (no negative
+  kern), at the size `\binom` gives its own.
+- 2026-11-04 — `scripts/check.sh --fuzz` found a failure **outside
+  T71**: `snapshot_round_trip_continues_equal` — a text-tool session
+  with Ctrl+[ and a zoom scroll (no formula) remembers a text size of
+  320 px that the snapshot reader rejects ("text size out of range",
+  `core::tools::text` / `core::snapshot`, files not owned here). The
+  new proptest seed was stashed, not committed
+  (`git stash list`: `batch-T71-2026-11-04 fuzz seed: snapshot text size
+  out of range`) so the regular gates stay green; it needs a `fix/`
+  task. Manual checks for the owner: `${n \choose k}$`,
+  `${n \brace k}$`, `$x^{\underline{k}}$`.

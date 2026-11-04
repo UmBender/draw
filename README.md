@@ -261,6 +261,9 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 |-------|-----|
 | `x^2`, `x_i`, `x_{i,j}^{2k}` | Superscript, subscript (one character or `{group}`) |
 | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` | Fraction, binomial, root |
+| `{n \choose k}`, `{n \brack k}`, `{n \brace k}`, `{a \over b}`, `{a \atop b}` | Infix forms: split their `{group}` (or the formula) in two |
+| `\tbinom{n}{k}`, `\dbinom{n}{k}`, `\multiset{n}{k}` | Binomials (`\multiset` in double parentheses) |
+| `x^{\underline{k}}`, `x^{\overline{k}}`, `a \nmid b`, `\#A`, `\lvert A \rvert` | Falling and rising factorials, does not divide, cardinality |
 | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
 | `\bigcup_{i=1}^{n} A_i`, `\bigcap \bigwedge \bigvee \bigoplus \bigotimes \bigodot \biguplus \bigsqcup \coprod` | Big set and logic operators, limits above and below like `\sum` |
 | `\int_0^1 f(x)\,dx`, `\iint`, `\iiint`, `\oint`, `\oiint` | Integrals, limits beside the sign; `\,` is a thin space |

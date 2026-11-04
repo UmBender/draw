@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -158,6 +158,20 @@ Big set and logic operators take limits above and below like `\sum`:
 \bigsqcup \coprod`. They are drawn at the same enlarged size as `\sum`,
 centred on the axis. (Since [[T66 Big set and logic operators]].)
 
+Combinatorics reads as in LaTeX. Besides `\binom{n}{k}` (and its
+`\tbinom` / `\dbinom` forms, drawn the same since there is no display
+mode), TeX's infix forms work: `${n \choose k}$`, the Stirling numbers
+`${n \brack k}$` and `${n \brace k}$`, and the older `{a \over b}` (a
+fraction, like `\frac{a}{b}`) and `{a \atop b}` (the same without the
+bar). Each splits its `{group}` — or the whole formula — in two at the
+command; a second one in the same group is drawn in red, as TeX rejects
+it, so write `{a \over b} \over c` with braces. `\multiset{n}{k}` is
+the multiset coefficient in double parentheses. Falling and rising
+factorials are `$x^{\underline{k}}$` and `$x^{\overline{k}}$`;
+`$a \nmid b$` is "does not divide", and cardinalities are `\#A` or
+`\lvert A \rvert`. (Since [[T71 Combinatorics notation]],
+[[ADR-T71-1 Infix fraction commands split their group]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -166,6 +180,9 @@ centred on the axis. (Since [[T66 Big set and logic operators]].)
 | Literal dollar sign | `\$` (a lone `$`, as in `costs $5`, also stays plain) |
 | Superscript / subscript | `x^2`, `x_i`, `x_{i,j}^{2k}` |
 | Fraction, binomial, root | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` (`\frac12` works too) |
+| Infix fractions | `{n \choose k}`, `{n \brack k}`, `{n \brace k}`, `{a \over b}`, `{a \atop b}` (split their group) |
+| More binomials | `\tbinom{n}{k}`, `\dbinom{n}{k}` (as `\binom`), `\multiset{n}{k}` (double parentheses) |
+| Combinatorics | `x^{\underline{k}}`, `x^{\overline{k}}`, `a \nmid b`, `\#A`, `\lvert A \rvert` |
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
 | Big set and logic operators | `\bigcup_{i=1}^{n} A_i`, `\bigcap \bigwedge \bigvee \bigoplus \bigotimes \bigodot \biguplus \bigsqcup \coprod` (limits above and below) |
 | Named operators with limits | `\inf \sup \liminf \limsup \det \Pr \gcd`, as in `\limsup_{n\to\infty}` |
@@ -184,7 +201,7 @@ centred on the axis. (Since [[T66 Big set and logic operators]].)
 | Fraktur | `\mathfrak{g}`, `\mathfrak{p}`, `\mathfrak{S}_n` (capitals and lowercase) |
 | Sans-serif, typewriter | `\mathsf{G}`, `\mathtt{x1}` (Latin and digits; `\mathbf{\mathsf{x}}` is bold sans) |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
-| Overline | `\overline{AB}` (as wide as its argument) |
+| Overline, underline | `\overline{AB}`, `\underline{AB}` (as wide as their argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
 | Brackets | `\lfloor \rfloor \lceil \rceil \{ \} | \langle \rangle` |
 | Calculus, vectors | `\partial \nabla` |
@@ -237,9 +254,11 @@ of the same batch.
 ## Limits
 
 - No display mode (`$$…$$`), matrices, environments, macros or
-  `\left`/`\right` — brackets do not grow (only `\binom`'s do).
+  `\left`/`\right` — brackets do not grow (only those of `\binom`,
+  `\multiset` and the infix `\choose \brack \brace` do). No `\genfrac`,
+  `\above` or `\…withdelims`.
 - Accents do not grow: no `\widehat`, `\widetilde`, `\overrightarrow`,
-  and no under-accents (`\underline`, `\underbrace`). An accent takes
+  and no `\underbrace`. An accent takes
   one letter, a symbol or a `{group}`, not another accent without braces
   (`\hat{\vec{x}}` works, `\hat\vec x` does not). Their horizontal
   placement over italic letters is approximated (the font's top-accent
