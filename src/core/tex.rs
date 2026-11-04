@@ -383,6 +383,17 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("$", "$", Class::Ord),
     def("sum", "∑", Class::BigOp),
     def("prod", "∏", Class::BigOp),
+    // Big set and logic operators (T66); ⨀ ⨁ ⨂ ⨄ ⨆ come from the T55 subset.
+    def("coprod", "∐", Class::BigOp),
+    def("bigcup", "⋃", Class::BigOp),
+    def("bigcap", "⋂", Class::BigOp),
+    def("bigwedge", "⋀", Class::BigOp),
+    def("bigvee", "⋁", Class::BigOp),
+    def("bigoplus", "⨁", Class::BigOp),
+    def("bigotimes", "⨂", Class::BigOp),
+    def("bigodot", "⨀", Class::BigOp),
+    def("biguplus", "⨄", Class::BigOp),
+    def("bigsqcup", "⨆", Class::BigOp),
     def("int", "∫", Class::Integral),
     def("iint", "∬", Class::Integral),
     def("iiint", "∭", Class::Integral),
@@ -1868,7 +1879,7 @@ fn letter(def: &SymbolDef) -> Option<char> {
     }
 }
 
-/// `∑`, `∏` or `∫`, enlarged and centred on the axis, with the enlarged
+/// A big operator (`∑`, `⋃`, …) or integral, enlarged and centred on the axis, with the enlarged
 /// glyph's italic correction.
 fn big_operator(ch: char, scale: f32) -> MathBox {
     let k = BIG_OP_SCALE * scale;
