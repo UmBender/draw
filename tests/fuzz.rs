@@ -236,6 +236,14 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\boxtimes", "\\amalg", "\\diamond", "\\Hom", "\\End", "\\Aut", "\\Inn",
             "\\Gal", "\\Ker", "\\im", "\\coker", "\\id", "\\sgn", "\\tr", "\\rank",
             "\\Hom(A, B)",
+            // T68: category theory arrows, `\colon` and operator names.
+            "\\colon", "\\hookrightarrow", "\\hookleftarrow", "\\twoheadrightarrow",
+            "\\twoheadleftarrow", "\\rightarrowtail", "\\leftarrowtail", "\\longrightarrow",
+            "\\longleftarrow", "\\longleftrightarrow", "\\Longrightarrow", "\\Longleftarrow",
+            "\\Longleftrightarrow", "\\longmapsto", "\\rightrightarrows", "\\leftleftarrows",
+            "\\leftrightarrows", "\\rightleftarrows", "\\nearrow", "\\searrow", "\\swarrow",
+            "\\nwarrow", "\\Uparrow", "\\Downarrow", "\\Updownarrow", "\\updownarrow",
+            "\\dashv", "\\op", "\\Ob", "\\Mor", "f\\colon A \\to B", "\\mathcal{C}^{\\op}",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

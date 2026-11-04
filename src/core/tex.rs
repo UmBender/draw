@@ -6189,4 +6189,177 @@ mod tests {
             );
         }
     }
+
+    // ---- T68 category theory symbols ---------------------------------------
+
+    /// The *Spec* table of T68: name, text, class.
+    const CATEGORY: [(&str, &str, Class); 27] = [
+        ("colon", ":", Class::Punct),
+        ("hookrightarrow", "↪", Class::Rel),
+        ("hookleftarrow", "↩", Class::Rel),
+        ("twoheadrightarrow", "↠", Class::Rel),
+        ("twoheadleftarrow", "↞", Class::Rel),
+        ("rightarrowtail", "↣", Class::Rel),
+        ("leftarrowtail", "↢", Class::Rel),
+        ("longrightarrow", "⟶", Class::Rel),
+        ("longleftarrow", "⟵", Class::Rel),
+        ("longleftrightarrow", "⟷", Class::Rel),
+        ("Longrightarrow", "⟹", Class::Rel),
+        ("Longleftarrow", "⟸", Class::Rel),
+        ("Longleftrightarrow", "⟺", Class::Rel),
+        ("longmapsto", "⟼", Class::Rel),
+        ("rightrightarrows", "⇉", Class::Rel),
+        ("leftleftarrows", "⇇", Class::Rel),
+        ("leftrightarrows", "⇆", Class::Rel),
+        ("rightleftarrows", "⇄", Class::Rel),
+        ("nearrow", "↗", Class::Rel),
+        ("searrow", "↘", Class::Rel),
+        ("swarrow", "↙", Class::Rel),
+        ("nwarrow", "↖", Class::Rel),
+        ("Uparrow", "⇑", Class::Rel),
+        ("Downarrow", "⇓", Class::Rel),
+        ("Updownarrow", "⇕", Class::Rel),
+        ("updownarrow", "↕", Class::Rel),
+        ("dashv", "⊣", Class::Rel),
+    ];
+
+    /// The operator names of T68, `Class::Op`, drawn as their name.
+    const CATEGORY_OPS: [&str; 3] = ["op", "Ob", "Mor"];
+
+    #[test]
+    fn tex_parse_category_symbols_have_their_text_and_class() {
+        for (name, text, class) in CATEGORY {
+            // Arrange
+            let src = format!("$\\{name}$");
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_category_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in CATEGORY {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert!(!got[0].3, "{name}");
+            assert_eq!(text.chars().collect::<Vec<_>>(), vec![got[0].0], "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_category_operator_names_are_operator_words() {
+        for name in CATEGORY_OPS {
+            // Arrange
+            let src = format!("$\\{name}(\\mathcal{{C}})$");
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((name, Class::Op)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+            let chars: String = glyphs(&b.ink).iter().map(|g| g.0).collect();
+            assert_eq!(chars, name, "{name}");
+            assert!(glyphs(&b.ink).iter().all(|g| !g.3), "{name}");
+            assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math), "{name}");
+            assert!(approx_eq(b.width, adv(name), EPS), "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_category_operator_names_match_operatorname() {
+        for name in CATEGORY_OPS {
+            for tail in ["", "(\\mathcal{C})", " x", "^2", "_k x"] {
+                // Act
+                let short = boxed(&format!("\\{name}{tail}"));
+                let long = boxed(&format!("\\operatorname{{{name}}}{tail}"));
+
+                // Assert
+                assert_eq!(short, long, "{name}{tail}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_colon_is_punctuation() {
+        // Arrange
+        let f_a_b = mm(F).advance + mm(A).advance + mm(B).advance;
+        let glyphs_width = f_a_b + adv(":") + adv("→");
+
+        // Act
+        let colon = boxed("f\\colon a\\to b").width;
+        let plain = boxed("f:a\\to b").width;
+
+        // Assert: nothing before the colon, a thin space after it.
+        assert!(
+            approx_eq(colon, glyphs_width + OP_SPACE + 2.0 * REL_SPACE, EPS),
+            "{colon}"
+        );
+        assert!(
+            approx_eq(plain, glyphs_width + 4.0 * REL_SPACE, EPS),
+            "{plain}"
+        );
+        assert!(colon < plain);
+    }
+
+    #[test]
+    fn tex_layout_category_arrows_space_as_relations() {
+        let width = |src: &str| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
+
+        for (src, rel) in [
+            ("a\\hookrightarrow b", "↪"),
+            ("a\\longrightarrow b", "⟶"),
+            ("a\\dashv b", "⊣"),
+            ("a\\rightrightarrows b", "⇉"),
+            ("a\\Longrightarrow b", "⟹"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(rel) + 2.0 * REL_SPACE, EPS),
+                "{src}"
+            );
+        }
+        // `\implies` draws the same arrow with amsmath's extra padding.
+        assert!(width("a\\implies b") > width("a\\Longrightarrow b"));
+    }
+
+    #[test]
+    fn tex_layout_op_superscript_is_upright() {
+        // Act
+        let b = boxed("\\mathcal{C}^{\\op}");
+
+        // Assert: script C at full size, then `op` smaller and upright.
+        let got = glyphs(&b.ink);
+        let chars: String = got.iter().map(|g| g.0).collect();
+        assert_eq!(chars, "\u{1D49E}op");
+        assert!(approx_eq(got[0].2, 1.0, EPS));
+        assert!(got[1].2 < 1.0 && approx_eq(got[1].2, got[2].2, EPS));
+        assert!(got.iter().all(|g| !g.3), "{got:?}");
+        assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
+        assert!(got[1].1.y < got[0].1.y, "superscript is raised (y down)");
+    }
 }
