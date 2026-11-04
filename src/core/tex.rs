@@ -774,6 +774,8 @@ pub const ALPHABETS: &[AlphabetDef] = &[
     },
     // Fraktur letters (T58).
     MATHFRAK,
+    // Script capitals, as \mathcal (T59).
+    MATHSCR,
 ];
 
 /// Start of the bold digits `𝟎`.
@@ -831,6 +833,14 @@ const MATHFRAK: AlphabetDef = AlphabetDef {
         ('Z', '\u{2128}'),
     ],
     slant: false,
+};
+
+/// `\mathscr`: the `\mathcal` row under its own name. Latin Modern Math
+/// has one script style and no script lowercase, so lowercase is
+/// inherited as in `\mathcal` (ADR-T59-1).
+const MATHSCR: AlphabetDef = AlphabetDef {
+    name: "mathscr",
+    ..MATHCAL
 };
 
 /// The math alphabet command `name` (without the backslash).
@@ -4830,6 +4840,146 @@ mod tests {
                 boxed(&format!("\\mathfrak{{{src}}}")),
                 boxed(src),
                 "\\mathfrak{{{src}}}"
+            );
+        }
+    }
+
+    // ---- T59 script letters (ADR-T59-1) -----------------------------------
+
+    #[test]
+    fn tex_mathscr_maps_like_mathcal() {
+        // Arrange
+        let all = every_kind();
+
+        // Act
+        let got = drawn(&format!("\\mathscr{{{all}}}"));
+
+        // Assert: every kind as \mathcal draws it.
+        assert_eq!(got, drawn(&format!("\\mathcal{{{all}}}")));
+        assert_eq!(drawn("\\mathscr{LF}"), vec!['ℒ', 'ℱ']);
+        assert_eq!(drawn("\\mathscr{AZ}"), vec!['𝒜', '𝒵']);
+        assert_eq!(
+            drawn("\\mathscr{BEFHILMR}"),
+            vec!['ℬ', 'ℰ', 'ℱ', 'ℋ', 'ℐ', 'ℒ', 'ℳ', 'ℛ']
+        );
+        // Digits and Greek are not script: as outside.
+        assert_eq!(
+            drawn("\\mathscr{1\\alpha\\Gamma}"),
+            drawn("1\\alpha\\Gamma")
+        );
+    }
+
+    #[test]
+    fn tex_mathscr_lowercase_falls_back_to_the_outside_style() {
+        // Arrange: the font has no script lowercase (ADR-T59-1).
+        let lower = (0x1D4B6..=0x1D4CF).filter_map(char::from_u32);
+        for ch in lower.chain(['\u{212F}', '\u{210A}', '\u{2134}']) {
+            assert!(math_metrics::get(ch).is_none(), "{ch:?}");
+        }
+
+        // Act
+        let b = boxed("\\mathscr{l}");
+
+        // Assert: the math italic l of the math face, not warned.
+        assert_eq!(drawn("\\mathscr{l}"), vec![italic('l')]);
+        assert_eq!(drawn("\\mathscr{l}"), drawn("\\mathcal{l}"));
+        assert_eq!(drawn("\\mathrm{\\mathscr{l}}"), vec!['l']);
+        assert!(glyphs(&b.ink).iter().all(|g| !g.3));
+        assert_eq!(faces(&b.ink), vec![(italic('l'), Face::Math)]);
+    }
+
+    #[test]
+    fn tex_parse_mathscr_takes_one_argument() {
+        // Act / Assert: braced or one token.
+        assert_eq!(
+            math("\\mathscr{L}"),
+            vec![Node::Command {
+                name: "mathscr".to_owned(),
+                args: vec![braced(vec![Node::Char('L')])],
+            }]
+        );
+        assert_eq!(
+            math("\\mathscr F"),
+            vec![Node::Command {
+                name: "mathscr".to_owned(),
+                args: vec![Arg {
+                    lead: " ".to_owned(),
+                    ..tok(Node::Char('F'))
+                }],
+            }]
+        );
+        for src in [
+            "$\\mathscr{L}, \\mathscr{l}$",
+            "$\\mathscr F(\\mathscr{H})$",
+        ] {
+            assert_eq!(print(&parse(src)), src);
+        }
+        // Without an argument: a literal in the warning colour.
+        let literal = Node::Literal("\\mathscr".to_owned());
+        assert_eq!(math("\\mathscr"), vec![literal]);
+        let got = glyphs(&boxed("\\mathscr").ink);
+        assert!(got.iter().all(|g| g.3), "{got:?}");
+    }
+
+    #[test]
+    fn tex_mathscr_draws_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        assert_eq!(alphabet("mathscr").map(|a| a.name), Some("mathscr"));
+
+        // Act
+        let b = boxed(&format!("\\mathscr{{{all}}}"));
+
+        // Assert: one math-face glyph per character, none warned.
+        let got = glyphs(&b.ink);
+        assert_eq!(got.len(), all.chars().count());
+        assert!(got.iter().all(|g| !g.3));
+        for (ch, face) in faces(&b.ink) {
+            assert_eq!(face, Face::Math, "{ch:?}");
+            assert!(math_metrics::get(ch).is_some(), "{ch:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_over_mathscr_as_over_mathcal() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        for arg in ["L", "F", "A", "l"] {
+            let plain = boxed(&format!("\\mathscr{{{arg}}}"));
+            let want = ink_box(&plain.ink).center().x + ACCENT_SKEW * plain.ascent;
+
+            // Act
+            let scr = boxed(&format!("\\mathscr{{\\hat{{{arg}}}}}"));
+            let cal = boxed(&format!("\\mathcal{{\\hat{{{arg}}}}}"));
+            let got = ink_box(&mark_ink(&scr.ink, hat)).center().x;
+
+            // Assert: skewed, and laid out as under \mathcal.
+            assert!(approx_eq(got, want, EPS), "{arg}: {got} vs {want}");
+            assert_eq!(scr, cal, "{arg}");
+        }
+    }
+
+    #[test]
+    fn tex_mathscr_nests_and_leaves_operators_alone() {
+        // Act / Assert: the innermost alphabet that maps a kind wins.
+        assert_eq!(drawn("\\mathscr{\\mathrm{L}}"), vec!['L']);
+        assert_eq!(drawn("\\mathbf{\\mathscr{L}}"), vec!['ℒ']);
+        assert_eq!(drawn("\\mathscr{\\mathbf{L}}"), vec!['𝐋']);
+        assert_eq!(drawn("\\mathscr{\\mathcal{L}F}"), vec!['ℒ', 'ℱ']);
+        assert_eq!(drawn("\\mathscr{\\mathfrak{g}L}"), vec!['𝔤', 'ℒ']);
+        assert_eq!(drawn("\\mathscr{L}_n"), vec!['ℒ', italic('n')]);
+        assert_eq!(drawn("\\mathscr{F_1}"), vec!['ℱ', '1']);
+        for src in [
+            "\\log+\\sum\\text{ab}",
+            "\\operatorname{rank}",
+            "\\aleph\\partial\\nabla",
+        ] {
+            assert_eq!(
+                boxed(&format!("\\mathscr{{{src}}}")),
+                boxed(src),
+                "\\mathscr{{{src}}}"
             );
         }
     }
