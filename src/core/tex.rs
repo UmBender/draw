@@ -295,6 +295,11 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("Phi", "Φ", Class::Ord),
     def("Psi", "Ψ", Class::Ord),
     def("Omega", "Ω", Class::Ord),
+    // Hebrew letters of set theory (T61): upright, no style maps them.
+    def("aleph", "ℵ", Class::Ord),
+    def("beth", "ℶ", Class::Ord),
+    def("gimel", "ℷ", Class::Ord),
+    def("daleth", "ℸ", Class::Ord),
     def("le", "≤", Class::Rel),
     def("leq", "≤", Class::Rel),
     def("ge", "≥", Class::Rel),
