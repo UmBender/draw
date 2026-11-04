@@ -1,7 +1,7 @@
 ---
 id: T58
 title: Fraktur letters
-status: todo
+status: in-progress
 wave: 37
 branch: task/T58-fraktur
 depends_on: [T54, T55]
@@ -41,11 +41,35 @@ ideals, symmetric groups) drawn in the font's fraktur letters.
 
 ## Spec
 
-To be written in the spec step.
+Settled (owner, batch plan 2026-11-04; one more row of
+[[ADR-T54-1 Math alphabets as a table of per-kind mappings]], no new ADR).
+
+| Command | Latin A–Z | Latin a–z | Digits | Greek | Holes | Slant |
+|---------|-----------|-----------|--------|-------|-------|-------|
+| `\mathfrak` | U+1D504… | U+1D51E… | inherit | inherit | `C→ℭ H→ℌ I→ℑ R→ℜ Z→ℨ` | no |
+
+- **AC-1** `\mathfrak` maps Latin capitals and lowercase to fraktur;
+  digits and Greek stay as outside — `tex_mathfrak_maps_to_fraktur`.
+- **AC-2** Every hole draws its Letterlike character, and the hole
+  positions of the block are never drawn —
+  `tex_mathfrak_holes_map_to_letterlike_symbols`.
+- **AC-3** It parses with one argument (braced or one token), is a
+  literal in the warning colour without one, prints back unchanged, and
+  draws only math-face glyphs with `math_metrics` rows —
+  `tex_parse_mathfrak_takes_one_argument`,
+  `tex_mathfrak_draws_glyphs_of_the_math_face`.
+- **AC-4** An accent over a fraktur letter is centred (upright row,
+  ADR-T56-1) — `tex_layout_accent_centred_over_fraktur_letters`.
+- **AC-5** Nesting and reach: innermost wins (`\mathfrak{\mathrm{x}}` is
+  `x`, `\mathbf{\mathfrak{g}}` is `𝔤`); `\mathfrak{S}_n` keeps an italic
+  n; operators and `\text` unchanged; `\Re`/`\Im` still draw `ℜ`/`ℑ` —
+  `tex_mathfrak_nests_and_leaves_operators_alone`.
+- **AC-6** The fuzzer types `\mathfrak` (`tests/fuzz.rs`).
 
 ## Out of scope
 
 - Bold fraktur (`\mathbf{\mathfrak{…}}` keeps the innermost rule of T54).
+- Fraktur digits and Greek: Unicode has none.
 
 ## Files owned
 
@@ -57,7 +81,7 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T58): …`
+- [x] spec — `docs(T58): …`
 - [ ] tests — `test(T58): …`
 - [ ] models — `feat(T58): …`
 - [ ] behaviour — `feat(T58): …`
@@ -72,3 +96,5 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — spec written (batch run) as the owner decided; no ADR
+  (a plain row of ADR-T54-1), no tutorial.
