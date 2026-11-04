@@ -1,11 +1,11 @@
 ---
 id: T59
 title: Script letters
-status: todo
+status: in-progress
 wave: 38
 branch: task/T59-script-letters
 depends_on: [T54, T55]
-adrs: []
+adrs: ["[[ADR-T59-1 One script alphabet for mathscr and mathcal]]"]
 feature: "[[TeX formulas]]"
 tutorial: ""
 tags: [task, tex]
@@ -48,11 +48,49 @@ formulas. `\mathcal` stays capitals only, as in TeX.
 
 ## Spec
 
-To be written in the spec step.
+Settled in [[ADR-T59-1 One script alphabet for mathscr and mathcal]]
+(owner, batch plan 2026-11-04, plus the font facts below).
+
+Font facts (T55 subset, which covers all of `U+1D400–1D7FF` and
+`U+2100–214F`): script capitals and their eight Letterlike holes are
+there; **script lowercase is not** — no glyph in `U+1D4B6–1D4CF`, and
+`ℯ U+212F`, `ℊ U+210A`, `ℴ U+2134` are absent. The font has one script
+style (no variation sequences, GSUB only `aalt dtls ssty`). By the
+plan's shared rule, lowercase script is dropped (*Out of scope*), not
+drawn as fallback cells.
+
+| Command | Latin A–Z | Latin a–z | Digits | Greek | Holes | Slant |
+|---------|-----------|-----------|--------|-------|-------|-------|
+| `\mathscr` | U+1D49C… (as `\mathcal`) | inherit | inherit | inherit | `B E F H I L M R` (as `\mathcal`) | yes |
+
+- **AC-1** `\mathscr` draws every kind exactly as `\mathcal` does:
+  script capitals (`\mathscr{LF}` is `ℒ ℱ`), everything else as
+  outside — `tex_mathscr_maps_like_mathcal`.
+- **AC-2** Lowercase is the surrounding lowercase (math italic `𝑙` for
+  `\mathscr{l}`), from the math face, not warned; the font has no
+  script lowercase (no `math_metrics` row for `U+1D4B6–1D4CF` or
+  `ℯ ℊ ℴ`) — `tex_mathscr_lowercase_falls_back_to_the_outside_style`.
+- **AC-3** It parses with one argument (braced or one token), is a
+  literal in the warning colour without one, prints back unchanged, and
+  draws only math-face glyphs with `math_metrics` rows —
+  `tex_parse_mathscr_takes_one_argument`,
+  `tex_mathscr_draws_glyphs_of_the_math_face`.
+- **AC-4** An accent over a script capital is skewed exactly as under
+  `\mathcal` (slanted row, ADR-T56-1) —
+  `tex_layout_accent_over_mathscr_as_over_mathcal`.
+- **AC-5** Nesting and reach: innermost wins (`\mathscr{\mathrm{L}}` is
+  `L`, `\mathbf{\mathscr{L}}` is `ℒ`, `\mathscr{\mathbf{L}}` is `𝐋`);
+  `\mathscr{L}_n` keeps an italic n; operators and `\text` unchanged —
+  `tex_mathscr_nests_and_leaves_operators_alone`.
+- **AC-6** The fuzzer types `\mathscr` (`tests/fuzz.rs`).
 
 ## Out of scope
 
 - Adding a second font for rsfs-style script.
+- Script lowercase (`\mathscr{l}` as `𝓁`): Latin Modern Math 1.959 has
+  no glyph for it (ADR-T59-1); only T55 changes the subset.
+- Bold script (`\mathbf{\mathscr{L}}` keeps the innermost rule of T54),
+  although the font has bold script capitals.
 
 ## Files owned
 
@@ -79,3 +117,11 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — spec written (batch run). UNATTENDED CHOICE: the owner
+  decision asked for lowercase script (`ℯ ℊ ℴ` holes), but Latin Modern
+  Math 1.959 has no script lowercase at all (no `math_metrics` row in
+  `U+1D4B6–1D4CF`, none for `ℯ ℊ ℴ`, though the T55 subset covers those
+  ranges). Following the plan's shared rule (a glyph the subset lacks is
+  dropped, not faked), `\mathscr` ships capitals only, the same row as
+  `\mathcal`; `\mathscr{l}` draws an italic l. Recorded in ADR-T59-1.
+  The owner's manual check `$\mathscr{l}$` will show `𝑙`, not `𝓁`.
