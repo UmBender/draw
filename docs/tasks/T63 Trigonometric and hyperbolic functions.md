@@ -1,7 +1,7 @@
 ---
 id: T63
 title: Trigonometric and hyperbolic functions
-status: in-progress
+status: review
 wave: 42
 branch: task/T63-trig-functions
 depends_on: []
@@ -94,12 +94,12 @@ the rows are behaviour) and is skipped.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T63): …`
-- [ ] tests — `test(T63): …`
-- [ ] models — `feat(T63): …`
-- [ ] behaviour — `feat(T63): …`
-- [ ] quality — `chore(T63): …`
-- [ ] docs — `docs(T63): …`
+- [x] spec — `docs(T63): …`
+- [x] tests — `test(T63): …`
+- [x] models — skipped: no new types or signatures (rows only)
+- [x] behaviour — `feat(T63): …`
+- [x] quality — skipped: `scripts/check.sh --fuzz` green with no changes
+- [x] docs — `docs(T63): …`
 
 ## Learning path
 
@@ -109,3 +109,14 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented in the unattended batch run, on top of
+  `task/T61-hebrew-letters`: eighteen `Op` rows after `\lcm` (the
+  thirteen LaTeX names plus `\arccot \arcsec \arccsc \sech \csch`, owner
+  decision). Every letter they need already had a `math_metrics` row, so
+  no font change; spacing and scripts come from the existing `Op` rules.
+  Models step skipped (no types); quality step skipped
+  (`scripts/check.sh --fuzz` green, fmt and clippy clean on the first
+  run). No ADR, no tutorial (plan defaults). The feature note marks the
+  five extras as not in LaTeX's base set.
+- 2026-11-04 — manual check left for the owner: look at
+  `$\sin^2\theta + \cos^2\theta = 1$` in the app.

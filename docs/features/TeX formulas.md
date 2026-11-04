@@ -45,6 +45,15 @@ The Hebrew letters of set theory are there for cardinals:
 as in LaTeX, and never changed by `\mathcal`. (Since
 [[T61 Hebrew letters]].)
 
+Trigonometric and hyperbolic functions are upright words with the thin
+operator space of `\log`: `$\sin^2\theta + \cos^2\theta = 1$`,
+`$\tan x$`, `$\arctan x$`, `$\cosh t$`; a power sits beside the word,
+not above it. Besides LaTeX's thirteen (`\sin \cos \tan \cot \sec \csc
+\arcsin \arccos \arctan \sinh \cosh \tanh \coth`), five common names
+that are *not in LaTeX's base set* work too: `\arccot \arcsec \arccsc
+\sech \csch` (in LaTeX they would need `\operatorname`). (Since
+[[T63 Trigonometric and hyperbolic functions]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -56,6 +65,7 @@ as in LaTeX, and never changed by `\mathcal`. (Since
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
 | Integrals (limits beside) | `\int_0^1`, `\iint`, `\iiint`, `\oint`, `\oiint` |
 | Functions (upright) | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` |
+| Trigonometric, hyperbolic | `\sin \cos \tan \cot \sec \csc`, `\arcsin \arccos \arctan`, `\sinh \cosh \tanh \coth`; not in LaTeX's base set: `\arccot \arcsec \arccsc \sech \csch` |
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
 | Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
