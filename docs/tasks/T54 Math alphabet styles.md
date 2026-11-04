@@ -1,11 +1,11 @@
 ---
 id: T54
 title: Math alphabet styles
-status: todo
+status: in-progress
 wave: 33
 branch: task/T54-math-alphabets
 depends_on: []
-adrs: []
+adrs: ["[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]"]
 feature: "[[TeX formulas]]"
 tutorial: "[[54 Math alphabets as a mapping table]]"
 tags: [task, tex]
@@ -59,7 +59,83 @@ capitals as in LaTeX). Later tasks (T56–T60) then only add rows.
 
 ## Spec
 
-To be written in the spec step.
+Settled (owner, batch plan 2026-11-04;
+[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]).
+
+`Style` (`Italic`, `Calligraphic`) is replaced by the table `ALPHABETS`
+of `AlphabetDef` rows: a command name and one `Map` per character kind
+(`Kind`: Latin capitals, Latin lowercase, digits, Greek capitals, Greek
+lowercase), plus `holes` (single characters drawn from Letterlike
+Symbols instead of the block). A `Map` is `Inherit` (the enclosing
+alphabet decides), `Upright` (the character as typed) or `Block(start)`
+(the Unicode Mathematical Alphanumeric block starting at `start`, in the
+standard order of each kind). The formula itself starts in the math
+italic row `MATH_ITALIC`, which maps every kind (so the fallback always
+ends there). Entering an alphabet only replaces the kinds it maps: the
+innermost alphabet that maps a kind wins.
+
+| Command | Latin A–Z | Latin a–z | Digits | Greek capitals | Greek lowercase |
+|---------|-----------|-----------|--------|----------------|-----------------|
+| (formula) `MATH_ITALIC` | italic | italic (`h` → ℎ) | upright | upright | italic |
+| `\mathnormal` | italic | italic (`h` → ℎ) | upright | **italic** U+1D6E2… | italic |
+| `\mathit` | italic | italic (`h` → ℎ) | inherit | italic | italic |
+| `\mathrm` | upright | upright | upright | inherit | inherit |
+| `\mathcal` | script (holes ℬℰℱℋℐℒℳℛ) | inherit | inherit | inherit | inherit |
+
+Alphabets change only letters and digits typed in the formula and
+single-character `Ord` symbols (`\alpha`, `\Gamma`); operators (`+`,
+`\sum`, `\log`, `\sin`, `\gcd`, `\operatorname{…}`), `\text{…}`, Hebrew
+letters and other symbols (`\partial`, `\infty`) are never changed.
+`italic` and `calligraphic` stay public and give the same characters as
+before.
+
+- **AC-1** — `\mathrm`, `\mathit`, `\mathnormal` (like `\mathcal`) parse
+  to a one-argument `Node::Command` (braced or one token); without an
+  argument each is a `Node::Literal` drawn in the warning colour; print
+  gives the source back.
+  Tests: `tex_parse_alphabets_take_one_argument`,
+  `tex_parse_alphabet_without_argument_is_literal`.
+- **AC-2** — `alphabet(name)` finds each of the four rows; every row
+  maps into characters that `math_metrics` has (all Latin letters,
+  digits and Greek letters of each row's `Block`s and holes), so nothing
+  falls back to the text face.
+  Test: `tex_alphabet_rows_draw_glyphs_of_the_math_face`.
+- **AC-3** — `\mathrm{d}x`: `d` is the upright `d` of the math face, an
+  `Ord` atom with no italic correction (box `italic` 0, the `x` right at
+  `d`'s advance, `\mathrm{d}^2` puts the `2` at the advance); digits and
+  Greek are unchanged (`\mathrm{2\alpha\Gamma}` as outside).
+  Test: `tex_layout_mathrm_letters_are_upright_without_italic_correction`.
+- **AC-4** — `\mathit{diff}` is the italic letters side by side with no
+  gap (as wide as their advances), one `Ord` atom: same spacing as a
+  group before a relation (`\mathit{diff}=x` equals `{diff}=x`); digits
+  stay upright.
+  Test: `tex_layout_mathit_sets_a_word_without_gaps`.
+- **AC-5** — `\mathnormal{\Gamma\Omega}` draws U+1D6E4 and U+1D6FA (italic
+  capitals); `\mathnormal{x}` equals `x`; every Greek capital command
+  maps to U+1D6E2–1D6FA.
+  Test: `tex_mathnormal_gives_italic_greek_capitals`.
+- **AC-6** — the innermost alphabet wins and a missing mapping falls
+  back to the enclosing one: `\mathrm{\mathcal{A}}` → 𝒜,
+  `\mathcal{\mathrm{A}}` → `A`, `\mathcal{\mathrm{a}}` → `a`,
+  `\mathrm{\mathcal{a}}` → `a` (cal does not map lowercase, `\mathrm`
+  does), `\mathnormal{\mathrm{\Gamma}}` → italic Γ (mathrm inherits
+  Greek), `\mathrm{\mathit{x}}` → 𝑥.
+  Test: `tex_alphabets_nest_innermost_first`.
+- **AC-7** — alphabets do not change operators, functions, `\text`,
+  `\operatorname` or symbols: `\mathrm{\log+\sum\text{ab}}`,
+  `\mathit{\operatorname{rank}}` lay out as without the alphabet.
+  Test: `tex_alphabets_leave_operators_and_text_alone`.
+- **AC-8** — the existing mapping is unchanged: every existing formula
+  test stays green as is (`tex_math_letters_are_italic`,
+  `tex_mathcal_maps_to_script_letters`, accents, Hebrew …); an accent
+  over a `\mathrm` letter is not skewed, over a `\mathnormal{\Gamma}` it
+  is.
+  Test: `tex_layout_accent_skew_follows_the_alphabet`.
+- **AC-9** — the fuzzers type the new commands (`arb_source` in
+  `core::tex`, `arb_formula_text` in `tests/fuzz.rs`); parse and layout
+  stay total, print round trip holds.
+  Tests: the existing proptests, run by `scripts/check.sh` and
+  `scripts/check.sh --fuzz`.
 
 ## Out of scope
 
@@ -86,7 +162,9 @@ To be written in the spec step.
 
 ## Learning path
 
-Possibly a short tutorial on table-driven character mapping (Unicode math alphanumerics); decided in the spec step.
+Tutorial [[54 Math alphabets as a mapping table]] (owner, batch plan
+2026-11-04): table-driven character mapping over the Unicode
+Mathematical Alphanumeric Symbols block, and the nesting rule.
 
 ## Log
 
