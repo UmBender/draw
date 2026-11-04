@@ -1,7 +1,7 @@
 ---
 id: T54
 title: Math alphabet styles
-status: review
+status: done
 wave: 33
 branch: task/T54-math-alphabets
 depends_on: []
@@ -200,3 +200,5 @@ Mathematical Alphanumeric Symbols block, and the nesting rule.
 - 2026-11-04 — manual checks left for the owner: look at
   `$\mathrm{d}x$`, `$\mathit{diff}$`, `$\mathnormal{\Gamma}$` and
   `$\mathcal{\mathrm{A}}$` in the app.
+- 2026-11-04 — owner checked the manual formulas in the app and approved the unattended choices.
+- 2026-11-04 — integrated on `main` (merge `2d0a8f6`), no conflicts.

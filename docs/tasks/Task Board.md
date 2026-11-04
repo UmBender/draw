@@ -259,17 +259,17 @@ flowchart TD
 | [[T49 Long-running stability]] | done | T47 | `fix/long-running-stability` |
 | [[T51 Build-time themes]] | todo | — | `task/T51-build-time-themes` |
 | [[T52 Text in shapes by default]] | todo | — | `task/T52-shape-text-default` |
-| [[T54 Math alphabet styles]] | todo | — | `task/T54-math-alphabets` |
+| [[T54 Math alphabet styles]] | done | — | `task/T54-math-alphabets` |
 | [[T55 Math font subset for alphabets and symbols]] | todo | T54 | `task/T55-math-font-subset` |
 | [[T56 Bold math]] | todo | T54, T55 | `task/T56-bold-math` |
 | [[T57 Blackboard bold]] | todo | T54, T55 | `task/T57-blackboard-bold` |
 | [[T58 Fraktur letters]] | todo | T54, T55 | `task/T58-fraktur` |
 | [[T59 Script letters]] | todo | T54, T55 | `task/T59-script-letters` |
 | [[T60 Sans-serif and typewriter letters]] | todo | T54, T55 | `task/T60-sans-and-mono` |
-| [[T61 Hebrew letters]] | todo | — | `task/T61-hebrew-letters` |
-| [[T62 Complete Greek letters]] | todo | T54 | `task/T62-complete-greek` |
-| [[T63 Trigonometric and hyperbolic functions]] | todo | — | `task/T63-trig-functions` |
-| [[T64 Named operators with limits]] | todo | T63 | `task/T64-named-operators` |
+| [[T61 Hebrew letters]] | done | — | `task/T61-hebrew-letters` |
+| [[T62 Complete Greek letters]] | done | T54 | `task/T62-complete-greek` |
+| [[T63 Trigonometric and hyperbolic functions]] | done | — | `task/T63-trig-functions` |
+| [[T64 Named operators with limits]] | done | T63 | `task/T64-named-operators` |
 | [[T65 Set and logic symbols]] | todo | T55 | `task/T65-set-logic-symbols` |
 | [[T66 Big set and logic operators]] | todo | T55, T65 | `task/T66-big-operators` |
 | [[T67 Algebra and group theory symbols]] | todo | T55, T64 | `task/T67-algebra-symbols` |

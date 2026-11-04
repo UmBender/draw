@@ -16,6 +16,14 @@ All notable changes to draw are listed here. The format follows
 - Editor snapshots for bug reports: `Ctrl+Shift+S` saves the whole
   editor state to `~/.local/state/draw/snapshots/`, and
   `DRAW_SNAPSHOT=<file>` starts draw from one.
+- More TeX in formulas: the Hebrew letters `\aleph` `\beth` `\gimel`
+  `\daleth`; the rest of the Greek letters (`\varkappa`, `\varGamma`…
+  `\varOmega`, `\Alpha`…`\Chi`); trigonometric and hyperbolic functions
+  (`\sin`…`\arccsc`, `\sinh`…`\csch`); named operators with limits
+  (`\limsup`, `\liminf`, `\inf`, `\sup`, `\det`, `\Pr`), more named
+  functions (`\exp`, `\dim`, `\ker`, …) and `\operatorname{…}` /
+  `\operatorname*{…}`; and the alphabets `\mathrm`, `\mathit` and
+  `\mathnormal` next to `\mathcal`.
 
 ### Changed
 

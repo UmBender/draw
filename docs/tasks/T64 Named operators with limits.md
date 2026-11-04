@@ -1,7 +1,7 @@
 ---
 id: T64
 title: Named operators with limits
-status: review
+status: done
 wave: 43
 branch: task/T64-named-operators
 depends_on: [T63]
@@ -164,3 +164,5 @@ None planned; the feature note is enough.
 - 2026-11-04 — manual checks left for the owner: look at
   `$\limsup_{n\to\infty} a_n$` and `$\operatorname*{argmin}_x f(x)$` in
   the app.
+- 2026-11-04 — owner checked the manual formulas in the app and approved the unattended choices.
+- 2026-11-04 — integrated on `main` (merge `0d4c23d`), no conflicts.

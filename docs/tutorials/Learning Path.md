@@ -119,3 +119,4 @@ flowchart LR
 | 39 | [[39 Accents that sit on their letters]] | [[T39 Accents in formulas]] | done |
 | 47 | [[47 A flight recorder for rare bugs]] | [[T47 Always-on diagnostics log]] | done |
 | 48 | [[48 Signals, self-pipes and async-signal safety]] | [[T48 Clean exit on Ctrl-C]] | done |
+| 54 | [[54 Math alphabets as a mapping table]] | [[T54 Math alphabet styles]] | done |

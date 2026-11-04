@@ -1,7 +1,7 @@
 ---
 id: T62
 title: Complete Greek letters
-status: review
+status: done
 wave: 41
 branch: task/T62-complete-greek
 depends_on: [T54]
@@ -138,3 +138,5 @@ None planned; the feature note is enough.
   \mathnormal\Alpha`. README and feature note list the commands.
 - 2026-11-04 — manual checks left for the owner: `$\varGamma \ne \Gamma$`
   shows two different shapes; `$\Alpha$` looks like an upright `A`.
+- 2026-11-04 — owner checked the manual formulas in the app and approved the unattended choices.
+- 2026-11-04 — integrated on `main` (merge `a0fcff5`), no conflicts.

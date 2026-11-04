@@ -1,7 +1,7 @@
 ---
 id: T63
 title: Trigonometric and hyperbolic functions
-status: review
+status: done
 wave: 42
 branch: task/T63-trig-functions
 depends_on: []
@@ -120,3 +120,5 @@ None planned; the feature note is enough.
   five extras as not in LaTeX's base set.
 - 2026-11-04 — manual check left for the owner: look at
   `$\sin^2\theta + \cos^2\theta = 1$` in the app.
+- 2026-11-04 — owner checked the manual formulas in the app and approved the unattended choices.
+- 2026-11-04 — integrated on `main` (merge `aed638a`), no conflicts.

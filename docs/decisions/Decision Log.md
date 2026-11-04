@@ -84,3 +84,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 73 | [[ADR-T49-1 Undo history capped by bytes]] | accepted | decision | 0005, T24-1 | amends 0005 |
 | 74 | [[ADR-T73-1 Track the latest stable Rust]] | accepted | decision | T27-1, 0010 | — |
 | 75 | [[ADR-T74-1 Line-based editor snapshot format]] | accepted | decision | 0003, 0014, 0009, T49-1 | — |
+| 76 | [[ADR-T64-1 Operatorname with a star parsed as one command]] | accepted | decision | T30-1 | — |
+| 77 | [[ADR-T54-1 Math alphabets as a table of per-kind mappings]] | accepted | decision | T30-1 | amends T33-1 |

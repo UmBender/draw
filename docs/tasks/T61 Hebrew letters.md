@@ -1,7 +1,7 @@
 ---
 id: T61
 title: Hebrew letters
-status: review
+status: done
 wave: 40
 branch: task/T61-hebrew-letters
 depends_on: []
@@ -113,3 +113,5 @@ None planned; the feature note is enough.
   the four commands.
 - 2026-11-04 — manual check left for the owner: look at
   `$\aleph_0 < 2^{\aleph_0}$` in the app.
+- 2026-11-04 — owner checked the manual formulas in the app and approved the unattended choices.
+- 2026-11-04 — integrated on `main` (merge `0ee20b8`), no conflicts.
