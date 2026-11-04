@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -139,6 +139,19 @@ breaks the chain, and `\mathtt` has no bold (Unicode has none):
 [[T60 Sans-serif and typewriter letters]],
 [[ADR-T60-1 Bold sans-serif inside a bold alphabet]].)
 
+Sets and logic read as in LaTeX: `$A \setminus B$`,
+`$A \subseteq B \cup C$`, `$\Gamma \vdash p$`, `$p \veebar q$` (xor),
+`$\lVert v \rVert$`, `$\lvert x \rvert$` and, with
+`\langle u, v \rangle`, inner products. `\implies` and `\impliedby`
+are spaced as amsmath does: a thick space each side on top of the
+relation's own, so `$p \implies q$` is wider than
+`$p \Rightarrow q$`, in scripts too. `\lvert \rvert \lVert \rVert` are
+opening and closing bars, so a minus right after `\lvert` is a sign.
+`\varnothing` draws the same `∅` as `\emptyset`, and `\barwedge` is
+`⊼` (the font subset has no other glyph for them). (Since
+[[T65 Set and logic symbols]],
+[[ADR-T65-1 Wide relations padded with a thick space]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -174,6 +187,9 @@ breaks the chain, and `\mathtt` has no bold (Unicode has none):
 | More relations | `\propto \sim \simeq \cong \ll \gg \lesssim \gtrsim \doteq \coloneqq \parallel \perp \mid` |
 | More arrows | `\rightarrow \leftrightarrow \Leftarrow \Leftrightarrow \uparrow \downarrow \mapsto \rightleftharpoons` |
 | More binary operators | `\mp \otimes \wedge \vee \circ \ast \star \bullet \dagger` |
+| Sets | `\setminus \sqcup \sqcap \uplus`, `\supset \subseteq \supseteq \subsetneq \supsetneq \nsubseteq \ni`, `\complement \varnothing` |
+| Logic | `\lnot \veebar \barwedge \top \bot \nexists`, `\vdash \models`, `\implies \impliedby` (spaced wider) |
+| Absolute value, norm | `\lvert x \rvert`, `\lVert v \rVert` |
 | Thin space | `\,` (as in `f(x)\,dx`) |
 | Upright text | `\text{if } x > 0` |
 
@@ -225,8 +241,10 @@ of the same batch.
 - No `\DeclareMathOperator`, `\varliminf`, `\varlimsup`, `\injlim` or
   `\projlim`; write `\operatorname{…}` instead.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
-  literals); `\longrightarrow`, `\implies` and `\triangle` have no
-  command yet (their glyphs are in the font subset since T55).
+  literals); `\longrightarrow` and `\triangle` have no command yet
+  (their glyphs are in the font subset since T55).
+- No `\not` prefix: only the negated relations listed (`\notin`,
+  `\nsubseteq`, `\ne`) exist. `\varnothing` looks like `\emptyset`.
 - `\mathcal` and `\mathscr` have capitals only and look the same (the
   font has one script style and no script lowercase); no bold script,
   no bold fraktur, no bold monospace, no sans-serif Greek or italic

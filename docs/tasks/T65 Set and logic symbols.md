@@ -1,7 +1,7 @@
 ---
 id: T65
 title: Set and logic symbols
-status: in-progress
+status: review
 wave: 44
 branch: task/T65-set-logic-symbols
 depends_on: [T55]
@@ -133,12 +133,12 @@ shape), because the subset lacks unicode-math's U+2305.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T65): …`
-- [ ] tests — `test(T65): …`
-- [ ] models — `feat(T65): …`
-- [ ] behaviour — `feat(T65): …`
-- [ ] quality — `chore(T65): …`
-- [ ] docs — `docs(T65): …`
+- [x] spec — `docs(T65): …`
+- [x] tests — `test(T65): …`
+- [x] models — `feat(T65): …`
+- [x] behaviour — `feat(T65): …`
+- [x] quality — `chore(T65): …` (nothing to change, no commit)
+- [x] docs — `docs(T65): …`
 
 ## Learning path
 
@@ -148,3 +148,14 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — tests, rows and docs done. 27 `SYMBOLS` rows;
+  `\implies` / `\impliedby` are padded in `symbol_box` by
+  `WIDE_REL_SPACE` from the `WIDE_RELATIONS` list
+  ([[ADR-T65-1 Wide relations padded with a thick space]]), at every
+  size. UNATTENDED CHOICE: `\varnothing` → U+2205 (same as
+  `\emptyset`) and `\barwedge` → U+22BC, since the T55 subset lacks
+  U+2300 / U+2305 (see *Spec*). The quality step changed nothing (no
+  `chore` commit). `scripts/check.sh` and `--fuzz` green. No deviation
+  from *Files owned*; no tutorial. Manual checks for the owner:
+  `$p \implies q$` (visibly wider than `$p \Rightarrow q$`),
+  `$A \setminus B$`, `$\lVert v \rVert$`.
