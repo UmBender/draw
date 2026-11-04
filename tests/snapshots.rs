@@ -110,7 +110,9 @@ fn assert_snapshot_panics_with_diff_on_change() {
     changed.apply(Command::ToggleToolbar);
 
     // Act: never rewrite here, even under DRAW_UPDATE_SNAPSHOTS.
-    let result = std::panic::catch_unwind(|| assert_snapshot_with(&changed, "empty", false));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        assert_snapshot_with(&changed, "empty", false);
+    }));
 
     // Assert
     let payload = result.err().unwrap_or_else(|| panic!("a changed state matched"));

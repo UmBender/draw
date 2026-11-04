@@ -1,5 +1,166 @@
 //! Editor snapshots (ADR-T74-1): the whole headless [`Editor`] state as a
 //! small, canonical, line-based text, and back.
+//!
+//! ```text
+//! draw-snapshot 1
+//! [editor]
+//! tool pen
+//! …
+//! [document]
+//! next-id 3
+//! shape 1 line 0 3.0 10.0 10.0 50.0 40.0
+//! …
+//! ```
+//!
+//! [`Editor::snapshot`] captures a state, [`Snapshot::to_text`] writes it,
+//! [`Snapshot::parse`] reads and validates text, and
+//! [`Editor::from_snapshot`] turns a snapshot back into an editor. The
+//! text is canonical: one state has exactly one text. Private tool states
+//! write and read their own records through [`Line`] and [`Tokens`].
+
+use std::fmt;
+
+use crate::core::editor::Editor;
+
+/// First token of a snapshot's first line.
+pub const HEADER: &str = "draw-snapshot";
+
+/// Version of the format this build writes and reads. Bumped, with an ADR,
+/// whenever the text changes (ADR-T74-1).
+pub const VERSION: u32 = 1;
+
+/// Why a text is not a snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotError {
+    /// 1-based line of the problem.
+    pub line: usize,
+    /// What is wrong, for people.
+    pub message: String,
+}
+
+impl SnapshotError {
+    /// An error at `line` (1-based).
+    #[must_use]
+    pub fn new(line: usize, message: impl Into<String>) -> Self {
+        Self {
+            line,
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for SnapshotError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "line {}: {}", self.line, self.message)
+    }
+}
+
+impl std::error::Error for SnapshotError {}
+
+/// A validated editor state: what [`Editor::snapshot`] captures and
+/// [`Snapshot::parse`] accepts. Loading it cannot fail.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Snapshot(pub(crate) Editor);
+
+impl Snapshot {
+    /// The canonical text of this state.
+    #[must_use]
+    pub fn to_text(&self) -> String {
+        todo!()
+    }
+
+    /// Reads a snapshot from `text`.
+    ///
+    /// # Errors
+    ///
+    /// A [`SnapshotError`] naming the first bad line: wrong header or
+    /// version, unknown section or key, a malformed or non-finite number,
+    /// or a state that breaks an editor invariant.
+    pub fn parse(text: &str) -> Result<Self, SnapshotError> {
+        let _ = text;
+        todo!()
+    }
+}
+
+/// Builds snapshot text section by section.
+#[derive(Debug, Default)]
+pub struct Writer {
+    out: String,
+}
+
+/// The tokens of one record being written.
+#[derive(Debug)]
+pub struct Line<'a> {
+    out: &'a mut String,
+}
+
+/// Reads snapshot text line by line.
+#[derive(Debug)]
+pub struct Reader<'a> {
+    lines: Vec<&'a str>,
+    next: usize,
+}
+
+/// One token of a record.
+#[derive(Debug, Clone, PartialEq)]
+enum Token<'a> {
+    /// A bare word: a key, number, name or `-`.
+    Word(&'a str),
+    /// A quoted string, unescaped.
+    Str(String),
+}
+
+/// The tokens of one record being read.
+#[derive(Debug)]
+pub struct Tokens<'a> {
+    line: usize,
+    items: Vec<Token<'a>>,
+    next: usize,
+}
+
+/// A value with a token form inside a record.
+pub trait Snap: Sized {
+    /// Appends the value's tokens.
+    fn write(&self, line: &mut Line<'_>);
+
+    /// Reads the value's tokens.
+    ///
+    /// # Errors
+    ///
+    /// When the tokens are missing, malformed or out of range.
+    fn read(tokens: &mut Tokens<'_>) -> Result<Self, SnapshotError>;
+}
+
+/// Golden files: compare a state's text with a committed one (AC-5). The
+/// file system and `DRAW_UPDATE_SNAPSHOTS` stay with the caller.
+pub mod golden {
+    /// The outcome of [`check`].
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum Golden {
+        /// The texts are equal.
+        Match,
+        /// The caller should write the actual text (update requested).
+        Write,
+        /// The texts differ: a readable line diff.
+        Mismatch(String),
+        /// There is no golden file and no update was requested.
+        Missing,
+    }
+
+    /// Compares `actual` with the golden `expected` text.
+    #[must_use]
+    pub fn check(actual: &str, expected: Option<&str>, update: bool) -> Golden {
+        let _ = (actual, expected, update);
+        todo!()
+    }
+
+    /// A short line diff from `expected` to `actual`.
+    #[must_use]
+    pub fn diff(expected: &str, actual: &str) -> String {
+        let _ = (expected, actual);
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {

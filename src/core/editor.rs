@@ -28,6 +28,7 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
+use crate::core::snapshot::Snapshot;
 use crate::core::tap::TapFilter;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
@@ -196,7 +197,31 @@ impl Default for Editor {
     }
 }
 
+impl PartialEq for Editor {
+    /// Compares the saved state (ADR-T74-1): the keymap, the document
+    /// revisions and the history's change count and byte estimate are not
+    /// part of it.
+    fn eq(&self, other: &Self) -> bool {
+        let _ = other;
+        todo!()
+    }
+}
+
 impl Editor {
+    /// This state as a [`Snapshot`] (ADR-T74-1).
+    #[must_use]
+    pub fn snapshot(&self) -> Snapshot {
+        todo!()
+    }
+
+    /// The editor a snapshot holds, with the default keymap and fresh
+    /// document revisions, so the shell renders everything.
+    #[must_use]
+    pub fn from_snapshot(snapshot: Snapshot) -> Self {
+        let _ = snapshot;
+        todo!()
+    }
+
     /// An empty document at the default view, pen tool, default style.
     #[must_use]
     pub fn new() -> Self {

@@ -29,7 +29,9 @@ use macroquad::window::{
 };
 
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::io::Write as _;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -41,6 +43,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
 use crate::core::palette::{THEME, palette};
+use crate::core::snapshot::Snapshot;
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
@@ -366,6 +369,39 @@ pub const DUMP_CHORD: KeyChord = KeyChord::ctrl_shift(Key::L);
 #[must_use]
 pub fn is_dump_chord(event: &InputEvent) -> bool {
     matches!(event, InputEvent::KeyDown { key, mods } if *key == DUMP_CHORD.key && *mods == DUMP_CHORD.mods)
+}
+
+/// The chord that saves an editor snapshot, caught before the editor like
+/// [`DUMP_CHORD`] (ADR-T74-1).
+pub const SNAPSHOT_CHORD: KeyChord = KeyChord::ctrl_shift(Key::S);
+
+/// Environment variable naming a snapshot file to start from.
+pub const SNAPSHOT_ENV: &str = "DRAW_SNAPSHOT";
+
+/// Whether `event` is a press of [`SNAPSHOT_CHORD`].
+#[must_use]
+pub fn is_snapshot_chord(event: &InputEvent) -> bool {
+    let _ = event;
+    todo!()
+}
+
+/// Where a snapshot taken at `unix_secs` goes:
+/// `<state dir>/snapshots/snapshot-<UTC stamp>.snap`.
+#[must_use]
+pub fn snapshot_path(state_dir: &Path, unix_secs: u64) -> PathBuf {
+    let _ = (state_dir, unix_secs);
+    todo!()
+}
+
+/// The snapshot to start from, given the [`SNAPSHOT_ENV`] value and a way
+/// to read files: the snapshot, or an error line for the log. Unset or
+/// empty starts empty without an error.
+pub fn startup_snapshot(
+    value: Option<&OsStr>,
+    read: impl FnOnce(&Path) -> std::io::Result<String>,
+) -> (Option<Snapshot>, Option<String>) {
+    let _ = (value, read);
+    todo!()
 }
 
 /// The flight recorder's kind of a frame that re-rendered something.
