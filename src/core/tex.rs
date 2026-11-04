@@ -608,6 +608,13 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("op", "op", Class::Op),
     def("Ob", "Ob", Class::Op),
     def("Mor", "Mor", Class::Op),
+    def("Box", "□", Class::Ord),
+    def("square", "□", Class::Ord),
+    def("triangle", "△", Class::Ord),
+    def("angle", "∠", Class::Ord),
+    def("ohm", "\u{2126}", Class::Ord),
+    def("micro", "\u{B5}", Class::Ord),
+    def("grad", "∇", Class::Ord),
 ];
 
 /// The table entry of command `name` (without the backslash).
@@ -659,6 +666,10 @@ pub const ACCENTS: &[AccentDef] = &[
         mark: Mark::Glyph('\u{A8}', 1.0),
     },
     AccentDef {
+        name: "dddot",
+        mark: Mark::Glyph('\u{20DB}', 1.0),
+    },
+    AccentDef {
         name: "bar",
         mark: Mark::Bar,
     },
@@ -672,6 +683,92 @@ pub const ACCENTS: &[AccentDef] = &[
 #[must_use]
 pub fn accent(name: &str) -> Option<&'static AccentDef> {
     ACCENTS.iter().find(|a| a.name == name)
+}
+
+/// One shortcut command that draws as its long form (ADR-T69-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpansionDef {
+    /// Command name without the backslash.
+    pub name: &'static str,
+    /// Arguments always taken, of any form (a group, a symbol, one
+    /// character).
+    pub required: usize,
+    /// The long form by the number of optional arguments given: each
+    /// optional argument is a `{group}` taken only when one follows.
+    /// Subset source with slots `#1` … `#9` for the arguments.
+    pub templates: &'static [&'static str],
+}
+
+/// Every shortcut command of the subset (ADR-T69-1): the `physics`
+/// package's most used commands.
+pub const EXPANSIONS: &[ExpansionDef] = &[
+    ExpansionDef {
+        name: "dd",
+        required: 0,
+        templates: &["\\,\\mathrm{d}", "\\,\\mathrm{d}#1"],
+    },
+    ExpansionDef {
+        name: "dv",
+        required: 1,
+        templates: &[
+            "\\frac{\\mathrm{d}}{\\mathrm{d}#1}",
+            "\\frac{\\mathrm{d}#1}{\\mathrm{d}#2}",
+        ],
+    },
+    ExpansionDef {
+        name: "pdv",
+        required: 1,
+        templates: &[
+            "\\frac{\\partial}{\\partial #1}",
+            "\\frac{\\partial #1}{\\partial #2}",
+        ],
+    },
+    ExpansionDef {
+        name: "abs",
+        required: 1,
+        templates: &["\\lvert #1\\rvert"],
+    },
+    ExpansionDef {
+        name: "norm",
+        required: 1,
+        templates: &["\\lVert #1\\rVert"],
+    },
+    ExpansionDef {
+        name: "order",
+        required: 1,
+        templates: &["\\mathcal{O}(#1)"],
+    },
+    ExpansionDef {
+        name: "vb",
+        required: 1,
+        templates: &["\\mathbf{#1}"],
+    },
+    ExpansionDef {
+        name: "vu",
+        required: 1,
+        templates: &["\\hat{\\mathbf{#1}}"],
+    },
+    ExpansionDef {
+        name: "curl",
+        required: 0,
+        templates: &["\\nabla\\times"],
+    },
+];
+
+/// The shortcut command `name` (without the backslash).
+#[must_use]
+pub fn expansion(name: &str) -> Option<&'static ExpansionDef> {
+    EXPANSIONS.iter().find(|e| e.name == name)
+}
+
+/// The long form of `node` when it is a shortcut command of
+/// [`EXPANSIONS`] with an argument count it takes: its template parsed,
+/// each slot `#n` replaced by the nodes of argument `n` (ADR-T69-1).
+/// `None` for any other node.
+#[must_use]
+pub fn expand(node: &Node) -> Option<Vec<Node>> {
+    let _ = node;
+    todo!()
 }
 
 /// Which embedded font draws a glyph (ADR-T33-1).
