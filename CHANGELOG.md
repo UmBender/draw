@@ -13,11 +13,15 @@ All notable changes to draw are listed here. The format follows
   the last moments before a crash, a doubled key or a key-repeat burst
   are saved to a dump file. `Ctrl+Shift+L` saves one on demand.
   `DRAW_LOG` sets how much is logged. Typed text is never recorded.
+- Editor snapshots for bug reports: `Ctrl+Shift+S` saves the whole
+  editor state to `~/.local/state/draw/snapshots/`, and
+  `DRAW_SNAPSHOT=<file>` starts draw from one.
 
 ### Changed
 
 - Native Wayland is the default on Wayland sessions; the .deb and .rpm
   recommend the Wayland libraries.
+- Building from source needs Rust 1.99 or newer.
 
 ### Deprecated
 

@@ -1,7 +1,7 @@
 ---
 id: T74
 title: Editor snapshots for tests
-status: review
+status: done
 wave: 33
 branch: task/T74-editor-snapshots
 depends_on: []
@@ -239,3 +239,6 @@ harness tutorial.
   `INFO started from DRAW_SNAPSHOT snapshot`. Part 2, for the owner:
   press `Ctrl+Shift+S` in the app, check the printed path, and reopen it
   with `DRAW_SNAPSHOT` to see the same view and open block.
+- 2026-11-04 — AC-6 manual, part 2: owner checked `Ctrl+Shift+S` and
+  reopening the file in the app; works.
+- 2026-11-04 — integrated on `main` (merge `3d52522`), no conflicts.

@@ -82,3 +82,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 71 | [[ADR-T47-1 Flight recorder and capped session log]] | accepted | decision | 0014, T27-3, T35-1, T44-1, T24-5 | — |
 | 72 | [[ADR-T48-1 Signal handling in the vendored miniquad]] | accepted | decision | 0014, T35-1, T27-3, T47-1, T12-1 | — |
 | 73 | [[ADR-T49-1 Undo history capped by bytes]] | accepted | decision | 0005, T24-1 | amends 0005 |
+| 74 | [[ADR-T73-1 Track the latest stable Rust]] | accepted | decision | T27-1, 0010 | — |
+| 75 | [[ADR-T74-1 Line-based editor snapshot format]] | accepted | decision | 0003, 0014, 0009, T49-1 | — |

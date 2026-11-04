@@ -1,7 +1,7 @@
 ---
 id: T73
 title: Continuous integration on GitHub
-status: review
+status: done
 wave: 33
 branch: task/T73-github-ci
 depends_on: []
@@ -190,3 +190,4 @@ None expected.
   `workflow_dispatch` needs `nightly.yml` on the default branch, so the
   integrator runs `gh workflow run nightly.yml` after merging and pushing
   `main`, and links the run here.
+- 2026-11-04 — integrated on `main` (merge `6b7988b`), no conflicts.

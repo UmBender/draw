@@ -278,8 +278,8 @@ flowchart TD
 | [[T70 Quantum notation]] | todo | T69 | `task/T70-quantum-notation` |
 | [[T71 Combinatorics notation]] | todo | T55 | `task/T71-combinatorics` |
 | [[T72 Feature proposal]] | todo | — | `docs/T72-feature-proposal` |
-| [[T73 Continuous integration on GitHub]] | todo | — | `task/T73-github-ci` |
-| [[T74 Editor snapshots for tests]] | todo | — | `task/T74-editor-snapshots` |
+| [[T73 Continuous integration on GitHub]] | done | — | `task/T73-github-ci` |
+| [[T74 Editor snapshots for tests]] | done | — | `task/T74-editor-snapshots` |
 | [[T75 End-to-end test suite]] | todo | T73, T74 | `task/T75-e2e-tests` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T75 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
