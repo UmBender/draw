@@ -162,8 +162,8 @@ pub enum Node {
         /// The second script, of the other kind.
         second: Option<Script>,
     },
-    /// `\frac`, `\binom`, `\sqrt`, `\pmod`, `\mathcal` or an accent
-    /// ([`ACCENTS`]) with all its arguments.
+    /// `\frac`, `\binom`, `\sqrt`, `\pmod`, a math alphabet
+    /// ([`ALPHABETS`]) or an accent ([`ACCENTS`]) with all its arguments.
     Command {
         /// Name without the backslash.
         name: String,
@@ -524,64 +524,249 @@ pub enum Face {
     Math,
 }
 
+/// A kind of character that a math alphabet maps (ADR-T54-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// Latin capitals `A`–`Z`.
+    Upper,
+    /// Latin lowercase `a`–`z`.
+    Lower,
+    /// Digits `0`–`9`.
+    Digit,
+    /// Greek capitals `Α`–`Ω`.
+    GreekUpper,
+    /// Greek lowercase `α`–`ω` and the variants `ϵ ϑ ϰ ϕ ϱ ϖ`.
+    GreekLower,
+}
+
+impl Kind {
+    /// Every kind, in declaration order (the order of a style's slots).
+    pub const ALL: [Self; 5] = [
+        Self::Upper,
+        Self::Lower,
+        Self::Digit,
+        Self::GreekUpper,
+        Self::GreekLower,
+    ];
+
+    /// The kind of `ch` and its index in that kind's run of a Unicode
+    /// math alphabet (`A` → 0, `ϵ` → 26); `None` for any other character.
+    #[must_use]
+    pub fn of(ch: char) -> Option<(Self, u32)> {
+        let from = |first: char| u32::from(ch) - u32::from(first);
+        let kind = match ch {
+            'A'..='Z' => (Self::Upper, from('A')),
+            'a'..='z' => (Self::Lower, from('a')),
+            '0'..='9' => (Self::Digit, from('0')),
+            // Unassigned: no final sigma among the capitals.
+            '\u{3A2}' => return None,
+            'Α'..='Ω' => (Self::GreekUpper, from('Α')),
+            'α'..='ω' => (Self::GreekLower, from('α')),
+            // After `ω` and `∂` in every math alphabet.
+            'ϵ' => (Self::GreekLower, 26),
+            'ϑ' => (Self::GreekLower, 27),
+            'ϰ' => (Self::GreekLower, 28),
+            'ϕ' => (Self::GreekLower, 29),
+            'ϱ' => (Self::GreekLower, 30),
+            'ϖ' => (Self::GreekLower, 31),
+            _ => return None,
+        };
+        Some(kind)
+    }
+
+    /// The slot of this kind in [`Kind::ALL`].
+    const fn slot(self) -> usize {
+        self as usize
+    }
+}
+
+/// How a math alphabet draws one kind of character (ADR-T54-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Map {
+    /// Not mapped: the enclosing alphabet decides.
+    Inherit,
+    /// The character as typed.
+    Upright,
+    /// The run of the Unicode math alphabet starting at this code point.
+    Block(u32),
+}
+
+/// One math alphabet: a command and how it maps each kind of character
+/// (ADR-T54-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlphabetDef {
+    /// Command name without the backslash.
+    pub name: &'static str,
+    /// Latin capitals.
+    pub upper: Map,
+    /// Latin lowercase.
+    pub lower: Map,
+    /// Digits.
+    pub digit: Map,
+    /// Greek capitals.
+    pub greek_upper: Map,
+    /// Greek lowercase and its variants.
+    pub greek_lower: Map,
+    /// Characters drawn from elsewhere than the block (Letterlike
+    /// Symbols), as `(typed, drawn)`; used where the row maps a `Block`.
+    pub holes: &'static [(char, char)],
+}
+
+impl AlphabetDef {
+    /// How this alphabet maps `kind`.
+    #[must_use]
+    pub const fn get(&self, kind: Kind) -> Map {
+        match kind {
+            Kind::Upper => self.upper,
+            Kind::Lower => self.lower,
+            Kind::Digit => self.digit,
+            Kind::GreekUpper => self.greek_upper,
+            Kind::GreekLower => self.greek_lower,
+        }
+    }
+
+    /// `ch` in this alphabet; `None` when the alphabet does not map its
+    /// kind or it has none.
+    #[must_use]
+    pub fn map(&self, ch: char) -> Option<char> {
+        let (kind, index) = Kind::of(ch)?;
+        match self.get(kind) {
+            Map::Inherit => None,
+            Map::Upright => Some(ch),
+            Map::Block(start) => {
+                let hole = self.holes.iter().find(|&&(typed, _)| typed == ch);
+                let block = || start.checked_add(index).and_then(char::from_u32);
+                Some(hole.map(|&(_, drawn)| drawn).or_else(block).unwrap_or(ch))
+            }
+        }
+    }
+}
+
+/// Start of the italic capitals `𝐴`.
+const ITALIC_UPPER: Map = Map::Block(0x1D434);
+/// Start of the italic lowercase `𝑎`.
+const ITALIC_LOWER: Map = Map::Block(0x1D44E);
+/// Start of the italic Greek capitals `𝛤`.
+const ITALIC_GREEK_UPPER: Map = Map::Block(0x1D6E2);
+/// Start of the italic Greek lowercase `𝛼`.
+const ITALIC_GREEK_LOWER: Map = Map::Block(0x1D6FC);
+/// The italic h is the older Planck constant.
+const ITALIC_HOLES: &[(char, char)] = &[('h', '\u{210E}')];
+
+/// Math italic, the style a formula starts in; not a command (empty
+/// name). It maps every kind, so every fallback ends here (ADR-T54-1).
+pub const MATH_ITALIC: AlphabetDef = AlphabetDef {
+    name: "",
+    upper: ITALIC_UPPER,
+    lower: ITALIC_LOWER,
+    digit: Map::Upright,
+    greek_upper: Map::Upright,
+    greek_lower: ITALIC_GREEK_LOWER,
+    holes: ITALIC_HOLES,
+};
+
+/// `\mathcal`: script capitals, with the holes Unicode filled before the
+/// math block.
+const MATHCAL: AlphabetDef = AlphabetDef {
+    name: "mathcal",
+    upper: Map::Block(0x1D49C),
+    lower: Map::Inherit,
+    digit: Map::Inherit,
+    greek_upper: Map::Inherit,
+    greek_lower: Map::Inherit,
+    holes: &[
+        ('B', '\u{212C}'),
+        ('E', '\u{2130}'),
+        ('F', '\u{2131}'),
+        ('H', '\u{210B}'),
+        ('I', '\u{2110}'),
+        ('L', '\u{2112}'),
+        ('M', '\u{2133}'),
+        ('R', '\u{211B}'),
+    ],
+};
+
+/// Every math alphabet command (ADR-T54-1).
+pub const ALPHABETS: &[AlphabetDef] = &[
+    MATHCAL,
+    // Upright roman; Greek as outside, as in LaTeX.
+    AlphabetDef {
+        name: "mathrm",
+        upper: Map::Upright,
+        lower: Map::Upright,
+        digit: Map::Upright,
+        greek_upper: Map::Inherit,
+        greek_lower: Map::Inherit,
+        holes: &[],
+    },
+    // Italic letters set as a word; digits as outside.
+    AlphabetDef {
+        name: "mathit",
+        upper: ITALIC_UPPER,
+        lower: ITALIC_LOWER,
+        digit: Map::Inherit,
+        greek_upper: ITALIC_GREEK_UPPER,
+        greek_lower: ITALIC_GREEK_LOWER,
+        holes: ITALIC_HOLES,
+    },
+    // The default style, with italic Greek capitals.
+    AlphabetDef {
+        name: "mathnormal",
+        greek_upper: ITALIC_GREEK_UPPER,
+        ..MATH_ITALIC
+    },
+];
+
+/// The math alphabet command `name` (without the backslash).
+#[must_use]
+pub fn alphabet(name: &str) -> Option<&'static AlphabetDef> {
+    ALPHABETS.iter().find(|a| a.name == name)
+}
+
 /// The math italic form of `ch`: Latin letters and lowercase Greek;
-/// anything else as is (ADR-T33-1).
+/// anything else as is (ADR-T33-1, ADR-T54-1).
 #[must_use]
 pub fn italic(ch: char) -> char {
-    let offset = |from: char, base: u32| char::from_u32(base + (u32::from(ch) - u32::from(from)));
-    let mapped = match ch {
-        // The italic h is the older Planck constant.
-        'h' => Some('\u{210E}'),
-        'a'..='z' => offset('a', 0x1D44E),
-        'A'..='Z' => offset('A', 0x1D434),
-        'α'..='ω' => offset('α', 0x1D6FC),
-        'ϵ' => Some('\u{1D716}'),
-        'ϑ' => Some('\u{1D717}'),
-        'ϰ' => Some('\u{1D718}'),
-        'ϕ' => Some('\u{1D719}'),
-        'ϱ' => Some('\u{1D71A}'),
-        'ϖ' => Some('\u{1D71B}'),
-        _ => None,
-    };
-    mapped.unwrap_or(ch)
+    Style::ITALIC.map(ch)
 }
 
 /// The script (`\mathcal`) form of `ch`: Latin capitals; anything else as
-/// [`italic`] draws it (ADR-T33-1).
+/// [`italic`] draws it (ADR-T33-1, ADR-T54-1).
 #[must_use]
 pub fn calligraphic(ch: char) -> char {
-    // Script capitals that Unicode had before the math block.
-    let mapped = match ch {
-        'B' => Some('\u{212C}'),
-        'E' => Some('\u{2130}'),
-        'F' => Some('\u{2131}'),
-        'H' => Some('\u{210B}'),
-        'I' => Some('\u{2110}'),
-        'L' => Some('\u{2112}'),
-        'M' => Some('\u{2133}'),
-        'R' => Some('\u{211B}'),
-        'A'..='Z' => char::from_u32(0x1D49C + (u32::from(ch) - u32::from('A'))),
-        _ => None,
-    };
-    mapped.unwrap_or_else(|| italic(ch))
+    Style::ITALIC.with(&MATHCAL).map(ch)
 }
 
-/// How the letters of a formula part are drawn.
+/// How the characters of a formula part are drawn: for each [`Kind`], the
+/// alphabet that decides it (ADR-T54-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Style {
-    /// Math italic.
-    Italic,
-    /// `\mathcal`: script capitals.
-    Calligraphic,
+struct Style {
+    /// One alphabet per slot of [`Kind::ALL`].
+    rows: [&'static AlphabetDef; Kind::ALL.len()],
 }
 
 impl Style {
+    /// The style a formula starts in.
+    const ITALIC: Self = Self {
+        rows: [&MATH_ITALIC; Kind::ALL.len()],
+    };
+
+    /// This style inside `alphabet`: the kinds it maps are its own, the
+    /// others stay as they are.
+    fn with(mut self, alphabet: &'static AlphabetDef) -> Self {
+        for kind in Kind::ALL {
+            if alphabet.get(kind) != Map::Inherit {
+                self.rows[kind.slot()] = alphabet;
+            }
+        }
+        self
+    }
+
     /// `ch` typed in a formula part of this style.
     fn map(self, ch: char) -> char {
-        match self {
-            Self::Italic => italic(ch),
-            Self::Calligraphic => calligraphic(ch),
-        }
+        Kind::of(ch)
+            .and_then(|(kind, _)| self.rows[kind.slot()].map(ch))
+            .unwrap_or(ch)
     }
 }
 
@@ -1061,7 +1246,7 @@ impl<'a> Parser<'a> {
                 name: name.clone(),
                 args,
             }),
-            n if matches!(n, "sqrt" | "pmod" | "mathcal") || accent(n).is_some() => {
+            n if matches!(n, "sqrt" | "pmod") || alphabet(n).is_some() || accent(n).is_some() => {
                 self.args(1, end).map(|args| Node::Command {
                     name: name.clone(),
                     args,
@@ -1250,7 +1435,7 @@ fn script_scale(scale: f32) -> f32 {
 /// size).
 #[must_use]
 pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
-    layout_styled(nodes, scale, Style::Italic)
+    layout_styled(nodes, scale, Style::ITALIC)
 }
 
 /// [`layout_math`] with letters drawn in `style`.
@@ -1357,7 +1542,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (MathBox::math(shown, scale), char_class(*ch))
         }
         Node::Symbol(name) => match symbol(name) {
-            Some(def) => (symbol_box(def, scale), def.class),
+            Some(def) => (symbol_box(def, scale, style), def.class),
             None => (MathBox::word(&format!("\\{name}"), scale, true), Class::Ord),
         },
         Node::Group(nodes) => (layout_styled(nodes, scale, style), Class::Ord),
@@ -1401,7 +1586,6 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                 "frac" => fraction(arg(0), arg(1), scale, true, style),
                 "binom" => binomial(arg(0), arg(1), scale, style),
                 "sqrt" => root(arg(0), scale, style),
-                "mathcal" => layout_styled(arg(0), scale, Style::Calligraphic),
                 // TeX's \pmod: a quad, "(mod", a third of a quad.
                 "pmod" => MathBox::row([
                     MathBox::gap(scale),
@@ -1410,9 +1594,10 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                     layout_styled(arg(0), scale, style),
                     MathBox::math(')', scale),
                 ]),
-                _ => match accent(name) {
-                    Some(def) => accented(def, arg(0), scale, style),
-                    None => MathBox::word(&format!("\\{name}"), scale, true),
+                _ => match (alphabet(name), accent(name)) {
+                    (Some(a), _) => layout_styled(arg(0), scale, style.with(a)),
+                    (None, Some(def)) => accented(def, arg(0), scale, style),
+                    (None, None) => MathBox::word(&format!("\\{name}"), scale, true),
                 },
             };
             (b, Class::Ord)
@@ -1427,14 +1612,23 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
     Some(atom)
 }
 
-/// The box of a table symbol: a glyph (lowercase Greek in italic), an
-/// enlarged big operator or integral, or an upright word.
-fn symbol_box(def: &SymbolDef, scale: f32) -> MathBox {
+/// The box of a table symbol: a glyph (a letter in `style`), an enlarged
+/// big operator or integral, or an upright word.
+fn symbol_box(def: &SymbolDef, scale: f32, style: Style) -> MathBox {
+    match (letter(def), def.class) {
+        (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale),
+        (Some(ch), Class::Ord) => MathBox::math(style.map(ch), scale),
+        (Some(ch), _) => MathBox::math(ch, scale),
+        (None, _) => MathBox::upright(def.text, scale),
+    }
+}
+
+/// The one character a table symbol draws; `None` for a word.
+fn letter(def: &SymbolDef) -> Option<char> {
     let mut chars = def.text.chars();
-    match (chars.next(), chars.next(), def.class) {
-        (Some(ch), None, Class::BigOp | Class::Integral) => big_operator(ch, scale),
-        (Some(ch), None, _) => MathBox::math(italic(ch), scale),
-        _ => MathBox::upright(def.text, scale),
+    match (chars.next(), chars.next()) {
+        (Some(ch), None) => Some(ch),
+        _ => None,
     }
 }
 
@@ -1676,8 +1870,7 @@ fn slanted(nodes: &[Node], style: Style) -> bool {
     match (atoms.next(), atoms.next()) {
         (Some(Node::Char(ch)), None) => style.map(*ch) != *ch,
         (Some(Node::Symbol(name)), None) => symbol(name).is_some_and(|def| {
-            let mut chars = def.text.chars();
-            matches!((chars.next(), chars.next()), (Some(ch), None) if italic(ch) != ch)
+            def.class == Class::Ord && letter(def).is_some_and(|ch| style.map(ch) != ch)
         }),
         _ => false,
     }
@@ -2319,7 +2512,7 @@ mod tests {
                 "\\min", "\\log", "\\le", "\\{", "\\}", "\\foo", "(", ")", "|",
                 "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
                 "\\partial", "\\vec", "\\hat", "\\bar", "\\dot", "\\ddot", "\\tilde",
-                "\\overline",
+                "\\overline", "\\mathrm", "\\mathit", "\\mathnormal", "\\Gamma",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -3509,6 +3702,240 @@ mod tests {
             "{x:?}"
         );
         assert!(x.y > 0.0, "{x:?}");
+    }
+
+    // ---- T54 math alphabets (ADR-T54-1) -----------------------------------
+
+    /// The alphabet commands of T54, `\mathcal` included.
+    const ALPHABET_NAMES: [&str; 4] = ["mathcal", "mathrm", "mathit", "mathnormal"];
+
+    /// One character of every kind an alphabet maps: Latin, digits, Greek
+    /// capitals (without the unassigned U+03A2) and lowercase Greek with
+    /// its variants.
+    fn every_kind() -> String {
+        let greek_upper = ('Α'..='Ω').filter(|&c| c != '\u{3A2}');
+        ('A'..='Z')
+            .chain('a'..='z')
+            .chain('0'..='9')
+            .chain(greek_upper)
+            .chain('α'..='ω')
+            .chain("ϵϑϰϕϱϖ".chars())
+            .collect()
+    }
+
+    /// The characters of every glyph of `src`, in order.
+    fn drawn(src: &str) -> Vec<char> {
+        glyphs(&boxed(src).ink).iter().map(|g| g.0).collect()
+    }
+
+    #[test]
+    fn tex_parse_alphabets_take_one_argument() {
+        for name in ALPHABET_NAMES {
+            // Act / Assert: braced or one token.
+            assert_eq!(
+                math(&format!("\\{name}{{d}}")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![braced(vec![Node::Char('d')])],
+                }],
+                "{name}"
+            );
+            assert_eq!(
+                math(&format!("\\{name}\\Gamma")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![tok(sym("Gamma"))],
+                }],
+                "{name}"
+            );
+            for src in [
+                format!("$\\{name}{{diff}}^2$"),
+                format!("$\\{name} x$"),
+                format!("$\\{name}{{\\mathrm{{A}}b}}$"),
+            ] {
+                assert_eq!(print(&parse(&src)), src);
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_alphabet_without_argument_is_literal() {
+        for name in ALPHABET_NAMES {
+            // Act / Assert
+            let literal = Node::Literal(format!("\\{name}"));
+            assert_eq!(math(&format!("\\{name}")), vec![literal.clone()], "{name}");
+            assert_eq!(
+                math(&format!("\\{name}}}")),
+                vec![literal, Node::Literal("}".to_owned())],
+                "{name}"
+            );
+            // Drawn in the warning colour.
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+            assert!(got.iter().all(|g| g.3), "{name}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn tex_alphabet_rows_draw_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        for name in ALPHABET_NAMES {
+            assert_eq!(alphabet(name).map(|a| a.name), Some(name));
+        }
+        assert!(alphabet("mathbb").is_none());
+
+        for src in std::iter::once(all.clone()).chain(
+            ALPHABETS
+                .iter()
+                .map(|row| format!("\\{}{{{all}}}", row.name)),
+        ) {
+            // Act
+            let b = boxed(&src);
+
+            // Assert: one math-face glyph per character, none warned.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), all.chars().count(), "{src}");
+            assert!(got.iter().all(|g| !g.3), "{src}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{src}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{src}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_mathrm_letters_are_upright_without_italic_correction() {
+        // Act
+        let d = boxed("\\mathrm{d}");
+        let dx = boxed("\\mathrm{d}x");
+        let pow = boxed("\\mathrm{d}^2");
+
+        // Assert: the upright d, no italic correction, nothing between
+        // it and the next atom or its exponent.
+        assert_eq!(faces(&d.ink), vec![('d', Face::Math)]);
+        assert!(approx_eq(d.italic, 0.0, EPS), "{}", d.italic);
+        assert!(approx_eq(d.width, adv("d"), EPS));
+        let (x, _) = glyph(&dx.ink, X);
+        assert!(approx_eq(x.x, adv("d"), EPS), "{x:?}");
+        let (two, _) = glyph(&pow.ink, '2');
+        assert!(approx_eq(two.x, adv("d"), EPS), "{two:?}");
+        assert_eq!(drawn("\\mathrm{Ab1}"), vec!['A', 'b', '1']);
+        // Digits and Greek as outside `\mathrm`.
+        assert_eq!(drawn("\\mathrm{2\\alpha\\Gamma}"), drawn("2\\alpha\\Gamma"));
+        assert_eq!(drawn("\\mathrm{αΔ}"), drawn("αΔ"));
+    }
+
+    #[test]
+    fn tex_layout_mathit_sets_a_word_without_gaps() {
+        // Arrange
+        let word = [italic('d'), I, F, F];
+
+        // Act
+        let b = boxed("\\mathit{diff}");
+
+        // Assert: italic letters side by side, as wide as their advances.
+        let got = glyphs(&b.ink);
+        assert_eq!(got.iter().map(|g| g.0).collect::<Vec<_>>(), word);
+        let mut at = 0.0;
+        for (ch, pos, _, _) in got {
+            assert!(pos.approx_eq(v(at, 0.0), EPS), "{ch:?}: {pos:?}");
+            at += mm(ch).advance;
+        }
+        assert!(approx_eq(b.width, at, EPS));
+        // One ordinary atom, spaced like a group.
+        assert_eq!(boxed("\\mathit{diff}=x"), boxed("{diff}=x"));
+        // Digits stay upright.
+        assert_eq!(drawn("\\mathit{x2}"), vec![X, '2']);
+    }
+
+    #[test]
+    fn tex_mathnormal_gives_italic_greek_capitals() {
+        // Act / Assert
+        assert_eq!(
+            drawn("\\mathnormal{\\Gamma\\Omega}"),
+            vec!['\u{1D6E4}', '\u{1D6FA}']
+        );
+        assert_eq!(boxed("\\mathnormal{x}"), boxed("x"));
+        assert_eq!(drawn("\\mathnormal{a1\\alpha}"), drawn("a1\\alpha"));
+        let capitals = SYMBOLS.iter().filter(|s| {
+            let mut chars = s.text.chars();
+            matches!((chars.next(), chars.next()), (Some('Α'..='Ω'), None))
+        });
+        let mut count = 0;
+        for def in capitals {
+            let ch = def.text.chars().next().map_or(0, u32::from);
+            let want = char::from_u32(0x1D6E2 + ch - 0x391);
+            assert_eq!(
+                drawn(&format!("\\mathnormal{{\\{}}}", def.name))
+                    .first()
+                    .copied(),
+                want,
+                "{}",
+                def.name
+            );
+            count += 1;
+        }
+        assert!(count >= 11, "{count}");
+    }
+
+    #[test]
+    fn tex_alphabets_nest_innermost_first() {
+        // Act / Assert
+        assert_eq!(drawn("\\mathrm{\\mathcal{A}}"), vec!['\u{1D49C}']);
+        assert_eq!(drawn("\\mathcal{\\mathrm{A}}"), vec!['A']);
+        assert_eq!(drawn("\\mathcal{\\mathrm{a}}"), vec!['a']);
+        assert_eq!(drawn("\\mathrm{\\mathcal{a}}"), vec!['a']);
+        assert_eq!(drawn("\\mathrm{\\mathcal{B}x}"), vec!['\u{212C}', 'x']);
+        assert_eq!(drawn("\\mathcal{a}"), vec![A]);
+        assert_eq!(drawn("\\mathnormal{\\mathrm{\\Gamma}}"), vec!['\u{1D6E4}']);
+        assert_eq!(drawn("\\mathrm{\\mathit{x}}"), vec![X]);
+        assert_eq!(drawn("\\mathit{\\mathrm{x}}"), vec!['x']);
+        // Scripts and fractions inside an alphabet keep it.
+        // (The superscript's ink comes before the subscript's.)
+        assert_eq!(drawn("\\mathrm{d_x^y}"), vec!['d', 'y', 'x']);
+        assert_eq!(drawn("\\mathrm{\\frac{a}{b}}"), vec!['a', 'b']);
+    }
+
+    #[test]
+    fn tex_alphabets_leave_operators_and_text_alone() {
+        for name in ALPHABET_NAMES {
+            for src in [
+                "\\log+\\sum\\text{ab}",
+                "\\operatorname{rank}",
+                "\\sin\\gcd\\to\\infty",
+                "\\aleph\\partial\\nabla",
+            ] {
+                // Act / Assert
+                assert_eq!(
+                    boxed(&format!("\\{name}{{{src}}}")),
+                    boxed(src),
+                    "\\{name}{{{src}}}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_skew_follows_the_alphabet() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        let mark_centre = |src: &str| ink_box(&mark_ink(&boxed(src).ink, hat)).center().x;
+
+        // Act / Assert: an upright letter is centred on.
+        let plain = boxed("\\mathrm{x}");
+        let centre = ink_box(&plain.ink).center().x;
+        let got = mark_centre("\\mathrm{\\hat{x}}");
+        assert!(approx_eq(got, centre, EPS), "{got} vs {centre}");
+
+        // An italic capital Greek letter is skewed over.
+        for src in ["\\mathnormal", "\\mathit"] {
+            let plain = boxed(&format!("{src}{{\\Gamma}}"));
+            let want = ink_box(&plain.ink).center().x + ACCENT_SKEW * plain.ascent;
+            let got = mark_centre(&format!("{src}{{\\hat{{\\Gamma}}}}"));
+            assert!(approx_eq(got, want, EPS), "{src}: {got} vs {want}");
+        }
     }
 
     #[test]
