@@ -1,7 +1,7 @@
 ---
 id: T62
 title: Complete Greek letters
-status: todo
+status: in-progress
 wave: 41
 branch: task/T62-complete-greek
 depends_on: [T54]
@@ -52,9 +52,51 @@ the missing variants `\varkappa` and `\digamma`, the italic capitals
 
 ## Spec
 
-To be written in the spec step.
+Settled by the owner (batch plan 2026-11-04): `SYMBOLS` rows only, no
+new parsing or layout code, no ADR. `\digamma` / `\Digamma` are dropped
+(see *Out of scope*).
+
+| Commands | Text | Class |
+|----------|------|-------|
+| `\varkappa` | `ϰ` U+03F0 (the italic mapping draws `𝜘` U+1D718) | `Ord` |
+| `\varGamma \varDelta \varTheta \varLambda \varXi \varPi \varSigma \varUpsilon \varPhi \varPsi \varOmega` | the italic capitals `𝛤 𝛥 𝛩 𝛬 𝛯 𝛱 𝛴 𝛶 𝛷 𝛹 𝛺` (U+1D6E4 …) | `Ord` |
+| `\Alpha \Beta \Epsilon \Zeta \Eta \Iota \Kappa \Mu \Nu \Omicron \Rho \Tau \Chi` | `Α Β Ε Ζ Η Ι Κ Μ Ν Ο Ρ Τ Χ` (U+0391 …) | `Ord` |
+
+The `\var…` capitals are stored already italic, so no alphabet changes
+them (in LaTeX they are `\mathord` symbols of the letters font, which
+`\mathrm` does not switch). The upright capitals are Greek capitals like
+`\Gamma`: upright by default, italic in `\mathnormal` / `\mathit`.
+
+- **AC-1** — every Greek letter of U+0391–03C9 (without the unassigned
+  U+03A2) and the variants `ϵ ϑ ϰ ϕ ϱ ϖ` is the text of some `SYMBOLS`
+  row, and every name of the table above parses to one `Node::Symbol`.
+  Test: `tex_greek_every_letter_has_a_command`.
+- **AC-2** — every Greek command (a row whose text is a Greek or italic
+  Greek letter) draws exactly one glyph from the math face, with a
+  `math_metrics` row and no warning colour; `\varkappa` draws `𝜘`.
+  Test: `tex_greek_commands_draw_glyphs_of_the_math_face`.
+- **AC-3** — `\varGamma` … `\varOmega` draw the same glyph as
+  `\mathnormal{\Gamma}` … `\mathnormal{\Omega}`, differ from `\Gamma` …,
+  and stay italic inside `\mathrm`.
+  Test: `tex_var_greek_capitals_are_italic`.
+- **AC-4** — `\Alpha` … `\Chi` draw U+0391 … upright, and
+  `\mathnormal{\Alpha}` draws the italic U+1D6E2.
+  Test: `tex_latin_like_greek_capitals_are_upright`.
+- **AC-5** — `\digamma` and `\Digamma` are not commands: drawn as typed
+  in the warning colour. Test: `tex_digamma_is_not_a_command`.
+- **AC-6** — the fuzzer types `\varkappa \varGamma \Alpha \mathnormal\Alpha`
+  among its formula tokens; the fuzz properties stay green.
+  Test: `arb_formula_text` tokens in `tests/fuzz.rs`, run by
+  `scripts/check.sh` and `scripts/check.sh --fuzz`.
+
+Steps: the *models* step produces nothing (no new types or signatures;
+the rows are behaviour) and is skipped.
 
 ## Out of scope
+
+- `\digamma`, `\Digamma`: Latin Modern Math has no digamma (U+03DC /
+  U+03DD are absent from the font subset and `math_metrics`), and the
+  subset is not changed in this batch.
 
 - Upright lowercase Greek (`\upalpha`, `\mathrm{\alpha}`): the spec says
   whether `\mathrm` maps Greek. Default: no, as in LaTeX.
@@ -84,3 +126,6 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — correction to *Known facts*: `ϝ U+03DD` is **not** in the
+  font subset (neither is `Ϝ U+03DC`; no `math_metrics` rows), so
+  `\digamma` / `\Digamma` are dropped (owner, batch plan).
