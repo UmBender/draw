@@ -973,4 +973,77 @@ mod tests {
         assert_eq!(get('\u{10FFFF}'), None);
         assert_eq!(get('\0'), None);
     }
+
+    // ---- T55 subset ranges (ADR-T55-1) -------------------------------------
+
+    #[test]
+    fn math_metrics_new_ranges_have_spot_check_rows() {
+        // Arrange: one character per range added by T55.
+        let spots = [
+            '\u{1D400}', // 𝐀 bold
+            '\u{1D504}', // 𝔄 fraktur
+            '\u{1D7D8}', // 𝟘 double-struck digit
+            '\u{27F9}',  // ⟹ long arrow
+            '\u{2907}',  // ⤇ supplemental arrow
+            '\u{2A01}',  // ⨁ n-ary operator
+            '\u{2A3F}',  // ⨿ amalgamation
+            '\u{25A1}',  // □ geometric shape
+            '\u{20DB}',  // combining three dots (\dddot)
+        ];
+
+        for ch in spots {
+            // Act
+            let row = get(ch);
+
+            // Assert
+            let Some(m) = row else {
+                panic!("{ch:?} has a row");
+            };
+            assert!(m.advance.is_finite(), "{ch:?}");
+        }
+    }
+
+    #[test]
+    fn math_metrics_new_ranges_match_the_font_cmap() {
+        // Arrange: (first, last, characters Latin Modern Math 1.959 has).
+        let ranges = [
+            (0x1D400, 0x1D7FF, 945),
+            (0x27F0, 0x27FF, 12),
+            (0x2900, 0x297F, 2),
+            (0x2A00, 0x2A0C, 9),
+            (0x2A3F, 0x2A3F, 1),
+            (0x25A0, 0x25FF, 19),
+            (0x20D0, 0x20DF, 14),
+        ];
+
+        for (first, last, expected) in ranges {
+            // Act
+            let rows = TABLE
+                .iter()
+                .filter(|(ch, _)| (first..=last).contains(&u32::from(*ch)))
+                .count();
+
+            // Assert
+            assert_eq!(rows, expected, "U+{first:X}-{last:X}");
+        }
+        assert_eq!(TABLE.len(), 1762);
+    }
+
+    #[test]
+    fn math_metrics_glyphs_missing_from_the_font_have_no_row() {
+        // Arrange: characters Latin Modern Math 1.959 does not have.
+        let missing = [
+            '\u{2AEB}',  // ⫫
+            '\u{2AA6}',  // ⪦
+            '\u{1D455}', // italic h hole (ℎ U+210E)
+            '\u{1D4B6}', // script lowercase a
+            '\u{1D7CA}', // bold digamma
+            '\u{20D9}',  // combining clockwise ring overlay
+        ];
+
+        for ch in missing {
+            // Act + Assert
+            assert_eq!(get(ch), None, "{ch:?}");
+        }
+    }
 }
