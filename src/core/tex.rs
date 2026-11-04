@@ -4647,4 +4647,162 @@ mod tests {
             assert!(alphabet(name).is_none(), "{name}");
         }
     }
+
+    // ---- T58 fraktur ------------------------------------------------------
+
+    /// The fraktur capitals Unicode placed in Letterlike Symbols.
+    const FRAKTUR_HOLES: [(char, char); 5] = [
+        ('C', '\u{212D}'),
+        ('H', '\u{210C}'),
+        ('I', '\u{2111}'),
+        ('R', '\u{211C}'),
+        ('Z', '\u{2128}'),
+    ];
+
+    /// Where `\mathfrak` draws `ch`, or `None` when it inherits its kind.
+    fn mathfrak_char(ch: char) -> Option<char> {
+        if let Some(&(_, drawn)) = FRAKTUR_HOLES.iter().find(|h| h.0 == ch) {
+            return Some(drawn);
+        }
+        let (kind, index) = Kind::of(ch)?;
+        let start = match kind {
+            Kind::Upper => 0x1D504,
+            Kind::Lower => 0x1D51E,
+            Kind::Digit | Kind::GreekUpper | Kind::GreekLower => return None,
+        };
+        Some(nth(start, index))
+    }
+
+    #[test]
+    fn tex_mathfrak_maps_to_fraktur() {
+        // Arrange
+        let all = every_kind();
+        let want: Vec<char> = all
+            .chars()
+            .map(|ch| mathfrak_char(ch).unwrap_or_else(|| italic(ch)))
+            .collect();
+
+        // Act
+        let got = drawn(&format!("\\mathfrak{{{all}}}"));
+
+        // Assert
+        assert_eq!(got, want);
+        assert_eq!(drawn("\\mathfrak{gpS}"), vec!['𝔤', '𝔭', '𝔖']);
+        assert_eq!(drawn("\\mathfrak{Aaz}"), vec!['𝔄', '𝔞', '𝔷']);
+        // Digits and Greek are not fraktur: as outside.
+        assert_eq!(drawn("\\mathfrak{1\\alpha\\Gamma}"), drawn("1\\alpha\\Gamma"));
+    }
+
+    #[test]
+    fn tex_mathfrak_holes_map_to_letterlike_symbols() {
+        for (typed, want) in FRAKTUR_HOLES {
+            // Act
+            let got = drawn(&format!("\\mathfrak{{{typed}}}"));
+
+            // Assert
+            assert_eq!(got, vec![want], "{typed}");
+        }
+        assert_eq!(drawn("\\mathfrak{CHIRZ}"), vec!['ℭ', 'ℌ', 'ℑ', 'ℜ', 'ℨ']);
+        // The unassigned block positions are never drawn.
+        let got = drawn(&format!("\\mathfrak{{{}}}", every_kind()));
+        for (typed, _) in FRAKTUR_HOLES {
+            let gap = nth(0x1D504, Kind::of(typed).map_or(0, |k| k.1));
+            assert!(!got.contains(&gap), "{typed}: {gap:?}");
+        }
+        // Lowercase has no holes.
+        assert_eq!(drawn("\\mathfrak{chirz}"), vec!['𝔠', '𝔥', '𝔦', '𝔯', '𝔷']);
+    }
+
+    #[test]
+    fn tex_parse_mathfrak_takes_one_argument() {
+        // Act / Assert: braced or one token.
+        assert_eq!(
+            math("\\mathfrak{g}"),
+            vec![Node::Command {
+                name: "mathfrak".to_owned(),
+                args: vec![braced(vec![Node::Char('g')])],
+            }]
+        );
+        assert_eq!(
+            math("\\mathfrak p"),
+            vec![Node::Command {
+                name: "mathfrak".to_owned(),
+                args: vec![Arg {
+                    lead: " ".to_owned(),
+                    ..tok(Node::Char('p'))
+                }],
+            }]
+        );
+        for src in ["$\\mathfrak{g}, \\mathfrak{S}_n$", "$\\mathfrak p \\subset R$"] {
+            assert_eq!(print(&parse(src)), src);
+        }
+        // Without an argument: a literal in the warning colour.
+        let literal = Node::Literal("\\mathfrak".to_owned());
+        assert_eq!(math("\\mathfrak"), vec![literal]);
+        let got = glyphs(&boxed("\\mathfrak").ink);
+        assert!(got.iter().all(|g| g.3), "{got:?}");
+    }
+
+    #[test]
+    fn tex_mathfrak_draws_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        assert_eq!(alphabet("mathfrak").map(|a| a.name), Some("mathfrak"));
+
+        // Act
+        let b = boxed(&format!("\\mathfrak{{{all}}}"));
+
+        // Assert: one math-face glyph per character, none warned.
+        let got = glyphs(&b.ink);
+        assert_eq!(got.len(), all.chars().count());
+        assert!(got.iter().all(|g| !g.3));
+        for (ch, face) in faces(&b.ink) {
+            assert_eq!(face, Face::Math, "{ch:?}");
+            assert!(math_metrics::get(ch).is_some(), "{ch:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_centred_over_fraktur_letters() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        for arg in ["g", "S", "R", "p"] {
+            let plain = boxed(&format!("\\mathfrak{{{arg}}}"));
+            let want = ink_box(&plain.ink).center().x;
+
+            // Act
+            let hatted = boxed(&format!("\\mathfrak{{\\hat{{{arg}}}}}"));
+            let got = ink_box(&mark_ink(&hatted.ink, hat)).center().x;
+
+            // Assert
+            assert!(approx_eq(got, want, EPS), "{arg}: {got} vs {want}");
+        }
+    }
+
+    #[test]
+    fn tex_mathfrak_nests_and_leaves_operators_alone() {
+        // Act / Assert: the innermost alphabet that maps a kind wins.
+        assert_eq!(drawn("\\mathfrak{\\mathrm{x}}"), vec!['x']);
+        assert_eq!(drawn("\\mathbf{\\mathfrak{g}}"), vec!['𝔤']);
+        assert_eq!(drawn("\\mathfrak{\\mathbf{g}}"), vec!['𝐠']);
+        assert_eq!(drawn("\\mathfrak{\\mathbb{R}S}"), vec!['ℝ', '𝔖']);
+        assert_eq!(drawn("\\mathfrak{S}_n"), vec!['𝔖', italic('n')]);
+        assert_eq!(drawn("\\mathfrak{g_1}"), vec!['𝔤', '1']);
+        // \Re and \Im are unchanged symbols.
+        assert_eq!(drawn("\\Re\\Im"), vec!['ℜ', 'ℑ']);
+        assert_eq!(drawn("\\mathfrak{R}\\Re"), vec!['ℜ', 'ℜ']);
+        for src in [
+            "\\log+\\sum\\text{ab}",
+            "\\operatorname{rank}",
+            "\\aleph\\partial\\nabla",
+        ] {
+            assert_eq!(
+                boxed(&format!("\\mathfrak{{{src}}}")),
+                boxed(src),
+                "\\mathfrak{{{src}}}"
+            );
+        }
+    }
 }
