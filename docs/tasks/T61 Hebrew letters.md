@@ -1,7 +1,7 @@
 ---
 id: T61
 title: Hebrew letters
-status: todo
+status: in-progress
 wave: 40
 branch: task/T61-hebrew-letters
 depends_on: []
@@ -44,7 +44,35 @@ The Hebrew letters of set theory, as in LaTeX: `\aleph_0`,
 
 ## Spec
 
-To be written in the spec step.
+Settled as the proposal (owner, batch plan 2026-11-04): four `SYMBOLS`
+rows, no new parsing or layout code, no ADR.
+
+| Command | Text | Class |
+|---------|------|-------|
+| `\aleph` | `ℵ` U+2135 | `Ord` |
+| `\beth` | `ℶ` U+2136 | `Ord` |
+| `\gimel` | `ℷ` U+2137 | `Ord` |
+| `\daleth` | `ℸ` U+2138 | `Ord` |
+
+- **AC-1** — each of the four commands parses to one `Node::Symbol` and
+  `symbol(name)` gives the text and class of the table.
+  Test: `tex_parse_hebrew_letters_have_their_text_and_class`.
+- **AC-2** — the letters are drawn upright from the math face: neither
+  the italic mapping nor `\mathcal` changes them, and each has a
+  `math_metrics` row (so no text-face fallback, no warning colour).
+  Test: `tex_hebrew_letters_are_upright_math`.
+- **AC-3** — scripts attach as on any ordinary symbol: in `\aleph_0` the
+  `0` sits at the letter's advance, lowered and scaled to
+  `SCRIPT_SCALE`; in `2^{\aleph_0}` the letter is a scaled superscript
+  with its own subscript.
+  Test: `tex_layout_hebrew_letter_takes_scripts`.
+- **AC-4** — the fuzzer types the four commands (and `\aleph_0`) among
+  its formula tokens; the existing fuzz properties stay green.
+  Test: `arb_formula_text` tokens in `tests/fuzz.rs`, run by
+  `scripts/check.sh` and `scripts/check.sh --fuzz`.
+
+Steps: the *models* step produces nothing (no new types or signatures;
+the rows are behaviour) and is skipped.
 
 ## Out of scope
 
