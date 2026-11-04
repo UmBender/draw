@@ -5064,9 +5064,7 @@ mod tests {
         let all = every_kind();
         let want: Vec<char> = all
             .chars()
-            .map(|ch| {
-                latin_digit_char(ch, 0x1D5A0, 0x1D5BA, 0x1D7E2).unwrap_or_else(|| italic(ch))
-            })
+            .map(|ch| latin_digit_char(ch, 0x1D5A0, 0x1D5BA, 0x1D7E2).unwrap_or_else(|| italic(ch)))
             .collect();
 
         // Act
@@ -5087,9 +5085,7 @@ mod tests {
         let all = every_kind();
         let want: Vec<char> = all
             .chars()
-            .map(|ch| {
-                latin_digit_char(ch, 0x1D670, 0x1D68A, 0x1D7F6).unwrap_or_else(|| italic(ch))
-            })
+            .map(|ch| latin_digit_char(ch, 0x1D670, 0x1D68A, 0x1D7F6).unwrap_or_else(|| italic(ch)))
             .collect();
 
         // Act
@@ -5240,7 +5236,10 @@ mod tests {
     fn tex_sans_and_mono_nest_and_leave_operators_alone() {
         // Act / Assert: \mathtt has no bold; innermost wins.
         for name in BOLD_NAMES {
-            assert_eq!(drawn(&format!("\\{name}{{\\mathtt{{x1}}}}")), vec!['𝚡', '𝟷']);
+            assert_eq!(
+                drawn(&format!("\\{name}{{\\mathtt{{x1}}}}")),
+                vec!['𝚡', '𝟷']
+            );
         }
         assert_eq!(drawn("\\mathtt{\\mathbf{x}}"), vec!['𝐱']);
         assert_eq!(drawn("\\mathtt{\\mathsf{x}}"), vec!['𝗑']);
