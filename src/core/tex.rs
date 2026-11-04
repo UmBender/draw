@@ -772,6 +772,8 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         name: "mathds",
         ..MATHBB
     },
+    // Fraktur letters (T58).
+    MATHFRAK,
 ];
 
 /// Start of the bold digits `𝟎`.
