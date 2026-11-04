@@ -383,6 +383,17 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("$", "$", Class::Ord),
     def("sum", "∑", Class::BigOp),
     def("prod", "∏", Class::BigOp),
+    // Big set and logic operators (T66); ⨀ ⨁ ⨂ ⨄ ⨆ come from the T55 subset.
+    def("coprod", "∐", Class::BigOp),
+    def("bigcup", "⋃", Class::BigOp),
+    def("bigcap", "⋂", Class::BigOp),
+    def("bigwedge", "⋀", Class::BigOp),
+    def("bigvee", "⋁", Class::BigOp),
+    def("bigoplus", "⨁", Class::BigOp),
+    def("bigotimes", "⨂", Class::BigOp),
+    def("bigodot", "⨀", Class::BigOp),
+    def("biguplus", "⨄", Class::BigOp),
+    def("bigsqcup", "⨆", Class::BigOp),
     def("int", "∫", Class::Integral),
     def("iint", "∬", Class::Integral),
     def("iiint", "∭", Class::Integral),
@@ -1868,7 +1879,7 @@ fn letter(def: &SymbolDef) -> Option<char> {
     }
 }
 
-/// `∑`, `∏` or `∫`, enlarged and centred on the axis, with the enlarged
+/// A big operator (`∑`, `⋃`, …) or integral, enlarged and centred on the axis, with the enlarged
 /// glyph's italic correction.
 fn big_operator(ch: char, scale: f32) -> MathBox {
     let k = BIG_OP_SCALE * scale;
@@ -5464,5 +5475,100 @@ mod tests {
             2.0 * adv("|") + adv("\u{2212}") + mm(A).advance,
             EPS
         ));
+    }
+
+    // ---- T66 big set and logic operators -----------------------------------
+
+    /// The *Spec* table of T66: name and glyph, all `Class::BigOp`.
+    const BIG_SET_OPS: [(&str, char); 10] = [
+        ("bigcup", '⋃'),
+        ("bigcap", '⋂'),
+        ("bigwedge", '⋀'),
+        ("bigvee", '⋁'),
+        ("bigoplus", '⨁'),
+        ("bigotimes", '⨂'),
+        ("bigodot", '⨀'),
+        ("biguplus", '⨄'),
+        ("bigsqcup", '⨆'),
+        ("coprod", '∐'),
+    ];
+
+    #[test]
+    fn tex_parse_big_set_operators_have_their_text_and_class() {
+        for (name, ch) in BIG_SET_OPS {
+            // Arrange
+            let src = format!("$\\{name}$");
+            let text = ch.to_string();
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text.as_str(), Class::BigOp)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_big_set_operators_draw_enlarged_glyphs_of_the_math_face() {
+        for (name, ch) in BIG_SET_OPS {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert_eq!(got[0].0, ch, "{name}");
+            assert!(!got[0].3, "{name}");
+            for (c, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {c:?}");
+                assert!(math_metrics::get(c).is_some(), "{name}: {c:?}");
+            }
+            // Enlarged like \sum, its middle on the axis (y down).
+            let (pos, k) = glyph(&b.ink, ch);
+            assert!(approx_eq(k, BIG_OP_SCALE, EPS), "{name}: {k}");
+            let middle = pos.y - (mm(ch).y_max + mm(ch).y_min) * k / 2.0;
+            assert!(approx_eq(middle, -AXIS, EPS), "{name}: {middle}");
+            // The box is the glyph's advance and holds its ink.
+            assert!(approx_eq(b.width, mm(ch).advance * k, EPS), "{name}");
+            assert!(pos.y - mm(ch).y_max * k >= -b.ascent - EPS, "{name}");
+            assert!(pos.y - mm(ch).y_min * k <= b.descent + EPS, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_big_set_operator_limits_are_centred_above_and_below() {
+        for (name, ch) in BIG_SET_OPS {
+            // Act
+            let b = boxed(&format!("\\{name}_{{i=1}}^{{n}} A_i"));
+
+            // Assert
+            let (op, big) = glyph(&b.ink, ch);
+            let centre = op.x + mm(ch).advance * big / 2.0;
+            let (n, ns) = glyph(&b.ink, N);
+            assert!(
+                approx_eq(n.x + mm(N).advance * ns / 2.0, centre, EPS),
+                "{name}: {n:?} {centre}"
+            );
+            // "i=1" at script scale, without relation space.
+            let (i, is) = glyph(&b.ink, I);
+            let below = (mm(I).advance + adv("=1")) * is;
+            assert!(
+                approx_eq(i.x + below / 2.0, centre, EPS),
+                "{name}: {i:?} {centre}"
+            );
+            let top = op.y - mm(ch).y_max * big;
+            let bottom = op.y - mm(ch).y_min * big;
+            assert!(n.y - mm(N).y_min * ns <= top - LIMIT_GAP + EPS, "{name}");
+            assert!(i.y - mm(I).y_max * is >= bottom + LIMIT_GAP - EPS, "{name}");
+            // The operand follows the operator, not under it.
+            let (a, _) = glyph(&b.ink, '\u{1D434}');
+            assert!(a.x >= op.x + mm(ch).advance * big - EPS, "{name}: {a:?}");
+        }
     }
 }

@@ -220,6 +220,10 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\sqcap", "\\uplus", "\\lnot", "\\veebar", "\\barwedge", "\\top", "\\bot",
             "\\nexists", "\\implies", "\\impliedby", "\\vdash", "\\models", "\\lvert",
             "\\rvert", "\\lVert", "\\rVert", "x^{\\implies}",
+            // T66: big set and logic operators, with limits.
+            "\\bigcup", "\\bigcap", "\\bigwedge", "\\bigvee", "\\bigoplus", "\\bigotimes",
+            "\\bigodot", "\\biguplus", "\\bigsqcup", "\\coprod", "\\bigcup_{i=1}^{n}",
+            "\\coprod_",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

@@ -1,7 +1,7 @@
 ---
 id: T66
 title: Big set and logic operators
-status: todo
+status: review
 wave: 45
 branch: task/T66-big-operators
 depends_on: [T55, T65]
@@ -45,7 +45,38 @@ Big operators beyond `\sum` and `\prod`, with limits like them:
 
 ## Spec
 
-To be written in the spec step.
+Owner decisions (batch plan, 2026-11-04): ten `Class::BigOp` rows, laid
+out like `\sum` (enlarged by `BIG_OP_SCALE`, centred on the axis, limits
+centred above and below). No ADR. Every character below has a
+`core::math_metrics` row (T55 subset, checked: `U+2210`, `U+22C0–22C3`,
+`U+2A00–2A06`).
+
+| Command | Text | Class |
+|---------|------|-------|
+| `\bigcup` | `⋃` U+22C3 | `BigOp` |
+| `\bigcap` | `⋂` U+22C2 | `BigOp` |
+| `\bigwedge` | `⋀` U+22C0 | `BigOp` |
+| `\bigvee` | `⋁` U+22C1 | `BigOp` |
+| `\bigoplus` | `⨁` U+2A01 | `BigOp` |
+| `\bigotimes` | `⨂` U+2A02 | `BigOp` |
+| `\bigodot` | `⨀` U+2A00 | `BigOp` |
+| `\biguplus` | `⨄` U+2A04 | `BigOp` |
+| `\bigsqcup` | `⨆` U+2A06 | `BigOp` |
+| `\coprod` | `∐` U+2210 | `BigOp` |
+
+- **AC-1** Each command of the table parses to one symbol node with
+  that text and class, and prints back unchanged —
+  `tex_parse_big_set_operators_have_their_text_and_class`.
+- **AC-2** Each draws exactly one glyph of the math face with a
+  `math_metrics` row (no text-face fallback, no warning colour), at
+  `BIG_OP_SCALE`, its middle on the axis, and the box is as wide as the
+  enlarged glyph's advance and contains its ink —
+  `tex_big_set_operators_draw_enlarged_glyphs_of_the_math_face`.
+- **AC-3** `\bigcup_{i=1}^{n} A_i` (and each other command with the
+  same limits) puts `n` centred above and `i=1` centred below the
+  operator, at least `LIMIT_GAP` from its ink, as `\sum` does —
+  `tex_layout_big_set_operator_limits_are_centred_above_and_below`.
+- **AC-4** The fuzzer types every new command (`tests/fuzz.rs`).
 
 ## Out of scope
 
@@ -61,12 +92,12 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T66): …`
-- [ ] tests — `test(T66): …`
-- [ ] models — `feat(T66): …`
-- [ ] behaviour — `feat(T66): …`
-- [ ] quality — `chore(T66): …`
-- [ ] docs — `docs(T66): …`
+- [x] spec — `docs(T66): …`
+- [x] tests — `test(T66): …`
+- [x] models — `feat(T66): …` (one commit with behaviour: rows only)
+- [x] behaviour — `feat(T66): …`
+- [x] quality — `chore(T66): …` (nothing to change, no commit)
+- [x] docs — `docs(T66): …`
 
 ## Learning path
 
@@ -76,3 +107,10 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — tests, rows and docs done. Ten `Class::BigOp` rows in
+  `SYMBOLS`, laid out by the existing `big_operator` / `limits` code, so
+  no new types: models and behaviour are one `feat` commit. All glyphs
+  (`U+2210`, `U+22C0–22C3`, `U+2A00–2A06`) have `math_metrics` rows. The
+  quality step changed nothing (no `chore` commit). `scripts/check.sh`
+  and `--fuzz` green. No ADR, no tutorial, no deviation from *Files
+  owned*. Manual check for the owner: `$\bigcup_{i=1}^{n} A_i$`.
