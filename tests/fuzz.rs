@@ -228,6 +228,13 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\choose", "\\brack", "\\brace", "\\over", "\\atop", "{n \\choose k}",
             "\\tbinom", "\\dbinom", "\\multiset", "\\multiset{n}{k}", "\\underline",
             "x^{\\underline{k}}", "\\nmid", "\\#",
+            // T67: algebra and group theory symbols and operator names.
+            "\\lhd", "\\rhd", "\\unlhd", "\\unrhd", "\\triangleleft", "\\triangleright",
+            "\\trianglelefteq", "\\trianglerighteq", "\\ntriangleleft", "\\ntriangleright",
+            "\\rtimes", "\\ltimes", "\\wr", "\\odot", "\\ominus", "\\oslash", "\\boxplus",
+            "\\boxtimes", "\\amalg", "\\diamond", "\\Hom", "\\End", "\\Aut", "\\Inn",
+            "\\Gal", "\\Ker", "\\im", "\\coker", "\\id", "\\sgn", "\\tr", "\\rank",
+            "\\Hom(A, B)",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),
