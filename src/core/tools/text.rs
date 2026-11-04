@@ -486,14 +486,16 @@ impl State {
         let mut t = r.record("text-size")?;
         let size_px: Option<f32> = t.opt()?;
         t.end()?;
-        if size_px.is_some_and(|px| px <= 0.0) {
-            return Err(t.error("text size not positive"));
+        if size_px.is_some_and(|px| px <= 0.0 || px > crate::core::snapshot::MAX_TEXT_SIZE_PX) {
+            return Err(t.error("text size out of range"));
         }
         let mut t = r.record("text")?;
         let edit = if t.none() {
             None
         } else {
-            let origin = t.get()?;
+            // Like a drag position, an open block's origin may be off the
+            // finite range; committing drops such a block.
+            let origin = t.loose_vec2()?;
             let size = t.f32("text size")?;
             let style = t.get()?;
             let target: Option<ShapeId> = t.opt()?;
@@ -501,8 +503,8 @@ impl State {
             let text = t.string("text")?;
             let caret: usize = t.number("caret")?;
             let resized = t.bool("resized")?;
-            if size <= 0.0 {
-                return Err(t.error("text size not positive"));
+            if !crate::core::snapshot::text_size_ok(size) {
+                return Err(t.error(format!("text size {size} out of range")));
             }
             if caret > text.len() || !text.is_char_boundary(caret) {
                 return Err(t.error(format!("caret {caret} is not on a character boundary")));

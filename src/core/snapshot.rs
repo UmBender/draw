@@ -38,6 +38,23 @@ pub const HEADER: &str = "draw-snapshot";
 /// whenever the text changes (ADR-T74-1).
 pub const VERSION: u32 = 1;
 
+/// Largest on-screen text size the editor sets, in pixels: the thickest
+/// width's rung, with 1 % for rounding.
+pub const MAX_TEXT_SIZE_PX: f32 = (crate::core::tools::text::TEXT_BASE_PX
+    + crate::core::tools::text::TEXT_PX_PER_WIDTH * crate::core::editor::MAX_WIDTH_PX)
+    * 1.01;
+
+/// Largest text size in world units the editor can make: the largest
+/// on-screen size at the smallest zoom. Larger loaded sizes could grow a
+/// block's bounds past `f32` while typing.
+pub const MAX_TEXT_SIZE: f32 = MAX_TEXT_SIZE_PX / crate::core::camera::ZOOM_MIN;
+
+/// Whether `size` is a text size the editor can make.
+#[must_use]
+pub fn text_size_ok(size: f32) -> bool {
+    size > 0.0 && size <= MAX_TEXT_SIZE
+}
+
 /// The sections, in the order they appear.
 pub const SECTIONS: [&str; 5] = ["editor", "document", "history", "clipboard", "tools"];
 
@@ -902,6 +919,9 @@ impl Snap for ShapeText {
     fn read(tokens: &mut Tokens<'_>) -> Result<Self, SnapshotError> {
         let size = tokens.f32("text size")?;
         let text = tokens.string("text")?;
+        if !text_size_ok(size) {
+            return Err(tokens.error(format!("text size {size} out of range")));
+        }
         Self::new(text, size).ok_or_else(|| tokens.error("blank text or non-positive size"))
     }
 }
@@ -1077,8 +1097,8 @@ impl Snap for Shape {
                 let origin = tokens.get()?;
                 let size = tokens.f32("text size")?;
                 let text = tokens.string("text")?;
-                if size <= 0.0 || text.trim().is_empty() {
-                    return Err(tokens.error("blank text or non-positive size"));
+                if !text_size_ok(size) || text.trim().is_empty() {
+                    return Err(tokens.error("blank text or text size out of range"));
                 }
                 Self::Text {
                     origin,
@@ -1094,6 +1114,11 @@ impl Snap for Shape {
         }
         if !shape.is_finite() {
             return Err(tokens.error("shape is not finite"));
+        }
+        let bounds = shape.bounds();
+        if matches!(shape, Self::Text { .. }) && !(bounds.min.is_finite() && bounds.max.is_finite())
+        {
+            return Err(tokens.error("text block too large: its bounds are not finite"));
         }
         Ok(shape)
     }
