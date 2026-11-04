@@ -1,7 +1,7 @@
 ---
 id: T73
 title: Continuous integration on GitHub
-status: in-progress
+status: review
 wave: 33
 branch: task/T73-github-ci
 depends_on: []
@@ -141,18 +141,22 @@ Acceptance criteria:
 - `README.md` (badge line and the Rust requirement line)
 - `Cargo.toml` (`rust-version` line only, ADR-T73-1)
 - `packaging/Containerfile` (`RUST_VERSION` only, ADR-T73-1)
+- clippy fixes forced by the 1.99 `rust-version` (owner approved):
+  `src/core/smoothing.rs`, `src/core/tex.rs`, `src/shell/app.rs`,
+  `src/shell/crash.rs`, `src/shell/diag/file.rs`, `src/shell/diag/mod.rs`,
+  `src/shell/render.rs`, `tests/perf.rs`, `tests/soak.rs`
 - `docs/process/Quality Gates.md` (a *CI* section)
 - `docs/decisions/ADR-T73-1 Track the latest stable Rust.md` (new)
 - this note
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T73): …`
-- [ ] tests — `test(T73): …`
-- [ ] models — `ci(T73): …` (workflow files)
-- [ ] behaviour — `ci(T73): …` (nightly, packaging)
-- [ ] quality — `chore(T73): …`
-- [ ] docs — `docs(T73): …`
+- [x] spec — `docs(T73): …`
+- [x] tests — `test(T73): …`
+- [x] models — `ci(T73): …` (workflow files)
+- [x] behaviour — `ci(T73): …` (nightly; packaging moved to T53)
+- [x] quality — `chore(T73): …`
+- [x] docs — `docs(T73): …`
 
 ## Learning path
 
@@ -164,3 +168,25 @@ None expected.
 - 2026-11-03 — spec: `cargo +1.85 check` fails in `fontdue`; 1.87 builds.
   Owner chose to track the latest stable instead (ADR-T73-1); `Cargo.toml`,
   `packaging/Containerfile` and the README line added to *Files owned*.
+- 2026-11-03 — tests: `tests/ci.rs` (10 tests) red before the workflows
+  existed; the Containerfile and README guards passed on the old values,
+  as they should.
+- 2026-11-03 — quality: `rust-version = "1.99"` switches on clippy lints
+  gated on the MSRV (let-chain `collapsible_if`, `is_multiple_of`,
+  `Duration::from_hours`); 11 sites fixed with `cargo clippy --fix`, no
+  behaviour change. `scripts/check.sh` green locally (stable 1.99.1).
+- 2026-11-03 — headless: `cargo test --all-targets` passes with
+  `DISPLAY`/`WAYLAND_DISPLAY` unset (15 s on the laptop); no system
+  packages or `xvfb-run` on the runner.
+- 2026-11-04 — AC-1: task branch green
+  (https://github.com/UmBender/draw/actions/runs/41755050175). Throwaway
+  branch `ci-check-T73` with a deliberate clippy warning went red in
+  `gates`, `msrv` green
+  (https://github.com/UmBender/draw/actions/runs/41755771190); the fix
+  went green (https://github.com/UmBender/draw/actions/runs/41755897634).
+  Branch deleted. The first push of that branch started no run at all
+  (GitHub dropped the event); a second commit triggered it.
+- 2026-11-04 — AC-4 static part green; the manual run is pending:
+  `workflow_dispatch` needs `nightly.yml` on the default branch, so the
+  integrator runs `gh workflow run nightly.yml` after merging and pushing
+  `main`, and links the run here.

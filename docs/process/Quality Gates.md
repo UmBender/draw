@@ -19,6 +19,27 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
 | Fuzz | `PROPTEST_CASES=20000 cargo test --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
 
+## CI
+
+GitHub Actions runs the same gates on every push and pull request
+([[T73 Continuous integration on GitHub]]):
+
+| Workflow | When | Jobs |
+|----------|------|------|
+| `.github/workflows/ci.yml` | push (any branch), pull request to `main` | `gates`: `scripts/check.sh` on stable; `msrv`: `cargo check --all-targets --locked` on `rust-version` |
+| `.github/workflows/nightly.yml` | daily 04:17 UTC, or *Run workflow* by hand | `fuzz`: `scripts/check.sh --fuzz`, uploads `tests/fuzz.proptest-regressions` on failure; `soak`: ignored soak tests; `perf`: ignored perf tests, report only |
+
+- CI calls `scripts/check.sh`, so a new gate is added there, once.
+- `rust-version` follows the latest stable
+  ([[ADR-T73-1 Track the latest stable Rust]]); the msrv job, the
+  packaging image and the README must agree with it (`tests/ci.rs`).
+- A red nightly `fuzz` job leaves an artifact `fuzz-regressions`: add
+  its new lines to `tests/fuzz.proptest-regressions` and fix the bug as
+  a regression ([[Workflow#Bug fixes: regression step]]).
+- Actions are pinned to commit SHAs (tag in a comment) and the token is
+  read-only. To update an action, replace the SHA with the new tag's
+  commit (`git ls-remote --tags https://github.com/<owner>/<repo>`).
+
 ## Definition of Done (per task)
 
 - [ ] Every `AC-n` in the spec has at least one passing test.
