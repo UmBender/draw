@@ -1844,11 +1844,18 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
 /// The box of a table symbol: a glyph (a letter in `style`), an enlarged
 /// big operator or integral, or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32, style: Style) -> MathBox {
-    match (letter(def), def.class) {
+    let b = match (letter(def), def.class) {
         (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale),
         (Some(ch), Class::Ord) => MathBox::math(style.map(ch), scale),
         (Some(ch), _) => MathBox::math(ch, scale),
         (None, _) => MathBox::upright(def.text, scale),
+    };
+    if WIDE_RELATIONS.contains(&def.name) {
+        // amsmath's `\;` each side, at every size (ADR-T65-1).
+        let pad = WIDE_REL_SPACE * scale;
+        MathBox::row([MathBox::gap(pad), b, MathBox::gap(pad)])
+    } else {
+        b
     }
 }
 
