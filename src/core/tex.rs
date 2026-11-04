@@ -608,6 +608,13 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("op", "op", Class::Op),
     def("Ob", "Ob", Class::Op),
     def("Mor", "Mor", Class::Op),
+    def("Box", "□", Class::Ord),
+    def("square", "□", Class::Ord),
+    def("triangle", "△", Class::Ord),
+    def("angle", "∠", Class::Ord),
+    def("ohm", "\u{2126}", Class::Ord),
+    def("micro", "\u{B5}", Class::Ord),
+    def("grad", "∇", Class::Ord),
 ];
 
 /// The table entry of command `name` (without the backslash).
@@ -659,6 +666,10 @@ pub const ACCENTS: &[AccentDef] = &[
         mark: Mark::Glyph('\u{A8}', 1.0),
     },
     AccentDef {
+        name: "dddot",
+        mark: Mark::Glyph('\u{20DB}', 1.0),
+    },
+    AccentDef {
         name: "bar",
         mark: Mark::Bar,
     },
@@ -672,6 +683,135 @@ pub const ACCENTS: &[AccentDef] = &[
 #[must_use]
 pub fn accent(name: &str) -> Option<&'static AccentDef> {
     ACCENTS.iter().find(|a| a.name == name)
+}
+
+/// One shortcut command that draws as its long form (ADR-T69-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExpansionDef {
+    /// Command name without the backslash.
+    pub name: &'static str,
+    /// Arguments always taken, of any form (a group, a symbol, one
+    /// character).
+    pub required: usize,
+    /// The long form by the number of optional arguments given: each
+    /// optional argument is a `{group}` taken only when one follows.
+    /// Subset source with slots `#1` … `#9` for the arguments.
+    pub templates: &'static [&'static str],
+}
+
+/// Every shortcut command of the subset (ADR-T69-1): the `physics`
+/// package's most used commands.
+pub const EXPANSIONS: &[ExpansionDef] = &[
+    ExpansionDef {
+        name: "dd",
+        required: 0,
+        templates: &["\\,\\mathrm{d}", "\\,\\mathrm{d}#1"],
+    },
+    ExpansionDef {
+        name: "dv",
+        required: 1,
+        templates: &[
+            "\\frac{\\mathrm{d}}{\\mathrm{d}#1}",
+            "\\frac{\\mathrm{d}#1}{\\mathrm{d}#2}",
+        ],
+    },
+    ExpansionDef {
+        name: "pdv",
+        required: 1,
+        templates: &[
+            "\\frac{\\partial}{\\partial #1}",
+            "\\frac{\\partial #1}{\\partial #2}",
+        ],
+    },
+    ExpansionDef {
+        name: "abs",
+        required: 1,
+        templates: &["\\lvert #1\\rvert"],
+    },
+    ExpansionDef {
+        name: "norm",
+        required: 1,
+        templates: &["\\lVert #1\\rVert"],
+    },
+    ExpansionDef {
+        name: "order",
+        required: 1,
+        templates: &["\\mathcal{O}(#1)"],
+    },
+    ExpansionDef {
+        name: "vb",
+        required: 1,
+        templates: &["\\mathbf{#1}"],
+    },
+    ExpansionDef {
+        name: "vu",
+        required: 1,
+        templates: &["\\hat{\\mathbf{#1}}"],
+    },
+    ExpansionDef {
+        name: "curl",
+        required: 0,
+        templates: &["\\nabla\\times"],
+    },
+];
+
+/// The shortcut command `name` (without the backslash).
+#[must_use]
+pub fn expansion(name: &str) -> Option<&'static ExpansionDef> {
+    EXPANSIONS.iter().find(|e| e.name == name)
+}
+
+/// The long form of `node` when it is a shortcut command of
+/// [`EXPANSIONS`] with an argument count it takes: its template parsed,
+/// each slot `#n` replaced by the nodes of argument `n` (ADR-T69-1).
+/// `None` for any other node.
+#[must_use]
+pub fn expand(node: &Node) -> Option<Vec<Node>> {
+    let Node::Command { name, args } = node else {
+        return None;
+    };
+    let def = expansion(name)?;
+    let optional = args.len().checked_sub(def.required)?;
+    let template: Vec<char> = def.templates.get(optional)?.chars().collect();
+    Some(fill_slots(Parser::new(&template).parse(), args))
+}
+
+/// `nodes` of a template with each slot `#n` (in groups and command
+/// arguments too) replaced by the nodes of `args[n - 1]`; a slot past
+/// the arguments is dropped.
+fn fill_slots(nodes: Vec<Node>, args: &[Arg]) -> Vec<Node> {
+    let mut out = Vec::with_capacity(nodes.len());
+    let mut nodes = nodes.into_iter().peekable();
+    while let Some(node) = nodes.next() {
+        match node {
+            Node::Char('#')
+                if let Some(Node::Char(digit)) = nodes.peek()
+                    && let Some(n) = digit.to_digit(10) =>
+            {
+                nodes.next();
+                let arg = usize::try_from(n)
+                    .ok()
+                    .and_then(|n| n.checked_sub(1))
+                    .and_then(|i| args.get(i));
+                if let Some(arg) = arg {
+                    out.extend(arg.nodes.iter().cloned());
+                }
+            }
+            Node::Group(inner) => out.push(Node::Group(fill_slots(inner, args))),
+            Node::Command { name, args: inner } => out.push(Node::Command {
+                name,
+                args: inner
+                    .into_iter()
+                    .map(|arg| Arg {
+                        nodes: fill_slots(arg.nodes, args),
+                        ..arg
+                    })
+                    .collect(),
+            }),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Which embedded font draws a glyph (ADR-T33-1).
@@ -1612,6 +1752,7 @@ impl<'a> Parser<'a> {
             }
             "text" => self.text_body(end),
             "operatorname" => return self.operator_name(end),
+            n if expansion(n).is_some() => self.shortcut(&name, end),
             _ => None,
         };
         node.unwrap_or_else(|| {
@@ -1633,6 +1774,29 @@ impl<'a> Parser<'a> {
         self.pos = after;
         let star = if star { "*" } else { "" };
         Node::Literal(format!("\\operatorname{star}"))
+    }
+
+    /// The arguments of shortcut `name` of [`EXPANSIONS`], its name read:
+    /// the required ones, then each optional one that is a `{group}`;
+    /// `None` when a required one is missing (ADR-T69-1).
+    fn shortcut(&mut self, name: &str, end: usize) -> Option<Node> {
+        let def = expansion(name)?;
+        let mut args = self.args(def.required, end)?;
+        for _ in 1..def.templates.len() {
+            let start = self.pos;
+            self.whitespace(end);
+            let group =
+                self.pos < end && self.peek() == Some('{') && self.group_close(end).is_some();
+            self.pos = start;
+            if !group {
+                break;
+            }
+            args.extend(self.arg(end));
+        }
+        Some(Node::Command {
+            name: name.to_owned(),
+            args,
+        })
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -1809,10 +1973,8 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
     } else {
         1.0
     };
-    let mut atoms: Vec<(MathBox, Class)> = nodes
-        .iter()
-        .filter_map(|node| atom(node, scale, style))
-        .collect();
+    let mut atoms: Vec<(MathBox, Class)> = Vec::with_capacity(nodes.len());
+    push_atoms(nodes, scale, style, &mut atoms);
     // A binary operator without an operand on both sides is ordinary.
     for i in 0..atoms.len() {
         if atoms[i].1 != Class::Bin {
@@ -1850,6 +2012,17 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
         boxes.push(b);
     }
     MathBox::row(boxes)
+}
+
+/// The atoms of `nodes` onto `out`, with each shortcut's long form
+/// spliced in among its neighbours (ADR-T69-1).
+fn push_atoms(nodes: &[Node], scale: f32, style: Style, out: &mut Vec<(MathBox, Class)>) {
+    for node in nodes {
+        match expand(node) {
+            Some(long) => push_atoms(&long, scale, style, out),
+            None => out.extend(atom(node, scale, style)),
+        }
+    }
 }
 
 /// Space between neighbouring atoms of classes `a` and `b` at `scale`.
@@ -1899,6 +2072,10 @@ fn char_class(ch: char) -> Class {
 /// The box and class of one node with letters in `style`; `None` for
 /// whitespace.
 fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
+    // A shortcut on its own (a script's base) is one ordinary atom.
+    if let Some(long) = expand(node) {
+        return Some((layout_styled(&long, scale, style), Class::Ord));
+    }
     let atom = match node {
         Node::Space(_) => return None,
         Node::Char(ch) => {
@@ -2679,7 +2856,9 @@ mod tests {
         let names: Vec<&str> = ACCENTS.iter().map(|a| a.name).collect();
         assert_eq!(
             names,
-            ["vec", "hat", "tilde", "dot", "ddot", "bar", "overline"]
+            [
+                "vec", "hat", "tilde", "dot", "ddot", "dddot", "bar", "overline"
+            ]
         );
     }
 
@@ -6393,5 +6572,367 @@ mod tests {
         assert!(got.iter().all(|g| !g.3), "{got:?}");
         assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
         assert!(got[1].1.y < got[0].1.y, "superscript is raised (y down)");
+    }
+
+    // ---- T69 classical physics notation ------------------------------------
+
+    /// The symbol rows of the T69 *Spec* table: name, text, class.
+    const PHYSICS: [(&str, &str, Class); 7] = [
+        ("Box", "□", Class::Ord),
+        ("square", "□", Class::Ord),
+        ("triangle", "△", Class::Ord),
+        ("angle", "∠", Class::Ord),
+        ("ohm", "\u{2126}", Class::Ord),
+        ("micro", "\u{B5}", Class::Ord),
+        ("grad", "∇", Class::Ord),
+    ];
+
+    /// Every physics shortcut source next to its long form (T69 AC-5).
+    const LONG_FORMS: [(&str, &str); 25] = [
+        ("\\dd", "\\,\\mathrm{d}"),
+        ("\\dd{x}", "\\,\\mathrm{d}x"),
+        ("\\dd x", "\\,\\mathrm{d} x"),
+        ("\\dv{x}", "\\frac{\\mathrm{d}}{\\mathrm{d}x}"),
+        ("\\dv{f}{x}", "\\frac{\\mathrm{d}f}{\\mathrm{d}x}"),
+        ("\\dv f{x}", "\\frac{\\mathrm{d}f}{\\mathrm{d}x}"),
+        ("\\pdv{x}", "\\frac{\\partial}{\\partial x}"),
+        ("\\pdv{f}{x}", "\\frac{\\partial f}{\\partial x}"),
+        ("\\pdv{f}{t}", "\\frac{\\partial f}{\\partial t}"),
+        ("\\abs{x}", "\\lvert x\\rvert"),
+        ("\\abs{a+b}", "\\lvert a+b\\rvert"),
+        ("\\norm{v}", "\\lVert v\\rVert"),
+        ("\\order{h^2}", "\\mathcal{O}(h^2)"),
+        ("\\vb{F}", "\\mathbf{F}"),
+        ("\\vu{n}", "\\hat{\\mathbf{n}}"),
+        ("\\curl", "\\nabla\\times"),
+        ("\\grad f", "\\nabla f"),
+        ("a\\abs{x}b", "a\\lvert x\\rvert b"),
+        ("\\curl\\vb{A}", "\\nabla\\times\\mathbf{A}"),
+        ("\\dd{x}\\,\\dd{y}", "\\,\\mathrm{d}x\\,\\,\\mathrm{d}y"),
+        ("\\abs{\\vb{F}}", "\\lvert\\mathbf{F}\\rvert"),
+        (
+            "\\dv{\\vb{r}}{t}",
+            "\\frac{\\mathrm{d}\\mathbf{r}}{\\mathrm{d}t}",
+        ),
+        ("e^{\\abs{x}}", "e^{\\lvert x\\rvert}"),
+        ("\\vb{F} = m\\dddot{x}", "\\mathbf{F} = m\\dddot{x}"),
+        ("\\abs{\\curl x}", "\\lvert\\nabla\\times x\\rvert"),
+    ];
+
+    /// Whether `nodes` hold a literal at any depth.
+    fn has_literal(nodes: &[Node]) -> bool {
+        nodes.iter().any(|node| match node {
+            Node::Literal(_) => true,
+            Node::Group(nodes) => has_literal(nodes),
+            Node::Command { args, .. } => args.iter().any(|a| has_literal(&a.nodes)),
+            Node::Scripts {
+                base,
+                first,
+                second,
+            } => {
+                base.as_deref()
+                    .is_some_and(|b| has_literal(std::slice::from_ref(b)))
+                    || std::iter::once(first)
+                        .chain(second)
+                        .any(|s| has_literal(&s.arg.nodes))
+            }
+            Node::Infix { left, right, .. } => has_literal(left) || has_literal(right),
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn tex_parse_classical_physics_symbols_have_their_text_and_class() {
+        for (name, text, class) in PHYSICS {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_classical_physics_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in PHYSICS {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert!(!got[0].3, "{name}");
+            assert_eq!(text.chars().collect::<Vec<_>>(), vec![got[0].0], "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_units_stay_upright_in_every_style() {
+        for style in ["", "\\mathbf", "\\mathit", "\\mathrm", "\\boldsymbol"] {
+            for (name, ch) in [("ohm", '\u{2126}'), ("micro", '\u{B5}')] {
+                // Act
+                let b = boxed(&format!("{style}{{\\{name}}}"));
+
+                // Assert
+                let got: Vec<char> = glyphs(&b.ink).iter().map(|g| g.0).collect();
+                assert_eq!(got, vec![ch], "{style} {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_div_stays_division() {
+        assert_eq!(
+            symbol("div").map(|s| (s.text, s.class)),
+            Some(("÷", Class::Bin))
+        );
+        assert!(expansion("div").is_none());
+        assert!(symbol("laplacian").is_none() && expansion("laplacian").is_none());
+    }
+
+    #[test]
+    fn tex_layout_dddot_draws_three_dots_over_its_argument() {
+        // Arrange
+        let x = boxed("x");
+        let ddot = boxed("\\ddot{x}");
+        let three = '\u{20DB}';
+        let m = mm(three);
+
+        // Act
+        let b = boxed("\\dddot{x}");
+
+        // Assert: the mark is an unwarned math-face glyph at full size.
+        let got = glyphs(&b.ink);
+        assert_eq!(got.len(), 2, "{got:?}");
+        let (pos, scale) = glyph(&b.ink, three);
+        assert!(approx_eq(scale, 1.0, EPS));
+        assert!(got.iter().all(|g| !g.3));
+        assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
+        // Its ink sits above the letter (y down).
+        assert!(pos.y - m.y_min <= -x.ascent + EPS, "{pos:?}");
+        // Centred where `\ddot` centres its two dots (the middle of the
+        // mark's bounds, as accents measure it).
+        let centre_of = |ink: &[Ink], ch: char| {
+            ink.iter()
+                .find(|i| matches!(i, Ink::Glyph { ch: c, .. } if *c == ch))
+                .map(|i| {
+                    let b = i.bounds();
+                    f32::midpoint(b.min.x, b.max.x)
+                })
+        };
+        let centre = centre_of(&b.ink, three).unwrap_or(f32::NAN);
+        let dcentre = centre_of(&ddot.ink, '\u{A8}').unwrap_or(f32::NAN);
+        assert!(approx_eq(centre, dcentre, EPS), "{centre} {dcentre}");
+        // The box keeps the letter's width and descent.
+        assert!(approx_eq(b.width, x.width, EPS));
+        assert!(approx_eq(b.descent, x.descent, EPS));
+        assert!(b.ascent > x.ascent);
+    }
+
+    #[test]
+    fn tex_parse_physics_shortcuts_take_their_arguments() {
+        let x = || braced(vec![Node::Char('x')]);
+        let command = |name: &str, args: Vec<Arg>| Node::Command {
+            name: name.to_owned(),
+            args,
+        };
+
+        // Act + Assert: required arguments, then braced optional ones.
+        assert_eq!(math("\\dv{x}"), vec![command("dv", vec![x()])]);
+        assert_eq!(
+            math("\\dv{f}{x}"),
+            vec![command("dv", vec![braced(vec![Node::Char('f')]), x()])]
+        );
+        assert_eq!(
+            math("\\dv f {x}"),
+            vec![command(
+                "dv",
+                vec![
+                    Arg {
+                        lead: " ".to_owned(),
+                        braced: false,
+                        nodes: vec![Node::Char('f')],
+                    },
+                    Arg {
+                        lead: " ".to_owned(),
+                        braced: true,
+                        nodes: vec![Node::Char('x')],
+                    },
+                ]
+            )]
+        );
+        assert_eq!(
+            math("\\dv{f}x"),
+            vec![
+                command("dv", vec![braced(vec![Node::Char('f')])]),
+                Node::Char('x')
+            ]
+        );
+        assert_eq!(math("\\dd"), vec![command("dd", vec![])]);
+        assert_eq!(math("\\dd{x}"), vec![command("dd", vec![x()])]);
+        assert_eq!(
+            math("\\dd x"),
+            vec![
+                command("dd", vec![]),
+                Node::Space(" ".to_owned()),
+                Node::Char('x')
+            ]
+        );
+        assert_eq!(math("\\curl"), vec![command("curl", vec![])]);
+        assert_eq!(
+            math("\\abs{x}{y}"),
+            vec![
+                command("abs", vec![x()]),
+                Node::Group(vec![Node::Char('y')])
+            ]
+        );
+        assert_eq!(
+            math("\\vb\\alpha"),
+            vec![command("vb", vec![tok(sym("alpha"))])]
+        );
+        for (short, _) in LONG_FORMS {
+            let src = format!("${short}$");
+            assert_eq!(print(&parse(&src)), src);
+        }
+        for src in [
+            "$\\dd {x}$",
+            "$\\pdv f {x} y$",
+            "$\\curl^2$",
+            "$\\dv{\\dv{x}}$",
+        ] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_parse_physics_shortcut_without_required_argument_is_literal() {
+        for name in ["dv", "pdv", "abs", "norm", "order", "vb", "vu"] {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![Node::Literal(format!("\\{name}"))], "{name}");
+            assert!(glyphs(&b.ink).iter().all(|g| g.3), "{name}");
+        }
+        assert_eq!(
+            math("\\vb^2"),
+            vec![Node::Scripts {
+                base: Some(Box::new(Node::Literal("\\vb".to_owned()))),
+                first: script(ScriptKind::Sup, tok(Node::Char('2'))),
+                second: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn tex_layout_physics_shortcuts_match_their_long_forms() {
+        for (short, long) in LONG_FORMS {
+            // Act
+            let got = boxed(short);
+            let want = boxed(long);
+
+            // Assert
+            assert_eq!(got, want, "{short} vs {long}");
+            assert!(glyphs(&got.ink).iter().all(|g| !g.3), "{short}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_physics_shortcut_as_script_base_is_one_atom() {
+        // Act
+        let squared = boxed("\\abs{x}^2");
+        let derivative = boxed("\\dv{f}{x}^2");
+
+        // Assert
+        assert_eq!(squared, boxed("{\\lvert x\\rvert}^2"));
+        assert_eq!(derivative, boxed("{\\frac{\\mathrm{d}f}{\\mathrm{d}x}}^2"));
+    }
+
+    #[test]
+    fn tex_expansions_are_well_formed() {
+        let commands = [
+            "frac",
+            "binom",
+            "tbinom",
+            "dbinom",
+            "multiset",
+            "sqrt",
+            "pmod",
+            "underline",
+            "text",
+            "operatorname",
+        ];
+        let names: Vec<&str> = EXPANSIONS.iter().map(|e| e.name).collect();
+        for name in [
+            "dd", "dv", "pdv", "abs", "norm", "order", "vb", "vu", "curl",
+        ] {
+            assert!(names.contains(&name), "{name} is an expansion");
+        }
+        for def in EXPANSIONS {
+            let name = def.name;
+            assert_eq!(expansion(name), Some(def), "{name}");
+            assert_eq!(names.iter().filter(|n| **n == name).count(), 1, "{name}");
+            assert!(symbol(name).is_none(), "{name} is also a symbol");
+            assert!(accent(name).is_none(), "{name} is also an accent");
+            assert!(alphabet(name).is_none(), "{name} is also an alphabet");
+            assert!(!commands.contains(&name), "{name} is also a command");
+            assert!(!INFIX.contains(&name), "{name} is also infix");
+            assert!(!def.templates.is_empty(), "{name}");
+            for (extra, template) in def.templates.iter().enumerate() {
+                // Each template is subset source without literals.
+                assert!(!has_literal(&math(template)), "{name}: {template}");
+                // Its slots are the arguments it is used with.
+                let count = def.required + extra;
+                let chars: Vec<char> = template.chars().collect();
+                for w in chars.windows(2).filter(|w| w[0] == '#') {
+                    let n = w[1].to_digit(10).unwrap_or(0) as usize;
+                    assert!((1..=count).contains(&n), "{name}: {template}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tex_expand_replaces_slots_with_arguments() {
+        let command = |name: &str, args: Vec<Arg>| Node::Command {
+            name: name.to_owned(),
+            args,
+        };
+        let f = braced(vec![Node::Char('f')]);
+        let x = braced(vec![Node::Char('x')]);
+
+        // Act + Assert
+        assert_eq!(
+            expand(&command("dv", vec![f.clone(), x.clone()])),
+            Some(math("\\frac{\\mathrm{d}f}{\\mathrm{d}x}"))
+        );
+        assert_eq!(
+            expand(&command("pdv", vec![x.clone()])),
+            Some(math("\\frac{\\partial}{\\partial x}"))
+        );
+        assert_eq!(
+            expand(&command("abs", vec![braced(math("a+b"))])),
+            Some(math("\\lvert a+b\\rvert"))
+        );
+        assert_eq!(
+            expand(&command("curl", vec![])),
+            Some(math("\\nabla\\times"))
+        );
+        // Not an expansion, or not its argument count.
+        assert_eq!(expand(&command("dv", vec![])), None);
+        assert_eq!(expand(&command("abs", vec![f, x.clone()])), None);
+        assert_eq!(expand(&command("frac", vec![x.clone(), x])), None);
+        assert_eq!(expand(&Node::Char('x')), None);
+        assert_eq!(expand(&sym("grad")), None);
     }
 }

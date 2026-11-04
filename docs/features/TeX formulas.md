@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -204,6 +204,27 @@ write `$\mathbf{Set}$`, `$\mathbf{Grp}$`, `$\mathbf{Ab}$`,
 draws the same arrow with wider space). (Since
 [[T68 Category theory symbols]].)
 
+Classical physics has its notation: the jerk `$\vb{F} = m\dddot{x}$`
+(`\dddot` is a third accent beside `\dot` and `\ddot`), the
+d'Alembertian `$\Box\phi = 0$` (`\square` is the same `□`),
+`\triangle`, angles `$\angle ABC$`, and the units `\ohm` (`Ω`) and
+`\micro` (`µ`), which stay upright in every alphabet (`\degree` and
+`\AA` were already there). The most used shortcuts of the LaTeX
+`physics` package work and draw exactly their long form:
+`$\dv{f}{x}$` is `\frac{\mathrm{d}f}{\mathrm{d}x}` and `\dv{x}` the
+operator `\frac{\mathrm{d}}{\mathrm{d}x}`; `\pdv` the same with `∂`;
+`$\int f\dd{x}$` puts a thin space and an upright `d` before `x`;
+`\abs{x}`, `\norm{v}` and `\order{h^2}` are `\lvert x\rvert`,
+`\lVert v\rVert` and `\mathcal{O}(h^2)`; `\vb{F}` is `\mathbf{F}` and
+`\vu{n}` the unit vector `\hat{\mathbf{n}}`; `\grad` is `∇` and
+`$\curl\vb{A}$` is `\nabla\times\mathbf{A}`. The second argument of
+`\dv`, `\pdv` (and the one of `\dd`) is taken only when it is a
+`{group}`, as in `physics`. `\div` stays `÷` (in `physics` it is the
+divergence; write `\nabla\cdot`), and there is no `\laplacian` (write
+`\nabla^2`). Brackets keep their normal size. (Since
+[[T69 Classical physics notation]],
+[[ADR-T69-1 Physics shortcuts expand to their long forms]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -252,6 +273,8 @@ draws the same arrow with wider space). (Since
 | Category theory | `f\colon A \to B`, `F \dashv G`, `\Ob \Mor`, `\mathcal{C}^{\op}`, `\mathbf{Set}` |
 | Monos, epis, long arrows | `\hookrightarrow \twoheadrightarrow \rightarrowtail` (and `\hookleftarrow \twoheadleftarrow \leftarrowtail`), `\longrightarrow \longleftarrow \longleftrightarrow \longmapsto \Longrightarrow \Longleftarrow \Longleftrightarrow` |
 | Parallel, diagonal, double arrows | `\rightrightarrows \leftleftarrows \leftrightarrows \rightleftarrows`, `\nearrow \searrow \swarrow \nwarrow`, `\Uparrow \Downarrow \Updownarrow \updownarrow` |
+| Classical physics | `\dddot{x}`, `\Box \square \triangle \angle`, units `\ohm \micro \degree \AA`, `\grad \curl` |
+| Physics shortcuts | `\dd{x}`, `\dv{f}{x}`, `\dv{x}`, `\pdv{f}{x}`, `\pdv{x}`, `\abs{x}`, `\norm{v}`, `\order{h^2}`, `\vb{F}`, `\vu{n}` (each draws its long form) |
 | Thin space | `\,` (as in `f(x)\,dx`) |
 | Upright text | `\text{if } x > 0` |
 
@@ -281,6 +304,13 @@ digit styles; Latin Modern Math has no script lowercase), long and
 supplemental arrows, the n-ary operators `⨀ ⨁ ⨂ ⨄ ⨆`, `⨿`, geometric
 shapes and combining marks, about 270 KB and 1762 metrics rows
 ([[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]).
+Shortcut commands (`\dv`, `\abs`, …) are rows of the expansion table
+`EXPANSIONS`: required arguments, optional `{group}` arguments and a
+template of subset source per argument count. The parse tree keeps the
+command as typed; at layout `expand` parses the template, fills its
+`#n` slots with the argument nodes and splices the result among the
+neighbours, so a shortcut draws its long form's ink
+([[ADR-T69-1 Physics shortcuts expand to their long forms]]).
 `core::text_layout::typeset` caches the layout per text, and
 `text_layout::bounds` gives every shape query (hit-test, culling,
 snapping, selection) the typeset box; the edit session keeps the source
@@ -306,8 +336,12 @@ of the same batch.
 - No `\DeclareMathOperator`, `\varliminf`, `\varlimsup`, `\injlim` or
   `\projlim`; write `\operatorname{…}` instead.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
-  literals); `\triangle` has no command yet (its glyph is in the font
-  subset since T55).
+  literals).
+- Of the `physics` package only the shortcuts listed exist: no
+  `\laplacian`, no divergence `\div` (it stays `÷`), no `[n]` order
+  (`\dv[2]{f}{x}`; write `\frac{\mathrm{d}^2 f}{\mathrm{d}x^2}`), no
+  starred forms, no `\qty`, `\eval`, `\vdot`, `\cross`, `\fdv`, `\var`
+  or `\mqty`.
 - No commutative diagrams (`tikz-cd`) and no labelled extensible arrows
   (`\xrightarrow{f}`); arrows have a fixed length.
 - No `\not` prefix: only the negated relations listed (`\notin`,

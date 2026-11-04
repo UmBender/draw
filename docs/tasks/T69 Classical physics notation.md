@@ -1,11 +1,11 @@
 ---
 id: T69
 title: Classical physics notation
-status: todo
+status: review
 wave: 48
 branch: task/T69-classical-physics
 depends_on: [T55, T56]
-adrs: []
+adrs: ["[[ADR-T69-1 Physics shortcuts expand to their long forms]]"]
 feature: "[[TeX formulas]]"
 tutorial: ""
 tags: [task, tex]
@@ -56,12 +56,83 @@ shortcuts: differentials `\dd{x}`, derivatives `\dv{f}{x}`, `\pdv{f}{x}`,
 
 ## Spec
 
-To be written in the spec step.
+Owner decisions (batch plan, 2026-11-04): `\dddot`; `\Box \square
+\triangle \angle`; `\ohm` (Ω), `\micro` (µ); `\vb{F}` (= `\mathbf`),
+`\vu{n}` (= `\hat{\mathbf{n}}`); `\dd{x}`, `\dv`, `\pdv` (one- and
+two-argument forms), `\abs`, `\norm`, `\order`; `\grad` (∇) and `\curl`
+(∇×) only, no `\laplacian`; `\div` stays `÷`; brackets don't grow. The
+shortcuts go through one expansion table that T70 reuses
+([[ADR-T69-1 Physics shortcuts expand to their long forms]]).
+
+Every glyph drawn has a `core::math_metrics` row (checked: `U+20DB`,
+`U+25A1`, `U+25B3`, `U+2220`, `U+2126`, `U+00B5`, `U+2207`, `U+00D7`);
+no font change.
+
+| Source | Draws |
+|--------|-------|
+| `\dddot{x}` | three dots over `x` (`U+20DB`, a combining mark of the math face, as `\ddot` uses `¨`) |
+| `\Box`, `\square` | `□` U+25A1, `Ord` |
+| `\triangle` | `△` U+25B3, `Ord` |
+| `\angle` | `∠` U+2220, `Ord` |
+| `\ohm`, `\micro` | `Ω` U+2126 (ohm sign), `µ` U+00B5 (micro sign), `Ord`, upright in every style |
+| `\grad` | `∇`, `Ord` (as `\nabla`) |
+| `\curl` | the ink of `\nabla\times` |
+| `\dd`, `\dd{x}` | `\,\mathrm{d}`, `\,\mathrm{d}x` |
+| `\dv{x}`, `\dv{f}{x}` | `\frac{\mathrm{d}}{\mathrm{d}x}`, `\frac{\mathrm{d}f}{\mathrm{d}x}` |
+| `\pdv{x}`, `\pdv{f}{x}` | `\frac{\partial}{\partial x}`, `\frac{\partial f}{\partial x}` |
+| `\abs{x}`, `\norm{v}` | `\lvert x\rvert`, `\lVert v\rVert` |
+| `\order{h^2}` | `\mathcal{O}(h^2)` |
+| `\vb{F}`, `\vu{n}` | `\mathbf{F}`, `\hat{\mathbf{n}}` |
+
+- **AC-1** `\Box \square \triangle \angle \ohm \micro \grad` are symbol
+  rows with that text and class, each drawn as one unwarned math-face
+  glyph with metrics; `\ohm` and `\micro` stay upright inside
+  `\mathbf`/`\mathit`; `\div` is still `÷` (`Bin`) —
+  `tex_parse_classical_physics_symbols_have_their_text_and_class`,
+  `tex_classical_physics_symbols_draw_glyphs_of_the_math_face`,
+  `tex_layout_units_stay_upright_in_every_style`,
+  `tex_parse_div_stays_division`.
+- **AC-2** `\dddot` is an accent (row of `ACCENTS`, one argument, the
+  accent parse tests cover it) that draws `U+20DB` from the math face
+  above its argument, centred on its ink like `\ddot`, and keeps the
+  argument's width — `tex_layout_dddot_draws_three_dots_over_its_argument`,
+  `tex_parse_accents_take_one_argument` (its name list gains `dddot`).
+- **AC-3** The shortcuts parse as `Node::Command` with their required
+  arguments (any argument form) and then each optional argument that is
+  a `{group}`: `\dv{x}` has one argument, `\dv{f}{x}` two, `\dd` none,
+  `\dd{x}` one, `\dd x` none (then a space and `x`), `\curl` none; all
+  print back unchanged —
+  `tex_parse_physics_shortcuts_take_their_arguments`.
+- **AC-4** A shortcut without a required argument (`\dv`, `\abs`,
+  `\vb^2`) is a literal in the warning colour —
+  `tex_parse_physics_shortcut_without_required_argument_is_literal`.
+- **AC-5** Each shortcut draws the same box (width, ascent, descent,
+  italic correction and ink) as its long form, alone and between
+  neighbours (`a\abs{x}b`, `\curl\vb{A}`, `\dd{x}\,\dd{y}`), nested
+  (`\abs{\vb{F}}`, `\dv{\vb{r}}{t}`) and in scripts (`e^{\abs{x}}`) —
+  `tex_layout_physics_shortcuts_match_their_long_forms`.
+- **AC-6** A shortcut that is the base of a script is one ordinary atom:
+  `\abs{x}^2` draws as `{\lvert x\rvert}^2` —
+  `tex_layout_physics_shortcut_as_script_base_is_one_atom`.
+- **AC-7** The expansion helper: `expansion(name)` finds the row;
+  `expand` returns `None` for any other node; every row's name is
+  unique and none is also a symbol, accent, alphabet or other command;
+  each template parses with no literal and uses only the slots `#1` …
+  `#k` its argument count allows —
+  `tex_expansions_are_well_formed`, `tex_expand_replaces_slots_with_arguments`.
+- **AC-8** The fuzzer types every new command (`tests/fuzz.rs`); the
+  print round trip and totality properties cover them.
+
+Manual checks left for the owner: `$\dv{f}{x}$`, `$\pdv{f}{x}$`,
+`$\vb{F} = m\dddot{x}$`.
 
 ## Out of scope
 
 - `\left`/`\right` growing brackets, `\eval`, matrices.
 - SI units (`siunitx`).
+- `\laplacian`, the divergence meaning of `\div`, the `[n]` order of
+  `\dv`/`\pdv`/`\dd`, starred forms, `\qty` and the other bracket-sizing
+  commands, `\vdot`, `\cross`, `\fdv`, `\var` (ADR-T69-1).
 
 ## Files owned
 
@@ -73,12 +144,12 @@ To be written in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T69): …`
-- [ ] tests — `test(T69): …`
-- [ ] models — `feat(T69): …`
-- [ ] behaviour — `feat(T69): …`
-- [ ] quality — `chore(T69): …`
-- [ ] docs — `docs(T69): …`
+- [x] spec — `docs(T69): …`
+- [x] tests — `test(T69): …`
+- [x] models — `feat(T69): …`
+- [x] behaviour — `feat(T69): …`
+- [x] quality — `chore(T69): …` (rustfmt only)
+- [x] docs — `docs(T69): …`
 
 ## Learning path
 
@@ -88,3 +159,22 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented (batch run), branched from
+  `task/T68-category-symbols`. Seven symbol rows, the `\dddot` accent
+  row, and the shared expansion helper for T70: `ExpansionDef`,
+  `EXPANSIONS`, `expansion`, `expand` (ADR-T69-1). The parser gives a
+  shortcut its required arguments, then each optional `{group}`; layout
+  splices the long form among the neighbours, or lays it out as one atom
+  when it is a script's base. No font or `math_metrics` change.
+  `scripts/check.sh` and `scripts/check.sh --fuzz` green.
+- 2026-11-04 — UNATTENDED CHOICE: `\dddot` draws the combining mark
+  `U+20DB` of the math face (already in the T55 subset), not three
+  built dots. `\ohm` is the ohm sign `U+2126` and `\micro` the micro
+  sign `U+00B5`, so no alphabet slants them. `\dv`/`\pdv`/`\dd` use an
+  upright `\mathrm{d}` (the `physics` default). Optional arguments must
+  be braced (whitespace allowed before them), as `physics` reads them.
+- 2026-11-04 — Existing test changed: `tex_parse_accents_take_one_argument`
+  lists `dddot` among the accent names. The new `\dddot` test was fixed
+  in the behaviour commit to measure mark centres the way accents do
+  (`Ink::bounds`). Manual checks for the owner: `$\dv{f}{x}$`,
+  `$\pdv{f}{x}$`, `$\vb{F} = m\dddot{x}$`.
