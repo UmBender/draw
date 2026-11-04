@@ -20,6 +20,7 @@ use draw::core::numbering::FIRST_NUMBER;
 use draw::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
+use draw::core::snapshot::Snapshot;
 use draw::core::tap::PEN_TAP_SLOP_PX;
 use draw::core::tex;
 use draw::core::text_layout::typeset;
@@ -1232,6 +1233,186 @@ proptest! {
         for ink in &layout.ink {
             let ib = ink.bounds();
             prop_assert!(room.contains(ib.min) && room.contains(ib.max), "{ink:?}");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T74: editor snapshots (ADR-T74-1)
+// ---------------------------------------------------------------------------
+
+/// `editor` through snapshot text and back.
+fn snapshot_round_trip(editor: &Editor) -> Result<Editor, TestCaseError> {
+    let text = editor.snapshot().to_text();
+    let snapshot = Snapshot::parse(&text)
+        .map_err(|err| TestCaseError::fail(format!("own text rejected: {err}\n{text}")))?;
+    let loaded = Editor::from_snapshot(snapshot);
+    prop_assert_eq!(loaded.snapshot().to_text(), text, "text not canonical");
+    Ok(loaded)
+}
+
+/// T74 AC-1: runs `session[..cut]`, round-trips the state, then feeds
+/// the rest to both editors and compares them after every event.
+fn check_snapshot_continues_equal(
+    session: &[InputEvent],
+    cut: prop::sample::Index,
+    start: Editor,
+) -> Result<(), TestCaseError> {
+    let cut = cut.index(session.len() + 1);
+    let (head, tail) = session.split_at(cut);
+    let mut editor = run_session_on(start, head)?;
+    let mut loaded = snapshot_round_trip(&editor)?;
+    prop_assert!(loaded == editor, "loaded state differs at {}", cut);
+    for (i, &event) in tail.iter().enumerate() {
+        editor.handle(event);
+        loaded.handle(event);
+        prop_assert!(loaded == editor, "differs after event {} ({:?})", cut + i, event);
+    }
+    Ok(())
+}
+
+/// Tokens that appear in snapshot text, for mutations.
+const SNAPSHOT_TOKENS: [&str; 34] = [
+    "-", "0", "1", "2", "7", "64", "65", "999", "4294967295", "18446744073709551615",
+    "-1", "0.0", "-0.0", "1e38", "1e-45", "NaN", "inf", "\"\"", "\"x\\n\"", "\"\\u{0}\"",
+    "\"unterminated", "\\", "pen", "select", "left", "holding", "move", "marquee", "replace",
+    "insert", "stroke", "grid", "[tools]", "draw-snapshot",
+];
+
+/// One edit of snapshot text.
+#[derive(Debug, Clone)]
+enum Mutation {
+    /// Replace token `token` of line `line` with a pool token.
+    Token { line: prop::sample::Index, token: prop::sample::Index, with: &'static str },
+    /// Drop a line.
+    Drop(prop::sample::Index),
+    /// Copy a line below itself.
+    Duplicate(prop::sample::Index),
+    /// Swap two lines.
+    Swap(prop::sample::Index, prop::sample::Index),
+    /// Cut the text at a byte offset (on a char boundary).
+    Truncate(prop::sample::Index),
+}
+
+fn arb_mutation() -> impl Strategy<Value = Mutation> {
+    let index = any::<prop::sample::Index>;
+    prop_oneof![
+        6 => (index(), index(), select(&SNAPSHOT_TOKENS[..]))
+            .prop_map(|(line, token, with)| Mutation::Token { line, token, with }),
+        2 => index().prop_map(Mutation::Drop),
+        2 => index().prop_map(Mutation::Duplicate),
+        1 => (index(), index()).prop_map(|(a, b)| Mutation::Swap(a, b)),
+        1 => index().prop_map(Mutation::Truncate),
+    ]
+}
+
+/// `text` with `mutations` applied.
+fn mutate(text: &str, mutations: &[Mutation]) -> String {
+    let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
+    for mutation in mutations {
+        if lines.is_empty() {
+            break;
+        }
+        match mutation {
+            Mutation::Token { line, token, with } => {
+                let line = line.index(lines.len());
+                let mut tokens: Vec<&str> = lines[line].split(' ').collect();
+                let token = token.index(tokens.len());
+                tokens[token] = with;
+                lines[line] = tokens.join(" ");
+            }
+            Mutation::Drop(line) => {
+                lines.remove(line.index(lines.len()));
+            }
+            Mutation::Duplicate(line) => {
+                let line = line.index(lines.len());
+                lines.insert(line, lines[line].clone());
+            }
+            Mutation::Swap(a, b) => {
+                let (a, b) = (a.index(lines.len()), b.index(lines.len()));
+                lines.swap(a, b);
+            }
+            Mutation::Truncate(at) => {
+                let joined = lines.join("\n");
+                let mut at = at.index(joined.len() + 1);
+                while !joined.is_char_boundary(at) {
+                    at -= 1;
+                }
+                lines = joined[..at].lines().map(str::to_owned).collect();
+            }
+        }
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    /// T74 AC-1.
+    #[test]
+    fn snapshot_round_trip_continues_equal(
+        session in arb_session(),
+        cut in any::<prop::sample::Index>(),
+    ) {
+        check_snapshot_continues_equal(&session, cut, Editor::new())?;
+    }
+
+    /// T74 AC-1 with text in shapes on.
+    #[test]
+    fn shape_text_snapshot_round_trip_continues_equal(
+        session in arb_session(),
+        cut in any::<prop::sample::Index>(),
+    ) {
+        check_snapshot_continues_equal(&session, cut, Editor::new().with_experimental(SHAPE_TEXT_ON))?;
+    }
+
+    /// T74 AC-1 with the pen tap filter on (mid-tap states).
+    #[test]
+    fn pen_tap_snapshot_round_trip_continues_equal(
+        session in arb_pressure_session(),
+        cut in any::<prop::sample::Index>(),
+    ) {
+        check_snapshot_continues_equal(&session, cut, pen_editor())?;
+    }
+
+    /// T74 AC-3: any text parses or fails with a line number.
+    #[test]
+    fn snapshot_parse_is_total(text in "(?s).{0,400}") {
+        // Act
+        let result = Snapshot::parse(&text);
+
+        // Assert
+        if let Err(err) = result {
+            prop_assert!(err.line >= 1 && err.line <= text.lines().count().max(1) + 1, "{}", err);
+        }
+    }
+
+    /// T74 AC-3: mutated real snapshots parse or fail cleanly; what loads
+    /// keeps the invariants under further input.
+    #[test]
+    fn snapshot_mutated_text_is_total(
+        session in arb_session(),
+        mutations in prop::collection::vec(arb_mutation(), 1..6),
+        more in arb_session(),
+    ) {
+        // Arrange
+        let editor = run_session_on(Editor::new().with_experimental(SHAPE_TEXT_ON), &session)?;
+        let text = mutate(&editor.snapshot().to_text(), &mutations);
+
+        // Act
+        let result = Snapshot::parse(&text);
+
+        // Assert
+        match result {
+            Err(err) => prop_assert!(err.line >= 1, "{}", err),
+            Ok(snapshot) => {
+                let canonical = snapshot.to_text();
+                let loaded = Editor::from_snapshot(snapshot);
+                prop_assert_eq!(loaded.snapshot().to_text(), canonical);
+                run_session_on(loaded, &more)?;
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ pub mod palette;
 pub mod pressure;
 pub mod shape;
 pub mod smoothing;
+pub mod snapshot;
 pub mod snap;
 pub mod tap;
 pub mod tex;
