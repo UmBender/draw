@@ -6001,4 +6001,156 @@ mod tests {
             assert_eq!(faces(&b.ink)[0].1, Face::Math, "{name}");
         }
     }
+
+    // ---- T67 algebra and group theory symbols ------------------------------
+
+    /// The *Spec* table of T67: name, text, class.
+    const ALGEBRA: [(&str, &str, Class); 20] = [
+        ("lhd", "⊲", Class::Rel),
+        ("rhd", "⊳", Class::Rel),
+        ("unlhd", "⊴", Class::Rel),
+        ("unrhd", "⊵", Class::Rel),
+        ("triangleleft", "⊲", Class::Rel),
+        ("triangleright", "⊳", Class::Rel),
+        ("trianglelefteq", "⊴", Class::Rel),
+        ("trianglerighteq", "⊵", Class::Rel),
+        ("ntriangleleft", "⋪", Class::Rel),
+        ("ntriangleright", "⋫", Class::Rel),
+        ("rtimes", "⋊", Class::Bin),
+        ("ltimes", "⋉", Class::Bin),
+        ("wr", "≀", Class::Bin),
+        ("odot", "⊙", Class::Bin),
+        ("ominus", "⊖", Class::Bin),
+        ("oslash", "⊘", Class::Bin),
+        ("boxplus", "⊞", Class::Bin),
+        ("boxtimes", "⊠", Class::Bin),
+        ("amalg", "⨿", Class::Bin),
+        ("diamond", "⋄", Class::Bin),
+    ];
+
+    /// The operator names of T67, `Class::Op`, drawn as their name.
+    const ALGEBRA_OPS: [&str; 12] = [
+        "Hom", "End", "Aut", "Inn", "Gal", "Ker", "im", "coker", "id", "sgn", "tr", "rank",
+    ];
+
+    #[test]
+    fn tex_parse_algebra_symbols_have_their_text_and_class() {
+        for (name, text, class) in ALGEBRA {
+            // Arrange
+            let src = format!("$\\{name}$");
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_algebra_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in ALGEBRA {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: one unwarned math-face glyph with metrics.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), 1, "{name}");
+            assert!(!got[0].3, "{name}");
+            assert_eq!(text.chars().collect::<Vec<_>>(), vec![got[0].0], "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_algebra_operator_names_are_operator_words() {
+        for name in ALGEBRA_OPS {
+            // Arrange
+            let src = format!("$\\{name}(A, B)$");
+
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((name, Class::Op)),
+                "{name}"
+            );
+            assert_eq!(print(&parse(&src)), src, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_algebra_operator_names_are_upright_math_words() {
+        for name in ALGEBRA_OPS {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: its letters, upright, from the math face.
+            let got = glyphs(&b.ink);
+            let chars: String = got.iter().map(|g| g.0).collect();
+            assert_eq!(chars, name, "{name}");
+            assert!(got.iter().all(|g| !g.3), "{name}: {got:?}");
+            assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math), "{name}");
+            for ch in name.chars() {
+                assert!(math_metrics::get(ch).is_some(), "{ch:?}");
+            }
+            assert!(approx_eq(b.width, adv(name), EPS), "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_algebra_operator_names_match_operatorname() {
+        for name in ALGEBRA_OPS {
+            for tail in ["", "(A, B)", " x", "^2", "_k x"] {
+                // Act
+                let short = boxed(&format!("\\{name}{tail}"));
+                let long = boxed(&format!("\\operatorname{{{name}}}{tail}"));
+
+                // Assert
+                assert_eq!(short, long, "{name}{tail}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_algebra_symbols_space_by_class() {
+        let width = |src: &str| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
+
+        // Relations.
+        for (src, rel) in [
+            ("a\\trianglelefteq b", "⊴"),
+            ("a\\lhd b", "⊲"),
+            ("a\\ntriangleleft b", "⋪"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(rel) + 2.0 * REL_SPACE, EPS),
+                "{src}"
+            );
+        }
+        // Binary operators.
+        for (src, op) in [
+            ("a\\rtimes b", "⋊"),
+            ("a\\wr b", "≀"),
+            ("a\\odot b", "⊙"),
+            ("a\\amalg b", "⨿"),
+        ] {
+            assert!(
+                approx_eq(width(src), ab + adv(op) + 2.0 * BIN_SPACE, EPS),
+                "{src}"
+            );
+        }
+    }
 }
