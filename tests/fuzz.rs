@@ -171,7 +171,7 @@ fn arb_char() -> impl Strategy<Value = char> {
     ]
 }
 
-/// Formula-ish source (T30, T33, T36, T39, T61, T63, T64): TeX tokens, `$`s, braces and any `char`.
+/// Formula-ish source (T30, T33, T36, T39, T61, T63, T64, T54): TeX tokens, `$`s, braces and any `char`.
 fn arb_formula_text() -> impl Strategy<Value = String> {
     let token = prop_oneof![
         6 => select(vec![
@@ -199,6 +199,8 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\inf", "\\sup", "\\liminf", "\\limsup", "\\det", "\\Pr", "\\gcd", "\\exp",
             "\\lg", "\\deg", "\\dim", "\\ker", "\\hom", "\\arg", "\\limsup_n",
             "\\operatorname", "\\operatorname*",
+            // T54: math alphabets, nested through the "{" and "}" tokens.
+            "\\mathrm", "\\mathit", "\\mathnormal",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

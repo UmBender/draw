@@ -2319,7 +2319,7 @@ mod tests {
                 "\\min", "\\log", "\\le", "\\{", "\\}", "\\foo", "(", ")", "|",
                 "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
                 "\\partial", "\\vec", "\\hat", "\\bar", "\\dot", "\\ddot", "\\tilde",
-                "\\overline",
+                "\\overline", "\\mathrm", "\\mathit", "\\mathnormal", "\\Gamma",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -3509,6 +3509,237 @@ mod tests {
             "{x:?}"
         );
         assert!(x.y > 0.0, "{x:?}");
+    }
+
+    // ---- T54 math alphabets (ADR-T54-1) -----------------------------------
+
+    /// The alphabet commands of T54, `\mathcal` included.
+    const ALPHABET_NAMES: [&str; 4] = ["mathcal", "mathrm", "mathit", "mathnormal"];
+
+    /// One character of every kind an alphabet maps: Latin, digits, Greek
+    /// capitals (without the unassigned U+03A2) and lowercase Greek with
+    /// its variants.
+    fn every_kind() -> String {
+        let greek_upper = ('Α'..='Ω').filter(|&c| c != '\u{3A2}');
+        ('A'..='Z')
+            .chain('a'..='z')
+            .chain('0'..='9')
+            .chain(greek_upper)
+            .chain('α'..='ω')
+            .chain("ϵϑϰϕϱϖ".chars())
+            .collect()
+    }
+
+    /// The characters of every glyph of `src`, in order.
+    fn drawn(src: &str) -> Vec<char> {
+        glyphs(&boxed(src).ink).iter().map(|g| g.0).collect()
+    }
+
+    #[test]
+    fn tex_parse_alphabets_take_one_argument() {
+        for name in ALPHABET_NAMES {
+            // Act / Assert: braced or one token.
+            assert_eq!(
+                math(&format!("\\{name}{{d}}")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![braced(vec![Node::Char('d')])],
+                }],
+                "{name}"
+            );
+            assert_eq!(
+                math(&format!("\\{name}\\Gamma")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![tok(sym("Gamma"))],
+                }],
+                "{name}"
+            );
+            for src in [
+                format!("$\\{name}{{diff}}^2$"),
+                format!("$\\{name} x$"),
+                format!("$\\{name}{{\\mathrm{{A}}b}}$"),
+            ] {
+                assert_eq!(print(&parse(&src)), src);
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_alphabet_without_argument_is_literal() {
+        for name in ALPHABET_NAMES {
+            // Act / Assert
+            let literal = Node::Literal(format!("\\{name}"));
+            assert_eq!(math(&format!("\\{name}")), vec![literal.clone()], "{name}");
+            assert_eq!(
+                math(&format!("\\{name}}}")),
+                vec![literal, Node::Literal("}".to_owned())],
+                "{name}"
+            );
+            // Drawn in the warning colour.
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+            assert!(got.iter().all(|g| g.3), "{name}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn tex_alphabet_rows_draw_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        for name in ALPHABET_NAMES {
+            assert_eq!(alphabet(name).map(|a| a.name), Some(name));
+        }
+        assert!(alphabet("mathbb").is_none());
+
+        for src in std::iter::once(all.clone()).chain(
+            ALPHABETS
+                .iter()
+                .map(|row| format!("\\{}{{{all}}}", row.name)),
+        ) {
+            // Act
+            let b = boxed(&src);
+
+            // Assert: one math-face glyph per character, none warned.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), all.chars().count(), "{src}");
+            assert!(got.iter().all(|g| !g.3), "{src}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{src}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{src}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_mathrm_letters_are_upright_without_italic_correction() {
+        // Act
+        let d = boxed("\\mathrm{d}");
+        let dx = boxed("\\mathrm{d}x");
+        let pow = boxed("\\mathrm{d}^2");
+
+        // Assert: the upright d, no italic correction, nothing between
+        // it and the next atom or its exponent.
+        assert_eq!(faces(&d.ink), vec![('d', Face::Math)]);
+        assert!(approx_eq(d.italic, 0.0, EPS), "{}", d.italic);
+        assert!(approx_eq(d.width, adv("d"), EPS));
+        let (x, _) = glyph(&dx.ink, X);
+        assert!(approx_eq(x.x, adv("d"), EPS), "{x:?}");
+        let (two, _) = glyph(&pow.ink, '2');
+        assert!(approx_eq(two.x, adv("d"), EPS), "{two:?}");
+        assert_eq!(drawn("\\mathrm{Ab1}"), vec!['A', 'b', '1']);
+        // Digits and Greek as outside `\mathrm`.
+        assert_eq!(drawn("\\mathrm{2\\alpha\\Gamma}"), drawn("2\\alpha\\Gamma"));
+        assert_eq!(drawn("\\mathrm{αΔ}"), drawn("αΔ"));
+    }
+
+    #[test]
+    fn tex_layout_mathit_sets_a_word_without_gaps() {
+        // Arrange
+        let word = [italic('d'), I, F, F];
+
+        // Act
+        let b = boxed("\\mathit{diff}");
+
+        // Assert: italic letters side by side, as wide as their advances.
+        let got = glyphs(&b.ink);
+        assert_eq!(got.iter().map(|g| g.0).collect::<Vec<_>>(), word);
+        let mut at = 0.0;
+        for (ch, pos, _, _) in got {
+            assert!(pos.approx_eq(v(at, 0.0), EPS), "{ch:?}: {pos:?}");
+            at += mm(ch).advance;
+        }
+        assert!(approx_eq(b.width, at, EPS));
+        // One ordinary atom, spaced like a group.
+        assert_eq!(boxed("\\mathit{diff}=x"), boxed("{diff}=x"));
+        // Digits stay upright.
+        assert_eq!(drawn("\\mathit{x2}"), vec![X, '2']);
+    }
+
+    #[test]
+    fn tex_mathnormal_gives_italic_greek_capitals() {
+        // Act / Assert
+        assert_eq!(
+            drawn("\\mathnormal{\\Gamma\\Omega}"),
+            vec!['\u{1D6E4}', '\u{1D6FA}']
+        );
+        assert_eq!(boxed("\\mathnormal{x}"), boxed("x"));
+        assert_eq!(drawn("\\mathnormal{a1\\alpha}"), drawn("a1\\alpha"));
+        let capitals = SYMBOLS.iter().filter(|s| {
+            let mut chars = s.text.chars();
+            matches!((chars.next(), chars.next()), (Some('Α'..='Ω'), None))
+        });
+        let mut count = 0;
+        for def in capitals {
+            let ch = def.text.chars().next().map_or(0, u32::from);
+            let want = char::from_u32(0x1D6E2 + ch - 0x391);
+            assert_eq!(
+                drawn(&format!("\\mathnormal{{\\{}}}", def.name)).first().copied(),
+                want,
+                "{}",
+                def.name
+            );
+            count += 1;
+        }
+        assert!(count >= 11, "{count}");
+    }
+
+    #[test]
+    fn tex_alphabets_nest_innermost_first() {
+        // Act / Assert
+        assert_eq!(drawn("\\mathrm{\\mathcal{A}}"), vec!['\u{1D49C}']);
+        assert_eq!(drawn("\\mathcal{\\mathrm{A}}"), vec!['A']);
+        assert_eq!(drawn("\\mathcal{\\mathrm{a}}"), vec!['a']);
+        assert_eq!(drawn("\\mathrm{\\mathcal{a}}"), vec!['a']);
+        assert_eq!(drawn("\\mathrm{\\mathcal{B}x}"), vec!['\u{212C}', 'x']);
+        assert_eq!(drawn("\\mathcal{a}"), vec![A]);
+        assert_eq!(drawn("\\mathnormal{\\mathrm{\\Gamma}}"), vec!['\u{1D6E4}']);
+        assert_eq!(drawn("\\mathrm{\\mathit{x}}"), vec![X]);
+        assert_eq!(drawn("\\mathit{\\mathrm{x}}"), vec!['x']);
+        // Scripts and fractions inside an alphabet keep it.
+        assert_eq!(drawn("\\mathrm{d_x^y}"), vec!['d', 'x', 'y']);
+        assert_eq!(drawn("\\mathrm{\\frac{a}{b}}"), vec!['a', 'b']);
+    }
+
+    #[test]
+    fn tex_alphabets_leave_operators_and_text_alone() {
+        for name in ALPHABET_NAMES {
+            for src in [
+                "\\log+\\sum\\text{ab}",
+                "\\operatorname{rank}",
+                "\\sin\\gcd\\to\\infty",
+                "\\aleph\\partial\\nabla",
+            ] {
+                // Act / Assert
+                assert_eq!(
+                    boxed(&format!("\\{name}{{{src}}}")),
+                    boxed(src),
+                    "\\{name}{{{src}}}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_skew_follows_the_alphabet() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        let mark_centre = |src: &str| ink_box(&mark_ink(&boxed(src).ink, hat)).center().x;
+
+        // Act / Assert: an upright letter is centred on.
+        let plain = boxed("\\mathrm{x}");
+        let centre = ink_box(&plain.ink).center().x;
+        let got = mark_centre("\\mathrm{\\hat{x}}");
+        assert!(approx_eq(got, centre, EPS), "{got} vs {centre}");
+
+        // An italic capital Greek letter is skewed over.
+        for src in ["\\mathnormal", "\\mathit"] {
+            let plain = boxed(&format!("{src}{{\\Gamma}}"));
+            let want = ink_box(&plain.ink).center().x + ACCENT_SKEW * plain.ascent;
+            let got = mark_centre(&format!("{src}{{\\hat{{\\Gamma}}}}"));
+            assert!(approx_eq(got, want, EPS), "{src}: {got} vs {want}");
+        }
     }
 
     #[test]
