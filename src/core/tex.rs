@@ -194,9 +194,23 @@ pub enum Node {
         /// The body between the braces (balanced braces allowed).
         body: String,
     },
+    /// An infix command of [`INFIX`] that split its group (or the
+    /// formula) in two, as TeX's `\over` does (ADR-T71-1).
+    Infix {
+        /// Name without the backslash.
+        name: String,
+        /// The nodes before the command.
+        left: Vec<Node>,
+        /// The nodes after the command.
+        right: Vec<Node>,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
+
+/// The infix commands that split their group (ADR-T71-1): `\over`,
+/// `\atop`, `\choose`, `\brack`, `\brace`.
+pub const INFIX: &[&str] = &["over", "atop", "choose", "brack", "brace"];
 
 /// A superscript or subscript.
 #[derive(Debug, Clone, PartialEq)]
@@ -441,6 +455,9 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("parallel", "∥", Class::Rel),
     def("perp", "⊥", Class::Rel),
     def("mid", "∣", Class::Rel),
+    // Combinatorics (T71).
+    def("nmid", "∤", Class::Rel),
+    def("#", "#", Class::Ord),
     def("rightarrow", "→", Class::Rel),
     def("leftrightarrow", "↔", Class::Rel),
     def("Leftarrow", "⇐", Class::Rel),
@@ -1330,19 +1347,47 @@ impl<'a> Parser<'a> {
     }
 
     /// Nodes up to `end`.
+    /// The first infix command of the list splits it in two; later ones
+    /// are literals (ADR-T71-1).
     fn list(&mut self, end: usize) -> Vec<Node> {
         let mut out: Vec<Node> = Vec::new();
+        let mut split: Option<(String, Vec<Node>)> = None;
         while self.pos < end {
             let ch = self.chars[self.pos];
             match ch {
                 '^' | '_' => self.script(ch, end, &mut out),
+                '\\' if split.is_none()
+                    && let Some(name) = self.infix(end) =>
+                {
+                    split = Some((name, std::mem::take(&mut out)));
+                }
                 _ => {
                     let node = self.atom(end);
                     out.push(node);
                 }
             }
         }
-        out
+        match split {
+            Some((name, left)) => vec![Node::Infix {
+                name,
+                left,
+                right: out,
+            }],
+            None => out,
+        }
+    }
+
+    /// The name of an infix command at the cursor (a `\`), read past;
+    /// `None` (cursor unchanged) for any other command.
+    fn infix(&mut self, end: usize) -> Option<String> {
+        let start = self.pos;
+        let name = self.name(end);
+        if INFIX.contains(&name.as_str()) {
+            Some(name)
+        } else {
+            self.pos = start;
+            None
+        }
     }
 
     /// One node that is not a script, at the cursor (which is before
@@ -1482,11 +1527,16 @@ impl<'a> Parser<'a> {
         }
         let after = self.pos;
         let node = match name.as_str() {
-            "frac" | "binom" => self.args(2, end).map(|args| Node::Command {
-                name: name.clone(),
-                args,
-            }),
-            n if matches!(n, "sqrt" | "pmod") || alphabet(n).is_some() || accent(n).is_some() => {
+            "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
+                self.args(2, end).map(|args| Node::Command {
+                    name: name.clone(),
+                    args,
+                })
+            }
+            n if matches!(n, "sqrt" | "pmod" | "underline")
+                || alphabet(n).is_some()
+                || accent(n).is_some() =>
+            {
                 self.args(1, end).map(|args| Node::Command {
                     name: name.clone(),
                     args,
@@ -1649,6 +1699,12 @@ fn print_node(node: &Node, out: &mut String) {
             out.push('{');
             out.push_str(body);
             out.push('}');
+        }
+        Node::Infix { name, left, right } => {
+            print_nodes(left, out);
+            out.push('\\');
+            out.push_str(name);
+            print_nodes(right, out);
         }
     }
 }
@@ -1824,8 +1880,10 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
             let b = match name.as_str() {
                 "frac" => fraction(arg(0), arg(1), scale, true, style),
-                "binom" => binomial(arg(0), arg(1), scale, style),
+                "binom" | "tbinom" | "dbinom" => binomial(arg(0), arg(1), scale, style),
+                "multiset" => delimited(arg(0), arg(1), "((", "))", scale, style),
                 "sqrt" => root(arg(0), scale, style),
+                "underline" => underlined(arg(0), scale, style),
                 // TeX's \pmod: a quad, "(mod", a third of a quad.
                 "pmod" => MathBox::row([
                     MathBox::gap(scale),
@@ -1847,6 +1905,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let class = if *star { Class::Limits } else { Class::Op };
             (MathBox::upright(body, scale), class)
         }
+        Node::Infix { name, left, right } => (infix(name, left, right, scale, style), Class::Ord),
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
@@ -2009,25 +2068,85 @@ fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool, style: Style) -> 
 
 /// `n` over `k` without a bar, in parentheses as tall as both.
 fn binomial(n: &[Node], k: &[Node], scale: f32, style: Style) -> MathBox {
+    delimited(n, k, "(", ")", scale, style)
+}
+
+/// `n` over `k` without a bar, between the brackets of `open` and
+/// `close` (side by side), all as tall as the stack.
+fn delimited(n: &[Node], k: &[Node], open: &str, close: &str, scale: f32, style: Style) -> MathBox {
     let inner = fraction(n, k, scale, false, style);
     let height = inner.ascent + inner.descent;
-    let unit = MathBox::math('(', 1.0);
+    let first = open.chars().next().unwrap_or('(');
+    let unit = MathBox::math(first, 1.0);
     let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
-    let paren = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
-    let (open, close) = (MathBox::math('(', paren), MathBox::math(')', paren));
-    // The parentheses' middle sits on the middle of the stack.
+    let size = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
+    let brackets = |s: &str| {
+        s.chars()
+            .map(|ch| MathBox::math(ch, size))
+            .collect::<Vec<_>>()
+    };
+    let (opens, closes) = (brackets(open), brackets(close));
+    // The brackets' middle sits on the middle of the stack.
     let middle = (inner.descent - inner.ascent) / 2.0;
-    let y = middle + (open.ascent - open.descent) / 2.0;
     let mut out = MathBox {
-        width: open.width + inner.width + close.width,
-        ascent: inner.ascent.max(open.ascent - y),
-        descent: inner.descent.max(open.descent + y),
+        width: 0.0,
+        ascent: inner.ascent,
+        descent: inner.descent,
         italic: 0.0,
         ink: Vec::new(),
     };
-    out.put(&open, Vec2::new(0.0, y));
-    out.put(&inner, Vec2::new(open.width, 0.0));
-    out.put(&close, Vec2::new(open.width + inner.width, y));
+    let mut place = |b: &MathBox, centred: bool| {
+        let y = if centred {
+            middle + (b.ascent - b.descent) / 2.0
+        } else {
+            0.0
+        };
+        out.put(b, Vec2::new(out.width, y));
+        out.width += b.width;
+        out.ascent = out.ascent.max(b.ascent - y);
+        out.descent = out.descent.max(b.descent + y);
+    };
+    for b in &opens {
+        place(b, true);
+    }
+    place(&inner, false);
+    for b in &closes {
+        place(b, true);
+    }
+    out
+}
+
+/// The infix command `name` (one of [`INFIX`]) between `left` and
+/// `right` (ADR-T71-1).
+fn infix(name: &str, left: &[Node], right: &[Node], scale: f32, style: Style) -> MathBox {
+    match name {
+        "over" => fraction(left, right, scale, true, style),
+        "atop" => fraction(left, right, scale, false, style),
+        "brack" => delimited(left, right, "[", "]", scale, style),
+        "brace" => delimited(left, right, "{", "}", scale, style),
+        _ => binomial(left, right, scale, style),
+    }
+}
+
+/// `\underline`: a rule under `content`, as wide as it, a gap below its
+/// descent (the mirror of `\overline`, ADR-T39-1). The box keeps the
+/// content's width, ascent and italic correction.
+fn underlined(content: &[Node], scale: f32, style: Style) -> MathBox {
+    let c = layout_styled(content, scale, style);
+    let width = RULE * scale;
+    let y = c.descent + ACCENT_GAP * scale + width / 2.0;
+    let mut out = MathBox {
+        width: c.width,
+        ascent: c.ascent,
+        descent: y + width / 2.0,
+        italic: c.italic,
+        ink: c.ink,
+    };
+    out.ink.push(Ink::Rule {
+        a: Vec2::new(0.0, y),
+        b: Vec2::new(c.width, y),
+        width,
+    });
     out
 }
 
@@ -5569,6 +5688,317 @@ mod tests {
             // The operand follows the operator, not under it.
             let (a, _) = glyph(&b.ink, '\u{1D434}');
             assert!(a.x >= op.x + mm(ch).advance * big - EPS, "{name}: {a:?}");
+        }
+    }
+
+    // ---- T71 combinatorics notation ----------------------------------------
+
+    /// The infix commands of ADR-T71-1.
+    const INFIXES: [&str; 5] = ["choose", "brack", "brace", "over", "atop"];
+
+    fn infix(name: &str, left: Vec<Node>, right: Vec<Node>) -> Node {
+        Node::Infix {
+            name: name.to_owned(),
+            left,
+            right,
+        }
+    }
+
+    fn space() -> Node {
+        Node::Space(" ".to_owned())
+    }
+
+    #[test]
+    fn tex_parse_infix_commands_split_their_group() {
+        for name in INFIXES {
+            // Arrange
+            let src = format!("{{n \\{name} k}}");
+
+            // Act
+            let nodes = math(&src);
+
+            // Assert
+            let split = infix(
+                name,
+                vec![Node::Char('n'), space()],
+                vec![space(), Node::Char('k')],
+            );
+            assert_eq!(nodes, vec![Node::Group(vec![split])], "{name}");
+            let dollars = format!("${src}$");
+            assert_eq!(print(&parse(&dollars)), dollars, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_parse_infix_at_top_level_splits_the_formula() {
+        // Act
+        let nodes = math("a+1\\over b");
+
+        // Assert
+        assert_eq!(
+            nodes,
+            vec![infix(
+                "over",
+                vec![Node::Char('a'), Node::Char('+'), Node::Char('1')],
+                vec![space(), Node::Char('b')],
+            )]
+        );
+    }
+
+    #[test]
+    fn tex_parse_infix_inside_an_argument_splits_the_argument() {
+        // Act
+        let nodes = math("\\frac{a\\over b}{c}");
+
+        // Assert
+        assert_eq!(
+            nodes,
+            vec![Node::Command {
+                name: "frac".to_owned(),
+                args: vec![
+                    braced(vec![infix(
+                        "over",
+                        vec![Node::Char('a')],
+                        vec![space(), Node::Char('b')],
+                    )]),
+                    braced(vec![Node::Char('c')]),
+                ],
+            }]
+        );
+    }
+
+    #[test]
+    fn tex_parse_second_infix_in_a_group_is_literal() {
+        // Arrange
+        let src = "a\\over b\\choose c";
+
+        // Act
+        let nodes = math(src);
+        let b = boxed(src);
+
+        // Assert
+        assert_eq!(
+            nodes,
+            vec![infix(
+                "over",
+                vec![Node::Char('a')],
+                vec![
+                    space(),
+                    Node::Char('b'),
+                    Node::Literal("\\choose".to_owned()),
+                    space(),
+                    Node::Char('c'),
+                ],
+            )]
+        );
+        assert!(glyphs(&b.ink).iter().any(|g| g.0 == 'c' && g.3), "warned");
+        let dollars = format!("${src}$");
+        assert_eq!(print(&parse(&dollars)), dollars);
+    }
+
+    #[test]
+    fn tex_parse_infix_in_nested_groups_splits_each() {
+        // Act
+        let nodes = math("{a\\over b}\\over c");
+
+        // Assert
+        let inner = infix(
+            "over",
+            vec![Node::Char('a')],
+            vec![space(), Node::Char('b')],
+        );
+        assert_eq!(
+            nodes,
+            vec![infix(
+                "over",
+                vec![Node::Group(vec![inner])],
+                vec![space(), Node::Char('c')],
+            )]
+        );
+    }
+
+    #[test]
+    fn tex_parse_script_after_infix_has_no_base() {
+        // Act
+        let nodes = math("n\\choose^2");
+
+        // Assert
+        assert_eq!(
+            nodes,
+            vec![infix(
+                "choose",
+                vec![Node::Char('n')],
+                vec![Node::Scripts {
+                    base: None,
+                    first: script(ScriptKind::Sup, tok(Node::Char('2'))),
+                    second: None,
+                }],
+            )]
+        );
+    }
+
+    #[test]
+    fn tex_layout_over_matches_frac() {
+        // Act
+        let infix = boxed("a \\over b");
+
+        // Assert
+        assert_eq!(infix, boxed("\\frac{a}{b}"));
+    }
+
+    #[test]
+    fn tex_layout_atop_is_frac_without_bar() {
+        // Arrange
+        let frac = boxed("\\frac{a}{b}");
+
+        // Act
+        let b = boxed("a \\atop b");
+
+        // Assert
+        assert_eq!(rules(&b.ink), []);
+        assert_eq!(glyphs(&b.ink), glyphs(&frac.ink));
+        assert!(approx_eq(b.width, frac.width, EPS));
+    }
+
+    #[test]
+    fn tex_layout_choose_and_tbinom_dbinom_match_binom() {
+        // Arrange
+        let binom = boxed("\\binom{n}{k}");
+
+        // Act
+        let choose = boxed("n \\choose k");
+        let tbinom = boxed("\\tbinom{n}{k}");
+        let dbinom = boxed("\\dbinom{n}{k}");
+
+        // Assert
+        assert_eq!(choose, binom);
+        assert_eq!(tbinom, binom);
+        assert_eq!(dbinom, binom);
+        for src in ["\\tbinom{n}{k}", "\\dbinom n k"] {
+            let dollars = format!("${src}$");
+            assert_eq!(print(&parse(&dollars)), dollars);
+        }
+    }
+
+    #[test]
+    fn tex_layout_brack_and_brace_use_their_brackets() {
+        for (name, open, close) in [("brack", '[', ']'), ("brace", '{', '}')] {
+            // Act
+            let b = boxed(&format!("n \\{name} k"));
+
+            // Assert
+            assert_eq!(rules(&b.ink), [], "{name}");
+            let g = glyphs(&b.ink);
+            let (first, last) = (g[0], g[g.len() - 1]);
+            assert_eq!((first.0, last.0), (open, close), "{name}");
+            assert!(first.2 > 1.0 && approx_eq(first.2, last.2, EPS), "{g:?}");
+            assert!(g.iter().all(|g| !g.3), "{name}: unwarned");
+            assert!(faces(&b.ink).iter().all(|f| f.1 == Face::Math), "{name}");
+            assert!(approx_eq(first.1.x, 0.0, EPS), "{name}");
+            assert!(
+                approx_eq(last.1.x + mm(close).advance * last.2, b.width, EPS),
+                "{name}"
+            );
+            let (n, _) = glyph(&b.ink, N);
+            let (k, _) = glyph(&b.ink, K);
+            assert!(n.y < k.y, "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_multiset_has_double_parentheses() {
+        // Arrange
+        let src = "\\multiset{n}{k}";
+
+        // Act
+        let b = boxed(src);
+
+        // Assert
+        assert_eq!(rules(&b.ink), []);
+        let g = glyphs(&b.ink);
+        let chars: Vec<char> = g.iter().map(|g| g.0).collect();
+        assert_eq!(chars, ['(', '(', N, K, ')', ')']);
+        assert!(g.iter().all(|g| !g.3));
+        let paren = g[0].2;
+        assert!(paren > 1.0);
+        assert!(g[1].1.x > g[0].1.x);
+        // The binomial with one more parenthesis each side, next to it.
+        let binom = boxed("\\binom{n}{k}");
+        assert!(approx_eq(paren, glyphs(&binom.ink)[0].2, EPS));
+        assert!(approx_eq(g[1].1.x, adv("(") * paren, EPS));
+        assert!(approx_eq(b.width, binom.width + adv("()") * paren, EPS));
+        assert!(approx_eq(g[5].1.x + mm(')').advance * g[5].2, b.width, EPS));
+        let dollars = format!("${src}$");
+        assert_eq!(print(&parse(&dollars)), dollars);
+    }
+
+    #[test]
+    fn tex_parse_multiset_without_two_arguments_is_literal() {
+        // Act
+        let nodes = math("\\multiset{n}");
+
+        // Assert
+        assert_eq!(nodes[0], Node::Literal("\\multiset".to_owned()));
+    }
+
+    #[test]
+    fn tex_layout_underline_spans_its_argument_below() {
+        for arg in ["AB", "x", "y", "x_i"] {
+            // Arrange
+            let plain = boxed(arg);
+
+            // Act
+            let b = boxed(&format!("\\underline{{{arg}}}"));
+
+            // Assert
+            let strokes = rules(&b.ink);
+            assert_eq!(strokes.len(), 1, "{arg}");
+            let (p, q, width) = strokes[0];
+            assert!(approx_eq(p.y, q.y, EPS), "{arg}: horizontal");
+            assert!(approx_eq(p.x.min(q.x), 0.0, EPS), "{arg}: {p:?}");
+            assert!(approx_eq(p.x.max(q.x), plain.width, EPS), "{arg}: {q:?}");
+            assert!(approx_eq(width, RULE, EPS));
+            assert!(p.y - width / 2.0 > plain.descent, "{arg}: below the ink");
+            assert!(approx_eq(b.descent, p.y + width / 2.0, EPS), "{arg}");
+            assert!(approx_eq(b.width, plain.width, EPS), "{arg}");
+            assert!(approx_eq(b.ascent, plain.ascent, EPS), "{arg}");
+            assert!(approx_eq(b.italic, plain.italic, EPS), "{arg}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_falling_factorial_underlines_the_superscript() {
+        // Act
+        let b = boxed("x^{\\underline{k}}");
+
+        // Assert: one rule, under the raised k, at script size.
+        let strokes = rules(&b.ink);
+        assert_eq!(strokes.len(), 1);
+        let (p, _, width) = strokes[0];
+        let (k, ks) = glyph(&b.ink, K);
+        assert!(ks < 1.0);
+        assert!(p.y > k.y && p.y < 0.0, "{p:?} {k:?}");
+        assert!(approx_eq(width, RULE * ks, EPS));
+    }
+
+    #[test]
+    fn tex_parse_nmid_and_hash_have_their_text_and_class() {
+        for (name, text, class) in [("nmid", "∤", Class::Rel), ("#", "#", Class::Ord)] {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+            let g = glyphs(&b.ink);
+            assert_eq!(g.len(), 1, "{name}");
+            assert!(!g[0].3, "{name}");
+            assert_eq!(faces(&b.ink)[0].1, Face::Math, "{name}");
         }
     }
 }
