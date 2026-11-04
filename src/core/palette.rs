@@ -347,8 +347,16 @@ mod tests {
 
     #[test]
     fn relative_luminance_of_black_and_white() {
-        assert!(approx_eq(Rgba::from_hex(0x000000).relative_luminance(), 0.0, EPS));
-        assert!(approx_eq(Rgba::from_hex(0xffffff).relative_luminance(), 1.0, EPS));
+        assert!(approx_eq(
+            Rgba::from_hex(0x000000).relative_luminance(),
+            0.0,
+            EPS
+        ));
+        assert!(approx_eq(
+            Rgba::from_hex(0xffffff).relative_luminance(),
+            1.0,
+            EPS
+        ));
     }
 
     #[test]

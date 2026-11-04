@@ -284,6 +284,9 @@ mod tests {
         })
     }
 
+    /// A scanner rule: the line test and the name reported when it matches.
+    type Check = (fn(&str) -> bool, &'static str);
+
     /// Every colour literal of `source` outside comments and test code, as
     /// `(line number, rule)`.
     fn colour_literals(source: &str) -> Vec<(usize, &'static str)> {
@@ -292,7 +295,9 @@ mod tests {
         while let Some((n, raw)) = lines.next() {
             if raw.trim() == "#[cfg(test)]" {
                 let indent = &raw[..raw.len() - raw.trim_start().len()];
-                let single = lines.peek().is_some_and(|(_, l)| l.trim_end().ends_with(';'));
+                let single = lines
+                    .peek()
+                    .is_some_and(|(_, l)| l.trim_end().ends_with(';'));
                 if single {
                     lines.next();
                 } else {
@@ -306,7 +311,7 @@ mod tests {
                 continue;
             }
             let line = raw.find("//").map_or(raw, |i| &raw[..i]);
-            let checks: [(fn(&str) -> bool, &'static str); 5] = [
+            let checks: [Check; 5] = [
                 (has_hex_colour, "hex colour literal"),
                 (has_numeric_constructor, "colour built from numbers"),
                 (has_struct_literal, "colour struct literal"),
@@ -326,7 +331,9 @@ mod tests {
     fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
         for entry in entries {
-            let path = entry.expect("directory entry").path();
+            let path = entry
+                .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+                .path();
             if path.is_dir() {
                 rust_files(&path, out);
             } else if path.extension().is_some_and(|e| e == "rs") {
@@ -347,7 +354,8 @@ mod tests {
         // Act
         let mut found = Vec::new();
         for file in files.iter().filter(|f| **f != theme) {
-            let source = fs::read_to_string(file).expect("readable source");
+            let source =
+                fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
             for (line, rule) in colour_literals(&source) {
                 let shown = file.strip_prefix(&src).unwrap_or(file).display();
                 found.push(format!("src/{shown}:{line}: {rule}"));
@@ -373,10 +381,11 @@ mod tests {
     #[test]
     fn scanner_ignores_hashes_and_code_points() {
         // Arrange: hash seeds use `_`, code points have five digits.
-        let source = "const K: u64 = 0x9e37_79b9_7f4a_7c15;\nconst P: u32 = 0x1D400;\nlet x = 0xff;";
+        let source =
+            "const K: u64 = 0x9e37_79b9_7f4a_7c15;\nconst P: u32 = 0x1D400;\nlet x = 0xff;";
 
         // Act / Assert
-        assert!(colour_literals(source).is_empty());
+        assert_eq!(colour_literals(source), []);
     }
 
     #[test]
@@ -395,7 +404,7 @@ mod tests {
     #[test]
     fn scanner_allows_constructor_with_variable() {
         let source = "Color::new(red, green, blue, alpha)\nRgba::from_hex(theme::INK)\npub const fn from_hex(hex: u32) -> Self {";
-        assert!(colour_literals(source).is_empty());
+        assert_eq!(colour_literals(source), []);
     }
 
     #[test]
@@ -421,7 +430,7 @@ mod tests {
     #[test]
     fn scanner_allows_definitions_and_comparisons() {
         let source = "pub struct Rgba {\nimpl Rgba {\nfn f(x: Rgba) -> Color {\nimpl From<X> for Color {\nif c.a == 0 {}\nstruct MyColor {";
-        assert!(colour_literals(source).is_empty());
+        assert_eq!(colour_literals(source), []);
     }
 
     #[test]

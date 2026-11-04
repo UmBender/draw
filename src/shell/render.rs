@@ -2535,8 +2535,13 @@ mod tests {
     fn theme_alphas_give_previous_vertex_bytes() {
         // Arrange: (theme colour, theme alpha, old token, old factor).
         let cases = [
-            (theme::MARQUEE_FILL, theme::MARQUEE_FILL_ALPHA, 0x2d4f67, 0.25),
-            (theme::DOT_GRID, theme::DOT_GRID_ALPHA, 0xa6a69c, 0.35),
+            (
+                theme::MARQUEE_FILL,
+                theme::MARQUEE_FILL_ALPHA,
+                0x002d_4f67,
+                0.25,
+            ),
+            (theme::DOT_GRID, theme::DOT_GRID_ALPHA, 0x00a6_a69c, 0.35),
         ];
 
         for (hex, alpha, old_hex, factor) in cases {
@@ -2555,10 +2560,11 @@ mod tests {
     #[test]
     fn faded_text_gives_previous_vertex_bytes() {
         // Arrange: the old toolbar faded `THEME.text` by 0.3.
-        let old = old_faded(0xc5c9c5, 0.3);
+        let old = old_faded(0x00c5_c9c5, 0.3);
 
         // Act
-        let new = to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT).faded(theme::TOOLBAR_DISABLED_ALPHA));
+        let new =
+            to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT).faded(theme::TOOLBAR_DISABLED_ALPHA));
 
         // Assert
         assert_eq!(vertex_bytes(new), vertex_bytes(old));
@@ -2567,7 +2573,7 @@ mod tests {
     #[test]
     fn hex_color_is_opaque_theme_colour() {
         let c = hex_color(theme::CANVAS);
-        assert!(same_color(c, to_mq_color(Rgba::from_hex(0x181616))));
+        assert!(same_color(c, to_mq_color(Rgba::from_hex(0x0018_1616))));
     }
 
     #[test]
