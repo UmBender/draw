@@ -1,7 +1,7 @@
 ---
 id: T61
 title: Hebrew letters
-status: in-progress
+status: review
 wave: 40
 branch: task/T61-hebrew-letters
 depends_on: []
@@ -88,12 +88,12 @@ the rows are behaviour) and is skipped.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T61): …`
-- [ ] tests — `test(T61): …`
-- [ ] models — `feat(T61): …`
-- [ ] behaviour — `feat(T61): …`
-- [ ] quality — `chore(T61): …`
-- [ ] docs — `docs(T61): …`
+- [x] spec — `docs(T61): …`
+- [x] tests — `test(T61): …`
+- [x] models — skipped: no new types or signatures (rows only)
+- [x] behaviour — `feat(T61): …`
+- [x] quality — skipped: `scripts/check.sh --fuzz` green with no changes
+- [x] docs — `docs(T61): …`
 
 ## Learning path
 
@@ -103,3 +103,13 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented in the unattended batch run: four `Ord` rows
+  after the Greek capitals; `italic` / `calligraphic` already leave
+  U+2135–2138 as they are and `math_metrics` already had their rows, so
+  no font or mapping change. Models step skipped (no types); quality step
+  skipped (`scripts/check.sh --fuzz` green, fmt and clippy clean on the
+  first run). No ADR, no tutorial (plan defaults). Fuzzer tokens:
+  `\aleph \beth \gimel \daleth \aleph_0`. README and feature note list
+  the four commands.
+- 2026-11-04 — manual check left for the owner: look at
+  `$\aleph_0 < 2^{\aleph_0}$` in the app.

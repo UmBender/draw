@@ -40,6 +40,11 @@ accent moves right with the slant, and scripts attach after the accented
 letter (`$\vec{F}_x$`, `$\dot{x}^2$`). (Since [[T39 Accents in formulas]];
 tutorial [[39 Accents that sit on their letters]].)
 
+The Hebrew letters of set theory are there for cardinals:
+`$\aleph_0 < 2^{\aleph_0}$`, `\beth_1`, `\gimel`, `\daleth` — upright,
+as in LaTeX, and never changed by `\mathcal`. (Since
+[[T61 Hebrew letters]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -52,6 +57,7 @@ tutorial [[39 Accents that sit on their letters]].)
 | Integrals (limits beside) | `\int_0^1`, `\iint`, `\iiint`, `\oint`, `\oiint` |
 | Functions (upright) | `\log \ln \gcd \lcm`, `a \bmod m`, `\pmod{m}` |
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
+| Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
 | Overline | `\overline{AB}` (as wide as its argument) |
@@ -108,4 +114,6 @@ of the same batch.
 - A character the math font lacks (e.g. CJK in `\text{…}`) falls back to
   a monospaced cell.
 - A formula stays on one line.
+- Hebrew is there as math letters only: Hebrew text (`א`–`ת` in
+  `\text{…}` or plain text) and right-to-left layout are not.
 - Lines with scripts or fractions are taller than plain lines.
