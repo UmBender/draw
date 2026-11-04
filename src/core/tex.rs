@@ -1356,7 +1356,9 @@ impl<'a> Parser<'a> {
             let ch = self.chars[self.pos];
             match ch {
                 '^' | '_' => self.script(ch, end, &mut out),
-                '\\' if split.is_none() && let Some(name) = self.infix(end) => {
+                '\\' if split.is_none()
+                    && let Some(name) = self.infix(end) =>
+                {
                     split = Some((name, std::mem::take(&mut out)));
                 }
                 _ => {
@@ -2078,7 +2080,11 @@ fn delimited(n: &[Node], k: &[Node], open: &str, close: &str, scale: f32, style:
     let unit = MathBox::math(first, 1.0);
     let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
     let size = (height / tall).clamp(scale, BINOM_MAX_SCALE * scale);
-    let brackets = |s: &str| s.chars().map(|ch| MathBox::math(ch, size)).collect::<Vec<_>>();
+    let brackets = |s: &str| {
+        s.chars()
+            .map(|ch| MathBox::math(ch, size))
+            .collect::<Vec<_>>()
+    };
     let (opens, closes) = (brackets(open), brackets(close));
     // The brackets' middle sits on the middle of the stack.
     let middle = (inner.descent - inner.ascent) / 2.0;
@@ -5796,7 +5802,11 @@ mod tests {
         let nodes = math("{a\\over b}\\over c");
 
         // Assert
-        let inner = infix("over", vec![Node::Char('a')], vec![space(), Node::Char('b')]);
+        let inner = infix(
+            "over",
+            vec![Node::Char('a')],
+            vec![space(), Node::Char('b')],
+        );
         assert_eq!(
             nodes,
             vec![infix(
@@ -5917,11 +5927,7 @@ mod tests {
         assert!(approx_eq(paren, glyphs(&binom.ink)[0].2, EPS));
         assert!(approx_eq(g[1].1.x, adv("(") * paren, EPS));
         assert!(approx_eq(b.width, binom.width + adv("()") * paren, EPS));
-        assert!(approx_eq(
-            g[5].1.x + mm(')').advance * g[5].2,
-            b.width,
-            EPS
-        ));
+        assert!(approx_eq(g[5].1.x + mm(')').advance * g[5].2, b.width, EPS));
         let dollars = format!("${src}$");
         assert_eq!(print(&parse(&dollars)), dollars);
     }
