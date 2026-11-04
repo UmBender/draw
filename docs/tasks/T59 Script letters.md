@@ -1,7 +1,7 @@
 ---
 id: T59
 title: Script letters
-status: in-progress
+status: review
 wave: 38
 branch: task/T59-script-letters
 depends_on: [T54, T55]
@@ -102,12 +102,12 @@ drawn as fallback cells.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T59): …`
-- [ ] tests — `test(T59): …`
-- [ ] models — `feat(T59): …`
-- [ ] behaviour — `feat(T59): …`
-- [ ] quality — `chore(T59): …`
-- [ ] docs — `docs(T59): …`
+- [x] spec — `docs(T59): …`
+- [x] tests — `test(T59): …`
+- [x] models — `feat(T59): …`
+- [x] behaviour — `feat(T59): …`
+- [x] quality — `chore(T59): …`
+- [x] docs — `docs(T59): …`
 
 ## Learning path
 
@@ -125,3 +125,9 @@ None planned; the feature note is enough.
   dropped, not faked), `\mathscr` ships capitals only, the same row as
   `\mathcal`; `\mathscr{l}` draws an italic l. Recorded in ADR-T59-1.
   The owner's manual check `$\mathscr{l}$` will show `𝑙`, not `𝓁`.
+- 2026-11-04 — tests, row and docs done; `\mathscr` is `..MATHCAL` with
+  its own name. No deviation from the spec or *Files owned*; the only
+  departure from the plan is the dropped lowercase above. The quality
+  step only ran rustfmt on the tests. `scripts/check.sh` and `--fuzz`
+  green. No tutorial. Manual check for the owner:
+  `$\mathscr{L}, \mathscr{l}$` (script L, italic l).

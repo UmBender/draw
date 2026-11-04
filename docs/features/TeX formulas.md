@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -117,6 +117,16 @@ centred. `\Re` and `\Im` still draw `ℜ` and `ℑ`. There is no bold
 fraktur: `\mathbf{\mathfrak{g}}` is a plain fraktur g (the innermost
 alphabet wins). (Since [[T58 Fraktur letters]].)
 
+Script capitals name sheaves, Lagrangians and transforms:
+`$\mathscr{L}$`, `$\mathscr{F}$`, `$\mathscr{H}$`. `\mathscr` is the
+`\mathcal` alphabet under the rsfs name: Latin Modern Math has a single
+script style, so in draw the two commands look the same (in LaTeX rsfs
+is rounder). The font has no script lowercase either, so
+`\mathscr{l}`, like `\mathcal{l}`, is the italic 𝑙 of the text around
+it; digits and Greek stay as outside, and an accent is skewed as over
+any slanted letter. (Since [[T59 Script letters]],
+[[ADR-T59-1 One script alphabet for mathscr and mathcal]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -135,6 +145,7 @@ alphabet wins). (Since [[T58 Fraktur letters]].)
 | Greek variants | `\varepsilon \vartheta \varkappa \varpi \varrho \varsigma \varphi`; italic capitals `\varGamma` … `\varOmega`; `\Alpha \Beta \Epsilon \Zeta \Eta \Iota \Kappa \Mu \Nu \Omicron \Rho \Tau \Chi` (upright, unicode-math names) |
 | Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
+| Script capitals | `\mathscr{L}`, `\mathscr{F}` (the same letters as `\mathcal`) |
 | Math alphabets | `\mathrm{d}x` (upright roman), `\mathit{diff}` (italic word), `\mathnormal{\Gamma}` (italic Greek capitals); nested, the innermost wins |
 | Bold | `\mathbf{v}` (upright bold, also digits and Greek capitals), `\boldsymbol{\alpha}`, `\bm{x}` (bold italic) |
 | Blackboard bold | `\mathbb{R}`, `\mathbb{Z}_p`, `\mathds{1}_A` (capitals, lowercase and digits) |
@@ -203,7 +214,9 @@ of the same batch.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
   literals); `\longrightarrow`, `\implies` and `\triangle` have no
   command yet (their glyphs are in the font subset since T55).
-- `\mathcal` has capitals only (as in TeX); no bold fraktur, no `\R` /
+- `\mathcal` and `\mathscr` have capitals only and look the same (the
+  font has one script style and no script lowercase); no bold script,
+  no bold fraktur, no `\R` /
   `\N` shortcuts and no double-struck Greek or italic (`ℾ ⅅ ⅆ`). No bold operators, fraction bars or roots, no `\pmb` and
   no `\boldmath`. `\mathit{diff}` has no text-italic ligatures or kerning
   (the letters are the math italic ones), and `\mathrm` has no upright
