@@ -278,11 +278,39 @@ fn run_length(
     len
 }
 
+/// Same shapes in the same order with the same ids, and the same next id;
+/// the lookup cache does not count.
+impl PartialEq for Document {
+    fn eq(&self, other: &Self) -> bool {
+        self.next_id == other.next_id && self.shapes == other.shapes
+    }
+}
+
 impl Document {
     /// An empty document.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The id [`Document::next_id`] hands out next, without taking it
+    /// (snapshots, ADR-T74-1).
+    #[must_use]
+    pub(crate) fn peek_next_id(&self) -> u64 {
+        self.next_id
+    }
+
+    /// A document holding `shapes` in z-order. The caller checks that the
+    /// ids are unique and below `next_id` (snapshots, ADR-T74-1).
+    #[must_use]
+    pub(crate) fn from_parts(shapes: Vec<(ShapeId, Shape)>, next_id: u64) -> Self {
+        let ids = shapes.iter().map(|(id, _)| *id).collect();
+        Self {
+            shapes,
+            ids,
+            next_id,
+            positions: OnceCell::new(),
+        }
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.

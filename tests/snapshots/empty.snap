@@ -1,0 +1,29 @@
+draw-snapshot 1
+[editor]
+tool pen
+style 0 3.0
+helpers 0 0 0 1 4 4 0
+smoothing low
+toolbar 1
+viewport 0.0 0.0
+cursor 0.0 0.0
+space 0
+pressure -
+tap 0.0 idle
+gesture -
+reedit -
+camera 0.0 0.0 1.0
+selection
+[document]
+next-id 0
+[history]
+limits 500 67108864
+[clipboard]
+[tools]
+pen -
+shape -
+grid -
+text-size -
+text -
+eraser - remove 0
+select -

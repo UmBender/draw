@@ -20,12 +20,13 @@ use crate::core::geom::Vec2;
 use crate::core::numbering;
 use crate::core::shape::{Shape, Style};
 use crate::core::snap::{self, DragKind, Snapped};
+use crate::core::snapshot::{Reader, SnapshotError, Writer};
 
 /// Shortest drag, in screen pixels, that creates a shape.
 pub const MIN_DRAG_PX: f32 = 2.0;
 
 /// Gesture state of this tool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     /// The drag in progress, if the button is down.
     drag: Option<Drag>,
@@ -72,7 +73,7 @@ impl Kind {
 }
 
 /// A drag in progress.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Drag {
     /// Shape being created.
     kind: Kind,
@@ -232,6 +233,63 @@ fn constrain_45(start: Vec2, end: Vec2) -> Vec2 {
     let angle = (d.y.atan2(d.x) / step).round() * step;
     let dir = Vec2::new(angle.cos(), angle.sin());
     start + dir * d.dot(dir).max(0.0)
+}
+
+/// Snapshot names of the kinds.
+const KINDS: [(Kind, &str); 4] = [
+    (Kind::Line, "line"),
+    (Kind::Arrow, "arrow"),
+    (Kind::Rect, "rect"),
+    (Kind::Ellipse, "ellipse"),
+];
+
+impl State {
+    /// `shape -` or `shape <kind> <start> <end> <shift> <style> <guides>`
+    /// (snapshots, ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        w.record("shape", |l| match &self.drag {
+            None => {
+                l.none();
+            }
+            Some(drag) => {
+                let kind = KINDS
+                    .iter()
+                    .find(|(k, _)| *k == drag.kind)
+                    .map_or("line", |(_, n)| n);
+                l.word(kind)
+                    .put(&drag.start)
+                    .put(&drag.end)
+                    .bool(drag.shift)
+                    .put(&drag.style)
+                    .put(&drag.guides);
+            }
+        });
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+        let mut t = r.record("shape")?;
+        let drag = if t.none() {
+            None
+        } else {
+            let word = t.word("shape kind")?;
+            let kind = KINDS
+                .iter()
+                .find(|(_, n)| *n == word)
+                .map(|(k, _)| *k)
+                .ok_or_else(|| t.error(format!("unknown shape kind `{word}`")))?;
+            Some(Drag {
+                kind,
+                start: t.loose_vec2()?,
+                end: t.loose_vec2()?,
+                shift: t.bool("shift")?,
+                style: t.get()?,
+                guides: t.loose_segments()?,
+            })
+        };
+        t.end()?;
+        Ok(Self { drag })
+    }
 }
 
 #[cfg(test)]

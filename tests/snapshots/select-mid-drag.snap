@@ -1,0 +1,38 @@
+draw-snapshot 1
+[editor]
+tool select
+style 0 3.0
+helpers 0 0 0 1 4 4 0
+smoothing low
+toolbar 1
+viewport 1920.0 1080.0
+cursor 260.0 130.0
+space 0
+pressure -
+tap 0.0 idle
+gesture tool left select 0
+reedit -
+camera 0.0 0.0 1.0
+selection 0 1
+[document]
+next-id 3
+shape 0 rect 0 3.0 100.0 100.0 300.0 200.0 - - -
+shape 1 ellipse 0 3.0 400.0 100.0 550.0 250.0 - - -
+shape 2 line 0 3.0 100.0 400.0 600.0 450.0
+[history]
+limits 500 67108864
+undo 1
+insert 0 0 rect 0 3.0 100.0 100.0 300.0 200.0 - - -
+undo 1
+insert 1 1 ellipse 0 3.0 400.0 100.0 550.0 250.0 - - -
+undo 1
+insert 2 2 line 0 3.0 100.0 400.0 600.0 450.0
+[clipboard]
+[tools]
+pen -
+shape -
+grid -
+text-size -
+text -
+eraser - remove 0
+select move 200.0 100.0 260.0 130.0 0 0 2 0 1

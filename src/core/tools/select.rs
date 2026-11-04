@@ -21,6 +21,7 @@ use crate::core::clipboard;
 use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::Shape;
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
 /// Pointer travel (screen pixels) below which a press-release is a click.
 pub const CLICK_SLOP_PX: f32 = 3.0;
@@ -29,7 +30,7 @@ pub const CLICK_SLOP_PX: f32 = 3.0;
 pub const HIT_TOLERANCE_PX: f32 = 6.0;
 
 /// Gesture state of this tool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     /// The gesture in progress, if any.
     gesture: Option<Gesture>,
@@ -303,6 +304,75 @@ pub fn delete_selection(ctx: &mut ToolCtx<'_>) -> bool {
     let changed = ctx.commit(tx);
     ctx.selection.clear();
     changed
+}
+
+impl State {
+    /// `select -`, `select marquee <start> <current> <additive>` or
+    /// `select move <start> <current> <clicked> <duplicate> <ids>`
+    /// (snapshots, ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        w.record("select", |l| match &self.gesture {
+            None => {
+                l.none();
+            }
+            Some(Gesture::Marquee {
+                start,
+                current,
+                additive,
+            }) => {
+                l.word("marquee").put(start).put(current).bool(*additive);
+            }
+            Some(Gesture::Move {
+                start,
+                current,
+                clicked,
+                ids,
+                duplicate,
+            }) => {
+                l.word("move")
+                    .put(start)
+                    .put(current)
+                    .put(clicked)
+                    .bool(*duplicate)
+                    .put(ids);
+            }
+        });
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote: moved ids in `doc`.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
+        let mut t = r.record("select")?;
+        let gesture = if t.none() {
+            None
+        } else {
+            match t.word("select gesture")? {
+                "marquee" => Some(Gesture::Marquee {
+                    start: t.loose_vec2()?,
+                    current: t.loose_vec2()?,
+                    additive: t.bool("additive")?,
+                }),
+                "move" => {
+                    let start = t.loose_vec2()?;
+                    let current = t.loose_vec2()?;
+                    let clicked: ShapeId = t.get()?;
+                    let duplicate = t.bool("duplicate")?;
+                    let ids: Vec<ShapeId> = t.get()?;
+                    check_ids(&t, doc, &[clicked])?;
+                    check_ids(&t, doc, &ids)?;
+                    Some(Gesture::Move {
+                        start,
+                        current,
+                        clicked,
+                        ids,
+                        duplicate,
+                    })
+                }
+                other => return Err(t.error(format!("unknown select gesture `{other}`"))),
+            }
+        };
+        t.end()?;
+        Ok(Self { gesture })
+    }
 }
 
 #[cfg(test)]

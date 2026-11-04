@@ -40,7 +40,46 @@ impl Default for History {
     }
 }
 
+/// Same stacks, limit and budget; the change count and the byte estimate
+/// do not count (ADR-T74-1).
+impl PartialEq for History {
+    fn eq(&self, other: &Self) -> bool {
+        self.limit == other.limit
+            && self.budget == other.budget
+            && self.undo == other.undo
+            && self.redo == other.redo
+    }
+}
+
 impl History {
+    /// The undo stack (oldest first), the redo stack (most recently undone
+    /// last), the limit and the byte budget (snapshots, ADR-T74-1).
+    #[must_use]
+    pub(crate) fn parts(&self) -> (&VecDeque<Transaction>, &[Transaction], usize, usize) {
+        (&self.undo, &self.redo, self.limit, self.budget)
+    }
+
+    /// A history with these stacks; the byte estimate is recomputed and the
+    /// change count starts at 0. The caller checks `1 ≤ undo.len() ≤ limit`
+    /// rules (snapshots, ADR-T74-1).
+    #[must_use]
+    pub(crate) fn from_parts(
+        undo: VecDeque<Transaction>,
+        redo: Vec<Transaction>,
+        limit: usize,
+        budget: usize,
+    ) -> Self {
+        let bytes = undo.iter().chain(&redo).map(Transaction::heap_bytes).sum();
+        Self {
+            undo,
+            redo,
+            limit: limit.max(1),
+            budget,
+            bytes,
+            changes: 0,
+        }
+    }
+
     /// Empty history keeping up to [`HISTORY_LIMIT`] transactions.
     #[must_use]
     pub fn new() -> Self {

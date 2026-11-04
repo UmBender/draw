@@ -29,7 +29,9 @@ use macroquad::window::{
 };
 
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::io::Write as _;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -41,6 +43,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
 use crate::core::palette::{THEME, palette};
+use crate::core::snapshot::Snapshot;
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
@@ -368,6 +371,74 @@ pub fn is_dump_chord(event: &InputEvent) -> bool {
     matches!(event, InputEvent::KeyDown { key, mods } if *key == DUMP_CHORD.key && *mods == DUMP_CHORD.mods)
 }
 
+/// The chord that saves an editor snapshot, caught before the editor like
+/// [`DUMP_CHORD`] (ADR-T74-1).
+pub const SNAPSHOT_CHORD: KeyChord = KeyChord::ctrl_shift(Key::S);
+
+/// Environment variable naming a snapshot file to start from.
+pub const SNAPSHOT_ENV: &str = "DRAW_SNAPSHOT";
+
+/// Whether `event` is a press of [`SNAPSHOT_CHORD`].
+#[must_use]
+pub fn is_snapshot_chord(event: &InputEvent) -> bool {
+    matches!(event, InputEvent::KeyDown { key, mods } if *key == SNAPSHOT_CHORD.key && *mods == SNAPSHOT_CHORD.mods)
+}
+
+/// Where a snapshot taken at `unix_secs` goes:
+/// `<state dir>/snapshots/snapshot-<UTC stamp>.snap`.
+#[must_use]
+pub fn snapshot_path(state_dir: &Path, unix_secs: u64) -> PathBuf {
+    state_dir.join("snapshots").join(format!(
+        "snapshot-{}.snap",
+        diag::file::utc_stamp(unix_secs)
+    ))
+}
+
+/// The snapshot to start from, given the [`SNAPSHOT_ENV`] value and a way
+/// to read files: the snapshot, or an error line for the log. Unset or
+/// empty starts empty without an error.
+pub fn startup_snapshot(
+    value: Option<&OsStr>,
+    read: impl FnOnce(&Path) -> std::io::Result<String>,
+) -> (Option<Snapshot>, Option<String>) {
+    let Some(value) = value.filter(|v| !v.is_empty()) else {
+        return (None, None);
+    };
+    let path = Path::new(value);
+    let shown = path.display();
+    match read(path).map(|text| Snapshot::parse(&text)) {
+        Ok(Ok(snapshot)) => (Some(snapshot), None),
+        Ok(Err(err)) => (
+            None,
+            Some(format!("{SNAPSHOT_ENV}={shown}: {err}; starting empty")),
+        ),
+        Err(err) => (
+            None,
+            Some(format!("{SNAPSHOT_ENV}={shown}: {err}; starting empty")),
+        ),
+    }
+}
+
+/// Writes `editor` to a new snapshot file in the state directory; the
+/// path, or why it was not written.
+fn save_snapshot(editor: &Editor) -> Result<PathBuf, String> {
+    let dir = crate::shell::crash::state_dir(
+        std::env::var_os("XDG_STATE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    )
+    .ok_or_else(|| "no state directory".to_owned())?;
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let path = snapshot_path(&dir, unix);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    }
+    std::fs::write(&path, editor.snapshot().to_text())
+        .map_err(|err| format!("{}: {err}", path.display()))?;
+    Ok(path)
+}
+
 /// The flight recorder's kind of a frame that re-rendered something.
 fn frame_kind(redraw: Redraw) -> Option<FrameKind> {
     match redraw {
@@ -498,6 +569,21 @@ pub async fn run() {
     let mut editor = Editor::new()
         .with_experimental(Experimental::from_env_value(experimental.as_deref()))
         .with_tap_slop(tablet.tap_slop_px());
+    // A snapshot replaces the whole state, its switches included (T74).
+    let (snapshot, error) = startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
+        std::fs::read_to_string(path)
+    });
+    if let Some(error) = error {
+        eprintln!("draw: {error}");
+        diag::log(Level::Error, &error);
+    }
+    if let Some(snapshot) = snapshot {
+        editor = Editor::from_snapshot(snapshot);
+        diag::log(
+            Level::Info,
+            &format!("started from {SNAPSHOT_ENV} snapshot"),
+        );
+    }
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
@@ -522,6 +608,13 @@ pub async fn run() {
         for event in collector.drain() {
             if is_dump_chord(&event) {
                 dump_asked = true;
+            } else if is_snapshot_chord(&event) {
+                let line = match save_snapshot(&editor) {
+                    Ok(path) => format!("snapshot written to {}", path.display()),
+                    Err(err) => format!("snapshot not written: {err}"),
+                };
+                eprintln!("draw: {line}");
+                diag::log(Level::Info, &line);
             } else {
                 dirty |= dispatch(&mut editor, event);
             }
@@ -1780,5 +1873,117 @@ mod tests {
 
         // Assert
         assert_eq!(line, "fatal signal: SIGSEGV");
+    }
+
+    // T74: snapshots from the shell.
+
+    #[test]
+    fn snapshot_chord_is_ctrl_shift_s() {
+        // Arrange
+        use crate::core::input::{Key, Modifiers};
+        use crate::core::keymap::KeyChord;
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        };
+        let press = |key, mods| InputEvent::KeyDown { key, mods };
+
+        // Act / Assert
+        assert_eq!(SNAPSHOT_CHORD, KeyChord::ctrl_shift(Key::S));
+        assert!(is_snapshot_chord(&press(Key::S, ctrl_shift)));
+        assert!(!is_snapshot_chord(&press(Key::S, Modifiers::NONE)));
+        assert!(!is_snapshot_chord(&press(
+            Key::S,
+            Modifiers {
+                shift: false,
+                ..ctrl_shift
+            }
+        )));
+        assert!(!is_snapshot_chord(&press(Key::L, ctrl_shift)));
+        assert!(!is_dump_chord(&press(Key::S, ctrl_shift)));
+        // Not bound in the keymap: the chord never reaches a command.
+        assert_eq!(crate::core::keymap::resolve(Key::S, ctrl_shift), None);
+    }
+
+    #[test]
+    fn snapshot_path_is_in_state_dir() {
+        // Arrange
+        let dir = std::path::Path::new("/state/draw");
+
+        // Act
+        let path = snapshot_path(dir, 951_782_400);
+
+        // Assert
+        assert_eq!(
+            path,
+            std::path::Path::new("/state/draw/snapshots/snapshot-20000229T000000Z.snap")
+        );
+    }
+
+    #[test]
+    fn startup_snapshot_unset_is_none() {
+        // Arrange
+        let read = |_: &std::path::Path| -> std::io::Result<String> { panic!("nothing to read") };
+
+        // Act / Assert
+        assert_eq!(SNAPSHOT_ENV, "DRAW_SNAPSHOT");
+        let (snapshot, error) = startup_snapshot(None, read);
+        assert!(snapshot.is_none() && error.is_none());
+        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("")), read);
+        assert!(snapshot.is_none() && error.is_none());
+    }
+
+    #[test]
+    fn startup_snapshot_missing_file_reports_error() {
+        // Arrange
+        let read = |_: &std::path::Path| -> std::io::Result<String> {
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+        };
+
+        // Act
+        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("/no/such.snap")), read);
+
+        // Assert
+        assert!(snapshot.is_none());
+        let error = error.unwrap_or_default();
+        assert!(error.contains("/no/such.snap"), "{error}");
+        assert!(error.contains("DRAW_SNAPSHOT"), "{error}");
+    }
+
+    #[test]
+    fn startup_snapshot_bad_file_reports_line() {
+        // Arrange
+        let read = |_: &std::path::Path| -> std::io::Result<String> {
+            Ok("draw-snapshot 1\n[nonsense]\n".to_owned())
+        };
+
+        // Act
+        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("bad.snap")), read);
+
+        // Assert
+        assert!(snapshot.is_none());
+        let error = error.unwrap_or_default();
+        assert!(
+            error.contains("bad.snap") && error.contains("line 2"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn startup_snapshot_loads_valid_file() {
+        // Arrange
+        let mut editor = Editor::new();
+        editor.apply(crate::core::command::Command::ToggleToolbar);
+        let text = editor.snapshot().to_text();
+        let read = move |_: &std::path::Path| -> std::io::Result<String> { Ok(text.clone()) };
+
+        // Act
+        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("ok.snap")), read);
+
+        // Assert
+        assert!(error.is_none(), "{error:?}");
+        let loaded = snapshot.map(Editor::from_snapshot);
+        assert_eq!(loaded, Some(editor));
     }
 }

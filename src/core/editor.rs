@@ -16,6 +16,7 @@
 //! outside the block or any applied command commits it as one undo step.
 
 use crate::core::camera::Camera;
+use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
@@ -28,6 +29,7 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
+use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
@@ -196,7 +198,246 @@ impl Default for Editor {
     }
 }
 
+impl PartialEq for Editor {
+    /// Compares the saved state (ADR-T74-1): the keymap, the document
+    /// revisions and the history's change count and byte estimate are not
+    /// part of it.
+    fn eq(&self, other: &Self) -> bool {
+        self.doc == other.doc
+            && self.history == other.history
+            && self.camera == other.camera
+            && self.selection == other.selection
+            && self.clipboard == other.clipboard
+            && self.tools == other.tools
+            && self.tool == other.tool
+            && self.style == other.style
+            && self.smoothing == other.smoothing
+            && self.toolbar_visible == other.toolbar_visible
+            && self.viewport == other.viewport
+            && self.cursor == other.cursor
+            && self.space_held == other.space_held
+            && self.gesture == other.gesture
+            && self.reedit == other.reedit
+            && self.tap == other.tap
+            && self.pressure == other.pressure
+    }
+}
+
 impl Editor {
+    /// This state as a [`Snapshot`] (ADR-T74-1).
+    #[must_use]
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot(self.clone())
+    }
+
+    /// The editor a snapshot holds, with the default keymap and fresh
+    /// document revisions, so the shell renders everything.
+    #[must_use]
+    pub fn from_snapshot(snapshot: Snapshot) -> Self {
+        Self {
+            keymap: keymap::resolve,
+            doc_revision: 0,
+            doc_base_revision: 0,
+            ..snapshot.0
+        }
+    }
+
+    /// Writes every section after the header (ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        let helpers = self.style.helpers;
+        w.section("editor");
+        w.record("tool", |l| {
+            l.put(&self.tool);
+        });
+        w.record("style", |l| {
+            l.put(&self.style.color).f32(self.style.width_px);
+        });
+        w.record("helpers", |l| {
+            l.bool(helpers.smart_snap)
+                .bool(helpers.grid_snap)
+                .bool(helpers.numbering)
+                .word(helpers.next_number)
+                .word(helpers.grid_cols)
+                .word(helpers.grid_rows)
+                .bool(helpers.experimental.shape_text);
+        });
+        w.record("smoothing", |l| {
+            l.put(&self.smoothing);
+        });
+        w.record("toolbar", |l| {
+            l.bool(self.toolbar_visible);
+        });
+        w.record("viewport", |l| {
+            l.put(&self.viewport);
+        });
+        w.record("cursor", |l| {
+            l.put(&self.cursor);
+        });
+        w.record("space", |l| {
+            l.bool(self.space_held);
+        });
+        w.record("pressure", |l| {
+            l.opt(self.pressure.as_ref());
+        });
+        w.record("tap", |l| {
+            l.put(&self.tap);
+        });
+        w.record("gesture", |l| match self.gesture {
+            None => {
+                l.none();
+            }
+            Some(Gesture::Pan { button, pan }) => {
+                l.word("pan").put(&button).put(&pan.last());
+            }
+            Some(Gesture::Tool {
+                button,
+                tool,
+                fresh,
+            }) => {
+                l.word("tool").put(&button).put(&tool).bool(fresh);
+            }
+        });
+        w.record("reedit", |l| match &self.reedit {
+            None => {
+                l.none();
+            }
+            Some((pos, id)) => {
+                l.put(pos).put(id);
+            }
+        });
+        w.record("camera", |l| {
+            l.put(&self.camera.offset()).f32(self.camera.zoom());
+        });
+        w.record("selection", |l| {
+            for id in &self.selection {
+                l.put(id);
+            }
+        });
+        snapshot::write_document(w, &self.doc);
+        let (undo, redo, limit, budget) = self.history.parts();
+        w.section("history");
+        w.record("limits", |l| {
+            l.word(limit).word(budget);
+        });
+        snapshot::write_transactions(w, "undo", undo);
+        snapshot::write_transactions(w, "redo", redo);
+        snapshot::write_clipboard(w, self.clipboard.shapes());
+        self.tools.write_snapshot(w);
+    }
+
+    /// Reads every section after the header and checks the editor's
+    /// invariants (ADR-T74-1).
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+        r.section("editor")?;
+        let mut t = r.record("tool")?;
+        let tool = t.get()?;
+        t.end()?;
+
+        let mut t = r.record("style")?;
+        let color = t.get()?;
+        let width_px = t.f32("width")?;
+        t.end()?;
+        if !WIDTH_LADDER_PX
+            .iter()
+            .any(|w| w.to_bits() == width_px.to_bits())
+        {
+            return Err(t.error(format!("width {width_px} is not on the width ladder")));
+        }
+
+        let helpers = read_helpers(r)?;
+        r.set_shape_text(helpers.experimental.shape_text);
+
+        let mut t = r.record("smoothing")?;
+        let smoothing = t.get()?;
+        t.end()?;
+        let mut t = r.record("toolbar")?;
+        let toolbar_visible = t.bool("toolbar")?;
+        t.end()?;
+        let mut t = r.record("viewport")?;
+        let viewport: Vec2 = t.get()?;
+        t.end()?;
+        if viewport.x < 0.0 || viewport.y < 0.0 {
+            return Err(t.error("negative viewport"));
+        }
+        let mut t = r.record("cursor")?;
+        let cursor = t.get()?;
+        t.end()?;
+        let mut t = r.record("space")?;
+        let space_held = t.bool("space")?;
+        t.end()?;
+        let mut t = r.record("pressure")?;
+        let pressure: Option<f32> = t.opt()?;
+        t.end()?;
+        if pressure.is_some_and(|p| !(0.0..=1.0).contains(&p)) {
+            return Err(t.error("pressure outside [0, 1]"));
+        }
+        let mut t = r.record("tap")?;
+        let tap = t.get()?;
+        t.end()?;
+
+        let gesture = read_gesture(r)?;
+
+        let mut reedit_tokens = r.record("reedit")?;
+        let reedit = if reedit_tokens.none() {
+            None
+        } else {
+            Some((reedit_tokens.get()?, reedit_tokens.get()?))
+        };
+        reedit_tokens.end()?;
+
+        let mut t = r.record("camera")?;
+        let offset = t.get()?;
+        let zoom = t.f32("zoom")?;
+        t.end()?;
+        if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
+            return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
+        }
+        let camera = Camera::new(offset, zoom);
+
+        let mut selection_tokens = r.record("selection")?;
+        let mut selection = Vec::new();
+        while !selection_tokens.at_end() {
+            selection.push(selection_tokens.get()?);
+        }
+
+        let doc = snapshot::read_document(r)?;
+        snapshot::check_ids(&selection_tokens, &doc, &selection)?;
+        if let Some((_, id)) = reedit {
+            snapshot::check_ids(&reedit_tokens, &doc, &[id])?;
+        }
+
+        let history = read_history(r)?;
+        let clipboard = Clipboard::from_shapes(snapshot::read_clipboard(r)?);
+        let tools = ToolStates::read_snapshot(r, &doc)?;
+
+        Ok(Self {
+            doc,
+            history,
+            camera,
+            selection,
+            clipboard,
+            tools,
+            tool,
+            style: DrawStyle {
+                color,
+                width_px,
+                helpers,
+            },
+            smoothing,
+            toolbar_visible,
+            viewport,
+            cursor,
+            space_held,
+            gesture,
+            reedit,
+            keymap: keymap::resolve,
+            tap,
+            pressure,
+            doc_revision: 0,
+            doc_base_revision: 0,
+        })
+    }
+
     /// An empty document at the default view, pen tool, default style.
     #[must_use]
     pub fn new() -> Self {
@@ -1061,6 +1302,76 @@ fn step_cells(cells: &mut u32, delta: i32) -> bool {
     let changed = *cells != stepped;
     *cells = stepped;
     changed
+}
+
+/// Reads the `helpers` record (snapshots, ADR-T74-1).
+fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
+    let mut t = r.record("helpers")?;
+    let helpers = Helpers {
+        smart_snap: t.bool("smart snap")?,
+        grid_snap: t.bool("grid snap")?,
+        numbering: t.bool("numbering")?,
+        next_number: t.number("next number")?,
+        grid_cols: t.number("grid columns")?,
+        grid_rows: t.number("grid rows")?,
+        experimental: Experimental {
+            shape_text: t.bool("shape text")?,
+        },
+    };
+    t.end()?;
+    let cells = 1..=GRID_MAX_CELLS;
+    if helpers.next_number < FIRST_NUMBER
+        || !cells.contains(&helpers.grid_cols)
+        || !cells.contains(&helpers.grid_rows)
+    {
+        return Err(t.error("helper settings out of range"));
+    }
+    Ok(helpers)
+}
+
+/// Reads the `gesture` record (snapshots, ADR-T74-1).
+fn read_gesture(r: &mut Reader<'_>) -> Result<Option<Gesture>, SnapshotError> {
+    let mut t = r.record("gesture")?;
+    let gesture = if t.none() {
+        None
+    } else {
+        match t.word("gesture")? {
+            "pan" => Some(Gesture::Pan {
+                button: t.get()?,
+                pan: Pan::new(t.get()?),
+            }),
+            "tool" => Some(Gesture::Tool {
+                button: t.get()?,
+                tool: t.get()?,
+                fresh: t.bool("fresh")?,
+            }),
+            other => return Err(t.error(format!("unknown gesture `{other}`"))),
+        }
+    };
+    t.end()?;
+    Ok(gesture)
+}
+
+/// Reads the `[history]` section (snapshots, ADR-T74-1).
+fn read_history(r: &mut Reader<'_>) -> Result<History, SnapshotError> {
+    r.section("history")?;
+    let mut t = r.record("limits")?;
+    let limit: usize = t.number("undo limit")?;
+    let budget: usize = t.number("byte budget")?;
+    t.end()?;
+    if limit == 0 {
+        return Err(t.error("undo limit is 0"));
+    }
+    let undo = snapshot::read_transactions(r, "undo")?;
+    if undo.len() > limit {
+        return Err(SnapshotError::new(
+            r.line(),
+            format!("{} undo entries above the limit {limit}", undo.len()),
+        ));
+    }
+    let redo = snapshot::read_transactions(r, "redo")?;
+    let history = History::from_parts(undo.into(), redo, limit, budget);
+    Ok(history)
 }
 
 #[cfg(test)]

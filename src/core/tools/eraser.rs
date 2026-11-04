@@ -14,9 +14,10 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::{ShapeId, Transaction, tx_remove, tx_replace};
+use crate::core::document::{Document, ShapeId, Transaction, tx_remove, tx_replace};
 use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, TextSlot};
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
 /// Hit tolerance of the eraser in screen pixels.
 pub const ERASER_TOLERANCE_PX: f32 = 6.0;
@@ -36,7 +37,7 @@ enum Mode {
 }
 
 /// Gesture state of this tool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     /// Last pointer position (screen) of the drag, `None` when idle.
     last: Option<Vec2>,
@@ -186,6 +187,61 @@ pub fn cancel(state: &mut State) -> bool {
     let active = state.last.is_some() || !state.marked.is_empty() || !state.cleared.is_empty();
     *state = State::default();
     active
+}
+
+impl State {
+    /// `eraser <last> remove|clear <marked ids>`, then one `eraser-cleared
+    /// <id> <shape>` per cleared shape (snapshots, ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        w.record("eraser", |l| {
+            let mode = match self.mode {
+                Mode::Remove => "remove",
+                Mode::Clear => "clear",
+            };
+            l.opt(self.last.as_ref()).word(mode).put(&self.marked);
+        });
+        for (id, shape) in &self.cleared {
+            w.record("eraser-cleared", |l| {
+                l.put(id).put(shape);
+            });
+        }
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote: ids in `doc`, each
+    /// once.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
+        let mut t = r.record("eraser")?;
+        let last = t.opt()?;
+        let mode = match t.word("eraser mode")? {
+            "remove" => Mode::Remove,
+            "clear" => Mode::Clear,
+            other => return Err(t.error(format!("unknown eraser mode `{other}`"))),
+        };
+        let marked: Vec<ShapeId> = t.get()?;
+        t.end()?;
+        check_ids(&t, doc, &marked)?;
+        let mut cleared = Vec::new();
+        let mut cleared_at = HashMap::new();
+        while r.peek_key() == Some("eraser-cleared") {
+            let mut t = r.record("eraser-cleared")?;
+            let id: ShapeId = t.get()?;
+            let shape = t.get()?;
+            t.end()?;
+            check_ids(&t, doc, &[id])?;
+            if cleared_at.insert(id, cleared.len()).is_some() {
+                return Err(t.error(format!("id {} cleared twice", id.get())));
+            }
+            cleared.push((id, shape));
+        }
+        Ok(Self {
+            last,
+            mode,
+            marked_ids: marked.iter().copied().collect(),
+            marked,
+            cleared,
+            cleared_at,
+        })
+    }
 }
 
 #[cfg(test)]

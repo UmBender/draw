@@ -145,7 +145,7 @@ pub struct ToolView<'a> {
 }
 
 /// Gesture state of every pointer tool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ToolStates {
     /// Pen.
     pub pen: pen::State,
@@ -213,6 +213,37 @@ impl ToolStates {
             Tool::Select => select::cancel(&mut self.select),
             Tool::Hand => false,
         }
+    }
+}
+
+impl ToolStates {
+    /// Writes the `[tools]` section (snapshots, ADR-T74-1). The bucket has
+    /// no state.
+    pub(crate) fn write_snapshot(&self, w: &mut crate::core::snapshot::Writer) {
+        w.section("tools");
+        self.pen.write_snapshot(w);
+        self.shape.write_snapshot(w);
+        self.grid.write_snapshot(w);
+        self.text.write_snapshot(w);
+        self.eraser.write_snapshot(w);
+        self.select.write_snapshot(w);
+    }
+
+    /// Reads the `[tools]` section; ids must be in `doc`.
+    pub(crate) fn read_snapshot(
+        r: &mut crate::core::snapshot::Reader<'_>,
+        doc: &Document,
+    ) -> Result<Self, crate::core::snapshot::SnapshotError> {
+        r.section("tools")?;
+        Ok(Self {
+            pen: pen::State::read_snapshot(r)?,
+            shape: shape_tool::State::read_snapshot(r)?,
+            grid: grid::State::read_snapshot(r)?,
+            text: text::State::read_snapshot(r, doc)?,
+            eraser: eraser::State::read_snapshot(r, doc)?,
+            bucket: bucket::State,
+            select: select::State::read_snapshot(r, doc)?,
+        })
     }
 }
 
