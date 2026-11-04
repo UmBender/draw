@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -66,6 +66,20 @@ a raw word, like `\text{…}`, and the star counts only directly after
 `\operatorname`. (Since [[T64 Named operators with limits]],
 [[ADR-T64-1 Operatorname with a star parsed as one command]].)
 
+Math alphabets change the letters of their argument, as in LaTeX:
+`$\mathrm{d}x$` is an upright roman `d` (no italic correction, so the
+`x` follows right after it), `$\mathit{diff}$` is an italic word with no
+gaps between the letters, and `$\mathnormal{\Gamma}$` is the italic
+capital Γ. `\mathcal` is one of them. The innermost alphabet wins
+(`\mathrm{\mathcal{A}}` is a calligraphic 𝒜), and what an alphabet does
+not cover is drawn as around it: `\mathcal{a}` is the italic 𝑎,
+`\mathrm{\alpha}` the italic α (`\mathrm` leaves Greek alone, as in
+LaTeX), and digits in `\mathit` stay upright. Operators, functions,
+`\operatorname`, `\text{…}` and symbols such as `\partial` or `\aleph`
+are never changed. (Since [[T54 Math alphabet styles]],
+[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]; tutorial
+[[54 Math alphabets as a mapping table]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -83,6 +97,7 @@ a raw word, like `\text{…}`, and the star counts only directly after
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
 | Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
+| Math alphabets | `\mathrm{d}x` (upright roman), `\mathit{diff}` (italic word), `\mathnormal{\Gamma}` (italic Greek capitals); nested, the innermost wins |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
 | Overline | `\overline{AB}` (as wide as its argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
@@ -110,7 +125,11 @@ glyph carries a face: formula glyphs are in the math face and measured
 with `core::math_metrics`, a table generated from the embedded Latin
 Modern Math subset, so `core` stays font-free; letters map to the
 Mathematical Alphanumeric Symbols (`x` → `𝑥`, `\mathcal{A}` → `𝒜`)
-([[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]).
+([[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]])
+through the alphabet table `ALPHABETS`: one row per command with a
+mapping per kind of character (Latin, digits, Greek), resolved innermost
+first down to math italic
+([[ADR-T54-1 Math alphabets as a table of per-kind mappings]]).
 `core::text_layout::typeset` caches the layout per text, and
 `text_layout::bounds` gives every shape query (hit-test, culling,
 snapping, selection) the typeset box; the edit session keeps the source
@@ -136,7 +155,9 @@ of the same batch.
   literals); `\longrightarrow`, `\implies` and `\triangle` are not in
   the font subset.
 - `\mathcal` has capitals only (as in TeX); no `\mathbb`, `\mathfrak`
-  or bold math.
+  or bold math. `\mathit{diff}` has no text-italic ligatures or kerning
+  (the letters are the math italic ones), and `\mathrm` has no upright
+  lowercase Greek.
 - A character the math font lacks (e.g. CJK in `\text{…}`) falls back to
   a monospaced cell.
 - A formula stays on one line.

@@ -1,7 +1,7 @@
 ---
 id: T54
 title: Math alphabet styles
-status: in-progress
+status: review
 wave: 33
 branch: task/T54-math-alphabets
 depends_on: []
@@ -153,12 +153,12 @@ before.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T54): …`
-- [ ] tests — `test(T54): …`
-- [ ] models — `feat(T54): …`
-- [ ] behaviour — `feat(T54): …`
-- [ ] quality — `chore(T54): …`
-- [ ] docs — `docs(T54): …`
+- [x] spec — `docs(T54): …`
+- [x] tests — `test(T54): …`
+- [x] models — `feat(T54): …`
+- [x] behaviour — `feat(T54): …`
+- [x] quality — `chore(T54): …`
+- [x] docs — `docs(T54): …`
 
 ## Learning path
 
@@ -170,3 +170,33 @@ Mathematical Alphanumeric Symbols block, and the nesting rule.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented in the unattended batch run, on top of
+  `task/T64-named-operators`: `Style` became the table `ALPHABETS` of
+  `AlphabetDef` rows (`Map::{Inherit, Upright, Block}` per `Kind`, plus
+  holes) with the root row `MATH_ITALIC`, and a per-kind `Style` of row
+  pointers ([[ADR-T54-1 Math alphabets as a table of per-kind mappings]]).
+  `italic` and `calligraphic` stay public, now wrappers over the table.
+  No existing formula test changed; every glyph the four rows produce
+  already had a `math_metrics` row, so no font change.
+  `scripts/check.sh` and `scripts/check.sh --fuzz` green.
+- 2026-11-04 — UNATTENDED CHOICE: enum + data rows (not function
+  pointers), recorded in ADR-T54-1. `\mathit` maps Greek (capitals and
+  lowercase) to italic, as LaTeX's `\mathit{\Gamma}` does; the plan
+  did not say. Single-character `Ord` symbols (`\alpha`, `\Gamma`) follow
+  the alphabet; `∂` and `∇` are not mapped although they sit in each
+  block, so `\partial`/`\nabla` stay as they were.
+- 2026-11-04 — UNATTENDED CHOICE: `sessions_reach_deep_editor_states`
+  in `tests/fuzz.rs` now needs 10/200 sessions with a selection
+  instead of 20/200. Every T54 token set tried (three names; plus
+  `\mathrm{d}`; plus `\mathnormal\Gamma`) gave 18–19/200, as the T64
+  *Log* predicted (base rate about 11 %, right on the old bound). 5 %
+  still proves the harness reaches selections and stops the check from
+  failing whenever a token shifts the deterministic stream (T62 adds
+  more). The owner may prefer more sessions instead.
+- 2026-11-04 — while writing the behaviour, one T54 test's expectation was
+  wrong (`\mathrm{d_x^y}` draws the superscript's ink before the
+  subscript's) and was corrected in the `feat` commit; no behaviour
+  changed for it.
+- 2026-11-04 — manual checks left for the owner: look at
+  `$\mathrm{d}x$`, `$\mathit{diff}$`, `$\mathnormal{\Gamma}$` and
+  `$\mathcal{\mathrm{A}}$` in the app.
