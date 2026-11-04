@@ -251,6 +251,10 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\grad", "\\curl", "\\dd", "\\dv", "\\pdv", "\\abs", "\\norm", "\\order",
             "\\vb", "\\vu", "\\dd{x}", "\\dv{f}{x}", "\\pdv{x}", "\\abs{\\vb{F}}",
             "\\curl\\vb{A}", "\\order{h^2}", "#", "#1",
+            // T70: quantum notation, Dirac brackets and commutators.
+            "\\bra", "\\ket", "\\braket", "\\ketbra", "\\expval", "\\mel", "\\comm",
+            "\\acomm", "\\dag", "\\Tr", "\\braket{\\phi}{\\psi}", "\\mel{n}{H}{m}",
+            "\\comm{A}{B}", "\\ket{0}\\otimes\\ket{1}", "A^\\dag", "\\expval{H}{\\psi}",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),

@@ -6874,7 +6874,8 @@ mod tests {
         ];
         let names: Vec<&str> = EXPANSIONS.iter().map(|e| e.name).collect();
         for name in [
-            "dd", "dv", "pdv", "abs", "norm", "order", "vb", "vu", "curl",
+            "dd", "dv", "pdv", "abs", "norm", "order", "vb", "vu", "curl", "bra", "ket", "braket",
+            "ketbra", "expval", "mel", "comm", "acomm",
         ] {
             assert!(names.contains(&name), "{name} is an expansion");
         }
@@ -6934,5 +6935,188 @@ mod tests {
         assert_eq!(expand(&command("frac", vec![x.clone(), x])), None);
         assert_eq!(expand(&Node::Char('x')), None);
         assert_eq!(expand(&sym("grad")), None);
+    }
+
+    // ---- T70 quantum notation ----------------------------------------------
+
+    /// The symbol rows of the T70 *Spec* table: name, text, class.
+    const QUANTUM: [(&str, &str, Class); 2] = [("dag", "†", Class::Ord), ("Tr", "Tr", Class::Op)];
+
+    /// The quantum shortcuts of the T70 *Spec* table.
+    const QUANTUM_SHORTCUTS: [&str; 8] = [
+        "bra", "ket", "braket", "ketbra", "expval", "mel", "comm", "acomm",
+    ];
+
+    /// Every quantum source next to its hand-written form (T70 AC-4).
+    const QUANTUM_LONG_FORMS: [(&str, &str); 24] = [
+        ("\\bra{\\psi}", "\\langle \\psi\\rvert"),
+        ("\\ket{0}", "\\lvert 0\\rangle"),
+        ("\\braket{a}", "\\langle a\\vert a\\rangle"),
+        ("\\braket{\\phi}{\\psi}", "\\langle \\phi\\vert \\psi\\rangle"),
+        ("\\ketbra{0}", "\\lvert 0\\rangle\\langle 0\\rvert"),
+        ("\\ketbra{0}{1}", "\\lvert 0\\rangle\\langle 1\\rvert"),
+        ("\\expval{H}", "\\langle H\\rangle"),
+        (
+            "\\expval{H}{\\psi}",
+            "\\langle \\psi\\vert H\\vert \\psi\\rangle",
+        ),
+        ("\\mel{n}{H}{m}", "\\langle n\\vert H\\vert m\\rangle"),
+        ("\\comm{A}{B}", "[A,B]"),
+        ("\\acomm{A}{B}", "\\{A,B\\}"),
+        ("\\ket 0", "\\lvert 0\\rangle"),
+        ("\\mel n H m", "\\langle n\\vert H\\vert m\\rangle"),
+        (
+            "\\ket{0}\\otimes\\ket{1}",
+            "\\lvert 0\\rangle\\otimes\\lvert 1\\rangle",
+        ),
+        ("\\comm{A}{B} = AB - BA", "[A,B] = AB - BA"),
+        ("\\bra{\\vb{r}}", "\\langle \\mathbf{r}\\rvert"),
+        ("\\expval{\\comm{A}{B}}", "\\langle [A,B]\\rangle"),
+        ("A^\\dag", "A^\\dagger"),
+        ("\\ket{\\psi}^\\dag", "{\\lvert \\psi\\rangle}^\\dagger"),
+        ("\\Tr\\rho^2", "\\operatorname{Tr}\\rho^2"),
+        ("\\Tr A", "\\operatorname{Tr} A"),
+        ("\\tr A", "\\operatorname{tr} A"),
+        ("e^{\\braket{a}{b}}", "e^{\\langle a\\vert b\\rangle}"),
+        (
+            "\\ket{0}\\bra{0} + \\ketbra{1}",
+            "\\lvert 0\\rangle\\langle 0\\rvert + \\lvert 1\\rangle\\langle 1\\rvert",
+        ),
+    ];
+
+    #[test]
+    fn tex_parse_quantum_symbols_have_their_text_and_class() {
+        for (name, text, class) in QUANTUM {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((text, class)),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            symbol("tr").map(|s| (s.text, s.class)),
+            Some(("tr", Class::Op))
+        );
+        assert_eq!(
+            symbol("dagger").map(|s| (s.text, s.class)),
+            Some(("†", Class::Bin))
+        );
+    }
+
+    #[test]
+    fn tex_quantum_symbols_draw_glyphs_of_the_math_face() {
+        for (name, text, _) in QUANTUM {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: unwarned math-face glyphs with metrics.
+            let got = glyphs(&b.ink);
+            let chars: String = got.iter().map(|g| g.0).collect();
+            assert_eq!(chars, text, "{name}");
+            assert!(got.iter().all(|g| !g.3), "{name}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{name}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{name}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_quantum_shortcuts_take_their_arguments() {
+        let arg = |c: char| braced(vec![Node::Char(c)]);
+        let command = |name: &str, args: Vec<Arg>| Node::Command {
+            name: name.to_owned(),
+            args,
+        };
+
+        // Act + Assert: the argument counts of the table.
+        for (name, required, optional) in [
+            ("bra", 1, 0),
+            ("ket", 1, 0),
+            ("braket", 1, 1),
+            ("ketbra", 1, 1),
+            ("expval", 1, 1),
+            ("mel", 3, 0),
+            ("comm", 2, 0),
+            ("acomm", 2, 0),
+        ] {
+            let def = expansion(name);
+            assert_eq!(
+                def.map(|d| (d.required, d.templates.len() - 1)),
+                Some((required, optional)),
+                "{name}"
+            );
+        }
+        assert_eq!(math("\\ket{0}"), vec![command("ket", vec![arg('0')])]);
+        assert_eq!(
+            math("\\braket{a}{b}"),
+            vec![command("braket", vec![arg('a'), arg('b')])]
+        );
+        assert_eq!(
+            math("\\braket{a}b"),
+            vec![command("braket", vec![arg('a')]), Node::Char('b')]
+        );
+        assert_eq!(
+            math("\\mel{n}{H}{m}"),
+            vec![command("mel", vec![arg('n'), arg('H'), arg('m')])]
+        );
+        assert_eq!(
+            math("\\comm{A}{B}{C}"),
+            vec![
+                command("comm", vec![arg('A'), arg('B')]),
+                Node::Group(vec![Node::Char('C')])
+            ]
+        );
+        for (short, _) in QUANTUM_LONG_FORMS {
+            let src = format!("${short}$");
+            assert_eq!(print(&parse(&src)), src);
+        }
+        for src in ["$\\ket {0}$", "$\\mel n {H} m$", "$\\ketbra{0} {1}^\\dag$"] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_parse_quantum_shortcut_without_required_argument_is_literal() {
+        for src in QUANTUM_SHORTCUTS
+            .iter()
+            .map(|n| format!("\\{n}"))
+            .chain(["\\mel{n}{H}".to_owned(), "\\comm{A}".to_owned()])
+        {
+            // Act
+            let nodes = math(&src);
+            let b = boxed(&src);
+
+            // Assert
+            assert!(has_literal(&nodes), "{src}: {nodes:?}");
+            assert!(glyphs(&b.ink).iter().any(|g| g.3), "{src}");
+        }
+        assert_eq!(math("\\ket"), vec![Node::Literal("\\ket".to_owned())]);
+    }
+
+    #[test]
+    fn tex_layout_quantum_shortcuts_match_their_long_forms() {
+        for name in QUANTUM_SHORTCUTS {
+            assert!(
+                QUANTUM_LONG_FORMS
+                    .iter()
+                    .any(|(s, _)| s.starts_with(&format!("\\{name}"))),
+                "{name} is tested"
+            );
+        }
+        for (short, long) in QUANTUM_LONG_FORMS {
+            // Act
+            let got = boxed(short);
+            let want = boxed(long);
+
+            // Assert
+            assert_eq!(got, want, "{short} vs {long}");
+            assert!(glyphs(&got.ink).iter().all(|g| !g.3), "{short}");
+        }
     }
 }
