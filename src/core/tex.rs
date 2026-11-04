@@ -641,6 +641,9 @@ pub struct AlphabetDef {
     /// Whether the letters this row maps lean right: an accent over one
     /// of them is skewed (ADR-T56-1). Digits are always upright.
     pub slant: bool,
+    /// Whether this row is a bold weight (`\mathbf`, `\boldsymbol`,
+    /// `\bm`, bold sans): `\mathsf` inside it is bold sans (ADR-T60-1).
+    pub bold: bool,
 }
 
 impl AlphabetDef {
@@ -695,6 +698,7 @@ pub const MATH_ITALIC: AlphabetDef = AlphabetDef {
     greek_lower: ITALIC_GREEK_LOWER,
     holes: ITALIC_HOLES,
     slant: true,
+    bold: false,
 };
 
 /// `\mathcal`: script capitals, with the holes Unicode filled before the
@@ -717,6 +721,7 @@ const MATHCAL: AlphabetDef = AlphabetDef {
         ('R', '\u{211B}'),
     ],
     slant: true,
+    bold: false,
 };
 
 /// Every math alphabet command (ADR-T54-1).
@@ -732,6 +737,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_lower: Map::Inherit,
         holes: &[],
         slant: false,
+        bold: false,
     },
     // Italic letters set as a word; digits as outside.
     AlphabetDef {
@@ -743,6 +749,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_lower: ITALIC_GREEK_LOWER,
         holes: ITALIC_HOLES,
         slant: true,
+        bold: false,
     },
     // The default style, with italic Greek capitals.
     AlphabetDef {
@@ -760,6 +767,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_lower: Map::Inherit,
         holes: &[],
         slant: false,
+        bold: true,
     },
     BOLDSYMBOL,
     AlphabetDef {
@@ -792,6 +800,7 @@ const BOLDSYMBOL: AlphabetDef = AlphabetDef {
     greek_lower: Map::Block(0x1D736),
     holes: &[],
     slant: true,
+    bold: true,
 };
 
 /// `\mathbb` (and `\mathds`): double-struck Latin and digits, upright;
@@ -813,6 +822,7 @@ const MATHBB: AlphabetDef = AlphabetDef {
         ('Z', '\u{2124}'),
     ],
     slant: false,
+    bold: false,
 };
 
 /// `\mathfrak`: fraktur Latin capitals and lowercase, upright; digits and
@@ -833,6 +843,7 @@ const MATHFRAK: AlphabetDef = AlphabetDef {
         ('Z', '\u{2128}'),
     ],
     slant: false,
+    bold: false,
 };
 
 /// `\mathscr`: the `\mathcal` row under its own name. Latin Modern Math
@@ -841,6 +852,41 @@ const MATHFRAK: AlphabetDef = AlphabetDef {
 const MATHSCR: AlphabetDef = AlphabetDef {
     name: "mathscr",
     ..MATHCAL
+};
+
+/// `\mathsf`: sans-serif Latin and digits, upright; Greek as outside
+/// (T60).
+const MATHSF: AlphabetDef = AlphabetDef {
+    name: "mathsf",
+    upper: Map::Block(0x1D5A0),
+    lower: Map::Block(0x1D5BA),
+    digit: Map::Block(0x1D7E2),
+    greek_upper: Map::Inherit,
+    greek_lower: Map::Inherit,
+    holes: &[],
+    slant: false,
+    bold: false,
+};
+
+/// Bold sans-serif Latin and digits, upright; Greek as outside. Not a
+/// command: `\mathsf` inside a bold alphabet, or a bold alphabet inside
+/// `\mathsf`, draws it (ADR-T60-1).
+const MATHSF_BOLD: AlphabetDef = AlphabetDef {
+    upper: Map::Block(0x1D5D4),
+    lower: Map::Block(0x1D5EE),
+    digit: Map::Block(0x1D7EC),
+    bold: true,
+    ..MATHSF
+};
+
+/// `\mathtt`: monospace Latin and digits, upright; Greek as outside.
+/// Unicode has no bold monospace (T60).
+const MATHTT: AlphabetDef = AlphabetDef {
+    name: "mathtt",
+    upper: Map::Block(0x1D670),
+    lower: Map::Block(0x1D68A),
+    digit: Map::Block(0x1D7F6),
+    ..MATHSF
 };
 
 /// The math alphabet command `name` (without the backslash).
