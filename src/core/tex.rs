@@ -4083,7 +4083,10 @@ mod tests {
     fn tex_latin_like_greek_capitals_are_upright() {
         for (name, ch) in LATIN_LIKE_CAPITALS {
             // Act / Assert
-            assert_eq!(faces(&boxed(&format!("\\{name}")).ink), vec![(ch, Face::Math)]);
+            assert_eq!(
+                faces(&boxed(&format!("\\{name}")).ink),
+                vec![(ch, Face::Math)]
+            );
         }
         assert_eq!(drawn("\\mathnormal{\\Alpha}"), vec!['\u{1D6E2}']);
         assert_eq!(drawn("\\mathit{\\Chi}"), vec!['\u{1D6F8}']);
