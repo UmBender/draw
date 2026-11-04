@@ -641,6 +641,9 @@ pub struct AlphabetDef {
     /// Whether the letters this row maps lean right: an accent over one
     /// of them is skewed (ADR-T56-1). Digits are always upright.
     pub slant: bool,
+    /// Whether this row is a bold weight (`\mathbf`, `\boldsymbol`,
+    /// `\bm`, bold sans): `\mathsf` inside it is bold sans (ADR-T60-1).
+    pub bold: bool,
 }
 
 impl AlphabetDef {
@@ -695,6 +698,7 @@ pub const MATH_ITALIC: AlphabetDef = AlphabetDef {
     greek_lower: ITALIC_GREEK_LOWER,
     holes: ITALIC_HOLES,
     slant: true,
+    bold: false,
 };
 
 /// `\mathcal`: script capitals, with the holes Unicode filled before the
@@ -717,6 +721,7 @@ const MATHCAL: AlphabetDef = AlphabetDef {
         ('R', '\u{211B}'),
     ],
     slant: true,
+    bold: false,
 };
 
 /// Every math alphabet command (ADR-T54-1).
@@ -732,6 +737,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_lower: Map::Inherit,
         holes: &[],
         slant: false,
+        bold: false,
     },
     // Italic letters set as a word; digits as outside.
     AlphabetDef {
@@ -743,6 +749,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_lower: ITALIC_GREEK_LOWER,
         holes: ITALIC_HOLES,
         slant: true,
+        bold: false,
     },
     // The default style, with italic Greek capitals.
     AlphabetDef {
@@ -760,6 +767,7 @@ pub const ALPHABETS: &[AlphabetDef] = &[
         greek_lower: Map::Inherit,
         holes: &[],
         slant: false,
+        bold: true,
     },
     BOLDSYMBOL,
     AlphabetDef {
@@ -776,6 +784,9 @@ pub const ALPHABETS: &[AlphabetDef] = &[
     MATHFRAK,
     // Script capitals, as \mathcal (T59).
     MATHSCR,
+    // Sans-serif and typewriter (T60).
+    MATHSF,
+    MATHTT,
 ];
 
 /// Start of the bold digits `𝟎`.
@@ -792,6 +803,7 @@ const BOLDSYMBOL: AlphabetDef = AlphabetDef {
     greek_lower: Map::Block(0x1D736),
     holes: &[],
     slant: true,
+    bold: true,
 };
 
 /// `\mathbb` (and `\mathds`): double-struck Latin and digits, upright;
@@ -813,6 +825,7 @@ const MATHBB: AlphabetDef = AlphabetDef {
         ('Z', '\u{2124}'),
     ],
     slant: false,
+    bold: false,
 };
 
 /// `\mathfrak`: fraktur Latin capitals and lowercase, upright; digits and
@@ -833,6 +846,7 @@ const MATHFRAK: AlphabetDef = AlphabetDef {
         ('Z', '\u{2128}'),
     ],
     slant: false,
+    bold: false,
 };
 
 /// `\mathscr`: the `\mathcal` row under its own name. Latin Modern Math
@@ -841,6 +855,41 @@ const MATHFRAK: AlphabetDef = AlphabetDef {
 const MATHSCR: AlphabetDef = AlphabetDef {
     name: "mathscr",
     ..MATHCAL
+};
+
+/// `\mathsf`: sans-serif Latin and digits, upright; Greek as outside
+/// (T60).
+const MATHSF: AlphabetDef = AlphabetDef {
+    name: "mathsf",
+    upper: Map::Block(0x1D5A0),
+    lower: Map::Block(0x1D5BA),
+    digit: Map::Block(0x1D7E2),
+    greek_upper: Map::Inherit,
+    greek_lower: Map::Inherit,
+    holes: &[],
+    slant: false,
+    bold: false,
+};
+
+/// Bold sans-serif Latin and digits, upright; Greek as outside. Not a
+/// command: `\mathsf` inside a bold alphabet, or a bold alphabet inside
+/// `\mathsf`, draws it (ADR-T60-1).
+const MATHSF_BOLD: AlphabetDef = AlphabetDef {
+    upper: Map::Block(0x1D5D4),
+    lower: Map::Block(0x1D5EE),
+    digit: Map::Block(0x1D7EC),
+    bold: true,
+    ..MATHSF
+};
+
+/// `\mathtt`: monospace Latin and digits, upright; Greek as outside.
+/// Unicode has no bold monospace (T60).
+const MATHTT: AlphabetDef = AlphabetDef {
+    name: "mathtt",
+    upper: Map::Block(0x1D670),
+    lower: Map::Block(0x1D68A),
+    digit: Map::Block(0x1D7F6),
+    ..MATHSF
 };
 
 /// The math alphabet command `name` (without the backslash).
@@ -878,11 +927,18 @@ impl Style {
     };
 
     /// This style inside `alphabet`: the kinds it maps are its own, the
-    /// others stay as they are.
+    /// others stay as they are. Sans-serif and a bold weight, nested
+    /// either way round, give bold sans (ADR-T60-1).
     fn with(mut self, alphabet: &'static AlphabetDef) -> Self {
         for kind in Kind::ALL {
             if alphabet.get(kind) != Map::Inherit {
-                self.rows[kind.slot()] = alphabet;
+                let row = &mut self.rows[kind.slot()];
+                let sans = |a: &AlphabetDef| a.name == MATHSF.name;
+                *row = if (sans(alphabet) && row.bold) || (alphabet.bold && sans(row)) {
+                    &MATHSF_BOLD
+                } else {
+                    alphabet
+                };
             }
         }
         self
@@ -4981,6 +5037,234 @@ mod tests {
                 boxed(src),
                 "\\mathscr{{{src}}}"
             );
+        }
+    }
+
+    // ---- T60 sans-serif and typewriter (ADR-T60-1) ------------------------
+
+    /// The sans-serif and typewriter alphabet commands of T60.
+    const SANS_MONO_NAMES: [&str; 2] = ["mathsf", "mathtt"];
+
+    /// Where the Latin-and-digits row starting at `(upper, lower, digit)`
+    /// draws `ch`, or `None` for Greek.
+    fn latin_digit_char(ch: char, upper: u32, lower: u32, digit: u32) -> Option<char> {
+        let (kind, index) = Kind::of(ch)?;
+        let start = match kind {
+            Kind::Upper => upper,
+            Kind::Lower => lower,
+            Kind::Digit => digit,
+            Kind::GreekUpper | Kind::GreekLower => return None,
+        };
+        Some(nth(start, index))
+    }
+
+    #[test]
+    fn tex_mathsf_maps_to_sans_serif() {
+        // Arrange
+        let all = every_kind();
+        let want: Vec<char> = all
+            .chars()
+            .map(|ch| latin_digit_char(ch, 0x1D5A0, 0x1D5BA, 0x1D7E2).unwrap_or_else(|| italic(ch)))
+            .collect();
+
+        // Act
+        let got = drawn(&format!("\\mathsf{{{all}}}"));
+
+        // Assert
+        assert_eq!(got, want);
+        assert_eq!(drawn("\\mathsf{G}"), vec!['𝖦']);
+        assert_eq!(drawn("\\mathsf{x1}"), vec!['𝗑', '𝟣']);
+        assert_eq!(drawn("\\mathsf{Az09}"), vec!['𝖠', '𝗓', '𝟢', '𝟫']);
+        // Greek is not sans-serif: as outside.
+        assert_eq!(drawn("\\mathsf{\\alpha\\Gamma}"), drawn("\\alpha\\Gamma"));
+    }
+
+    #[test]
+    fn tex_mathtt_maps_to_monospace() {
+        // Arrange
+        let all = every_kind();
+        let want: Vec<char> = all
+            .chars()
+            .map(|ch| latin_digit_char(ch, 0x1D670, 0x1D68A, 0x1D7F6).unwrap_or_else(|| italic(ch)))
+            .collect();
+
+        // Act
+        let got = drawn(&format!("\\mathtt{{{all}}}"));
+
+        // Assert
+        assert_eq!(got, want);
+        assert_eq!(drawn("\\mathtt{x1}"), vec!['𝚡', '𝟷']);
+        assert_eq!(drawn("\\mathtt{Az09}"), vec!['𝙰', '𝚣', '𝟶', '𝟿']);
+        // Greek is not monospace: as outside.
+        assert_eq!(drawn("\\mathtt{\\alpha\\Gamma}"), drawn("\\alpha\\Gamma"));
+    }
+
+    #[test]
+    fn tex_parse_sans_and_mono_take_one_argument() {
+        for name in SANS_MONO_NAMES {
+            // Act / Assert: braced or one token.
+            assert_eq!(
+                math(&format!("\\{name}{{G}}")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![braced(vec![Node::Char('G')])],
+                }],
+                "{name}"
+            );
+            assert_eq!(
+                math(&format!("\\{name} x")),
+                vec![Node::Command {
+                    name: name.to_owned(),
+                    args: vec![Arg {
+                        lead: " ".to_owned(),
+                        ..tok(Node::Char('x'))
+                    }],
+                }],
+                "{name}"
+            );
+            for src in [
+                format!("$\\{name}{{G}}, \\{name}{{x1}}$"),
+                format!("$f \\colon \\{name} C \\to D$"),
+            ] {
+                assert_eq!(print(&parse(&src)), src);
+            }
+            // Without an argument: a literal in the warning colour.
+            let literal = Node::Literal(format!("\\{name}"));
+            assert_eq!(math(&format!("\\{name}")), vec![literal], "{name}");
+            let got = glyphs(&boxed(&format!("\\{name}")).ink);
+            assert!(got.iter().all(|g| g.3), "{name}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn tex_sans_and_mono_draw_glyphs_of_the_math_face() {
+        // Arrange
+        let all = every_kind();
+        for name in SANS_MONO_NAMES {
+            assert_eq!(alphabet(name).map(|a| a.name), Some(name));
+        }
+        let sources = SANS_MONO_NAMES
+            .iter()
+            .map(|name| format!("\\{name}{{{all}}}"))
+            .chain([format!("\\mathbf{{\\mathsf{{{all}}}}}")]);
+
+        for src in sources {
+            // Act
+            let b = boxed(&src);
+
+            // Assert: one math-face glyph per character, none warned.
+            let got = glyphs(&b.ink);
+            assert_eq!(got.len(), all.chars().count(), "{src}");
+            assert!(got.iter().all(|g| !g.3), "{src}");
+            for (ch, face) in faces(&b.ink) {
+                assert_eq!(face, Face::Math, "{src}: {ch:?}");
+                assert!(math_metrics::get(ch).is_some(), "{src}: {ch:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_accent_centred_over_sans_and_mono_letters() {
+        // Arrange
+        let Some(hat) = accent("hat") else {
+            panic!("no \\hat");
+        };
+        let wraps: [fn(&str) -> String; 3] = [
+            |s| format!("\\mathsf{{{s}}}"),
+            |s| format!("\\mathtt{{{s}}}"),
+            |s| format!("\\mathbf{{\\mathsf{{{s}}}}}"),
+        ];
+        for wrap in wraps {
+            for arg in ["G", "x", "1"] {
+                let plain = boxed(&wrap(arg));
+                let hatted_src = wrap(&format!("\\hat{{{arg}}}"));
+                let want = ink_box(&plain.ink).center().x;
+
+                // Act
+                let hatted = boxed(&hatted_src);
+                let got = ink_box(&mark_ink(&hatted.ink, hat)).center().x;
+
+                // Assert
+                assert!(approx_eq(got, want, EPS), "{hatted_src}: {got} vs {want}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_mathsf_in_a_bold_alphabet_is_bold_sans() {
+        // Arrange
+        let all = every_kind();
+        let bold_sans = |ch: char| latin_digit_char(ch, 0x1D5D4, 0x1D5EE, 0x1D7EC);
+
+        for name in BOLD_NAMES {
+            for src in [
+                format!("\\{name}{{\\mathsf{{x}}}}"),
+                format!("\\mathsf{{\\{name}{{x}}}}"),
+                format!("\\{name}{{\\mathsf{{\\{name}{{x}}}}}}"),
+                format!("\\mathbf{{\\mathsf{{\\{name}{{x}}}}}}"),
+            ] {
+                // Act / Assert: bold sans, upright, either way round.
+                assert_eq!(drawn(&src), vec!['𝘅'], "{src}");
+            }
+            assert_eq!(
+                drawn(&format!("\\{name}{{\\mathsf{{A1}}}}")),
+                vec!['𝗔', '𝟭'],
+                "{name}"
+            );
+            // Every Latin letter and digit is bold sans; Greek as the bold
+            // alphabet draws it.
+            let inner = drawn(&format!("\\{name}{{\\mathsf{{{all}}}}}"));
+            let outer = drawn(&format!("\\mathsf{{\\{name}{{{all}}}}}"));
+            let bold = drawn(&format!("\\{name}{{{all}}}"));
+            let want: Vec<char> = all
+                .chars()
+                .zip(&bold)
+                .map(|(ch, &b)| bold_sans(ch).unwrap_or(b))
+                .collect();
+            assert_eq!(inner, want, "{name}");
+            assert_eq!(outer, want, "{name}");
+        }
+        // \mathrm in between breaks the chain: innermost wins.
+        assert_eq!(drawn("\\mathbf{\\mathrm{\\mathsf{x}}}"), vec!['𝗑']);
+        assert_eq!(drawn("\\mathsf{\\mathrm{\\mathbf{x}}}"), vec!['𝐱']);
+        assert_eq!(drawn("\\mathbf{\\mathsf{\\mathrm{x}}}"), vec!['x']);
+        // Bold sans is not a command.
+        assert!(ALPHABETS.iter().all(|a| !(a.name == "mathsf" && a.bold)));
+    }
+
+    #[test]
+    fn tex_sans_and_mono_nest_and_leave_operators_alone() {
+        // Act / Assert: \mathtt has no bold; innermost wins.
+        for name in BOLD_NAMES {
+            assert_eq!(
+                drawn(&format!("\\{name}{{\\mathtt{{x1}}}}")),
+                vec!['𝚡', '𝟷']
+            );
+        }
+        assert_eq!(drawn("\\mathtt{\\mathbf{x}}"), vec!['𝐱']);
+        assert_eq!(drawn("\\mathtt{\\mathsf{x}}"), vec!['𝗑']);
+        assert_eq!(drawn("\\mathsf{\\mathtt{x}}"), vec!['𝚡']);
+        assert_eq!(drawn("\\mathsf{\\mathrm{x}}"), vec!['x']);
+        assert_eq!(drawn("\\mathsf{\\mathbb{R}C}"), vec!['ℝ', '𝖢']);
+        assert_eq!(drawn("\\mathsf{A}_n"), vec!['𝖠', italic('n')]);
+        assert_eq!(drawn("\\mathtt{x_1}"), vec!['𝚡', '𝟷']);
+        // The T54/T56 bold nestings are unchanged.
+        assert_eq!(drawn("\\mathbf{\\boldsymbol{x}}"), vec!['𝒙']);
+        assert_eq!(drawn("\\boldsymbol{\\mathbf{x}}"), vec!['𝐱']);
+        assert_eq!(drawn("\\bm{\\mathbf{x}}"), vec!['𝐱']);
+        assert_eq!(drawn("\\mathbf{\\mathfrak{g}}"), vec!['𝔤']);
+        for name in SANS_MONO_NAMES {
+            for src in [
+                "\\log+\\sum\\text{ab}",
+                "\\operatorname{rank}",
+                "\\aleph\\partial\\nabla",
+            ] {
+                assert_eq!(
+                    boxed(&format!("\\{name}{{{src}}}")),
+                    boxed(src),
+                    "\\{name}{{{src}}}"
+                );
+            }
         }
     }
 }

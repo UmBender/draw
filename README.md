@@ -299,6 +299,7 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\mathbb{R}`, `\mathbb{Z}_p`, `\mathds{1}_A` | Blackboard bold capitals, lowercase and digits (`\mathds` is the same) |
 | `\mathfrak{g}`, `\mathfrak{p}`, `\mathfrak{S}_n` | Fraktur capitals and lowercase |
 | `\mathscr{L}`, `\mathscr{F}` | Script capitals (the same letters as `\mathcal`; the font has no script lowercase) |
+| `\mathsf{G}`, `\mathtt{x1}` | Sans-serif and typewriter letters and digits (`\mathbf{\mathsf{x}}` is bold sans) |
 | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}`, `\overline{AB}` | Accents centred over their argument |
 | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` | Relations and operators |
 | `\lfloor \rfloor \lceil \rceil \{ \} \| \langle \rangle` | Brackets |
