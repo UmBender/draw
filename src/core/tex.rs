@@ -772,7 +772,10 @@ pub const EXPANSIONS: &[ExpansionDef] = &[
     ExpansionDef {
         name: "braket",
         required: 1,
-        templates: &["\\langle #1\\vert #1\\rangle", "\\langle #1\\vert #2\\rangle"],
+        templates: &[
+            "\\langle #1\\vert #1\\rangle",
+            "\\langle #1\\vert #2\\rangle",
+        ],
     },
     ExpansionDef {
         name: "ketbra",
@@ -785,7 +788,10 @@ pub const EXPANSIONS: &[ExpansionDef] = &[
     ExpansionDef {
         name: "expval",
         required: 1,
-        templates: &["\\langle #1\\rangle", "\\langle #2\\vert #1\\vert #2\\rangle"],
+        templates: &[
+            "\\langle #1\\rangle",
+            "\\langle #2\\vert #1\\vert #2\\rangle",
+        ],
     },
     ExpansionDef {
         name: "mel",
@@ -7001,7 +7007,10 @@ mod tests {
         ("\\bra{\\psi}", "\\langle \\psi\\rvert"),
         ("\\ket{0}", "\\lvert 0\\rangle"),
         ("\\braket{a}", "\\langle a\\vert a\\rangle"),
-        ("\\braket{\\phi}{\\psi}", "\\langle \\phi\\vert \\psi\\rangle"),
+        (
+            "\\braket{\\phi}{\\psi}",
+            "\\langle \\phi\\vert \\psi\\rangle",
+        ),
         ("\\ketbra{0}", "\\lvert 0\\rangle\\langle 0\\rvert"),
         ("\\ketbra{0}{1}", "\\lvert 0\\rangle\\langle 1\\rvert"),
         ("\\expval{H}", "\\langle H\\rangle"),
