@@ -540,7 +540,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// Every kind, in the order of [`Style`]'s slots.
+    /// Every kind, in declaration order (the order of a style's slots).
     pub const ALL: [Self; 5] = [
         Self::Upper,
         Self::Lower,
@@ -633,15 +633,11 @@ impl AlphabetDef {
         match self.get(kind) {
             Map::Inherit => None,
             Map::Upright => Some(ch),
-            Map::Block(start) => Some(
-                match self.holes.iter().find(|&&(typed, _)| typed == ch) {
-                    Some(&(_, drawn)) => drawn,
-                    None => start
-                        .checked_add(index)
-                        .and_then(char::from_u32)
-                        .unwrap_or(ch),
-                },
-            ),
+            Map::Block(start) => {
+                let hole = self.holes.iter().find(|&&(typed, _)| typed == ch);
+                let block = || start.checked_add(index).and_then(char::from_u32);
+                Some(hole.map(|&(_, drawn)| drawn).or_else(block).unwrap_or(ch))
+            }
         }
     }
 }
@@ -3870,7 +3866,9 @@ mod tests {
             let ch = def.text.chars().next().map_or(0, u32::from);
             let want = char::from_u32(0x1D6E2 + ch - 0x391);
             assert_eq!(
-                drawn(&format!("\\mathnormal{{\\{}}}", def.name)).first().copied(),
+                drawn(&format!("\\mathnormal{{\\{}}}", def.name))
+                    .first()
+                    .copied(),
                 want,
                 "{}",
                 def.name
