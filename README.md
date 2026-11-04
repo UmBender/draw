@@ -1,5 +1,7 @@
 # draw
 
+[![CI](https://github.com/UmBender/draw/actions/workflows/ci.yml/badge.svg)](https://github.com/UmBender/draw/actions/workflows/ci.yml)
+
 A minimal, fast, keyboard-first scratch canvas for competitive programming.
 
 Sketch a graph, a DP table or a geometry case while you think, then throw it
@@ -92,7 +94,7 @@ macOS and Windows have no packages: build from source.
 
 Requirements:
 
-- Rust **1.85** or newer (edition 2024) — install with [rustup](https://rustup.rs).
+- Rust **1.99** or newer (edition 2024) — install with [rustup](https://rustup.rs).
 - Linux: X11, XInput and OpenGL development headers.
 
   ```sh
