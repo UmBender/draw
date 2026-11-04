@@ -307,7 +307,8 @@ A printable one-page version lives in
 
 ## Configuration
 
-There is no config file: shortcuts, palette and theme are fixed on purpose.
+There is no config file: shortcuts are fixed on purpose, and colours are
+set at build time (see [Theme](#theme)).
 Five environment variables exist for troubleshooting, and one turns on
 experimental features:
 
@@ -322,6 +323,30 @@ experimental features:
 
 ```sh
 DRAW_MSAA=off draw
+```
+
+### Theme
+
+Every colour is a constant in [`src/theme.rs`](src/theme.rs), grouped by
+where it shows (canvas, drawing colours `1`–`6`, selection and marquee,
+snapping, formulas, toolbar). There is no option, variable or file for
+colours: edit the file and rebuild.
+
+1. Change a value — `#RRGGBB` from any palette is written `0xRRGGBB`; an
+   `_ALPHA` is an opacity from `0` (invisible) to `255` (opaque).
+2. `cargo test theme` — checks the six drawing colours are distinct and
+   that `INK` and `SELECTION_OUTLINE` stand out from `CANVAS` (3:1
+   contrast). Update `theme_matches_kanagawa_dragon`, which pins the
+   shipped values.
+3. `cargo build --release` (or `scripts/package.sh` for the packages).
+
+Example, a lighter background with darker ink — a light background needs
+a dark ink:
+
+```rust
+pub const CANVAS: u32 = 0xf2ecbc;
+pub const TEXT_ON_FILL: u32 = 0xf2ecbc;
+pub const INK: u32 = 0x1f1f28;
 ```
 
 ### Window backend

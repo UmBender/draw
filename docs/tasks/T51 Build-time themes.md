@@ -1,7 +1,7 @@
 ---
 id: T51
 title: Build-time themes
-status: in-progress
+status: review
 wave: 32
 branch: task/T51-build-time-themes
 depends_on: []
@@ -182,12 +182,12 @@ owner's choice of `src/theme.rs`) and `docs/architecture/Theme.md`
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T51): …`
-- [ ] tests — `test(T51): …`
-- [ ] models — `feat(T51): …`
-- [ ] behaviour — `feat(T51): …`
-- [ ] quality — `chore(T51): …`
-- [ ] docs — `docs(T51): …`
+- [x] spec — `docs(T51): …`
+- [x] tests — `test(T51): …`
+- [x] models — `feat(T51): …`
+- [x] behaviour — `feat(T51): …`
+- [x] quality — `chore(T51): …`
+- [x] docs — `docs(T51): …`
 
 ## Learning path
 
@@ -220,3 +220,15 @@ step 02, revisited) and on colour contrast.
 - 2026-11-04 — UNATTENDED CHOICE: shared tokens are split per place
   (e.g. `accent` → `SELECTION_OUTLINE`, `MARQUEE_OUTLINE`, `GUIDE`,
   `TOOLBAR_ACTIVE`), see ADR-T51-1.
+- 2026-11-04 — behaviour: helpers implemented, every shell colour reads
+  `crate::theme`; `cargo test` green.
+- 2026-11-04 — quality: `scripts/check.sh` green after rustfmt and clippy
+  fixes in the new tests (`unreadable_literal`, `expect_used`,
+  `assert_is_empty`, `type_complexity`).
+- 2026-11-04 — docs: feature note [[Themes]], tutorial
+  [[51 Keeping every colour in one file]], README *Theme* section,
+  [[Theme]] architecture note rewritten to the new constants.
+- 2026-11-04 — NOT DONE (outside *Files owned*): the T02 feature note
+  `docs/features/Theme and palette.md` still describes `THEME` and
+  `core::palette` as the place colours live; the integrator should point
+  it at [[Themes]]. The labelled screenshot was not made.
