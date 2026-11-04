@@ -141,6 +141,32 @@ mod tests {
     }
 
     #[test]
+    fn label_new_leaves_shape_with_text_unnumbered() {
+        // Arrange: T52, text wins over a number.
+        let text = crate::core::shape::ShapeText::new("v".to_owned(), 10.0);
+        let slot = crate::core::shape::TextSlot::Shape;
+        let mut doc = Document::new();
+
+        for named in [
+            rect().with_slot_text(slot, text.clone()),
+            ellipse().with_slot_text(slot, text.clone()),
+        ] {
+            // Act
+            let shape = label_new(named.clone(), &on(5));
+            let before = label_count(&doc, 5);
+            let tx = tx_insert(&mut doc, [shape.clone()]);
+            assert!(doc.apply(&tx).is_ok());
+            let after = label_count(&doc, 5);
+
+            // Assert: unchanged, text kept, counter stays.
+            assert_eq!(shape, named);
+            assert_eq!(shape.label(), None);
+            assert!(shape.slot_text(slot).is_some());
+            assert_eq!(advance(5, before, after), 5);
+        }
+    }
+
+    #[test]
     fn numbering_off_gives_no_label() {
         let helpers = Helpers {
             numbering: false,

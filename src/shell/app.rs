@@ -1019,6 +1019,23 @@ mod tests {
     }
 
     #[test]
+    fn draw_experimental_is_not_read_or_documented() {
+        // Arrange: T52 removed the switch; spelled in two parts so this
+        // test does not match itself.
+        let name = concat!("DRAW_", "EXPERIMENTAL");
+        let reads = [concat!("EXPERIMENTAL", "_ENV"), concat!("with_", "experimental")];
+        let app = include_str!("app.rs");
+        let readme = include_str!("../../README.md");
+
+        // Act / Assert
+        for read in reads.into_iter().chain([name]) {
+            assert!(!app.contains(read), "the shell still uses {read}");
+        }
+        assert!(!readme.contains(name), "the README still lists {name}");
+        assert!(!readme.contains("### Experimental"));
+    }
+
+    #[test]
     fn window_conf_sets_wm_class() {
         // Arrange / Act
         let conf = Conf::from(window_conf());

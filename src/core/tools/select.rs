@@ -748,7 +748,6 @@ mod tests {
     fn shape_text_press_inside_only_selected_rect_keeps_it() {
         // Arrange: an unfilled 100 × 100 rectangle, selected.
         let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
-        fx.style.helpers.experimental.shape_text = true;
         fx.selection = vec![ids[0]];
         let mut state = State::default();
 
@@ -768,20 +767,24 @@ mod tests {
     }
 
     #[test]
-    fn shape_text_off_press_inside_selected_rect_clears_selection() {
-        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
+    fn press_inside_only_selected_numbered_rect_clears_selection() {
+        // Arrange: T52, a numbered rectangle holds no text, so its inside
+        // is not a handle.
+        let numbered = rect(0.0, 0.0, 100.0, 100.0).with_label(Some(1));
+        let (mut fx, ids) = Fixture::new(vec![numbered]);
         fx.selection = vec![ids[0]];
         let mut state = State::default();
 
+        // Act
         click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
 
+        // Assert
         assert_eq!(fx.selection, []);
     }
 
     #[test]
     fn shape_text_press_inside_unselected_rect_does_not_pick_it() {
         let (mut fx, _) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0)]);
-        fx.style.helpers.experimental.shape_text = true;
         let mut state = State::default();
 
         click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);

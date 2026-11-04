@@ -1379,7 +1379,6 @@ mod tests {
     use super::*;
     use crate::core::camera::{Camera, ZOOM_STEP};
     use crate::core::document::tx_insert;
-    use crate::core::experimental::Experimental;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::history::HISTORY_LIMIT;
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -3616,8 +3615,6 @@ mod tests {
         alt: false,
     };
 
-    const SHAPE_TEXT_ON: Experimental = Experimental { shape_text: true };
-
     fn ellipse(x: f32, y: f32, w: f32, h: f32) -> Shape {
         Shape::Ellipse {
             a: Vec2::new(x, y),
@@ -3653,15 +3650,10 @@ mod tests {
         TextSlot::Cell { col, row }
     }
 
-    /// Editor with an 800 × 600 viewport holding `shapes`, the shape text
-    /// switch set to `on`, and `tool` active.
-    fn shape_text_editor(shapes: Vec<Shape>, on: bool, tool: Tool) -> Editor {
-        let experimental = if on {
-            SHAPE_TEXT_ON
-        } else {
-            Experimental::default()
-        };
-        let mut ed = editor_with(shapes).with_experimental(experimental);
+    /// Editor with an 800 × 600 viewport holding `shapes` and `tool`
+    /// active.
+    fn shape_text_editor(shapes: Vec<Shape>, tool: Tool) -> Editor {
+        let mut ed = editor_with(shapes);
         ed.handle(InputEvent::Resize {
             size: Vec2::new(800.0, 600.0),
         });
@@ -3681,46 +3673,9 @@ mod tests {
     }
 
     #[test]
-    fn with_experimental_sets_the_switch_in_helpers() {
-        let ed = Editor::new();
-        assert_eq!(ed.experimental(), Experimental::default());
-
-        let ed = ed.with_experimental(SHAPE_TEXT_ON);
-
-        assert_eq!(ed.experimental(), SHAPE_TEXT_ON);
-        assert!(ed.helpers().experimental.shape_text);
-    }
-
-    #[test]
-    fn shape_text_off_text_tool_in_rect_starts_free_block() {
-        // Arrange
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], false, Tool::Text);
-
-        // Act
-        place(&mut ed, 50.0, 50.0, "ab");
-        key(&mut ed, Key::Escape);
-
-        // Assert: T29 behaviour, the rectangle is untouched.
-        assert_eq!(texts(&ed), ["ab"]);
-        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
-    }
-
-    #[test]
-    fn shape_text_off_select_click_inside_selected_rect_clears_selection() {
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], false, Tool::Select);
-        click(&mut ed, 0.0, 50.0);
-        assert_eq!(ed.selection().len(), 1);
-
-        click(&mut ed, 100.0, 50.0);
-
-        assert_eq!(ed.selection(), []);
-        assert!(ed.text_edit().is_none());
-    }
-
-    #[test]
     fn shape_text_text_tool_click_in_rect_edits_its_text() {
         // Arrange
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
         let id = ids(&ed)[0];
 
         // Act
@@ -3741,7 +3696,7 @@ mod tests {
 
     #[test]
     fn shape_text_text_tool_click_in_ellipse_edits_its_text() {
-        let mut ed = shape_text_editor(vec![ellipse(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![ellipse(0.0, 0.0, 200.0, 100.0)], Tool::Text);
 
         place(&mut ed, 100.0, 50.0, "3");
         key(&mut ed, Key::Escape);
@@ -3753,7 +3708,7 @@ mod tests {
     #[test]
     fn shape_text_text_tool_click_in_grid_edits_that_cell() {
         // Arrange: 4 × 4 cells of 50.
-        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 200.0, 200.0, 4, 4)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 200.0, 200.0, 4, 4)], Tool::Text);
 
         // Act
         place(&mut ed, 60.0, 110.0, "7");
@@ -3777,7 +3732,7 @@ mod tests {
                 width: 0.0,
             },
         };
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0), block], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0), block], Tool::Text);
         let block_id = ids(&ed)[1];
 
         // Act
@@ -3795,7 +3750,7 @@ mod tests {
             rect(0.0, 0.0, 200.0, 100.0),
             grid(300.0, 0.0, 200.0, 200.0, 4, 4),
         ];
-        let mut ed = shape_text_editor(shapes, true, Tool::Select);
+        let mut ed = shape_text_editor(shapes, Tool::Select);
         let ids = ids(&ed);
 
         // Act / Assert: a first click on the outline only selects.
@@ -3820,7 +3775,7 @@ mod tests {
     #[test]
     fn shape_text_edit_is_one_history_entry() {
         // Arrange
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
         let before = ed.history.undo_len();
 
         // Act
@@ -3839,7 +3794,7 @@ mod tests {
     #[test]
     fn shape_text_ctrl_z_cancels_edit() {
         // Arrange
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
         place(&mut ed, 100.0, 50.0, "x");
         key(&mut ed, Key::Escape);
         place(&mut ed, 100.0, 50.0, "yz");
@@ -3855,7 +3810,7 @@ mod tests {
     #[test]
     fn shape_text_blank_edit_clears_text() {
         // Arrange
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
         place(&mut ed, 100.0, 50.0, "x");
         key(&mut ed, Key::Escape);
 
@@ -3877,7 +3832,7 @@ mod tests {
         // Arrange: a grid with text in cell (0, 0).
         let g = grid(0.0, 0.0, 200.0, 200.0, 4, 4)
             .with_slot_text(cell(0, 0), ShapeText::new("a".to_owned(), 18.0));
-        let mut ed = shape_text_editor(vec![g.clone()], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![g.clone()], Tool::Text);
         let id = ids(&ed)[0];
 
         // Act: edit cell (0, 0).
@@ -3899,7 +3854,7 @@ mod tests {
     #[test]
     fn shape_text_tab_fills_5x5_grid_without_mouse() {
         // Arrange: 5 × 5 cells of 50; one click into cell (0, 0).
-        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 250.0, 250.0, 5, 5)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 250.0, 250.0, 5, 5)], Tool::Text);
         let before = ed.history.undo_len();
         click(&mut ed, 25.0, 25.0);
 
@@ -3926,7 +3881,7 @@ mod tests {
 
     #[test]
     fn shape_text_shift_tab_goes_back_and_tab_wraps() {
-        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 150.0, 100.0, 3, 2)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 150.0, 100.0, 3, 2)], Tool::Text);
         let id = ids(&ed)[0];
         click(&mut ed, 25.0, 25.0);
 
@@ -3946,7 +3901,7 @@ mod tests {
     #[test]
     fn shape_text_enter_moves_down_and_stays_at_bottom_row() {
         // Arrange
-        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 100.0, 100.0, 2, 2)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 100.0, 100.0, 2, 2)], Tool::Text);
         let id = ids(&ed)[0];
         place(&mut ed, 25.0, 25.0, "a");
 
@@ -3971,7 +3926,7 @@ mod tests {
 
     #[test]
     fn shape_text_enter_in_rect_is_a_new_line() {
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
 
         place(&mut ed, 100.0, 50.0, "a");
         key(&mut ed, Key::Enter);
@@ -3983,7 +3938,7 @@ mod tests {
     #[test]
     fn shape_text_undo_restores_cells_one_edit_at_a_time() {
         // Arrange: fill three cells with Tab.
-        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 150.0, 50.0, 3, 1)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 150.0, 50.0, 3, 1)], Tool::Text);
         click(&mut ed, 25.0, 25.0);
         for s in ["x", "y", "z"] {
             typed(&mut ed, s);
@@ -4013,7 +3968,7 @@ mod tests {
         // Arrange
         let r = rect(0.0, 0.0, 200.0, 100.0)
             .with_slot_text(TextSlot::Shape, ShapeText::new("n".to_owned(), 18.0));
-        let mut ed = shape_text_editor(vec![r], true, Tool::Select);
+        let mut ed = shape_text_editor(vec![r], Tool::Select);
 
         // Act: move by dragging the outline, duplicate, copy and paste.
         down(&mut ed, PointerButton::Left, 0.0, 50.0);
@@ -4042,7 +3997,7 @@ mod tests {
     fn shape_text_erased_with_its_shape() {
         let r = rect(0.0, 0.0, 200.0, 100.0)
             .with_slot_text(TextSlot::Shape, ShapeText::new("n".to_owned(), 18.0));
-        let mut ed = shape_text_editor(vec![r], true, Tool::Pen);
+        let mut ed = shape_text_editor(vec![r], Tool::Pen);
 
         // A right drag across the outline removes the shape and its text.
         down(&mut ed, PointerButton::Right, 0.0, 40.0);
@@ -4054,31 +4009,186 @@ mod tests {
         assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("n"));
     }
 
+    // ---- T52 numbered shapes hold no text --------------------------------
+
+    /// The label of the `index`-th shape (bottom first).
+    fn label_of(ed: &Editor, index: usize) -> Option<u32> {
+        ed.document().shapes().nth(index).and_then(|(_, s)| s.label())
+    }
+
     #[test]
-    fn shape_text_hides_label_and_keeps_counter() {
+    fn shape_text_text_tool_in_numbered_rect_starts_free_block() {
         // Arrange: a numbered rectangle (label 1, counter 2).
-        let mut ed = shape_text_editor(Vec::new(), true, Tool::Rect);
+        let mut ed = shape_text_editor(Vec::new(), Tool::Rect);
         ed.apply(Command::ToggleNumbering);
         down(&mut ed, PointerButton::Left, 0.0, 0.0);
         move_to(&mut ed, 100.0, 60.0);
         up(&mut ed, PointerButton::Left, 200.0, 100.0);
         assert_eq!(ed.helpers().next_number, 2);
 
-        // Act: type text into it, then undo the text.
+        // Act: the Text tool clicks inside it and types.
         ed.apply(Command::SetTool(Tool::Text));
         place(&mut ed, 100.0, 50.0, "A");
+        assert_eq!(editing_host(&ed), None, "a free block, not the shape");
         key(&mut ed, Key::Escape);
 
-        // Assert: label and counter untouched.
-        let label = |ed: &Editor| ed.document().shapes().next().and_then(|(_, s)| s.label());
-        assert_eq!(label(&ed), Some(1));
-        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("A"));
+        // Assert: a free text block; the rectangle keeps its number only.
+        assert_eq!(texts(&ed), ["A"]);
+        assert_eq!(label_of(&ed, 0), Some(1));
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
         assert_eq!(ed.helpers().next_number, 2);
-        ed.apply(Command::Undo);
-        assert_eq!(label(&ed), Some(1));
-        assert_eq!(ed.helpers().next_number, 2);
-        ed.apply(Command::Redo);
-        assert_eq!(ed.helpers().next_number, 2);
+    }
+
+    #[test]
+    fn shape_text_select_second_click_on_numbered_ellipse_opens_nothing() {
+        // Arrange
+        let numbered = ellipse(0.0, 0.0, 200.0, 100.0).with_label(Some(3));
+        let mut ed = shape_text_editor(vec![numbered], Tool::Select);
+        click(&mut ed, 0.0, 50.0);
+        assert_eq!(ed.selection().len(), 1);
+
+        // Act: a second click inside, then typing.
+        click(&mut ed, 100.0, 50.0);
+        typed(&mut ed, "ab");
+
+        // Assert
+        assert!(ed.text_edit().is_none());
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
+        assert_eq!(label_of(&ed, 0), Some(3));
+        assert_eq!(texts(&ed), Vec::<String>::new());
+    }
+
+    #[test]
+    fn shape_text_typing_with_numbered_rect_selected_adds_no_text() {
+        // Arrange
+        let numbered = rect(0.0, 0.0, 200.0, 100.0).with_label(Some(1));
+        let mut ed = shape_text_editor(vec![numbered], Tool::Select);
+        click(&mut ed, 0.0, 50.0);
+        assert_eq!(ed.selection().len(), 1);
+
+        // Act
+        typed(&mut ed, "xy");
+        key(&mut ed, Key::Enter);
+
+        // Assert
+        assert!(ed.text_edit().is_none());
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape), None);
+        assert_eq!(label_of(&ed, 0), Some(1));
+    }
+
+    #[test]
+    fn shape_text_paste_and_duplicate_keep_numbered_shapes_text_free() {
+        // Arrange: a numbered rectangle and a named one.
+        let numbered = rect(0.0, 0.0, 100.0, 100.0).with_label(Some(1));
+        let named = ellipse(200.0, 0.0, 100.0, 100.0)
+            .with_slot_text(TextSlot::Shape, ShapeText::new("u".to_owned(), 18.0));
+        let mut ed = shape_text_editor(vec![numbered, named], Tool::Select);
+
+        // Act
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Duplicate);
+        ed.apply(Command::Copy);
+        ed.apply(Command::Paste);
+
+        // Assert: three of each, none both numbered and named.
+        let shapes: Vec<&Shape> = ed.document().shapes().map(|(_, s)| s).collect();
+        assert_eq!(shapes.len(), 6);
+        let labelled = shapes.iter().filter(|s| s.label().is_some()).count();
+        let named = shapes
+            .iter()
+            .filter(|s| s.slot_text(TextSlot::Shape).is_some())
+            .count();
+        assert_eq!((labelled, named), (3, 3));
+        assert!(
+            shapes
+                .iter()
+                .all(|s| s.label().is_none() || s.slot_text(TextSlot::Shape).is_none())
+        );
+    }
+
+    #[test]
+    fn shape_text_numbered_grid_cells_hold_text() {
+        // Arrange: a grid with indices on (numbering drives them, T22).
+        let mut indexed = grid(0.0, 0.0, 200.0, 200.0, 4, 4);
+        if let Shape::Grid { axes, .. } = &mut indexed {
+            *axes = true;
+        }
+        let mut ed = shape_text_editor(vec![indexed], Tool::Text);
+        ed.apply(Command::ToggleNumbering);
+
+        // Act
+        place(&mut ed, 60.0, 110.0, "7");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(slot_text(&ed, 0, cell(1, 2)).as_deref(), Some("7"));
+    }
+
+    /// `text` with the last token of its `helpers` record set to `token`.
+    fn with_helpers_last_token(text: &str, token: &str) -> String {
+        text.lines()
+            .map(|line| match line.strip_prefix("helpers ") {
+                Some(rest) => {
+                    let (head, _) = rest.rsplit_once(' ').unwrap_or((rest, ""));
+                    format!("helpers {head} {token}")
+                }
+                None => line.to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
+    }
+
+    #[test]
+    fn snapshot_helpers_reserved_token_is_ignored() {
+        // Arrange: a rectangle holding text and a filled grid cell.
+        let named = rect(0.0, 0.0, 200.0, 100.0)
+            .with_slot_text(TextSlot::Shape, ShapeText::new("n".to_owned(), 18.0));
+        let g = grid(300.0, 0.0, 100.0, 100.0, 2, 2)
+            .with_slot_text(cell(1, 1), ShapeText::new("c".to_owned(), 18.0));
+        let ed = shape_text_editor(vec![named, g], Tool::Select);
+        let text = ed.snapshot().to_text();
+
+        // Act / Assert: the reserved token is written as 0 …
+        assert!(
+            text.lines()
+                .any(|l| l.starts_with("helpers ") && l.ends_with(" 0")),
+            "{text}"
+        );
+        // … and either value loads the same editor.
+        for token in ["0", "1"] {
+            let loaded = Snapshot::parse(&with_helpers_last_token(&text, token));
+            let Ok(loaded) = loaded else {
+                panic!("token {token}: {loaded:?}");
+            };
+            assert_eq!(Editor::from_snapshot(loaded), ed, "token {token}");
+        }
+    }
+
+    #[test]
+    fn read_snapshot_rejects_numbered_shape_with_text() {
+        // Arrange: a rectangle with both a label and text, built directly.
+        let both = Shape::Rect {
+            a: Vec2::ZERO,
+            b: Vec2::new(100.0, 100.0),
+            style: Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            fill: None,
+            label: Some(1),
+            text: ShapeText::new("n".to_owned(), 18.0),
+        };
+        let text = editor_with(vec![both]).snapshot().to_text();
+
+        // Act
+        let result = Snapshot::parse(&text);
+
+        // Assert
+        let Err(err) = result else {
+            panic!("a numbered shape with text loaded");
+        };
+        assert!(err.line >= 1, "{err}");
     }
 
     // ---- T34 pen taps -----------------------------------------------------
@@ -4482,7 +4592,7 @@ mod tests {
     #[test]
     fn text_size_memory_empty_shape_slot_starts_at_it() {
         // Arrange: a block grown to 24 px away from the rectangle.
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
         place_grown(&mut ed, 400.0, 300.0, "a", 2);
 
         // Act
@@ -4496,7 +4606,7 @@ mod tests {
     #[test]
     fn text_size_memory_select_click_in_empty_slot_starts_at_it() {
         // Arrange: a block grown to 24 px, then the rectangle selected.
-        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
         place_grown(&mut ed, 400.0, 300.0, "a", 2);
         ed.apply(Command::SetTool(Tool::Select));
         click(&mut ed, 0.0, 50.0);
@@ -4515,7 +4625,7 @@ mod tests {
         // Arrange: a rectangle holding 18 px text, a block grown to 24 px.
         let held = ShapeText::new("ab".to_owned(), 18.0);
         let boxed = rect(0.0, 0.0, 200.0, 100.0).with_slot_text(TextSlot::Shape, held);
-        let mut ed = shape_text_editor(vec![boxed], true, Tool::Text);
+        let mut ed = shape_text_editor(vec![boxed], Tool::Text);
         place_grown(&mut ed, 400.0, 300.0, "a", 2);
 
         // Act

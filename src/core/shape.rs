@@ -2224,6 +2224,66 @@ mod tests {
     }
 
     #[test]
+    fn with_slot_text_never_fills_a_numbered_shape() {
+        for shape in [
+            rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+            ellipse(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+        ] {
+            // Arrange
+            let numbered = shape.with_label(Some(2));
+
+            // Act
+            let with = numbered.clone().with_slot_text(TextSlot::Shape, st("ab", 5.0));
+
+            // Assert: unchanged, number kept, no text.
+            assert_eq!(with, numbered);
+            assert_eq!(with.label(), Some(2));
+            assert_eq!(with.slot_text(TextSlot::Shape), None);
+        }
+    }
+
+    #[test]
+    fn with_label_keeps_a_shape_with_text_unnumbered() {
+        for shape in [
+            rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+            ellipse(v(0.0, 0.0), v(10.0, 10.0), 1.0, None),
+        ] {
+            // Arrange
+            let named = shape.with_slot_text(TextSlot::Shape, st("ab", 5.0));
+
+            // Act
+            let numbered = named.clone().with_label(Some(4));
+
+            // Assert: text wins; clearing a label is always allowed.
+            assert_eq!(numbered, named);
+            assert_eq!(numbered.label(), None);
+            assert_eq!(numbered.slot_text(TextSlot::Shape), st("ab", 5.0).as_ref());
+            assert_eq!(named.clone().with_label(None), named);
+        }
+    }
+
+    #[test]
+    fn text_host_at_skips_numbered_shapes() {
+        // Arrange
+        let r = rect(v(0.0, 0.0), v(100.0, 50.0), 1.0, None);
+        let e = ellipse(v(0.0, 0.0), v(100.0, 100.0), 1.0, None);
+        let g = grid(v(0.0, 0.0), v(100.0, 100.0), 4, 4, 1.0);
+        let inside = v(50.0, 25.0);
+
+        // Act / Assert: plain shapes host text where text_slot_at says …
+        assert_eq!(r.text_host_at(inside), Some(TextSlot::Shape));
+        assert_eq!(e.text_host_at(inside), Some(TextSlot::Shape));
+        assert_eq!(g.text_host_at(inside), g.text_slot_at(inside));
+        assert_eq!(r.text_host_at(v(500.0, 500.0)), None);
+        // … numbered rectangles and ellipses never do, but keep their slot.
+        for shape in [r, e] {
+            let numbered = shape.with_label(Some(1));
+            assert_eq!(numbered.text_host_at(inside), None);
+            assert_eq!(numbered.text_slot_at(inside), Some(TextSlot::Shape));
+        }
+    }
+
+    #[test]
     fn with_cell_text_keeps_cells_sorted_unique_and_in_range() {
         // Arrange
         let cell = |col, row| TextSlot::Cell { col, row };
