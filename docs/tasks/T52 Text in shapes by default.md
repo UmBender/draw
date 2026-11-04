@@ -1,13 +1,13 @@
 ---
 id: T52
 title: Text in shapes by default
-status: todo
+status: in-progress
 wave: 32
 branch: task/T52-shape-text-default
 depends_on: []
-adrs: []
-feature: ""
-tutorial: ""
+adrs: [ADR-T52-1]
+feature: "Text in shapes"
+tutorial: "31 Prototyping an interaction behind a switch"
 tags: [task]
 ---
 
@@ -70,8 +70,82 @@ indices]]), keep text in their cells.
 
 ## Spec
 
-To be written in the spec step (ADR required: superseding ADR-T31-1,
-the numbered-shape rule).
+Decisions: [[ADR-T52-1 Text in shapes always on, numbered shapes hold
+no text]] (supersedes [[ADR-T31-1 Shape text prototype behind a
+switch]]).
+
+- **AC-1 Always on.** With a plain `Editor::new()` (no setting) the Text
+  tool opens the text of a rectangle, an ellipse or a grid cell under a
+  click; Select's second click on the only selected rect/ellipse/grid
+  opens it, and a press inside the only selected shape keeps it.
+  Tests (the T31 tests, now without a switch):
+  `editor::tests::shape_text_text_tool_click_in_rect_edits_its_text`,
+  `…_in_ellipse_edits_its_text`, `…_in_grid_edits_that_cell`,
+  `shape_text_select_second_click_edits_selected_shape`,
+  `select::tests::shape_text_press_inside_only_selected_rect_keeps_it`,
+  `tests/fuzz.rs::sessions_reach_shape_text`.
+- **AC-2 The switch is gone.** `core::experimental` (`Experimental`,
+  `SHAPE_TEXT`, `EXPERIMENTAL_ENV`), `Helpers::experimental`,
+  `Editor::with_experimental` and `Editor::experimental` are deleted;
+  the shell no longer reads `DRAW_EXPERIMENTAL` (setting it does
+  nothing, silently). The README has no `DRAW_EXPERIMENTAL` row and no
+  *Experimental* section. Tests: the build (no reference compiles),
+  `shell::app::tests::draw_experimental_is_not_read_or_documented`.
+  The off-switch tests (`shape_text_off_*`,
+  `switch_off_sessions_never_create_shape_text`,
+  `with_experimental_sets_the_switch_in_helpers`, the
+  `experimental::tests`) are deleted with the switch; the fuzz
+  properties that ran with the switch on become the only ones.
+- **AC-3 Snapshot format unchanged.** The `helpers` record keeps its
+  seventh token (the old switch), now reserved: written as `0`, read as
+  a bool and ignored; shape text loads whatever it says. The fixtures in
+  `tests/snapshots/` are byte-identical. Tests:
+  `editor::tests::snapshot_helpers_reserved_token_is_ignored`, the
+  `tests/snapshots.rs` fixture tests, fuzz
+  `snapshot_round_trip_continues_equal`.
+- **AC-4 A numbered rect/ellipse never opens a text edit.** The Text
+  tool clicking inside a numbered rectangle or ellipse starts a free
+  text block there, as on empty canvas; Select's second click on a
+  selected numbered shape opens nothing; typing with it selected adds
+  no text to it. `Shape::text_host_at(p)` is `text_slot_at(p)` except
+  `None` for a labelled rect/ellipse, and every opening path uses it.
+  Tests: `shape::tests::text_host_at_skips_numbered_shapes`,
+  `editor::tests::shape_text_text_tool_in_numbered_rect_starts_free_block`,
+  `shape_text_select_second_click_on_numbered_ellipse_opens_nothing`,
+  `shape_text_typing_with_numbered_rect_selected_adds_no_text`,
+  `select::tests::press_inside_only_selected_numbered_rect_clears_selection`.
+- **AC-5 Numbering never covers text: text wins.** `Shape::with_label`
+  leaves a rect/ellipse that holds text unchanged, and
+  `Shape::with_slot_text` never puts text into a labelled one; so
+  `numbering::label_new` leaves a shape with text unnumbered and the
+  counter does not advance. No text is lost. Tests:
+  `shape::tests::with_label_keeps_a_shape_with_text_unnumbered`,
+  `shape::tests::with_slot_text_never_fills_a_numbered_shape`,
+  `numbering::tests::label_new_leaves_shape_with_text_unnumbered`.
+- **AC-6 Paste and duplicate keep the rule.** Copies of a numbered
+  shape have its label and no text; copies of a shape with text keep
+  the text and no label. Test:
+  `editor::tests::shape_text_paste_and_duplicate_keep_numbered_shapes_text_free`.
+- **AC-7 Fuzzed invariant.** After every event the fuzz harness checks
+  `label.is_some() ⇒ text.is_none()` for every Rect/Ellipse in the
+  document (`check_shape_text`), and sessions that number the shape
+  before typing into it reach free text blocks but never numbered shape
+  text. Tests: `tests/fuzz.rs::editor_never_panics_and_keeps_invariants`,
+  `numbered_host_sessions_never_fill_numbered_shapes`.
+- **AC-8 Snapshots keep the invariant.** Loading a snapshot whose
+  document holds a labelled rect/ellipse with text fails with a line
+  number. Test:
+  `editor::tests::read_snapshot_rejects_numbered_shape_with_text`.
+- **AC-9 Grids keep their text.** Cells of a numbered grid (`N` shows
+  indices) still hold text. Test:
+  `editor::tests::shape_text_numbered_grid_cells_hold_text`.
+- **AC-10 Rendering.** A numbered shape always shows its number
+  (`render::shown_label`). Test:
+  `render::tests::numbered_shape_shows_its_label`.
+- **Docs.** The feature note is renamed to [[Text in shapes]]; the
+  README moves it to *Features* and the keyboard reference; the
+  [[Contest cheat sheet]] says how to write in a shape; tutorial 31 gets
+  a "how the prototype graduated" addendum.
 
 ## Out of scope
 

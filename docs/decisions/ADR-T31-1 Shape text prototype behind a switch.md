@@ -1,7 +1,7 @@
 ---
 id: ADR-T31-1
 title: Shape text prototype behind a switch
-status: accepted
+status: superseded
 kind: decision
 date: 2026-10-15
 task: T31
@@ -9,7 +9,7 @@ builds_on: [ADR-T16-1, ADR-T16-3, ADR-T19-1, ADR-T21-1, ADR-T21-2, ADR-T29-1, AD
 amends: [ADR-T16-1, ADR-T21-2, ADR-T29-2]
 supersedes: []
 reverts: []
-superseded_by:
+superseded_by: ADR-T52-1
 reverted_by:
 tags: [adr]
 ---
