@@ -774,6 +774,8 @@ pub const ALPHABETS: &[AlphabetDef] = &[
     },
     // Fraktur letters (T58).
     MATHFRAK,
+    // Script capitals, as \mathcal (T59).
+    MATHSCR,
 ];
 
 /// Start of the bold digits `𝟎`.
