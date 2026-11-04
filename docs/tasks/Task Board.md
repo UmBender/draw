@@ -142,6 +142,8 @@ flowchart TD
   T73 --> T75[T75 End-to-end test suite]
   T74 --> T75
   T75 --> T53
+  T74 --> T76[T76 Remembered text size past the ladder]
+  T76 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -183,7 +185,7 @@ flowchart TD
 | 31 | [[T46 Native Wayland by default and Xwayland deprecated]] · [[T47 Always-on diagnostics log]] |
 | 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] · [[T51 Build-time themes]] · [[T52 Text in shapes by default]] |
 | 33 | [[T54 Math alphabet styles]] · [[T72 Feature proposal]] · [[T73 Continuous integration on GitHub]] · [[T74 Editor snapshots for tests]] |
-| 34 | [[T55 Math font subset for alphabets and symbols]] · [[T75 End-to-end test suite]] |
+| 34 | [[T55 Math font subset for alphabets and symbols]] · [[T75 End-to-end test suite]] · [[T76 Remembered text size past the ladder]] |
 | 35 | [[T56 Bold math]] |
 | 36 | [[T57 Blackboard bold]] |
 | 37 | [[T58 Fraktur letters]] |
@@ -281,5 +283,6 @@ flowchart TD
 | [[T73 Continuous integration on GitHub]] | done | — | `task/T73-github-ci` |
 | [[T74 Editor snapshots for tests]] | done | — | `task/T74-editor-snapshots` |
 | [[T75 End-to-end test suite]] | todo | T73, T74 | `task/T75-e2e-tests` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T75 | `chore/release-1.5.0` |
+| [[T76 Remembered text size past the ladder]] | todo | T74 | `fix/remembered-text-size` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T76 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
