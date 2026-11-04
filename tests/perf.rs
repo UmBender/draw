@@ -515,11 +515,10 @@ fn perf_text_layout_and_cull_500_blocks_is_under_1ms() {
                 if let Shape::Text {
                     origin, text, size, ..
                 } = shape
+                    && is_visible(shape.bounds(), view)
                 {
-                    if is_visible(shape.bounds(), view) {
-                        for glyph in glyphs(*origin, text, *size) {
-                            sum += camera.world_to_screen(glyph.pos).x;
-                        }
+                    for glyph in glyphs(*origin, text, *size) {
+                        sum += camera.world_to_screen(glyph.pos).x;
                     }
                 }
             }

@@ -702,12 +702,10 @@ pub fn prepare_text_block(
         if let Ink::Glyph {
             ch, face, scale, ..
         } = *ink
+            && let Some((rpx, _)) = block_raster(size * scale, camera, dpi)
+            && drawable(ch)
         {
-            if let Some((rpx, _)) = block_raster(size * scale, camera, dpi) {
-                if drawable(ch) {
-                    atlas.prepare_in(face, ch, rpx);
-                }
-            }
+            atlas.prepare_in(face, ch, rpx);
         }
     }
 }
@@ -1484,7 +1482,7 @@ mod tests {
         const {
             assert!(BATCH_MAX_VERTICES < 10_000);
             assert!(BATCH_MAX_INDICES < 5_000);
-            assert!(BATCH_MAX_INDICES % 6 == 0);
+            assert!(BATCH_MAX_INDICES.is_multiple_of(6));
         }
     }
 

@@ -6,7 +6,7 @@ RUN dnf -y install gcc binutils findutils tar gzip curl \
         desktop-file-utils libappstream-glib \
     && dnf clean all
 
-ARG RUST_VERSION=1.97.0
+ARG RUST_VERSION=1.99.1
 ARG CARGO_DEB_VERSION=3.8.0
 ARG CARGO_GENERATE_RPM_VERSION=0.21.0
 

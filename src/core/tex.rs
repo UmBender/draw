@@ -876,13 +876,13 @@ impl<'a> Parser<'a> {
         if ch.is_whitespace() {
             return Node::Space(self.whitespace(end));
         }
-        if ch == '{' {
-            if let Some(close) = self.group_close(end) {
-                self.pos += 1;
-                let nodes = self.list(close);
-                self.pos = close + 1;
-                return Node::Group(nodes);
-            }
+        if ch == '{'
+            && let Some(close) = self.group_close(end)
+        {
+            self.pos += 1;
+            let nodes = self.list(close);
+            self.pos = close + 1;
+            return Node::Group(nodes);
         }
         if ch == '\\' {
             return self.command(end);
@@ -1058,11 +1058,11 @@ fn match_braces(chars: &[char]) -> Vec<Option<usize>> {
                 open.push((i, within));
             }
             '}' => {
-                if let Some((start, within)) = open.pop() {
-                    if within {
-                        closes[start] = Some(i);
-                        depth -= 1;
-                    }
+                if let Some((start, within)) = open.pop()
+                    && within
+                {
+                    closes[start] = Some(i);
+                    depth -= 1;
                 }
             }
             _ => {}

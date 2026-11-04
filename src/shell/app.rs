@@ -880,10 +880,10 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         };
         draw_line(top.x, top.y, bottom.x, bottom.y, CARET_WIDTH_PX, color);
     }
-    if editor.active_gesture().is_none() {
-        if let Some(bounds) = editor.selection_bounds() {
-            render::draw_selection(bounds, camera);
-        }
+    if editor.active_gesture().is_none()
+        && let Some(bounds) = editor.selection_bounds()
+    {
+        render::draw_selection(bounds, camera);
     }
     if let Some(marquee) = overlay.marquee {
         let rect = Aabb::from_corners(
