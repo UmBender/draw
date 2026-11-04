@@ -40,6 +40,15 @@ accent moves right with the slant, and scripts attach after the accented
 letter (`$\vec{F}_x$`, `$\dot{x}^2$`). (Since [[T39 Accents in formulas]];
 tutorial [[39 Accents that sit on their letters]].)
 
+Every Greek letter LaTeX writes is there: the lowercase letters and
+their variants (`\varepsilon \vartheta \varkappa \varpi \varrho
+\varsigma \varphi`), the capitals, the amsmath italic capitals
+`$\varGamma \ne \Gamma$` … `\varOmega` (italic even inside `\mathrm`),
+and the capitals that look like Latin letters under their unicode-math
+names, `\Alpha \Beta \Epsilon \Zeta \Eta \Iota \Kappa \Mu \Nu \Omicron
+\Rho \Tau \Chi` — upright like `\Gamma`, italic in `\mathnormal`.
+(Since [[T62 Complete Greek letters]].)
+
 The Hebrew letters of set theory are there for cardinals:
 `$\aleph_0 < 2^{\aleph_0}$`, `\beth_1`, `\gimel`, `\daleth` — upright,
 as in LaTeX, and never changed by `\mathcal`. (Since
@@ -95,6 +104,7 @@ are never changed. (Since [[T54 Math alphabet styles]],
 | Any operator name | `\operatorname{rank}`, `\operatorname*{argmin}_x` (`*`: limits below) |
 | Trigonometric, hyperbolic | `\sin \cos \tan \cot \sec \csc`, `\arcsin \arccos \arctan`, `\sinh \cosh \tanh \coth`; not in LaTeX's base set: `\arccot \arcsec \arccsc \sech \csch` |
 | Greek | `\alpha` … `\omega` (italic), `\Gamma` … `\Omega` (upright) |
+| Greek variants | `\varepsilon \vartheta \varkappa \varpi \varrho \varsigma \varphi`; italic capitals `\varGamma` … `\varOmega`; `\Alpha \Beta \Epsilon \Zeta \Eta \Iota \Kappa \Mu \Nu \Omicron \Rho \Tau \Chi` (upright, unicode-math names) |
 | Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
 | Math alphabets | `\mathrm{d}x` (upright roman), `\mathit{diff}` (italic word), `\mathnormal{\Gamma}` (italic Greek capitals); nested, the innermost wins |
@@ -158,6 +168,7 @@ of the same batch.
   or bold math. `\mathit{diff}` has no text-italic ligatures or kerning
   (the letters are the math italic ones), and `\mathrm` has no upright
   lowercase Greek.
+- No `\digamma` / `\Digamma`: the font subset has no digamma.
 - A character the math font lacks (e.g. CJK in `\text{…}`) falls back to
   a monospaced cell.
 - A formula stays on one line.
