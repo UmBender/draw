@@ -1,7 +1,7 @@
 ---
 id: T56
 title: Bold math
-status: in-progress
+status: review
 wave: 35
 branch: task/T56-bold-math
 depends_on: [T54, T55]
@@ -119,11 +119,11 @@ behaviour: `MATH_ITALIC`, `\mathit`, `\mathnormal`, `\mathcal` slanted,
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T56): …`
-- [ ] tests — `test(T56): …`
-- [ ] models — `feat(T56): …`
-- [ ] behaviour — `feat(T56): …`
-- [ ] quality — `chore(T56): …`
-- [ ] docs — `docs(T56): …`
+- [x] tests — `test(T56): …`
+- [x] models — `feat(T56): …`
+- [x] behaviour — `feat(T56): …`
+- [x] quality — `chore(T56): …` (nothing to change, no commit)
+- [x] docs — `docs(T56): …`
 
 ## Learning path
 
@@ -137,3 +137,13 @@ None planned; the feature note is enough.
   owner decided. UNATTENDED CHOICE: new `AlphabetDef::slant` flag so an
   accent is centred over upright bold (as in LaTeX), recorded in
   ADR-T56-1.
+- 2026-11-04 — tests, `slant` field, `\mathbf`/`\boldsymbol`/`\bm` rows.
+  In the behaviour step two test assumptions turned out wrong and were
+  settled: the font gives bold `f` an italic correction (the assertion
+  that upright bold has none was dropped), and `\boldsymbol` digits are
+  upright, so digits are never skewed (added to ADR-T56-1).
+- 2026-11-04 — `scripts/check.sh` and `scripts/check.sh --fuzz` green
+  with no changes, so no quality commit. README row and feature note
+  section added; status `review`. Manual checks for the owner:
+  `$\mathbf{v} \cdot \bm{\alpha}$`, `$\mathbf{\Gamma}$`,
+  `$\hat{\mathbf{v}}$` (centred).

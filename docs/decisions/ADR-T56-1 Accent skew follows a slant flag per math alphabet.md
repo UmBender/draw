@@ -1,7 +1,7 @@
 ---
 id: ADR-T56-1
 title: Accent skew follows a slant flag per math alphabet
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-04
 task: T56

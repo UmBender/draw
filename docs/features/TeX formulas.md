@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -89,6 +89,17 @@ are never changed. (Since [[T54 Math alphabet styles]],
 [[ADR-T54-1 Math alphabets as a table of per-kind mappings]]; tutorial
 [[54 Math alphabets as a mapping table]].)
 
+Bold is two more alphabets. `$\mathbf{v}$` is upright bold: Latin
+letters, digits and Greek capitals (`\mathbf{\Gamma}` → 𝚪), while
+lowercase Greek stays italic, as in LaTeX. `$\boldsymbol{\alpha}$` and
+its short form `$\bm{x}$` are bold italic, Greek lowercase and capitals
+included, with bold digits. An accent is centred over an upright bold
+letter and skewed over a bold italic one. Only letters and digits can be
+bold: the font has no bold operators, and `\boldmath` (a LaTeX
+declaration valid only outside math mode) is drawn as an unknown
+command. (Since [[T56 Bold math]],
+[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -108,6 +119,7 @@ are never changed. (Since [[T54 Math alphabet styles]],
 | Hebrew (set theory, upright) | `\aleph \beth \gimel \daleth`, as in `\aleph_0 < 2^{\aleph_0}` |
 | Calligraphic capitals | `\mathcal{F}`, `\mathcal A` |
 | Math alphabets | `\mathrm{d}x` (upright roman), `\mathit{diff}` (italic word), `\mathnormal{\Gamma}` (italic Greek capitals); nested, the innermost wins |
+| Bold | `\mathbf{v}` (upright bold, also digits and Greek capitals), `\boldsymbol{\alpha}`, `\bm{x}` (bold italic) |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
 | Overline | `\overline{AB}` (as wide as its argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
@@ -139,7 +151,9 @@ Mathematical Alphanumeric Symbols (`x` → `𝑥`, `\mathcal{A}` → `𝒜`)
 through the alphabet table `ALPHABETS`: one row per command with a
 mapping per kind of character (Latin, digits, Greek), resolved innermost
 first down to math italic
-([[ADR-T54-1 Math alphabets as a table of per-kind mappings]]).
+([[ADR-T54-1 Math alphabets as a table of per-kind mappings]]); a
+`slant` flag per row decides whether an accent is skewed
+([[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]).
 The subset holds the whole Mathematical Alphanumeric Symbols block (bold,
 script capitals, fraktur, double-struck, sans-serif, monospace, Greek and
 digit styles; Latin Modern Math has no script lowercase), long and
@@ -170,8 +184,9 @@ of the same batch.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
   literals); `\longrightarrow`, `\implies` and `\triangle` have no
   command yet (their glyphs are in the font subset since T55).
-- `\mathcal` has capitals only (as in TeX); no `\mathbb`, `\mathfrak`
-  or bold math. `\mathit{diff}` has no text-italic ligatures or kerning
+- `\mathcal` has capitals only (as in TeX); no `\mathbb` or
+  `\mathfrak`. No bold operators, fraction bars or roots, no `\pmb` and
+  no `\boldmath`. `\mathit{diff}` has no text-italic ligatures or kerning
   (the letters are the math italic ones), and `\mathrm` has no upright
   lowercase Greek.
 - No `\digamma` / `\Digamma`: the font subset has no digamma.
