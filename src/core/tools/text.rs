@@ -881,7 +881,7 @@ mod tests {
                 width: 1.0,
             },
             fill: None,
-            label: Some(3),
+            label: None,
             text: None,
         }
     }

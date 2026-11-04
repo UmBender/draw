@@ -30,6 +30,9 @@ single-key shortcut so your hands never leave the keyboard for long.
 - **Text blocks** — click and type notes with Greek letters and math
   symbols (`O(n log n)`, `α ≤ β`); no shortcut fires while you type, `Esc`
   finishes.
+- **Text in shapes** — type inside a rectangle, a circle or a grid cell
+  (a DP table, named graph nodes); text shrinks to fit and moves with the
+  shape. A numbered node keeps its number instead.
 - **Formulas** — `$…$` in a text block is typeset TeX: scripts, fractions,
   roots, sums with limits (`$\sum_{k=1}^{n} k^2$`).
 - **Fill** — bucket fills a shape or a single grid cell; the eraser clears
@@ -247,6 +250,23 @@ block, the next new blocks (and empty shapes or cells) start at that
 on-screen size, even after a zoom; press `[` or `]` to go back to the
 stroke-width size.
 
+### Typing in a shape
+
+With the Text tool (`T`), click inside a rectangle, ellipse or grid cell
+to type into it; with Select, click again on the selected shape. All the
+keys above work, and in a grid cell:
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Next / previous cell (wraps around the grid) |
+| `Enter` / `Shift+Enter` | Cell below / above |
+
+Text shrinks to fit the shape, moves and copies with it, and works with
+formulas; the fill eraser clears it. A **numbered** rectangle or circle
+holds no text, its number is its content: clicking inside one with the
+Text tool starts a free text block there. Grids keep text in their cells
+even with indices on.
+
 ### Formulas in text blocks
 
 Write `$…$` inside a text block for a formula in a small TeX subset. It is
@@ -308,14 +328,12 @@ A printable one-page version lives in
 ## Configuration
 
 There is no config file: shortcuts, palette and theme are fixed on purpose.
-Five environment variables exist for troubleshooting, and one turns on
-experimental features:
+Five environment variables exist for troubleshooting:
 
 | Variable | Values | Effect |
 |----------|--------|--------|
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
-| `DRAW_EXPERIMENTAL` | feature names, comma-separated | Turn on experimental features (below) |
 | `DRAW_BACKEND` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` is deprecated and removed in 2.0.0 (see [Window backend](#window-backend)) |
 | `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
 | `DRAW_TABLET` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
@@ -375,23 +393,6 @@ also draws and both barrel buttons pan and erase and the mouse is ignored
 while the pen hovers over the window, and on the deprecated X11 backend.
 Tilt, rotation and the eraser end of the pen are not used. draw ships a
 patched copy of its window library for this (`vendor/miniquad`).
-
-### Experimental
-
-Experimental features are off unless named in `DRAW_EXPERIMENTAL`. They
-may change or disappear in any release.
-
-- **`shape-text` — text in rectangles, ellipses and grid cells.** With the
-  Text tool (`T`), click inside a rectangle, ellipse or grid cell to type
-  into it; with Select, click again on the selected shape. In a grid,
-  `Tab` / `Shift+Tab` go to the next / previous cell and `Enter` /
-  `Shift+Enter` to the cell below / above. Text shrinks to fit, hides the
-  shape's number, moves and copies with the shape; the fill eraser clears
-  it.
-
-```sh
-DRAW_EXPERIMENTAL=shape-text draw
-```
 
 ## Limitations
 

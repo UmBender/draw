@@ -481,10 +481,18 @@ impl Shape {
     }
 
     /// Returns the shape with its label set to `label`; shapes other than
-    /// [`Shape::Rect`] and [`Shape::Ellipse`] are returned unchanged.
+    /// [`Shape::Rect`] and [`Shape::Ellipse`] are returned unchanged. A
+    /// shape holding text is never numbered: text wins (ADR-T52-1).
     #[must_use]
     pub fn with_label(mut self, label: Option<u32>) -> Self {
-        if let Self::Rect { label: l, .. } | Self::Ellipse { label: l, .. } = &mut self {
+        if let Self::Rect {
+            label: l, text, ..
+        }
+        | Self::Ellipse {
+            label: l, text, ..
+        } = &mut self
+            && (label.is_none() || text.is_none())
+        {
             *l = label;
         }
         self
@@ -585,8 +593,10 @@ impl Shape {
     /// its content (ADR-T52-1).
     #[must_use]
     pub fn text_host_at(&self, p: Vec2) -> Option<TextSlot> {
-        let _ = p;
-        todo!("T52 behaviour step")
+        if self.label().is_some() {
+            return None;
+        }
+        self.text_slot_at(p)
     }
 
     /// The text in `slot`, if any.
@@ -606,11 +616,15 @@ impl Shape {
 
     /// Returns the shape with the text in `slot` set to `text`, or cleared
     /// for `None`. A slot the shape does not have (a cell outside the grid,
-    /// a cell of a rectangle, the interior of a grid) leaves it unchanged.
+    /// a cell of a rectangle, the interior of a grid) leaves it unchanged,
+    /// and so does text for a numbered rectangle or ellipse (ADR-T52-1).
     #[must_use]
     pub fn with_slot_text(mut self, slot: TextSlot, text: Option<ShapeText>) -> Self {
         match (&mut self, slot) {
-            (Self::Rect { text: t, .. } | Self::Ellipse { text: t, .. }, TextSlot::Shape) => {
+            (
+                Self::Rect { text: t, label, .. } | Self::Ellipse { text: t, label, .. },
+                TextSlot::Shape,
+            ) if label.is_none() || text.is_none() => {
                 *t = text;
             }
             (

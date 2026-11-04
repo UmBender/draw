@@ -400,7 +400,18 @@ impl Editor {
             selection.push(selection_tokens.get()?);
         }
 
+        let doc_line = r.line();
         let doc = snapshot::read_document(r)?;
+        // A numbered rectangle or ellipse holds no text (ADR-T52-1).
+        if let Some((id, _)) = doc
+            .shapes()
+            .find(|(_, s)| s.label().is_some() && s.slot_text(TextSlot::Shape).is_some())
+        {
+            return Err(SnapshotError::new(
+                doc_line,
+                format!("numbered shape {id:?} holds text"),
+            ));
+        }
         snapshot::check_ids(&selection_tokens, &doc, &selection)?;
         if let Some((_, id)) = reedit {
             snapshot::check_ids(&reedit_tokens, &doc, &[id])?;
