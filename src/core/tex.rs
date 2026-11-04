@@ -3102,6 +3102,103 @@ mod tests {
         assert!(zero.x > aleph.x, "{zero:?}");
     }
 
+    /// Trigonometric and hyperbolic functions of T63; the last five are
+    /// not in LaTeX's base set.
+    const TRIG: [&str; 18] = [
+        "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan", "sinh", "cosh",
+        "tanh", "coth", "arccot", "arcsec", "arccsc", "sech", "csch",
+    ];
+
+    #[test]
+    fn tex_parse_trig_functions_are_operator_words() {
+        for name in TRIG {
+            // Act
+            let nodes = math(&format!("\\{name}"));
+
+            // Assert
+            assert_eq!(nodes, vec![sym(name)], "{name}");
+            assert_eq!(
+                symbol(name).map(|s| (s.text, s.class)),
+                Some((name, Class::Op)),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_trig_functions_are_upright_math_words() {
+        for name in TRIG {
+            // Act
+            let b = boxed(&format!("\\{name}"));
+
+            // Assert: the name itself, upright, from the math face.
+            let got = glyphs(&b.ink);
+            let chars: String = got.iter().map(|g| g.0).collect();
+            assert_eq!(chars, name);
+            assert!(got.iter().all(|g| !g.3), "{name}: {got:?}");
+            assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math), "{name}");
+            for ch in name.chars() {
+                assert!(math_metrics::get(ch).is_some(), "{ch:?}");
+            }
+            assert!(approx_eq(b.width, adv(name), EPS), "{name}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_trig_function_spacing_matches_log() {
+        // Arrange
+        let width = |src: &str| boxed(src).width;
+        let (x, n) = (mm(X).advance, mm(N).advance);
+        let log_gap = width("\\log x") - adv("log") - x;
+
+        for name in TRIG {
+            // Act
+            let gap = width(&format!("\\{name} x")) - adv(name) - x;
+            let both = width(&format!("n\\{name} n"));
+            let paren = width(&format!("\\{name}(x)"));
+
+            // Assert: the thin operator space, as for `\log`.
+            assert!(approx_eq(gap, log_gap, EPS), "{name}: {gap}");
+            assert!(approx_eq(gap, OP_SPACE, EPS), "{name}: {gap}");
+            assert!(
+                approx_eq(both, n + adv(name) + 2.0 * OP_SPACE + n, EPS),
+                "{name}: {both}"
+            );
+            assert!(
+                approx_eq(paren, adv(name) + adv("()") + x, EPS),
+                "{name}: {paren}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_trig_function_power_sits_beside_the_word() {
+        // Arrange
+        let s = SCRIPT_SCALE;
+        let word = boxed("\\sin");
+
+        // Act
+        let b = boxed("\\sin^2\\theta");
+
+        // Assert: the exponent at the word's advance, raised and scaled
+        // like a letter's (not centred above it like a limit).
+        let up = SUP_SHIFT
+            .max(word.ascent - SUP_DROP)
+            .max(-mm('2').y_min * s + SUP_BOTTOM_MIN);
+        let at = word.width + word.italic;
+        let (pos, scale) = glyph(&b.ink, '2');
+        assert!(pos.approx_eq(v(at, -up), EPS), "{pos:?}");
+        assert!(approx_eq(scale, s, EPS));
+        // θ follows the script after the operator's thin space.
+        let theta = italic('θ');
+        let (t, t_scale) = glyph(&b.ink, theta);
+        let after = at + adv("2") * s + SCRIPT_SPACE + OP_SPACE;
+        assert!(t.approx_eq(v(after, 0.0), EPS), "{t:?}");
+        assert!(approx_eq(t_scale, 1.0, EPS));
+        let order: Vec<char> = glyphs(&b.ink).iter().map(|g| g.0).collect();
+        assert_eq!(order, vec!['s', 'i', 'n', '2', theta]);
+    }
+
     #[test]
     fn tex_literals_and_plain_text_use_the_text_face() {
         // Act
