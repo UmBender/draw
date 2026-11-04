@@ -784,6 +784,27 @@ const BOLDSYMBOL: AlphabetDef = AlphabetDef {
     slant: true,
 };
 
+/// `\mathbb` (and `\mathds`): double-struck Latin and digits, upright;
+/// Greek as outside. More than amssymb's capitals (ADR-T57-1).
+const MATHBB: AlphabetDef = AlphabetDef {
+    name: "mathbb",
+    upper: Map::Block(0x1D538),
+    lower: Map::Block(0x1D552),
+    digit: Map::Block(0x1D7D8),
+    greek_upper: Map::Inherit,
+    greek_lower: Map::Inherit,
+    holes: &[
+        ('C', '\u{2102}'),
+        ('H', '\u{210D}'),
+        ('N', '\u{2115}'),
+        ('P', '\u{2119}'),
+        ('Q', '\u{211A}'),
+        ('R', '\u{211D}'),
+        ('Z', '\u{2124}'),
+    ],
+    slant: false,
+};
+
 /// The math alphabet command `name` (without the backslash).
 #[must_use]
 pub fn alphabet(name: &str) -> Option<&'static AlphabetDef> {
