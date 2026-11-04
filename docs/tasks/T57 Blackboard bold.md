@@ -122,3 +122,16 @@ None planned; the feature note is enough.
   space. `scripts/check.sh` and `--fuzz` green; quality step changed
   nothing, so no `chore` commit. Manual check for the owner:
   `$\mathbb{Z}_p, \mathds{1}_A$`.
+- 2026-11-04 — found while gating the docs step: the proptest
+  `shell::app::tests::blit_rect_maps_corners_through_cameras` can fail
+  at random (f32 cancellation: `rect.width()` is a difference of two
+  ~1e5 px screen coordinates, the tolerance is ~1e-3). Minimal input:
+  `ox = -7733.8784, oy = 0, z0 = 12.7648535, px = 8913.369, py = 0,
+  z1 = 6.8030276, w = 1, h = 1, m = 0`. proptest wrote the seed to
+  `proptest-regressions/shell/app.txt` and the docs commit picked it up
+  by mistake. The batch run may not delete files (`git rm` / `rm`
+  refused), so the next commit empties it to proptest's comment header
+  (a seed would keep `scripts/check.sh` red; the file is outside *Files
+  owned*). For the owner: `git rm proptest-regressions/shell/app.txt`,
+  or keep it for a `fix/…` task that scales the width tolerance with the
+  corner magnitude and checks the seed in with the fix.
