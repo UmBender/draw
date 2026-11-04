@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -127,6 +127,18 @@ it; digits and Greek stay as outside, and an accent is skewed as over
 any slanted letter. (Since [[T59 Script letters]],
 [[ADR-T59-1 One script alphabet for mathscr and mathcal]].)
 
+Sans-serif and typewriter letters name categories, matrices and code:
+`$\mathsf{G}$`, `$\mathsf{Set}$`, `$\mathtt{x1}$`. Capitals,
+lowercase and digits are sans-serif (`𝖦 𝗑 𝟣`) or monospace (`𝚡 𝟷`),
+upright, so an accent is centred; Greek stays as outside. `\mathsf`
+inside a bold alphabet, or a bold alphabet inside `\mathsf`, is bold
+sans, upright: `\mathbf{\mathsf{x}}`, `\bm{\mathsf{x}}` and
+`\mathsf{\mathbf{x}}` all draw `𝘅`. Anything in between (`\mathrm`)
+breaks the chain, and `\mathtt` has no bold (Unicode has none):
+`\mathbf{\mathtt{x}}` is `𝚡`. (Since
+[[T60 Sans-serif and typewriter letters]],
+[[ADR-T60-1 Bold sans-serif inside a bold alphabet]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -150,6 +162,7 @@ any slanted letter. (Since [[T59 Script letters]],
 | Bold | `\mathbf{v}` (upright bold, also digits and Greek capitals), `\boldsymbol{\alpha}`, `\bm{x}` (bold italic) |
 | Blackboard bold | `\mathbb{R}`, `\mathbb{Z}_p`, `\mathds{1}_A` (capitals, lowercase and digits) |
 | Fraktur | `\mathfrak{g}`, `\mathfrak{p}`, `\mathfrak{S}_n` (capitals and lowercase) |
+| Sans-serif, typewriter | `\mathsf{G}`, `\mathtt{x1}` (Latin and digits; `\mathbf{\mathsf{x}}` is bold sans) |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
 | Overline | `\overline{AB}` (as wide as its argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
@@ -216,7 +229,8 @@ of the same batch.
   command yet (their glyphs are in the font subset since T55).
 - `\mathcal` and `\mathscr` have capitals only and look the same (the
   font has one script style and no script lowercase); no bold script,
-  no bold fraktur, no `\R` /
+  no bold fraktur, no bold monospace, no sans-serif Greek or italic
+  sans, no `\R` /
   `\N` shortcuts and no double-struck Greek or italic (`ℾ ⅅ ⅆ`). No bold operators, fraction bars or roots, no `\pmb` and
   no `\boldmath`. `\mathit{diff}` has no text-italic ligatures or kerning
   (the letters are the math italic ones), and `\mathrm` has no upright

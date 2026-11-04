@@ -1,7 +1,7 @@
 ---
 id: T60
 title: Sans-serif and typewriter letters
-status: in-progress
+status: review
 wave: 39
 branch: task/T60-sans-and-mono
 depends_on: [T54, T55]
@@ -100,12 +100,12 @@ has a `core::math_metrics` row (T55 subset).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T60): …`
-- [ ] tests — `test(T60): …`
-- [ ] models — `feat(T60): …`
-- [ ] behaviour — `feat(T60): …`
-- [ ] quality — `chore(T60): …`
-- [ ] docs — `docs(T60): …`
+- [x] spec — `docs(T60): …`
+- [x] tests — `test(T60): …`
+- [x] models — `feat(T60): …`
+- [x] behaviour — `feat(T60): …`
+- [x] quality — `chore(T60): …`
+- [x] docs — `docs(T60): …`
 
 ## Learning path
 
@@ -115,3 +115,11 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — tests, rows and docs done. `AlphabetDef` has a `bold`
+  flag; `\mathsf`, `\mathtt` are rows in `ALPHABETS`, bold sans is the
+  internal `MATHSF_BOLD` row picked in `Style::with` (ADR-T60-1). No
+  deviation from the spec or *Files owned*. The quality step only ran
+  rustfmt on the tests. `scripts/check.sh` and `--fuzz` green. No
+  tutorial. Manual check for the owner:
+  `$\mathsf{G}, \mathtt{x1}, \mathbf{\mathsf{x}}, \hat{\mathsf{A}}$`
+  (sans G, monospace x1, bold sans x, centred hat).
