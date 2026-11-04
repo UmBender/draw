@@ -540,6 +540,42 @@ pub const SYMBOLS: &[SymbolDef] = &[
     def("rvert", "|", Class::Close),
     def("lVert", "‖", Class::Open),
     def("rVert", "‖", Class::Close),
+    // Algebra and group theory (T67); ⨿ comes from the T55 subset. The
+    // small triangles are relations here, like `\lhd`.
+    def("lhd", "⊲", Class::Rel),
+    def("rhd", "⊳", Class::Rel),
+    def("unlhd", "⊴", Class::Rel),
+    def("unrhd", "⊵", Class::Rel),
+    def("triangleleft", "⊲", Class::Rel),
+    def("triangleright", "⊳", Class::Rel),
+    def("trianglelefteq", "⊴", Class::Rel),
+    def("trianglerighteq", "⊵", Class::Rel),
+    def("ntriangleleft", "⋪", Class::Rel),
+    def("ntriangleright", "⋫", Class::Rel),
+    def("rtimes", "⋊", Class::Bin),
+    def("ltimes", "⋉", Class::Bin),
+    def("wr", "≀", Class::Bin),
+    def("odot", "⊙", Class::Bin),
+    def("ominus", "⊖", Class::Bin),
+    def("oslash", "⊘", Class::Bin),
+    def("boxplus", "⊞", Class::Bin),
+    def("boxtimes", "⊠", Class::Bin),
+    def("amalg", "⨿", Class::Bin),
+    def("diamond", "⋄", Class::Bin),
+    // `\DeclareMathOperator` names of algebra (T67), drawn like
+    // `\operatorname{…}`; no `\char` (a TeX primitive).
+    def("Hom", "Hom", Class::Op),
+    def("End", "End", Class::Op),
+    def("Aut", "Aut", Class::Op),
+    def("Inn", "Inn", Class::Op),
+    def("Gal", "Gal", Class::Op),
+    def("Ker", "Ker", Class::Op),
+    def("im", "im", Class::Op),
+    def("coker", "coker", Class::Op),
+    def("id", "id", Class::Op),
+    def("sgn", "sgn", Class::Op),
+    def("tr", "tr", Class::Op),
+    def("rank", "rank", Class::Op),
 ];
 
 /// The table entry of command `name` (without the backslash).
