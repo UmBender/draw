@@ -1,7 +1,7 @@
 ---
 id: T58
 title: Fraktur letters
-status: in-progress
+status: review
 wave: 37
 branch: task/T58-fraktur
 depends_on: [T54, T55]
@@ -82,11 +82,11 @@ Settled (owner, batch plan 2026-11-04; one more row of
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T58): …`
-- [ ] tests — `test(T58): …`
-- [ ] models — `feat(T58): …`
-- [ ] behaviour — `feat(T58): …`
-- [ ] quality — `chore(T58): …`
-- [ ] docs — `docs(T58): …`
+- [x] tests — `test(T58): …`
+- [x] models — `feat(T58): …`
+- [x] behaviour — `feat(T58): …`
+- [x] quality — `chore(T58): …`
+- [x] docs — `docs(T58): …`
 
 ## Learning path
 
@@ -98,3 +98,8 @@ None planned; the feature note is enough.
   series T54–T71; ships in 1.5.0.
 - 2026-11-04 — spec written (batch run) as the owner decided; no ADR
   (a plain row of ADR-T54-1), no tutorial.
+- 2026-11-04 — tests, row and docs done; no deviation from the spec or
+  *Files owned*. All fraktur glyphs and the five holes were already in
+  the T55 subset. The quality step only ran rustfmt on the tests.
+  `scripts/check.sh` and `--fuzz` green. Manual check for the owner:
+  `$\mathfrak{g}, \mathfrak{S}_n$`.

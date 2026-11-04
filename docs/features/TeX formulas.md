@@ -109,6 +109,14 @@ than amssymb, whose `\mathbb` has capitals only; there are no `\R` or
 `\N` shortcuts. (Since [[T57 Blackboard bold]],
 [[ADR-T57-1 One double-struck alphabet for mathbb and mathds]].)
 
+Fraktur letters name Lie algebras, ideals and groups: `$\mathfrak{g}$`,
+`$\mathfrak{p}$`, `$\mathfrak{S}_n$`. Capitals and lowercase are
+fraktur (`ℭ ℌ ℑ ℜ ℨ` come from Letterlike Symbols); digits and Greek
+stay as outside (Unicode has no fraktur for them), and an accent is
+centred. `\Re` and `\Im` still draw `ℜ` and `ℑ`. There is no bold
+fraktur: `\mathbf{\mathfrak{g}}` is a plain fraktur g (the innermost
+alphabet wins). (Since [[T58 Fraktur letters]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -130,6 +138,7 @@ than amssymb, whose `\mathbb` has capitals only; there are no `\R` or
 | Math alphabets | `\mathrm{d}x` (upright roman), `\mathit{diff}` (italic word), `\mathnormal{\Gamma}` (italic Greek capitals); nested, the innermost wins |
 | Bold | `\mathbf{v}` (upright bold, also digits and Greek capitals), `\boldsymbol{\alpha}`, `\bm{x}` (bold italic) |
 | Blackboard bold | `\mathbb{R}`, `\mathbb{Z}_p`, `\mathds{1}_A` (capitals, lowercase and digits) |
+| Fraktur | `\mathfrak{g}`, `\mathfrak{p}`, `\mathfrak{S}_n` (capitals and lowercase) |
 | Accents | `\vec{F}`, `\hat{n}`, `\tilde{x}`, `\dot{x}`, `\ddot{x}`, `\bar{v}` (one letter or `{group}`) |
 | Overline | `\overline{AB}` (as wide as its argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
@@ -194,7 +203,7 @@ of the same batch.
 - Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
   literals); `\longrightarrow`, `\implies` and `\triangle` have no
   command yet (their glyphs are in the font subset since T55).
-- `\mathcal` has capitals only (as in TeX); no `\mathfrak`, no `\R` /
+- `\mathcal` has capitals only (as in TeX); no bold fraktur, no `\R` /
   `\N` shortcuts and no double-struck Greek or italic (`ℾ ⅅ ⅆ`). No bold operators, fraction bars or roots, no `\pmb` and
   no `\boldmath`. `\mathit{diff}` has no text-italic ligatures or kerning
   (the letters are the math italic ones), and `\mathrm` has no upright
