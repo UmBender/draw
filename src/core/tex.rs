@@ -4908,7 +4908,10 @@ mod tests {
                 }],
             }]
         );
-        for src in ["$\\mathscr{L}, \\mathscr{l}$", "$\\mathscr F(\\mathscr{H})$"] {
+        for src in [
+            "$\\mathscr{L}, \\mathscr{l}$",
+            "$\\mathscr F(\\mathscr{H})$",
+        ] {
             assert_eq!(print(&parse(src)), src);
         }
         // Without an argument: a literal in the warning colour.
