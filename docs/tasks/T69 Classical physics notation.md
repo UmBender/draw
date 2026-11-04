@@ -1,7 +1,7 @@
 ---
 id: T69
 title: Classical physics notation
-status: in-progress
+status: review
 wave: 48
 branch: task/T69-classical-physics
 depends_on: [T55, T56]
@@ -144,12 +144,12 @@ Manual checks left for the owner: `$\dv{f}{x}$`, `$\pdv{f}{x}$`,
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T69): …`
-- [ ] tests — `test(T69): …`
-- [ ] models — `feat(T69): …`
-- [ ] behaviour — `feat(T69): …`
-- [ ] quality — `chore(T69): …`
-- [ ] docs — `docs(T69): …`
+- [x] spec — `docs(T69): …`
+- [x] tests — `test(T69): …`
+- [x] models — `feat(T69): …`
+- [x] behaviour — `feat(T69): …`
+- [x] quality — `chore(T69): …` (rustfmt only)
+- [x] docs — `docs(T69): …`
 
 ## Learning path
 
@@ -159,3 +159,22 @@ None planned; the feature note is enough.
 
 - 2026-11-03 — note written at the owner's request, part of the TeX symbol
   series T54–T71; ships in 1.5.0.
+- 2026-11-04 — implemented (batch run), branched from
+  `task/T68-category-symbols`. Seven symbol rows, the `\dddot` accent
+  row, and the shared expansion helper for T70: `ExpansionDef`,
+  `EXPANSIONS`, `expansion`, `expand` (ADR-T69-1). The parser gives a
+  shortcut its required arguments, then each optional `{group}`; layout
+  splices the long form among the neighbours, or lays it out as one atom
+  when it is a script's base. No font or `math_metrics` change.
+  `scripts/check.sh` and `scripts/check.sh --fuzz` green.
+- 2026-11-04 — UNATTENDED CHOICE: `\dddot` draws the combining mark
+  `U+20DB` of the math face (already in the T55 subset), not three
+  built dots. `\ohm` is the ohm sign `U+2126` and `\micro` the micro
+  sign `U+00B5`, so no alphabet slants them. `\dv`/`\pdv`/`\dd` use an
+  upright `\mathrm{d}` (the `physics` default). Optional arguments must
+  be braced (whitespace allowed before them), as `physics` reads them.
+- 2026-11-04 — Existing test changed: `tex_parse_accents_take_one_argument`
+  lists `dddot` among the accent names. The new `\dddot` test was fixed
+  in the behaviour commit to measure mark centres the way accents do
+  (`Ink::bounds`). Manual checks for the owner: `$\dv{f}{x}$`,
+  `$\pdv{f}{x}$`, `$\vb{F} = m\dddot{x}$`.
