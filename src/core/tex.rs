@@ -811,6 +811,26 @@ const MATHBB: AlphabetDef = AlphabetDef {
     slant: false,
 };
 
+/// `\mathfrak`: fraktur Latin capitals and lowercase, upright; digits and
+/// Greek as outside (Unicode has none). Five capitals are Letterlike
+/// holes (T58).
+const MATHFRAK: AlphabetDef = AlphabetDef {
+    name: "mathfrak",
+    upper: Map::Block(0x1D504),
+    lower: Map::Block(0x1D51E),
+    digit: Map::Inherit,
+    greek_upper: Map::Inherit,
+    greek_lower: Map::Inherit,
+    holes: &[
+        ('C', '\u{212D}'),
+        ('H', '\u{210C}'),
+        ('I', '\u{2111}'),
+        ('R', '\u{211C}'),
+        ('Z', '\u{2128}'),
+    ],
+    slant: false,
+};
+
 /// The math alphabet command `name` (without the backslash).
 #[must_use]
 pub fn alphabet(name: &str) -> Option<&'static AlphabetDef> {
