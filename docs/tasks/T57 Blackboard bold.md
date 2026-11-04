@@ -1,7 +1,7 @@
 ---
 id: T57
 title: Blackboard bold
-status: in-progress
+status: review
 wave: 36
 branch: task/T57-blackboard-bold
 depends_on: [T54, T55]
@@ -96,11 +96,11 @@ Settled (owner, batch plan 2026-11-04; a row of
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T57): …`
-- [ ] tests — `test(T57): …`
-- [ ] models — `feat(T57): …`
-- [ ] behaviour — `feat(T57): …`
-- [ ] quality — `chore(T57): …`
-- [ ] docs — `docs(T57): …`
+- [x] tests — `test(T57): …`
+- [x] models — `feat(T57): …`
+- [x] behaviour — `feat(T57): …`
+- [x] quality — `chore(T57): …` (nothing to change, no commit)
+- [x] docs — `docs(T57): …`
 
 ## Learning path
 
@@ -115,3 +115,10 @@ None planned; the feature note is enough.
   the owner in the batch plan. UNATTENDED CHOICE: the new exercise
   points at `\mathbffrak` (bold fraktur, U+1D56C, no holes), an alphabet
   no planned task adds.
+- 2026-11-04 — tests, row and docs done. Deviation: the T54 guard
+  `alphabet("mathbb").is_none()` in
+  `tex_alphabet_rows_draw_glyphs_of_the_math_face` now checks an unused
+  name (`mathbbb`); one T57 test expectation got the token's leading
+  space. `scripts/check.sh` and `--fuzz` green; quality step changed
+  nothing, so no `chore` commit. Manual check for the owner:
+  `$\mathbb{Z}_p, \mathds{1}_A$`.
