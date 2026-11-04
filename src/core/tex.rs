@@ -767,8 +767,51 @@ pub fn expansion(name: &str) -> Option<&'static ExpansionDef> {
 /// `None` for any other node.
 #[must_use]
 pub fn expand(node: &Node) -> Option<Vec<Node>> {
-    let _ = node;
-    todo!()
+    let Node::Command { name, args } = node else {
+        return None;
+    };
+    let def = expansion(name)?;
+    let optional = args.len().checked_sub(def.required)?;
+    let template: Vec<char> = def.templates.get(optional)?.chars().collect();
+    Some(fill_slots(Parser::new(&template).parse(), args))
+}
+
+/// `nodes` of a template with each slot `#n` (in groups and command
+/// arguments too) replaced by the nodes of `args[n - 1]`; a slot past
+/// the arguments is dropped.
+fn fill_slots(nodes: Vec<Node>, args: &[Arg]) -> Vec<Node> {
+    let mut out = Vec::with_capacity(nodes.len());
+    let mut nodes = nodes.into_iter().peekable();
+    while let Some(node) = nodes.next() {
+        match node {
+            Node::Char('#')
+                if let Some(Node::Char(digit)) = nodes.peek()
+                    && let Some(n) = digit.to_digit(10) =>
+            {
+                nodes.next();
+                let arg = usize::try_from(n)
+                    .ok()
+                    .and_then(|n| n.checked_sub(1))
+                    .and_then(|i| args.get(i));
+                if let Some(arg) = arg {
+                    out.extend(arg.nodes.iter().cloned());
+                }
+            }
+            Node::Group(inner) => out.push(Node::Group(fill_slots(inner, args))),
+            Node::Command { name, args: inner } => out.push(Node::Command {
+                name,
+                args: inner
+                    .into_iter()
+                    .map(|arg| Arg {
+                        nodes: fill_slots(arg.nodes, args),
+                        ..arg
+                    })
+                    .collect(),
+            }),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 /// Which embedded font draws a glyph (ADR-T33-1).
@@ -1709,6 +1752,7 @@ impl<'a> Parser<'a> {
             }
             "text" => self.text_body(end),
             "operatorname" => return self.operator_name(end),
+            n if expansion(n).is_some() => self.shortcut(&name, end),
             _ => None,
         };
         node.unwrap_or_else(|| {
@@ -1730,6 +1774,28 @@ impl<'a> Parser<'a> {
         self.pos = after;
         let star = if star { "*" } else { "" };
         Node::Literal(format!("\\operatorname{star}"))
+    }
+
+    /// The arguments of shortcut `name` of [`EXPANSIONS`], its name read:
+    /// the required ones, then each optional one that is a `{group}`;
+    /// `None` when a required one is missing (ADR-T69-1).
+    fn shortcut(&mut self, name: &str, end: usize) -> Option<Node> {
+        let def = expansion(name)?;
+        let mut args = self.args(def.required, end)?;
+        for _ in 1..def.templates.len() {
+            let start = self.pos;
+            self.whitespace(end);
+            let group = self.pos < end && self.peek() == Some('{') && self.group_close(end).is_some();
+            self.pos = start;
+            if !group {
+                break;
+            }
+            args.extend(self.arg(end));
+        }
+        Some(Node::Command {
+            name: name.to_owned(),
+            args,
+        })
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -1906,10 +1972,8 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
     } else {
         1.0
     };
-    let mut atoms: Vec<(MathBox, Class)> = nodes
-        .iter()
-        .filter_map(|node| atom(node, scale, style))
-        .collect();
+    let mut atoms: Vec<(MathBox, Class)> = Vec::with_capacity(nodes.len());
+    push_atoms(nodes, scale, style, &mut atoms);
     // A binary operator without an operand on both sides is ordinary.
     for i in 0..atoms.len() {
         if atoms[i].1 != Class::Bin {
@@ -1947,6 +2011,17 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
         boxes.push(b);
     }
     MathBox::row(boxes)
+}
+
+/// The atoms of `nodes` onto `out`, with each shortcut's long form
+/// spliced in among its neighbours (ADR-T69-1).
+fn push_atoms(nodes: &[Node], scale: f32, style: Style, out: &mut Vec<(MathBox, Class)>) {
+    for node in nodes {
+        match expand(node) {
+            Some(long) => push_atoms(&long, scale, style, out),
+            None => out.extend(atom(node, scale, style)),
+        }
+    }
 }
 
 /// Space between neighbouring atoms of classes `a` and `b` at `scale`.
@@ -1996,6 +2071,10 @@ fn char_class(ch: char) -> Class {
 /// The box and class of one node with letters in `style`; `None` for
 /// whitespace.
 fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
+    // A shortcut on its own (a script's base) is one ordinary atom.
+    if let Some(long) = expand(node) {
+        return Some((layout_styled(&long, scale, style), Class::Ord));
+    }
     let atom = match node {
         Node::Space(_) => return None,
         Node::Char(ch) => {
@@ -6633,11 +6712,18 @@ mod tests {
         assert!(faces(&b.ink).iter().all(|g| g.1 == Face::Math));
         // Its ink sits above the letter (y down).
         assert!(pos.y - m.y_min <= -x.ascent + EPS, "{pos:?}");
-        // Centred where `\ddot` centres its two dots.
-        let (dpos, _) = glyph(&ddot.ink, '\u{A8}');
-        let dm = mm('\u{A8}');
-        let centre = pos.x + f32::midpoint(m.x_min, m.x_max);
-        let dcentre = dpos.x + f32::midpoint(dm.x_min, dm.x_max);
+        // Centred where `\ddot` centres its two dots (the middle of the
+        // mark's bounds, as accents measure it).
+        let centre_of = |ink: &[Ink], ch: char| {
+            ink.iter()
+                .find(|i| matches!(i, Ink::Glyph { ch: c, .. } if *c == ch))
+                .map(|i| {
+                    let b = i.bounds();
+                    f32::midpoint(b.min.x, b.max.x)
+                })
+        };
+        let centre = centre_of(&b.ink, three).unwrap_or(f32::NAN);
+        let dcentre = centre_of(&ddot.ink, '\u{A8}').unwrap_or(f32::NAN);
         assert!(approx_eq(centre, dcentre, EPS), "{centre} {dcentre}");
         // The box keeps the letter's width and descent.
         assert!(approx_eq(b.width, x.width, EPS));
