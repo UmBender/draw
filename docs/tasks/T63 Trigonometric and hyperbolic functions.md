@@ -1,7 +1,7 @@
 ---
 id: T63
 title: Trigonometric and hyperbolic functions
-status: todo
+status: in-progress
 wave: 42
 branch: task/T63-trig-functions
 depends_on: []
@@ -46,7 +46,39 @@ and `$\tan x$` typeset properly.
 
 ## Spec
 
-To be written in the spec step.
+Settled (owner, batch plan 2026-11-04): eighteen `Class::Op` rows of
+`SYMBOLS`, each drawing its own name as an upright word, like `\log`.
+No new parsing or layout code, no ADR.
+
+| Group | Commands |
+|-------|----------|
+| Trigonometric | `\sin \cos \tan \cot \sec \csc` |
+| Inverse | `\arcsin \arccos \arctan` |
+| Hyperbolic | `\sinh \cosh \tanh \coth` |
+| Not in LaTeX's base set | `\arccot \arcsec \arccsc \sech \csch` |
+
+- **AC-1** — each of the eighteen commands parses to one `Node::Symbol`
+  and `symbol(name)` gives `(name, Class::Op)`.
+  Test: `tex_parse_trig_functions_are_operator_words`.
+- **AC-2** — each is drawn as its name, upright from the math face (every
+  letter has a `math_metrics` row, nothing warns).
+  Test: `tex_trig_functions_are_upright_math_words`.
+- **AC-3** — operator spacing as `\log`: the space between the word and
+  `x` in `$\sin x$` equals the one in `$\log x$` (`OP_SPACE`), for every
+  command; `n\sin n` has a thin space on both sides, and `\sin(x)` has
+  none before the bracket.
+  Test: `tex_layout_trig_function_spacing_matches_log`.
+- **AC-4** — in `\sin^2\theta` the `2` sits beside the word (at its
+  advance, raised, scaled to `SCRIPT_SCALE`, not above it as a limit)
+  and `θ` follows after `OP_SPACE`.
+  Test: `tex_layout_trig_function_power_sits_beside_the_word`.
+- **AC-5** — the fuzzer types the commands (and `\sin^2\theta`) among
+  its formula tokens; the existing fuzz properties stay green.
+  Test: `arb_formula_text` tokens in `tests/fuzz.rs`, run by
+  `scripts/check.sh` and `scripts/check.sh --fuzz`.
+
+Steps: the *models* step produces nothing (no new types or signatures;
+the rows are behaviour) and is skipped.
 
 ## Out of scope
 
