@@ -10,10 +10,11 @@
 
 use super::select::HIT_TOLERANCE_PX;
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::ShapeId;
+use crate::core::document::{Document, ShapeId};
 use crate::core::editor::WIDTH_LADDER_PX;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
+use crate::core::snapshot::{Reader, Snap, SnapshotError, Writer, check_ids};
 use crate::core::{snap, text_layout};
 
 /// On-screen font size, in pixels, of a new block at stroke width 0.
@@ -351,7 +352,7 @@ impl TextEdit {
 
 /// State of the Text tool: the block being edited, if any, and the
 /// remembered size of new blocks.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     /// The edit session; it outlives pointer gestures.
     pub edit: Option<TextEdit>,
@@ -432,6 +433,106 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 /// stays open; returns `false`.
 pub fn cancel(_state: &mut State) -> bool {
     false
+}
+
+/// `<id> <slot> <frame> <filled>` (snapshots, ADR-T74-1).
+impl Snap for Host {
+    fn write(&self, line: &mut crate::core::snapshot::Line<'_>) {
+        line.put(&self.id)
+            .put(&self.slot)
+            .put(&self.frame)
+            .bool(self.filled);
+    }
+
+    fn read(
+        tokens: &mut crate::core::snapshot::Tokens<'_>,
+    ) -> Result<Self, SnapshotError> {
+        Ok(Self {
+            id: tokens.get()?,
+            slot: tokens.get()?,
+            frame: tokens.get()?,
+            filled: tokens.bool("filled")?,
+        })
+    }
+}
+
+impl State {
+    /// `text-size -|<px>`, then `text -` or `text <origin> <size> <style>
+    /// <target> <host> "<text>" <caret> <resized>` (snapshots,
+    /// ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        w.record("text-size", |l| {
+            l.opt(self.size_px.as_ref());
+        });
+        w.record("text", |l| match &self.edit {
+            None => {
+                l.none();
+            }
+            Some(edit) => {
+                l.put(&edit.origin)
+                    .f32(edit.size)
+                    .put(&edit.style)
+                    .opt(edit.target.as_ref())
+                    .opt(edit.host.as_ref())
+                    .string(&edit.text)
+                    .word(edit.caret)
+                    .bool(edit.resized);
+            }
+        });
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote: the caret on a
+    /// character boundary, the target and host in `doc`, a host only
+    /// with text in shapes on.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
+        let mut t = r.record("text-size")?;
+        let size_px: Option<f32> = t.opt()?;
+        t.end()?;
+        if size_px.is_some_and(|px| px <= 0.0) {
+            return Err(t.error("text size not positive"));
+        }
+        let mut t = r.record("text")?;
+        let edit = if t.none() {
+            None
+        } else {
+            let origin = t.get()?;
+            let size = t.f32("text size")?;
+            let style = t.get()?;
+            let target: Option<ShapeId> = t.opt()?;
+            let host: Option<Host> = t.opt()?;
+            let text = t.string("text")?;
+            let caret: usize = t.number("caret")?;
+            let resized = t.bool("resized")?;
+            if size <= 0.0 {
+                return Err(t.error("text size not positive"));
+            }
+            if caret > text.len() || !text.is_char_boundary(caret) {
+                return Err(t.error(format!("caret {caret} is not on a character boundary")));
+            }
+            check_ids(&t, doc, target.as_slice())?;
+            if let Some(host) = &host {
+                check_ids(&t, doc, &[host.id])?;
+                if !t.shape_text() {
+                    return Err(t.error("text in a shape while the shape-text switch is off"));
+                }
+                if doc.get(host.id).and_then(|s| s.text_frame(host.slot)).is_none() {
+                    return Err(t.error("host shape has no such text slot"));
+                }
+            }
+            Some(TextEdit {
+                origin,
+                size,
+                style,
+                target,
+                host,
+                text,
+                caret,
+                resized,
+            })
+        };
+        t.end()?;
+        Ok(Self { edit, size_px })
+    }
 }
 
 #[cfg(test)]

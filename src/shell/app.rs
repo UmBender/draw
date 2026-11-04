@@ -381,16 +381,16 @@ pub const SNAPSHOT_ENV: &str = "DRAW_SNAPSHOT";
 /// Whether `event` is a press of [`SNAPSHOT_CHORD`].
 #[must_use]
 pub fn is_snapshot_chord(event: &InputEvent) -> bool {
-    let _ = event;
-    todo!()
+    matches!(event, InputEvent::KeyDown { key, mods } if *key == SNAPSHOT_CHORD.key && *mods == SNAPSHOT_CHORD.mods)
 }
 
 /// Where a snapshot taken at `unix_secs` goes:
 /// `<state dir>/snapshots/snapshot-<UTC stamp>.snap`.
 #[must_use]
 pub fn snapshot_path(state_dir: &Path, unix_secs: u64) -> PathBuf {
-    let _ = (state_dir, unix_secs);
-    todo!()
+    state_dir
+        .join("snapshots")
+        .join(format!("snapshot-{}.snap", diag::file::utc_stamp(unix_secs)))
 }
 
 /// The snapshot to start from, given the [`SNAPSHOT_ENV`] value and a way
@@ -400,8 +400,42 @@ pub fn startup_snapshot(
     value: Option<&OsStr>,
     read: impl FnOnce(&Path) -> std::io::Result<String>,
 ) -> (Option<Snapshot>, Option<String>) {
-    let _ = (value, read);
-    todo!()
+    let Some(value) = value.filter(|v| !v.is_empty()) else {
+        return (None, None);
+    };
+    let path = Path::new(value);
+    let shown = path.display();
+    match read(path).map(|text| Snapshot::parse(&text)) {
+        Ok(Ok(snapshot)) => (Some(snapshot), None),
+        Ok(Err(err)) => (
+            None,
+            Some(format!("{SNAPSHOT_ENV}={shown}: {err}; starting empty")),
+        ),
+        Err(err) => (
+            None,
+            Some(format!("{SNAPSHOT_ENV}={shown}: {err}; starting empty")),
+        ),
+    }
+}
+
+/// Writes `editor` to a new snapshot file in the state directory; the
+/// path, or why it was not written.
+fn save_snapshot(editor: &Editor) -> Result<PathBuf, String> {
+    let dir = crate::shell::crash::state_dir(
+        std::env::var_os("XDG_STATE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    )
+    .ok_or_else(|| "no state directory".to_owned())?;
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let path = snapshot_path(&dir, unix);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    }
+    std::fs::write(&path, editor.snapshot().to_text())
+        .map_err(|err| format!("{}: {err}", path.display()))?;
+    Ok(path)
 }
 
 /// The flight recorder's kind of a frame that re-rendered something.
@@ -534,6 +568,19 @@ pub async fn run() {
     let mut editor = Editor::new()
         .with_experimental(Experimental::from_env_value(experimental.as_deref()))
         .with_tap_slop(tablet.tap_slop_px());
+    // A snapshot replaces the whole state, its switches included (T74).
+    let (snapshot, error) =
+        startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
+            std::fs::read_to_string(path)
+        });
+    if let Some(error) = error {
+        eprintln!("draw: {error}");
+        diag::log(Level::Error, &error);
+    }
+    if let Some(snapshot) = snapshot {
+        editor = Editor::from_snapshot(snapshot);
+        diag::log(Level::Info, &format!("started from {SNAPSHOT_ENV} snapshot"));
+    }
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
@@ -558,6 +605,13 @@ pub async fn run() {
         for event in collector.drain() {
             if is_dump_chord(&event) {
                 dump_asked = true;
+            } else if is_snapshot_chord(&event) {
+                let line = match save_snapshot(&editor) {
+                    Ok(path) => format!("snapshot written to {}", path.display()),
+                    Err(err) => format!("snapshot not written: {err}"),
+                };
+                eprintln!("draw: {line}");
+                diag::log(Level::Info, &line);
             } else {
                 dirty |= dispatch(&mut editor, event);
             }

@@ -96,7 +96,7 @@ pub struct SmoothingParams {
 /// Feed raw pointer positions (world space) with [`Smoother::push`], draw the
 /// live preview from [`Smoother::points`], and call [`Smoother::finish`] on
 /// release to get the stored polyline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Smoother {
     /// Resampling distance in world units.
     min_dist: f32,
@@ -364,6 +364,53 @@ fn rdp_keep(
         }
     }
     keep
+}
+
+/// `<min_dist> <alpha> <epsilon> <last_kept_raw> <last_raw> <points>
+/// <widths> <last_width>`, absent values as `-` (snapshots, ADR-T74-1).
+impl crate::core::snapshot::Snap for Smoother {
+    fn write(&self, line: &mut crate::core::snapshot::Line<'_>) {
+        line.f32(self.min_dist)
+            .f32(self.alpha)
+            .f32(self.epsilon)
+            .opt(self.last_kept_raw.as_ref())
+            .opt(self.last_raw.as_ref())
+            .put(&self.points)
+            .opt(self.widths.as_ref())
+            .opt(self.last_width.as_ref());
+    }
+
+    fn read(
+        tokens: &mut crate::core::snapshot::Tokens<'_>,
+    ) -> Result<Self, crate::core::snapshot::SnapshotError> {
+        let min_dist = tokens.f32("resampling distance")?;
+        let alpha = tokens.f32("smoothing factor")?;
+        let epsilon = tokens.f32("simplification tolerance")?;
+        let last_kept_raw = tokens.opt()?;
+        let last_raw = tokens.opt()?;
+        let points: Vec<Vec2> = tokens.get()?;
+        let widths: Option<Vec<f32>> = tokens.opt()?;
+        let last_width: Option<f32> = tokens.opt()?;
+        if min_dist < 0.0 || epsilon < 0.0 || !(MIN_ALPHA..=1.0).contains(&alpha) {
+            return Err(tokens.error("smoothing parameters out of range"));
+        }
+        if widths.as_ref().is_some_and(|w| w.len() != points.len()) {
+            return Err(tokens.error("smoother widths out of step with its points"));
+        }
+        if widths.iter().flatten().chain(&last_width).any(|w| *w <= 0.0) {
+            return Err(tokens.error("smoother width factor not positive"));
+        }
+        Ok(Self {
+            min_dist,
+            alpha,
+            epsilon,
+            last_kept_raw,
+            last_raw,
+            points,
+            widths,
+            last_width,
+        })
+    }
 }
 
 #[cfg(test)]

@@ -12,15 +12,16 @@
 //! its budget, so a single scheduler hiccup does not fail it. Debug builds
 //! skip the checks: unoptimised timings say nothing about the shipped binary.
 
+mod common;
+
+use common::snapshots::load_fixture;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use draw::core::camera::Camera;
-use draw::core::command::{Command, Tool};
 use draw::core::document::{Document, Edit, ShapeId, Transaction, tx_insert, tx_remove};
-use draw::core::editor::Editor;
 use draw::core::geom::Vec2;
-use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use draw::core::input::{InputEvent, Modifiers};
 use draw::core::palette::ColorId;
 use draw::core::shape::{CellFill, Shape, Style};
 use draw::core::smoothing::{Smoother, SmoothingLevel, simplify_rdp};
@@ -538,51 +539,14 @@ fn perf_typing_with_500_blocks_is_under_1ms() {
     if !optimised() {
         return;
     }
+    // 500 typed blocks and an open one: fixture `text-500`, built by
+    // `tests/common/scenes.rs` from the same blocks as `text_blocks`.
     let none = Modifiers::NONE;
-    let mut editor = Editor::new();
-    editor.handle(InputEvent::Resize { size: VIEWPORT });
-    editor.apply(Command::SetTool(Tool::Text));
-    for shape in text_blocks() {
-        let Shape::Text { origin, text, .. } = shape else {
-            continue;
-        };
-        let pos = editor.camera().world_to_screen(origin);
-        for event in [
-            InputEvent::PointerDown {
-                pos,
-                button: PointerButton::Left,
-                mods: none,
-            },
-            InputEvent::PointerUp {
-                pos,
-                button: PointerButton::Left,
-                mods: none,
-            },
-        ] {
-            editor.handle(event);
-        }
-        for ch in text.chars() {
-            editor.handle(InputEvent::Char { ch, mods: none });
-        }
-        editor.handle(InputEvent::KeyDown {
-            key: Key::Escape,
-            mods: none,
-        });
-    }
+    let editor = load_fixture("text-500");
     assert!(
         editor.document().len() >= TEXT_BLOCKS / 2,
         "blocks committed"
     );
-    editor.handle(InputEvent::PointerDown {
-        pos: Vec2::new(960.0, 1_060.0),
-        button: PointerButton::Left,
-        mods: none,
-    });
-    editor.handle(InputEvent::PointerUp {
-        pos: Vec2::new(960.0, 1_060.0),
-        button: PointerButton::Left,
-        mods: none,
-    });
     assert!(editor.text_edit().is_some(), "a block is open");
 
     // Act: one keystroke and the overlay the frame draws.

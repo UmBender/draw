@@ -136,6 +136,64 @@ impl TapFilter {
     }
 }
 
+/// `<slop> idle`, `<slop> holding <origin> <button> <- | pos mods>` or
+/// `<slop> dragging <button>` (snapshots, ADR-T74-1).
+impl crate::core::snapshot::Snap for TapFilter {
+    fn write(&self, line: &mut crate::core::snapshot::Line<'_>) {
+        line.f32(self.slop);
+        match self.state {
+            TapState::Idle => {
+                line.word("idle");
+            }
+            TapState::Holding {
+                origin,
+                button,
+                held,
+            } => {
+                line.word("holding").put(&origin).put(&button);
+                match held {
+                    Some((pos, mods)) => line.put(&pos).put(&mods),
+                    None => line.none(),
+                };
+            }
+            TapState::Dragging { button } => {
+                line.word("dragging").put(&button);
+            }
+        }
+    }
+
+    fn read(
+        tokens: &mut crate::core::snapshot::Tokens<'_>,
+    ) -> Result<Self, crate::core::snapshot::SnapshotError> {
+        let slop = tokens.f32("tap slop")?;
+        if slop < 0.0 {
+            return Err(tokens.error("negative tap slop"));
+        }
+        let state = match tokens.word("tap state")? {
+            "idle" => TapState::Idle,
+            "holding" => {
+                let origin = tokens.get()?;
+                let button = tokens.get()?;
+                let held = if tokens.none() {
+                    None
+                } else {
+                    Some((tokens.get()?, tokens.get()?))
+                };
+                TapState::Holding {
+                    origin,
+                    button,
+                    held,
+                }
+            }
+            "dragging" => TapState::Dragging {
+                button: tokens.get()?,
+            },
+            other => return Err(tokens.error(format!("unknown tap state `{other}`"))),
+        };
+        Ok(Self { slop, state })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

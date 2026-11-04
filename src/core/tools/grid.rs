@@ -12,6 +12,7 @@
 //! gets the values at release (ADR-T18-1). `Shift` makes the cells square.
 //! With numbering on, new grids show their axis indices (ADR-T22-1).
 
+use crate::core::snapshot::{Reader, SnapshotError, Writer};
 use crate::core::command::Tool;
 use crate::core::document::tx_insert;
 use crate::core::editor::Helpers;
@@ -22,14 +23,14 @@ use crate::core::tools::shape_tool::MIN_DRAG_PX;
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 
 /// Gesture state of the grid tool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     /// The drag in progress, if the button is down.
     drag: Option<Drag>,
 }
 
 /// A grid drag in progress.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Drag {
     /// World position of the `Down`, snapped.
     start: Vec2,
@@ -160,6 +161,43 @@ fn square_cells(start: Vec2, end: Vec2, cols: u32, rows: u32) -> Vec2 {
     let side = (d.x.abs() / cols).max(d.y.abs() / rows);
     let squared = start + Vec2::new((side * cols).copysign(d.x), (side * rows).copysign(d.y));
     if squared.is_finite() { squared } else { end }
+}
+
+impl State {
+    /// `grid -` or `grid <start> <end> <shift> <style> <guides>`
+    /// (snapshots, ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        w.record("grid", |l| match &self.drag {
+            None => {
+                l.none();
+            }
+            Some(drag) => {
+                l.put(&drag.start)
+                    .put(&drag.end)
+                    .bool(drag.shift)
+                    .put(&drag.style)
+                    .put(&drag.guides);
+            }
+        });
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+        let mut t = r.record("grid")?;
+        let drag = if t.none() {
+            None
+        } else {
+            Some(Drag {
+                start: t.loose_vec2()?,
+                end: t.loose_vec2()?,
+                shift: t.bool("shift")?,
+                style: t.get()?,
+                guides: t.loose_segments()?,
+            })
+        };
+        t.end()?;
+        Ok(Self { drag })
+    }
 }
 
 #[cfg(test)]

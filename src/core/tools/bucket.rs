@@ -15,7 +15,7 @@ use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::tx_replace;
 
 /// Gesture state of this tool: the bucket acts on press and keeps none.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State;
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.

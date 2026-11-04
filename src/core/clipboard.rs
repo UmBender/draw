@@ -17,7 +17,7 @@ use crate::core::tools::select::{self, prune, selected_shapes};
 pub const DUPLICATE_OFFSET_PX: f32 = 16.0;
 
 /// Shapes copied from the document.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Clipboard {
     /// Copied shapes, in z-order.
     shapes: Vec<Shape>,
@@ -28,6 +28,12 @@ impl Clipboard {
     #[must_use]
     pub fn shapes(&self) -> &[Shape] {
         &self.shapes
+    }
+
+    /// A clipboard holding `shapes` (snapshots, ADR-T74-1).
+    #[must_use]
+    pub(crate) fn from_shapes(shapes: Vec<Shape>) -> Self {
+        Self { shapes }
     }
 }
 

@@ -12,16 +12,17 @@ use crate::core::geom::Vec2;
 use crate::core::pressure::width_factor;
 use crate::core::shape::{Shape, Style};
 use crate::core::smoothing::Smoother;
+use crate::core::snapshot::{Reader, SnapshotError, Writer};
 
 /// Gesture state of this tool.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     /// The stroke being drawn, if the button is down.
     stroke: Option<LiveStroke>,
 }
 
 /// A stroke in progress.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct LiveStroke {
     /// Smoothing pipeline holding the points so far (world units).
     smoother: Smoother,
@@ -113,6 +114,35 @@ fn to_shape(points: Vec<Vec2>, widths: Option<Vec<f32>>, style: Style) -> Shape 
         points,
         widths,
         style,
+    }
+}
+
+impl State {
+    /// `pen -` or `pen <style> <smoother>` (snapshots, ADR-T74-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        w.record("pen", |l| match &self.stroke {
+            None => {
+                l.none();
+            }
+            Some(stroke) => {
+                l.put(&stroke.style).put(&stroke.smoother);
+            }
+        });
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+        let mut t = r.record("pen")?;
+        let stroke = if t.none() {
+            None
+        } else {
+            Some(LiveStroke {
+                style: t.get()?,
+                smoother: t.get()?,
+            })
+        };
+        t.end()?;
+        Ok(Self { stroke })
     }
 }
 

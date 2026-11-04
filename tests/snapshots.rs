@@ -5,7 +5,7 @@
 //! regenerate the fixtures after a deliberate change:
 //!
 //! ```sh
-//! DRAW_UPDATE_SNAPSHOTS=1 cargo test --release --test snapshots -- --include-ignored
+//! DRAW_UPDATE_SNAPSHOTS=1 cargo test --test snapshots -- --test-threads=1
 //! ```
 
 mod common;
@@ -49,7 +49,6 @@ fn fixture_history_at_limit() {
 }
 
 #[test]
-#[ignore = "slow in debug: run with --include-ignored to check or regenerate"]
 fn fixture_strokes_1000() {
     let ed = scenes::strokes_1000();
     assert_eq!(ed.document().len(), scenes::LARGE_STROKES);
@@ -57,7 +56,6 @@ fn fixture_strokes_1000() {
 }
 
 #[test]
-#[ignore = "slow in debug: run with --include-ignored to check or regenerate"]
 fn fixture_text_500() {
     let ed = scenes::text_500();
     assert!(ed.text_edit().is_some(), "a block is open");
@@ -79,7 +77,7 @@ fn loaded_fixture_continues_like_the_built_state() {
 
     // Assert
     assert!(!loaded.apply(Command::Undo));
-    assert_eq!(undone, HISTORY_LIMIT);
+    assert_eq!(undone, HISTORY_LIMIT - 3, "full stack minus the 3 undone");
     assert_eq!(loaded, built);
 }
 

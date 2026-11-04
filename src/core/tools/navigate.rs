@@ -22,6 +22,12 @@ impl Pan {
         Self { last: pos }
     }
 
+    /// The last pointer position (screen).
+    #[must_use]
+    pub fn last(&self) -> Vec2 {
+        self.last
+    }
+
     /// Moves the pointer to `pos` (screen, finite), panning by the delta.
     /// Returns whether the camera changed.
     pub fn drag(&mut self, camera: &mut Camera, pos: Vec2) -> bool {

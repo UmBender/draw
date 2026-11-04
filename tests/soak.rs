@@ -10,6 +10,9 @@
 //! cargo test --release --test soak -- --ignored --nocapture --test-threads=1
 //! ```
 
+mod common;
+
+use common::snapshots::load_fixture;
 use draw::core::command::{Command, Tool};
 use draw::core::editor::Editor;
 use draw::core::geom::Vec2;
@@ -163,14 +166,9 @@ fn soak_mixed_session_stays_bounded() {
 
 #[test]
 fn soak_large_selection_moves_keep_history_within_budget() {
-    // Arrange: rows of wobbly strokes, all selected.
-    let mut ed = editor();
-    ed.apply(Command::SetTool(Tool::Pen));
-    for i in 0..LARGE_STROKES {
-        let x = (i / 100) as f32 * 180.0 + 20.0;
-        let y = (i % 100) as f32 * 9.0 + 20.0;
-        drag(&mut ed, v(x, y), v(x + 150.0, y + 5.0));
-    }
+    // Arrange: rows of wobbly strokes (fixture `strokes-1000`, built by
+    // `tests/common/scenes.rs`), all selected.
+    let mut ed = load_fixture("strokes-1000");
     assert_eq!(ed.document().len(), LARGE_STROKES);
     ed.apply(Command::SetTool(Tool::Select));
     ed.apply(Command::SelectAll);

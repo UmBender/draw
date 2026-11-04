@@ -1,0 +1,1361 @@
+draw-snapshot 1
+[editor]
+tool text
+style 0 3.0
+helpers 0 0 0 1 4 4 0
+smoothing low
+toolbar 1
+viewport 1920.0 1080.0
+cursor 960.0 1060.0
+space 0
+pressure -
+tap 0.0 idle
+gesture -
+reedit -
+camera 0.0 0.0 1.0
+selection
+[document]
+next-id 332
+shape 0 text 0 0.0 1414.404 696.3999 18.0 "abcdefghijklmnopqr∑"
+shape 1 text 0 0.0 1708.4957 1123.4882 18.0 "bcdefghijklmnopqrs∑"
+shape 2 text 0 0.0 1807.5692 166.09982 18.0 "cjklmnopqrstuvwxyzaqrstuvwxyzabcdefghlmnopqrstuvwxyzabc∑∑∑defghijklmnopqrst∑"
+shape 3 text 0 0.0 233.75351 1252.0424 18.0 "defghefghijklmnopqrstuv∑ijklmnopqrstu∑"
+shape 4 text 0 0.0 1253.0468 1155.3833 18.0 "efghijklmnopqrstuv∑"
+shape 5 text 0 0.0 2358.237 275.77542 18.0 "fghijklmnopqrstuvw∑"
+shape 6 text 0 0.0 2363.3948 29.425232 18.0 "ghijklmnopqrstuvwx∑"
+shape 7 text 0 0.0 789.0448 523.68097 18.0 "hijklmnopqrstuvwxy∑"
+shape 8 text 0 0.0 2296.393 1024.2473 18.0 "ijklfghijklmnopqrstuvw∑mnopqrstuvwxyz∑"
+shape 9 text 0 0.0 1138.996 793.3095 18.0 "opqrstuvwxyzabcdef∑jklmnopqrstuvwxyza∑"
+shape 10 text 0 0.0 316.4212 1234.2719 18.0 "klmnopqrstuvwxyzabcdefghijabcdefghijklmnopqr∑klmnopq∑zab∑"
+shape 11 text 0 0.0 747.8675 1191.594 18.0 "lmnopqrstuvwxyzabc∑"
+shape 12 text 0 0.0 943.9823 1394.37 18.0 "mnopqrstuvwxyzabcd∑"
+shape 13 text 0 0.0 979.64124 1356.605 18.0 "nopqrstuvwxyzabcde∑"
+shape 14 text 0 0.0 1253.9342 671.96094 18.0 "pqrstuvwxyzabdefghijklmnopqrstu∑cdefg∑"
+shape 15 text 0 0.0 2023.8455 -176.68515 18.0 "qrstuvwxyzabcdebcdbcdefghijklmnopqrs∑efghijklmnopqrs∑fgh∑"
+shape 16 text 0 0.0 652.3929 485.67688 18.0 "rmnopqrstuvwxyzabcd∑stuvwxyzabcdefghi∑ijklmnopqrstuvwxyz∑"
+shape 17 text 0 0.0 -104.39726 118.17798 18.0 "stuvwxyzabcdefghij∑"
+shape 18 text 0 0.0 -136.19087 67.929565 18.0 "tuvwxyzabcdefghijk∑"
+shape 19 text 0 0.0 -70.52687 446.29584 18.0 "uvwxyzabcdefghijkl∑"
+shape 20 text 0 0.0 740.69507 374.41376 18.0 "vwxyzabcdefghijklm∑"
+shape 21 text 0 0.0 2132.2302 952.0458 18.0 "wxyzabcdefghijklmn∑"
+shape 22 text 0 0.0 -132.70477 388.97723 18.0 "xyzabcabcdefghijklmnopqr∑defnopqrstuvwxyzabcde∑ghijklmno∑"
+shape 23 text 0 0.0 251.78543 767.3406 18.0 "yzabcdefghiuvwxyzabcdefghijkl∑jklmnop∑"
+shape 24 text 0 0.0 1377.178 1388.2366 18.0 "zabcdefghijklmnopq∑"
+shape 25 text 0 0.0 990.48376 770.12177 18.0 "abcdefghijklmnopqr∑"
+shape 26 text 0 0.0 -63.556854 799.85583 18.0 "cdefghijklmnopqrst∑"
+shape 27 text 0 0.0 622.3313 754.78534 18.0 "defghijklmnopqrstu∑"
+shape 28 text 0 0.0 2204.4963 1220.495 18.0 "efghijklmnopqrstuv∑"
+shape 29 text 0 0.0 -101.036385 1184.7322 18.0 "fghijklmnopqrstuvw∑"
+shape 30 text 0 0.0 601.02057 1372.9049 18.0 "gefghijklmnopqrstuv∑hijklmnopqrstuvcdefghiijklmnopqrstuvwxyz∑jklmnopqrst∑wx∑"
+shape 31 text 0 0.0 1672.494 1177.2981 18.0 "hijklmnozabcdefghijklmnopq∑pqrstuvwxy∑"
+shape 32 text 0 0.0 257.3835 172.43253 18.0 "ijklmnopqrstuvwxyz∑"
+shape 33 text 0 0.0 653.96014 888.1749 18.0 "jklmnopqrstuvwxyza∑"
+shape 34 text 0 0.0 64.77908 189.31522 18.0 "klmnopqrstuvwxyzjklmnopqrstuvwxyza∑ab∑"
+shape 35 text 0 0.0 -0.02357483 868.6113 18.0 "lmnopqrstuvwxyzabc∑"
+shape 36 text 0 0.0 786.0391 130.35068 18.0 "mnopqrstuvwxyzabcdefghij∑stuvwxyzawxyzabcdefghijklmn∑bcd∑"
+shape 37 text 0 0.0 347.15137 528.51715 18.0 "nopqrhijklmnfghijklmnopqrstuvw∑opqrstuvwxy∑stuvwxyzabcde∑"
+shape 38 text 0 0.0 1702.5977 906.99316 18.0 "opmnopqrstuvwxyzabcd∑qrstuvwxyzabcdef∑"
+shape 39 text 0 0.0 645.42334 414.66504 18.0 "pbcdefghijklmnopqrs∑qrstuvwxyzxyzabcdefghijklmno∑abtuvwxyzabcdefghijk∑cdefg∑"
+shape 40 text 0 0.0 1627.0306 7.388397 18.0 "qrstuvwxyzabcdefgh∑"
+shape 41 text 0 0.0 -60.29236 1033.4724 18.0 "rnopqrstuvwxyzabcde∑stuvwxyzabcdefghi∑"
+shape 42 text 0 0.0 337.32166 113.28937 18.0 "stuvwxuvwxyzabcdefghijkl∑yzabcdefgbcdefghijklmnopqrs∑hij∑"
+shape 43 text 0 0.0 1987.0686 1088.5719 18.0 "tuyzabcdefghijkwxyzabcdefghijklmn∑lmnop∑vwxyzabcdefghijk∑"
+shape 44 text 0 0.0 1497.9496 1178.1819 18.0 "uvwxyzabcdefghijklbcdefghijklmnopqrs∑∑"
+shape 45 text 0 0.0 1531.3777 466.70667 18.0 "vwxyzabcdefghijklmtuvwxyzabcdefghijk∑stuvwxyzabcdefghij∑∑"
+shape 46 text 0 0.0 2288.865 1394.312 18.0 "wxyzqrstuvwxyzabcdefgh∑abcdefghijklmn∑"
+shape 47 text 0 0.0 768.89594 637.1687 18.0 "xyzabcdefghijklmno∑"
+shape 48 text 0 0.0 1684.3424 552.81274 18.0 "yzabcdefghijklmnop∑"
+shape 49 text 0 0.0 821.45874 668.00024 18.0 "zabcdefghijklmnopq∑"
+shape 50 text 0 0.0 -111.349464 6.7292175 18.0 "aqrstuvwxyzabcdefgh∑bcdefghijklmnopqr∑"
+shape 51 text 0 0.0 997.00134 1345.2411 18.0 "bcdefghijklopqrstuvwxyzabcdef∑mnopqropqrstuvwxyzabcdef∑s∑"
+shape 52 text 0 0.0 418.28357 928.32776 18.0 "cdefghijklpqrstuvwxyzabcdefg∑mnopqrst∑"
+shape 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzatuvwxyzabcdefghijk∑bcdefghi∑tuv∑ghuvwxyzabcdefghijkl∑ijklmnopqvwxyzabcdefghijklm∑∑∑fghijklmnopqrstu∑"
+shape 54 text 0 0.0 426.26062 1120.985 18.0 "efghxyzabcdefghijklmhijklmnopqrstuvwxy∑no∑ijklmnopqrstuv∑"
+shape 55 text 0 0.0 1436.3868 1227.8981 18.0 "fghijklmnopqrstuvw∑"
+shape 56 text 0 0.0 556.25146 90.36304 18.0 "ghijklmnopqrstuvwx∑"
+shape 57 text 0 0.0 1522.629 503.80695 18.0 "hijklmbcdefghijklmnopqrs∑nopqrstuvwxy∑"
+shape 58 text 0 0.0 1404.1343 1363.7335 18.0 "ijklmnopqrstuvwxyz∑"
+shape 59 text 0 0.0 2241.0598 1281.6857 18.0 "jklmnopcdefghijklmnopqrst∑qrstuvwxyza∑"
+shape 60 text 0 0.0 427.69226 365.61688 18.0 "klmnopqrstuvwxyzab∑"
+shape 61 text 0 0.0 356.95306 72.67093 18.0 "lmnopqrstuvwxyzabc∑"
+shape 62 text 0 0.0 714.2638 573.43207 18.0 "mnopqrsopqrstuvwxyzabcdef∑tuvwxyzabcd∑rstuvwxyzabcdefghi∑"
+shape 63 text 0 0.0 2388.0215 705.3914 18.0 "nopqrstuvwxyzabcde∑"
+shape 64 text 0 0.0 -34.3116 -123.68088 18.0 "opqrstuvwxyzabcdef∑"
+shape 65 text 0 0.0 853.53784 1286.1578 18.0 "pqrstuvwxyzabjklmnopqrstuvwxyza∑cdefg∑"
+shape 66 text 0 0.0 982.84766 498.87555 18.0 "rstuvwxyzabcdefghi∑"
+shape 67 text 0 0.0 1162.7285 -30.692673 18.0 "stuvwxyzabcdefghij∑"
+shape 68 text 0 0.0 1955.4746 232.62006 18.0 "uvwxyzaqrstuvwxyzabcdefgh∑bcdefghijkl∑"
+shape 69 text 0 0.0 -21.395615 750.7227 18.0 "vwxyzabcdefghijklm∑"
+shape 70 text 0 0.0 -165.62224 -93.15548 18.0 "wxyzabcdefghijklmn∑"
+shape 71 text 0 0.0 2060.2317 523.3736 18.0 "yzabcdefghijklmnop∑"
+shape 72 text 0 0.0 1744.4563 519.0686 18.0 "zopqrstuvwxyzabcdef∑abcdklmnopqrstuvwxyzab∑efghijklmnopq∑"
+shape 73 text 0 0.0 1029.3981 554.46747 18.0 "aqrstuvwxyzabcdefgh∑bcdefghijklmnghijklmnopqrstuvwx∑opqr∑"
+shape 74 text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdeefghijklmnopqrstuv∑fghijklmn∑nowxyzabcdefghilmnopqrstuvwxyzabc∑jklmn∑pqrs∑"
+shape 75 text 0 0.0 1212.6094 1128.6865 18.0 "cdefghijklmnopqrst∑"
+shape 76 text 0 0.0 1254.4078 837.7291 18.0 "defghihijklmnopqrstuvwxy∑jklmnopqrstu∑"
+shape 77 text 0 0.0 -70.560974 224.99304 18.0 "ghijklmnopqrstuvwx∑"
+shape 78 text 0 0.0 2260.2449 141.86316 18.0 "ijkopqrstuvwxyzabcdef∑lmnopqrstuvwxyz∑"
+shape 79 text 0 0.0 2029.2712 -85.26802 18.0 "jklmnopqrstuvwxyza∑"
+shape 80 text 0 0.0 2365.5444 180.25293 18.0 "klmnopqrstuvwxyzab∑"
+shape 81 text 0 0.0 989.7998 359.77032 18.0 "lmnopxyzabcdefqrstuvwxyzabcdefgh∑ghijklmno∑qrstuvwxyzabc∑"
+shape 82 text 0 0.0 248.4957 531.3834 18.0 "mnopqrstuvwxyzabcd∑"
+shape 83 text 0 0.0 1435.6068 -176.24254 18.0 "nopqrstuvwxyzabcde∑"
+shape 84 text 0 0.0 565.1168 1058.4602 18.0 "opqrstuvwxlmnopqrstuvwxyzabc∑yzabcdef∑"
+shape 85 text 0 0.0 513.3552 173.64798 18.0 "pqrstuvwxyzanopqrstuvwxyzabcde∑bcdefg∑"
+shape 86 text 0 0.0 1238.4779 216.32587 18.0 "qrstuvwxyzabcdklmnopqrstuvwxyzab∑efgh∑"
+shape 87 text 0 0.0 2182.961 -37.799072 18.0 "tuvwxyzabcdefghijk∑"
+shape 88 text 0 0.0 2245.2231 469.64648 18.0 "uvwxyzabcdeghijklmnopqrstuvwx∑fghijkl∑"
+shape 89 text 0 0.0 318.08655 996.7997 18.0 "vmnopqrstuvwxyzabcd∑wxyzabcdefghijklm∑"
+shape 90 text 0 0.0 221.71622 -104.02269 18.0 "wxyzabcdefghijklmn∑"
+shape 91 text 0 0.0 2372.1062 1057.2024 18.0 "zabcdefghijklmnopq∑"
+shape 92 text 0 0.0 1484.3444 177.99454 18.0 "abcdefghijklmnopqr∑"
+shape 93 text 0 0.0 -128.24251 227.34967 18.0 "cdefghijklmnopbcdefghijklmnopqrs∑qrst∑"
+shape 94 text 0 0.0 1169.264 1097.891 18.0 "efghijklmnopqrstuv∑"
+shape 95 text 0 0.0 647.24756 -59.89972 18.0 "fghijklmnopqrstuvw∑"
+shape 96 text 0 0.0 2013.7859 301.96103 18.0 "ghijklmnopqrstuvwx∑"
+shape 97 text 0 0.0 1570.2406 -184.89362 18.0 "hijklfghyzabcdefghijklmnop∑ijklmnopqrstuvw∑mnopqrstuvwxy∑"
+shape 98 text 0 0.0 808.7153 447.77002 18.0 "ijkluvwxyzabcdefghijkl∑mnopqrstuvwxyz∑"
+shape 99 text 0 0.0 143.18799 1280.6084 18.0 "jklmnopqrstuvwxyza∑"
+shape 100 text 0 0.0 440.19293 758.80664 18.0 "klmnoplmnopqrstuvwxyzabc∑qrstuvwxyzab∑"
+shape 101 text 0 0.0 -184.38641 426.94208 18.0 "lmnopqrstuvwxyzabzabcdefghijklmnopq∑c∑"
+shape 102 text 0 0.0 42.79692 1090.9595 18.0 "mnopqrstuvwxyzabcdpqrstuvwxyzabcdefg∑∑"
+shape 103 text 0 0.0 294.39874 1146.9375 18.0 "opqvwxyzabcdefghijklm∑rstuvqrstuvwxyzabcdefgh∑wxyzabcdef∑"
+shape 104 text 0 0.0 753.9221 962.4165 18.0 "pqrstuvwxyzabcdefklmnopqrstuvwxyzabcdefg∑pqrstuvwxyzab∑g∑"
+shape 105 text 0 0.0 1280.6437 297.2397 18.0 "zabcdefghijklmnopq∑qrstuvwxyzabcdefgh∑"
+shape 106 text 0 0.0 1089.6078 926.35876 18.0 "rstucdefghijklmnopqrst∑vwxyzabcdyzabcdefghijklmnop∑efghi∑"
+shape 107 text 0 0.0 -196.42929 -166.44727 18.0 "stklmnopqrstuvwxyzab∑uvwxyzabcdeklmnopqrstuvwxyzpqrstuvwxyzabcdefg∑ab∑fghij∑"
+shape 108 text 0 0.0 2074.1184 1220.0635 18.0 "tuvwxyzabcdefghijk∑"
+shape 109 text 0 0.0 1835.7206 -171.94205 18.0 "uvwxyzabcdefghijkabcdefghijklmnopqr∑l∑"
+shape 110 text 0 0.0 1182.814 -168.16653 18.0 "vwxyzabcdefghijklm∑"
+shape 111 text 0 0.0 2128.3657 868.59033 18.0 "xyzabcdefghijklmno∑"
+shape 112 text 0 0.0 1828.6248 1325.2522 18.0 "yzabcdefghijklmnop∑"
+shape 113 text 0 0.0 -66.1689 1158.9624 18.0 "bcdefghijklmnopqrs∑"
+shape 114 text 0 0.0 2377.6086 532.7059 18.0 "cdefghijklmnopqrst∑"
+shape 115 text 0 0.0 387.99335 155.02356 18.0 "defghijklmnopqrstu∑"
+shape 116 text 0 0.0 -42.04657 -107.5448 18.0 "efghijklmnopqrsabcdefghijklmnopqr∑tuv∑"
+shape 117 text 0 0.0 319.1374 1193.7302 18.0 "fghijklmnefgwxyzabcdefghijklmn∑hijklmnopqrstuv∑opqrstuvw∑"
+shape 118 text 0 0.0 67.13095 1271.1803 18.0 "ghijklmnopcdefghijklmnopqrst∑qrstuvwx∑"
+shape 119 text 0 0.0 231.09 -131.27603 18.0 "hijklmnopqrstuvwxy∑"
+shape 120 text 0 0.0 1871.1091 1260.9968 18.0 "ijklmnopqrstuvwxyz∑"
+shape 121 text 0 0.0 849.8159 403.06567 18.0 "jklmnopqyzabcdefghijklmnop∑rstuvwxyza∑"
+shape 122 text 0 0.0 1040.8966 831.20544 18.0 "klmnopqrstuvwxyzab∑"
+shape 123 text 0 0.0 2340.5774 454.0724 18.0 "lmnopqrstuvwxyzabc∑"
+shape 124 text 0 0.0 1203.619 50.30356 18.0 "mnopqrstuvwxyzabcd∑"
+shape 125 text 0 0.0 -1.658371 553.9813 18.0 "nopqrstuvwxyzabcde∑"
+shape 126 text 0 0.0 2093.4385 288.274 18.0 "pqrstuvwxyzabcdefg∑"
+shape 127 text 0 0.0 -86.84745 42.60263 18.0 "rstuvwxyzabcdefghi∑"
+shape 128 text 0 0.0 678.59 1281.6205 18.0 "stuvwxyzabcdefghij∑ijklmnopqrstuvwxyz∑"
+shape 129 text 0 0.0 114.26773 -166.99648 18.0 "uvwxyzabcdefghijkl∑"
+shape 130 text 0 0.0 241.68079 973.4678 18.0 "wxyzabcdefghijklmn∑"
+shape 131 text 0 0.0 1277.5232 328.54382 18.0 "xyzabcdefghijklmno∑"
+shape 132 text 0 0.0 -79.03809 986.53455 18.0 "yzabcdefghdefghijklmnopqrstu∑ijklmnop∑"
+shape 133 text 0 0.0 1929.0828 1086.4961 18.0 "abcdefghijklmnopqr∑"
+shape 134 text 0 0.0 1069.497 1314.2843 18.0 "bcdefghijklmnopqrs∑"
+shape 135 text 0 0.0 -151.69753 757.29626 18.0 "cdefghijklmnopqrst∑"
+shape 136 text 0 0.0 2091.268 620.8159 18.0 "defghijklmnopqrstu∑"
+shape 137 text 0 0.0 1966.6995 4.892151 18.0 "fghijklmnopqrstuvw∑"
+shape 138 text 0 0.0 604.29236 257.22885 18.0 "ghijklmnopqrstuvwx∑"
+shape 139 text 0 0.0 2252.481 -104.48465 18.0 "hijklmnopqrstuvwxy∑"
+shape 140 text 0 0.0 2264.1653 795.9757 18.0 "ijklmnopqrstuvwxyz∑"
+shape 141 text 0 0.0 162.25745 298.5713 18.0 "jklmnopqrstuvwxyza∑"
+shape 142 text 0 0.0 1704.6051 545.24316 18.0 "lmnopqrstuvwxyzabc∑"
+shape 143 text 0 0.0 1985.0955 658.6442 18.0 "mnopqrstmnopqrstuvwxyzabcd∑uvwxyzabcd∑"
+shape 144 text 0 0.0 463.32153 685.85803 18.0 "nopqrstuvwxyzabcde∑"
+shape 145 text 0 0.0 2087.6807 1013.86304 18.0 "opqrstuvwxyzabcdef∑"
+shape 146 text 0 0.0 2361.093 1318.8699 18.0 "pqrstuvwxyzabcdefg∑"
+shape 147 text 0 0.0 -117.36656 -102.44522 18.0 "qrstuvwxyzabcdefgh∑"
+shape 148 text 0 0.0 1647.9022 264.06277 18.0 "rstuvwxyzabcefghijklmnopqrstuv∑defghi∑"
+shape 149 text 0 0.0 2077.4214 752.75977 18.0 "stuvwxyzabcdefghij∑"
+shape 150 text 0 0.0 623.67145 471.70782 18.0 "tuvwxyzabcdefghijklmnopqrstuv∑efghijk∑"
+shape 151 text 0 0.0 1420.8569 921.1782 18.0 "uvwxyzafghijklmnopqrstuvw∑bcdefghijkl∑"
+shape 152 text 0 0.0 961.4652 1045.3812 18.0 "vwxyzabcdefghijklm∑"
+shape 153 text 0 0.0 1764.955 626.59406 18.0 "xyzabcdefghijklmno∑"
+shape 154 text 0 0.0 969.96375 829.4606 18.0 "yzabcdefghijklmnop∑"
+shape 155 text 0 0.0 658.4446 -89.85109 18.0 "abcdefghijklmnopwxyzabcdefghijklmn∑qr∑"
+shape 156 text 0 0.0 1095.1909 642.0104 18.0 "bcdefghijklmnopqrs∑"
+shape 157 text 0 0.0 2130.7637 64.72168 18.0 "cdefghijkldefghijklmnopqrstu∑mqrstuvwxyzabcdefgh∑nopqrst∑"
+shape 158 text 0 0.0 1240.9113 1024.3402 18.0 "defghijklmnbcdefghijklmnopqrs∑opqrstu∑"
+shape 159 text 0 0.0 712.8218 939.4512 18.0 "efghijklmnopqrstuv∑"
+shape 160 text 0 0.0 2308.6426 984.3678 18.0 "fghijklmnopqrstuvw∑"
+shape 161 text 0 0.0 2077.6687 1154.6942 18.0 "hijklmnopqrstuvwxy∑jklmnopqrstuvwxyza∑"
+shape 162 text 0 0.0 1650.9784 -69.95201 18.0 "ijklmnopqrstuvwxyz∑"
+shape 163 text 0 0.0 764.4664 -152.66371 18.0 "mnopqrstuvwxyzabcd∑"
+shape 164 text 0 0.0 658.5828 353.4917 18.0 "nopqrstuvwxyzabcde∑"
+shape 165 text 0 0.0 1226.7574 -0.44584656 18.0 "rstuvwxyzabcdefghi∑"
+shape 166 text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdebcdefmnopqrstuvwxyghijklmnopqrstuvwx∑zabcd∑ghijklmnopqrs∑fghij∑"
+shape 167 text 0 0.0 1711.7671 338.7234 18.0 "tuvwxyzabcdefghijk∑"
+shape 168 text 0 0.0 1272.7793 447.96802 18.0 "uvwxyzabcdefghijkl∑"
+shape 169 text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefrstuvwxyzabcdefghghijkhijklmnopqrstuvwxy∑lmnopqrstuvwx∑i∑ghijklm∑"
+shape 170 text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopabcdefghijklmnopqr∑qrstuv∑abcdeuvwxyzabcdestuvwxyzabcdefghij∑fghijkl∑fghijklmn∑"
+shape 171 text 0 0.0 1249.6686 196.47485 18.0 "xyzabcdefghijklvwxyzabcdefghijklm∑mno∑"
+shape 172 text 0 0.0 561.6083 976.1792 18.0 "yzabcdefghijkuvwxyzabcdefghijkl∑lmnop∑"
+shape 173 text 0 0.0 694.29785 24.688538 18.0 "zabcdefghijklmnopq∑"
+shape 174 text 0 0.0 1613.2993 826.04614 18.0 "abcdefghijklmnopqr∑"
+shape 175 text 0 0.0 -179.87811 1330.9188 18.0 "cdefghijklmnopqrst∑"
+shape 176 text 0 0.0 2218.6604 552.12744 18.0 "defghijklmnopqrstu∑"
+shape 177 text 0 0.0 453.48254 416.08752 18.0 "fghijklmnopqrstuvw∑"
+shape 178 text 0 0.0 1382.681 -87.072754 18.0 "ghijklrstuvwxyzabcdefghi∑mnopqrstuvwx∑"
+shape 179 text 0 0.0 756.33344 57.069122 18.0 "hijklmnopqrstuvwxy∑"
+shape 180 text 0 0.0 2145.097 811.9259 18.0 "ijklmnopqrstuvwxyz∑"
+shape 181 text 0 0.0 725.7107 1009.0477 18.0 "jklmnopqrstuvwxyza∑"
+shape 182 text 0 0.0 1012.0394 873.76074 18.0 "mnopqrstuvwxyzabcd∑"
+shape 183 text 0 0.0 1531.4393 1281.49 18.0 "nopqrstuvwxyzabcde∑"
+shape 184 text 0 0.0 1512.7587 451.33923 18.0 "opqwxyzabcdefghijklmn∑rstuvwxyzabcdef∑"
+shape 185 text 0 0.0 1536.8049 985.14856 18.0 "pqrstuvwxyzabcdefg∑"
+shape 186 text 0 0.0 1342.5461 787.02466 18.0 "qrstuvwxyzabcdefgh∑"
+shape 187 text 0 0.0 -75.21075 257.83453 18.0 "stuvwxyzabcdefghij∑"
+shape 188 text 0 0.0 1995.0945 763.451 18.0 "uvwxyzabcdefghijkl∑"
+shape 189 text 0 0.0 11.461716 478.1291 18.0 "vwxyzabcdefghijklm∑"
+shape 190 text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghabcdefghijklmnocdefghijklmnopqrst∑pqr∑ijklabcdefghijklmnopqr∑mn∑"
+shape 191 text 0 0.0 1925.1152 855.916 18.0 "xyzabcdefghcdefghijklmnopqrst∑ijklmno∑hijklmnopqrstuvwxy∑"
+shape 192 text 0 0.0 1487.1394 475.50372 18.0 "uvwxyzabcdefghijkl∑yzabcdefghijklmnop∑"
+shape 193 text 0 0.0 279.06378 853.37646 18.0 "xyzabcdefghijklmno∑zabcdefghijklmnopq∑"
+shape 194 text 0 0.0 1902.615 287.54987 18.0 "abcdefghijklmnopqrcdefghijklmnopqrst∑∑"
+shape 195 text 0 0.0 2225.7917 939.90784 18.0 "defghijklmnopqrstu∑"
+shape 196 text 0 0.0 783.94855 1046.6869 18.0 "ghiklmnopqrstuvwxyzab∑jklmnopqrstuvwx∑"
+shape 197 text 0 0.0 -95.58478 1091.5372 18.0 "ijklmnopqrstutuvwxyzabcdefghijk∑vwxyz∑"
+shape 198 text 0 0.0 469.4854 -73.86608 18.0 "klmnopqrstuvwxyzab∑"
+shape 199 text 0 0.0 2176.4177 -140.21521 18.0 "lmnopqrstuvwxyzabc∑"
+shape 200 text 0 0.0 279.36536 -193.52293 18.0 "mnopqrstuvwxyzabcd∑"
+shape 201 text 0 0.0 1025.615 754.7307 18.0 "nopqrstuvwxyzabcde∑"
+shape 202 text 0 0.0 -66.38602 789.22784 18.0 "opqrstuvwxyzabcdef∑"
+shape 203 text 0 0.0 958.5925 754.9764 18.0 "pqrstuvwxyzabcdefg∑"
+shape 204 text 0 0.0 -176.25424 714.622 18.0 "qrjklmnopqrstuvwxyza∑stuvwxyzabcdefgh∑"
+shape 205 text 0 0.0 1192.344 345.34265 18.0 "rstuvwxyzabcdefghi∑"
+shape 206 text 0 0.0 -101.97396 320.64636 18.0 "stuvwxyzabcdefghij∑"
+shape 207 text 0 0.0 -198.70831 919.8584 18.0 "tuvwxyzabcdefghijk∑"
+shape 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzaghijkopqrstuvwxyzabcdef∑lmnopqrstuvwx∑bcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrghijklmnopqrstuvwx∑s∑w∑mno∑"
+shape 209 text 0 0.0 994.32935 643.60754 18.0 "yzabcdefghijklmnop∑"
+shape 210 text 0 0.0 180.28568 976.81384 18.0 "bcdefghijklmnopqrs∑"
+shape 211 text 0 0.0 1067.4619 1016.0663 18.0 "defghijklmnopqrstu∑"
+shape 212 text 0 0.0 7.5708313 1374.6129 18.0 "ghijklmnopqrstuvwx∑"
+shape 213 text 0 0.0 2171.3005 1006.55493 18.0 "jklmnopqrstuvwxyza∑"
+shape 214 text 0 0.0 2375.2703 1275.434 18.0 "klmnopqrstuvwxyzab∑"
+shape 215 text 0 0.0 -44.21138 510.5111 18.0 "lmnopqrstuvwxyzabc∑"
+shape 216 text 0 0.0 556.87524 652.74164 18.0 "opqrstuvwvwxyzabcdefghijklm∑xyzabcderstuvwxyzabcdefghi∑f∑"
+shape 217 text 0 0.0 1579.5148 541.7985 18.0 "qrstuvwxyzabcdefgh∑"
+shape 218 text 0 0.0 449.0291 143.10855 18.0 "stuvwxyzabcdefghij∑"
+shape 219 text 0 0.0 1070.5592 1306.3896 18.0 "tuvwxyzabcdefghijk∑"
+shape 220 text 0 0.0 1437.279 735.3571 18.0 "vwxyzabcdefghijklm∑"
+shape 221 text 0 0.0 2130.4514 126.56964 18.0 "yzabcdefghijklmnop∑"
+shape 222 text 0 0.0 493.5761 209.32349 18.0 "zabcdefghijklmnopq∑"
+shape 223 text 0 0.0 768.49384 -186.20157 18.0 "abcdefghijklmnopqr∑"
+shape 224 text 0 0.0 2342.5703 442.9533 18.0 "cdefghijklmnopqrst∑"
+shape 225 text 0 0.0 1463.6344 1052.0403 18.0 "defghijklmnopqrstu∑"
+shape 226 text 0 0.0 2149.0444 1267.1251 18.0 "efghijklmnopqrstuv∑"
+shape 227 text 0 0.0 876.5515 -12.067703 18.0 "fghijkxyzabcdefghijklmno∑lmnqrstuvwxyzabcdefgh∑opqrstuvw∑"
+shape 228 text 0 0.0 906.46606 746.84906 18.0 "hijklmnopqrstuvwxy∑"
+shape 229 text 0 0.0 491.22906 -82.55205 18.0 "jklmnopqrstuvwxyza∑"
+shape 230 text 0 0.0 -3.1977081 1386.7465 18.0 "klmnopopqrstuvwxyzabcdef∑qrstuvwxyzab∑"
+shape 231 text 0 0.0 1262.6648 302.51608 18.0 "lmnopqrscdefghijklmnopqrst∑tuvwxyzabc∑"
+shape 232 text 0 0.0 -17.609177 907.99744 18.0 "mnopqrstuvwxyzabcd∑"
+shape 233 text 0 0.0 95.994354 833.01074 18.0 "nopqrstuvwxyzabcde∑"
+shape 234 text 0 0.0 764.1265 518.1325 18.0 "pqrstuvwxyzabcdefg∑"
+shape 235 text 0 0.0 1918.2148 1070.5094 18.0 "rstuvwxyzabcdefghi∑"
+shape 236 text 0 0.0 778.9727 457.14618 18.0 "stnopqrstuvwxyzabcde∑uvwxyzabcdefghij∑"
+shape 237 text 0 0.0 407.61066 -139.84099 18.0 "tuvwxyzabcdefghijk∑"
+shape 238 text 0 0.0 1581.0276 1040.9437 18.0 "uvwxyzabcdefghijkl∑"
+shape 239 text 0 0.0 1282.226 -75.424576 18.0 "vwxyzabcdefghijklm∑"
+shape 240 text 0 0.0 1269.5112 293.2619 18.0 "xyzabfghijklmnopqrstuvw∑cdefghijklmno∑"
+shape 241 text 0 0.0 1075.946 -62.60109 18.0 "zabcdefghijklmnopq∑"
+shape 242 text 0 0.0 2267.2358 678.32794 18.0 "defghijklmnopqrstu∑"
+shape 243 text 0 0.0 655.98145 408.66272 18.0 "efghijklmnopqrstuv∑"
+shape 244 text 0 0.0 228.94086 1244.4828 18.0 "fghijklmnhijklmnopqrstuvwxy∑opqrstuvw∑"
+shape 245 text 0 0.0 471.63397 11.247726 18.0 "hijklmnopqrstuvwxy∑"
+shape 246 text 0 0.0 1954.4812 1220.7009 18.0 "ijklmnopqrstuvwxyz∑"
+shape 247 text 0 0.0 1051.1335 -177.66771 18.0 "jklyzabcdefghijklmnop∑mnopqnopqrstuvwxyzabcde∑rstuvwxyza∑"
+shape 248 text 0 0.0 318.49054 27.989578 18.0 "lmnopqrstuvwxyzabc∑"
+shape 249 text 0 0.0 697.68536 728.08105 18.0 "nopqrstuvwxyzafghijklmnopqrstuvw∑bcde∑"
+shape 250 text 0 0.0 997.2733 1326.0299 18.0 "pqrstuvwxyzabcdefg∑"
+shape 251 text 0 0.0 1074.2495 181.90527 18.0 "stuvwxyzabcdefghij∑"
+shape 252 text 0 0.0 1194.4478 459.38538 18.0 "tuvwxyzabcdefghijk∑"
+shape 253 text 0 0.0 383.03442 708.49304 18.0 "vwxyzabcdefghijklm∑"
+shape 254 text 0 0.0 1321.3042 658.714 18.0 "wxyzabcdefghijefghijklmnopqrstuv∑klmn∑"
+shape 255 text 0 0.0 754.4239 621.44745 18.0 "xyzabcdefghijklmno∑"
+shape 256 text 0 0.0 1470.5854 902.84094 18.0 "yzabcdefghijklmnop∑"
+shape 257 text 0 0.0 953.6459 1344.4023 18.0 "zabcdefghiijklmnopqrstuvwxyz∑jklmnopq∑"
+shape 258 text 0 0.0 -15.887131 1146.2008 18.0 "defghijklmnopqrstu∑"
+shape 259 text 0 0.0 1742.8795 -130.87492 18.0 "fghijklmnopqrstuvw∑"
+shape 260 text 0 0.0 1374.7863 83.3515 18.0 "ghijklmnopqrstuvwx∑"
+shape 261 text 0 0.0 1000.92615 740.234 18.0 "ijklmnopqrstuvwxyz∑"
+shape 262 text 0 0.0 1896.1672 1154.837 18.0 "lmnopqrstuvwxyzabc∑"
+shape 263 text 0 0.0 1759.4713 1170.942 18.0 "opqrstuvwnopqrstuvwxyzabcde∑xyzabcdef∑"
+shape 264 text 0 0.0 582.8123 1318.4576 18.0 "pqrstuvwxyzabcdefg∑"
+shape 265 text 0 0.0 2323.4065 307.19806 18.0 "qrstuvwxyzabcdefgh∑"
+shape 266 text 0 0.0 1924.5269 573.0749 18.0 "rstuvwxyzabcdefghi∑"
+shape 267 text 0 0.0 1132.5795 535.8344 18.0 "stuvwxyzabhijklmnopqrstuvwxy∑cdefghij∑"
+shape 268 text 0 0.0 325.86517 1367.5808 18.0 "tuvwxyzabcdefjklmnopqrstuvwxyza∑ghijk∑"
+shape 269 text 0 0.0 1459.3245 138.61331 18.0 "vwxyzabcdefghijklmefghijklmnopqrstuv∑∑"
+shape 270 text 0 0.0 2128.841 -143.16406 18.0 "wxyzabcdefghijklmn∑"
+shape 271 text 0 0.0 1811.6963 423.30444 18.0 "xyzabcdefghijklmno∑"
+shape 272 text 0 0.0 896.54504 908.90173 18.0 "yzabcdefghijklmnop∑"
+shape 273 text 0 0.0 2245.091 1118.8508 18.0 "zabcklmnopqrstuvwxyzab∑defghijklmnopq∑"
+shape 274 text 0 0.0 636.7677 1175.978 18.0 "efghijklmnopqrstuv∑"
+shape 275 text 0 0.0 1006.906 1079.5552 18.0 "fghijklmnopqrstuvw∑"
+shape 276 text 0 0.0 2244.903 1000.26697 18.0 "ghijklmnopqrstuvwx∑"
+shape 277 text 0 0.0 1674.7443 732.19385 18.0 "hijkbcdefghijklmnopqrs∑lmnopqrstuvwxy∑"
+shape 278 text 0 0.0 1542.5338 1318.0906 18.0 "ijklmnopqrstuvwxyz∑"
+shape 279 text 0 0.0 1195.215 -103.67508 18.0 "lmnoijklmnopqrstuvwvwxyzabcdefghijklm∑xyz∑pqrstuvwxyjklmnopqrstuvwxyza∑zabc∑"
+shape 280 text 0 0.0 -171.08392 74.59134 18.0 "mnopqrstuvwxyzabcd∑"
+shape 281 text 0 0.0 1973.4456 833.03064 18.0 "nopqrstuvwxyzabcde∑"
+shape 282 text 0 0.0 1330.8632 1298.8226 18.0 "opqrstuvwxyzabcdef∑"
+shape 283 text 0 0.0 2124.658 923.7555 18.0 "rstuvwxyzabcdefghi∑"
+shape 284 text 0 0.0 149.43335 782.5554 18.0 "tuvzabcdefghijklmnopq∑wxyzabcdefghijk∑"
+shape 285 text 0 0.0 598.79736 559.8672 18.0 "vwxyzabcdefghijklm∑"
+shape 286 text 0 0.0 300.59653 1313.035 18.0 "wxyzabcdefghijklmmnopqrstuvwxyzabcd∑n∑"
+shape 287 text 0 0.0 20.132416 1222.9474 18.0 "zabcdefghijklmnopq∑"
+shape 288 text 0 0.0 470.87445 -96.17682 18.0 "abcdefghijklmnopqr∑"
+shape 289 text 0 0.0 1095.1938 996.06226 18.0 "cdefghijklmnopqrst∑"
+shape 290 text 0 0.0 48.228073 708.0222 18.0 "defghijklmnopqrstu∑"
+shape 291 text 0 0.0 281.21387 591.79346 18.0 "klmnopqrstuvwxyzab∑"
+shape 292 text 0 0.0 2397.3774 243.1305 18.0 "lmnopqrstuvwxyzabc∑"
+shape 293 text 0 0.0 2244.3936 981.7667 18.0 "mnopqrstuvwxyzabcd∑"
+shape 294 text 0 0.0 896.06067 258.6337 18.0 "pqrstuvwxyzabcdefg∑"
+shape 295 text 0 0.0 -177.25552 1181.265 18.0 "rstuvwxyzqrstuvwxyzabcdefgh∑abcdefghi∑"
+shape 296 text 0 0.0 506.4308 408.85925 18.0 "stuvwjklmnopqrstuvwxyza∑xyzabcdefghij∑"
+shape 297 text 0 0.0 1630.8273 -5.9963226 18.0 "uvwxyzabcdefghijkl∑"
+shape 298 text 0 0.0 2390.0442 379.70746 18.0 "yzabcdefghijklmnop∑"
+shape 299 text 0 0.0 1864.0852 -197.36652 18.0 "zabcdefghijklmnopqhijklmnopqrstuvwxy∑∑"
+shape 300 text 0 0.0 1184.5452 683.1461 18.0 "defghijklmnopqrstu∑"
+shape 301 text 0 0.0 569.75604 454.9178 18.0 "klmnopqrstuvwxyzab∑"
+shape 302 text 0 0.0 238.91748 429.30438 18.0 "nopqrstuvwxyzabcde∑"
+shape 303 text 0 0.0 247.3399 1361.2032 18.0 "pqrstuvwxyzabcdeyzabcdefghijklmnop∑fg∑"
+shape 304 text 0 0.0 2225.0603 425.8792 18.0 "rstuvwxyzabcdefghi∑"
+shape 305 text 0 0.0 1081.2439 247.43787 18.0 "stuvwxyzabcdefghij∑"
+shape 306 text 0 0.0 969.2031 1226.4873 18.0 "tuvwxyzabcdefghijk∑"
+shape 307 text 0 0.0 992.42786 352.6969 18.0 "uvwxyzabcdefghijkl∑"
+shape 308 text 0 0.0 843.04565 -17.47284 18.0 "bcdefghijklmnopqrs∑"
+shape 309 text 0 0.0 1792.4171 130.27039 18.0 "cdefghijklmnopqrst∑"
+shape 310 text 0 0.0 1120.7238 1189.3583 18.0 "defghijklmnopqrstu∑"
+shape 311 text 0 0.0 264.3523 1319.5742 18.0 "efghijklmnopqrstuv∑"
+shape 312 text 0 0.0 2247.986 504.90363 18.0 "fghijklmnopqrstuvw∑"
+shape 313 text 0 0.0 2218.8513 196.81015 18.0 "klmnopqrstuvwxyzab∑"
+shape 314 text 0 0.0 806.46924 286.5633 18.0 "lmnopqrstuvwxyzabc∑"
+shape 315 text 0 0.0 466.55585 580.32214 18.0 "opqrstuvwxyzabcdef∑"
+shape 316 text 0 0.0 495.26288 -161.67737 18.0 "pqrstuvwxyzabcdefg∑"
+shape 317 text 0 0.0 1496.1805 -28.962128 18.0 "rstuvwxyzabcdefghi∑"
+shape 318 text 0 0.0 -35.135895 641.8457 18.0 "stuvwxyzabcdefghij∑"
+shape 319 text 0 0.0 273.38467 334.54517 18.0 "tuvwxyzabcdefghijk∑"
+shape 320 text 0 0.0 2077.8735 894.4326 18.0 "wxyzabcdefghijklmn∑"
+shape 321 text 0 0.0 963.0515 1015.27527 18.0 "xyzabcdefghijklmno∑"
+shape 322 text 0 0.0 962.88257 1232.3418 18.0 "abcdefghijklmnopqr∑"
+shape 323 text 0 0.0 2055.042 1296.4756 18.0 "bcdefghijklmnopqrs∑"
+shape 324 text 0 0.0 1672.6477 1164.3737 18.0 "ghijklmnopqrstuvwijklmnopqrstuvwxyz∑x∑"
+shape 325 text 0 0.0 380.61914 483.42438 18.0 "tuvwxyzabcdefghijk∑"
+shape 326 text 0 0.0 1801.0251 66.753296 18.0 "vwxyzabcdefghijklm∑"
+shape 327 text 0 0.0 69.30954 1127.8383 18.0 "wxyzabcdefghijklmn∑"
+shape 328 text 0 0.0 545.9325 51.322266 18.0 "xyzabcdefghijklmno∑"
+shape 329 text 0 0.0 1774.6289 869.18884 18.0 "zabcdefghijklmnopq∑"
+shape 330 text 0 0.0 840.145 923.7258 18.0 "abcdefghijklmnopqr∑"
+shape 331 text 0 0.0 2023.5879 115.268036 18.0 "defghijklmnopqrstu∑"
+[history]
+limits 500 67108864
+undo 1
+insert 0 0 text 0 0.0 1414.404 696.3999 18.0 "abcdefghijklmnopqr∑"
+undo 1
+insert 1 1 text 0 0.0 1708.4957 1123.4882 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 2 2 text 0 0.0 1807.5692 166.09982 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 3 3 text 0 0.0 233.75351 1252.0424 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 4 4 text 0 0.0 1253.0468 1155.3833 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 5 5 text 0 0.0 2358.237 275.77542 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 6 6 text 0 0.0 2363.3948 29.425232 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 7 7 text 0 0.0 789.0448 523.68097 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 8 8 text 0 0.0 2296.393 1024.2473 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 9 9 text 0 0.0 1138.996 793.3095 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 10 10 text 0 0.0 316.4212 1234.2719 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 11 11 text 0 0.0 747.8675 1191.594 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 12 12 text 0 0.0 943.9823 1394.37 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 13 13 text 0 0.0 979.64124 1356.605 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+replace 9 text 0 0.0 1138.996 793.3095 18.0 "jklmnopqrstuvwxyza∑" text 0 0.0 1138.996 793.3095 18.0 "opqrstuvwxyzabcdef∑jklmnopqrstuvwxyza∑"
+undo 1
+insert 14 14 text 0 0.0 1253.9342 671.96094 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 15 15 text 0 0.0 2023.8455 -176.68515 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+insert 16 16 text 0 0.0 652.3929 485.67688 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 17 17 text 0 0.0 -104.39726 118.17798 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 18 18 text 0 0.0 -136.19087 67.929565 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 19 19 text 0 0.0 -70.52687 446.29584 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 20 20 text 0 0.0 740.69507 374.41376 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 21 21 text 0 0.0 2132.2302 952.0458 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 22 22 text 0 0.0 -132.70477 388.97723 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 23 23 text 0 0.0 251.78543 767.3406 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 24 24 text 0 0.0 1377.178 1388.2366 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 25 25 text 0 0.0 990.48376 770.12177 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 15 text 0 0.0 2023.8455 -176.68515 18.0 "qrstuvwxyzabcdefgh∑" text 0 0.0 2023.8455 -176.68515 18.0 "qrstuvwxyzabcdebcdefghijklmnopqrs∑fgh∑"
+undo 1
+insert 26 26 text 0 0.0 -63.556854 799.85583 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 27 27 text 0 0.0 622.3313 754.78534 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 28 28 text 0 0.0 2204.4963 1220.495 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 29 29 text 0 0.0 -101.036385 1184.7322 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 30 30 text 0 0.0 601.02057 1372.9049 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 31 31 text 0 0.0 1672.494 1177.2981 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 32 32 text 0 0.0 257.3835 172.43253 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 33 33 text 0 0.0 653.96014 888.1749 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 34 34 text 0 0.0 64.77908 189.31522 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 35 35 text 0 0.0 -0.02357483 868.6113 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 36 36 text 0 0.0 786.0391 130.35068 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 37 37 text 0 0.0 347.15137 528.51715 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 38 38 text 0 0.0 1702.5977 906.99316 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 39 39 text 0 0.0 645.42334 414.66504 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 40 40 text 0 0.0 1627.0306 7.388397 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+insert 41 41 text 0 0.0 -60.29236 1033.4724 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 42 42 text 0 0.0 337.32166 113.28937 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 43 43 text 0 0.0 1987.0686 1088.5719 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 44 44 text 0 0.0 1497.9496 1178.1819 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 45 45 text 0 0.0 1531.3777 466.70667 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 46 46 text 0 0.0 2288.865 1394.312 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 47 47 text 0 0.0 768.89594 637.1687 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 48 48 text 0 0.0 1684.3424 552.81274 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 49 49 text 0 0.0 821.45874 668.00024 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 50 50 text 0 0.0 -111.349464 6.7292175 18.0 "abcdefghijklmnopqr∑"
+undo 1
+insert 51 51 text 0 0.0 997.00134 1345.2411 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 52 52 text 0 0.0 418.28357 928.32776 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 53 53 text 0 0.0 534.4091 1249.7761 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 54 54 text 0 0.0 426.26062 1120.985 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 55 55 text 0 0.0 1436.3868 1227.8981 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 56 56 text 0 0.0 556.25146 90.36304 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 57 57 text 0 0.0 1522.629 503.80695 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 58 58 text 0 0.0 1404.1343 1363.7335 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 59 59 text 0 0.0 2241.0598 1281.6857 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 60 60 text 0 0.0 427.69226 365.61688 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 61 61 text 0 0.0 356.95306 72.67093 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 62 62 text 0 0.0 714.2638 573.43207 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 63 63 text 0 0.0 2388.0215 705.3914 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 64 64 text 0 0.0 -34.3116 -123.68088 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 65 65 text 0 0.0 853.53784 1286.1578 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 50 text 0 0.0 -111.349464 6.7292175 18.0 "abcdefghijklmnopqr∑" text 0 0.0 -111.349464 6.7292175 18.0 "aqrstuvwxyzabcdefgh∑bcdefghijklmnopqr∑"
+undo 1
+insert 66 66 text 0 0.0 982.84766 498.87555 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 67 67 text 0 0.0 1162.7285 -30.692673 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+replace 39 text 0 0.0 645.42334 414.66504 18.0 "pqrstuvwxyzabcdefg∑" text 0 0.0 645.42334 414.66504 18.0 "pqrstuvwxyzabtuvwxyzabcdefghijk∑cdefg∑"
+undo 1
+insert 68 68 text 0 0.0 1955.4746 232.62006 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 69 69 text 0 0.0 -21.395615 750.7227 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 70 70 text 0 0.0 -165.62224 -93.15548 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "defghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmno∑fghijklmnopqrstu∑"
+undo 1
+insert 71 71 text 0 0.0 2060.2317 523.3736 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 72 72 text 0 0.0 1744.4563 519.0686 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 73 73 text 0 0.0 1029.3981 554.46747 18.0 "abcdefghijklmnopqr∑"
+undo 1
+insert 74 74 text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 75 75 text 0 0.0 1212.6094 1128.6865 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 76 76 text 0 0.0 1254.4078 837.7291 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 30 text 0 0.0 601.02057 1372.9049 18.0 "ghijklmnopqrstuvwx∑" text 0 0.0 601.02057 1372.9049 18.0 "gefghijklmnopqrstuv∑hijklmnopqrstuvwx∑"
+undo 1
+replace 8 text 0 0.0 2296.393 1024.2473 18.0 "ijklmnopqrstuvwxyz∑" text 0 0.0 2296.393 1024.2473 18.0 "ijklfghijklmnopqrstuvw∑mnopqrstuvwxyz∑"
+undo 1
+insert 77 77 text 0 0.0 -70.560974 224.99304 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+replace 37 text 0 0.0 347.15137 528.51715 18.0 "nopqrstuvwxyzabcde∑" text 0 0.0 347.15137 528.51715 18.0 "nopqrhijklmnopqrstuvwxy∑stuvwxyzabcde∑"
+undo 1
+insert 78 78 text 0 0.0 2260.2449 141.86316 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 79 79 text 0 0.0 2029.2712 -85.26802 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 80 80 text 0 0.0 2365.5444 180.25293 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 81 81 text 0 0.0 989.7998 359.77032 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 82 82 text 0 0.0 248.4957 531.3834 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 83 83 text 0 0.0 1435.6068 -176.24254 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 84 84 text 0 0.0 565.1168 1058.4602 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 85 85 text 0 0.0 513.3552 173.64798 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 86 86 text 0 0.0 1238.4779 216.32587 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+replace 62 text 0 0.0 714.2638 573.43207 18.0 "mnopqrstuvwxyzabcd∑" text 0 0.0 714.2638 573.43207 18.0 "mnopqrstuvwxyzabcd∑rstuvwxyzabcdefghi∑"
+undo 1
+replace 45 text 0 0.0 1531.3777 466.70667 18.0 "vwxyzabcdefghijklm∑" text 0 0.0 1531.3777 466.70667 18.0 "vwxyzabcdefghijklmstuvwxyzabcdefghij∑∑"
+undo 1
+insert 87 87 text 0 0.0 2182.961 -37.799072 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 88 88 text 0 0.0 2245.2231 469.64648 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 89 89 text 0 0.0 318.08655 996.7997 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 90 90 text 0 0.0 221.71622 -104.02269 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+replace 54 text 0 0.0 426.26062 1120.985 18.0 "efghijklmnopqrstuv∑" text 0 0.0 426.26062 1120.985 18.0 "efghxyzabcdefghijklmno∑ijklmnopqrstuv∑"
+undo 1
+replace 43 text 0 0.0 1987.0686 1088.5719 18.0 "tuvwxyzabcdefghijk∑" text 0 0.0 1987.0686 1088.5719 18.0 "tuyzabcdefghijklmnop∑vwxyzabcdefghijk∑"
+undo 1
+insert 91 91 text 0 0.0 2372.1062 1057.2024 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 92 92 text 0 0.0 1484.3444 177.99454 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 39 text 0 0.0 645.42334 414.66504 18.0 "pqrstuvwxyzabtuvwxyzabcdefghijk∑cdefg∑" text 0 0.0 645.42334 414.66504 18.0 "pbcdefghijklmnopqrs∑qrstuvwxyzabtuvwxyzabcdefghijk∑cdefg∑"
+undo 1
+insert 93 93 text 0 0.0 -128.24251 227.34967 18.0 "cdefghijklmnopqrst∑"
+undo 1
+replace 14 text 0 0.0 1253.9342 671.96094 18.0 "pqrstuvwxyzabcdefg∑" text 0 0.0 1253.9342 671.96094 18.0 "pqrstuvwxyzabdefghijklmnopqrstu∑cdefg∑"
+undo 1
+insert 94 94 text 0 0.0 1169.264 1097.891 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 95 95 text 0 0.0 647.24756 -59.89972 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 96 96 text 0 0.0 2013.7859 301.96103 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 97 97 text 0 0.0 1570.2406 -184.89362 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 98 98 text 0 0.0 808.7153 447.77002 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 99 99 text 0 0.0 143.18799 1280.6084 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 100 100 text 0 0.0 440.19293 758.80664 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 101 101 text 0 0.0 -184.38641 426.94208 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 102 102 text 0 0.0 42.79692 1090.9595 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+replace 85 text 0 0.0 513.3552 173.64798 18.0 "pqrstuvwxyzabcdefg∑" text 0 0.0 513.3552 173.64798 18.0 "pqrstuvwxyzanopqrstuvwxyzabcde∑bcdefg∑"
+undo 1
+insert 103 103 text 0 0.0 294.39874 1146.9375 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 104 104 text 0 0.0 753.9221 962.4165 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 105 105 text 0 0.0 1280.6437 297.2397 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+insert 106 106 text 0 0.0 1089.6078 926.35876 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 107 107 text 0 0.0 -196.42929 -166.44727 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 108 108 text 0 0.0 2074.1184 1220.0635 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 109 109 text 0 0.0 1835.7206 -171.94205 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 110 110 text 0 0.0 1182.814 -168.16653 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+replace 74 text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmnopqrs∑" text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdefghijklmn∑nopqrs∑"
+undo 1
+insert 111 111 text 0 0.0 2128.3657 868.59033 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 112 112 text 0 0.0 1828.6248 1325.2522 18.0 "yzabcdefghijklmnop∑"
+undo 1
+replace 10 text 0 0.0 316.4212 1234.2719 18.0 "klmnopqrstuvwxyzab∑" text 0 0.0 316.4212 1234.2719 18.0 "klmnopqrstuvwxyzabcdefghijklmnopq∑zab∑"
+undo 1
+replace 109 text 0 0.0 1835.7206 -171.94205 18.0 "uvwxyzabcdefghijkl∑" text 0 0.0 1835.7206 -171.94205 18.0 "uvwxyzabcdefghijkabcdefghijklmnopqr∑l∑"
+undo 1
+insert 113 113 text 0 0.0 -66.1689 1158.9624 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 114 114 text 0 0.0 2377.6086 532.7059 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 115 115 text 0 0.0 387.99335 155.02356 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 116 116 text 0 0.0 -42.04657 -107.5448 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 117 117 text 0 0.0 319.1374 1193.7302 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 118 118 text 0 0.0 67.13095 1271.1803 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 119 119 text 0 0.0 231.09 -131.27603 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 120 120 text 0 0.0 1871.1091 1260.9968 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 121 121 text 0 0.0 849.8159 403.06567 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 122 122 text 0 0.0 1040.8966 831.20544 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 123 123 text 0 0.0 2340.5774 454.0724 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 124 124 text 0 0.0 1203.619 50.30356 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 125 125 text 0 0.0 -1.658371 553.9813 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+replace 62 text 0 0.0 714.2638 573.43207 18.0 "mnopqrstuvwxyzabcd∑rstuvwxyzabcdefghi∑" text 0 0.0 714.2638 573.43207 18.0 "mnopqrsopqrstuvwxyzabcdef∑tuvwxyzabcd∑rstuvwxyzabcdefghi∑"
+undo 1
+insert 126 126 text 0 0.0 2093.4385 288.274 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 46 text 0 0.0 2288.865 1394.312 18.0 "wxyzabcdefghijklmn∑" text 0 0.0 2288.865 1394.312 18.0 "wxyzqrstuvwxyzabcdefgh∑abcdefghijklmn∑"
+undo 1
+insert 127 127 text 0 0.0 -86.84745 42.60263 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 128 128 text 0 0.0 678.59 1281.6205 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+replace 45 text 0 0.0 1531.3777 466.70667 18.0 "vwxyzabcdefghijklmstuvwxyzabcdefghij∑∑" text 0 0.0 1531.3777 466.70667 18.0 "vwxyzabcdefghijklmtuvwxyzabcdefghijk∑stuvwxyzabcdefghij∑∑"
+undo 1
+insert 129 129 text 0 0.0 114.26773 -166.99648 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+replace 103 text 0 0.0 294.39874 1146.9375 18.0 "opqrstuvwxyzabcdef∑" text 0 0.0 294.39874 1146.9375 18.0 "opqvwxyzabcdefghijklm∑rstuvwxyzabcdef∑"
+undo 1
+insert 130 130 text 0 0.0 241.68079 973.4678 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 131 131 text 0 0.0 1277.5232 328.54382 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 132 132 text 0 0.0 -79.03809 986.53455 18.0 "yzabcdefghijklmnop∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmno∑fghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefghijklmnopq∑∑fghijklmnopqrstu∑"
+undo 1
+insert 133 133 text 0 0.0 1929.0828 1086.4961 18.0 "abcdefghijklmnopqr∑"
+undo 1
+insert 134 134 text 0 0.0 1069.497 1314.2843 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 135 135 text 0 0.0 -151.69753 757.29626 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 136 136 text 0 0.0 2091.268 620.8159 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefghijklmnopq∑∑fghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrstuv∑ghijklmnopq∑∑fghijklmnopqrstu∑"
+undo 1
+insert 137 137 text 0 0.0 1966.6995 4.892151 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 138 138 text 0 0.0 604.29236 257.22885 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 139 139 text 0 0.0 2252.481 -104.48465 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 140 140 text 0 0.0 2264.1653 795.9757 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 141 141 text 0 0.0 162.25745 298.5713 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+replace 86 text 0 0.0 1238.4779 216.32587 18.0 "qrstuvwxyzabcdefgh∑" text 0 0.0 1238.4779 216.32587 18.0 "qrstuvwxyzabcdklmnopqrstuvwxyzab∑efgh∑"
+undo 1
+insert 142 142 text 0 0.0 1704.6051 545.24316 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 143 143 text 0 0.0 1985.0955 658.6442 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 144 144 text 0 0.0 463.32153 685.85803 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 145 145 text 0 0.0 2087.6807 1013.86304 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 146 146 text 0 0.0 2361.093 1318.8699 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 147 147 text 0 0.0 -117.36656 -102.44522 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+insert 148 148 text 0 0.0 1647.9022 264.06277 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 149 149 text 0 0.0 2077.4214 752.75977 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 150 150 text 0 0.0 623.67145 471.70782 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 151 151 text 0 0.0 1420.8569 921.1782 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 152 152 text 0 0.0 961.4652 1045.3812 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+replace 74 text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdefghijklmn∑nopqrs∑" text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdefghijklmn∑nowxyzabcdefghijklmn∑pqrs∑"
+undo 1
+insert 153 153 text 0 0.0 1764.955 626.59406 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 154 154 text 0 0.0 969.96375 829.4606 18.0 "yzabcdefghijklmnop∑"
+undo 1
+replace 105 text 0 0.0 1280.6437 297.2397 18.0 "qrstuvwxyzabcdefgh∑" text 0 0.0 1280.6437 297.2397 18.0 "zabcdefghijklmnopq∑qrstuvwxyzabcdefgh∑"
+undo 1
+insert 155 155 text 0 0.0 658.4446 -89.85109 18.0 "abcdefghijklmnopqr∑"
+undo 1
+insert 156 156 text 0 0.0 1095.1909 642.0104 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 157 157 text 0 0.0 2130.7637 64.72168 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 158 158 text 0 0.0 1240.9113 1024.3402 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 159 159 text 0 0.0 712.8218 939.4512 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 160 160 text 0 0.0 2308.6426 984.3678 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+replace 73 text 0 0.0 1029.3981 554.46747 18.0 "abcdefghijklmnopqr∑" text 0 0.0 1029.3981 554.46747 18.0 "abcdefghijklmnghijklmnopqrstuvwx∑opqr∑"
+undo 1
+insert 161 161 text 0 0.0 2077.6687 1154.6942 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 162 162 text 0 0.0 1650.9784 -69.95201 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+replace 2 text 0 0.0 1807.5692 166.09982 18.0 "cdefghijklmnopqrst∑" text 0 0.0 1807.5692 166.09982 18.0 "cjklmnopqrstuvwxyza∑defghijklmnopqrst∑"
+undo 1
+replace 107 text 0 0.0 -196.42929 -166.44727 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 -196.42929 -166.44727 18.0 "stuvwxyzabcdeklmnopqrstuvwxyzab∑fghij∑"
+undo 1
+replace 100 text 0 0.0 440.19293 758.80664 18.0 "klmnopqrstuvwxyzab∑" text 0 0.0 440.19293 758.80664 18.0 "klmnoplmnopqrstuvwxyzabc∑qrstuvwxyzab∑"
+undo 1
+insert 163 163 text 0 0.0 764.4664 -152.66371 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 164 164 text 0 0.0 658.5828 353.4917 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+replace 72 text 0 0.0 1744.4563 519.0686 18.0 "zabcdefghijklmnopq∑" text 0 0.0 1744.4563 519.0686 18.0 "zopqrstuvwxyzabcdef∑abcdefghijklmnopq∑"
+undo 1
+replace 102 text 0 0.0 42.79692 1090.9595 18.0 "mnopqrstuvwxyzabcd∑" text 0 0.0 42.79692 1090.9595 18.0 "mnopqrstuvwxyzabcdpqrstuvwxyzabcdefg∑∑"
+undo 1
+replace 2 text 0 0.0 1807.5692 166.09982 18.0 "cjklmnopqrstuvwxyza∑defghijklmnopqrst∑" text 0 0.0 1807.5692 166.09982 18.0 "cjklmnopqrstuvwxyzaqrstuvwxyzabcdefgh∑∑defghijklmnopqrst∑"
+undo 1
+insert 165 165 text 0 0.0 1226.7574 -0.44584656 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 166 166 text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 167 167 text 0 0.0 1711.7671 338.7234 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 168 168 text 0 0.0 1272.7793 447.96802 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 169 169 text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 170 170 text 0 0.0 1743.9939 -33.593277 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 171 171 text 0 0.0 1249.6686 196.47485 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 172 172 text 0 0.0 561.6083 976.1792 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 173 173 text 0 0.0 694.29785 24.688538 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 174 174 text 0 0.0 1613.2993 826.04614 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 166 text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdebcdefghijklmnopqrs∑fghij∑"
+undo 1
+insert 175 175 text 0 0.0 -179.87811 1330.9188 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 176 176 text 0 0.0 2218.6604 552.12744 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 3 text 0 0.0 233.75351 1252.0424 18.0 "defghijklmnopqrstu∑" text 0 0.0 233.75351 1252.0424 18.0 "defghefghijklmnopqrstuv∑ijklmnopqrstu∑"
+undo 1
+insert 177 177 text 0 0.0 453.48254 416.08752 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 178 178 text 0 0.0 1382.681 -87.072754 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 179 179 text 0 0.0 756.33344 57.069122 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 180 180 text 0 0.0 2145.097 811.9259 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 181 181 text 0 0.0 725.7107 1009.0477 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+replace 104 text 0 0.0 753.9221 962.4165 18.0 "pqrstuvwxyzabcdefg∑" text 0 0.0 753.9221 962.4165 18.0 "pqrstuvwxyzabcdefklmnopqrstuvwxyzab∑g∑"
+undo 1
+replace 74 text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdefghijklmn∑nowxyzabcdefghijklmn∑pqrs∑" text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdefghijklmn∑nowxyzabcdefghilmnopqrstuvwxyzabc∑jklmn∑pqrs∑"
+undo 1
+insert 182 182 text 0 0.0 1012.0394 873.76074 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 183 183 text 0 0.0 1531.4393 1281.49 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 184 184 text 0 0.0 1512.7587 451.33923 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 185 185 text 0 0.0 1536.8049 985.14856 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 186 186 text 0 0.0 1342.5461 787.02466 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrstuv∑ghijklmnopq∑∑fghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzabcdefghi∑tuv∑ghijklmnopq∑∑fghijklmnopqrstu∑"
+undo 1
+insert 187 187 text 0 0.0 -75.21075 257.83453 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzabcdefghi∑tuv∑ghijklmnopq∑∑fghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzatuvwxyzabcdefghijk∑bcdefghi∑tuv∑ghijklmnopq∑∑fghijklmnopqrstu∑"
+undo 1
+insert 188 188 text 0 0.0 1995.0945 763.451 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 189 189 text 0 0.0 11.461716 478.1291 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 190 190 text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 191 191 text 0 0.0 1925.1152 855.916 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 192 192 text 0 0.0 1487.1394 475.50372 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 193 193 text 0 0.0 279.06378 853.37646 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 194 194 text 0 0.0 1902.615 287.54987 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 93 text 0 0.0 -128.24251 227.34967 18.0 "cdefghijklmnopqrst∑" text 0 0.0 -128.24251 227.34967 18.0 "cdefghijklmnopbcdefghijklmnopqrs∑qrst∑"
+undo 1
+replace 30 text 0 0.0 601.02057 1372.9049 18.0 "gefghijklmnopqrstuv∑hijklmnopqrstuvwx∑" text 0 0.0 601.02057 1372.9049 18.0 "gefghijklmnopqrstuv∑hijklmnopqrstuvcdefghijklmnopqrst∑wx∑"
+undo 1
+insert 195 195 text 0 0.0 2225.7917 939.90784 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 117 text 0 0.0 319.1374 1193.7302 18.0 "fghijklmnopqrstuvw∑" text 0 0.0 319.1374 1193.7302 18.0 "fghijklmnefghijklmnopqrstuv∑opqrstuvw∑"
+undo 1
+replace 97 text 0 0.0 1570.2406 -184.89362 18.0 "hijklmnopqrstuvwxy∑" text 0 0.0 1570.2406 -184.89362 18.0 "hijklfghijklmnopqrstuvw∑mnopqrstuvwxy∑"
+undo 1
+insert 196 196 text 0 0.0 783.94855 1046.6869 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+replace 76 text 0 0.0 1254.4078 837.7291 18.0 "defghijklmnopqrstu∑" text 0 0.0 1254.4078 837.7291 18.0 "defghihijklmnopqrstuvwxy∑jklmnopqrstu∑"
+undo 1
+insert 197 197 text 0 0.0 -95.58478 1091.5372 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+replace 34 text 0 0.0 64.77908 189.31522 18.0 "klmnopqrstuvwxyzab∑" text 0 0.0 64.77908 189.31522 18.0 "klmnopqrstuvwxyzjklmnopqrstuvwxyza∑ab∑"
+undo 1
+insert 198 198 text 0 0.0 469.4854 -73.86608 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 199 199 text 0 0.0 2176.4177 -140.21521 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 200 200 text 0 0.0 279.36536 -193.52293 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 201 201 text 0 0.0 1025.615 754.7307 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 202 202 text 0 0.0 -66.38602 789.22784 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 203 203 text 0 0.0 958.5925 754.9764 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 204 204 text 0 0.0 -176.25424 714.622 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+insert 205 205 text 0 0.0 1192.344 345.34265 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 206 206 text 0 0.0 -101.97396 320.64636 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 207 207 text 0 0.0 -198.70831 919.8584 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzatuvwxyzabcdefghijk∑bcdefghi∑tuv∑ghijklmnopq∑∑fghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzatuvwxyzabcdefghijk∑bcdefghi∑tuv∑ghuvwxyzabcdefghijkl∑ijklmnopq∑∑fghijklmnopqrstu∑"
+undo 1
+replace 171 text 0 0.0 1249.6686 196.47485 18.0 "xyzabcdefghijklmno∑" text 0 0.0 1249.6686 196.47485 18.0 "xyzabcdefghijklvwxyzabcdefghijklm∑mno∑"
+undo 1
+replace 184 text 0 0.0 1512.7587 451.33923 18.0 "opqrstuvwxyzabcdef∑" text 0 0.0 1512.7587 451.33923 18.0 "opqwxyzabcdefghijklmn∑rstuvwxyzabcdef∑"
+undo 1
+insert 208 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 209 209 text 0 0.0 994.32935 643.60754 18.0 "yzabcdefghijklmnop∑"
+undo 1
+replace 31 text 0 0.0 1672.494 1177.2981 18.0 "hijklmnopqrstuvwxy∑" text 0 0.0 1672.494 1177.2981 18.0 "hijklmnozabcdefghijklmnopq∑pqrstuvwxy∑"
+undo 1
+replace 190 text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghijklmn∑" text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghabcdefghijklmnopqr∑ijklmn∑"
+undo 1
+insert 210 210 text 0 0.0 180.28568 976.81384 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+replace 191 text 0 0.0 1925.1152 855.916 18.0 "xyzabcdefghijklmno∑" text 0 0.0 1925.1152 855.916 18.0 "xyzabcdefghcdefghijklmnopqrst∑ijklmno∑"
+undo 1
+insert 211 211 text 0 0.0 1067.4619 1016.0663 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 170 text 0 0.0 1743.9939 -33.593277 18.0 "wxyzabcdefghijklmn∑" text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopqrstuv∑abcdefghijklmn∑"
+undo 1
+replace 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzabcdefghijklmno∑" text 0 0.0 1401.1375 638.8141 18.0 "xyzabcdefghijklfghijklmnopqrstuvw∑mno∑"
+undo 1
+insert 212 212 text 0 0.0 7.5708313 1374.6129 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+replace 54 text 0 0.0 426.26062 1120.985 18.0 "efghxyzabcdefghijklmno∑ijklmnopqrstuv∑" text 0 0.0 426.26062 1120.985 18.0 "efghxyzabcdefghijklmhijklmnopqrstuvwxy∑no∑ijklmnopqrstuv∑"
+undo 1
+replace 30 text 0 0.0 601.02057 1372.9049 18.0 "gefghijklmnopqrstuv∑hijklmnopqrstuvcdefghijklmnopqrst∑wx∑" text 0 0.0 601.02057 1372.9049 18.0 "gefghijklmnopqrstuv∑hijklmnopqrstuvcdefghiijklmnopqrstuvwxyz∑jklmnopqrst∑wx∑"
+undo 1
+insert 213 213 text 0 0.0 2171.3005 1006.55493 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 214 214 text 0 0.0 2375.2703 1275.434 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 215 215 text 0 0.0 -44.21138 510.5111 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+replace 166 text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdebcdefghijklmnopqrs∑fghij∑" text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdebcdefmnopqrstuvwxyzabcd∑ghijklmnopqrs∑fghij∑"
+undo 1
+replace 22 text 0 0.0 -132.70477 388.97723 18.0 "xyzabcdefghijklmno∑" text 0 0.0 -132.70477 388.97723 18.0 "xyzabcdefnopqrstuvwxyzabcde∑ghijklmno∑"
+undo 1
+insert 216 216 text 0 0.0 556.87524 652.74164 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+replace 52 text 0 0.0 418.28357 928.32776 18.0 "cdefghijklmnopqrst∑" text 0 0.0 418.28357 928.32776 18.0 "cdefghijklpqrstuvwxyzabcdefg∑mnopqrst∑"
+undo 1
+insert 217 217 text 0 0.0 1579.5148 541.7985 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+replace 178 text 0 0.0 1382.681 -87.072754 18.0 "ghijklmnopqrstuvwx∑" text 0 0.0 1382.681 -87.072754 18.0 "ghijklrstuvwxyzabcdefghi∑mnopqrstuvwx∑"
+undo 1
+insert 218 218 text 0 0.0 449.0291 143.10855 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 219 219 text 0 0.0 1070.5592 1306.3896 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 172 text 0 0.0 561.6083 976.1792 18.0 "yzabcdefghijklmnop∑" text 0 0.0 561.6083 976.1792 18.0 "yzabcdefghijkuvwxyzabcdefghijkl∑lmnop∑"
+undo 1
+insert 220 220 text 0 0.0 1437.279 735.3571 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+replace 117 text 0 0.0 319.1374 1193.7302 18.0 "fghijklmnefghijklmnopqrstuv∑opqrstuvw∑" text 0 0.0 319.1374 1193.7302 18.0 "fghijklmnefgwxyzabcdefghijklmn∑hijklmnopqrstuv∑opqrstuvw∑"
+undo 1
+replace 81 text 0 0.0 989.7998 359.77032 18.0 "lmnopqrstuvwxyzabc∑" text 0 0.0 989.7998 359.77032 18.0 "lmnopxyzabcdefghijklmno∑qrstuvwxyzabc∑"
+undo 1
+insert 221 221 text 0 0.0 2130.4514 126.56964 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 222 222 text 0 0.0 493.5761 209.32349 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 223 223 text 0 0.0 768.49384 -186.20157 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 15 text 0 0.0 2023.8455 -176.68515 18.0 "qrstuvwxyzabcdebcdefghijklmnopqrs∑fgh∑" text 0 0.0 2023.8455 -176.68515 18.0 "qrstuvwxyzabcdebcdbcdefghijklmnopqrs∑efghijklmnopqrs∑fgh∑"
+undo 1
+insert 224 224 text 0 0.0 2342.5703 442.9533 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 225 225 text 0 0.0 1463.6344 1052.0403 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 226 226 text 0 0.0 2149.0444 1267.1251 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 227 227 text 0 0.0 876.5515 -12.067703 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+replace 166 text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdebcdefmnopqrstuvwxyzabcd∑ghijklmnopqrs∑fghij∑" text 0 0.0 2060.5188 1314.1442 18.0 "stuvwxyzabcdebcdefmnopqrstuvwxyghijklmnopqrstuvwx∑zabcd∑ghijklmnopqrs∑fghij∑"
+undo 1
+insert 228 228 text 0 0.0 906.46606 746.84906 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+replace 128 text 0 0.0 678.59 1281.6205 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 678.59 1281.6205 18.0 "stuvwxyzabcdefghij∑ijklmnopqrstuvwxyz∑"
+undo 1
+insert 229 229 text 0 0.0 491.22906 -82.55205 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+insert 230 230 text 0 0.0 -3.1977081 1386.7465 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 231 231 text 0 0.0 1262.6648 302.51608 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 232 232 text 0 0.0 -17.609177 907.99744 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 233 233 text 0 0.0 95.994354 833.01074 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+replace 51 text 0 0.0 997.00134 1345.2411 18.0 "bcdefghijklmnopqrs∑" text 0 0.0 997.00134 1345.2411 18.0 "bcdefghijklopqrstuvwxyzabcdef∑mnopqrs∑"
+undo 1
+insert 234 234 text 0 0.0 764.1265 518.1325 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 73 text 0 0.0 1029.3981 554.46747 18.0 "abcdefghijklmnghijklmnopqrstuvwx∑opqr∑" text 0 0.0 1029.3981 554.46747 18.0 "aqrstuvwxyzabcdefgh∑bcdefghijklmnghijklmnopqrstuvwx∑opqr∑"
+undo 1
+insert 235 235 text 0 0.0 1918.2148 1070.5094 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 236 236 text 0 0.0 778.9727 457.14618 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 237 237 text 0 0.0 407.61066 -139.84099 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 238 238 text 0 0.0 1581.0276 1040.9437 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+insert 239 239 text 0 0.0 1282.226 -75.424576 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+replace 36 text 0 0.0 786.0391 130.35068 18.0 "mnopqrstuvwxyzabcd∑" text 0 0.0 786.0391 130.35068 18.0 "mnopqrstuvwxyzawxyzabcdefghijklmn∑bcd∑"
+undo 1
+insert 240 240 text 0 0.0 1269.5112 293.2619 18.0 "xyzabcdefghijklmno∑"
+undo 1
+replace 106 text 0 0.0 1089.6078 926.35876 18.0 "rstuvwxyzabcdefghi∑" text 0 0.0 1089.6078 926.35876 18.0 "rstuvwxyzabcdyzabcdefghijklmnop∑efghi∑"
+undo 1
+insert 241 241 text 0 0.0 1075.946 -62.60109 18.0 "zabcdefghijklmnopq∑"
+undo 1
+replace 22 text 0 0.0 -132.70477 388.97723 18.0 "xyzabcdefnopqrstuvwxyzabcde∑ghijklmno∑" text 0 0.0 -132.70477 388.97723 18.0 "xyzabcabcdefghijklmnopqr∑defnopqrstuvwxyzabcde∑ghijklmno∑"
+undo 1
+replace 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzabcdefghijklfghijklmnopqrstuvw∑mno∑" text 0 0.0 1401.1375 638.8141 18.0 "xyzabcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrs∑w∑mno∑"
+undo 1
+replace 231 text 0 0.0 1262.6648 302.51608 18.0 "lmnopqrstuvwxyzabc∑" text 0 0.0 1262.6648 302.51608 18.0 "lmnopqrscdefghijklmnopqrst∑tuvwxyzabc∑"
+undo 1
+insert 242 242 text 0 0.0 2267.2358 678.32794 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 243 243 text 0 0.0 655.98145 408.66272 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 244 244 text 0 0.0 228.94086 1244.4828 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+replace 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzabcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrs∑w∑mno∑" text 0 0.0 1401.1375 638.8141 18.0 "xyzaghijklmnopqrstuvwx∑bcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrs∑w∑mno∑"
+undo 1
+insert 245 245 text 0 0.0 471.63397 11.247726 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 246 246 text 0 0.0 1954.4812 1220.7009 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+insert 247 247 text 0 0.0 1051.1335 -177.66771 18.0 "jklmnopqrstuvwxyza∑"
+undo 1
+replace 107 text 0 0.0 -196.42929 -166.44727 18.0 "stuvwxyzabcdeklmnopqrstuvwxyzab∑fghij∑" text 0 0.0 -196.42929 -166.44727 18.0 "stklmnopqrstuvwxyzab∑uvwxyzabcdeklmnopqrstuvwxyzab∑fghij∑"
+undo 1
+insert 248 248 text 0 0.0 318.49054 27.989578 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+replace 89 text 0 0.0 318.08655 996.7997 18.0 "vwxyzabcdefghijklm∑" text 0 0.0 318.08655 996.7997 18.0 "vmnopqrstuvwxyzabcd∑wxyzabcdefghijklm∑"
+undo 1
+insert 249 249 text 0 0.0 697.68536 728.08105 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+replace 230 text 0 0.0 -3.1977081 1386.7465 18.0 "klmnopqrstuvwxyzab∑" text 0 0.0 -3.1977081 1386.7465 18.0 "klmnopopqrstuvwxyzabcdef∑qrstuvwxyzab∑"
+undo 1
+insert 250 250 text 0 0.0 997.2733 1326.0299 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 103 text 0 0.0 294.39874 1146.9375 18.0 "opqvwxyzabcdefghijklm∑rstuvwxyzabcdef∑" text 0 0.0 294.39874 1146.9375 18.0 "opqvwxyzabcdefghijklm∑rstuvqrstuvwxyzabcdefgh∑wxyzabcdef∑"
+undo 1
+replace 169 text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefghijklm∑" text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefrstuvwxyzabcdefghi∑ghijklm∑"
+undo 1
+insert 251 251 text 0 0.0 1074.2495 181.90527 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 252 252 text 0 0.0 1194.4478 459.38538 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 170 text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopqrstuv∑abcdefghijklmn∑" text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopqrstuv∑abcdeuvwxyzabcdefghijkl∑fghijklmn∑"
+undo 1
+insert 253 253 text 0 0.0 383.03442 708.49304 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 254 254 text 0 0.0 1321.3042 658.714 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 255 255 text 0 0.0 754.4239 621.44745 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 256 256 text 0 0.0 1470.5854 902.84094 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 257 257 text 0 0.0 953.6459 1344.4023 18.0 "zabcdefghijklmnopq∑"
+undo 1
+replace 10 text 0 0.0 316.4212 1234.2719 18.0 "klmnopqrstuvwxyzabcdefghijklmnopq∑zab∑" text 0 0.0 316.4212 1234.2719 18.0 "klmnopqrstuvwxyzabcdefghijabcdefghijklmnopqr∑klmnopq∑zab∑"
+undo 1
+replace 44 text 0 0.0 1497.9496 1178.1819 18.0 "uvwxyzabcdefghijkl∑" text 0 0.0 1497.9496 1178.1819 18.0 "uvwxyzabcdefghijklbcdefghijklmnopqrs∑∑"
+undo 1
+replace 59 text 0 0.0 2241.0598 1281.6857 18.0 "jklmnopqrstuvwxyza∑" text 0 0.0 2241.0598 1281.6857 18.0 "jklmnopcdefghijklmnopqrst∑qrstuvwxyza∑"
+undo 1
+insert 258 258 text 0 0.0 -15.887131 1146.2008 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 148 text 0 0.0 1647.9022 264.06277 18.0 "rstuvwxyzabcdefghi∑" text 0 0.0 1647.9022 264.06277 18.0 "rstuvwxyzabcefghijklmnopqrstuv∑defghi∑"
+undo 1
+insert 259 259 text 0 0.0 1742.8795 -130.87492 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 260 260 text 0 0.0 1374.7863 83.3515 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+replace 191 text 0 0.0 1925.1152 855.916 18.0 "xyzabcdefghcdefghijklmnopqrst∑ijklmno∑" text 0 0.0 1925.1152 855.916 18.0 "xyzabcdefghcdefghijklmnopqrst∑ijklmno∑hijklmnopqrstuvwxy∑"
+undo 1
+insert 261 261 text 0 0.0 1000.92615 740.234 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+replace 204 text 0 0.0 -176.25424 714.622 18.0 "qrstuvwxyzabcdefgh∑" text 0 0.0 -176.25424 714.622 18.0 "qrjklmnopqrstuvwxyza∑stuvwxyzabcdefgh∑"
+undo 1
+replace 72 text 0 0.0 1744.4563 519.0686 18.0 "zopqrstuvwxyzabcdef∑abcdefghijklmnopq∑" text 0 0.0 1744.4563 519.0686 18.0 "zopqrstuvwxyzabcdef∑abcdklmnopqrstuvwxyzab∑efghijklmnopq∑"
+undo 1
+insert 262 262 text 0 0.0 1896.1672 1154.837 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+replace 38 text 0 0.0 1702.5977 906.99316 18.0 "opqrstuvwxyzabcdef∑" text 0 0.0 1702.5977 906.99316 18.0 "opmnopqrstuvwxyzabcd∑qrstuvwxyzabcdef∑"
+undo 1
+replace 247 text 0 0.0 1051.1335 -177.66771 18.0 "jklmnopqrstuvwxyza∑" text 0 0.0 1051.1335 -177.66771 18.0 "jklmnopqnopqrstuvwxyzabcde∑rstuvwxyza∑"
+undo 1
+insert 263 263 text 0 0.0 1759.4713 1170.942 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 264 264 text 0 0.0 582.8123 1318.4576 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+insert 265 265 text 0 0.0 2323.4065 307.19806 18.0 "qrstuvwxyzabcdefgh∑"
+undo 1
+insert 266 266 text 0 0.0 1924.5269 573.0749 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 267 267 text 0 0.0 1132.5795 535.8344 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 268 268 text 0 0.0 325.86517 1367.5808 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 23 text 0 0.0 251.78543 767.3406 18.0 "yzabcdefghijklmnop∑" text 0 0.0 251.78543 767.3406 18.0 "yzabcdefghiuvwxyzabcdefghijkl∑jklmnop∑"
+undo 1
+insert 269 269 text 0 0.0 1459.3245 138.61331 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 270 270 text 0 0.0 2128.841 -143.16406 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 271 271 text 0 0.0 1811.6963 423.30444 18.0 "xyzabcdefghijklmno∑"
+undo 1
+insert 272 272 text 0 0.0 896.54504 908.90173 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 273 273 text 0 0.0 2245.091 1118.8508 18.0 "zabcdefghijklmnopq∑"
+undo 1
+replace 170 text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopqrstuv∑abcdeuvwxyzabcdefghijkl∑fghijklmn∑" text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopabcdefghijklmnopqr∑qrstuv∑abcdeuvwxyzabcdefghijkl∑fghijklmn∑"
+undo 1
+replace 42 text 0 0.0 337.32166 113.28937 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 337.32166 113.28937 18.0 "stuvwxyzabcdefgbcdefghijklmnopqrs∑hij∑"
+undo 1
+replace 118 text 0 0.0 67.13095 1271.1803 18.0 "ghijklmnopqrstuvwx∑" text 0 0.0 67.13095 1271.1803 18.0 "ghijklmnopcdefghijklmnopqrst∑qrstuvwx∑"
+undo 1
+replace 132 text 0 0.0 -79.03809 986.53455 18.0 "yzabcdefghijklmnop∑" text 0 0.0 -79.03809 986.53455 18.0 "yzabcdefghdefghijklmnopqrstu∑ijklmnop∑"
+undo 1
+insert 274 274 text 0 0.0 636.7677 1175.978 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 275 275 text 0 0.0 1006.906 1079.5552 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+insert 276 276 text 0 0.0 2244.903 1000.26697 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+insert 277 277 text 0 0.0 1674.7443 732.19385 18.0 "hijklmnopqrstuvwxy∑"
+undo 1
+insert 278 278 text 0 0.0 1542.5338 1318.0906 18.0 "ijklmnopqrstuvwxyz∑"
+undo 1
+replace 268 text 0 0.0 325.86517 1367.5808 18.0 "tuvwxyzabcdefghijk∑" text 0 0.0 325.86517 1367.5808 18.0 "tuvwxyzabcdefjklmnopqrstuvwxyza∑ghijk∑"
+undo 1
+replace 196 text 0 0.0 783.94855 1046.6869 18.0 "ghijklmnopqrstuvwx∑" text 0 0.0 783.94855 1046.6869 18.0 "ghiklmnopqrstuvwxyzab∑jklmnopqrstuvwx∑"
+undo 1
+insert 279 279 text 0 0.0 1195.215 -103.67508 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 280 280 text 0 0.0 -171.08392 74.59134 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+insert 281 281 text 0 0.0 1973.4456 833.03064 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+insert 282 282 text 0 0.0 1330.8632 1298.8226 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+replace 104 text 0 0.0 753.9221 962.4165 18.0 "pqrstuvwxyzabcdefklmnopqrstuvwxyzab∑g∑" text 0 0.0 753.9221 962.4165 18.0 "pqrstuvwxyzabcdefklmnopqrstuvwxyzabcdefg∑pqrstuvwxyzab∑g∑"
+undo 1
+replace 227 text 0 0.0 876.5515 -12.067703 18.0 "fghijklmnopqrstuvw∑" text 0 0.0 876.5515 -12.067703 18.0 "fghijklmnqrstuvwxyzabcdefgh∑opqrstuvw∑"
+undo 1
+insert 283 283 text 0 0.0 2124.658 923.7555 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+replace 36 text 0 0.0 786.0391 130.35068 18.0 "mnopqrstuvwxyzawxyzabcdefghijklmn∑bcd∑" text 0 0.0 786.0391 130.35068 18.0 "mnopqrstuvwxyzabcdefghij∑stuvwxyzawxyzabcdefghijklmn∑bcd∑"
+undo 1
+insert 284 284 text 0 0.0 149.43335 782.5554 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 98 text 0 0.0 808.7153 447.77002 18.0 "ijklmnopqrstuvwxyz∑" text 0 0.0 808.7153 447.77002 18.0 "ijkluvwxyzabcdefghijkl∑mnopqrstuvwxyz∑"
+undo 1
+insert 285 285 text 0 0.0 598.79736 559.8672 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 286 286 text 0 0.0 300.59653 1313.035 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+replace 227 text 0 0.0 876.5515 -12.067703 18.0 "fghijklmnqrstuvwxyzabcdefgh∑opqrstuvw∑" text 0 0.0 876.5515 -12.067703 18.0 "fghijkxyzabcdefghijklmno∑lmnqrstuvwxyzabcdefgh∑opqrstuvw∑"
+undo 1
+replace 97 text 0 0.0 1570.2406 -184.89362 18.0 "hijklfghijklmnopqrstuvw∑mnopqrstuvwxy∑" text 0 0.0 1570.2406 -184.89362 18.0 "hijklfghyzabcdefghijklmnop∑ijklmnopqrstuvw∑mnopqrstuvwxy∑"
+undo 1
+insert 287 287 text 0 0.0 20.132416 1222.9474 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 288 288 text 0 0.0 470.87445 -96.17682 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 57 text 0 0.0 1522.629 503.80695 18.0 "hijklmnopqrstuvwxy∑" text 0 0.0 1522.629 503.80695 18.0 "hijklmbcdefghijklmnopqrs∑nopqrstuvwxy∑"
+undo 1
+insert 289 289 text 0 0.0 1095.1938 996.06226 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 290 290 text 0 0.0 48.228073 708.0222 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 254 text 0 0.0 1321.3042 658.714 18.0 "wxyzabcdefghijklmn∑" text 0 0.0 1321.3042 658.714 18.0 "wxyzabcdefghijefghijklmnopqrstuv∑klmn∑"
+undo 1
+replace 151 text 0 0.0 1420.8569 921.1782 18.0 "uvwxyzabcdefghijkl∑" text 0 0.0 1420.8569 921.1782 18.0 "uvwxyzafghijklmnopqrstuvw∑bcdefghijkl∑"
+undo 1
+replace 169 text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefrstuvwxyzabcdefghi∑ghijklm∑" text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefrstuvwxyzabcdefghghijklmnopqrstuvwx∑i∑ghijklm∑"
+undo 1
+replace 267 text 0 0.0 1132.5795 535.8344 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 1132.5795 535.8344 18.0 "stuvwxyzabhijklmnopqrstuvwxy∑cdefghij∑"
+undo 1
+replace 279 text 0 0.0 1195.215 -103.67508 18.0 "lmnopqrstuvwxyzabc∑" text 0 0.0 1195.215 -103.67508 18.0 "lmnoijklmnopqrstuvwxyz∑pqrstuvwxyzabc∑"
+undo 1
+replace 65 text 0 0.0 853.53784 1286.1578 18.0 "pqrstuvwxyzabcdefg∑" text 0 0.0 853.53784 1286.1578 18.0 "pqrstuvwxyzabjklmnopqrstuvwxyza∑cdefg∑"
+undo 1
+insert 291 291 text 0 0.0 281.21387 591.79346 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 292 292 text 0 0.0 2397.3774 243.1305 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+insert 293 293 text 0 0.0 2244.3936 981.7667 18.0 "mnopqrstuvwxyzabcd∑"
+undo 1
+replace 263 text 0 0.0 1759.4713 1170.942 18.0 "opqrstuvwxyzabcdef∑" text 0 0.0 1759.4713 1170.942 18.0 "opqrstuvwnopqrstuvwxyzabcde∑xyzabcdef∑"
+undo 1
+replace 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzaghijklmnopqrstuvwx∑bcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrs∑w∑mno∑" text 0 0.0 1401.1375 638.8141 18.0 "xyzaghijkopqrstuvwxyzabcdef∑lmnopqrstuvwx∑bcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrs∑w∑mno∑"
+undo 1
+insert 294 294 text 0 0.0 896.06067 258.6337 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 81 text 0 0.0 989.7998 359.77032 18.0 "lmnopxyzabcdefghijklmno∑qrstuvwxyzabc∑" text 0 0.0 989.7998 359.77032 18.0 "lmnopxyzabcdefqrstuvwxyzabcdefgh∑ghijklmno∑qrstuvwxyzabc∑"
+undo 1
+insert 295 295 text 0 0.0 -177.25552 1181.265 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 296 296 text 0 0.0 506.4308 408.85925 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+replace 197 text 0 0.0 -95.58478 1091.5372 18.0 "ijklmnopqrstuvwxyz∑" text 0 0.0 -95.58478 1091.5372 18.0 "ijklmnopqrstutuvwxyzabcdefghijk∑vwxyz∑"
+undo 1
+insert 297 297 text 0 0.0 1630.8273 -5.9963226 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+replace 279 text 0 0.0 1195.215 -103.67508 18.0 "lmnoijklmnopqrstuvwxyz∑pqrstuvwxyzabc∑" text 0 0.0 1195.215 -103.67508 18.0 "lmnoijklmnopqrstuvwvwxyzabcdefghijklm∑xyz∑pqrstuvwxyzabc∑"
+undo 1
+replace 155 text 0 0.0 658.4446 -89.85109 18.0 "abcdefghijklmnopqr∑" text 0 0.0 658.4446 -89.85109 18.0 "abcdefghijklmnopwxyzabcdefghijklmn∑qr∑"
+undo 1
+replace 39 text 0 0.0 645.42334 414.66504 18.0 "pbcdefghijklmnopqrs∑qrstuvwxyzabtuvwxyzabcdefghijk∑cdefg∑" text 0 0.0 645.42334 414.66504 18.0 "pbcdefghijklmnopqrs∑qrstuvwxyzxyzabcdefghijklmno∑abtuvwxyzabcdefghijk∑cdefg∑"
+undo 1
+insert 298 298 text 0 0.0 2390.0442 379.70746 18.0 "yzabcdefghijklmnop∑"
+undo 1
+insert 299 299 text 0 0.0 1864.0852 -197.36652 18.0 "zabcdefghijklmnopq∑"
+undo 1
+replace 190 text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghabcdefghijklmnopqr∑ijklmn∑" text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghabcdefghijklmnopqr∑ijklabcdefghijklmnopqr∑mn∑"
+undo 1
+replace 158 text 0 0.0 1240.9113 1024.3402 18.0 "defghijklmnopqrstu∑" text 0 0.0 1240.9113 1024.3402 18.0 "defghijklmnbcdefghijklmnopqrs∑opqrstu∑"
+undo 1
+replace 190 text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghabcdefghijklmnopqr∑ijklabcdefghijklmnopqr∑mn∑" text 0 0.0 1270.2322 978.3672 18.0 "wxyzabcdefghabcdefghijklmnocdefghijklmnopqrst∑pqr∑ijklabcdefghijklmnopqr∑mn∑"
+undo 1
+insert 300 300 text 0 0.0 1184.5452 683.1461 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 74 text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdefghijklmn∑nowxyzabcdefghilmnopqrstuvwxyzabc∑jklmn∑pqrs∑" text 0 0.0 -133.30482 665.49084 18.0 "bcdefghijklmwxyzabcdeefghijklmnopqrstuv∑fghijklmn∑nowxyzabcdefghilmnopqrstuvwxyzabc∑jklmn∑pqrs∑"
+undo 1
+replace 240 text 0 0.0 1269.5112 293.2619 18.0 "xyzabcdefghijklmno∑" text 0 0.0 1269.5112 293.2619 18.0 "xyzabfghijklmnopqrstuvw∑cdefghijklmno∑"
+undo 1
+replace 208 text 0 0.0 1401.1375 638.8141 18.0 "xyzaghijkopqrstuvwxyzabcdef∑lmnopqrstuvwx∑bcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrs∑w∑mno∑" text 0 0.0 1401.1375 638.8141 18.0 "xyzaghijkopqrstuvwxyzabcdef∑lmnopqrstuvwx∑bcdefghijklfghijklmnopqrstuvbcdefghijklmnopqrghijklmnopqrstuvwx∑s∑w∑mno∑"
+undo 1
+replace 299 text 0 0.0 1864.0852 -197.36652 18.0 "zabcdefghijklmnopq∑" text 0 0.0 1864.0852 -197.36652 18.0 "zabcdefghijklmnopqhijklmnopqrstuvwxy∑∑"
+undo 1
+replace 16 text 0 0.0 652.3929 485.67688 18.0 "rstuvwxyzabcdefghi∑" text 0 0.0 652.3929 485.67688 18.0 "rstuvwxyzabcdefghi∑ijklmnopqrstuvwxyz∑"
+undo 1
+replace 161 text 0 0.0 2077.6687 1154.6942 18.0 "hijklmnopqrstuvwxy∑" text 0 0.0 2077.6687 1154.6942 18.0 "hijklmnopqrstuvwxy∑jklmnopqrstuvwxyza∑"
+undo 1
+insert 301 301 text 0 0.0 569.75604 454.9178 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+replace 84 text 0 0.0 565.1168 1058.4602 18.0 "opqrstuvwxyzabcdef∑" text 0 0.0 565.1168 1058.4602 18.0 "opqrstuvwxlmnopqrstuvwxyzabc∑yzabcdef∑"
+undo 1
+replace 143 text 0 0.0 1985.0955 658.6442 18.0 "mnopqrstuvwxyzabcd∑" text 0 0.0 1985.0955 658.6442 18.0 "mnopqrstmnopqrstuvwxyzabcd∑uvwxyzabcd∑"
+undo 1
+insert 302 302 text 0 0.0 238.91748 429.30438 18.0 "nopqrstuvwxyzabcde∑"
+undo 1
+replace 51 text 0 0.0 997.00134 1345.2411 18.0 "bcdefghijklopqrstuvwxyzabcdef∑mnopqrs∑" text 0 0.0 997.00134 1345.2411 18.0 "bcdefghijklopqrstuvwxyzabcdef∑mnopqropqrstuvwxyzabcdef∑s∑"
+undo 1
+insert 303 303 text 0 0.0 247.3399 1361.2032 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 157 text 0 0.0 2130.7637 64.72168 18.0 "cdefghijklmnopqrst∑" text 0 0.0 2130.7637 64.72168 18.0 "cdefghijklmqrstuvwxyzabcdefgh∑nopqrst∑"
+undo 1
+insert 304 304 text 0 0.0 2225.0603 425.8792 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 305 305 text 0 0.0 1081.2439 247.43787 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 306 306 text 0 0.0 969.2031 1226.4873 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+insert 307 307 text 0 0.0 992.42786 352.6969 18.0 "uvwxyzabcdefghijkl∑"
+undo 1
+replace 53 text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzatuvwxyzabcdefghijk∑bcdefghi∑tuv∑ghuvwxyzabcdefghijkl∑ijklmnopq∑∑fghijklmnopqrstu∑" text 0 0.0 534.4091 1249.7761 18.0 "dexyzabcdefghijklmnozabcdefefghijklmnopqrsrstuvwxyzatuvwxyzabcdefghijk∑bcdefghi∑tuv∑ghuvwxyzabcdefghijkl∑ijklmnopqvwxyzabcdefghijklm∑∑∑fghijklmnopqrstu∑"
+undo 1
+replace 43 text 0 0.0 1987.0686 1088.5719 18.0 "tuyzabcdefghijklmnop∑vwxyzabcdefghijk∑" text 0 0.0 1987.0686 1088.5719 18.0 "tuyzabcdefghijkwxyzabcdefghijklmn∑lmnop∑vwxyzabcdefghijk∑"
+undo 1
+replace 193 text 0 0.0 279.06378 853.37646 18.0 "zabcdefghijklmnopq∑" text 0 0.0 279.06378 853.37646 18.0 "xyzabcdefghijklmno∑zabcdefghijklmnopq∑"
+undo 1
+replace 303 text 0 0.0 247.3399 1361.2032 18.0 "pqrstuvwxyzabcdefg∑" text 0 0.0 247.3399 1361.2032 18.0 "pqrstuvwxyzabcdeyzabcdefghijklmnop∑fg∑"
+undo 1
+replace 101 text 0 0.0 -184.38641 426.94208 18.0 "lmnopqrstuvwxyzabc∑" text 0 0.0 -184.38641 426.94208 18.0 "lmnopqrstuvwxyzabzabcdefghijklmnopq∑c∑"
+undo 1
+replace 116 text 0 0.0 -42.04657 -107.5448 18.0 "efghijklmnopqrstuv∑" text 0 0.0 -42.04657 -107.5448 18.0 "efghijklmnopqrsabcdefghijklmnopqr∑tuv∑"
+undo 1
+insert 308 308 text 0 0.0 843.04565 -17.47284 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+insert 309 309 text 0 0.0 1792.4171 130.27039 18.0 "cdefghijklmnopqrst∑"
+undo 1
+insert 310 310 text 0 0.0 1120.7238 1189.3583 18.0 "defghijklmnopqrstu∑"
+undo 1
+insert 311 311 text 0 0.0 264.3523 1319.5742 18.0 "efghijklmnopqrstuv∑"
+undo 1
+insert 312 312 text 0 0.0 2247.986 504.90363 18.0 "fghijklmnopqrstuvw∑"
+undo 1
+replace 88 text 0 0.0 2245.2231 469.64648 18.0 "uvwxyzabcdefghijkl∑" text 0 0.0 2245.2231 469.64648 18.0 "uvwxyzabcdeghijklmnopqrstuvwx∑fghijkl∑"
+undo 1
+replace 169 text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefrstuvwxyzabcdefghghijklmnopqrstuvwx∑i∑ghijklm∑" text 0 0.0 1218.2354 1172.9749 18.0 "vwxyzabcdefrstuvwxyzabcdefghghijkhijklmnopqrstuvwxy∑lmnopqrstuvwx∑i∑ghijklm∑"
+undo 1
+replace 257 text 0 0.0 953.6459 1344.4023 18.0 "zabcdefghijklmnopq∑" text 0 0.0 953.6459 1344.4023 18.0 "zabcdefghiijklmnopqrstuvwxyz∑jklmnopq∑"
+undo 1
+replace 296 text 0 0.0 506.4308 408.85925 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 506.4308 408.85925 18.0 "stuvwjklmnopqrstuvwxyza∑xyzabcdefghij∑"
+undo 1
+insert 313 313 text 0 0.0 2218.8513 196.81015 18.0 "klmnopqrstuvwxyzab∑"
+undo 1
+insert 314 314 text 0 0.0 806.46924 286.5633 18.0 "lmnopqrstuvwxyzabc∑"
+undo 1
+replace 16 text 0 0.0 652.3929 485.67688 18.0 "rstuvwxyzabcdefghi∑ijklmnopqrstuvwxyz∑" text 0 0.0 652.3929 485.67688 18.0 "rmnopqrstuvwxyzabcd∑stuvwxyzabcdefghi∑ijklmnopqrstuvwxyz∑"
+undo 1
+replace 41 text 0 0.0 -60.29236 1033.4724 18.0 "rstuvwxyzabcdefghi∑" text 0 0.0 -60.29236 1033.4724 18.0 "rnopqrstuvwxyzabcde∑stuvwxyzabcdefghi∑"
+undo 1
+insert 315 315 text 0 0.0 466.55585 580.32214 18.0 "opqrstuvwxyzabcdef∑"
+undo 1
+insert 316 316 text 0 0.0 495.26288 -161.67737 18.0 "pqrstuvwxyzabcdefg∑"
+undo 1
+replace 68 text 0 0.0 1955.4746 232.62006 18.0 "uvwxyzabcdefghijkl∑" text 0 0.0 1955.4746 232.62006 18.0 "uvwxyzaqrstuvwxyzabcdefgh∑bcdefghijkl∑"
+undo 1
+insert 317 317 text 0 0.0 1496.1805 -28.962128 18.0 "rstuvwxyzabcdefghi∑"
+undo 1
+insert 318 318 text 0 0.0 -35.135895 641.8457 18.0 "stuvwxyzabcdefghij∑"
+undo 1
+insert 319 319 text 0 0.0 273.38467 334.54517 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 192 text 0 0.0 1487.1394 475.50372 18.0 "yzabcdefghijklmnop∑" text 0 0.0 1487.1394 475.50372 18.0 "uvwxyzabcdefghijkl∑yzabcdefghijklmnop∑"
+undo 1
+replace 216 text 0 0.0 556.87524 652.74164 18.0 "opqrstuvwxyzabcdef∑" text 0 0.0 556.87524 652.74164 18.0 "opqrstuvwvwxyzabcdefghijklm∑xyzabcdef∑"
+undo 1
+insert 320 320 text 0 0.0 2077.8735 894.4326 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 321 321 text 0 0.0 963.0515 1015.27527 18.0 "xyzabcdefghijklmno∑"
+undo 1
+replace 121 text 0 0.0 849.8159 403.06567 18.0 "jklmnopqrstuvwxyza∑" text 0 0.0 849.8159 403.06567 18.0 "jklmnopqyzabcdefghijklmnop∑rstuvwxyza∑"
+undo 1
+replace 284 text 0 0.0 149.43335 782.5554 18.0 "tuvwxyzabcdefghijk∑" text 0 0.0 149.43335 782.5554 18.0 "tuvzabcdefghijklmnopq∑wxyzabcdefghijk∑"
+undo 1
+insert 322 322 text 0 0.0 962.88257 1232.3418 18.0 "abcdefghijklmnopqr∑"
+undo 1
+insert 323 323 text 0 0.0 2055.042 1296.4756 18.0 "bcdefghijklmnopqrs∑"
+undo 1
+replace 194 text 0 0.0 1902.615 287.54987 18.0 "abcdefghijklmnopqr∑" text 0 0.0 1902.615 287.54987 18.0 "abcdefghijklmnopqrcdefghijklmnopqrst∑∑"
+undo 1
+replace 157 text 0 0.0 2130.7637 64.72168 18.0 "cdefghijklmqrstuvwxyzabcdefgh∑nopqrst∑" text 0 0.0 2130.7637 64.72168 18.0 "cdefghijkldefghijklmnopqrstu∑mqrstuvwxyzabcdefgh∑nopqrst∑"
+undo 1
+replace 150 text 0 0.0 623.67145 471.70782 18.0 "tuvwxyzabcdefghijk∑" text 0 0.0 623.67145 471.70782 18.0 "tuvwxyzabcdefghijklmnopqrstuv∑efghijk∑"
+undo 1
+replace 37 text 0 0.0 347.15137 528.51715 18.0 "nopqrhijklmnopqrstuvwxy∑stuvwxyzabcde∑" text 0 0.0 347.15137 528.51715 18.0 "nopqrhijklmnfghijklmnopqrstuvw∑opqrstuvwxy∑stuvwxyzabcde∑"
+undo 1
+insert 324 324 text 0 0.0 1672.6477 1164.3737 18.0 "ghijklmnopqrstuvwx∑"
+undo 1
+replace 244 text 0 0.0 228.94086 1244.4828 18.0 "fghijklmnopqrstuvw∑" text 0 0.0 228.94086 1244.4828 18.0 "fghijklmnhijklmnopqrstuvwxy∑opqrstuvw∑"
+undo 1
+replace 324 text 0 0.0 1672.6477 1164.3737 18.0 "ghijklmnopqrstuvwx∑" text 0 0.0 1672.6477 1164.3737 18.0 "ghijklmnopqrstuvwijklmnopqrstuvwxyz∑x∑"
+undo 1
+replace 279 text 0 0.0 1195.215 -103.67508 18.0 "lmnoijklmnopqrstuvwvwxyzabcdefghijklm∑xyz∑pqrstuvwxyzabc∑" text 0 0.0 1195.215 -103.67508 18.0 "lmnoijklmnopqrstuvwvwxyzabcdefghijklm∑xyz∑pqrstuvwxyjklmnopqrstuvwxyza∑zabc∑"
+undo 1
+replace 273 text 0 0.0 2245.091 1118.8508 18.0 "zabcdefghijklmnopq∑" text 0 0.0 2245.091 1118.8508 18.0 "zabcklmnopqrstuvwxyzab∑defghijklmnopq∑"
+undo 1
+replace 2 text 0 0.0 1807.5692 166.09982 18.0 "cjklmnopqrstuvwxyzaqrstuvwxyzabcdefgh∑∑defghijklmnopqrst∑" text 0 0.0 1807.5692 166.09982 18.0 "cjklmnopqrstuvwxyzaqrstuvwxyzabcdefghlmnopqrstuvwxyzabc∑∑∑defghijklmnopqrst∑"
+undo 1
+replace 286 text 0 0.0 300.59653 1313.035 18.0 "wxyzabcdefghijklmn∑" text 0 0.0 300.59653 1313.035 18.0 "wxyzabcdefghijklmmnopqrstuvwxyzabcd∑n∑"
+undo 1
+replace 236 text 0 0.0 778.9727 457.14618 18.0 "stuvwxyzabcdefghij∑" text 0 0.0 778.9727 457.14618 18.0 "stnopqrstuvwxyzabcde∑uvwxyzabcdefghij∑"
+undo 1
+replace 78 text 0 0.0 2260.2449 141.86316 18.0 "ijklmnopqrstuvwxyz∑" text 0 0.0 2260.2449 141.86316 18.0 "ijkopqrstuvwxyzabcdef∑lmnopqrstuvwxyz∑"
+undo 1
+replace 107 text 0 0.0 -196.42929 -166.44727 18.0 "stklmnopqrstuvwxyzab∑uvwxyzabcdeklmnopqrstuvwxyzab∑fghij∑" text 0 0.0 -196.42929 -166.44727 18.0 "stklmnopqrstuvwxyzab∑uvwxyzabcdeklmnopqrstuvwxyzpqrstuvwxyzabcdefg∑ab∑fghij∑"
+undo 1
+replace 295 text 0 0.0 -177.25552 1181.265 18.0 "rstuvwxyzabcdefghi∑" text 0 0.0 -177.25552 1181.265 18.0 "rstuvwxyzqrstuvwxyzabcdefgh∑abcdefghi∑"
+undo 1
+replace 216 text 0 0.0 556.87524 652.74164 18.0 "opqrstuvwvwxyzabcdefghijklm∑xyzabcdef∑" text 0 0.0 556.87524 652.74164 18.0 "opqrstuvwvwxyzabcdefghijklm∑xyzabcderstuvwxyzabcdefghi∑f∑"
+undo 1
+replace 170 text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopabcdefghijklmnopqr∑qrstuv∑abcdeuvwxyzabcdefghijkl∑fghijklmn∑" text 0 0.0 1743.9939 -33.593277 18.0 "wxyzefghijklmnopabcdefghijklmnopqr∑qrstuv∑abcdeuvwxyzabcdestuvwxyzabcdefghij∑fghijkl∑fghijklmn∑"
+undo 1
+insert 325 325 text 0 0.0 380.61914 483.42438 18.0 "tuvwxyzabcdefghijk∑"
+undo 1
+replace 42 text 0 0.0 337.32166 113.28937 18.0 "stuvwxyzabcdefgbcdefghijklmnopqrs∑hij∑" text 0 0.0 337.32166 113.28937 18.0 "stuvwxuvwxyzabcdefghijkl∑yzabcdefgbcdefghijklmnopqrs∑hij∑"
+undo 1
+insert 326 326 text 0 0.0 1801.0251 66.753296 18.0 "vwxyzabcdefghijklm∑"
+undo 1
+insert 327 327 text 0 0.0 69.30954 1127.8383 18.0 "wxyzabcdefghijklmn∑"
+undo 1
+insert 328 328 text 0 0.0 545.9325 51.322266 18.0 "xyzabcdefghijklmno∑"
+undo 1
+replace 247 text 0 0.0 1051.1335 -177.66771 18.0 "jklmnopqnopqrstuvwxyzabcde∑rstuvwxyza∑" text 0 0.0 1051.1335 -177.66771 18.0 "jklyzabcdefghijklmnop∑mnopqnopqrstuvwxyzabcde∑rstuvwxyza∑"
+undo 1
+insert 329 329 text 0 0.0 1774.6289 869.18884 18.0 "zabcdefghijklmnopq∑"
+undo 1
+insert 330 330 text 0 0.0 840.145 923.7258 18.0 "abcdefghijklmnopqr∑"
+undo 1
+replace 277 text 0 0.0 1674.7443 732.19385 18.0 "hijklmnopqrstuvwxy∑" text 0 0.0 1674.7443 732.19385 18.0 "hijkbcdefghijklmnopqrs∑lmnopqrstuvwxy∑"
+undo 1
+replace 106 text 0 0.0 1089.6078 926.35876 18.0 "rstuvwxyzabcdyzabcdefghijklmnop∑efghi∑" text 0 0.0 1089.6078 926.35876 18.0 "rstucdefghijklmnopqrst∑vwxyzabcdyzabcdefghijklmnop∑efghi∑"
+undo 1
+insert 331 331 text 0 0.0 2023.5879 115.268036 18.0 "defghijklmnopqrstu∑"
+undo 1
+replace 269 text 0 0.0 1459.3245 138.61331 18.0 "vwxyzabcdefghijklm∑" text 0 0.0 1459.3245 138.61331 18.0 "vwxyzabcdefghijklmefghijklmnopqrstuv∑∑"
+undo 1
+replace 249 text 0 0.0 697.68536 728.08105 18.0 "nopqrstuvwxyzabcde∑" text 0 0.0 697.68536 728.08105 18.0 "nopqrstuvwxyzafghijklmnopqrstuvw∑bcde∑"
+[clipboard]
+[tools]
+pen -
+shape -
+grid -
+text-size -
+text 783.94855 1046.6869 18.0 0 0.0 196 - "ghiklmnopqrstuvwxyzab∑jklmnopqrstuvwx∑" 16 0
+eraser - remove 0
+select -
