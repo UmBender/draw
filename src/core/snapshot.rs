@@ -1654,6 +1654,75 @@ mod tests {
         assert_eq!(loaded, ed);
     }
 
+    /// Zooms all the way out, so a huge screen position is an infinite
+    /// world point.
+    fn zoomed_out() -> Editor {
+        let mut ed = editor();
+        for _ in 0..200 {
+            ed.handle(InputEvent::Scroll {
+                pos: v(400.0, 300.0),
+                delta: -1.0,
+            });
+        }
+        ed
+    }
+
+    #[test]
+    #[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+    fn regression_T74_live_drag_at_infinity_round_trips() {
+        // Arrange: a grid drag whose end is off the finite world.
+        let mut ed = zoomed_out();
+        ed.apply(Command::SetTool(Tool::Grid));
+        down(&mut ed, v(10.0, 10.0));
+        move_to(&mut ed, v(3.0e38, 10.0));
+
+        // Act
+        let loaded = round_trip(&ed);
+
+        // Assert
+        assert_eq!(loaded.snapshot().to_text(), ed.snapshot().to_text());
+    }
+
+    #[test]
+    #[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+    fn regression_T74_text_opened_at_infinity_round_trips() {
+        // Arrange: a block opened at an infinite world point.
+        let mut ed = zoomed_out();
+        ed.apply(Command::SetTool(Tool::Text));
+        down(&mut ed, v(-3.0e38, 10.0));
+        up(&mut ed, v(-3.0e38, 10.0));
+        type_text(&mut ed, "x");
+        assert!(ed.text_edit().is_some_and(|e| !e.origin.is_finite()));
+
+        // Act
+        let loaded = round_trip(&ed);
+
+        // Assert
+        assert_eq!(loaded.snapshot().to_text(), ed.snapshot().to_text());
+    }
+
+    #[test]
+    #[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+    fn regression_T74_text_size_beyond_the_editor_is_rejected() {
+        // Arrange: a size no zoom and width can make; typing more would
+        // grow the block's bounds past f32.
+        let mut ed = editor();
+        ed.apply(Command::SetTool(Tool::Text));
+        down(&mut ed, v(0.0, 100.0));
+        up(&mut ed, v(0.0, 100.0));
+        type_text(&mut ed, "ab");
+        key(&mut ed, Key::Escape);
+        let text = ed.snapshot().to_text();
+        let huge = text.replace(" 18.0 \"ab\"", " 1e30 \"ab\"");
+        assert_ne!(huge, text, "size token not found");
+
+        // Act
+        let result = Snapshot::parse(&huge);
+
+        // Assert
+        assert!(result.is_err(), "size 1e30 accepted");
+    }
+
     // AC-2
 
     #[test]
