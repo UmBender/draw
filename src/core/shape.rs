@@ -580,6 +580,15 @@ impl Shape {
         }
     }
 
+    /// The slot at world point `p` that may take text: [`Self::text_slot_at`],
+    /// except `None` for a numbered rectangle or ellipse, whose number is
+    /// its content (ADR-T52-1).
+    #[must_use]
+    pub fn text_host_at(&self, p: Vec2) -> Option<TextSlot> {
+        let _ = p;
+        todo!("T52 behaviour step")
+    }
+
     /// The text in `slot`, if any.
     #[must_use]
     pub fn slot_text(&self, slot: TextSlot) -> Option<&ShapeText> {

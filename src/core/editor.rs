@@ -20,7 +20,6 @@ use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
-use crate::core::experimental::Experimental;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -49,6 +48,10 @@ pub const FIT_MARGIN_PX: f32 = 32.0;
 /// Columns and rows of a new editor's grids.
 pub const DEFAULT_GRID_CELLS: u32 = 4;
 
+/// Value written for the seventh `helpers` snapshot token, which held the
+/// removed shape-text switch; it is ignored when read (ADR-T52-1).
+const RESERVED_HELPERS_TOKEN: bool = false;
+
 /// Maps a key chord to a command; [`keymap::resolve`] by default.
 pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 
@@ -68,9 +71,6 @@ pub struct Helpers {
     pub grid_cols: u32,
     /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_rows: u32,
-    /// Experimental features, set once by [`Editor::with_experimental`]
-    /// (ADR-T31-1).
-    pub experimental: Experimental,
 }
 
 impl Default for Helpers {
@@ -82,7 +82,6 @@ impl Default for Helpers {
             next_number: FIRST_NUMBER,
             grid_cols: DEFAULT_GRID_CELLS,
             grid_rows: DEFAULT_GRID_CELLS,
-            experimental: Experimental::default(),
         }
     }
 }
@@ -259,7 +258,7 @@ impl Editor {
                 .word(helpers.next_number)
                 .word(helpers.grid_cols)
                 .word(helpers.grid_rows)
-                .bool(helpers.experimental.shape_text);
+                .bool(RESERVED_HELPERS_TOKEN);
         });
         w.record("smoothing", |l| {
             l.put(&self.smoothing);
@@ -345,7 +344,8 @@ impl Editor {
         }
 
         let helpers = read_helpers(r)?;
-        r.set_shape_text(helpers.experimental.shape_text);
+        // Text in shapes is always on (ADR-T52-1).
+        r.set_shape_text(true);
 
         let mut t = r.record("smoothing")?;
         let smoothing = t.get()?;
@@ -490,19 +490,6 @@ impl Editor {
     #[must_use]
     pub fn with_keymap(self, keymap: Keymap) -> Self {
         Self { keymap, ..self }
-    }
-
-    /// Turns the `experimental` features on or off (ADR-T31-1).
-    #[must_use]
-    pub fn with_experimental(mut self, experimental: Experimental) -> Self {
-        self.style.helpers.experimental = experimental;
-        self
-    }
-
-    /// The experimental features that are on.
-    #[must_use]
-    pub fn experimental(&self) -> Experimental {
-        self.style.helpers.experimental
     }
 
     /// Handles one input event. Returns whether the view needs a redraw.
@@ -1168,24 +1155,23 @@ impl Editor {
     }
 
     /// The text block hit at world `p` (tolerance `tol`), if it is the
-    /// topmost shape there and the only selected one. With shape text on,
-    /// also the only selected shape if it holds text at `p` (ADR-T31-1).
+    /// topmost shape there and the only selected one; also the only
+    /// selected shape if it can host text at `p` (ADR-T31-1, ADR-T52-1).
     fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
         let &[selected] = self.selection.as_slice() else {
             return None;
         };
-        let hosts = self.experimental().shape_text;
         match self.doc.topmost_where(|shape| shape.hit(p, tol)) {
             Some(id) if id == selected => {
                 let shape = self.doc.get(id)?;
                 let is_text = matches!(shape, Shape::Text { .. });
-                (is_text || (hosts && shape.text_slot_at(p).is_some())).then_some(id)
+                (is_text || shape.text_host_at(p).is_some()).then_some(id)
             }
-            None if hosts => {
+            None => {
                 let shape = self.doc.get(selected)?;
-                shape.text_slot_at(p).is_some().then_some(selected)
+                shape.text_host_at(p).is_some().then_some(selected)
             }
-            Some(_) | None => None,
+            Some(_) => None,
         }
     }
 
@@ -1203,13 +1189,12 @@ impl Editor {
         let size = self
             .camera
             .world_len(self.tools.text.new_size_px(self.style.width_px));
-        let hosts = self.experimental().shape_text;
         self.tools.text.edit = self
             .doc
             .get(id)
-            .and_then(|shape| match shape.text_slot_at(at) {
-                Some(slot) if hosts => TextEdit::open_in(id, shape, slot, size),
-                _ => TextEdit::open(id, shape, at),
+            .and_then(|shape| match shape.text_host_at(at) {
+                Some(slot) => TextEdit::open_in(id, shape, slot, size),
+                None => TextEdit::open(id, shape, at),
             });
         self.tools.text.edit.is_some()
     }
@@ -1314,10 +1299,9 @@ fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
         next_number: t.number("next number")?,
         grid_cols: t.number("grid columns")?,
         grid_rows: t.number("grid rows")?,
-        experimental: Experimental {
-            shape_text: t.bool("shape text")?,
-        },
     };
+    // The old shape-text switch, reserved and ignored (ADR-T52-1).
+    let _reserved = t.bool("reserved")?;
     t.end()?;
     let cells = 1..=GRID_MAX_CELLS;
     if helpers.next_number < FIRST_NUMBER

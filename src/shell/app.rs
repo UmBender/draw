@@ -38,7 +38,6 @@ use crate::core::camera::Camera;
 use crate::core::command::Tool;
 use crate::core::document::ShapeId;
 use crate::core::editor::Editor;
-use crate::core::experimental::{EXPERIMENTAL_ENV, Experimental};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
@@ -555,8 +554,6 @@ pub async fn run() {
         backend::from_env().backend,
         std::env::var_os(backend::WAYLAND_DISPLAY_ENV).as_deref(),
     ));
-    // Experimental features are read once (ADR-T31-1).
-    let experimental = std::env::var(EXPERIMENTAL_ENV).ok();
     // Pen tablet mode is read once (ADR-T34-1).
     let tablet = tablet::from_env();
     for line in tablet.warning.iter().chain(&tablet.notice) {
@@ -566,9 +563,7 @@ pub async fn run() {
         // Pen tip bounces join the stroke (ADR-T42-1).
         collector.set_bounce_window(PEN_BOUNCE_WINDOW);
     }
-    let mut editor = Editor::new()
-        .with_experimental(Experimental::from_env_value(experimental.as_deref()))
-        .with_tap_slop(tablet.tap_slop_px());
+    let mut editor = Editor::new().with_tap_slop(tablet.tap_slop_px());
     // A snapshot replaces the whole state, its switches included (T74).
     let (snapshot, error) = startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
         std::fs::read_to_string(path)
