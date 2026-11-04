@@ -343,9 +343,11 @@ run_task() { # run_task ID BASE → 0 done (any final status), 1 stop the batch
     done
 }
 
-skip_reason() { # why ID cannot run now, if a queued dependency failed
-    local dep st
-    for dep in $(task_deps "$1"); do
+skip_reason() { # skip_reason ID BASE: why ID cannot run now, if a queued
+    # dependency or the task it branches from (`after:<ID>`) did not finish
+    local dep st after=""
+    [[ ${2:-} == after:* ]] && after=${2#after:}
+    for dep in $(task_deps "$1") $after; do
         in_queue "$dep" || continue
         st=$(get "$dep" status)
         case $st in
@@ -371,7 +373,7 @@ cmd_run() {
     local id base why
     while read -r id base; do
         case $(get "$id" status) in review | blocked | failed | skipped | done) continue ;; esac
-        if why=$(skip_reason "$id"); then
+        if why=$(skip_reason "$id" "$base"); then
             set_state "$id" status skipped
             set_state "$id" note "$why"
             log "$id: skipped — $why"
