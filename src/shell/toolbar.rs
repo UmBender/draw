@@ -16,8 +16,9 @@ use crate::core::command::{Command, Tool};
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
-use crate::core::palette::{ColorId, PALETTE_LEN, THEME, palette};
-use crate::shell::render::{to_mq, to_mq_color};
+use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
+use crate::shell::render::{hex_color, to_mq, to_mq_color};
+use crate::theme;
 
 /// Side of a square button in pixels.
 pub const BUTTON_PX: f32 = 32.0;
@@ -113,8 +114,6 @@ const OUTLINE_PX: f32 = 2.0;
 const SWATCH_INSET_PX: f32 = 6.0;
 /// Size of a tool letter, in pixels.
 const LABEL_SIZE: u16 = 20;
-/// Opacity of an unavailable undo/redo button.
-const DISABLED_ALPHA: f32 = 0.3;
 /// Side of a flyout `-`/`+` button, in pixels.
 const FLY_BUTTON_PX: f32 = 24.0;
 /// Width of a flyout row label (`cols`, `rows`), in pixels.
@@ -246,12 +245,12 @@ pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> 
 /// the grid size flyout while the grid tool is active.
 pub fn draw(editor: &Editor, viewport: Vec2) {
     let strip = panel(viewport);
-    fill(strip, to_mq_color(THEME.surface));
-    let border = to_mq_color(THEME.border);
+    fill(strip, hex_color(theme::TOOLBAR_BACKGROUND));
+    let border = hex_color(theme::TOOLBAR_BORDER);
     draw_rectangle(strip.max.x - 1.0, 0.0, 1.0, strip.height(), border);
 
-    let accent = to_mq_color(THEME.accent);
-    let text = to_mq_color(THEME.text);
+    let accent = hex_color(theme::TOOLBAR_ACTIVE);
+    let text = hex_color(theme::TOOLBAR_TEXT);
     for button in layout(viewport) {
         let rect = button.rect;
         match button.kind {
@@ -282,8 +281,8 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
             ButtonKind::GridCols(delta) | ButtonKind::GridRows(delta) => {
                 draw_label(rect, step_label(delta), text);
             }
-            ButtonKind::Undo => draw_history_arrow(rect, -1.0, enabled(text, editor.can_undo())),
-            ButtonKind::Redo => draw_history_arrow(rect, 1.0, enabled(text, editor.can_redo())),
+            ButtonKind::Undo => draw_history_arrow(rect, -1.0, history_color(editor.can_undo())),
+            ButtonKind::Redo => draw_history_arrow(rect, 1.0, history_color(editor.can_redo())),
         }
     }
     if editor.tap_slop() > 0.0 {
@@ -298,9 +297,9 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
 /// `editor`.
 fn draw_flyout(editor: &Editor, viewport: Vec2) {
     let fly = flyout_panel(viewport);
-    fill(fly, to_mq_color(THEME.surface));
-    let border = to_mq_color(THEME.border);
-    let text = to_mq_color(THEME.text);
+    fill(fly, hex_color(theme::TOOLBAR_BACKGROUND));
+    let border = hex_color(theme::TOOLBAR_BORDER);
+    let text = hex_color(theme::TOOLBAR_TEXT);
     let helpers = editor.helpers();
     // The row's name, left of its first button.
     let name_box = |rect: Aabb| {
@@ -359,21 +358,20 @@ fn tool_label(tool: Tool) -> &'static str {
 /// Draws a labelled button, highlighted with `accent` when `on`.
 fn draw_toggle(rect: Aabb, label: &str, on: bool, accent: Color, text: Color) {
     if on {
-        fill(rect, to_mq_color(THEME.selection));
+        fill(rect, hex_color(theme::TOOLBAR_ACTIVE_FILL));
         outline(rect, accent);
     }
     draw_label(rect, label, if on { accent } else { text });
 }
 
-/// `color`, faded when not `enabled`.
-fn enabled(color: Color, enabled: bool) -> Color {
+/// Colour of an undo/redo arrow: the toolbar text colour, faded by
+/// `theme::TOOLBAR_DISABLED_ALPHA` when not `enabled`.
+fn history_color(enabled: bool) -> Color {
+    let text = Rgba::from_hex(theme::TOOLBAR_TEXT);
     if enabled {
-        color
+        to_mq_color(text)
     } else {
-        Color {
-            a: color.a * DISABLED_ALPHA,
-            ..color
-        }
+        to_mq_color(text.faded(theme::TOOLBAR_DISABLED_ALPHA))
     }
 }
 

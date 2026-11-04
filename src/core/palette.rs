@@ -1,13 +1,15 @@
-//! Drawing palette and UI theme tokens (Kanagawa Dragon).
+//! The drawing palette and colour helpers.
 //!
-//! This is the only place colours are defined (ADR-0012). Shapes store a
-//! [`ColorId`] — an index into the fixed drawing palette — so a theme change
-//! recolours every existing shape. Values come from the user's Kanagawa
-//! Dragon theme (ADR-0015) and are documented in `docs/architecture/Theme.md`.
+//! Shapes store a [`ColorId`] — an index into the fixed drawing palette — so
+//! a theme change recolours every existing shape (ADR-0012). The colour
+//! values live in [`crate::theme`], the one file that defines colours
+//! (ADR-T51-1).
 #![allow(
     clippy::unreadable_literal,
-    reason = "colours are written 0xRRGGBB to match #RRGGBB in Theme.md"
+    reason = "test colours are written 0xRRGGBB, as in the theme file"
 )]
+
+use crate::theme;
 
 /// Number of drawing colours, addressable with keys `1`–`6`.
 pub const PALETTE_LEN: usize = 6;
@@ -37,11 +39,63 @@ impl Rgba {
         }
     }
 
+    /// Builds a colour from `0xRRGGBB` with opacity `alpha` (`0` invisible,
+    /// `255` opaque); bits above the low 24 are ignored.
+    #[must_use]
+    pub const fn from_hex_alpha(hex: u32, alpha: u8) -> Self {
+        Self {
+            a: alpha,
+            ..Self::from_hex(hex)
+        }
+    }
+
+    /// Opaque white. As a tint it leaves a texture's colours unchanged, so
+    /// it is not a theme colour (ADR-T51-1).
+    pub const NO_TINT: Self = Self {
+        r: u8::MAX,
+        g: u8::MAX,
+        b: u8::MAX,
+        a: u8::MAX,
+    };
+
+    /// This colour with its alpha scaled by `alpha / 255`, rounded down:
+    /// an opaque colour gets exactly `alpha`, `255` changes nothing.
+    #[must_use]
+    pub const fn faded(self, alpha: u8) -> Self {
+        // At most 255 × 255 / 255 = 255, so the cast never truncates.
+        let a = (self.a as u16 * alpha as u16 / u8::MAX as u16) as u8;
+        Self { a, ..self }
+    }
+
     /// Returns `[r, g, b, a]` scaled to `0.0..=1.0`, the form GPU APIs expect.
     #[must_use]
     pub fn to_f32(self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a].map(|c| f32::from(c) / 255.0)
     }
+
+    /// WCAG 2 relative luminance of the colour (alpha ignored): `0.0` for
+    /// black, `1.0` for white.
+    #[must_use]
+    pub fn relative_luminance(self) -> f32 {
+        // sRGB channel to linear light (WCAG 2 definition).
+        let linear = |c: u8| {
+            let s = f32::from(c) / 255.0;
+            if s <= 0.039_28 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(self.r) + 0.7152 * linear(self.g) + 0.0722 * linear(self.b)
+    }
+}
+
+/// WCAG 2 contrast ratio of two colours, from `1.0` (the same luminance)
+/// to `21.0` (black and white); symmetric in its arguments.
+#[must_use]
+pub fn contrast_ratio(a: Rgba, b: Rgba) -> f32 {
+    let (la, lb) = (a.relative_luminance(), b.relative_luminance());
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 /// Index of a colour in the drawing palette, always `< PALETTE_LEN`.
@@ -76,14 +130,15 @@ impl ColorId {
     }
 }
 
-/// The drawing colours in key order: ink, red, green, blue, yellow, magenta.
+/// The drawing colours in key order: ink, red, green, blue, yellow, magenta,
+/// as set in [`crate::theme`].
 pub const PALETTE: [Rgba; PALETTE_LEN] = [
-    Rgba::from_hex(0xc5c9c5), // ink
-    Rgba::from_hex(0xd16961), // red
-    Rgba::from_hex(0x8aa86e), // green
-    Rgba::from_hex(0x7fa8bc), // blue
-    Rgba::from_hex(0xceb680), // yellow
-    Rgba::from_hex(0xaa88ac), // magenta
+    Rgba::from_hex(theme::INK),
+    Rgba::from_hex(theme::RED),
+    Rgba::from_hex(theme::GREEN),
+    Rgba::from_hex(theme::BLUE),
+    Rgba::from_hex(theme::YELLOW),
+    Rgba::from_hex(theme::MAGENTA),
 ];
 
 /// Returns the colour for `id`. Total: every `ColorId` is a valid index.
@@ -93,36 +148,10 @@ pub const fn palette(id: ColorId) -> Rgba {
     PALETTE[id.index()]
 }
 
-/// UI colour tokens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Theme {
-    /// Canvas background.
-    pub bg: Rgba,
-    /// Toolbar background.
-    pub surface: Rgba,
-    /// Toolbar and button outlines.
-    pub border: Rgba,
-    /// Icons and labels.
-    pub text: Rgba,
-    /// Active tool and selection outline.
-    pub accent: Rgba,
-    /// Selection and marquee fill.
-    pub selection: Rgba,
-}
-
-/// The application theme.
-pub const THEME: Theme = Theme {
-    bg: Rgba::from_hex(0x181616),
-    surface: Rgba::from_hex(0x0d0c0c),
-    border: Rgba::from_hex(0xa6a69c),
-    text: Rgba::from_hex(0xc5c9c5),
-    accent: Rgba::from_hex(0x7fa8bc),
-    selection: Rgba::from_hex(0x2d4f67),
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::geom::approx_eq;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-6;
@@ -258,16 +287,116 @@ mod tests {
         }
     }
 
-    // AC-4
+    // ---- T51 AC-2: drawing colours come from the theme file ---------------
 
     #[test]
-    fn theme_matches_documented_tokens() {
-        assert_eq!(THEME.bg, Rgba::from_hex(0x181616));
-        assert_eq!(THEME.surface, Rgba::from_hex(0x0d0c0c));
-        assert_eq!(THEME.border, Rgba::from_hex(0xa6a69c));
-        assert_eq!(THEME.text, Rgba::from_hex(0xc5c9c5));
-        assert_eq!(THEME.accent, Rgba::from_hex(0x7fa8bc));
-        assert_eq!(THEME.selection, Rgba::from_hex(0x2d4f67));
+    fn palette_reads_drawing_colours_from_theme() {
+        // Arrange
+        let expected = [
+            theme::INK,
+            theme::RED,
+            theme::GREEN,
+            theme::BLUE,
+            theme::YELLOW,
+            theme::MAGENTA,
+        ];
+
+        // Act / Assert
+        for (i, hex) in expected.into_iter().enumerate() {
+            assert_eq!(PALETTE[i], Rgba::from_hex(hex), "index {i}");
+        }
+    }
+
+    // ---- T51 AC-4: colour helpers -----------------------------------------
+
+    #[test]
+    fn from_hex_alpha_keeps_channels_and_sets_alpha() {
+        // Act
+        let c = Rgba::from_hex_alpha(0x123456, 63);
+
+        // Assert
+        assert_eq!(
+            c,
+            Rgba {
+                r: 0x12,
+                g: 0x34,
+                b: 0x56,
+                a: 63
+            }
+        );
+    }
+
+    #[test]
+    fn faded_opaque_gives_alpha() {
+        for alpha in [0, 1, 63, 76, 89, 254, 255] {
+            assert_eq!(Rgba::from_hex(0xabcdef).faded(alpha).a, alpha);
+        }
+    }
+
+    #[test]
+    fn faded_scales_existing_alpha() {
+        // 128 × 128 / 255 = 64.25, truncated.
+        assert_eq!(Rgba::from_hex_alpha(0, 128).faded(128).a, 64);
+        assert_eq!(Rgba::from_hex_alpha(0x112233, 0).faded(200).a, 0);
+    }
+
+    #[test]
+    fn no_tint_is_opaque_white() {
+        assert_eq!(Rgba::NO_TINT, Rgba::from_hex(0xffffff));
+    }
+
+    #[test]
+    fn relative_luminance_of_black_and_white() {
+        assert!(approx_eq(
+            Rgba::from_hex(0x000000).relative_luminance(),
+            0.0,
+            EPS
+        ));
+        assert!(approx_eq(
+            Rgba::from_hex(0xffffff).relative_luminance(),
+            1.0,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn relative_luminance_weights_green_most() {
+        // WCAG 2 weights: 0.2126 R + 0.7152 G + 0.0722 B.
+        let lum = |hex| Rgba::from_hex(hex).relative_luminance();
+        assert!(approx_eq(lum(0xff0000), 0.2126, 1e-4));
+        assert!(approx_eq(lum(0x00ff00), 0.7152, 1e-4));
+        assert!(approx_eq(lum(0x0000ff), 0.0722, 1e-4));
+    }
+
+    #[test]
+    fn contrast_ratio_black_on_white_is_21() {
+        // Act
+        let ratio = contrast_ratio(Rgba::from_hex(0x000000), Rgba::from_hex(0xffffff));
+
+        // Assert
+        assert!(approx_eq(ratio, 21.0, 1e-3), "{ratio}");
+    }
+
+    proptest! {
+        #[test]
+        fn faded_by_opaque_is_identity(r: u8, g: u8, b: u8, a: u8) {
+            let c = Rgba { r, g, b, a };
+            prop_assert_eq!(c.faded(u8::MAX), c);
+        }
+
+        #[test]
+        fn contrast_ratio_symmetric_and_bounded(x in 0_u32..=0xff_ffff, y in 0_u32..=0xff_ffff) {
+            // Arrange
+            let (a, b) = (Rgba::from_hex(x), Rgba::from_hex(y));
+
+            // Act
+            let (ab, ba) = (contrast_ratio(a, b), contrast_ratio(b, a));
+
+            // Assert
+            prop_assert!(approx_eq(ab, ba, EPS));
+            prop_assert!((1.0 - EPS..=21.0 + 1e-3).contains(&ab), "{}", ab);
+            prop_assert!(approx_eq(contrast_ratio(a, a), 1.0, EPS));
+        }
     }
 
     // AC-5

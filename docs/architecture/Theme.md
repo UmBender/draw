@@ -1,36 +1,47 @@
 ---
 tags: [architecture]
 status: accepted
-adrs: ["[[ADR-0012 Fixed palette and theme tokens]]", "[[ADR-0015 Kanagawa Dragon theme]]"]
+adrs: ["[[ADR-0012 Fixed palette and theme tokens]]", "[[ADR-0015 Kanagawa Dragon theme]]", "[[ADR-T51-1 One theme file with every colour]]"]
 ---
 
 # Theme
 
 Kanagawa Dragon, taken from the user's Alacritty theme
-([[ADR-0015 Kanagawa Dragon theme]]). Implemented in `src/core/palette.rs` —
-the only place colours are defined.
+([[ADR-0015 Kanagawa Dragon theme]]). Every colour is a constant in
+`src/theme.rs`, the only file that defines colours
+([[ADR-T51-1 One theme file with every colour]]); a guard test fails on a
+colour literal anywhere else in `src/`. See [[Themes]] for how to change it.
 
-## UI tokens
+## UI colours
 
-| Token | Use | Value |
-|-------|-----|-------|
-| `bg` | Canvas background | `#181616` |
-| `surface` | Toolbar background | `#0d0c0c` |
-| `border` | Toolbar / button outlines | `#a6a69c` |
-| `text` | Icons, labels | `#c5c9c5` |
-| `accent` | Active tool, selection outline | `#7fa8bc` |
-| `selection` | Selection / marquee fill | `#2d4f67` |
+| Constant | Use | Value |
+|----------|-----|-------|
+| `CANVAS` | Canvas background | `#181616` |
+| `TEXT_ON_FILL` | Numbers, text and caret on a filled shape | `#181616` |
+| `SELECTION_OUTLINE` | Selection and edit box outline | `#7fa8bc` |
+| `MARQUEE_OUTLINE` | Marquee outline | `#7fa8bc` |
+| `MARQUEE_FILL` / `_ALPHA` | Marquee fill | `#2d4f67`, 63 |
+| `GUIDE` | Alignment guides | `#7fa8bc` |
+| `DOT_GRID` / `_ALPHA` | Snap grid dots | `#a6a69c`, 89 |
+| `FORMULA_SOURCE` | Formula source that does not parse | `#d16961` |
+| `FORMULA_SOURCE_ALT` | The same, on text drawn in `FORMULA_SOURCE` | `#ceb680` |
+| `TOOLBAR_BACKGROUND` | Toolbar and flyout background | `#0d0c0c` |
+| `TOOLBAR_BORDER` | Toolbar edge, flyout buttons | `#a6a69c` |
+| `TOOLBAR_TEXT` | Letters, labels, undo/redo | `#c5c9c5` |
+| `TOOLBAR_ACTIVE` | Active tool, current colour, pen badge | `#7fa8bc` |
+| `TOOLBAR_ACTIVE_FILL` | Fill behind an active toggle | `#2d4f67` |
+| `TOOLBAR_DISABLED_ALPHA` | Opacity of unavailable undo/redo | 76 |
 
 ## Drawing palette (keys `1`–`6`)
 
-| Key | Name | Value |
-|-----|------|-------|
-| `1` | ink | `#c5c9c5` |
-| `2` | red | `#d16961` |
-| `3` | green | `#8aa86e` |
-| `4` | blue | `#7fa8bc` |
-| `5` | yellow | `#ceb680` |
-| `6` | magenta | `#aa88ac` |
+| Key | Constant | Value |
+|-----|----------|-------|
+| `1` | `INK` | `#c5c9c5` |
+| `2` | `RED` | `#d16961` |
+| `3` | `GREEN` | `#8aa86e` |
+| `4` | `BLUE` | `#7fa8bc` |
+| `5` | `YELLOW` | `#ceb680` |
+| `6` | `MAGENTA` | `#aa88ac` |
 
 ## Source palette (reference)
 
