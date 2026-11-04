@@ -784,6 +784,9 @@ pub const ALPHABETS: &[AlphabetDef] = &[
     MATHFRAK,
     // Script capitals, as \mathcal (T59).
     MATHSCR,
+    // Sans-serif and typewriter (T60).
+    MATHSF,
+    MATHTT,
 ];
 
 /// Start of the bold digits `𝟎`.
@@ -924,11 +927,18 @@ impl Style {
     };
 
     /// This style inside `alphabet`: the kinds it maps are its own, the
-    /// others stay as they are.
+    /// others stay as they are. Sans-serif and a bold weight, nested
+    /// either way round, give bold sans (ADR-T60-1).
     fn with(mut self, alphabet: &'static AlphabetDef) -> Self {
         for kind in Kind::ALL {
             if alphabet.get(kind) != Map::Inherit {
-                self.rows[kind.slot()] = alphabet;
+                let row = &mut self.rows[kind.slot()];
+                let sans = |a: &AlphabetDef| a.name == MATHSF.name;
+                *row = if (sans(alphabet) && row.bold) || (alphabet.bold && sans(row)) {
+                    &MATHSF_BOLD
+                } else {
+                    alphabet
+                };
             }
         }
         self
