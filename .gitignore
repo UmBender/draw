@@ -14,3 +14,6 @@ docs/.trash/
 perf.data
 perf.data.old
 /dist
+
+# Unattended batch runs (skill batch-tasks): plan, state, logs
+/.batch/
