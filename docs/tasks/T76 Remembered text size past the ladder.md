@@ -1,7 +1,7 @@
 ---
 id: T76
 title: Remembered text size past the ladder
-status: in-progress
+status: review
 wave: 34
 branch: fix/remembered-text-size
 depends_on: [T74]
@@ -108,11 +108,11 @@ remembered on-screen size is clamped to
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T76): specify the remembered text size clamp`
-- [ ] regression — `test(T76): add regression test for the remembered text size`
-- [ ] behaviour — `fix(T76): keep the remembered text size on the ladder`
-- [ ] quality — `chore(T76): pass clippy and rustfmt`
-- [ ] docs — `docs(T76): record the clamp and close the task`
+- [x] spec — `docs(T76): specify the remembered text size clamp`
+- [x] regression — `test(T76): add regression test for the remembered text size`
+- [x] behaviour — `fix(T76): keep the remembered text size on the ladder`
+- [x] quality — `chore(T76): pass clippy and rustfmt`
+- [x] docs — `docs(T76): record the clamp and close the task`
 
 ## Learning path
 
@@ -125,3 +125,29 @@ None planned; the ADR is enough.
   only once it is committed.
 - 2026-11-08 — spec settled. There are no new types, so the models step
   produces nothing and is skipped.
+- 2026-11-08 — regression: the snapshot was written from a test replaying
+  the real events. Before the fix the memory reached 320 px at `ZOOM_MAX`
+  and 1 px at `ZOOM_MIN`, and the T71 seed failed both snapshot round-trip
+  properties with `text size out of range`. All pass after the fix. The
+  seed is committed; its stash is left for the owner to drop.
+- 2026-11-08 — AC-3 and AC-4 pass before and after the fix: they pin
+  behaviour that must not change. No feature or tutorial note: the learning
+  path plans none, and the ADR records the rule.
+- 2026-11-08 — **separate bug found, not fixed here.** The first
+  `scripts/check.sh --fuzz` failed the three `*undo_all_then_redo_all_is_symmetric`
+  properties: a long formula session leaves `ink Glyph { ch: 'a', pos: (250.8, 1.0) }`
+  outside the block's box, `max.y` 22.5 (`tests/fuzz.rs:749`, the T30 ink
+  invariant). It fails the same with the clamp removed, so T76 does not
+  cause it, and the failing code is outside *Files owned*. Seed:
+  `cc 1bf62a4f742068dd71bc2aa699366205a90af4d8b775a11fcd964bfa8086e409`.
+  It needs its own bug-fix task.
+- 2026-11-08 — UNATTENDED CHOICE: that seed is not committed, because it
+  would keep the gates red until its bug is fixed. The whole line is in the
+  stash `batch-T76-2026-11-08 fuzz seed: text ink outside its box`, as T71
+  did. The stash numbers moved by one: the T71 seed is no longer
+  `stash@{0}`, so find it by its message before dropping it.
+- 2026-11-08 — AC-5: with the T71 seed committed, `scripts/check.sh --fuzz`
+  then passed every gate and 20000 cases. The ink bug comes from random
+  input, so a later `--fuzz` run can still hit it. Left for the owner:
+  `Ctrl+[` a block, zoom far in, end the edit, start a new block: it starts
+  at the top rung at most.
