@@ -311,16 +311,16 @@ fn fake_tools() -> &'static Path {
     static TOOLS: OnceLock<PathBuf> = OnceLock::new();
     TOOLS.get_or_init(|| {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("gate-tools");
-        std::fs::create_dir_all(&dir).expect("create the tools directory");
+        std::fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("{}: {err}", dir.display()));
         for (name, body) in [
             ("cargo", FAKE_CARGO),
             ("systemd-run", FAKE_SYSTEMD_RUN),
             ("systemctl", FAKE_SYSTEMCTL),
         ] {
             let path = dir.join(name);
-            std::fs::write(&path, body).expect("write a stand-in");
+            std::fs::write(&path, body).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-                .expect("make a stand-in executable");
+                .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
         }
         dir
     })
@@ -341,9 +341,9 @@ fn run_gates(test: &str, env: &[(&str, &str)]) -> GateRun {
     let tools = fake_tools();
     let log = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("gate-{test}.log"));
     if log.exists() {
-        std::fs::remove_file(&log).expect("remove the old log");
+        std::fs::remove_file(&log).unwrap_or_else(|err| panic!("{}: {err}", log.display()));
     }
-    let path = std::env::var("PATH").expect("PATH is set");
+    let path = std::env::var("PATH").unwrap_or_else(|err| panic!("PATH: {err}"));
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/check.sh");
 
     let result = Command::new(script)
@@ -354,7 +354,7 @@ fn run_gates(test: &str, env: &[(&str, &str)]) -> GateRun {
         .env_remove("RUST_TEST_THREADS")
         .envs(env.iter().copied())
         .output()
-        .expect("run check.sh");
+        .unwrap_or_else(|err| panic!("check.sh: {err}"));
 
     let steps = std::fs::read_to_string(&log).unwrap_or_default();
     GateRun {

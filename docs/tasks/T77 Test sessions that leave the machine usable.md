@@ -169,7 +169,7 @@ The models step is skipped: the task adds no types, only shell and tests.
 - [x] tests — `test(T77): add failing tests for the gate limits`
 - [x] behaviour — `feat(T77): run the gates within fixed limits at low priority`
 - [x] behaviour — `feat(T77): keep the candidates that measured better`
-- [ ] quality — `chore(T77): pass clippy and rustfmt`
+- [x] quality — `chore(T77): pass clippy and rustfmt`
 - [ ] docs — `docs(T77): record the limits and the measurements`
 
 ## Learning path
