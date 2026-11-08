@@ -4602,7 +4602,10 @@ mod tests {
 
         // Assert: the lowest rung, and the block keeps its own size.
         let px = remembered_px(&ed);
-        assert!(approx_eq(px, text::text_size_px(MIN_WIDTH_PX), 1e-4), "{px}");
+        assert!(
+            approx_eq(px, text::text_size_px(MIN_WIDTH_PX), 1e-4),
+            "{px}"
+        );
         let sizes = block_sizes(&ed);
         assert_eq!(sizes.len(), 1);
         assert!(approx_eq(sizes[0], 20.0, 1e-4), "{sizes:?}");
