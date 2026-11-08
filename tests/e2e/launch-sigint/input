@@ -1,0 +1,2 @@
+# SIGINT closes the window in order, then ends the app by that signal.
+sigint

@@ -1,11 +1,11 @@
 ---
 id: T75
 title: End-to-end test suite
-status: todo
+status: review
 wave: 34
 branch: task/T75-e2e-tests
 depends_on: [T73, T74]
-adrs: []
+adrs: ["[[ADR-T75-1 Headless sway session for end-to-end tests]]", "[[ADR-T75-2 Wheel notches through the virtual pointer]]"]
 feature: "[[End-to-end tests]]"
 tutorial: ""
 tags: [task, testing]
@@ -83,31 +83,55 @@ files. It runs locally with one command and nightly on GitHub
 
 ## Spec
 
-To be written in the spec step. Expected acceptance criteria:
+Design in [[ADR-T75-1 Headless sway session for end-to-end tests]].
+
+Everything needs `sway`, `wtype` and `grim`. Cases live in
+`tests/e2e/<case>/`: `input`, optional `start.snap`, `expected.snap`, and
+`expected.ppm` for the 5 cases where pixels are the point.
 
 - **AC-1 One command.** `scripts/e2e.sh` runs every case on a machine
   with the listed packages and no display of its own, and exits non-zero
-  on any failure. *Test:* the runner itself; output in *Log*.
-- **AC-2 Real path.** At least the keyboard and pointer cases go through
-  the compositor and `shell::input_map`, not straight into `Editor`.
-  *Test:* a case whose expected result depends on the key translation
-  (e.g. a shifted symbol in a text block).
-- **AC-3 State and pixels.** A case can assert on the final snapshot, a
-  screenshot within tolerance, or both; a mismatch prints a text diff or
-  saves a diff image. *Test:* `tests/e2e.rs` self-tests with a
-  deliberately wrong golden.
+  on any failure. *Test:* `e2e_every_case`; output in *Log*.
+- **AC-2 Real path.** The keyboard and pointer cases go through the
+  compositor and `shell::input_map`, not straight into `Editor`.
+  *Test:* case `text-formula`, whose text holds shifted symbols typed
+  through `wtype`; case `creation-tools` for the pointer.
+- **AC-3 State and pixels.** A case asserts on the final snapshot and,
+  when it has a golden, a screenshot within its tolerance; a mismatch
+  prints a text diff or saves a diff image. *Test:*
+  `compare_snapshot_wrong_golden_prints_diff`,
+  `compare_image_wrong_golden_reports_and_draws_diff`,
+  `compare_image_within_tolerance_matches`.
 - **AC-4 No sleeps.** The harness waits on the app's idle signal with a
   timeout, never on fixed sleeps; a hung app fails the case after the
-  timeout with its log attached. *Test:* a case with a timeout.
-- **AC-5 Clean exit.** Every case ends with exit code 0, no
-  `crash.log`, and no anomaly line in `draw.log`. *Test:* checked by the
-  runner for every case.
+  timeout with its log attached. *Test:*
+  `wait_for_sync_hung_app_times_out_with_log`.
+- **AC-5 Clean exit.** Every case ends cleanly: exit code 0, or for the
+  SIGINT case death by that signal as [[ADR-T48-1 Signal handling in the vendored miniquad]]
+  requires; no `crash.log`; no `WARN` or `ERROR` line in `draw.log`.
+  *Test:* `check_exit_*`, run for every case by `e2e_every_case`.
 - **AC-6 CI.** The nightly workflow runs the suite and uploads
-  artifacts on failure. *Test:* one manual `workflow_dispatch` run,
+  `target/e2e/` on failure. *Test:* one manual `workflow_dispatch` run,
   linked in *Log*.
-- **AC-7 Test hooks are inert.** Without the env vars the binary
-  behaves as before (no extra files, no idle signal). *Test:* unit tests
-  of the env parsing.
+- **AC-7 Test hooks are inert.** Without the env vars the binary behaves
+  as before: no files, and the sync chord is not intercepted. *Test:*
+  `hooks_from_env_unset_is_none`, `hooks_from_env_empty_is_none`,
+  `hooks_is_sync_only_for_the_chord`,
+  `hooks_write_nothing_until_a_sync`.
+- **AC-8 Never the desktop.** The harness refuses to start any tool
+  unless the sockets are inside the private runtime directory of
+  `scripts/e2e.sh`. *Test:* `session_guard_refuses_*`, and
+  `script_isolates_the_session`.
+
+### Cases
+
+`launch-close`, `launch-sigint`, `ctrl-q-unbound`, `creation-tools`,
+`text-formula`, `key-repeat-modifiers`, `toolbar-clicks`,
+`pan-zoom-5000`, `selection-move-undo`, `window-resize`.
+
+Screenshot goldens: `creation-tools`, `text-formula`, `toolbar-clicks`,
+`window-resize`, `selection-move-undo` (the fifth, chosen because it
+crosses the document layer and the overlay).
 
 ## Out of scope
 
@@ -129,12 +153,12 @@ To be written in the spec step. Expected acceptance criteria:
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T75): …`
-- [ ] tests — `test(T75): …` (cases and goldens; the runner fails)
-- [ ] models — `feat(T75): …` (env hooks, case format)
-- [ ] behaviour — `feat(T75): …` (runner, comparison, CI job)
-- [ ] quality — `chore(T75): …`
-- [ ] docs — `docs(T75): …`
+- [x] spec — `docs(T75): …`
+- [x] tests — `test(T75): …` (cases; goldens came with the runner)
+- [x] models — `feat(T75): …` (env hooks)
+- [x] behaviour — `feat(T75): …` (hooks, runner, goldens, CI job)
+- [x] quality — `chore(T75): …`
+- [x] docs — `docs(T75): …`
 
 ## Learning path
 
@@ -144,3 +168,55 @@ tutorial of T74.
 ## Log
 
 - 2026-11-03 — note written at the owner's request.
+- 2026-11-08 — UNATTENDED CHOICE: the app has no quit key (`Ctrl+Q` is
+  not bound), so "close with a key" is not possible. Case `ctrl-q-unbound`
+  proves the chord changes nothing, and the quit paths are the compositor
+  close and `SIGINT`. Adding a quit key is an owner decision.
+- 2026-11-08 — UNATTENDED CHOICE: the final snapshot is written at every
+  sync, not on exit: the exit path is in `src/main.rs`, which this task
+  does not own, and the last sync holds the same state.
+- 2026-11-08 — UNATTENDED CHOICE: `swaymsg seat - cursor` needs a pointer
+  on the seat, and a headless seat has none. The harness holds one
+  virtual pointer open to announce it; `swaymsg` still drives every event.
+- 2026-11-08 — Bug found, not fixed here (`vendor/miniquad` is not owned):
+  `keyboard_handle_keymap` asserts on `mmap` and panics on a `no_keymap`
+  event (size 0). Triggered by a new virtual keyboard while the seat has
+  none active. The harness avoids it; it deserves its own task, with a
+  `tests/e2e/regression-…` case.
+- 2026-11-08 — AC-1 and AC-3 to AC-5, AC-8: `scripts/e2e.sh` passes all
+  10 cases in 21 s, three compare runs in a row, inside the 1 GB scope (no
+  raise needed). `scripts/check.sh` is green. Run with a deliberately wrong
+  input it exits 101: `window-resize` printed the text diff at its
+  checkpoint, and `selection-move-undo` reported 2384 differing pixels and
+  saved `diff.ppm`. Both mutations were reverted.
+- 2026-11-08 — All 5 screenshot goldens and the state goldens were checked
+  by eye (7.0 MB in total). That caught two wrong first goldens: the pen
+  stroke was lost, and the wheel never zoomed. Both were harness gaps.
+- 2026-11-08 — Harness facts for whoever writes a case: entering a surface
+  gives no motion event, so each case first parks the pointer with two
+  moves (the first press would land on the toolbar at a stale (0, 0)).
+  Pointer steps are synced one by one. Key repeat cannot be compared
+  exactly, so `hold` uses an idempotent key and the check is that the
+  typing after it has no doubled letters.
+- 2026-11-08 — UNATTENDED CHOICE: `scripts/e2e.sh --update` added: the
+  run's permissions refused the `DRAW_UPDATE_SNAPSHOTS=1 scripts/e2e.sh`
+  form. The variable still works; the flag only sets it.
+- 2026-11-08 — UNATTENDED CHOICE: no tutorial note: the task calls it
+  optional, and the feature note has a "Writing a case" section.
+  `docs/architecture/Architecture.md` is not in *Files owned*, so
+  `shell::diag::e2e` is not in its module map yet: the integrator should
+  add a row.
+- 2026-11-08 — AC-2: `text-formula` and `creation-tools` pass through
+  `wtype` / `swaymsg`; the shifted symbols in the formula arrive typed by
+  the compositor.
+- 2026-11-08 — AC-6 pending owner run: the `e2e` job is in
+  `nightly.yml`, but `git push` and `gh` are denied in this batch. Needs one
+  manual `workflow_dispatch` after integrating. Not verified: the job has
+  never run. The runner's Mesa and sway are older than this machine's
+  (sway 1.11), and llvmpipe differences could exceed the screenshot
+  tolerance (64 pixels off by more than 8). If the first run fails only on
+  pixels, regenerate those goldens on the runner or decide on a tolerance
+  from the saved `diff.ppm`.
+- 2026-11-08 — Manual checks left for the owner: look at the 5 screenshot
+  goldens; run `scripts/e2e.sh` once while working, to confirm no keys or
+  windows reach the desktop (not checked by a person yet).

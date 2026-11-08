@@ -1,0 +1,7 @@
+# Resize the window down and back: the caches follow the new size.
+screenshot
+key r
+drag 150 150 420 360
+resize 640 480
+checkpoint mid
+resize 800 600

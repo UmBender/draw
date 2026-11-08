@@ -1,0 +1,4 @@
+# The app has no quit key: Ctrl+Q changes nothing and the app stays up.
+chord ctrl q
+key r
+close

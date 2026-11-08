@@ -1,0 +1,14 @@
+# Each creation tool draws once, with real pointer drags.
+screenshot
+key d
+drag 100 100 250 180 8
+key w
+drag 300 100 450 160
+key a
+drag 100 250 250 330
+key r
+drag 300 230 450 330
+key c
+drag 520 100 680 240
+key g
+drag 520 300 720 500

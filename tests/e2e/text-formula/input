@@ -1,0 +1,12 @@
+# A text block with a formula: shifted symbols go through the key translation.
+screenshot
+key t
+click 120 120
+text let $\frac{a}{b} + x_i^2$ be (A|B)!
+key Return
+text next line
+key BackSpace
+key Left
+key End
+text e
+key Escape
