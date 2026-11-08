@@ -1,7 +1,7 @@
 ---
 id: T77
 title: Test sessions that leave the machine usable
-status: in-progress
+status: review
 wave: 33
 branch: task/T77-gate-resource-limits
 depends_on: []
@@ -170,7 +170,7 @@ The models step is skipped: the task adds no types, only shell and tests.
 - [x] behaviour — `feat(T77): run the gates within fixed limits at low priority`
 - [x] behaviour — `feat(T77): keep the candidates that measured better`
 - [x] quality — `chore(T77): pass clippy and rustfmt`
-- [ ] docs — `docs(T77): record the limits and the measurements`
+- [x] docs — `docs(T77): record the limits and the measurements`
 
 ## Learning path
 
@@ -181,3 +181,49 @@ None planned.
 - 2026-11-04 — created from the owner's report (3 threads, 1 GB of RAM),
   then extended by the owner to every step of a test session, so the
   browser stays usable while it runs.
+- 2026-11-08 — implemented. Spec step: `CPUQuota` turns the cpu controller
+  on, so `nice` alone would not rank the gates against the browser; hence
+  `CPUWeight` and `IOWeight` too (ADR-T77-1).
+- 2026-11-08 — AC-5, real run: `MEMORY_MAX=100M` in a temporary copy of the
+  script gave `check.sh: clippy went over the 100M memory limit`, exit 143,
+  no failed unit left behind, desktop up. The `Result=oom-kill` signal held
+  in 25 of 25 trials.
+- 2026-11-08 — AC-6, measured at the limits (1 GB, no swap, 3 CPUs, lowest
+  priority), target dir on disk, one sample each, with the owner's desktop
+  open. Same columns as *Known facts*.
+
+  | Step | Time | CPU time | Peak | Largest | CPU pressure |
+  |------|------|----------|------|---------|--------------|
+  | clippy, cold | 19 s | 39 s | 791 MB | 558 MB | 0 |
+  | clippy, warm | 3 s | 4 s | 396 MB | 434 MB | 0 |
+  | test build, cold, before line tables | 1 min 04 s | 2 min 40 s | 1 GB | 1056 MB | 5.4 |
+  | test build, warm, before line tables | 15 s | 10 s | 1 GB | 520 MB | 3.4 |
+  | test build, cold, line tables (kept) | 55 s | 2 min 21 s | 1 GB | 895 MB | 2.3 |
+  | test build, warm, line tables (kept) | 4 s | 7 s | 906 MB | 527 MB | 1.9 |
+  | test run | 12 s | 28 s | 128 MB | 90 MB | 0 |
+  | doc | 1 s | 1 s | 204 MB | 269 MB | 1.8 |
+  | fuzz build, cold | 1 min 04 s | 2 min 21 s | 990 MB | 453 MB | 1.4 |
+  | fuzz build, warm | 34 s | 54 s | 559 MB | 458 MB | 0 |
+  | fuzz run, 20 000 cases | 2 min 48 s | 7 min 35 s | 80 MB | 71 MB | 0.2 |
+
+  A clean `scripts/check.sh --fuzz` with these limits passed in **5 min
+  41 s** (budget: about 7 min), 20 000 cases, no kernel OOM kill.
+- 2026-11-08 — AC-7, one sample each, so small differences are noise:
+  - **6, `fuzz` profile (`lto = "off"`, 16 codegen units): rejected.** The
+    warm build drops from 34 s to 13 s and the cold one from 64 s to 48 s,
+    but the 20 000 cases go from 168 s to 191 s. It loses 2 s on a warm
+    session and 7 s on a cold one.
+  - **7, `[profile.test] debug = "line-tables-only"`: kept.** Test
+    artifacts 897 MB to 434 MB, largest process 1056 MB to 895 MB, cold
+    build 64 s to 55 s. A panic backtrace still shows file and line.
+    Debugger variable inspection in test binaries is lost, and `cargo test`
+    no longer shares its dependencies with `cargo build`.
+  - **8, one merged test binary: rejected.** Measured in a throwaway copy:
+    cold build 114 s against 64 s (other load may have added to that),
+    largest process 1097 MB against 1056 MB, warm build no better, test
+    artifacts 638 MB. Line tables get further with no churn, and it also
+    needs a shared `common` module and changes outside *Files owned*.
+- 2026-11-08 — AC-8 is left for the owner: run `scripts/check.sh --fuzz`
+  with the browser open, scrolling a page and playing a video.
+- Feature note and tutorial skipped: this task's `feature` and `tutorial`
+  are empty, as it changes tooling only.
