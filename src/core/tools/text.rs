@@ -541,9 +541,11 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::editor::Editor;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::palette::ColorId;
     use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
+    use crate::core::snapshot::{MAX_TEXT_SIZE_PX, Snapshot};
     use proptest::prelude::*;
 
     const STYLE: Style = Style {
@@ -559,6 +561,24 @@ mod tests {
         }
         e.set_caret(caret);
         e
+    }
+
+    #[test]
+    fn read_snapshot_rejects_size_past_the_ladder() {
+        // Arrange: a remembered size just past the limit, and the one the
+        // bug wrote (ADR-T76-1).
+        let text = Editor::new().snapshot().to_text();
+        for px in [MAX_TEXT_SIZE_PX + 1.0, 320.0] {
+            let bad = text.replace("text-size -", &format!("text-size {px}"));
+            assert_ne!(bad, text, "record not found");
+
+            // Act
+            let result = Snapshot::parse(&bad);
+
+            // Assert
+            let err = result.err().unwrap_or_else(|| panic!("{px} accepted"));
+            assert!(err.message.contains("text size out of range"), "{err}");
+        }
     }
 
     #[test]
