@@ -1,7 +1,7 @@
 ---
 id: T77
 title: Test sessions that leave the machine usable
-status: review
+status: done
 wave: 33
 branch: task/T77-gate-resource-limits
 depends_on: []
@@ -227,3 +227,4 @@ None planned.
   with the browser open, scrolling a page and playing a video.
 - Feature note and tutorial skipped: this task's `feature` and `tutorial`
   are empty, as it changes tooling only.
+- 2026-11-08 — integrated on `main` (merge `00e1cf4`), no conflicts; the owner's AC-8 run with the browser open is still open.

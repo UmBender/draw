@@ -285,6 +285,6 @@ flowchart TD
 | [[T74 Editor snapshots for tests]] | done | — | `task/T74-editor-snapshots` |
 | [[T75 End-to-end test suite]] | todo | T73, T74 | `task/T75-e2e-tests` |
 | [[T76 Remembered text size past the ladder]] | todo | T74 | `fix/remembered-text-size` |
-| [[T77 Test sessions that leave the machine usable]] | todo | — | `task/T77-gate-resource-limits` |
+| [[T77 Test sessions that leave the machine usable]] | done | — | `task/T77-gate-resource-limits` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T77 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

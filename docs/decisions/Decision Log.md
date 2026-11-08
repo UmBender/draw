@@ -96,3 +96,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 85 | [[ADR-T65-1 Wide relations padded with a thick space]] | accepted | decision | T30-1 | — |
 | 86 | [[ADR-T71-1 Infix fraction commands split their group]] | accepted | decision | T30-1 | — |
 | 87 | [[ADR-T69-1 Physics shortcuts expand to their long forms]] | accepted | decision | T30-1, T39-1 | — |
+| 88 | [[ADR-T77-1 Test gates run in capped low-priority scopes]] | accepted | decision | — | — |
