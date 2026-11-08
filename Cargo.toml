@@ -60,6 +60,11 @@ debug = true
 [profile.dev.package."*"]
 opt-level = 3
 
+# Halves the test binaries and what linking them needs; backtraces keep
+# their files and lines (T77).
+[profile.test]
+debug = "line-tables-only"
+
 # Packages built by scripts/package.sh from the staging tree of
 # packaging/build.sh (ADR-T27-2). `depends` and `requires` are the
 # `required` and `gl` packages of packaging/runtime-libs: miniquad loads

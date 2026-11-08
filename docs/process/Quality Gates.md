@@ -17,7 +17,28 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 | Lint | `cargo clippy --all-targets -- -D warnings` | zero warnings (lint levels in `Cargo.toml` `[lints]`, see [[ADR-0010 Clippy lint policy]]) |
 | Tests | `cargo test --all-targets` | all pass, including property tests |
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
-| Fuzz | `PROPTEST_CASES=20000 cargo test --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
+| Fuzz | `PROPTEST_CASES=20000 cargo test --release --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
+
+## Limits
+
+Every `cargo` step of `scripts/check.sh` leaves the desktop usable
+([[ADR-T77-1 Test gates run in capped low-priority scopes]]). The values
+are named at the top of the script.
+
+| Limit | Value | Applied with |
+|-------|-------|--------------|
+| Build jobs, test threads | 3 | `CARGO_BUILD_JOBS`, `RUST_TEST_THREADS` |
+| Memory | 1 GB, no swap | `MemoryMax`, `MemorySwapMax` on a `systemd-run --user --scope` |
+| CPU | 3 CPUs | `CPUQuota` on the scope |
+| Priority | lowest | `nice`, `ionice` idle class, `CPUWeight=1`, `IOWeight=1` |
+
+- A step that goes over the memory limit is stopped and `check.sh` fails
+  with `<step> went over the 1G memory limit`. Raise `MEMORY_MAX` only if
+  the step really needs it.
+- Without a usable `systemd-run --user` (CI runners), `check.sh` prints
+  that the memory cap is not enforced and keeps the rest.
+- A target dir never goes on `/tmp` here: it is a tmpfs, so its files
+  count as memory.
 
 ## CI
 
