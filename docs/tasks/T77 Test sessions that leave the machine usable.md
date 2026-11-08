@@ -166,7 +166,7 @@ The models step is skipped: the task adds no types, only shell and tests.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T77): specify limits for the test gates`
-- [ ] tests — `test(T77): add failing tests for the gate limits`
+- [x] tests — `test(T77): add failing tests for the gate limits`
 - [ ] behaviour — `feat(T77): run the gates within fixed limits at low priority`
 - [ ] behaviour — `feat(T77): keep the candidates that measured better`
 - [ ] quality — `chore(T77): pass clippy and rustfmt`
