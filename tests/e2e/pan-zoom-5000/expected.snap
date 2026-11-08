@@ -1,0 +1,16 @@
+draw-snapshot 1
+[editor]
+tool hand
+style 0 3.0
+helpers 0 0 0 1 4 4 0
+smoothing low
+toolbar 1
+viewport 800.0 600.0
+cursor 460.0 340.0
+space 0
+pressure -
+tap 0.0 idle
+gesture -
+reedit -
+camera 52.17392 42.911163 1.3225
+selection

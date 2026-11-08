@@ -7,7 +7,7 @@
 //! the count of syncs in the idle file, written after the frame is on screen.
 
 use std::ffi::OsStr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
@@ -24,13 +24,28 @@ pub const SYNC_CHORD: KeyChord = KeyChord::ctrl_shift(Key::Digit9);
 /// Whether `event` is a press of [`SYNC_CHORD`].
 #[must_use]
 pub fn is_sync(event: &InputEvent) -> bool {
-    todo!("{event:?}")
+    matches!(event, InputEvent::KeyDown { key, mods } if *key == SYNC_CHORD.key && *mods == SYNC_CHORD.mods)
 }
 
 /// Whether `event` is the text that [`SYNC_CHORD`] also produces.
 #[must_use]
 pub fn is_sync_char(event: &InputEvent) -> bool {
-    todo!("{event:?}")
+    // `(` is the shifted 9 of a real keyboard.
+    matches!(event, InputEvent::Char { ch: '9' | '(', mods } if *mods == SYNC_CHORD.mods)
+}
+
+/// Replaces `path` in one step, so a reader never sees half a file. A
+/// failed write only loses the signal, and the harness then times out.
+fn write_atomic(path: &Path, text: &str) {
+    let temporary = path.with_extension("tmp");
+    if std::fs::write(&temporary, text).is_ok() {
+        let _ = std::fs::rename(&temporary, path);
+    }
+}
+
+/// The value of a variable, if it is set and not empty.
+fn path_of(value: Option<&OsStr>) -> Option<PathBuf> {
+    value.filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
 /// The hooks of one session.
@@ -51,18 +66,28 @@ impl Hooks {
     /// empty, which leaves the app as it is without them.
     #[must_use]
     pub fn from_values(dump: Option<&OsStr>, idle: Option<&OsStr>) -> Option<Self> {
-        todo!("{dump:?} {idle:?}")
+        let (dump, idle) = (path_of(dump), path_of(idle));
+        (dump.is_some() || idle.is_some()).then_some(Self {
+            dump,
+            idle,
+            seen: 0,
+            answered: 0,
+            armed: None,
+        })
     }
 
     /// Hooks from the environment.
     #[must_use]
     pub fn from_env() -> Option<Self> {
-        todo!()
+        Self::from_values(
+            std::env::var_os(DUMP_ENV).as_deref(),
+            std::env::var_os(IDLE_ENV).as_deref(),
+        )
     }
 
     /// Records one received [`SYNC_CHORD`].
     pub fn note_sync(&mut self) {
-        todo!()
+        self.seen += 1;
     }
 
     /// Call after a frame is drawn. Writes the dump for a pending sync when
@@ -73,13 +98,25 @@ impl Hooks {
         settled: bool,
         snapshot: impl FnOnce() -> String,
     ) -> bool {
-        let _ = (settled, snapshot);
-        todo!()
+        if self.armed.is_some() || self.seen == self.answered || !settled {
+            return false;
+        }
+        if let Some(dump) = &self.dump {
+            write_atomic(dump, &snapshot());
+        }
+        self.armed = Some(self.seen);
+        true
     }
 
     /// Call once the previous frame was swapped: answers the armed sync.
     pub fn after_swap(&mut self) {
-        todo!()
+        let Some(count) = self.armed.take() else {
+            return;
+        };
+        self.answered = count;
+        if let Some(idle) = &self.idle {
+            write_atomic(idle, &format!("{count}\n"));
+        }
     }
 }
 

@@ -54,6 +54,9 @@ const OUTPUT_NAME: &str = "HEADLESS-1";
 /// Segments of a `drag` that does not name its own.
 const DRAG_SEGMENTS: u32 = 4;
 
+/// Where the pointer waits on the canvas when a case starts.
+const PARK: (i32, i32) = (400, 300);
+
 /// Strokes of the `strokes-5000` scene.
 const SCENE_STROKES: usize = 5000;
 
@@ -66,6 +69,8 @@ enum Step {
     Type(Vec<String>),
     /// `swaymsg seat - cursor` arguments.
     Pointer(Vec<String>),
+    /// One wheel notch: negative is up (ADR-T75-2).
+    Wheel(i32),
     /// Output size to set, waited for in the snapshot.
     Output(u32, u32),
     /// Compare the state with `<name>.snap` here.
@@ -225,8 +230,8 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
                 segments,
             ));
         }
-        ("wheel", ["up"]) => case.steps.push(pointer(&["press", "button4"])),
-        ("wheel", ["down"]) => case.steps.push(pointer(&["press", "button5"])),
+        ("wheel", ["up"]) => case.steps.push(Step::Wheel(-1)),
+        ("wheel", ["down"]) => case.steps.push(Step::Wheel(1)),
         ("resize", [w, h]) => case.steps.push(Step::Output(number(w)?, number(h)?)),
         ("checkpoint", [name]) => case.steps.push(Step::Checkpoint((*name).to_owned())),
         ("close", []) => case.ending = Ending::Close,
@@ -557,6 +562,31 @@ fn wire_string(text: &str) -> Vec<u8> {
     out
 }
 
+/// Protocol object id of the virtual pointer [`announce_pointer`] creates.
+const VIRTUAL_POINTER_ID: u32 = 5;
+
+/// Scroll distance of one notch, as a real wheel reports it.
+const NOTCH_UNITS: i32 = 15;
+
+/// One wheel notch on the virtual pointer: axis source `wheel`, a
+/// vertical `axis_discrete` and a `frame` (ADR-T75-2).
+fn wheel_message(notch: i32) -> Vec<u8> {
+    const AXIS_SOURCE: u32 = 5;
+    const AXIS_DISCRETE: u32 = 7;
+    const FRAME: u32 = 4;
+    let (time, vertical) = (0u32, 0u32);
+    // wl_fixed_t: 24.8 fixed point.
+    let value = (NOTCH_UNITS * notch) << 8;
+    let mut discrete = time.to_ne_bytes().to_vec();
+    discrete.extend(vertical.to_ne_bytes());
+    discrete.extend(value.to_ne_bytes());
+    discrete.extend(notch.to_ne_bytes());
+    let mut message = wire(VIRTUAL_POINTER_ID, AXIS_SOURCE, &0u32.to_ne_bytes());
+    message.extend(wire(VIRTUAL_POINTER_ID, AXIS_DISCRETE, &discrete));
+    message.extend(wire(VIRTUAL_POINTER_ID, FRAME, &[]));
+    message
+}
+
 /// The global name of `interface` in a stream of registry events, if the
 /// messages seen so far announce it; and whether callback 3 has fired.
 fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
@@ -586,7 +616,8 @@ fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
 }
 
 /// Creates a virtual pointer and keeps it while the stream is open. It
-/// sends no events: it only gives the seat a pointer (ADR-T75-1).
+/// gives the seat a pointer (ADR-T75-1) and carries wheel notches
+/// (ADR-T75-2); `swaymsg` drives every other pointer event.
 fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
     const INTERFACE: &str = "zwlr_virtual_pointer_manager_v1";
     let fail = |err: std::io::Error| format!("virtual pointer: {err}");
@@ -622,14 +653,15 @@ fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
     let mut message = wire(2, 0, &bind);
     message.extend(wire(4, 0, &create));
     stream.write_all(&message).map_err(fail)?;
+    debug_assert_eq!(VIRTUAL_POINTER_ID, 5);
     Ok(stream)
 }
 
 /// The running private session: tools get its sockets and nothing else.
 struct Session {
     guard: Guard,
-    /// Holds the seat's pointer.
-    _pointer: UnixStream,
+    /// Holds the seat's pointer and carries wheel notches.
+    pointer: UnixStream,
     /// `wtype` processes still alive, oldest first.
     keyboards: VecDeque<Child>,
 }
@@ -645,7 +677,7 @@ impl Session {
         let pointer = announce_pointer(&guard.wayland)?;
         let mut session = Self {
             guard,
-            _pointer: pointer,
+            pointer,
             keyboards: VecDeque::new(),
         };
         // A keyboard on the seat from before the app starts.
@@ -837,6 +869,13 @@ impl Running<'_> {
                 self.session.swaymsg(&command)?;
                 self.sync_with(&[])
             }
+            Step::Wheel(notch) => {
+                self.session
+                    .pointer
+                    .write_all(&wheel_message(*notch))
+                    .map_err(|err| format!("wheel: {err}"))?;
+                self.sync_with(&[])
+            }
             Step::Output(w, h) => {
                 let mode = format!("{w}x{h}");
                 self.session
@@ -899,6 +938,11 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         sent: 0,
     };
     running.wait_for_viewport(OUTPUT)?;
+    // Entering a surface gives no motion event, and the backend would
+    // report the first press at a stale position: enter, then move.
+    for step in [move_to(PARK.0, PARK.1), move_to(PARK.0 + 1, PARK.1)] {
+        running.run_step(&step, source, &case.sections)?;
+    }
     for step in &case.steps {
         running.run_step(step, source, &case.sections)?;
     }
@@ -1513,6 +1557,34 @@ mod self_tests {
         assert_eq!(bytes.len(), 8);
         assert_eq!(bytes.get(4..).unwrap_or(&[]), b"abc\0");
         assert_eq!(wire_string("abcd").len(), 12);
+    }
+
+    #[test]
+    fn parse_input_wheel_is_one_notch() {
+        assert_eq!(parsed("wheel up\n").steps, [Step::Wheel(-1)]);
+        assert_eq!(parsed("wheel down\n").steps, [Step::Wheel(1)]);
+    }
+
+    #[test]
+    fn wheel_message_is_source_discrete_and_frame() {
+        // Act
+        let message = wheel_message(1);
+
+        // Assert: three requests on the virtual pointer.
+        let word = |i: usize| {
+            u32::from_ne_bytes(
+                message
+                    .get(i..i + 4)
+                    .and_then(|b| b.try_into().ok())
+                    .unwrap_or([0; 4]),
+            )
+        };
+        assert_eq!(message.len(), 12 + 24 + 8);
+        assert_eq!((word(0), word(4) & 0xffff), (VIRTUAL_POINTER_ID, 5));
+        assert_eq!((word(12), word(16) & 0xffff), (VIRTUAL_POINTER_ID, 7));
+        assert_eq!(word(28), 15 << 8);
+        assert_eq!(word(32), 1);
+        assert_eq!((word(36), word(40) & 0xffff), (VIRTUAL_POINTER_ID, 4));
     }
 
     #[test]

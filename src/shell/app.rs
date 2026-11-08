@@ -46,7 +46,7 @@ use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
 use crate::shell::diag::event::{Event, FrameKind};
-use crate::shell::diag::{self, Level};
+use crate::shell::diag::{self, Level, e2e};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
@@ -580,6 +580,8 @@ pub async fn run() {
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
     let mut recorder = FrameRecorder::new(&editor);
+    // Inert unless the end-to-end suite sets its variables (ADR-T75-1).
+    let mut hooks = e2e::Hooks::from_env();
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -598,6 +600,15 @@ pub async fn run() {
         }
         let mut dump_asked = false;
         for event in collector.drain() {
+            if let Some(hooks) = &mut hooks {
+                if e2e::is_sync(&event) {
+                    hooks.note_sync();
+                    continue;
+                }
+                if e2e::is_sync_char(&event) {
+                    continue;
+                }
+            }
             if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
@@ -613,7 +624,18 @@ pub async fn run() {
         }
         let presented = frame.present(&editor, viewport, dpi, dirty);
         recorder.end(&mut collector, &editor, presented, dump_asked);
+        if let Some(hooks) = &mut hooks {
+            let moved = matches!(presented, Some((Redraw::Moved, _)));
+            let settled = !moved && !frame.rerender;
+            if hooks.frame_presented(settled, || editor.snapshot().to_text()) {
+                // Wake once more to answer after this frame is swapped.
+                schedule_update();
+            }
+        }
         next_frame().await;
+        if let Some(hooks) = &mut hooks {
+            hooks.after_swap();
+        }
     }
 }
 
