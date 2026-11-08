@@ -1,11 +1,11 @@
 ---
 id: T75
 title: End-to-end test suite
-status: todo
+status: in-progress
 wave: 34
 branch: task/T75-e2e-tests
 depends_on: [T73, T74]
-adrs: []
+adrs: ["[[ADR-T75-1 Headless sway session for end-to-end tests]]"]
 feature: "[[End-to-end tests]]"
 tutorial: ""
 tags: [task, testing]
@@ -83,31 +83,55 @@ files. It runs locally with one command and nightly on GitHub
 
 ## Spec
 
-To be written in the spec step. Expected acceptance criteria:
+Design in [[ADR-T75-1 Headless sway session for end-to-end tests]].
+
+Everything needs `sway`, `wtype` and `grim`. Cases live in
+`tests/e2e/<case>/`: `input`, optional `start.snap`, `expected.snap`, and
+`expected.ppm` for the 5 cases where pixels are the point.
 
 - **AC-1 One command.** `scripts/e2e.sh` runs every case on a machine
   with the listed packages and no display of its own, and exits non-zero
-  on any failure. *Test:* the runner itself; output in *Log*.
-- **AC-2 Real path.** At least the keyboard and pointer cases go through
-  the compositor and `shell::input_map`, not straight into `Editor`.
-  *Test:* a case whose expected result depends on the key translation
-  (e.g. a shifted symbol in a text block).
-- **AC-3 State and pixels.** A case can assert on the final snapshot, a
-  screenshot within tolerance, or both; a mismatch prints a text diff or
-  saves a diff image. *Test:* `tests/e2e.rs` self-tests with a
-  deliberately wrong golden.
+  on any failure. *Test:* `e2e_every_case`; output in *Log*.
+- **AC-2 Real path.** The keyboard and pointer cases go through the
+  compositor and `shell::input_map`, not straight into `Editor`.
+  *Test:* case `text-formula`, whose text holds shifted symbols typed
+  through `wtype`; case `creation-tools` for the pointer.
+- **AC-3 State and pixels.** A case asserts on the final snapshot and,
+  when it has a golden, a screenshot within its tolerance; a mismatch
+  prints a text diff or saves a diff image. *Test:*
+  `compare_snapshot_wrong_golden_prints_diff`,
+  `compare_image_wrong_golden_reports_and_draws_diff`,
+  `compare_image_within_tolerance_matches`.
 - **AC-4 No sleeps.** The harness waits on the app's idle signal with a
   timeout, never on fixed sleeps; a hung app fails the case after the
-  timeout with its log attached. *Test:* a case with a timeout.
-- **AC-5 Clean exit.** Every case ends with exit code 0, no
-  `crash.log`, and no anomaly line in `draw.log`. *Test:* checked by the
-  runner for every case.
+  timeout with its log attached. *Test:*
+  `wait_for_sync_hung_app_times_out_with_log`.
+- **AC-5 Clean exit.** Every case ends cleanly: exit code 0, or for the
+  SIGINT case death by that signal as [[ADR-T48-1 Signal handling in the vendored miniquad]]
+  requires; no `crash.log`; no `WARN` or `ERROR` line in `draw.log`.
+  *Test:* `check_exit_*`, run for every case by `e2e_every_case`.
 - **AC-6 CI.** The nightly workflow runs the suite and uploads
-  artifacts on failure. *Test:* one manual `workflow_dispatch` run,
+  `target/e2e/` on failure. *Test:* one manual `workflow_dispatch` run,
   linked in *Log*.
-- **AC-7 Test hooks are inert.** Without the env vars the binary
-  behaves as before (no extra files, no idle signal). *Test:* unit tests
-  of the env parsing.
+- **AC-7 Test hooks are inert.** Without the env vars the binary behaves
+  as before: no files, and the sync chord is not intercepted. *Test:*
+  `hooks_from_env_unset_is_none`, `hooks_from_env_empty_is_none`,
+  `hooks_is_sync_only_for_the_chord`,
+  `hooks_write_nothing_until_a_sync`.
+- **AC-8 Never the desktop.** The harness refuses to start any tool
+  unless the sockets are inside the private runtime directory of
+  `scripts/e2e.sh`. *Test:* `session_guard_refuses_*`, and
+  `script_isolates_the_session`.
+
+### Cases
+
+`launch-close`, `launch-sigint`, `ctrl-q-unbound`, `creation-tools`,
+`text-formula`, `key-repeat-modifiers`, `toolbar-clicks`,
+`pan-zoom-5000`, `selection-move-undo`, `window-resize`.
+
+Screenshot goldens: `creation-tools`, `text-formula`, `toolbar-clicks`,
+`window-resize`, `selection-move-undo` (the fifth, chosen because it
+crosses the document layer and the overlay).
 
 ## Out of scope
 
@@ -144,3 +168,18 @@ tutorial of T74.
 ## Log
 
 - 2026-11-03 — note written at the owner's request.
+- 2026-11-08 — UNATTENDED CHOICE: the app has no quit key (`Ctrl+Q` is
+  not bound), so "close with a key" is not possible. Case `ctrl-q-unbound`
+  proves the chord changes nothing, and the quit paths are the compositor
+  close and `SIGINT`. Adding a quit key is an owner decision.
+- 2026-11-08 — UNATTENDED CHOICE: the final snapshot is written at every
+  sync, not on exit: the exit path is in `src/main.rs`, which this task
+  does not own, and the last sync holds the same state.
+- 2026-11-08 — UNATTENDED CHOICE: `swaymsg seat - cursor` needs a pointer
+  on the seat, and a headless seat has none. The harness holds one
+  virtual pointer open to announce it; `swaymsg` still drives every event.
+- 2026-11-08 — Bug found, not fixed here (`vendor/miniquad` is not owned):
+  `keyboard_handle_keymap` asserts on `mmap` and panics on a `no_keymap`
+  event (size 0). Triggered by a new virtual keyboard while the seat has
+  none active. The harness avoids it; it deserves its own task, with a
+  `tests/e2e/regression-…` case.
