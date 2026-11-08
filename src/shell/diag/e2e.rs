@@ -90,14 +90,20 @@ impl Hooks {
         self.seen += 1;
     }
 
+    /// Takes the events of the sync chord; returns whether `event` was one
+    /// and must not reach the editor.
+    pub fn intercept(&mut self, event: &InputEvent) -> bool {
+        if is_sync(event) {
+            self.note_sync();
+            return true;
+        }
+        is_sync_char(event)
+    }
+
     /// Call after a frame is drawn. Writes the dump for a pending sync when
     /// the frame is `settled`; returns whether the loop must wake once more
     /// so [`Self::after_swap`] runs after this frame is on screen.
-    pub fn frame_presented(
-        &mut self,
-        settled: bool,
-        snapshot: impl FnOnce() -> String,
-    ) -> bool {
+    pub fn frame_presented(&mut self, settled: bool, snapshot: impl FnOnce() -> String) -> bool {
         if self.armed.is_some() || self.seen == self.answered || !settled {
             return false;
         }
@@ -189,10 +195,7 @@ mod tests {
             mods: CTRL_SHIFT,
         }));
         // Not bound in the keymap: the chord never reaches a command.
-        assert_eq!(
-            crate::core::keymap::resolve(Key::Digit9, CTRL_SHIFT),
-            None
-        );
+        assert_eq!(crate::core::keymap::resolve(Key::Digit9, CTRL_SHIFT), None);
     }
 
     #[test]

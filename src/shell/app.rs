@@ -600,14 +600,8 @@ pub async fn run() {
         }
         let mut dump_asked = false;
         for event in collector.drain() {
-            if let Some(hooks) = &mut hooks {
-                if e2e::is_sync(&event) {
-                    hooks.note_sync();
-                    continue;
-                }
-                if e2e::is_sync_char(&event) {
-                    continue;
-                }
+            if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
+                continue;
             }
             if is_dump_chord(&event) {
                 dump_asked = true;
@@ -625,17 +619,27 @@ pub async fn run() {
         let presented = frame.present(&editor, viewport, dpi, dirty);
         recorder.end(&mut collector, &editor, presented, dump_asked);
         if let Some(hooks) = &mut hooks {
-            let moved = matches!(presented, Some((Redraw::Moved, _)));
-            let settled = !moved && !frame.rerender;
-            if hooks.frame_presented(settled, || editor.snapshot().to_text()) {
-                // Wake once more to answer after this frame is swapped.
-                schedule_update();
-            }
+            answer_sync(hooks, &frame, presented, &editor);
         }
         next_frame().await;
         if let Some(hooks) = &mut hooks {
             hooks.after_swap();
         }
+    }
+}
+
+/// Lets the end-to-end hooks answer a pending sync once the frame is
+/// settled, waking the loop so the answer comes after the swap (ADR-T75-1).
+fn answer_sync(
+    hooks: &mut e2e::Hooks,
+    frame: &CachedFrame,
+    presented: Option<(Redraw, Duration)>,
+    editor: &Editor,
+) {
+    let moved = matches!(presented, Some((Redraw::Moved, _)));
+    let settled = !moved && !frame.rerender;
+    if hooks.frame_presented(settled, || editor.snapshot().to_text()) {
+        schedule_update();
     }
 }
 

@@ -121,7 +121,8 @@ struct Case {
 }
 
 fn number<T: std::str::FromStr>(word: &str) -> Result<T, String> {
-    word.parse().map_err(|_| format!("`{word}` is not a number"))
+    word.parse()
+        .map_err(|_| format!("`{word}` is not a number"))
 }
 
 fn button(word: Option<&str>) -> Result<&'static str, String> {
@@ -207,11 +208,11 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
             ]));
         }
         ("move", [x, y]) => case.steps.push(move_to(number(x)?, number(y)?)),
-        ("press", []) | ("press", [_]) => {
+        ("press", [] | [_]) => {
             case.steps
                 .push(pointer(&["press", button(args.first().copied())?]));
         }
-        ("release", []) | ("release", [_]) => {
+        ("release", [] | [_]) => {
             case.steps
                 .push(pointer(&["release", button(args.first().copied())?]));
         }
@@ -222,7 +223,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
                 pointer(&["release", "button1"]),
             ]);
         }
-        ("drag", [x1, y1, x2, y2]) | ("drag", [x1, y1, x2, y2, _]) => {
+        ("drag", [x1, y1, x2, y2] | [x1, y1, x2, y2, _]) => {
             let segments = args.get(4).map_or(Ok(DRAG_SEGMENTS), |s| number(s))?;
             case.steps.extend(drag(
                 (number(x1)?, number(y1)?),
@@ -309,10 +310,7 @@ fn compare_snapshot(actual: &str, path: &Path, update: bool) -> Result<(), Strin
             "no golden at {}; run with DRAW_UPDATE_SNAPSHOTS=1",
             path.display()
         )),
-        Golden::Mismatch(diff) => Err(format!(
-            "state differs from {}\n{diff}",
-            path.display()
-        )),
+        Golden::Mismatch(diff) => Err(format!("state differs from {}\n{diff}", path.display())),
     }
 }
 
@@ -390,8 +388,13 @@ fn compare_images(actual: &Image, expected: &Image, tolerance: Tolerance) -> Res
     }
     let mut rgb = Vec::with_capacity(actual.rgb.len());
     let mut differing = 0usize;
-    for (a, e) in actual.rgb.chunks_exact(3).zip(expected.rgb.chunks_exact(3)) {
-        if a.iter().zip(e).any(|(x, y)| x.abs_diff(*y) > tolerance.channel) {
+    let (actual_pixels, _) = actual.rgb.as_chunks::<3>();
+    let (expected_pixels, _) = expected.rgb.as_chunks::<3>();
+    for (a, e) in actual_pixels.iter().zip(expected_pixels) {
+        if a.iter()
+            .zip(e)
+            .any(|(x, y)| x.abs_diff(*y) > tolerance.channel)
+        {
             differing += 1;
             rgb.extend([255, 0, 0]);
         } else {
@@ -603,7 +606,8 @@ fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
         if object == 3 {
             done = true;
         }
-        if object == 2 && header & 0xffff == 0 {
+        let opcode = header & 0xffff;
+        if object == 2 && opcode == 0 {
             let length = word(body, 4).unwrap_or(0) as usize;
             let name = body.get(8..8 + length.saturating_sub(1));
             if name == Some(interface.as_bytes()) {
@@ -622,9 +626,7 @@ fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
     const INTERFACE: &str = "zwlr_virtual_pointer_manager_v1";
     let fail = |err: std::io::Error| format!("virtual pointer: {err}");
     let mut stream = UnixStream::connect(socket).map_err(fail)?;
-    stream
-        .set_read_timeout(Some(SYNC_TIMEOUT))
-        .map_err(fail)?;
+    stream.set_read_timeout(Some(SYNC_TIMEOUT)).map_err(fail)?;
     // wl_display.get_registry(2), wl_display.sync(3).
     let mut hello = wire(1, 1, &2u32.to_ne_bytes());
     hello.extend(wire(1, 0, &3u32.to_ne_bytes()));
@@ -649,11 +651,10 @@ fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
     bind.extend(4u32.to_ne_bytes());
     // create_virtual_pointer(no seat, id 5).
     let mut create = 0u32.to_ne_bytes().to_vec();
-    create.extend(5u32.to_ne_bytes());
+    create.extend(VIRTUAL_POINTER_ID.to_ne_bytes());
     let mut message = wire(2, 0, &bind);
     message.extend(wire(4, 0, &create));
     stream.write_all(&message).map_err(fail)?;
-    debug_assert_eq!(VIRTUAL_POINTER_ID, 5);
     Ok(stream)
 }
 
@@ -788,11 +789,7 @@ fn strokes_5000() -> Editor {
     let mut editor = scenes::editor();
     for i in 0..SCENE_STROKES {
         let (x, y) = ((i % 100) as f32 * 12.0, (i / 100) as f32 * 12.0);
-        scenes::drag(
-            &mut editor,
-            scenes::v(x, y),
-            scenes::v(x + 9.0, y + 9.0),
-        );
+        scenes::drag(&mut editor, scenes::v(x, y), scenes::v(x + 9.0, y + 9.0));
     }
     editor
 }
@@ -835,14 +832,19 @@ impl Running<'_> {
         let keyboard = self.session.spawn_wtype(&all)?;
         self.session.keyboards.push_back(keyboard);
         self.sent += 1;
-        wait_for_sync(&self.idle, self.sent, SYNC_TIMEOUT, &mut self.child, &self.log)?;
+        wait_for_sync(
+            &self.idle,
+            self.sent,
+            SYNC_TIMEOUT,
+            &mut self.child,
+            &self.log,
+        )?;
         self.session.retire_old_keyboards();
         Ok(())
     }
 
     fn snapshot(&self) -> Result<String, String> {
-        std::fs::read_to_string(&self.dump)
-            .map_err(|err| format!("{}: {err}", self.dump.display()))
+        std::fs::read_to_string(&self.dump).map_err(|err| format!("{}: {err}", self.dump.display()))
     }
 
     /// Syncs until the window has the size `(w, h)`.
@@ -884,7 +886,11 @@ impl Running<'_> {
             }
             Step::Checkpoint(name) => {
                 let actual = select_sections(&self.snapshot()?, sections);
-                compare_snapshot(&actual, &source.join(format!("{name}.snap")), update_requested())
+                compare_snapshot(
+                    &actual,
+                    &source.join(format!("{name}.snap")),
+                    update_requested(),
+                )
             }
         }
     }
@@ -965,7 +971,9 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         if !status.success() {
             return Err(format!("grim failed: {status}"));
         }
-        if let Err(problem) = compare_screenshot(&shot, &source.join("expected.ppm"), run, tolerance, update) {
+        if let Err(problem) =
+            compare_screenshot(&shot, &source.join("expected.ppm"), run, tolerance, update)
+        {
             problems.push(problem);
         }
     }
@@ -1018,8 +1026,8 @@ fn compare_screenshot(
             .map_err(|err| format!("cannot write {}: {err}", golden.display()));
     }
     let actual = Image::parse_ppm(&bytes)?;
-    let expected = std::fs::read(golden)
-        .map_err(|err| format!("no golden at {}: {err}", golden.display()))?;
+    let expected =
+        std::fs::read(golden).map_err(|err| format!("no golden at {}: {err}", golden.display()))?;
     let expected = Image::parse_ppm(&expected)?;
     compare_images(&actual, &expected, tolerance).map_err(|diff| {
         let path = run.join("diff.ppm");
@@ -1050,7 +1058,10 @@ fn case_directories(root: &Path, only: Option<&str>) -> Result<Vec<PathBuf>, Str
         .filter_map(|entry| entry.ok().map(|e| e.path()))
         .filter(|path| path.join("input").is_file())
         .filter(|path| {
-            only.is_none_or(|name| path.file_name().is_some_and(|n| n == std::ffi::OsStr::new(name)))
+            only.is_none_or(|name| {
+                path.file_name()
+                    .is_some_and(|n| n == std::ffi::OsStr::new(name))
+            })
         })
         .collect();
     cases.sort();
@@ -1109,6 +1120,20 @@ mod self_tests {
         dir
     }
 
+    /// The error of a result that must have failed.
+    trait Failure {
+        fn failure(self) -> String;
+    }
+
+    impl<T: std::fmt::Debug> Failure for Result<T, String> {
+        fn failure(self) -> String {
+            match self {
+                Ok(value) => panic!("expected an error, got {value:?}"),
+                Err(err) => err,
+            }
+        }
+    }
+
     fn parsed(text: &str) -> Case {
         parse_input(text).unwrap_or_else(|err| panic!("{err}"))
     }
@@ -1144,9 +1169,11 @@ mod self_tests {
     fn parse_input_chord_releases_in_reverse() {
         let case = parsed("chord ctrl shift z\n");
 
-        let expected = ["-M", "ctrl", "-M", "shift", "-k", "z", "-m", "shift", "-m", "ctrl"]
-            .map(str::to_owned)
-            .to_vec();
+        let expected = [
+            "-M", "ctrl", "-M", "shift", "-k", "z", "-m", "shift", "-m", "ctrl",
+        ]
+        .map(str::to_owned)
+        .to_vec();
         assert_eq!(case.steps, [Step::Type(expected)]);
     }
 
@@ -1154,7 +1181,9 @@ mod self_tests {
     fn parse_input_hold_presses_waits_and_releases() {
         let case = parsed("hold r 900\n");
 
-        let expected = ["-P", "r", "-s", "900", "-p", "r"].map(str::to_owned).to_vec();
+        let expected = ["-P", "r", "-s", "900", "-p", "r"]
+            .map(str::to_owned)
+            .to_vec();
         assert_eq!(case.steps, [Step::Type(expected)]);
     }
 
@@ -1206,9 +1235,12 @@ mod self_tests {
 
     #[test]
     fn parse_input_reports_the_bad_line() {
-        let err = parse_input("key a\nfrobnicate 1\n").unwrap_err();
+        let err = parse_input("key a\nfrobnicate 1\n").failure();
 
-        assert!(err.contains("line 2") && err.contains("frobnicate"), "{err}");
+        assert!(
+            err.contains("line 2") && err.contains("frobnicate"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -1239,17 +1271,20 @@ mod self_tests {
         std::fs::write(&path, "tool pen\n").unwrap_or_else(|err| panic!("{err}"));
 
         // Act
-        let err = compare_snapshot("tool rect\n", &path, false).unwrap_err();
+        let err = compare_snapshot("tool rect\n", &path, false).failure();
 
         // Assert
-        assert!(err.contains("tool pen") && err.contains("tool rect"), "{err}");
+        assert!(
+            err.contains("tool pen") && err.contains("tool rect"),
+            "{err}"
+        );
     }
 
     #[test]
     fn compare_snapshot_missing_golden_says_how_to_create_it() {
         let path = temp_dir("missing").join("expected.snap");
 
-        let err = compare_snapshot("x\n", &path, false).unwrap_err();
+        let err = compare_snapshot("x\n", &path, false).failure();
 
         assert!(err.contains("DRAW_UPDATE_SNAPSHOTS=1"), "{err}");
     }
@@ -1260,7 +1295,10 @@ mod self_tests {
 
         assert_eq!(compare_snapshot("new\n", &path, true), Ok(()));
 
-        assert_eq!(std::fs::read_to_string(&path).ok().as_deref(), Some("new\n"));
+        assert_eq!(
+            std::fs::read_to_string(&path).ok().as_deref(),
+            Some("new\n")
+        );
     }
 
     #[test]
@@ -1359,7 +1397,7 @@ mod self_tests {
         let _ = child.wait();
 
         // Assert
-        let err = result.unwrap_err();
+        let err = result.failure();
         assert!(err.contains("timed out"), "{err}");
         assert!(err.contains("the last thing the app said"), "{err}");
     }
@@ -1391,11 +1429,17 @@ mod self_tests {
         let started = Instant::now();
 
         // Act
-        let result = wait_for_sync(&dir.join("idle"), 1, SYNC_TIMEOUT, &mut child, &dir.join("log"));
+        let result = wait_for_sync(
+            &dir.join("idle"),
+            1,
+            SYNC_TIMEOUT,
+            &mut child,
+            &dir.join("log"),
+        );
         let _ = child.wait();
 
         // Assert
-        assert!(result.unwrap_err().contains("exited"));
+        assert!(result.failure().contains("exited"));
         assert!(started.elapsed() < SYNC_TIMEOUT);
     }
 
@@ -1451,7 +1495,8 @@ mod self_tests {
         let dir = temp_dir(name);
         let wayland =
             UnixListener::bind(dir.join("wayland-1")).unwrap_or_else(|err| panic!("{err}"));
-        let sway = UnixListener::bind(dir.join("sway-ipc.sock")).unwrap_or_else(|err| panic!("{err}"));
+        let sway =
+            UnixListener::bind(dir.join("sway-ipc.sock")).unwrap_or_else(|err| panic!("{err}"));
         (dir, wayland, sway)
     }
 
@@ -1475,7 +1520,7 @@ mod self_tests {
         let wayland = Some(dir.join("wayland-1").into_os_string());
         let sway = Some(dir.join("sway-ipc.sock").into_os_string());
 
-        let err = session_guard(None, wayland, sway).unwrap_err();
+        let err = session_guard(None, wayland, sway).failure();
 
         assert!(err.contains("scripts/e2e.sh"), "{err}");
     }
@@ -1485,7 +1530,8 @@ mod self_tests {
         // Arrange: the desktop's socket, somewhere else.
         let (dir, _wayland, _sway) = private_session("outside");
         let desktop = temp_dir("desktop");
-        let _real = UnixListener::bind(desktop.join("wayland-0")).unwrap_or_else(|err| panic!("{err}"));
+        let _real =
+            UnixListener::bind(desktop.join("wayland-0")).unwrap_or_else(|err| panic!("{err}"));
 
         // Act
         let err = session_guard(
@@ -1493,7 +1539,7 @@ mod self_tests {
             Some(desktop.join("wayland-0").into_os_string()),
             Some(dir.join("sway-ipc.sock").into_os_string()),
         )
-        .unwrap_err();
+        .failure();
 
         // Assert
         assert!(err.contains("outside"), "{err}");
@@ -1508,7 +1554,7 @@ mod self_tests {
             Some(OsString::from("wayland-0")),
             Some(dir.join("sway-ipc.sock").into_os_string()),
         )
-        .unwrap_err();
+        .failure();
 
         assert!(err.contains("outside"), "{err}");
     }
@@ -1523,7 +1569,7 @@ mod self_tests {
             Some(dir.join("wayland-9").into_os_string()),
             Some(dir.join("sway-ipc.sock").into_os_string()),
         )
-        .unwrap_err();
+        .failure();
 
         assert!(err.contains("not a socket"), "{err}");
     }
