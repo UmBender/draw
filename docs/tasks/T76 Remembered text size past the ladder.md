@@ -1,11 +1,11 @@
 ---
 id: T76
 title: Remembered text size past the ladder
-status: todo
+status: in-progress
 wave: 34
 branch: fix/remembered-text-size
 depends_on: [T74]
-adrs: []
+adrs: [ADR-T76-1]
 feature: "[[Text blocks]]"
 tutorial: ""
 tags: [task]
@@ -62,16 +62,27 @@ size.
 
 ## Spec
 
-Draft; the spec step finalises it.
+Settled by [[ADR-T76-1 Remembered text size stays on the ladder]]: the
+remembered on-screen size is clamped to
+`text_size_px(MIN_WIDTH_PX)`..=`text_size_px(MAX_WIDTH_PX)` in
+`Editor::finish_text`, at both ends. The block keeps its world size.
 
 - **AC-1** — Resizing a block, zooming to `ZOOM_MAX` and ending the edit
-  remembers at most the top rung, and the snapshot taken then parses and
-  round-trips. *Test:* `core::editor::tests::regression_T76_remembered_size_past_the_ladder`
+  remembers at most the top rung, which never exceeds the reader's
+  `MAX_TEXT_SIZE_PX`, and the snapshot taken then parses and round-trips.
+  The block keeps its world size. *Test:*
+  `core::editor::tests::regression_t76_remembered_size_past_the_ladder`,
+  from the snapshot `regressions/T76-remembered-size-past-the-ladder`. The
+  name is lower-case because `regression_T76_…` fails `non_snake_case`
+  under `-D warnings`.
 - **AC-2** — The same at `ZOOM_MIN`: the memory is at least the lowest
   rung. *Test:* `core::editor::tests::text_size_memory_stays_on_the_ladder_at_min_zoom`
 - **AC-3** — A remembered size within the ladder's range is unchanged by
-  the fix, so the next block keeps its on-screen size across zoom. *Test:*
-  the existing `core::editor::tests::text_size_memory_keeps_on_screen_size_across_zoom`
+  the fix, so the next block keeps its on-screen size across zoom. *Tests:*
+  the existing `core::editor::tests::text_size_memory_keeps_on_screen_size_across_zoom`,
+  which ends the edit at zoom 1, and
+  `core::editor::tests::text_size_memory_inside_the_ladder_is_not_clamped`,
+  which ends it at another zoom.
 - **AC-4** — The reader still rejects a remembered size above
   `MAX_TEXT_SIZE_PX`. *Test:* `core::tools::text::tests::read_snapshot_rejects_size_past_the_ladder`
 - **AC-5** — The T71 seed is committed in `tests/fuzz.proptest-regressions`
@@ -112,3 +123,5 @@ None planned; the ADR is enough.
 - 2026-11-04 — created from the `--fuzz` failures of T67 and T71. Apply
   the seed from `stash@{0}` in the regression step, and drop the stash
   only once it is committed.
+- 2026-11-08 — spec settled. There are no new types, so the models step
+  produces nothing and is skipped.
