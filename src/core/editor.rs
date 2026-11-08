@@ -1078,15 +1078,18 @@ impl Editor {
 
     /// Ends the open text block, committing it as one undo step: a new
     /// block is inserted, a changed one replaced, a blank one removed
-    /// (ADR-T29-2). A resized block's on-screen size becomes the size of
-    /// new blocks (ADR-T37-1). Returns whether there was a block.
+    /// (ADR-T29-2). A resized block's on-screen size, kept to the text
+    /// ladder's range, becomes the size of new blocks (ADR-T37-1,
+    /// ADR-T76-1). Returns whether there was a block.
     fn finish_text(&mut self) -> bool {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
         let px = edit.size * self.camera.zoom();
         if edit.resized() && px.is_finite() && px > 0.0 {
-            self.tools.text.size_px = Some(px);
+            let lowest = text::text_size_px(MIN_WIDTH_PX);
+            let highest = text::text_size_px(MAX_WIDTH_PX);
+            self.tools.text.size_px = Some(px.clamp(lowest, highest));
         }
         if let Some(host) = edit.host().copied() {
             self.track_document(false, |ed| {
