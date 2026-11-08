@@ -1,4 +1,87 @@
 //! Test-only hooks for the end-to-end suite (T75, ADR-T75-1).
+//!
+//! Inert unless [`DUMP_ENV`] or [`IDLE_ENV`] is set. The harness sends
+//! [`SYNC_CHORD`] after each input step. Wayland keeps a client's events in
+//! order, so once the app has answered that chord it has handled everything
+//! sent before it. The answer is the editor snapshot in the dump file, then
+//! the count of syncs in the idle file, written after the frame is on screen.
+
+use std::ffi::OsStr;
+use std::path::PathBuf;
+
+use crate::core::input::{InputEvent, Key};
+use crate::core::keymap::KeyChord;
+
+/// Environment variable naming the file that receives the snapshot.
+pub const DUMP_ENV: &str = "DRAW_E2E_DUMP";
+
+/// Environment variable naming the file that receives the sync count.
+pub const IDLE_ENV: &str = "DRAW_E2E_IDLE";
+
+/// The chord the harness sends after each input step. Not in the keymap.
+pub const SYNC_CHORD: KeyChord = KeyChord::ctrl_shift(Key::Digit9);
+
+/// Whether `event` is a press of [`SYNC_CHORD`].
+#[must_use]
+pub fn is_sync(event: &InputEvent) -> bool {
+    todo!("{event:?}")
+}
+
+/// Whether `event` is the text that [`SYNC_CHORD`] also produces.
+#[must_use]
+pub fn is_sync_char(event: &InputEvent) -> bool {
+    todo!("{event:?}")
+}
+
+/// The hooks of one session.
+#[derive(Debug)]
+pub struct Hooks {
+    dump: Option<PathBuf>,
+    idle: Option<PathBuf>,
+    /// Syncs received.
+    seen: u64,
+    /// Syncs answered in the idle file.
+    answered: u64,
+    /// The sync whose dump is written, waiting for its frame to be swapped.
+    armed: Option<u64>,
+}
+
+impl Hooks {
+    /// Hooks for these variable values; `None` when both are unset or
+    /// empty, which leaves the app as it is without them.
+    #[must_use]
+    pub fn from_values(dump: Option<&OsStr>, idle: Option<&OsStr>) -> Option<Self> {
+        todo!("{dump:?} {idle:?}")
+    }
+
+    /// Hooks from the environment.
+    #[must_use]
+    pub fn from_env() -> Option<Self> {
+        todo!()
+    }
+
+    /// Records one received [`SYNC_CHORD`].
+    pub fn note_sync(&mut self) {
+        todo!()
+    }
+
+    /// Call after a frame is drawn. Writes the dump for a pending sync when
+    /// the frame is `settled`; returns whether the loop must wake once more
+    /// so [`Self::after_swap`] runs after this frame is on screen.
+    pub fn frame_presented(
+        &mut self,
+        settled: bool,
+        snapshot: impl FnOnce() -> String,
+    ) -> bool {
+        let _ = (settled, snapshot);
+        todo!()
+    }
+
+    /// Call once the previous frame was swapped: answers the armed sync.
+    pub fn after_swap(&mut self) {
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {
