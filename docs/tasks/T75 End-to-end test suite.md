@@ -1,11 +1,11 @@
 ---
 id: T75
 title: End-to-end test suite
-status: in-progress
+status: review
 wave: 34
 branch: task/T75-e2e-tests
 depends_on: [T73, T74]
-adrs: ["[[ADR-T75-1 Headless sway session for end-to-end tests]]"]
+adrs: ["[[ADR-T75-1 Headless sway session for end-to-end tests]]", "[[ADR-T75-2 Wheel notches through the virtual pointer]]"]
 feature: "[[End-to-end tests]]"
 tutorial: ""
 tags: [task, testing]
@@ -153,12 +153,12 @@ crosses the document layer and the overlay).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T75): …`
-- [ ] tests — `test(T75): …` (cases and goldens; the runner fails)
-- [ ] models — `feat(T75): …` (env hooks, case format)
-- [ ] behaviour — `feat(T75): …` (runner, comparison, CI job)
-- [ ] quality — `chore(T75): …`
-- [ ] docs — `docs(T75): …`
+- [x] spec — `docs(T75): …`
+- [x] tests — `test(T75): …` (cases; goldens came with the runner)
+- [x] models — `feat(T75): …` (env hooks)
+- [x] behaviour — `feat(T75): …` (hooks, runner, goldens, CI job)
+- [x] quality — `chore(T75): …`
+- [x] docs — `docs(T75): …`
 
 ## Learning path
 
@@ -183,3 +183,40 @@ tutorial of T74.
   event (size 0). Triggered by a new virtual keyboard while the seat has
   none active. The harness avoids it; it deserves its own task, with a
   `tests/e2e/regression-…` case.
+- 2026-11-08 — AC-1 and AC-3 to AC-5, AC-8: `scripts/e2e.sh` passes all
+  10 cases in 21 s, three compare runs in a row, inside the 1 GB scope (no
+  raise needed). `scripts/check.sh` is green. Run with a deliberately wrong
+  input it exits 101: `window-resize` printed the text diff at its
+  checkpoint, and `selection-move-undo` reported 2384 differing pixels and
+  saved `diff.ppm`. Both mutations were reverted.
+- 2026-11-08 — All 5 screenshot goldens and the state goldens were checked
+  by eye (7.0 MB in total). That caught two wrong first goldens: the pen
+  stroke was lost, and the wheel never zoomed. Both were harness gaps.
+- 2026-11-08 — Harness facts for whoever writes a case: entering a surface
+  gives no motion event, so each case first parks the pointer with two
+  moves (the first press would land on the toolbar at a stale (0, 0)).
+  Pointer steps are synced one by one. Key repeat cannot be compared
+  exactly, so `hold` uses an idempotent key and the check is that the
+  typing after it has no doubled letters.
+- 2026-11-08 — UNATTENDED CHOICE: `scripts/e2e.sh --update` added: the
+  run's permissions refused the `DRAW_UPDATE_SNAPSHOTS=1 scripts/e2e.sh`
+  form. The variable still works; the flag only sets it.
+- 2026-11-08 — UNATTENDED CHOICE: no tutorial note: the task calls it
+  optional, and the feature note has a "Writing a case" section.
+  `docs/architecture/Architecture.md` is not in *Files owned*, so
+  `shell::diag::e2e` is not in its module map yet: the integrator should
+  add a row.
+- 2026-11-08 — AC-2: `text-formula` and `creation-tools` pass through
+  `wtype` / `swaymsg`; the shifted symbols in the formula arrive typed by
+  the compositor.
+- 2026-11-08 — AC-6 pending owner run: the `e2e` job is in
+  `nightly.yml`, but `git push` and `gh` are denied in this batch. Needs one
+  manual `workflow_dispatch` after integrating. Not verified: the job has
+  never run. The runner's Mesa and sway are older than this machine's
+  (sway 1.11), and llvmpipe differences could exceed the screenshot
+  tolerance (64 pixels off by more than 8). If the first run fails only on
+  pixels, regenerate those goldens on the runner or decide on a tolerance
+  from the saved `diff.ppm`.
+- 2026-11-08 — Manual checks left for the owner: look at the 5 screenshot
+  goldens; run `scripts/e2e.sh` once while working, to confirm no keys or
+  windows reach the desktop (not checked by a person yet).

@@ -18,6 +18,7 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 | Tests | `cargo test --all-targets` | all pass, including property tests |
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
 | Fuzz | `PROPTEST_CASES=20000 cargo test --release --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
+| E2E | `scripts/e2e.sh` (needs `sway`, `wtype`, `grim`; separate from `check.sh`, nightly in CI) | every case passes (see [[End-to-end tests]]) |
 
 ## Limits
 
@@ -48,7 +49,7 @@ GitHub Actions runs the same gates on every push and pull request
 | Workflow | When | Jobs |
 |----------|------|------|
 | `.github/workflows/ci.yml` | push (any branch), pull request to `main` | `gates`: `scripts/check.sh` on stable; `msrv`: `cargo check --all-targets --locked` on `rust-version` |
-| `.github/workflows/nightly.yml` | daily 04:17 UTC, or *Run workflow* by hand | `fuzz`: `scripts/check.sh --fuzz`, uploads `tests/fuzz.proptest-regressions` on failure; `soak`: ignored soak tests; `perf`: ignored perf tests, report only |
+| `.github/workflows/nightly.yml` | daily 04:17 UTC, or *Run workflow* by hand | `fuzz`: `scripts/check.sh --fuzz`, uploads `tests/fuzz.proptest-regressions` on failure; `soak`: ignored soak tests; `e2e`: `scripts/e2e.sh`, uploads `target/e2e/` on failure; `perf`: ignored perf tests, report only |
 
 - CI calls `scripts/check.sh`, so a new gate is added there, once.
 - `rust-version` follows the latest stable
