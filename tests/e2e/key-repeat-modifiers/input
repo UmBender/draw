@@ -1,0 +1,9 @@
+# A held key repeats without side effects, modifiers are held exactly,
+# and typing after that has no doubled letters.
+hold r 900
+chord shift g
+chord shift g
+key t
+click 200 200
+text hello
+key Escape

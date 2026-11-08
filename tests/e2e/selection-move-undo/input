@@ -1,0 +1,11 @@
+# Move a selection, undo and redo it: crosses the document layer and overlay.
+screenshot
+key r
+drag 150 150 300 260
+key c
+drag 400 150 560 280
+key v
+drag 120 120 340 300
+drag 200 200 300 350
+chord ctrl z
+chord ctrl shift z

@@ -1,0 +1,7 @@
+# Toolbar buttons by pointer: Rect tool, third colour, then Select.
+screenshot
+click 20 122
+click 20 472
+drag 200 150 420 330
+click 20 326
+drag 180 130 440 350

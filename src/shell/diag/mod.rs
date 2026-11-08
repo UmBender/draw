@@ -8,6 +8,7 @@
 //! cap. Plain text keys and typed characters are never recorded.
 
 pub mod detect;
+pub mod e2e;
 pub mod event;
 pub mod file;
 pub mod ring;

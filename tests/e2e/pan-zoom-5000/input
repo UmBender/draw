@@ -1,0 +1,8 @@
+# Pan and zoom over the 5 000-stroke scene. Only the editor state is compared:
+# the view is the point, and the document would make a very large golden.
+scene strokes-5000
+sections editor
+key h
+drag 400 300 460 340
+wheel up
+wheel up
