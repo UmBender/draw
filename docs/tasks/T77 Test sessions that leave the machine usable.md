@@ -168,7 +168,7 @@ The models step is skipped: the task adds no types, only shell and tests.
 - [x] spec — `docs(T77): specify limits for the test gates`
 - [x] tests — `test(T77): add failing tests for the gate limits`
 - [x] behaviour — `feat(T77): run the gates within fixed limits at low priority`
-- [ ] behaviour — `feat(T77): keep the candidates that measured better`
+- [x] behaviour — `feat(T77): keep the candidates that measured better`
 - [ ] quality — `chore(T77): pass clippy and rustfmt`
 - [ ] docs — `docs(T77): record the limits and the measurements`
 
