@@ -1078,15 +1078,18 @@ impl Editor {
 
     /// Ends the open text block, committing it as one undo step: a new
     /// block is inserted, a changed one replaced, a blank one removed
-    /// (ADR-T29-2). A resized block's on-screen size becomes the size of
-    /// new blocks (ADR-T37-1). Returns whether there was a block.
+    /// (ADR-T29-2). A resized block's on-screen size, kept to the text
+    /// ladder's range, becomes the size of new blocks (ADR-T37-1,
+    /// ADR-T76-1). Returns whether there was a block.
     fn finish_text(&mut self) -> bool {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
         let px = edit.size * self.camera.zoom();
         if edit.resized() && px.is_finite() && px > 0.0 {
-            self.tools.text.size_px = Some(px);
+            let lowest = text::text_size_px(MIN_WIDTH_PX);
+            let highest = text::text_size_px(MAX_WIDTH_PX);
+            self.tools.text.size_px = Some(px.clamp(lowest, highest));
         }
         if let Some(host) = edit.host().copied() {
             self.track_document(false, |ed| {
@@ -4537,6 +4540,91 @@ mod tests {
         let sizes = block_sizes(&ed);
         assert_eq!(sizes.len(), 2);
         assert!(approx_eq(sizes[1], 20.0 / ZOOM_STEP, 1e-4), "{sizes:?}");
+    }
+
+    // ---- T76 remembered text size past the ladder ---------------------------
+
+    /// The on-screen size remembered for new blocks.
+    fn remembered_px(ed: &Editor) -> f32 {
+        ed.tools
+            .text
+            .size_px
+            .unwrap_or_else(|| panic!("a size is remembered"))
+    }
+
+    /// Zooms by `notches` of the wheel over the top-left of the window.
+    fn zoom_by(ed: &mut Editor, notches: f32) {
+        ed.handle(InputEvent::Scroll {
+            pos: Vec2::new(10.0, 10.0),
+            delta: notches,
+        });
+    }
+
+    #[test]
+    fn regression_t76_remembered_size_past_the_ladder() {
+        // Arrange: `Ctrl+[` to 16 px at zoom 1, then a zoom to `ZOOM_MAX`
+        // with the block still open.
+        let snapshot = Snapshot::parse(include_str!(
+            "../../tests/snapshots/regressions/T76-remembered-size-past-the-ladder.snap"
+        ))
+        .unwrap_or_else(|err| panic!("{err}"));
+        let mut ed = Editor::from_snapshot(snapshot);
+        assert!(approx_eq(ed.camera().zoom(), ZOOM_MAX, 1e-4));
+
+        // Act
+        key(&mut ed, Key::Escape);
+
+        // Assert: at most the top rung, and readable again.
+        let px = remembered_px(&ed);
+        assert!(
+            px <= text::text_size_px(MAX_WIDTH_PX) && px <= snapshot::MAX_TEXT_SIZE_PX,
+            "{px}"
+        );
+        let text = ed.snapshot().to_text();
+        let parsed = Snapshot::parse(&text).unwrap_or_else(|err| panic!("{err}\n{text}"));
+        assert_eq!(parsed.to_text(), text);
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 1);
+        assert!(approx_eq(sizes[0], 16.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_stays_on_the_ladder_at_min_zoom() {
+        // Arrange: 20 px at zoom 1, then a zoom to `ZOOM_MIN`.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+        assert!(key_with(&mut ed, Key::BracketRight, CTRL));
+        zoom_by(&mut ed, -200.0);
+        assert!(approx_eq(ed.camera().zoom(), ZOOM_MIN, 1e-4));
+
+        // Act
+        key(&mut ed, Key::Escape);
+
+        // Assert: the lowest rung, and the block keeps its own size.
+        let px = remembered_px(&ed);
+        assert!(
+            approx_eq(px, text::text_size_px(MIN_WIDTH_PX), 1e-4),
+            "{px}"
+        );
+        let sizes = block_sizes(&ed);
+        assert_eq!(sizes.len(), 1);
+        assert!(approx_eq(sizes[0], 20.0, 1e-4), "{sizes:?}");
+    }
+
+    #[test]
+    fn text_size_memory_inside_the_ladder_is_not_clamped() {
+        // Arrange: 20 px at zoom 1, then one notch of zoom with the block open.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+        assert!(key_with(&mut ed, Key::BracketRight, CTRL));
+        zoom_by(&mut ed, 1.0);
+
+        // Act
+        key(&mut ed, Key::Escape);
+
+        // Assert: the on-screen size when the edit ended, between rungs.
+        let px = remembered_px(&ed);
+        assert!(approx_eq(px, 20.0 * ZOOM_STEP, 1e-4), "{px}");
     }
 
     #[test]
