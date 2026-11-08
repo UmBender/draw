@@ -1,11 +1,11 @@
 ---
 id: T77
 title: Test sessions that leave the machine usable
-status: todo
+status: in-progress
 wave: 33
 branch: task/T77-gate-resource-limits
 depends_on: []
-adrs: []
+adrs: [ADR-T77-1]
 feature: ""
 tutorial: ""
 tags: [task]
@@ -112,20 +112,27 @@ What they show:
 
 ## Spec
 
-Draft; the spec step finalises it.
+Mechanism: [[ADR-T77-1 Test gates run in capped low-priority scopes]].
+The `tests/ci.rs` tests run the real `scripts/check.sh --fuzz` with stand-in
+`cargo`, `systemd-run` and `systemctl` first on the `PATH`; `nice` and
+`ionice` are the real ones, and the stand-in `cargo` records what it sees.
 
 - **AC-1** — Every `cargo` step in `check.sh` runs with 3 build jobs and 3
   test threads. *Test:* `tests/ci.rs::gates_limit_threads`
-- **AC-2** — Every such step runs under the 1 GB, no-swap and 3-CPU limits
-  when `systemd-run --user` works. *Test:*
-  `tests/ci.rs::gates_run_under_a_memory_cap`
-- **AC-3** — Every such step runs at the lowest CPU and I/O priority.
-  *Test:* `tests/ci.rs::gates_run_at_low_priority`
-- **AC-4** — Without `systemd-run --user`, the gates still run and print a
-  notice. *Test:* `tests/ci.rs::gates_warn_without_a_memory_cap`
-- **AC-5** — Going over a limit fails `check.sh` with a message naming
-  the step and the limit, and the desktop stays up. *Manual:* set
-  `MemoryMax` far too low.
+- **AC-2** — Every such step runs in a `systemd-run --user --scope` with
+  `MemoryMax=1G`, `MemorySwapMax=0` and `CPUQuota=300%` when the probe
+  scope starts. *Test:* `tests/ci.rs::gates_run_under_a_memory_cap`
+- **AC-3** — Every such step runs at niceness 19, in the idle I/O class,
+  and with `CPUWeight=1` and `IOWeight=1` on its scope. *Test:*
+  `tests/ci.rs::gates_run_at_low_priority`
+- **AC-4** — When the probe scope fails, every gate still runs, with the
+  thread limits and the priorities, and a notice says the memory cap is
+  not enforced. *Test:* `tests/ci.rs::gates_warn_without_a_memory_cap`
+- **AC-5** — Going over the memory limit fails `check.sh` with a message
+  naming the step and the limit; an ordinary failure mentions no limit.
+  *Tests:* `tests/ci.rs::gates_name_step_and_limit_when_out_of_memory`,
+  `tests/ci.rs::gates_blame_no_limit_for_an_ordinary_failure`. *Manual:*
+  a real run with `MemoryMax` far too low, with the desktop staying up.
 - **AC-6** — The measurements above are repeated at the end, with a clean
   target dir on disk, and recorded in the *Log*. A clean
   `scripts/check.sh --fuzz` runs 20 000 cases, passes, and takes no more
@@ -135,6 +142,8 @@ Draft; the spec step finalises it.
 - **AC-8** — With the browser open, the owner runs a full
   `scripts/check.sh --fuzz` while scrolling a page and playing a video:
   no freeze, no crash. *Manual, by the owner.*
+
+The models step is skipped: the task adds no types, only shell and tests.
 
 ## Out of scope
 
@@ -156,7 +165,7 @@ Draft; the spec step finalises it.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T77): specify limits for the test gates`
+- [x] spec — `docs(T77): specify limits for the test gates`
 - [ ] tests — `test(T77): add failing tests for the gate limits`
 - [ ] behaviour — `feat(T77): run the gates within fixed limits at low priority`
 - [ ] behaviour — `feat(T77): keep the candidates that measured better`
