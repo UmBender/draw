@@ -1,9 +1,9 @@
 ---
 title: Editing tools
 task: "[[T10 Editing tools]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]"]
 tutorial: "[[10 Selection, clipboard and fill]]"
-shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace"]
+shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]"]
 tags: [feature]
 ---
 
@@ -13,7 +13,7 @@ tags: [feature]
 
 Changes what is already on the canvas. The eraser removes whole shapes it
 touches, the bucket fills a rectangle or ellipse with the current colour, and
-the select tool picks, rubber-bands, moves and duplicates shapes. An internal
+the select tool picks, rubber-bands, moves, resizes and duplicates shapes. An internal
 clipboard copies, cuts, pastes (at the cursor) and duplicates the selection.
 Every change is a single undo step.
 
@@ -34,6 +34,8 @@ what the tools do with them.
 | Rubber-band select | drag on empty space (`Shift` adds to the selection) |
 | Move the selection | drag a shape (an unselected shape is selected first) |
 | Duplicate while moving | `Alt` + drag |
+| Resize about the opposite corner | drag a corner handle (`Shift` keeps the proportions) |
+| Grow / shrink by 10 % about the centre | `Alt+]` / `Alt+[` |
 | Select all | `Ctrl+A` |
 | Delete selection | `Delete`, `Backspace` |
 | Copy / cut / paste at cursor | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
@@ -57,7 +59,15 @@ what the tools do with them.
   empty space) or `Move` (started on a shape, `Alt` captured at press). A
   release closer than `CLICK_SLOP_PX` (3 px) is a click. The move preview shows
   translated clones and hides the originals (not for `Alt`); the release
-  commits one transaction of `Replace` edits, or inserts the copies.
+  commits one transaction of `Replace` edits, or inserts the copies. A press
+  on a corner handle starts a `Resize`, whose pivot, dragged corner and limits
+  are fixed at the press; its preview is scaled clones in the overlay and the
+  document changes on release
+  ([[ADR-T91-1 Resize handles and scale rules]]).
+- `Shape::scaled_about` scales points and box corners and the size of text,
+  taking the smaller factor for text
+  ([[ADR-T91-2 Scaled text stays within the largest text size]]). Stroke
+  widths and arrow heads stay as they are.
 - `src/core/clipboard.rs` — `copy` clones the selection in z-order; `paste`
   centres the copies' joint bounds on the cursor; `duplicate` copies the
   selection without touching the clipboard. `insert_copies` (also used by the
@@ -69,7 +79,10 @@ what the tools do with them.
 ## Limits
 
 - No system clipboard: copy/paste only works inside one running instance.
-- No resize or rotate handles; moving is the only transform.
+- No rotation and no edge-only handles. A resize does not snap.
+- A resize stops at 4 world units per shape, and the smallest selected shape
+  stops the whole selection; a shape cannot be flipped.
+- Handles show and work only in the Select tool.
 - The eraser removes whole shapes, never parts of a stroke.
 - The bucket fills only rectangles and ellipses, not regions enclosed by
   strokes or lines.

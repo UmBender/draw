@@ -41,6 +41,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Ctrl+V` | Paste at cursor | `Ctrl+D` | Duplicate selection |
 | `Ctrl+A` | Select all | `Del`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
+| `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 
 ## View
 
@@ -65,6 +66,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Shift` while drawing | Square / circle, 45° lines and arrows (grid snap only) |
 | `Alt` while drawing | No snapping |
 | `Alt` + drag selection | Duplicate while moving |
+| Drag a corner handle (Select) | Resize; `Shift` keeps the proportions |
 | Right drag | Temporary eraser, from any tool |
 
 ## Typing in a text block

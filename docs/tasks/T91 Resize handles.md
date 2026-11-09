@@ -1,7 +1,7 @@
 ---
 id: T91
 title: Resize handles
-status: in-progress
+status: review
 wave: 51
 branch: task/T91-resize-handles
 depends_on: []
@@ -91,17 +91,18 @@ for the minimum size, text and uneven scales are in
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
 - `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `src/shell/app.rs` (draws the handles; only `draw_overlay` changes)
+- `tests/perf.rs` (the resize preview budget)
 - `tests/fuzz.rs`, `tests/fuzz.proptest-regressions`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
 - this note, and new `ADR-T91-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T91): specify resize handles`
-- [ ] tests — `test(T91): add failing tests`
-- [ ] models — `feat(T91): add types`
-- [ ] behaviour — `feat(T91): implement`
-- [ ] quality — `chore(T91): pass clippy and rustfmt`
-- [ ] docs — `docs(T91): update the feature note`
+- [x] spec — `docs(T91): specify resize handles`
+- [x] tests — `test(T91): add failing tests`
+- [x] models — `feat(T91): add types`
+- [x] behaviour — `feat(T91): implement`
+- [x] quality — `refactor(T91): move fit view out of execute`
+- [x] docs — `docs(T91): update the feature note`
 
 ## Learning path
 
@@ -114,3 +115,7 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: the rules the spec leaves open (which shapes the 4-unit minimum binds, text under uneven scales, handles only in the Select tool, no snapping) are recorded in [[ADR-T91-1 Resize handles and scale rules]].
 - 2026-11-09 — UNATTENDED CHOICE: the fuzzer showed a resize could push text past `snapshot::MAX_TEXT_SIZE`, which snapshots refuse. The size is now capped at it ([[ADR-T91-2 Scaled text stays within the largest text size]]). The bug only existed in this step's uncommitted code, so its test `scaled_about_caps_text_at_the_largest_size` went in with the behaviour commit, and `scaled_about_rejects_overflow` now tests the text's origin instead of its box.
 - 2026-11-09 — UNATTENDED CHOICE: added `tests/fuzz.proptest-regressions` to *Files owned*: the shrunk failing session of that bug stays as a regression seed, as [[Quality Gates]] asks.
+- 2026-11-09 — UNATTENDED CHOICE: added `tests/perf.rs` to *Files owned* to measure the plan's 2 ms overlay condition. `perf_resize_preview_of_5k_strokes_is_under_2ms` measured a median of 1.13 ms in release for scaling 5 000 strokes of 30 points. The rest of the overlay is drawing, which only the running app can time.
+- 2026-11-09 — Quality step: `execute` went over clippy's function length limit, so `Editor::fit_view` was split out; no `chore` commit was needed.
+- 2026-11-09 — Bug found by `scripts/check.sh --fuzz` in the behaviour commit: a resize could leave a box's corners finite with the length of its side past `f32`, and text in a grid then produced NaN. A result like that now counts as non-finite and is ignored, as AC-5 asks, for lines, arrows, rectangles, ellipses and grids. Regression: `regression_t91_scaled_box_side_overflow`, with its snapshot and the fuzz seed. Strokes are not checked: it would cost a pass over their points on every preview frame, and no fuzz invariant needs it.
+- 2026-11-09 — Not run: the handles were not seen in the running app. Manual checks left for the owner: resize a mixed selection, look at the handles, and record the `DRAW_FRAME_TIMES` overlay numbers on a 5 000-stroke scene (ADR-T24-5).

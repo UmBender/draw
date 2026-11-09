@@ -43,6 +43,7 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste at cursor |
 | `Ctrl+D` | Duplicate selection (macro: copy + paste with offset) |
 | `Ctrl+A` | Select all |
+| `Alt+]` / `Alt+[` | Grow / shrink the selection by 10 % about its centre ([[ADR-T91-1 Resize handles and scale rules]]) |
 | `Delete`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) |
 | `Esc` | Cancel current gesture / clear selection |
@@ -99,3 +100,4 @@ buttons commit it before acting, except Undo, which cancels it.
 | `Shift` while drawing | Constrain: square/circle, 45° lines and arrows |
 | Right drag | Temporary eraser, from any tool |
 | `Alt` + drag selection | Duplicate while moving |
+| Drag a corner handle (Select) | Resize the selection about the opposite corner; `Shift` keeps the proportions |

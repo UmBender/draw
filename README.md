@@ -39,8 +39,9 @@ single-key shortcut so your hands never leave the keyboard for long.
   fills or whole objects.
 - **Snapping** — smart snap to alignment guides and shape outlines (arrows
   meet circles at their edge), plus an optional snap grid.
-- **Editing** — select, move, `Alt`-drag to duplicate, copy / cut / paste,
-  select all, delete, clear canvas.
+- **Editing** — select, move, resize by the corner handles or with
+  `Alt+[` / `Alt+]`, `Alt`-drag to duplicate, copy / cut / paste, select
+  all, delete, clear canvas.
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -205,6 +206,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+V` | Paste at cursor | `Ctrl+D` | Duplicate selection |
 | `Ctrl+A` | Select all | `Del`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
+| `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 
 ### View
 
@@ -229,6 +231,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Shift` while drawing | Square / circle, 45° lines and arrows |
 | `Alt` while drawing | No snapping |
 | `Alt` + drag selection | Duplicate while moving |
+| Drag a corner handle (Select) | Resize; `Shift` keeps the proportions |
 | Right drag | Temporary eraser, from any tool |
 
 ### Typing in a text block
