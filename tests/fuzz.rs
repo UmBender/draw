@@ -1469,6 +1469,52 @@ fn mutate(text: &str, mutations: &[Mutation]) -> String {
 proptest! {
     #![proptest_config(config())]
 
+    /// T85: resizing a committed grid at random keeps every invariant, and
+    /// undoing everything empties the document.
+    #[test]
+    fn grid_resize_sessions_keep_invariants(
+        commands in prop::collection::vec(
+            select(vec![
+                Command::GridCols(1),
+                Command::GridCols(-1),
+                Command::GridRows(1),
+                Command::GridRows(-1),
+                Command::Undo,
+                Command::Redo,
+            ]),
+            0..200,
+        ),
+    ) {
+        // Arrange: one 4 × 4 grid with a filled cell, selected.
+        let pointer = |pos: Vec2| (pos, PointerButton::Left, Modifiers::NONE);
+        let click = |editor: &mut Editor, from: Vec2, to: Vec2| {
+            let (pos, button, mods) = pointer(from);
+            editor.handle(InputEvent::PointerDown { pos, button, mods });
+            editor.handle(InputEvent::PointerMove { pos: to, mods });
+            editor.handle(InputEvent::PointerUp { pos: to, button, mods });
+        };
+        let mut editor = Editor::new();
+        editor.apply(Command::SetTool(Tool::Grid));
+        click(&mut editor, Vec2::new(100.0, 100.0), Vec2::new(500.0, 500.0));
+        editor.apply(Command::SetTool(Tool::Bucket));
+        click(&mut editor, Vec2::new(450.0, 450.0), Vec2::new(450.0, 450.0));
+        editor.apply(Command::SetTool(Tool::Select));
+        editor.apply(Command::SelectAll);
+        prop_assert_eq!(editor.selection().len(), 1);
+
+        // Act
+        for (step, command) in commands.into_iter().enumerate() {
+            editor.apply(command);
+            check_invariants(&editor, step)?;
+        }
+
+        // Assert
+        while editor.can_undo() {
+            prop_assert!(editor.apply(Command::Undo));
+        }
+        prop_assert!(editor.document().is_empty());
+    }
+
     /// T74 AC-1.
     #[test]
     fn snapshot_round_trip_continues_equal(

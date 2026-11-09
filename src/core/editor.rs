@@ -2170,6 +2170,248 @@ mod tests {
         assert_eq!(ed.helpers().grid_cols, 5);
     }
 
+    // ---- T85 resizing a committed grid -------------------------------------
+
+    /// Unfilled `cols × rows` grid at (100, 100) with cells of 100 × 100.
+    fn plain_grid(cols: u32, rows: u32) -> Shape {
+        Shape::Grid {
+            a: Vec2::new(100.0, 100.0),
+            b: Vec2::new(
+                100.0 + 100.0 * cols as f32,
+                100.0 + 100.0 * rows as f32,
+            ),
+            cols,
+            rows,
+            style: Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            axes: false,
+            fills: Vec::new(),
+            texts: Vec::new(),
+        }
+    }
+
+    /// Editor holding `shapes`, all selected, with the Select tool active.
+    fn selected_editor(shapes: Vec<Shape>) -> Editor {
+        let mut ed = editor_with(shapes);
+        ed.apply(Command::SetTool(Tool::Select));
+        ed.apply(Command::SelectAll);
+        ed
+    }
+
+    fn arrow(ed: &mut Editor, key: Key) -> bool {
+        ed.handle(InputEvent::KeyDown { key, mods: NONE })
+    }
+
+    /// `(cols, rows)` of the bottom shape; panics if it is not a grid.
+    fn first_grid_size(ed: &Editor) -> (u32, u32) {
+        match ed.document().shapes().next() {
+            Some((_, Shape::Grid { cols, rows, .. })) => (*cols, *rows),
+            other => panic!("not a grid: {other:?}"),
+        }
+    }
+
+    fn helper_size(ed: &Editor) -> (u32, u32) {
+        (ed.helpers().grid_cols, ed.helpers().grid_rows)
+    }
+
+    #[test]
+    fn grid_resize_arrows_change_selected_grid_not_helpers() {
+        // Arrange
+        let mut ed = selected_editor(vec![plain_grid(4, 4)]);
+        let helpers = helper_size(&ed);
+        let selection = ed.selection().to_vec();
+
+        // Act / Assert
+        assert!(arrow(&mut ed, Key::ArrowRight));
+        assert_eq!(first_grid_size(&ed), (5, 4));
+        assert!(arrow(&mut ed, Key::ArrowDown));
+        assert_eq!(first_grid_size(&ed), (5, 5));
+        assert!(arrow(&mut ed, Key::ArrowLeft));
+        assert_eq!(first_grid_size(&ed), (4, 5));
+        assert!(arrow(&mut ed, Key::ArrowUp));
+        assert_eq!(first_grid_size(&ed), (4, 4));
+
+        assert_eq!(helper_size(&ed), helpers);
+        assert_eq!(ed.selection(), &selection[..]);
+    }
+
+    #[test]
+    fn grid_resize_clamps_to_cell_limits() {
+        // Arrange
+        let mut smallest = selected_editor(vec![plain_grid(1, 1)]);
+        let mut largest = selected_editor(vec![plain_grid(GRID_MAX_CELLS, GRID_MAX_CELLS)]);
+        let helpers = helper_size(&smallest);
+
+        // Act / Assert
+        assert!(!arrow(&mut smallest, Key::ArrowLeft));
+        assert!(!arrow(&mut smallest, Key::ArrowUp));
+        assert_eq!(first_grid_size(&smallest), (1, 1));
+        assert!(!arrow(&mut largest, Key::ArrowRight));
+        assert!(!arrow(&mut largest, Key::ArrowDown));
+        assert_eq!(
+            first_grid_size(&largest),
+            (GRID_MAX_CELLS, GRID_MAX_CELLS)
+        );
+        assert_eq!(helper_size(&smallest), helpers);
+        assert_eq!(helper_size(&largest), helpers);
+    }
+
+    #[test]
+    fn grid_resize_undo_restores_removed_cells() {
+        // Arrange: text and a fill in the last column.
+        let mut shape = plain_grid(2, 1);
+        if let Shape::Grid { fills, texts, .. } = &mut shape {
+            fills.push(crate::core::shape::CellFill {
+                col: 1,
+                row: 0,
+                color: ColorId::INK,
+            });
+            texts.push(crate::core::shape::CellText {
+                col: 1,
+                row: 0,
+                content: ShapeText {
+                    text: "dp".to_owned(),
+                    size: 16.0,
+                },
+            });
+        }
+        let mut ed = selected_editor(vec![shape.clone()]);
+
+        // Act
+        arrow(&mut ed, Key::ArrowLeft);
+        let shrunk = ed.document().shapes().next().map(|(_, s)| s.clone());
+        ed.apply(Command::Undo);
+        let restored = ed.document().shapes().next().map(|(_, s)| s.clone());
+
+        // Assert
+        assert!(shrunk.as_ref().is_some_and(|s| s.cell_fills().is_empty()));
+        assert!(shrunk.as_ref().is_some_and(|s| s.cell_texts().is_empty()));
+        assert_eq!(restored, Some(shape));
+        assert_eq!(first_grid_size(&ed), (2, 1));
+    }
+
+    #[test]
+    fn grid_resize_each_press_is_one_undo_step() {
+        // Arrange
+        let mut ed = selected_editor(vec![plain_grid(4, 4)]);
+        let before = ed.history.undo_len();
+
+        // Act
+        for _ in 0..3 {
+            arrow(&mut ed, Key::ArrowRight);
+        }
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), before + 3);
+        ed.apply(Command::Undo);
+        assert_eq!(first_grid_size(&ed), (6, 4));
+    }
+
+    #[test]
+    fn grid_resize_at_limit_adds_no_undo_step() {
+        // Arrange
+        let mut ed = selected_editor(vec![plain_grid(GRID_MAX_CELLS, 1)]);
+        let before = ed.history.undo_len();
+        let revision = ed.document_revision();
+
+        // Act
+        let changed = arrow(&mut ed, Key::ArrowRight);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed.history.undo_len(), before);
+        assert_eq!(ed.document_revision(), revision);
+    }
+
+    #[test]
+    fn grid_resize_marks_the_document_changed() {
+        // Arrange
+        let mut ed = selected_editor(vec![plain_grid(4, 4)]);
+        let revision = ed.document_revision();
+
+        // Act
+        arrow(&mut ed, Key::ArrowRight);
+
+        // Assert: not an append, so the cached layer must be re-rendered.
+        assert_ne!(ed.document_revision(), revision);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+    }
+
+    #[test]
+    fn grid_arrows_change_helpers_unless_one_grid_is_selected() {
+        // Arrange: nothing selected, another shape, two grids.
+        let mut nothing = editor_with(vec![plain_grid(4, 4)]);
+        nothing.apply(Command::SetTool(Tool::Select));
+        let mut other = selected_editor(vec![plain_grid(4, 4), rect(0.0, 0.0, 10.0, 10.0)]);
+        other.selection.remove(0);
+        let mut two = selected_editor(vec![plain_grid(4, 4), plain_grid(4, 4)]);
+
+        for ed in [&mut nothing, &mut other, &mut two] {
+            let before = ed.history.undo_len();
+
+            // Act
+            let changed = arrow(ed, Key::ArrowRight);
+
+            // Assert
+            assert!(changed);
+            assert_eq!(helper_size(ed), (5, 4));
+            assert_eq!(first_grid_size(ed), (4, 4));
+            assert_eq!(ed.history.undo_len(), before);
+        }
+    }
+
+    #[test]
+    fn grid_arrows_change_helpers_with_another_tool() {
+        // Arrange: the grid stays selected while the Grid tool is active.
+        let mut ed = selected_editor(vec![plain_grid(4, 4)]);
+        ed.apply(Command::SetTool(Tool::Grid));
+        assert_eq!(ed.selection().len(), 1);
+
+        // Act
+        let changed = arrow(&mut ed, Key::ArrowDown);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(helper_size(&ed), (4, 5));
+        assert_eq!(first_grid_size(&ed), (4, 4));
+    }
+
+    #[test]
+    fn grid_resize_during_a_move_cancels_it() {
+        // Arrange: dragging the selected grid by its left edge.
+        let mut ed = selected_editor(vec![plain_grid(4, 4)]);
+        down(&mut ed, PointerButton::Left, 100.0, 150.0);
+        move_to(&mut ed, 180.0, 190.0);
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Select)));
+
+        // Act
+        let changed = arrow(&mut ed, Key::ArrowRight);
+
+        // Assert: resized where it was, and the drag is over.
+        assert!(changed);
+        assert_eq!(ed.active_gesture(), None);
+        assert_eq!(first_grid_size(&ed), (5, 4));
+        let bounds = ed.document().shapes().next().map(|(_, s)| s.bounds().min);
+        assert!(bounds.is_some_and(|min| approx_eq(min.x, 100.0, 2.0)));
+    }
+
+    #[test]
+    fn grid_resize_at_limit_keeps_the_gesture() {
+        // Arrange
+        let mut ed = selected_editor(vec![plain_grid(GRID_MAX_CELLS, 2)]);
+        down(&mut ed, PointerButton::Left, 100.0, 150.0);
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Select)));
+
+        // Act
+        let changed = arrow(&mut ed, Key::ArrowRight);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Tool(Tool::Select)));
+    }
+
     // ---- T19 numbering ----------------------------------------------------
 
     /// Editor with numbering on and the ellipse tool active.
