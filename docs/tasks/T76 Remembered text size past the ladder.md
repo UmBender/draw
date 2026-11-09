@@ -154,3 +154,4 @@ None planned; the ADR is enough.
 - 2026-11-08 — integrated. Still open for the owner: the hand check
   above, and dropping the T71 seed stash (find it by its message). The
   ink bug is now [[T78 Formula ink outside its text box]].
+- 2026-11-08 — owner's hand check passed.

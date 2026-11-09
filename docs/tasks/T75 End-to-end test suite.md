@@ -223,3 +223,5 @@ tutorial of T74.
 - 2026-11-08 — integrated. Still open for the owner: AC-6 (one manual
   `workflow_dispatch` after pushing) and a run while working. The
   `no_keymap` panic is now [[T79 Wayland keyboard without a keymap]].
+- 2026-11-08 — owner watched a run of the suite while working: no window
+  appeared on the desktop. AC-6 is still open.
