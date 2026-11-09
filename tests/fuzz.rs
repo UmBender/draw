@@ -225,6 +225,10 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\bigcup", "\\bigcap", "\\bigwedge", "\\bigvee", "\\bigoplus", "\\bigotimes",
             "\\bigodot", "\\biguplus", "\\bigsqcup", "\\coprod", "\\bigcup_{i=1}^{n}",
             "\\coprod_",
+            // T89: growing brackets, paired, unmatched and without a delimiter.
+            "\\left", "\\right", "\\left(", "\\right)", "\\left.", "\\right.", "\\left[",
+            "\\right]", "\\left\\{", "\\right\\}", "\\left|", "\\right\\|",
+            "\\left\\langle", "\\right\\rangle", "\\left(\\frac12\\right)^2",
             // T71: infix fractions split their group, combinatorics.
             "\\choose", "\\brack", "\\brace", "\\over", "\\atop", "{n \\choose k}",
             "\\tbinom", "\\dbinom", "\\multiset", "\\multiset{n}{k}", "\\underline",

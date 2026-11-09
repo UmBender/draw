@@ -3181,6 +3181,8 @@ mod tests {
                 "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
                 "\\partial", "\\vec", "\\hat", "\\bar", "\\dot", "\\ddot", "\\tilde",
                 "\\overline", "\\mathrm", "\\mathit", "\\mathnormal", "\\Gamma",
+                "\\left", "\\right", "\\left(", "\\right)", "\\left.", "\\right.",
+                "\\left\\{", "\\right\\rangle", "\\left\\|",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -7176,5 +7178,364 @@ mod tests {
             assert_eq!(got, want, "{short} vs {long}");
             assert!(glyphs(&got.ink).iter().all(|g| !g.3), "{short}");
         }
+    }
+
+    // ---- T89 \left and \right ------------------------------------------------
+
+    /// Every delimiter that draws a glyph: its source and the glyph.
+    const DRAWN_DELIMITERS: &[(&str, char)] = &[
+        ("(", '('),
+        (")", ')'),
+        ("[", '['),
+        ("]", ']'),
+        ("\\{", '{'),
+        ("\\}", '}'),
+        ("|", '|'),
+        ("\\|", '‖'),
+        ("\\langle", '⟨'),
+        ("\\rangle", '⟩'),
+        ("\\lfloor", '⌊'),
+        ("\\rfloor", '⌋'),
+        ("\\lceil", '⌈'),
+        ("\\rceil", '⌉'),
+    ];
+
+    const TALL: &str = "\\frac{a}{b}";
+
+    fn delim(lead: &str, source: &str) -> Delimiter {
+        Delimiter {
+            lead: lead.to_owned(),
+            source: source.to_owned(),
+        }
+    }
+
+    fn literal(text: &str) -> Node {
+        Node::Literal(text.to_owned())
+    }
+
+    fn pair(open: &str, body: Vec<Node>, close: &str) -> Node {
+        Node::LeftRight {
+            open: delim("", open),
+            body,
+            close: delim("", close),
+        }
+    }
+
+    /// Height a bracket must reach for `inner`, centred on the axis.
+    fn target_height(inner: &MathBox) -> f32 {
+        2.0 * (inner.ascent - AXIS).max(inner.descent + AXIS) * DELIM_FACTOR
+    }
+
+    /// Top and bottom (y down) of glyph `ch` at `pos` and `scale`.
+    fn ink_top_bottom(ch: char, pos: Vec2, scale: f32) -> (f32, f32) {
+        let m = mm(ch);
+        (pos.y - m.y_max * scale, pos.y - m.y_min * scale)
+    }
+
+    #[test]
+    fn tex_parse_left_right_is_one_node_keeping_its_source() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left(x\\right)"),
+            vec![pair("(", vec![Node::Char('x')], ")")]
+        );
+        assert_eq!(
+            math("\\left \\langle x\\right  \\rangle"),
+            vec![Node::LeftRight {
+                open: delim(" ", "\\langle"),
+                body: vec![Node::Char('x')],
+                close: delim("  ", "\\rangle"),
+            }]
+        );
+        let src = "$a\\left [ \\frac12 \\right\\}^2 b$";
+        assert_eq!(print(&parse(src)), src);
+    }
+
+    #[test]
+    fn tex_layout_left_right_scales_brackets_to_the_content() {
+        // Arrange
+        let inner = boxed(TALL);
+        let want = target_height(&inner);
+
+        // Act
+        let b = boxed(&format!("\\left({TALL}\\right)"));
+
+        // Assert
+        let g = glyphs(&b.ink);
+        let (first, last) = (g[0], g[g.len() - 1]);
+        assert_eq!((first.0, last.0), ('(', ')'));
+        let tall = mm('(').y_max - mm('(').y_min;
+        assert!(first.2 > 1.0, "{g:?}");
+        assert!(approx_eq(first.2, want / tall, EPS), "{g:?}");
+        assert!(approx_eq(last.2, want / tall, EPS), "{g:?}");
+        assert!(approx_eq(first.1.x, 0.0, EPS));
+        assert!(approx_eq(last.1.x + adv(")") * last.2, b.width, EPS));
+    }
+
+    #[test]
+    fn tex_layout_left_right_grows_every_delimiter() {
+        let want = target_height(&boxed(TALL));
+        for (src, ch) in DRAWN_DELIMITERS {
+            // Act
+            let b = boxed(&format!("\\left{src}{TALL}\\right{src}"));
+
+            // Assert
+            let g = glyphs(&b.ink);
+            let (first, last) = (g[0], g[g.len() - 1]);
+            assert_eq!((first.0, last.0), (*ch, *ch), "{src}: {g:?}");
+            let tall = mm(*ch).y_max - mm(*ch).y_min;
+            assert!(approx_eq(first.2, want / tall, EPS), "{src}: {g:?}");
+            assert!(approx_eq(last.2, want / tall, EPS), "{src}: {g:?}");
+            assert!(g.iter().all(|g| !g.3), "{src}: {g:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_left_right_centres_brackets_on_the_axis() {
+        for (src, ch) in DRAWN_DELIMITERS {
+            // Act
+            let b = boxed(&format!("\\left{src}{TALL}\\right{src}"));
+
+            // Assert
+            let (pos, scale) = glyph(&b.ink, *ch);
+            let (top, bottom) = ink_top_bottom(*ch, pos, scale);
+            assert!(approx_eq((top + bottom) / 2.0, -AXIS, EPS), "{src}");
+            assert!(b.ascent >= -top - EPS && b.descent >= bottom - EPS, "{src}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_left_right_stops_at_the_scale_limit() {
+        // Arrange: a stack far taller than the largest bracket.
+        let tower = "\\frac{".repeat(28) + "x" + &"}{x}".repeat(28);
+
+        // Act
+        let b = boxed(&format!("\\left({tower}\\right)"));
+
+        // Assert
+        let tall = mm('(').y_max - mm('(').y_min;
+        assert!(b.ascent + b.descent > LEFT_RIGHT_MAX_SCALE * tall);
+        let (_, scale) = glyph(&b.ink, '(');
+        assert!(approx_eq(scale, LEFT_RIGHT_MAX_SCALE, EPS), "{scale}");
+    }
+
+    #[test]
+    fn tex_layout_left_right_null_delimiter_draws_nothing() {
+        // Act
+        let one = boxed("\\left.x\\right|");
+        let other = boxed("\\left(x\\right.");
+        let both = boxed("\\left.x\\right.");
+
+        // Assert
+        let chars = |b: &MathBox| glyphs(&b.ink).iter().map(|g| g.0).collect::<Vec<_>>();
+        assert_eq!(chars(&one), [X, '|']);
+        assert_eq!(chars(&other), ['(', X]);
+        assert_eq!(chars(&both), [X]);
+        assert!(approx_eq(
+            both.width,
+            2.0 * NULL_DELIM_SPACE + mm(X).advance,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_parse_unmatched_left_or_right_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left( x"),
+            vec![literal("\\left"), Node::Char('('), space(), Node::Char('x')]
+        );
+        assert_eq!(
+            math("x \\right)"),
+            vec![Node::Char('x'), space(), literal("\\right"), Node::Char(')')]
+        );
+        assert_eq!(
+            math("\\left(\\right)\\right)"),
+            vec![pair("(", vec![], ")"), literal("\\right"), Node::Char(')')]
+        );
+    }
+
+    #[test]
+    fn tex_parse_left_or_right_without_a_delimiter_is_literal() {
+        // Act + Assert
+        assert_eq!(math("\\left"), vec![literal("\\left")]);
+        assert_eq!(
+            math("\\left x\\right)"),
+            vec![
+                literal("\\left"),
+                space(),
+                Node::Char('x'),
+                literal("\\right"),
+                Node::Char(')'),
+            ]
+        );
+        assert_eq!(
+            math("\\left(x\\right y"),
+            vec![
+                literal("\\left"),
+                Node::Char('('),
+                Node::Char('x'),
+                literal("\\right"),
+                space(),
+                Node::Char('y'),
+            ]
+        );
+        assert_eq!(
+            math("\\left{x}\\right)"),
+            vec![
+                literal("\\left"),
+                Node::Group(vec![Node::Char('x')]),
+                literal("\\right"),
+                Node::Char(')'),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_left_right_across_a_group_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left({x\\right)}"),
+            vec![
+                literal("\\left"),
+                Node::Char('('),
+                Node::Group(vec![
+                    Node::Char('x'),
+                    literal("\\right"),
+                    Node::Char(')'),
+                ]),
+            ]
+        );
+        assert_eq!(
+            math("{\\left(x}\\right)"),
+            vec![
+                Node::Group(vec![
+                    literal("\\left"),
+                    Node::Char('('),
+                    Node::Char('x'),
+                ]),
+                literal("\\right"),
+                Node::Char(')'),
+            ]
+        );
+        // A stray `}` stays inside the pair, as a literal.
+        assert_eq!(
+            math("\\left(}\\right)"),
+            vec![pair("(", vec![literal("}")], ")")]
+        );
+    }
+
+    #[test]
+    fn tex_parse_left_after_text_is_not_a_body() {
+        // Act
+        let nodes = math("\\text\\left(x\\right)");
+
+        // Assert
+        assert_eq!(
+            nodes,
+            vec![literal("\\text"), pair("(", vec![Node::Char('x')], ")")]
+        );
+    }
+
+    #[test]
+    fn tex_parse_deep_left_right_is_literal_past_the_limit() {
+        // Arrange: deeper than naive recursion could go.
+        let src = format!("${}x{}$", "\\left(".repeat(10_000), "\\right)".repeat(10_000));
+
+        // Act
+        let segments = parse(&src);
+
+        // Assert
+        assert_eq!(print(&segments), src);
+        let l = layout(&segments);
+        assert!(l.width.is_finite() && l.height.is_finite());
+    }
+
+    #[test]
+    fn tex_layout_unmatched_left_right_is_drawn_in_the_warning_colour() {
+        for (src, word) in [("\\left( x", "\\left"), ("x \\right)", "\\right")] {
+            // Act
+            let b = boxed(src);
+
+            // Assert
+            let warned: String = glyphs(&b.ink)
+                .iter()
+                .filter(|g| g.3)
+                .map(|g| g.0)
+                .collect();
+            assert_eq!(warned, word, "{src}");
+        }
+    }
+
+    #[test]
+    fn tex_parse_left_right_pairs_nest() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left(\\left[x\\right]\\right)"),
+            vec![pair(
+                "(",
+                vec![pair("[", vec![Node::Char('x')], "]")],
+                ")"
+            )]
+        );
+    }
+
+    #[test]
+    fn tex_layout_left_right_outer_pair_is_at_least_as_tall_as_inner() {
+        // Act
+        let b = boxed(&format!("\\left(\\left[{TALL}\\right]\\right)"));
+
+        // Assert
+        let g = glyphs(&b.ink);
+        let chars: Vec<char> = g.iter().map(|g| g.0).collect();
+        assert_eq!(chars, ['(', '[', A, B, ']', ')'], "{g:?}");
+        assert!(g[0].2 >= g[1].2 - EPS, "{g:?}");
+        assert!(approx_eq(g[0].2, g[5].2, EPS), "{g:?}");
+        assert!(approx_eq(g[1].2, g[4].2, EPS), "{g:?}");
+        assert!(g[0].1.x < g[1].1.x && g[4].1.x < g[5].1.x, "{g:?}");
+    }
+
+    #[test]
+    fn tex_layout_left_right_script_attaches_to_the_closing_bracket() {
+        // Arrange
+        let bare = format!("\\left({TALL}\\right)");
+        let pair_box = boxed(&bare);
+
+        // Act
+        let sup = boxed(&format!("{bare}^2"));
+        let sub = boxed(&format!("{bare}_2"));
+
+        // Assert
+        assert!(matches!(
+            math(&format!("{bare}^2")).as_slice(),
+            [Node::Scripts { base: Some(base), .. }] if matches!(**base, Node::LeftRight { .. })
+        ));
+        let (up, up_scale) = glyph(&sup.ink, '2');
+        assert!(approx_eq(up.x, pair_box.width, EPS), "{up:?}");
+        assert!(approx_eq(up_scale, SCRIPT_SCALE, EPS));
+        assert!(approx_eq(up.y, -(pair_box.ascent - SUP_DROP), EPS), "{up:?}");
+        let (down, _) = glyph(&sub.ink, '2');
+        assert!(approx_eq(down.x, pair_box.width, EPS), "{down:?}");
+        assert!(down.y > 0.0, "{down:?}");
+    }
+
+    #[test]
+    fn tex_layout_left_right_short_content_keeps_normal_size() {
+        for content in ["x", "a+b", "2", ""] {
+            // Act
+            let got = boxed(&format!("\\left({content}\\right)"));
+            let plain = boxed(&format!("({content})"));
+
+            // Assert
+            let g = glyphs(&got.ink);
+            let (first, last) = (g[0], g[g.len() - 1]);
+            assert!(approx_eq(first.2, 1.0, EPS), "{content}: {g:?}");
+            assert!(approx_eq(last.2, 1.0, EPS), "{content}: {g:?}");
+            assert!(approx_eq(first.1.y, 0.0, EPS), "{content}: {g:?}");
+            assert!(approx_eq(got.width, plain.width, EPS), "{content}");
+        }
+        // A superscript barely reaches past the normal bracket.
+        let (_, scale) = glyph(&boxed("\\left(x^2\\right)").ink, '(');
+        assert!(scale < 1.1, "{scale}");
     }
 }
