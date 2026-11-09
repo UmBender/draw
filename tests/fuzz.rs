@@ -310,6 +310,29 @@ fn arb_paste_text() -> impl Strategy<Value = String> {
 /// A text block turned into a grid (T84): `T`, a click, pasted text, `Esc`,
 /// then `V`, a click on the block and `Ctrl+T`.
 fn arb_table_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    arb_block_key_session(arb_paste_text(), Key::T)
+}
+
+/// An edge list: mostly whole lines the parser reads, sometimes not.
+fn arb_edge_text() -> impl Strategy<Value = String> {
+    let line = select(vec![
+        "1-2", "1-2 2-3", "2>3", "3-1", "0-4", "2-2", "2-1", "1 2", "2 3 7", "3 4 -1.5", "5 6",
+        "1 2 x",
+    ]);
+    prop::collection::vec(line, 1..12).prop_map(|lines| lines.join("\n"))
+}
+
+/// A text block turned into a graph (T87), as [`arb_table_session`].
+fn arb_graph_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    arb_block_key_session(arb_edge_text(), Key::L)
+}
+
+/// `T`, a click, pasted `text`, `Esc`, then `V`, a click on the block and
+/// `Ctrl` + `key`.
+fn arb_block_key_session(
+    text: impl Strategy<Value = String>,
+    key: Key,
+) -> impl Strategy<Value = Vec<InputEvent>> {
     let none = Modifiers::NONE;
     let press = |key, mods| InputEvent::KeyDown { key, mods };
     let click = move |pos| {
@@ -326,7 +349,7 @@ fn arb_table_session() -> impl Strategy<Value = Vec<InputEvent>> {
             },
         ]
     };
-    (arb_screen_pos(), arb_paste_text()).prop_map(move |(pos, text)| {
+    (arb_screen_pos(), text).prop_map(move |(pos, text)| {
         let ctrl = Modifiers { ctrl: true, ..none };
         let mut events = vec![press(Key::T, none)];
         events.extend(click(pos));
@@ -334,7 +357,7 @@ fn arb_table_session() -> impl Strategy<Value = Vec<InputEvent>> {
         events.push(press(Key::Escape, none));
         events.push(press(Key::V, none));
         events.extend(click(pos + Vec2::new(2.0, 4.0)));
-        events.push(press(Key::T, ctrl));
+        events.push(press(key, ctrl));
         events
     })
 }
@@ -647,6 +670,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         2 => arb_text_session(),
         1 => arb_host_session(),
         1 => arb_table_session(),
+        1 => arb_graph_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
     ];
@@ -1022,6 +1046,35 @@ fn table_sessions_turn_text_blocks_into_grids() {
 
     // Assert: a harness that never reaches `Ctrl+T` on a block proves nothing.
     assert!(grids >= 50, "sessions that built a grid: {grids}/200");
+}
+
+#[test]
+fn graph_sessions_turn_text_blocks_into_graphs() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_graph_session();
+    let mut graphs = 0;
+
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_graph_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+
+        // Act
+        for event in tree.current() {
+            editor.handle(event);
+        }
+        graphs += usize::from(
+            editor
+                .document()
+                .shapes()
+                .any(|(_, shape)| matches!(shape, Shape::Ellipse { .. })),
+        );
+    }
+
+    // Assert: a harness that never reaches `Ctrl+L` on a block proves nothing.
+    assert!(graphs >= 50, "sessions that built a graph: {graphs}/200");
 }
 
 #[test]

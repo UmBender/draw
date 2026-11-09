@@ -15,6 +15,7 @@
 pub mod bucket;
 pub mod eraser;
 pub mod grid;
+pub mod layout;
 pub mod navigate;
 pub mod pen;
 pub mod select;

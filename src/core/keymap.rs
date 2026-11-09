@@ -378,6 +378,7 @@ mod tests {
             (Key::D, CTRL, Command::Duplicate),
             (Key::A, CTRL, Command::SelectAll),
             (Key::T, CTRL, Command::GridFromText),
+            (Key::L, CTRL, Command::GraphFromText),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
@@ -483,9 +484,17 @@ mod tests {
         // T38: pen, line and smart snap moved to the left hand.
         for key in [Key::P, Key::L, Key::M] {
             for mods in all_mods() {
-                assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
+                if (key, mods) != (Key::L, CTRL) {
+                    assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
+                }
             }
         }
+    }
+
+    #[test]
+    fn ctrl_l_builds_a_graph_from_text() {
+        assert_eq!(resolve(Key::L, CTRL), Some(Command::GraphFromText));
+        assert_eq!(resolve(Key::L, CTRL_SHIFT), None, "the diagnostics dump");
     }
 
     #[test]
