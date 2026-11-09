@@ -228,3 +228,5 @@ tutorial of T74.
 - 2026-11-08 — first nightly run (42541491862): the 5 screenshot cases
   failed on the mouse cursor only. AC-6 waits on
   [[T80 Mouse cursor in end-to-end screenshots]].
+- 2026-11-08 — AC-6 closed: nightly run on `529bab9` passed, with all 10
+  cases in the `end-to-end` job. https://github.com/UmBender/draw/actions/runs/42543084405

@@ -94,3 +94,5 @@ None planned.
 - 2026-11-08 — AC-6 pending owner run: the job needs one more nightly run
   on this fix, which also closes AC-6 of T75. No tutorial: none planned.
 - 2026-11-08 — integrated. AC-6 waits on the nightly run from `main`.
+- 2026-11-08 — AC-6 closed: nightly run on `529bab9` passed, with all 10
+  cases in the `end-to-end` job. https://github.com/UmBender/draw/actions/runs/42543084405
