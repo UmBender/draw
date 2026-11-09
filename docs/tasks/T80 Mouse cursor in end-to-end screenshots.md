@@ -1,11 +1,11 @@
 ---
 id: T80
 title: Mouse cursor in end-to-end screenshots
-status: todo
+status: review
 wave: 35
 branch: fix/e2e-cursor-in-screenshots
 depends_on: [T75]
-adrs: []
+adrs: ["[[ADR-T80-1 Screenshots ignore the box under the pointer]]"]
 feature: "[[End-to-end tests]]"
 tutorial: ""
 tags: [task, testing]
@@ -34,16 +34,29 @@ this machine and on the nightly runner with one set of goldens.
   fix must not depend on either behaviour.
 - `grim` runs without `-c`, so neither machine asks for the cursor.
 
-## Proposal (settle in the spec step)
-
-`compare_images` ignores a small box around the last pointer position.
-Goldens do not change. Rejected: regenerating the goldens on the runner
-(the failure moves to this machine) and raising the pixel allowance to
-about 160 (hides real rendering changes).
-
 ## Spec
 
-Finalised in the spec step.
+Before comparing, the golden's pixels are copied over a 26×26 box that
+starts 2 pixels above and left of the pointer's last position
+([[ADR-T80-1 Screenshots ignore the box under the pointer]]). All tests
+are in `tests/e2e.rs`, `self_tests`.
+
+- **AC-1** — A difference inside the box does not count. *Test:*
+  `cursor_box_hides_a_difference_at_the_pointer`
+- **AC-2** — A difference just outside the box still fails. *Test:*
+  `cursor_box_keeps_a_difference_outside_it`
+- **AC-3** — A box reaching past the image's edge is clipped, without a
+  panic. *Test:* `cursor_box_at_the_image_edge_is_clipped`
+- **AC-4** — The pointer's last position comes from the case's `set`
+  steps, and is the start when there are none. *Tests:*
+  `last_pointer_is_the_last_set_step`,
+  `last_pointer_without_moves_is_the_start`
+- **AC-5** — `scripts/e2e.sh` passes here with the goldens unchanged, and
+  the screenshots of nightly run 42541491862 match them once the box is
+  applied. *Test:* the runner, and a check of the saved artifacts, both
+  in *Log*.
+- **AC-6** — The nightly `end-to-end` job passes. *Test:* one manual run
+  by the owner, which also closes AC-6 of T75.
 
 ## Out of scope
 
@@ -58,12 +71,12 @@ Finalised in the spec step.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T80): specify the cursor box in screenshot comparison`
-- [ ] tests — `test(T80): add failing tests for the cursor box`
-- [ ] models — `feat(T80): add the cursor box types`
-- [ ] behaviour — `fix(T80): ignore the mouse cursor in screenshot comparison`
-- [ ] quality — `chore(T80): pass clippy and rustfmt`
-- [ ] docs — `docs(T80): record the fix`
+- [x] spec — `docs(T80): specify the cursor box in screenshot comparison`
+- [x] tests — `test(T80): add failing tests for the cursor box`
+- [x] models — `feat(T80): add the cursor box types`
+- [x] behaviour — `fix(T80): ignore the mouse cursor in screenshot comparison`
+- [x] quality — `refactor(T80): move the screenshot call into the session`
+- [x] docs — `docs(T80): record the fix`
 
 ## Learning path
 
@@ -72,3 +85,11 @@ None planned.
 ## Log
 
 - 2026-11-08 — created from the first nightly run of the e2e job.
+- 2026-11-08 — AC-1 to AC-4: the `self_tests` pass. They did not compile
+  before the functions existed, and failed on the `todo!()` bodies.
+- 2026-11-08 — AC-5: `scripts/e2e.sh` passes all 10 cases with the goldens
+  unchanged. Applying the box to the 5 failing screenshots saved by run
+  42541491862 leaves 0 pixels differing by more than 8 outside it.
+  `scripts/check.sh` is green.
+- 2026-11-08 — AC-6 pending owner run: the job needs one more nightly run
+  on this fix, which also closes AC-6 of T75. No tutorial: none planned.

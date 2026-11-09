@@ -417,6 +417,46 @@ fn compare_images(actual: &Image, expected: &Image, tolerance: Tolerance) -> Res
     Ok(())
 }
 
+/// Side of the box a screenshot comparison ignores under the pointer.
+const CURSOR_BOX_SIZE: i32 = 26;
+
+/// How far the ignored box starts above and left of the pointer.
+const CURSOR_BOX_BEFORE: i32 = 2;
+
+/// Copies `expected`'s pixels over the box at `pointer`, because whether a
+/// capture shows the cursor depends on the compositor (ADR-T80-1).
+fn hide_cursor_box(actual: &mut Image, expected: &Image, pointer: (i32, i32)) {
+    if (actual.width, actual.height) != (expected.width, expected.height) {
+        return;
+    }
+    let span = |at: i32, limit: usize| {
+        let start = at.saturating_sub(CURSOR_BOX_BEFORE);
+        let clip = |edge: i32| usize::try_from(edge).unwrap_or(0).min(limit);
+        clip(start)..clip(start.saturating_add(CURSOR_BOX_SIZE))
+    };
+    let width = actual.width;
+    let columns = span(pointer.0, width);
+    for row in span(pointer.1, actual.height) {
+        let line = (row * width + columns.start) * 3..(row * width + columns.end) * 3;
+        actual.rgb[line.clone()].copy_from_slice(&expected.rgb[line]);
+    }
+}
+
+/// The pointer's position after `steps`, which begin with it at `start`.
+fn last_pointer(steps: &[Step], start: (i32, i32)) -> (i32, i32) {
+    steps
+        .iter()
+        .rev()
+        .find_map(|step| match step {
+            Step::Pointer(args) => match args.as_slice() {
+                [verb, x, y] if verb == "set" => Some((x.parse().ok()?, y.parse().ok()?)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or(start)
+}
+
 // ---- Exit checks -------------------------------------------------------
 
 /// Checks how the app ended against the case's `ending`.
@@ -701,6 +741,21 @@ impl Session {
         command
     }
 
+    /// Saves what the output shows to `path` as a PPM.
+    fn screenshot(&self, path: &Path) -> Result<(), String> {
+        let status = self
+            .tool("grim")
+            .args(["-t", "ppm"])
+            .arg(path)
+            .status()
+            .map_err(|err| format!("grim: {err}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("grim failed: {status}"))
+        }
+    }
+
     fn spawn_wtype(&self, args: &[String]) -> Result<Child, String> {
         self.tool("wtype")
             .args(args)
@@ -961,19 +1016,16 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     }
     if let Some(tolerance) = case.screenshot {
         let shot = run.join("actual.ppm");
-        let status = running
-            .session
-            .tool("grim")
-            .args(["-t", "ppm"])
-            .arg(&shot)
-            .status()
-            .map_err(|err| format!("grim: {err}"))?;
-        if !status.success() {
-            return Err(format!("grim failed: {status}"));
-        }
-        if let Err(problem) =
-            compare_screenshot(&shot, &source.join("expected.ppm"), run, tolerance, update)
-        {
+        running.session.screenshot(&shot)?;
+        let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
+        if let Err(problem) = compare_screenshot(
+            &shot,
+            &source.join("expected.ppm"),
+            run,
+            tolerance,
+            pointer,
+            update,
+        ) {
             problems.push(problem);
         }
     }
@@ -1018,6 +1070,7 @@ fn compare_screenshot(
     golden: &Path,
     run: &Path,
     tolerance: Tolerance,
+    pointer: (i32, i32),
     update: bool,
 ) -> Result<(), String> {
     let bytes = std::fs::read(shot).map_err(|err| format!("{}: {err}", shot.display()))?;
@@ -1025,10 +1078,11 @@ fn compare_screenshot(
         return std::fs::write(golden, &bytes)
             .map_err(|err| format!("cannot write {}: {err}", golden.display()));
     }
-    let actual = Image::parse_ppm(&bytes)?;
+    let mut actual = Image::parse_ppm(&bytes)?;
     let expected =
         std::fs::read(golden).map_err(|err| format!("no golden at {}: {err}", golden.display()))?;
     let expected = Image::parse_ppm(&expected)?;
+    hide_cursor_box(&mut actual, &expected, pointer);
     compare_images(&actual, &expected, tolerance).map_err(|diff| {
         let path = run.join("diff.ppm");
         let saved = std::fs::write(&path, diff.image.to_ppm());
@@ -1366,6 +1420,105 @@ mod self_tests {
         let err = compare_images(&solid(2, 2, 0), &solid(3, 2, 0), Tolerance::default());
 
         assert!(err.is_err_and(|diff| diff.message.contains("2x2")));
+    }
+
+    // ---- T80 cursor box -------------------------------------------------
+
+    /// A solid image with one pixel set to white.
+    fn with_white_pixel(width: usize, height: usize, at: (usize, usize)) -> Image {
+        let mut image = solid(width, height, 100);
+        let offset = (at.1 * width + at.0) * 3;
+        image.rgb[offset..offset + 3].fill(255);
+        image
+    }
+
+    const NO_ROOM: Tolerance = Tolerance {
+        pixels: 0,
+        channel: 8,
+    };
+
+    #[test]
+    fn cursor_box_hides_a_difference_at_the_pointer() {
+        // Arrange: the corners of the box, relative to the pointer.
+        let expected = solid(100, 100, 100);
+        for at in [(48, 48), (73, 73), (50, 50)] {
+            let mut actual = with_white_pixel(100, 100, at);
+
+            // Act
+            hide_cursor_box(&mut actual, &expected, (50, 50));
+
+            // Assert
+            assert_eq!(
+                compare_images(&actual, &expected, NO_ROOM),
+                Ok(()),
+                "{at:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cursor_box_keeps_a_difference_outside_it() {
+        // Arrange: one pixel past each side of the box.
+        let expected = solid(100, 100, 100);
+        for at in [(47, 50), (50, 47), (74, 50), (50, 74)] {
+            let mut actual = with_white_pixel(100, 100, at);
+
+            // Act
+            hide_cursor_box(&mut actual, &expected, (50, 50));
+
+            // Assert
+            assert!(
+                compare_images(&actual, &expected, NO_ROOM).is_err(),
+                "{at:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cursor_box_at_the_image_edge_is_clipped() {
+        // Arrange
+        let expected = solid(10, 10, 100);
+        for pointer in [(9, 9), (0, 0), (-5, -5), (500, 500)] {
+            let mut actual = solid(10, 10, 100);
+
+            // Act
+            hide_cursor_box(&mut actual, &expected, pointer);
+
+            // Assert
+            assert_eq!(actual, expected, "{pointer:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_box_ignores_a_golden_of_another_size() {
+        // Arrange
+        let mut actual = with_white_pixel(4, 4, (1, 1));
+        let before = actual.clone();
+
+        // Act
+        hide_cursor_box(&mut actual, &solid(2, 2, 100), (1, 1));
+
+        // Assert
+        assert_eq!(actual, before);
+    }
+
+    #[test]
+    fn last_pointer_is_the_last_set_step() {
+        // Arrange
+        let mut steps = drag((10, 20), (440, 350), 4);
+        steps.push(pointer(&["press", "button1"]));
+        steps.push(Step::Wheel(1));
+
+        // Act
+        let last = last_pointer(&steps, (1, 2));
+
+        // Assert
+        assert_eq!(last, (440, 350));
+    }
+
+    #[test]
+    fn last_pointer_without_moves_is_the_start() {
+        assert_eq!(last_pointer(&[Step::Wheel(1)], (1, 2)), (1, 2));
     }
 
     // ---- AC-4 no sleeps -------------------------------------------------
