@@ -1,0 +1,12 @@
+# T79: ending the active keyboard can send wl_keyboard.keymap with
+# no_keymap and size 0, which used to panic inside the backend. draw must
+# stay up and keep typing. Snapshots only: an older sway may not send
+# no_keymap at all, and the case passes either way.
+key t
+click 200 200
+text before
+end-keyboard
+text after
+end-keyboard
+text again
+key Escape

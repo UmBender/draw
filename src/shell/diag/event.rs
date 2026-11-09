@@ -725,6 +725,10 @@ mod tests {
                 },
             ),
             (BackendEvent::Keymap, Event::Keymap),
+            (
+                BackendEvent::KeymapIgnored { format: 0, size: 7 },
+                Event::KeymapIgnored { format: 0, size: 7 },
+            ),
             (BackendEvent::ToolAdded, Event::ToolAdded),
             (BackendEvent::ToolRemoved, Event::ToolRemoved),
             (BackendEvent::ProximityIn, Event::ProximityIn),
@@ -739,6 +743,18 @@ mod tests {
             // Act / Assert
             assert_eq!(from_backend(backend), expected);
         }
+    }
+
+    #[test]
+    fn keymap_ignored_line_names_format_and_size() {
+        // Arrange
+        let event = Event::KeymapIgnored { format: 0, size: 0 };
+
+        // Act
+        let line = event.to_string();
+
+        // Assert
+        assert_eq!(line, "keymap ignored format 0 size 0");
     }
 
     #[test]
@@ -771,6 +787,10 @@ mod tests {
                 expirations: u32::MAX,
             },
             Event::Keymap,
+            Event::KeymapIgnored {
+                format: u32::MAX,
+                size: u32::MAX,
+            },
             Event::ToolAdded,
             Event::ToolRemoved,
             Event::ProximityIn,

@@ -707,6 +707,25 @@ mod tests {
     }
 
     #[test]
+    fn keymap_ignored_is_logged_at_info() -> io::Result<()> {
+        // Arrange
+        let dir = temp_dir("keymap-ignored")?;
+        let mut diag = diag(&dir, Level::Info);
+
+        // Act
+        diag.record(Instant::now(), Event::KeymapIgnored { format: 0, size: 0 });
+
+        // Assert: a WARN line would fail the e2e exit check.
+        let text = log_text(&dir);
+        assert!(
+            text.contains("INFO keymap ignored format 0 size 0"),
+            "{text}"
+        );
+        assert!(!text.contains(" WARN "), "{text}");
+        Ok(())
+    }
+
+    #[test]
     fn anomaly_lines_are_rate_limited() -> io::Result<()> {
         // Arrange
         let dir = temp_dir("limited")?;
