@@ -1,7 +1,7 @@
 ---
 id: T78
 title: Formula ink outside its text box
-status: in-progress
+status: review
 wave: 34
 branch: fix/formula-ink-outside-box
 depends_on: [T74]
@@ -95,11 +95,11 @@ so no ADR is needed.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T78): specify the formula ink box fix`
-- [ ] regression — `test(T78): add regression test for formula ink outside its box`
-- [ ] behaviour — `fix(T78): keep formula ink inside the text box`
-- [ ] quality — `chore(T78): pass clippy and rustfmt`
-- [ ] docs — `docs(T78): record the fix and close the task`
+- [x] spec — `docs(T78): specify the formula ink box fix`
+- [x] regression — `test(T78): add regression test for formula ink outside its box`
+- [x] behaviour — `fix(T78): keep formula ink inside the text box`
+- [x] quality — no commit: the gates passed with nothing to change
+- [x] docs — `docs(T78): record the fix and close the task`
 
 ## Learning path
 
@@ -109,3 +109,24 @@ None planned.
 
 - 2026-11-08 — created from the `--fuzz` failure logged in T76. Drop the
   seed's stash only once its line is committed.
+- 2026-11-08 — cause found: see *Cause*. The seed's block has no `$`, and
+  the failing `y` in the report was a red herring; the overflow is in `x`,
+  from `Line::cell` adding `ADVANCE` per character.
+- 2026-11-08 — UNATTENDED CHOICE: the plan expected the box to grow. The
+  box was already right for what is drawn (`glyphs`, `col × ADVANCE`), so
+  growing it would only have covered ink that is never drawn, and would
+  have cost a typeset per `bounds` call on plain text. `typeset` of text
+  without `$` now uses that same cell grid instead. The box's definition
+  is unchanged, so there is no `ADR-T78-1`. The owner may want to review
+  this, since the plan said the box gives way.
+- 2026-11-08 — UNATTENDED CHOICE: the seed is committed as its `cc` hash
+  with a short comment, without the 45 KB `# shrinks to` text. Proptest
+  reads only the hash; the seed was confirmed to reproduce the failure.
+- 2026-11-08 — models step skipped: no new types or signatures. Quality
+  step produced no commit: `scripts/check.sh --fuzz` was green with
+  nothing to change. No feature or tutorial note: the fix has no
+  user-visible behaviour, and the task sets no tutorial.
+- 2026-11-08 — gates: `scripts/check.sh --fuzz` green with the seed;
+  `scripts/e2e.sh` 10 of 10 cases, no golden changed. Left for the owner:
+  select a block with a long formula and check the selection box covers
+  it; after integrating, drop the seed's stash, found by its message.
