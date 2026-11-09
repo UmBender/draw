@@ -372,6 +372,8 @@ mod tests {
             (Key::V, CTRL, Command::Paste),
             (Key::D, CTRL, Command::Duplicate),
             (Key::A, CTRL, Command::SelectAll),
+            (Key::BracketRight, ALT, Command::ScaleUp),
+            (Key::BracketLeft, ALT, Command::ScaleDown),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),

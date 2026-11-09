@@ -383,9 +383,10 @@ mod tests {
     use crate::core::clipboard::{self, testkit::*};
     use crate::core::command::Tool;
     use crate::core::document::ShapeId;
-    use crate::core::geom::{Aabb, Vec2};
+    use crate::core::geom::{Aabb, Vec2, approx_eq};
     use crate::core::input::Modifiers;
-    use crate::core::shape::Shape;
+    use crate::core::palette::ColorId;
+    use crate::core::shape::{Shape, Style};
     use crate::core::tools::Phase;
 
     fn send(
@@ -791,5 +792,566 @@ mod tests {
         click(&mut state, &mut fx, 50.0, 50.0, Modifiers::NONE);
 
         assert_eq!(fx.selection, []);
+    }
+
+    // ---- T91 resize handles -----------------------------------------------
+
+    /// Indices into [`handle_centers`].
+    const TOP_LEFT: usize = 0;
+    const BOTTOM_RIGHT: usize = 2;
+
+    /// Screen centre of handle `index` of the current selection.
+    fn handle(fx: &Fixture, index: usize) -> (f32, f32) {
+        match handle_centers(&fx.doc, &fx.selection, &fx.camera) {
+            Some(centers) => (centers[index].x, centers[index].y),
+            None => panic!("the selection has no handles"),
+        }
+    }
+
+    /// Drags handle `index` by the screen delta `(dx, dy)`.
+    fn drag_handle(
+        state: &mut State,
+        fx: &mut Fixture,
+        index: usize,
+        (dx, dy): (f32, f32),
+        mods: Modifiers,
+    ) -> bool {
+        let from = handle(fx, index);
+        drag(state, fx, from, (from.0 + dx, from.1 + dy), mods)
+    }
+
+    /// The `(a, b)` corners of a box shape.
+    fn box_of(shape: &Shape) -> (Vec2, Vec2) {
+        match shape {
+            Shape::Rect { a, b, .. } | Shape::Ellipse { a, b, .. } | Shape::Grid { a, b, .. } => {
+                (*a, *b)
+            }
+            other => panic!("expected a box, got {other:?}"),
+        }
+    }
+
+    fn assert_box(shape: &Shape, a: (f32, f32), b: (f32, f32)) {
+        let (got_a, got_b) = box_of(shape);
+        assert!(
+            got_a.approx_eq(Vec2::new(a.0, a.1), 1e-3)
+                && got_b.approx_eq(Vec2::new(b.0, b.1), 1e-3),
+            "got {got_a:?} {got_b:?}, want {a:?} {b:?}"
+        );
+    }
+
+    /// One selected 100 × 100 filled square at the origin.
+    fn selected_square() -> (Fixture, Vec<ShapeId>) {
+        let (mut fx, ids) = Fixture::new(vec![filled_rect(0.0, 0.0, 100.0, 100.0)]);
+        fx.selection = vec![ids[0]];
+        (fx, ids)
+    }
+
+    #[test]
+    fn resize_drag_scales_about_opposite_corner() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+
+        // Act: bottom-right by (50, 100), then top-left of the result.
+        let changed = drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (50.0, 100.0),
+            Modifiers::NONE,
+        );
+
+        // Assert
+        assert!(changed);
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (150.0, 200.0));
+        assert_eq!(fx.selection, vec![ids[0]]);
+
+        drag_handle(
+            &mut state,
+            &mut fx,
+            TOP_LEFT,
+            (75.0, 100.0),
+            Modifiers::NONE,
+        );
+        assert_box(&fx.shape(ids[0]), (75.0, 100.0), (150.0, 200.0));
+    }
+
+    #[test]
+    fn resize_uses_world_delta() {
+        // Arrange: at zoom 2, 40 screen pixels are 20 world units.
+        let (mut fx, ids) = selected_square();
+        fx.camera = Camera::new(Vec2::ZERO, 2.0);
+        let mut state = State::default();
+
+        // Act
+        drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (40.0, 0.0),
+            Modifiers::NONE,
+        );
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (120.0, 100.0));
+    }
+
+    #[test]
+    fn resize_is_one_undo_step() {
+        // Arrange: two shapes selected.
+        let (mut fx, ids) = squares();
+        fx.selection = vec![ids[0], ids[1]];
+        let mut state = State::default();
+
+        // Act
+        drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (60.0, 10.0),
+            Modifiers::NONE,
+        );
+
+        // Assert
+        assert_eq!(fx.history.undo_len(), 1);
+        assert!(fx.history.undo(&mut fx.doc));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
+        assert_box(&fx.shape(ids[1]), (50.0, 0.0), (60.0, 10.0));
+    }
+
+    #[test]
+    fn resize_preview_shows_scaled_and_hides_originals() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+        let (x, y) = handle(&fx, BOTTOM_RIGHT);
+
+        // Act
+        send(&mut state, &mut fx, Phase::Down, x, y, NONE);
+        send(&mut state, &mut fx, Phase::Move, x + 100.0, y, NONE);
+
+        // Assert: the document only changes on release.
+        let overlay = preview(&state, &fx.view(Tool::Select));
+        assert_eq!(overlay.hidden, vec![ids[0]]);
+        assert_eq!(overlay.shapes.len(), 1);
+        assert_box(&overlay.shapes[0], (0.0, 0.0), (200.0, 100.0));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (100.0, 100.0));
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn resize_cancel_keeps_document() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+        let (x, y) = handle(&fx, BOTTOM_RIGHT);
+        send(&mut state, &mut fx, Phase::Down, x, y, NONE);
+        send(&mut state, &mut fx, Phase::Move, x + 50.0, y, NONE);
+
+        // Act
+        assert!(cancel(&mut state));
+
+        // Assert
+        assert!(preview(&state, &fx.view(Tool::Select)).is_empty());
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (100.0, 100.0));
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn resize_click_on_handle_changes_nothing() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+        let (x, y) = handle(&fx, BOTTOM_RIGHT);
+
+        // Act
+        click(&mut state, &mut fx, x, y, NONE);
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (100.0, 100.0));
+        assert_eq!(fx.history.undo_len(), 0);
+        assert_eq!(fx.selection, vec![ids[0]]);
+    }
+
+    #[test]
+    fn resize_dragged_back_to_the_start_records_nothing() {
+        // Arrange
+        let (mut fx, _) = selected_square();
+        let mut state = State::default();
+        let (x, y) = handle(&fx, BOTTOM_RIGHT);
+
+        // Act
+        send(&mut state, &mut fx, Phase::Down, x, y, NONE);
+        send(&mut state, &mut fx, Phase::Move, x + 80.0, y, NONE);
+        send(&mut state, &mut fx, Phase::Move, x + 20.0, y, NONE);
+        send(&mut state, &mut fx, Phase::Move, x, y, NONE);
+        send(&mut state, &mut fx, Phase::Up, x, y, NONE);
+
+        // Assert
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn handle_centers_keep_their_screen_offset_at_any_zoom() {
+        // Arrange: the unit-wide outline adds half a world unit per side.
+        let (mut fx, _) = selected_square();
+
+        for zoom in [0.5_f32, 1.0, 4.0] {
+            // Act
+            fx.camera = Camera::new(Vec2::ZERO, zoom);
+            let centers = handle_centers(&fx.doc, &fx.selection, &fx.camera);
+
+            // Assert
+            let Some(centers) = centers else {
+                panic!("no handles at zoom {zoom}");
+            };
+            let (near, far) = (-0.5 * zoom, 100.5 * zoom);
+            let pad = SELECTION_PAD_PX;
+            let expected = [
+                (near - pad, near - pad),
+                (far + pad, near - pad),
+                (far + pad, far + pad),
+                (near - pad, far + pad),
+            ];
+            for (center, (x, y)) in centers.iter().zip(expected) {
+                assert!(
+                    center.approx_eq(Vec2::new(x, y), 1e-3),
+                    "zoom {zoom}: {center:?}, want ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn handle_centers_none_without_anything_to_scale() {
+        // Arrange: a line with both ends at one point.
+        let (mut fx, ids) = Fixture::new(vec![line(5.0, 5.0, 5.0, 5.0)]);
+
+        // Act / Assert
+        assert!(handle_centers(&fx.doc, &fx.selection, &fx.camera).is_none());
+        fx.selection = vec![ids[0]];
+        assert!(handle_centers(&fx.doc, &fx.selection, &fx.camera).is_none());
+    }
+
+    #[test]
+    fn scale_up_grows_ten_percent_about_centre() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 50.0)]);
+        fx.selection = vec![ids[0]];
+
+        // Act
+        let changed = scale_selection_up(&mut fx.ctx(Tool::Select));
+
+        // Assert
+        assert!(changed);
+        assert_box(&fx.shape(ids[0]), (-5.0, -2.5), (105.0, 52.5));
+    }
+
+    #[test]
+    fn scale_down_shrinks_ten_percent_about_centre() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 50.0)]);
+        fx.selection = vec![ids[0]];
+
+        // Act
+        let changed = scale_selection_down(&mut fx.ctx(Tool::Select));
+
+        // Assert
+        assert!(changed);
+        assert_box(&fx.shape(ids[0]), (5.0, 2.5), (95.0, 47.5));
+    }
+
+    #[test]
+    fn scale_key_is_one_undo_step() {
+        // Arrange: two shapes selected.
+        let (mut fx, ids) = squares();
+        fx.selection = vec![ids[0], ids[1]];
+
+        // Act
+        scale_selection_up(&mut fx.ctx(Tool::Select));
+        scale_selection_down(&mut fx.ctx(Tool::Select));
+
+        // Assert
+        assert_eq!(fx.history.undo_len(), 2);
+        assert!(fx.history.undo(&mut fx.doc));
+        assert!(fx.history.undo(&mut fx.doc));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
+    }
+
+    #[test]
+    fn scale_key_without_selection_does_nothing() {
+        // Arrange
+        let (mut fx, _) = squares();
+
+        // Act / Assert
+        assert!(!scale_selection_up(&mut fx.ctx(Tool::Select)));
+        assert!(!scale_selection_down(&mut fx.ctx(Tool::Select)));
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn resize_shift_keeps_proportions() {
+        // Arrange: 100 × 50, pulled mostly to the right.
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 100.0, 50.0)]);
+        fx.selection = vec![ids[0]];
+        let mut state = State::default();
+
+        // Act: the larger factor, 2, wins for both axes.
+        drag_handle(&mut state, &mut fx, BOTTOM_RIGHT, (100.0, 10.0), SHIFT);
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (200.0, 100.0));
+    }
+
+    #[test]
+    fn resize_shift_pressed_mid_drag_applies() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+        let (x, y) = handle(&fx, BOTTOM_RIGHT);
+        send(&mut state, &mut fx, Phase::Down, x, y, NONE);
+        send(&mut state, &mut fx, Phase::Move, x + 50.0, y, NONE);
+
+        // Act: Shift goes down during the drag and the preview follows.
+        send(&mut state, &mut fx, Phase::Move, x + 50.0, y, SHIFT);
+        let overlay = preview(&state, &fx.view(Tool::Select));
+        send(&mut state, &mut fx, Phase::Up, x + 50.0, y, SHIFT);
+
+        // Assert
+        assert_box(&overlay.shapes[0], (0.0, 0.0), (150.0, 150.0));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (150.0, 150.0));
+    }
+
+    #[test]
+    fn resize_scales_a_mixed_selection() {
+        // Arrange: one of each kind inside the box (0,0)–(100,100).
+        let style = Style {
+            color: ColorId::INK,
+            width: 3.0,
+        };
+        let stroke = Shape::Stroke {
+            points: vec![Vec2::new(10.0, 10.0), Vec2::new(20.0, 30.0)],
+            widths: Some(vec![1.0, 2.0]),
+            style,
+        };
+        let arrow = Shape::Arrow {
+            a: Vec2::new(10.0, 50.0),
+            b: Vec2::new(40.0, 50.0),
+            style,
+        };
+        let text = Shape::Text {
+            origin: Vec2::new(50.0, 50.0),
+            text: "ab".to_owned(),
+            size: 10.0,
+            style,
+        };
+        let grid = Shape::Grid {
+            a: Vec2::new(60.0, 60.0),
+            b: Vec2::new(90.0, 90.0),
+            cols: 3,
+            rows: 2,
+            style,
+            axes: false,
+            fills: Vec::new(),
+            texts: Vec::new(),
+        };
+        let (mut fx, ids) = Fixture::new(vec![
+            rect(0.0, 0.0, 100.0, 100.0),
+            ellipse(10.0, 10.0, 20.0, 20.0),
+            line(0.0, 90.0, 10.0, 100.0),
+            stroke,
+            arrow,
+            text,
+            grid,
+        ]);
+        fx.selection.clone_from(&ids);
+        let mut state = State::default();
+
+        // Act: doubles everything about the origin.
+        drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (100.0, 100.0),
+            Modifiers::NONE,
+        );
+
+        // Assert
+        assert_eq!(fx.history.undo_len(), 1);
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (200.0, 200.0));
+        assert_box(&fx.shape(ids[1]), (20.0, 20.0), (60.0, 60.0));
+        assert_box(&fx.shape(ids[6]), (120.0, 120.0), (180.0, 180.0));
+        match fx.shape(ids[3]) {
+            Shape::Stroke {
+                points,
+                widths,
+                style,
+            } => {
+                assert!(points[1].approx_eq(Vec2::new(40.0, 60.0), 1e-3));
+                assert_eq!(widths, Some(vec![1.0, 2.0]));
+                assert!(approx_eq(style.width, 3.0, 1e-6));
+            }
+            other => panic!("expected a stroke, got {other:?}"),
+        }
+        match fx.shape(ids[5]) {
+            Shape::Text { origin, size, .. } => {
+                assert!(origin.approx_eq(Vec2::new(100.0, 100.0), 1e-3));
+                assert!(approx_eq(size, 20.0, 1e-3));
+            }
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resize_past_opposite_corner_stops_at_minimum() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+
+        // Act: far beyond the top-left corner, which would flip the box.
+        drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (-500.0, -500.0),
+            Modifiers::NONE,
+        );
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (4.0, 4.0));
+    }
+
+    #[test]
+    fn resize_minimum_holds_for_the_smallest_selected_shape() {
+        // Arrange: a small square inside a large one.
+        let (mut fx, ids) =
+            Fixture::new(vec![rect(0.0, 0.0, 100.0, 100.0), rect(0.0, 0.0, 8.0, 8.0)]);
+        fx.selection.clone_from(&ids);
+        let mut state = State::default();
+
+        // Act
+        drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (-150.0, -150.0),
+            Modifiers::NONE,
+        );
+
+        // Assert: the group stopped together, at factor 0.5.
+        assert_box(&fx.shape(ids[1]), (0.0, 0.0), (4.0, 4.0));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (50.0, 50.0));
+    }
+
+    #[test]
+    fn scale_down_stops_at_minimum() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![rect(0.0, 0.0, 4.2, 4.2)]);
+        fx.selection = vec![ids[0]];
+
+        // Act: the first press reaches the minimum, the next finds no room.
+        assert!(scale_selection_down(&mut fx.ctx(Tool::Select)));
+        assert!(!scale_selection_down(&mut fx.ctx(Tool::Select)));
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.1, 0.1), (4.1, 4.1));
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn scale_up_overflow_changes_nothing() {
+        // Arrange: a box so wide that 10 % more leaves the finite range.
+        let mut huge = rect(0.0, 0.0, 1.0, 1.0);
+        if let Shape::Rect { a, b, .. } = &mut huge {
+            *a = Vec2::new(-3.3e38, -3.3e38);
+            *b = Vec2::new(3.3e38, 3.3e38);
+        }
+        let (mut fx, ids) = Fixture::new(vec![huge.clone()]);
+        fx.selection = vec![ids[0]];
+
+        // Act
+        let changed = scale_selection_up(&mut fx.ctx(Tool::Select));
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(fx.shape(ids[0]), huge);
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn press_on_handle_wins_over_shape_below() {
+        // Arrange: another shape lies under the selected square's handle.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 100.0, 100.0),
+            filled_rect(100.0, 100.0, 50.0, 50.0),
+        ]);
+        fx.selection = vec![ids[0]];
+        let mut state = State::default();
+
+        // Act
+        drag_handle(
+            &mut state,
+            &mut fx,
+            BOTTOM_RIGHT,
+            (10.0, 10.0),
+            Modifiers::NONE,
+        );
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (110.0, 110.0));
+        assert_box(&fx.shape(ids[1]), (100.0, 100.0), (150.0, 150.0));
+        assert_eq!(fx.selection, vec![ids[0]]);
+    }
+
+    #[test]
+    fn press_beside_handle_moves_the_shape() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+
+        // Act: inside the filled square, just off the handle.
+        drag(&mut state, &mut fx, (95.0, 95.0), (105.0, 95.0), NONE);
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (10.0, 0.0), (110.0, 100.0));
+    }
+
+    #[test]
+    fn alt_press_on_handle_duplicates() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+        let (x, y) = handle(&fx, BOTTOM_RIGHT);
+        let inside = (x - 4.5, y - 4.5);
+
+        // Act: on the handle and on the outline of the square.
+        drag(
+            &mut state,
+            &mut fx,
+            inside,
+            (inside.0 + 20.0, inside.1),
+            ALT,
+        );
+
+        // Assert
+        let all = fx.ids();
+        assert_eq!(all.len(), 2);
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (100.0, 100.0));
+        assert_box(&fx.shape(all[1]), (20.0, 0.0), (120.0, 100.0));
+        assert_eq!(fx.selection, vec![all[1]]);
+    }
+
+    #[test]
+    fn shift_press_on_handle_resizes() {
+        // Arrange
+        let (mut fx, ids) = selected_square();
+        let mut state = State::default();
+
+        // Act: Shift would toggle the shape anywhere else.
+        drag_handle(&mut state, &mut fx, BOTTOM_RIGHT, (50.0, 0.0), SHIFT);
+
+        // Assert
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (150.0, 150.0));
+        assert_eq!(fx.selection, vec![ids[0]]);
     }
 }

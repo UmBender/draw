@@ -4897,4 +4897,150 @@ mod tests {
         assert!(ed.document_revision() > before);
         assert_eq!(ed.document().len(), 3);
     }
+
+    // ---- T91 resize handles -----------------------------------------------
+
+    const ALT: Modifiers = Modifiers {
+        shift: false,
+        ctrl: false,
+        alt: true,
+    };
+
+    /// The `(a, b)` corners of the only rectangle.
+    fn rect_box(ed: &Editor) -> (Vec2, Vec2) {
+        match ed.document().shapes().next() {
+            Some((_, Shape::Rect { a, b, .. })) => (*a, *b),
+            other => panic!("expected a rectangle, got {other:?}"),
+        }
+    }
+
+    /// An editor in `tool` with one selected 100 × 100 square at the origin.
+    fn selected_square(tool: Tool) -> Editor {
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 100.0, 100.0)], tool);
+        ed.selection = ids(&ed);
+        ed
+    }
+
+    #[test]
+    fn alt_brackets_scale_the_selection() {
+        // Arrange
+        let mut ed = selected_square(Tool::Pen);
+        let revision = ed.document_revision();
+        let undo_len = ed.history.undo_len();
+
+        // Act: any tool can use the keys.
+        let changed = ed.handle(InputEvent::KeyDown {
+            key: Key::BracketRight,
+            mods: ALT,
+        });
+
+        // Assert
+        assert!(changed);
+        let (a, b) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::new(-5.0, -5.0), 1e-3));
+        assert!(b.approx_eq(Vec2::new(105.0, 105.0), 1e-3));
+        assert_eq!(ed.history.undo_len(), undo_len + 1);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+
+        // Act: the other key, then undoing it.
+        ed.handle(InputEvent::KeyDown {
+            key: Key::BracketLeft,
+            mods: ALT,
+        });
+        let (a, _) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::new(0.5, 0.5), 1e-3));
+        assert!(ed.apply(Command::Undo));
+        let (a, _) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::new(-5.0, -5.0), 1e-3));
+    }
+
+    #[test]
+    fn plain_brackets_still_change_the_stroke_width() {
+        // Arrange
+        let mut ed = selected_square(Tool::Select);
+        let before = rect_box(&ed);
+        let width = ed.style().width_px;
+
+        // Act
+        key(&mut ed, Key::BracketRight);
+
+        // Assert
+        assert!(ed.style().width_px > width);
+        assert_eq!(rect_box(&ed), before);
+    }
+
+    #[test]
+    fn selection_handles_show_only_when_idle_in_select() {
+        // Arrange: another tool, then the Select tool.
+        let mut ed = selected_square(Tool::Pen);
+        assert!(ed.selection_handles().is_none());
+        ed.apply(Command::SetTool(Tool::Select));
+        assert!(ed.selection_handles().is_some());
+
+        let Some(handles) = ed.selection_handles() else {
+            panic!("no handles");
+        };
+        let at = handles[2];
+
+        // Act / Assert: hidden during a gesture.
+        down(&mut ed, PointerButton::Left, at.x, at.y);
+        assert!(ed.selection_handles().is_none());
+        up(&mut ed, PointerButton::Left, at.x, at.y);
+        assert!(ed.selection_handles().is_some());
+
+        // Act / Assert: hidden while the shape's text is open.
+        down(&mut ed, PointerButton::Left, 50.0, 50.0);
+        up(&mut ed, PointerButton::Left, 50.0, 50.0);
+        assert!(ed.text_edit().is_some());
+        assert!(ed.selection_handles().is_none());
+    }
+
+    #[test]
+    fn resize_commits_through_the_editor() {
+        // Arrange
+        let mut ed = selected_square(Tool::Select);
+        let Some(handles) = ed.selection_handles() else {
+            panic!("no handles");
+        };
+        let at = handles[2];
+        let revision = ed.document_revision();
+
+        // Act
+        down(&mut ed, PointerButton::Left, at.x, at.y);
+        move_to(&mut ed, at.x + 100.0, at.y);
+        assert_eq!(ed.document_revision(), revision);
+        up(&mut ed, PointerButton::Left, at.x + 100.0, at.y);
+
+        // Assert
+        let (a, b) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::ZERO, 1e-3));
+        assert!(b.approx_eq(Vec2::new(200.0, 100.0), 1e-3));
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+    }
+
+    #[test]
+    fn resize_gesture_survives_a_snapshot() {
+        // Arrange: stopped in the middle of a resize.
+        let mut ed = selected_square(Tool::Select);
+        let Some(handles) = ed.selection_handles() else {
+            panic!("no handles");
+        };
+        let at = handles[2];
+        down(&mut ed, PointerButton::Left, at.x, at.y);
+        move_to(&mut ed, at.x + 30.0, at.y + 10.0);
+
+        // Act
+        let text = ed.snapshot().to_text();
+        let restored = match crate::core::snapshot::Snapshot::parse(&text) {
+            Ok(snapshot) => Editor::from_snapshot(snapshot),
+            Err(error) => panic!("{error}"),
+        };
+
+        // Assert
+        assert_eq!(restored.snapshot().to_text(), text);
+        assert_eq!(restored.overlay(), ed.overlay());
+        assert!(text.contains("select resize"));
+    }
 }

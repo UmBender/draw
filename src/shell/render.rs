@@ -2707,4 +2707,54 @@ mod tests {
         assert_eq!(shown_label(&numbered), Some(4));
         assert_eq!(shown_label(&named), Some(4));
     }
+
+    // T91
+
+    #[test]
+    fn selection_handle_rect_has_constant_screen_size() {
+        // Arrange
+        let center = Vec2::new(30.0, 40.0);
+
+        // Act
+        let rect = selection_handle_rect(center);
+
+        // Assert
+        assert!(approx_eq(rect.width(), select::HANDLE_SIZE_PX, EPS));
+        assert!(approx_eq(rect.height(), select::HANDLE_SIZE_PX, EPS));
+        assert!(rect.center().approx_eq(center, EPS));
+    }
+
+    #[test]
+    fn handle_centers_are_the_selection_rect_corners() {
+        // Arrange
+        let square = Shape::Rect {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(10.0, 20.0),
+            style: crate::core::shape::Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            fill: None,
+            label: None,
+            text: None,
+        };
+        let mut doc = crate::core::document::Document::default();
+        let tx = crate::core::document::tx_insert(&mut doc, vec![square.clone()]);
+        assert!(doc.apply(&tx).is_ok());
+        let ids: Vec<_> = doc.shapes().map(|(id, _)| id).collect();
+        let camera = Camera::new(Vec2::new(-10.0, 5.0), 3.0);
+
+        // Act
+        let rect = selection_rect(square.bounds(), &camera);
+        let centers = select::handle_centers(&doc, &ids, &camera);
+
+        // Assert
+        let Some(centers) = centers else {
+            panic!("the square has no handles");
+        };
+        assert!(centers[0].approx_eq(rect.min, EPS));
+        assert!(centers[2].approx_eq(rect.max, EPS));
+        assert!(centers[1].approx_eq(Vec2::new(rect.max.x, rect.min.y), EPS));
+        assert!(centers[3].approx_eq(Vec2::new(rect.min.x, rect.max.y), EPS));
+    }
 }
