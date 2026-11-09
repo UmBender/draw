@@ -1,0 +1,32 @@
+draw-snapshot 1
+[editor]
+tool select
+style 0 3.0
+helpers 0 0 0 1 4 4 0
+smoothing low
+toolbar 1
+viewport 800.0 600.0
+cursor 110.0 60.0
+space 0
+pressure -
+tap 0.0 idle
+gesture -
+reedit -
+camera 0.0 0.0 1.0
+selection 0
+[document]
+next-id 1
+shape 0 text 0 0.0 100.0 50.0 18.0 "asdf$f(x) = \\frac{a}{b}x \\times 2$"
+[history]
+limits 500 67108864
+undo 1
+insert 0 0 text 0 0.0 100.0 50.0 18.0 "asdf$f(x) = \\frac{a}{b}x \\times 2$"
+[clipboard]
+[tools]
+pen -
+shape -
+grid -
+text-size -
+text -
+eraser - remove 0
+select -

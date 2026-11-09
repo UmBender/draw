@@ -749,10 +749,14 @@ impl Editor {
     }
 
     /// World bounds of the selected shapes, `None` if nothing is selected.
+    /// A text block being edited is left out: it shows its source, and
+    /// [`TextEdit::bounds`] is its box until the edit ends (T81).
     #[must_use]
     pub fn selection_bounds(&self) -> Option<Aabb> {
+        let editing = self.text_edit().and_then(TextEdit::target);
         self.selection
             .iter()
+            .filter(|id| Some(**id) != editing)
             .filter_map(|id| self.doc.get(*id))
             .map(Shape::bounds)
             .reduce(|a, b| a.union(&b))
@@ -4540,6 +4544,109 @@ mod tests {
         let sizes = block_sizes(&ed);
         assert_eq!(sizes.len(), 2);
         assert!(approx_eq(sizes[1], 20.0 / ZOOM_STEP, 1e-4), "{sizes:?}");
+    }
+
+    // ---- T81 formula box too narrow while editing ---------------------------
+
+    /// The `index`-th shape's id and box (bottom first).
+    fn shape_box(ed: &Editor, index: usize) -> (ShapeId, Aabb) {
+        let (id, shape) = ed
+            .document()
+            .shapes()
+            .nth(index)
+            .unwrap_or_else(|| panic!("no shape {index}"));
+        (id, shape.bounds())
+    }
+
+    fn assert_same_box(actual: Option<Aabb>, expected: Aabb) {
+        let Some(actual) = actual else {
+            panic!("no box, expected {expected:?}");
+        };
+        let close = |a: Vec2, b: Vec2| approx_eq(a.x, b.x, 1e-3) && approx_eq(a.y, b.y, 1e-3);
+        assert!(
+            close(actual.min, expected.min) && close(actual.max, expected.max),
+            "{actual:?} {expected:?}"
+        );
+    }
+
+    #[test]
+    fn regression_t81_formula_box_while_editing() {
+        // Arrange: a block with a formula, selected, not being edited.
+        let snapshot = Snapshot::parse(include_str!(
+            "../../tests/snapshots/regressions/T81-formula-box-while-editing.snap"
+        ))
+        .unwrap_or_else(|err| panic!("{err}"));
+        let mut ed = Editor::from_snapshot(snapshot);
+        let (id, typeset) = shape_box(&ed, 0);
+        assert_eq!(ed.selection(), [id]);
+        assert!(ed.text_edit().is_none());
+
+        // Act: a second click re-opens it.
+        click(&mut ed, 110.0, 60.0);
+
+        // Assert: only the source box is left to outline.
+        let edit = ed
+            .text_edit()
+            .unwrap_or_else(|| panic!("the click re-opens the block"));
+        assert_eq!(edit.target(), Some(id));
+        assert!(edit.bounds().width() > typeset.width());
+        assert_eq!(ed.selection(), [id]);
+        assert_eq!(ed.selection_bounds(), None);
+    }
+
+    #[test]
+    fn selection_bounds_after_text_edit_is_the_typeset_box() {
+        // Arrange: a formula block, re-opened with the Select tool.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "asdf$\\frac{a}{b}x$");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Select));
+        click(&mut ed, 110.0, 60.0);
+        click(&mut ed, 110.0, 60.0);
+        assert!(ed.text_edit().is_some());
+
+        // Act
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        let (id, typeset) = shape_box(&ed, 0);
+        assert_eq!(ed.selection(), [id]);
+        assert_same_box(ed.selection_bounds(), typeset);
+    }
+
+    #[test]
+    fn selection_bounds_skips_only_the_block_being_edited() {
+        // Arrange: two selected blocks.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+        key(&mut ed, Key::Escape);
+        place(&mut ed, 100.0, 200.0, "b");
+        key(&mut ed, Key::Escape);
+        ed.selection = ids(&ed);
+
+        // Act: the Text tool re-opens the first.
+        click(&mut ed, 105.0, 60.0);
+
+        // Assert
+        let (first, _) = shape_box(&ed, 0);
+        let (_, second) = shape_box(&ed, 1);
+        assert_eq!(ed.text_edit().and_then(TextEdit::target), Some(first));
+        assert_same_box(ed.selection_bounds(), second);
+    }
+
+    #[test]
+    fn selection_bounds_keeps_the_host_of_the_text_being_edited() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Select);
+        click(&mut ed, 0.0, 50.0);
+
+        // Act
+        click(&mut ed, 100.0, 50.0);
+
+        // Assert
+        let (id, frame) = shape_box(&ed, 0);
+        assert_eq!(editing_host(&ed), Some((id, TextSlot::Shape)));
+        assert_same_box(ed.selection_bounds(), frame);
     }
 
     // ---- T78 formula ink outside its text box -------------------------------
