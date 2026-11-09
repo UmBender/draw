@@ -1048,7 +1048,25 @@ impl Running<'_> {
     /// Puts `text` on the clipboard with `wl-copy`, or through the app's
     /// own hook where it is not installed (ADR-T83-1).
     fn set_clipboard(&self, text: &str) -> Result<(), String> {
-        todo!("{text} {}", self.clipboard.display())
+        let copied = self
+            .session
+            .tool("wl-copy")
+            .arg(text)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        match copied {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => Err(format!("wl-copy failed: {status}")),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                // In one step, so the app never reads half a text.
+                let partial = self.clipboard.with_extension("tmp");
+                std::fs::write(&partial, text)
+                    .and_then(|()| std::fs::rename(&partial, &self.clipboard))
+                    .map_err(|err| format!("clipboard hook: {err}"))
+            }
+            Err(err) => Err(format!("wl-copy: {err}")),
+        }
     }
 }
 

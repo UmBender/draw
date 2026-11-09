@@ -14,6 +14,7 @@ use macroquad::miniquad::{EventHandler, KeyMods};
 
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::core::keymap::KeyChord;
 use crate::shell::diag::detect::KeyWatch;
 use crate::shell::diag::event::{Event, char_class, key_tag};
 
@@ -101,14 +102,15 @@ pub fn map_mods(mods: KeyMods) -> Modifiers {
 /// `Ctrl+V` while a text edit is open (ADR-T83-1).
 #[must_use]
 pub fn wants_clipboard(event: &InputEvent, editing: bool) -> bool {
-    todo!("{event:?} {editing}")
+    let paste = KeyChord::ctrl(Key::V);
+    editing && matches!(event, InputEvent::KeyDown { key, mods } if *key == paste.key && *mods == paste.mods)
 }
 
 /// The event for what the clipboard held; `None` when it was empty or
 /// unavailable (ADR-T83-1).
 #[must_use]
 pub fn paste_event(text: Option<String>) -> Option<InputEvent> {
-    todo!("{text:?}")
+    text.filter(|text| !text.is_empty()).map(InputEvent::Paste)
 }
 
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI

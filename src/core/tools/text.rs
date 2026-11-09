@@ -32,7 +32,25 @@ pub const PASTE_MAX_BYTES: usize = 64 * 1024;
 /// `text` as a text block holds it: see [`TextEdit::paste`] (ADR-T83-1).
 #[must_use]
 pub fn clean_paste(text: &str) -> String {
-    todo!("{text}")
+    let mut cleaned = String::with_capacity(text.len().min(PASTE_MAX_BYTES));
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        let room = PASTE_MAX_BYTES - cleaned.len();
+        match ch {
+            '\r' | '\n' if room == 0 => break,
+            '\r' => {
+                chars.next_if_eq(&'\n');
+                cleaned.push('\n');
+            }
+            '\n' => cleaned.push('\n'),
+            '\t' if room < TAB_SPACES => break,
+            '\t' => cleaned.extend(std::iter::repeat_n(' ', TAB_SPACES)),
+            _ if ch.is_control() => {}
+            _ if room < ch.len_utf8() => break,
+            _ => cleaned.push(ch),
+        }
+    }
+    cleaned
 }
 
 /// On-screen font size in pixels of a new block drawn at stroke width
@@ -259,7 +277,10 @@ impl TextEdit {
     /// tab is the `Tab` key's spaces, and at most [`PASTE_MAX_BYTES`] are
     /// inserted. Returns whether anything was (ADR-T83-1).
     pub fn paste(&mut self, text: &str) -> bool {
-        todo!("{text}")
+        let cleaned = clean_paste(text);
+        self.text.insert_str(self.caret, &cleaned);
+        self.caret += cleaned.len();
+        !cleaned.is_empty()
     }
 
     /// Removes the `char` before the caret. Returns whether there was one.

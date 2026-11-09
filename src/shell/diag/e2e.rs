@@ -97,13 +97,19 @@ impl Hooks {
     /// Sets the file [`Self::take_clipboard`] reads.
     #[must_use]
     pub fn with_clipboard(self, path: Option<&OsStr>) -> Self {
-        todo!("{self:?} {path:?}")
+        Self {
+            clipboard: path_of(path),
+            ..self
+        }
     }
 
     /// The text the harness left for the clipboard, once.
     #[must_use]
     pub fn take_clipboard(&self) -> Option<String> {
-        todo!()
+        let path = self.clipboard.as_ref()?;
+        let text = std::fs::read_to_string(path).ok()?;
+        let _ = std::fs::remove_file(path);
+        Some(text)
     }
 
     /// Records one received [`SYNC_CHORD`].
