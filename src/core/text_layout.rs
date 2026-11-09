@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::tex::{self, Layout};
+use crate::core::tex::{self, Face, Ink, Layout};
 
 /// Width of one cell, per unit of font size: every glyph of the embedded
 /// font is 600/1000 em wide.
@@ -126,15 +126,41 @@ fn fit_box(unit: Aabb, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
     Some((frame.center() - half, size))
 }
 
+/// The layout of a text without markup: the cells [`glyphs`] draws it in
+/// and the box [`source_bounds`] gives it. [`tex::layout`] adds up its
+/// cells instead, which drifts past that box on a long line.
+fn plain_layout(text: &str) -> Layout {
+    let (cols, rows) = extent(text);
+    let size = cell(1.0, cols, rows);
+    Layout {
+        width: size.x,
+        height: size.y,
+        ink: glyphs(Vec2::ZERO, text, 1.0)
+            .map(|glyph| Ink::Glyph {
+                ch: glyph.ch,
+                face: Face::Text,
+                pos: glyph.pos,
+                scale: 1.0,
+                warn: false,
+            })
+            .collect(),
+    }
+}
+
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
-/// once per distinct text and then shared.
+/// once per distinct text and then shared. Text without markup stays on
+/// the cell grid it is drawn on.
 #[must_use]
 pub fn typeset(text: &str) -> Rc<Layout> {
     TYPESET.with(|cache| {
         if let Some(layout) = cache.borrow().get(text) {
             return Rc::clone(layout);
         }
-        let layout = Rc::new(tex::layout(&tex::parse(text)));
+        let layout = Rc::new(if has_markup(text) {
+            tex::layout(&tex::parse(text))
+        } else {
+            plain_layout(text)
+        });
         let mut cache = cache.borrow_mut();
         if cache.len() >= TYPESET_CACHE_MAX {
             cache.clear();
