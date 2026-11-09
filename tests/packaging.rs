@@ -212,6 +212,34 @@ fn icons_have_every_size() {
 }
 
 #[test]
+fn package_script_binary_limit_is_20_mib() {
+    // Arrange
+    let script = read("scripts/package.sh");
+
+    // Act
+    let limit: Vec<&str> = script
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("max_binary_bytes="))
+        .collect();
+
+    // Assert: ADR-T82-1 — counted in MiB, set once.
+    assert_eq!(limit, ["max_binary_bytes=$((20 * 1024 * 1024))"]);
+}
+
+#[test]
+fn binary_limit_adr_amends_t29_1_and_names_what_bounds_size() {
+    // Arrange / Act
+    let adr = read("docs/decisions/ADR-T82-1 Shipped binary limit of 20 MiB.md");
+
+    // Assert
+    assert!(adr.contains("amends: [ADR-T29-1]"), "{adr}");
+    assert!(adr.contains("20 971 520 bytes"), "{adr}");
+    assert!(adr.contains("Start-up time"), "{adr}");
+    assert!(adr.contains("per-font guards"), "{adr}");
+}
+
+#[test]
 fn cargo_patches_miniquad_with_the_vendored_copy() {
     // Arrange
     let manifest = read("Cargo.toml");

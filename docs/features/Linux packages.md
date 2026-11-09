@@ -1,7 +1,7 @@
 ---
 title: Linux packages
 task: "[[T27 Linux packaging]]"
-adrs: ["[[ADR-T27-1 Build in an AlmaLinux 8 container for a glibc 2.28 floor]]", "[[ADR-T27-2 Package formats from one staging tree and one library list]]", "[[ADR-T27-3 Crash report from a panic hook and split debug symbols]]"]
+adrs: ["[[ADR-T27-1 Build in an AlmaLinux 8 container for a glibc 2.28 floor]]", "[[ADR-T27-2 Package formats from one staging tree and one library list]]", "[[ADR-T27-3 Crash report from a panic hook and split debug symbols]]", "[[ADR-T82-1 Shipped binary limit of 20 MiB]]"]
 tutorial: "[[27 Shipping a binary to other Linux machines]]"
 shortcuts: []
 tags: [feature]
@@ -55,6 +55,8 @@ report that points at the source line.
 ## Limits
 
 - x86_64 Linux only; macOS and Windows build from source.
+- The stripped binary must stay under 20 MiB, or `scripts/package.sh`
+  fails ([[ADR-T82-1 Shipped binary limit of 20 MiB]]).
 - X11 only: Wayland sessions need XWayland
   ([[T28 Experimental native Wayland backend]]).
 - Nothing is published or signed; the Flatpak bundle is local, not on
