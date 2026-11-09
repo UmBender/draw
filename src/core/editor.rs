@@ -4897,4 +4897,97 @@ mod tests {
         assert!(ed.document_revision() > before);
         assert_eq!(ed.document().len(), 3);
     }
+
+    // ---- T88 bucket drag across cells --------------------------------------
+
+    /// Editor on the Bucket holding one 4 × 4 grid of 25 px cells, and its id.
+    fn bucket_on_grid() -> (Editor, ShapeId) {
+        let mut ed = editor_with(vec![grid(0.0, 0.0, 100.0, 100.0, 4, 4)]);
+        ed.apply(Command::SetTool(Tool::Bucket));
+        let id = ids(&ed)[0];
+        (ed, id)
+    }
+
+    fn filled_cells(ed: &Editor, id: ShapeId) -> Vec<(u32, u32)> {
+        ed.document().get(id).map_or_else(Vec::new, |shape| {
+            shape.cell_fills().iter().map(|f| (f.col, f.row)).collect()
+        })
+    }
+
+    #[test]
+    fn bucket_escape_during_drag_restores_the_cells() {
+        // Arrange
+        let (mut ed, id) = bucket_on_grid();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 90.0, 10.0);
+        assert!(!ed.overlay().is_empty());
+
+        // Act
+        let redraw = key(&mut ed, Key::Escape);
+        up(&mut ed, PointerButton::Left, 90.0, 10.0);
+
+        // Assert
+        assert!(redraw);
+        assert!(ed.overlay().is_empty());
+        assert_eq!(filled_cells(&ed, id), []);
+        assert_eq!(ed.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn bucket_drag_moves_keep_the_document_revision() {
+        // Arrange
+        let (mut ed, id) = bucket_on_grid();
+        let before = ed.document_revision();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+
+        // Act
+        let redraw = move_to(&mut ed, 40.0, 10.0);
+
+        // Assert: shown at once, committed on release only.
+        assert!(redraw);
+        assert_eq!(ed.document_revision(), before);
+        up(&mut ed, PointerButton::Left, 40.0, 10.0);
+        assert!(ed.document_revision() > before);
+        assert_eq!(filled_cells(&ed, id), [(0, 0), (1, 0)]);
+    }
+
+    #[test]
+    fn bucket_pen_tap_fills_the_pressed_cell_only() {
+        // Arrange: the release is in the next cell, within the tap slop.
+        let (ed, id) = bucket_on_grid();
+        let mut ed = ed.with_tap_slop(16.0);
+
+        // Act
+        down(&mut ed, PointerButton::Left, 22.0, 10.0);
+        move_to(&mut ed, 28.0, 10.0);
+        up(&mut ed, PointerButton::Left, 28.0, 10.0);
+
+        // Assert
+        assert_eq!(filled_cells(&ed, id), [(0, 0)]);
+        assert_eq!(ed.history.undo_len(), 2);
+    }
+
+    #[test]
+    fn bucket_drag_survives_a_snapshot_round_trip() {
+        // Arrange: a drag that has painted two cells.
+        let (mut ed, id) = bucket_on_grid();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 40.0, 10.0);
+
+        // Act
+        let text = ed.snapshot().to_text();
+        let mut loaded = match Snapshot::parse(&text) {
+            Ok(snapshot) => Editor::from_snapshot(snapshot),
+            Err(err) => panic!("{err}\n{text}"),
+        };
+
+        // Assert: equal now, and after the drag ends the same way.
+        assert_eq!(loaded, ed);
+        for editor in [&mut ed, &mut loaded] {
+            move_to(editor, 65.0, 10.0);
+            up(editor, PointerButton::Left, 65.0, 10.0);
+        }
+        assert_eq!(loaded, ed);
+        assert_eq!(filled_cells(&loaded, id), [(0, 0), (1, 0), (2, 0)]);
+    }
 }
