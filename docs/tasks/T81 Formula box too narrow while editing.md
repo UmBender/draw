@@ -1,7 +1,7 @@
 ---
 id: T81
 title: Formula box too narrow while editing
-status: todo
+status: in-progress
 wave: 34
 branch: fix/formula-box-while-editing
 depends_on: [T74]
@@ -35,20 +35,41 @@ ends in the middle of its source text.
 - `text_layout::bounds` is the box of the *typeset* formula, which is much
   narrower than its source.
 
-## Cause (not confirmed)
+## Cause (found 2026-11-09)
 
-The short outline is probably the block's `text_layout::bounds` drawn
-during the edit, where the source is on screen instead of the formula.
-What draws it has not been found. Start from whatever outlines a selected
-block, and from how the block being edited is kept out of the selection.
+Confirmed by reading the code; the regression test below shows it.
+
+- A click with the Select tool on the block that is the only selection
+  re-opens it (`Editor::reopen_clicked_text`) and leaves it selected.
+- `shell::app::draw_overlay` outlines `edit.bounds()`, the source box, and
+  then `editor.selection_bounds()`, which it skips only during a gesture.
+  An open text block is not a gesture.
+- `selection_bounds` uses `Shape::bounds`, the typeset box. That is the
+  short outline.
+
+The block stays selected on purpose: when the edit ends, it is the
+selection again. So the fix leaves `selection` alone and makes
+`selection_bounds` skip the block being edited, whose outline is the edit
+session's. A shape hosting the text is not skipped: its outline is its
+frame, which the text is fitted into. No module boundary or decision
+changes, so no ADR is needed.
 
 ## Spec
 
-To be written in the spec step. Expected:
-
-- A regression case with the state above, red before the fix.
-- While a block is edited, every outline around it fits the source shown.
-- Once the edit ends, the block's box is again the typeset one.
+- **AC-1** — Re-opening a selected block with a formula leaves no outline
+  of its typeset box: `selection_bounds` is `None` and the edit's box is
+  wider than the typeset one. *Test:*
+  `core::editor::tests::regression_t81_formula_box_while_editing`
+  (lower-case id, as in T76 and T78), from
+  `tests/snapshots/regressions/T81-formula-box-while-editing.snap`.
+- **AC-2** — Once the edit ends, the block is still selected and its box
+  is the typeset one. *Test:*
+  `core::editor::tests::selection_bounds_after_text_edit_is_the_typeset_box`.
+- **AC-3** — The other selected shapes keep their outline while one block
+  is edited. *Test:*
+  `core::editor::tests::selection_bounds_skips_only_the_block_being_edited`.
+- **AC-4** — A shape whose text is edited keeps its outline. *Test:*
+  `core::editor::tests::selection_bounds_keeps_the_host_of_the_text_being_edited`.
 
 ## Out of scope
 
@@ -58,11 +79,12 @@ To be written in the spec step. Expected:
 
 ## Files owned
 
-To be set in the spec step, once the cause is known.
+- `src/core/editor.rs`
+- `tests/snapshots/regressions/T81-formula-box-while-editing.snap`
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T81): specify the box of a formula being edited`
+- [x] spec — `docs(T81): specify the box of a formula being edited`
 - [ ] regression — `test(T81): add regression test for the box while editing`
 - [ ] behaviour — `fix(T81): keep the box of a formula on its source while editing`
 - [ ] quality — `chore(T81): pass clippy and rustfmt`
