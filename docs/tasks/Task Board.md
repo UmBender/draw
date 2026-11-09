@@ -153,6 +153,32 @@ flowchart TD
   T80 --> T53
   T74 --> T81[T81 Formula box too narrow while editing]
   T81 --> T53
+  T82[T82 Raise the binary size limit]
+  T82 --> T53
+  T83[T83 Paste text from the clipboard]
+  T83 --> T53
+  T83 --> T84[T84 Grid from text]
+  T84 --> T53
+  T85[T85 Resize a committed grid]
+  T85 --> T53
+  T86[T86 Zero-based numbering]
+  T86 --> T53
+  T84 --> T87[T87 Graph or tree from an edge list]
+  T87 --> T53
+  T88[T88 Bucket drag across cells]
+  T88 --> T53
+  T89[T89 Growing brackets]
+  T89 --> T53
+  T89 --> T90[T90 Matrices and cases]
+  T90 --> T53
+  T91[T91 Resize handles]
+  T91 --> T53
+  T92[T92 Export the view to PNG]
+  T92 --> T53
+  T87 --> T93[T93 Coordinate plane from points]
+  T93 --> T53
+  T94[T94 Autosave and crash recovery]
+  T94 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -211,8 +237,12 @@ flowchart TD
 | 48 | [[T69 Classical physics notation]] |
 | 49 | [[T70 Quantum notation]] |
 | 50 | [[T71 Combinatorics notation]] |
-| 51 | [[T53 Release 1.5.0]] |
-| 52 | [[T50 Version 2.0.0 refactor]] |
+| 51 | [[T82 Raise the binary size limit]] · [[T83 Paste text from the clipboard]] · [[T85 Resize a committed grid]] · [[T86 Zero-based numbering]] · [[T88 Bucket drag across cells]] · [[T89 Growing brackets]] · [[T91 Resize handles]] · [[T92 Export the view to PNG]] · [[T94 Autosave and crash recovery]] |
+| 52 | [[T84 Grid from text]] · [[T90 Matrices and cases]] |
+| 53 | [[T87 Graph or tree from an edge list]] |
+| 54 | [[T93 Coordinate plane from points]] |
+| 55 | [[T53 Release 1.5.0]] |
+| 56 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -298,5 +328,18 @@ flowchart TD
 | [[T79 Wayland keyboard without a keymap]] | done | T75 | `fix/wayland-no-keymap` |
 | [[T80 Mouse cursor in end-to-end screenshots]] | done | T75 | `fix/e2e-cursor-in-screenshots` |
 | [[T81 Formula box too narrow while editing]] | done | T74 | `fix/formula-box-while-editing` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T81 | `chore/release-1.5.0` |
+| [[T82 Raise the binary size limit]] | todo | — | `chore/T82-binary-limit` |
+| [[T83 Paste text from the clipboard]] | todo | — | `task/T83-paste-text` |
+| [[T84 Grid from text]] | todo | T83 | `task/T84-grid-from-text` |
+| [[T85 Resize a committed grid]] | todo | — | `task/T85-resize-grid` |
+| [[T86 Zero-based numbering]] | todo | — | `task/T86-zero-based` |
+| [[T87 Graph or tree from an edge list]] | todo | T84 | `task/T87-graph-from-edges` |
+| [[T88 Bucket drag across cells]] | todo | — | `task/T88-bucket-drag` |
+| [[T89 Growing brackets]] | todo | — | `task/T89-growing-brackets` |
+| [[T90 Matrices and cases]] | todo | T89 | `task/T90-matrices` |
+| [[T91 Resize handles]] | todo | — | `task/T91-resize-handles` |
+| [[T92 Export the view to PNG]] | todo | — | `task/T92-png-export` |
+| [[T93 Coordinate plane from points]] | todo | T87 | `task/T93-coordinate-plane` |
+| [[T94 Autosave and crash recovery]] | todo | — | `task/T94-autosave` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T94 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
