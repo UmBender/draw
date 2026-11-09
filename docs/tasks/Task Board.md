@@ -294,6 +294,6 @@ flowchart TD
 | [[T77 Test sessions that leave the machine usable]] | done | — | `task/T77-gate-resource-limits` |
 | [[T78 Formula ink outside its text box]] | todo | T74 | `fix/formula-ink-outside-box` |
 | [[T79 Wayland keyboard without a keymap]] | todo | T75 | `fix/wayland-no-keymap` |
-| [[T80 Mouse cursor in end-to-end screenshots]] | todo | T75 | `fix/e2e-cursor-in-screenshots` |
+| [[T80 Mouse cursor in end-to-end screenshots]] | done | T75 | `fix/e2e-cursor-in-screenshots` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T80 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

@@ -1,7 +1,7 @@
 ---
 id: T80
 title: Mouse cursor in end-to-end screenshots
-status: review
+status: done
 wave: 35
 branch: fix/e2e-cursor-in-screenshots
 depends_on: [T75]
@@ -93,3 +93,4 @@ None planned.
   `scripts/check.sh` is green.
 - 2026-11-08 — AC-6 pending owner run: the job needs one more nightly run
   on this fix, which also closes AC-6 of T75. No tutorial: none planned.
+- 2026-11-08 — integrated. AC-6 waits on the nightly run from `main`.

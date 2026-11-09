@@ -100,3 +100,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 89 | [[ADR-T76-1 Remembered text size stays on the ladder]] | accepted | decision | T29-3, T74-1 | amends T37-1 |
 | 90 | [[ADR-T75-1 Headless sway session for end-to-end tests]] | accepted | decision | T74-1, T77-1, T46-1 | — |
 | 91 | [[ADR-T75-2 Wheel notches through the virtual pointer]] | accepted | decision | — | amends T75-1 |
+| 92 | [[ADR-T80-1 Screenshots ignore the box under the pointer]] | accepted | decision | — | amends T75-1 |
