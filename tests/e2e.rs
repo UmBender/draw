@@ -40,17 +40,6 @@ const POLL: Duration = Duration::from_millis(5);
 /// goes away while it is the seat's active keyboard (ADR-T75-1).
 const KEEP_ALIVE_MS: &str = "3000000";
 
-/// How long a `wtype` waits before typing after the seat's keyboard was
-/// replaced (milliseconds), so the app has bound its new `wl_keyboard`
-/// and the keys are not lost. The app gives no signal for this (T79).
-const KEYBOARD_SETTLE_MS: &str = "500";
-
-/// `wl_seat.capabilities` with only a pointer.
-const SEAT_POINTER_ONLY: u32 = 1;
-
-/// `wl_seat.capabilities` with a pointer and a keyboard.
-const SEAT_POINTER_AND_KEYBOARD: u32 = 3;
-
 /// The sync chord, as `wtype` arguments: `Ctrl+Shift+9` (ADR-T75-1).
 const SYNC_ARGS: [&str; 10] = [
     "-M", "ctrl", "-M", "shift", "-k", "9", "-m", "shift", "-m", "ctrl",
@@ -779,7 +768,7 @@ impl Session {
         // A keyboard on the seat from before the app starts.
         let first = session.spawn_wtype(&["-s".to_owned(), KEEP_ALIVE_MS.to_owned()])?;
         session.keyboards.push_back(first);
-        session.wait_for_capabilities(SEAT_POINTER_AND_KEYBOARD)?;
+        session.wait_for_seat()?;
         Ok(session)
     }
 
@@ -835,16 +824,18 @@ impl Session {
         }
     }
 
-    /// Waits until the seat reports exactly `capabilities`.
-    fn wait_for_capabilities(&self, capabilities: u32) -> Result<(), String> {
-        let wanted = format!("\"capabilities\": {capabilities}");
+    /// Waits until the seat has a pointer and a keyboard.
+    fn wait_for_seat(&self) -> Result<(), String> {
         let started = Instant::now();
         loop {
-            if self.swaymsg(&["-t", "get_seats"])?.contains(&wanted) {
+            if self
+                .swaymsg(&["-t", "get_seats"])?
+                .contains("\"capabilities\": 3")
+            {
                 return Ok(());
             }
             if started.elapsed() >= SYNC_TIMEOUT {
-                return Err(format!("the seat never reported {wanted}"));
+                return Err("the seat never got a pointer and a keyboard".to_owned());
             }
             std::thread::sleep(POLL);
         }
@@ -870,18 +861,38 @@ impl Session {
         }
     }
 
-    /// Stops the newest keyboard, which is the active one, and gives the
-    /// empty seat a keyboard without a keymap. The returned stream holds
-    /// that keyboard (ADR-T75-1, T79).
+    /// Stops the newest keyboard, which is the active one, so that sway
+    /// adopts a new keyboard without a keymap. An idle spare keeps the
+    /// seat's keyboard capability, so the app keeps its `wl_keyboard`. The
+    /// returned stream holds the new keyboard (ADR-T75-1, T79).
     fn replace_active_keyboard(&mut self) -> Result<UnixStream, String> {
-        if let Some(mut active) = self.keyboards.pop_back() {
-            let _ = active.kill();
-            let _ = active.wait();
-        }
-        self.wait_for_capabilities(SEAT_POINTER_ONLY)?;
+        let Some(mut active) = self.keyboards.pop_back() else {
+            return Err("no active keyboard to end".to_owned());
+        };
+        let spare = self.spawn_wtype(&["-s".to_owned(), KEEP_ALIVE_MS.to_owned()])?;
+        self.keyboards.push_back(spare);
+        self.wait_for_keyboards(2)?;
+        let _ = active.kill();
+        let _ = active.wait();
+        self.wait_for_keyboards(1)?;
         let bare = announce_bare_keyboard(&self.guard.wayland)?;
-        self.wait_for_capabilities(SEAT_POINTER_AND_KEYBOARD)?;
+        self.wait_for_keyboards(2)?;
         Ok(bare)
+    }
+
+    /// Waits until the compositor lists exactly `count` keyboards.
+    fn wait_for_keyboards(&self, count: usize) -> Result<(), String> {
+        let started = Instant::now();
+        loop {
+            let inputs = self.swaymsg(&["-t", "get_inputs"])?;
+            if inputs.matches("\"type\": \"keyboard\"").count() == count {
+                return Ok(());
+            }
+            if started.elapsed() >= SYNC_TIMEOUT {
+                return Err(format!("the compositor never listed {count} keyboards"));
+            }
+            std::thread::sleep(POLL);
+        }
     }
 
     /// Stops every keyboard but the newest, which is the active one.
@@ -1016,7 +1027,7 @@ impl Running<'_> {
             }
             Step::EndKeyboard => {
                 let _bare = self.session.replace_active_keyboard()?;
-                self.sync_with(&["-s".to_owned(), KEYBOARD_SETTLE_MS.to_owned()])
+                self.sync_with(&[])
             }
         }
     }
