@@ -33,4 +33,5 @@ One note per user-visible feature, created by the task that implements it
 | [[Diagnostics log]] | [[T47 Always-on diagnostics log]] | [[47 A flight recorder for rare bugs]] | done |
 | [[Clean exit on signals]] | [[T48 Clean exit on Ctrl-C]] | [[48 Signals, self-pipes and async-signal safety]] | done |
 | [[Editor snapshots]] | [[T74 Editor snapshots for tests]] | — | done |
+| [[End-to-end tests]] | [[T75 End-to-end test suite]] | — | done |
 | [[Contest cheat sheet]] | [[T14 Performance and release validation]] | [[14 Profiling and shipping a release build]] | done |

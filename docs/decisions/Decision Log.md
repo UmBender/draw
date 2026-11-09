@@ -97,3 +97,6 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 86 | [[ADR-T71-1 Infix fraction commands split their group]] | accepted | decision | T30-1 | — |
 | 87 | [[ADR-T69-1 Physics shortcuts expand to their long forms]] | accepted | decision | T30-1, T39-1 | — |
 | 88 | [[ADR-T77-1 Test gates run in capped low-priority scopes]] | accepted | decision | — | — |
+| 89 | [[ADR-T76-1 Remembered text size stays on the ladder]] | accepted | decision | T29-3, T74-1 | amends T37-1 |
+| 90 | [[ADR-T75-1 Headless sway session for end-to-end tests]] | accepted | decision | T74-1, T77-1, T46-1 | — |
+| 91 | [[ADR-T75-2 Wheel notches through the virtual pointer]] | accepted | decision | — | amends T75-1 |

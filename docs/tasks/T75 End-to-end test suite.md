@@ -1,7 +1,7 @@
 ---
 id: T75
 title: End-to-end test suite
-status: review
+status: done
 wave: 34
 branch: task/T75-e2e-tests
 depends_on: [T73, T74]
@@ -220,3 +220,6 @@ tutorial of T74.
 - 2026-11-08 — Manual checks left for the owner: look at the 5 screenshot
   goldens; run `scripts/e2e.sh` once while working, to confirm no keys or
   windows reach the desktop (not checked by a person yet).
+- 2026-11-08 — integrated. Still open for the owner: AC-6 (one manual
+  `workflow_dispatch` after pushing) and a run while working. The
+  `no_keymap` panic is now [[T79 Wayland keyboard without a keymap]].

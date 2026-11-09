@@ -145,6 +145,10 @@ flowchart TD
   T74 --> T76[T76 Remembered text size past the ladder]
   T76 --> T53
   T77[T77 Test sessions that leave the machine usable] --> T53
+  T74 --> T78[T78 Formula ink outside its text box]
+  T78 --> T53
+  T75 --> T79[T79 Wayland keyboard without a keymap]
+  T79 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -186,8 +190,8 @@ flowchart TD
 | 31 | [[T46 Native Wayland by default and Xwayland deprecated]] · [[T47 Always-on diagnostics log]] |
 | 32 | [[T48 Clean exit on Ctrl-C]] · [[T49 Long-running stability]] · [[T51 Build-time themes]] · [[T52 Text in shapes by default]] |
 | 33 | [[T54 Math alphabet styles]] · [[T72 Feature proposal]] · [[T73 Continuous integration on GitHub]] · [[T74 Editor snapshots for tests]] · [[T77 Test sessions that leave the machine usable]] |
-| 34 | [[T55 Math font subset for alphabets and symbols]] · [[T75 End-to-end test suite]] · [[T76 Remembered text size past the ladder]] |
-| 35 | [[T56 Bold math]] |
+| 34 | [[T55 Math font subset for alphabets and symbols]] · [[T75 End-to-end test suite]] · [[T76 Remembered text size past the ladder]] · [[T78 Formula ink outside its text box]] |
+| 35 | [[T56 Bold math]] · [[T79 Wayland keyboard without a keymap]] |
 | 36 | [[T57 Blackboard bold]] |
 | 37 | [[T58 Fraktur letters]] |
 | 38 | [[T59 Script letters]] |
@@ -283,8 +287,10 @@ flowchart TD
 | [[T72 Feature proposal]] | todo | — | `docs/T72-feature-proposal` |
 | [[T73 Continuous integration on GitHub]] | done | — | `task/T73-github-ci` |
 | [[T74 Editor snapshots for tests]] | done | — | `task/T74-editor-snapshots` |
-| [[T75 End-to-end test suite]] | todo | T73, T74 | `task/T75-e2e-tests` |
-| [[T76 Remembered text size past the ladder]] | todo | T74 | `fix/remembered-text-size` |
+| [[T75 End-to-end test suite]] | done | T73, T74 | `task/T75-e2e-tests` |
+| [[T76 Remembered text size past the ladder]] | done | T74 | `fix/remembered-text-size` |
 | [[T77 Test sessions that leave the machine usable]] | done | — | `task/T77-gate-resource-limits` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T77 | `chore/release-1.5.0` |
+| [[T78 Formula ink outside its text box]] | todo | T74 | `fix/formula-ink-outside-box` |
+| [[T79 Wayland keyboard without a keymap]] | todo | T75 | `fix/wayland-no-keymap` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T79 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

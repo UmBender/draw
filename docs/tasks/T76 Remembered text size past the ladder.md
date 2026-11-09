@@ -1,7 +1,7 @@
 ---
 id: T76
 title: Remembered text size past the ladder
-status: review
+status: done
 wave: 34
 branch: fix/remembered-text-size
 depends_on: [T74]
@@ -151,3 +151,6 @@ None planned; the ADR is enough.
   input, so a later `--fuzz` run can still hit it. Left for the owner:
   `Ctrl+[` a block, zoom far in, end the edit, start a new block: it starts
   at the top rung at most.
+- 2026-11-08 — integrated. Still open for the owner: the hand check
+  above, and dropping the T71 seed stash (find it by its message). The
+  ink bug is now [[T78 Formula ink outside its text box]].

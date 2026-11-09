@@ -70,6 +70,10 @@ All notable changes to draw are listed here. The format follows
 - On the native Wayland backend (experimental), each key press is typed
   once: a letter could show up three times when the compositor
   re-announced the keyboard.
+- The text size remembered for new blocks stays on the size ladder,
+  whatever the zoom was when the edit ended: zooming far in during an
+  edit no longer makes the next block huge, or leaves a snapshot that
+  draw cannot load.
 
 ## [1.4.3] - 2026-10-22
 
