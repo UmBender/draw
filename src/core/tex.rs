@@ -3387,6 +3387,9 @@ mod tests {
                 "\\overline", "\\mathrm", "\\mathit", "\\mathnormal", "\\Gamma",
                 "\\left", "\\right", "\\left(", "\\right)", "\\left.", "\\right.",
                 "\\left\\{", "\\right\\rangle", "\\left\\|",
+                "\\begin", "\\end", "\\begin{matrix}", "\\end{matrix}", "\\begin{pmatrix}",
+                "\\end{pmatrix}", "\\begin{cases}", "\\end{cases}", "\\begin{foo}", "\\end{foo}",
+                "&", "\\\\",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -7737,5 +7740,614 @@ mod tests {
         // A superscript barely reaches past the normal bracket.
         let (_, scale) = glyph(&boxed("\\left(x^2\\right)").ink, '(');
         assert!(scale < 1.1, "{scale}");
+    }
+
+    // ---- T90 matrices and cases ----------------------------------------------
+
+    const ENVIRONMENT_NAMES: [&str; 5] = ["matrix", "pmatrix", "bmatrix", "vmatrix", "cases"];
+
+    fn env_node(name: &str, rows: Vec<Vec<Vec<Node>>>) -> Node {
+        Node::Environment {
+            name: name.to_owned(),
+            lead: String::new(),
+            end_lead: String::new(),
+            rows,
+        }
+    }
+
+    /// A cell holding one typed character.
+    fn cell(ch: char) -> Vec<Node> {
+        vec![Node::Char(ch)]
+    }
+
+    fn matrix_of(body: &str) -> String {
+        format!(r"\begin{{matrix}}{body}\end{{matrix}}")
+    }
+
+    fn glyph_chars(b: &MathBox) -> Vec<char> {
+        glyphs(&b.ink).iter().map(|g| g.0).collect()
+    }
+
+    #[test]
+    fn tex_parse_environment_is_one_node_keeping_its_source() {
+        // Act + Assert
+        assert_eq!(
+            math(r"\begin{pmatrix}a&b\\c&d\end{pmatrix}"),
+            vec![env_node(
+                "pmatrix",
+                vec![vec![cell('a'), cell('b')], vec![cell('c'), cell('d')]]
+            )]
+        );
+        assert_eq!(
+            math(r"\begin {matrix}a\end  {matrix}"),
+            vec![Node::Environment {
+                name: "matrix".to_owned(),
+                lead: " ".to_owned(),
+                end_lead: "  ".to_owned(),
+                rows: vec![vec![cell('a')]],
+            }]
+        );
+        let src = r"$x \begin {bmatrix} a & {b} \\ \frac12 \end  {bmatrix}^2 y$";
+        assert_eq!(print(&parse(src)), src);
+    }
+
+    #[test]
+    fn tex_parse_every_environment_splits_cells_and_rows() {
+        for name in ENVIRONMENT_NAMES {
+            // Act
+            let got = math(&format!(r"\begin{{{name}}}x&1\\1&x&2\end{{{name}}}"));
+
+            // Assert
+            assert_eq!(
+                got,
+                vec![env_node(
+                    name,
+                    vec![
+                        vec![cell('x'), cell('1')],
+                        vec![cell('1'), cell('x'), cell('2')],
+                    ]
+                )],
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn tex_parse_cells_keep_their_whitespace() {
+        // Act + Assert
+        assert_eq!(
+            math(&matrix_of("a & b")),
+            vec![env_node(
+                "matrix",
+                vec![vec![
+                    vec![Node::Char('a'), space()],
+                    vec![space(), Node::Char('b')],
+                ]]
+            )]
+        );
+    }
+
+    #[test]
+    fn tex_parse_separators_in_a_nested_part_belong_to_it() {
+        // Act + Assert: one cell each, the separators are not the table's.
+        assert_eq!(
+            math(&matrix_of("{a&b}")),
+            vec![env_node(
+                "matrix",
+                vec![vec![vec![Node::Group(vec![
+                    Node::Char('a'),
+                    Node::Char('&'),
+                    Node::Char('b'),
+                ])]]]
+            )]
+        );
+        assert_eq!(
+            math(&matrix_of(r"{a\\b}")),
+            vec![env_node(
+                "matrix",
+                vec![vec![vec![Node::Group(vec![
+                    Node::Char('a'),
+                    literal(r"\\"),
+                    Node::Char('b'),
+                ])]]]
+            )]
+        );
+        assert_eq!(
+            math(&matrix_of(r"\text{a&b}&c")),
+            vec![env_node(
+                "matrix",
+                vec![vec![
+                    vec![Node::Text {
+                        lead: String::new(),
+                        body: "a&b".to_owned(),
+                    }],
+                    cell('c'),
+                ]]
+            )]
+        );
+        assert_eq!(
+            math(&matrix_of(r"\left(a&b\right)&c")),
+            vec![env_node(
+                "matrix",
+                vec![vec![
+                    vec![pair(
+                        "(",
+                        vec![Node::Char('a'), Node::Char('&'), Node::Char('b')],
+                        ")"
+                    )],
+                    cell('c'),
+                ]]
+            )]
+        );
+        let Node::Environment { rows, .. } = &math(&matrix_of(r"a\&b"))[0] else {
+            panic!("an environment expected");
+        };
+        assert_eq!(rows[0].len(), 1);
+    }
+
+    #[test]
+    fn tex_parse_nested_environments_keep_their_own_cells() {
+        // Act
+        let got = math(&matrix_of(&format!(r"{}&c", matrix_of(r"a&b\\d"))));
+
+        // Assert
+        let inner = env_node(
+            "matrix",
+            vec![vec![cell('a'), cell('b')], vec![cell('d')]],
+        );
+        assert_eq!(
+            got,
+            vec![env_node("matrix", vec![vec![vec![inner], cell('c')]])]
+        );
+    }
+
+    #[test]
+    fn tex_parse_script_before_a_separator_stays_literal() {
+        // Act + Assert: the `&` still ends the cell.
+        assert_eq!(
+            math(&matrix_of("x^&y")),
+            vec![env_node(
+                "matrix",
+                vec![vec![vec![Node::Char('x'), literal("^")], cell('y')]]
+            )]
+        );
+    }
+
+    #[test]
+    fn tex_parse_environment_at_the_cell_limit_is_a_table() {
+        // Arrange
+        let wide = vec!["x"; ENVIRONMENT_MAX_CELLS].join("&");
+        let tall = vec!["x"; ENVIRONMENT_MAX_CELLS].join(r"\\");
+
+        // Act
+        let wide = math(&matrix_of(&wide));
+        let tall = math(&matrix_of(&tall));
+        let trailing = math(&matrix_of(
+            &(vec!["x"; ENVIRONMENT_MAX_CELLS].join(r"\\") + r"\\"),
+        ));
+
+        // Assert
+        let dims = |nodes: &[Node]| match nodes {
+            [Node::Environment { rows, .. }] => (rows.len(), rows[0].len()),
+            other => panic!("one environment expected: {other:?}"),
+        };
+        assert_eq!(dims(&wide), (1, ENVIRONMENT_MAX_CELLS));
+        assert_eq!(dims(&tall), (ENVIRONMENT_MAX_CELLS, 1));
+        assert_eq!(dims(&trailing), (ENVIRONMENT_MAX_CELLS + 1, 1));
+    }
+
+    #[test]
+    fn tex_layout_every_environment_draws_without_warning() {
+        for name in ENVIRONMENT_NAMES {
+            // Act
+            let b = boxed(&format!(r"\begin{{{name}}}x&1\\1&x\end{{{name}}}"));
+
+            // Assert
+            let g = glyphs(&b.ink);
+            assert!(g.iter().all(|g| !g.3), "{name}: {g:?}");
+            assert_eq!(g.iter().filter(|g| g.0 == X).count(), 2, "{name}: {g:?}");
+            assert_eq!(g.iter().filter(|g| g.0 == '1').count(), 2, "{name}: {g:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_matrix_columns_are_centred() {
+        // Act
+        let b = boxed(&matrix_of(r"x&1\\xxx&1"));
+
+        // Assert
+        let (wide, narrow, one) = (
+            boxed("xxx").width,
+            boxed("x").width,
+            boxed("1").width,
+        );
+        let g = glyphs(&b.ink);
+        assert_eq!(glyph_chars(&b), [X, '1', X, X, X, '1']);
+        assert!(approx_eq(g[0].1.x, (wide - narrow) / 2.0, EPS), "{g:?}");
+        assert!(approx_eq(g[2].1.x, 0.0, EPS), "{g:?}");
+        assert!(
+            approx_eq(g[1].1.x, wide + ARRAY_COLUMN_GAP, EPS),
+            "{g:?}"
+        );
+        assert!(approx_eq(g[5].1.x, wide + ARRAY_COLUMN_GAP, EPS), "{g:?}");
+        assert!(approx_eq(b.width, wide + ARRAY_COLUMN_GAP + one, EPS));
+    }
+
+    #[test]
+    fn tex_layout_matrix_column_is_as_wide_as_its_widest_cell() {
+        // Act
+        let b = boxed(&matrix_of(r"1&1\\11&1\\1&111"));
+
+        // Assert
+        let (first, last, one) = (
+            boxed("11").width,
+            boxed("111").width,
+            boxed("1").width,
+        );
+        let g = glyphs(&b.ink);
+        assert!(approx_eq(b.width, first + ARRAY_COLUMN_GAP + last, EPS));
+        assert!(
+            approx_eq(
+                g[1].1.x,
+                first + ARRAY_COLUMN_GAP + (last - one) / 2.0,
+                EPS
+            ),
+            "{g:?}"
+        );
+    }
+
+    #[test]
+    fn tex_layout_matrix_rows_are_a_strut_apart() {
+        // Act
+        let b = boxed(&matrix_of(r"x\\x"));
+
+        // Assert
+        let g = glyphs(&b.ink);
+        let step = ARRAY_ROW_ASCENT + ARRAY_ROW_DESCENT;
+        assert!(approx_eq(g[1].1.y - g[0].1.y, step, EPS), "{g:?}");
+    }
+
+    #[test]
+    fn tex_layout_tall_row_pushes_the_next_one_down() {
+        // Arrange
+        let inner_src = matrix_of(r"x\\x\\x");
+        let inner = boxed(&inner_src);
+
+        // Act
+        let b = boxed(&matrix_of(&format!(r"{inner_src}\\1")));
+
+        // Assert
+        let total = inner.ascent + inner.descent + ARRAY_ROW_ASCENT + ARRAY_ROW_DESCENT;
+        let want = -AXIS - total / 2.0 + inner.ascent + inner.descent + ARRAY_ROW_ASCENT;
+        let (pos, _) = glyph(&b.ink, '1');
+        assert!(approx_eq(pos.y, want, EPS), "{} vs {want}", pos.y);
+    }
+
+    #[test]
+    fn tex_layout_cases_columns_are_left_aligned() {
+        // Act
+        let b = boxed(r"\begin{cases}x&1\\xxx&1\end{cases}");
+
+        // Assert
+        let (wide, one) = (boxed("xxx").width, boxed("1").width);
+        let g = glyphs(&b.ink);
+        assert_eq!(glyph_chars(&b), ['{', X, '1', X, X, X, '1']);
+        let column = g[1].1.x;
+        assert!(column > 0.0, "{g:?}");
+        assert!(approx_eq(g[3].1.x, column, EPS), "{g:?}");
+        assert!(
+            approx_eq(g[2].1.x, column + wide + ARRAY_COLUMN_GAP, EPS),
+            "{g:?}"
+        );
+        assert!(approx_eq(g[6].1.x, g[2].1.x, EPS), "{g:?}");
+        assert!(
+            approx_eq(
+                b.width,
+                column + wide + ARRAY_COLUMN_GAP + one + NULL_DELIM_SPACE,
+                EPS
+            ),
+            "{} {g:?}",
+            b.width
+        );
+    }
+
+    #[test]
+    fn tex_layout_cases_rows_are_stretched() {
+        // Act
+        let b = boxed(r"\begin{cases}x\\x\end{cases}");
+
+        // Assert
+        let g = glyphs(&b.ink);
+        let step = (ARRAY_ROW_ASCENT + ARRAY_ROW_DESCENT) * CASES_STRETCH;
+        assert!(approx_eq(g[2].1.y - g[1].1.y, step, EPS), "{g:?}");
+    }
+
+    #[test]
+    fn tex_layout_cases_has_one_growing_brace() {
+        // Act
+        let b = boxed(r"\begin{cases}x\\1\\x\end{cases}");
+
+        // Assert
+        let g = glyphs(&b.ink);
+        assert_eq!(g.iter().filter(|g| g.0 == '{').count(), 1, "{g:?}");
+        assert_eq!(g.iter().filter(|g| g.0 == '}').count(), 0, "{g:?}");
+        assert!(g[0].2 > 1.5, "{g:?}");
+    }
+
+    #[test]
+    fn tex_layout_environment_is_centred_on_the_axis() {
+        for name in ENVIRONMENT_NAMES {
+            // Act: rows of different heights.
+            let b = boxed(&format!(
+                r"\begin{{{name}}}\frac{{x}}{{\frac{{1}}{{2}}}}\\x\\1\end{{{name}}}"
+            ));
+
+            // Assert
+            assert!(
+                approx_eq((b.ascent - b.descent) / 2.0, AXIS, EPS),
+                "{name}: {} {}",
+                b.ascent,
+                b.descent
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_matrix_brackets_match_left_right() {
+        for (name, open, close) in [
+            ("pmatrix", "(", ")"),
+            ("bmatrix", "[", "]"),
+            ("vmatrix", "|", "|"),
+        ] {
+            // Arrange
+            let body = r"\frac{x}{2}&1\\1&x\\1&1\\x&x";
+
+            // Act
+            let got = boxed(&format!(r"\begin{{{name}}}{body}\end{{{name}}}"));
+            let want = boxed(&format!(
+                r"\left{open}\begin{{matrix}}{body}\end{{matrix}}\right{close}"
+            ));
+
+            // Assert
+            assert_eq!(got, want, "{name}");
+            let (_, scale) = glyph(&got.ink, open.chars().next().unwrap_or('('));
+            assert!(scale > 1.5, "{name}: {scale}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_plain_matrix_draws_no_brackets() {
+        // Act
+        let b = boxed(&matrix_of("x"));
+
+        // Assert
+        assert_eq!(glyph_chars(&b), [X]);
+        assert!(approx_eq(b.width, boxed("x").width, EPS));
+    }
+
+    #[test]
+    fn tex_layout_environment_is_an_ordinary_atom_for_scripts() {
+        // Arrange
+        let src = r"\begin{pmatrix}x\\x\end{pmatrix}";
+        let base = boxed(src);
+
+        // Act
+        let parsed = math(&format!("{src}^2"));
+        let b = boxed(&format!("{src}^2"));
+
+        // Assert
+        assert!(
+            matches!(parsed.as_slice(), [Node::Scripts { base: Some(node), .. }]
+                if matches!(**node, Node::Environment { .. })),
+            "{parsed:?}"
+        );
+        let (pos, _) = glyph(&b.ink, '2');
+        assert!(approx_eq(pos.x, base.width, EPS), "{} {}", pos.x, base.width);
+    }
+
+    #[test]
+    fn tex_parse_unknown_environment_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math(r"\begin{foo}a&b\\c\end{foo}"),
+            vec![
+                literal(r"\begin{foo}"),
+                Node::Char('a'),
+                Node::Char('&'),
+                Node::Char('b'),
+                literal(r"\\"),
+                Node::Char('c'),
+                literal(r"\end{foo}"),
+            ]
+        );
+        assert_eq!(
+            math(r"\begin {foo}"),
+            vec![literal(r"\begin {foo}")]
+        );
+        let src = r"$\begin {foo}a&b\\c\end  {foo}$";
+        assert_eq!(print(&parse(src)), src);
+    }
+
+    #[test]
+    fn tex_parse_environment_without_end_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math(r"\begin{pmatrix}x"),
+            vec![literal(r"\begin{pmatrix}"), Node::Char('x')]
+        );
+    }
+
+    #[test]
+    fn tex_parse_end_without_begin_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math(r"x\end{pmatrix}"),
+            vec![Node::Char('x'), literal(r"\end{pmatrix}")]
+        );
+    }
+
+    #[test]
+    fn tex_parse_mismatched_environment_names_are_literal() {
+        // Act + Assert
+        assert_eq!(
+            math(r"\begin{pmatrix}x\end{bmatrix}"),
+            vec![
+                literal(r"\begin{pmatrix}"),
+                Node::Char('x'),
+                literal(r"\end{bmatrix}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_begin_without_a_name_is_literal() {
+        // Act + Assert
+        assert_eq!(math(r"\begin"), vec![literal(r"\begin")]);
+        assert_eq!(math(r"\end"), vec![literal(r"\end")]);
+        assert_eq!(
+            math(r"\begin x"),
+            vec![literal(r"\begin"), space(), Node::Char('x')]
+        );
+        assert_eq!(
+            math(r"\begin{a b}"),
+            vec![
+                literal(r"\begin"),
+                Node::Group(vec![Node::Char('a'), space(), Node::Char('b')]),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_environment_across_a_group_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math(r"{\begin{matrix}}\end{matrix}"),
+            vec![
+                Node::Group(vec![literal(r"\begin{matrix}")]),
+                literal(r"\end{matrix}"),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_environment_across_a_left_pair_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math(r"\begin{matrix}\left(\end{matrix}\right)"),
+            vec![
+                literal(r"\begin{matrix}"),
+                pair("(", vec![literal(r"\end{matrix}")], ")"),
+            ]
+        );
+        assert_eq!(
+            math(r"\left(\begin{matrix}\right)\end{matrix}"),
+            vec![
+                literal(r"\left"),
+                Node::Char('('),
+                env_node(
+                    "matrix",
+                    vec![vec![vec![literal(r"\right"), Node::Char(')')]]]
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_environment_past_the_cell_limit_is_literal() {
+        // Arrange
+        let wide = vec!["x"; ENVIRONMENT_MAX_CELLS + 1].join("&");
+        let tall = vec!["x"; ENVIRONMENT_MAX_CELLS + 1].join(r"\\");
+
+        for body in [wide, tall] {
+            // Act
+            let got = math(&matrix_of(&body));
+
+            // Assert
+            assert_eq!(got.first(), Some(&literal(r"\begin{matrix}")));
+            assert_eq!(got.last(), Some(&literal(r"\end{matrix}")));
+            assert_eq!(print(&[Segment::Math(got)]), format!("${}$", matrix_of(&body)));
+        }
+    }
+
+    #[test]
+    fn tex_parse_deep_environments_are_literal_past_the_limit() {
+        // Arrange
+        let src = r"\begin{matrix}".repeat(MAX_DEPTH + 8) + "x" + &r"\end{matrix}".repeat(MAX_DEPTH + 8);
+
+        // Act
+        let mut nodes = math(&src);
+
+        // Assert
+        let mut depth = 0;
+        while let [Node::Environment { rows, .. }] = nodes.as_slice() {
+            let inner = rows[0][0].clone();
+            nodes = inner;
+            depth += 1;
+        }
+        assert_eq!(depth, MAX_DEPTH);
+        assert_eq!(nodes.first(), Some(&literal(r"\begin{matrix}")));
+        assert_eq!(print(&parse(&format!("${src}$"))), format!("${src}$"));
+    }
+
+    #[test]
+    fn tex_layout_invalid_environment_is_drawn_in_the_warning_colour() {
+        for src in [
+            r"\begin{foo}x\end{foo}",
+            r"\begin{pmatrix}x",
+            r"x\end{pmatrix}",
+            r"\begin{pmatrix}x\end{bmatrix}",
+        ] {
+            // Act
+            let g = glyphs(&boxed(src).ink);
+
+            // Assert: the commands warn, the content does not.
+            assert!(g.iter().any(|g| g.0 == '\\' && g.3), "{src}: {g:?}");
+            assert!(g.iter().any(|g| g.0 == X && !g.3), "{src}: {g:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_short_row_leaves_empty_cells() {
+        // Arrange
+        let full = boxed(&matrix_of(r"x&1\\x&1"));
+
+        // Act
+        let short_last = boxed(&matrix_of(r"x&1\\x"));
+        let short_first = boxed(&matrix_of(r"x\\x&1"));
+
+        // Assert
+        assert_eq!(glyph_chars(&short_last), [X, '1', X]);
+        assert_eq!(glyph_chars(&short_first), [X, X, '1']);
+        for b in [&short_last, &short_first] {
+            assert!(approx_eq(b.width, full.width, EPS), "{}", b.width);
+            assert!(approx_eq(b.ascent, full.ascent, EPS), "{}", b.ascent);
+            assert!(approx_eq(b.descent, full.descent, EPS), "{}", b.descent);
+        }
+        let g = glyphs(&short_last.ink);
+        let f = glyphs(&full.ink);
+        assert!(approx_eq(g[2].1.x, f[2].1.x, EPS), "{g:?}");
+    }
+
+    #[test]
+    fn tex_layout_trailing_row_break_adds_no_row() {
+        // Arrange
+        let want = boxed(&matrix_of(r"x\\1"));
+
+        // Act + Assert
+        assert_eq!(boxed(&matrix_of(r"x\\1\\")), want);
+        assert_eq!(boxed(&matrix_of(r"x\\1\\ ")), want);
+    }
+
+    #[test]
+    fn tex_layout_empty_environment_draws_only_its_brackets() {
+        // Act
+        let b = boxed(r"\begin{pmatrix}\end{pmatrix}");
+        let plain = boxed(&matrix_of(""));
+
+        // Assert
+        let g = glyphs(&b.ink);
+        assert_eq!(glyph_chars(&b), ['(', ')']);
+        assert!(g.iter().all(|g| approx_eq(g.2, 1.0, EPS)), "{g:?}");
+        assert!(plain.ink.is_empty());
     }
 }
