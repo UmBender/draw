@@ -288,7 +288,7 @@ flowchart TD
 | [[T69 Classical physics notation]] | done | T55, T56 | `task/T69-classical-physics` |
 | [[T70 Quantum notation]] | done | T69 | `task/T70-quantum-notation` |
 | [[T71 Combinatorics notation]] | done | T55 | `task/T71-combinatorics` |
-| [[T72 Feature proposal]] | todo | — | `docs/T72-feature-proposal` |
+| [[T72 Feature proposal]] | done | — | `docs/T72-feature-proposal` |
 | [[T73 Continuous integration on GitHub]] | done | — | `task/T73-github-ci` |
 | [[T74 Editor snapshots for tests]] | done | — | `task/T74-editor-snapshots` |
 | [[T75 End-to-end test suite]] | done | T73, T74 | `task/T75-e2e-tests` |
