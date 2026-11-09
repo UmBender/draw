@@ -36,8 +36,8 @@ single-key shortcut so your hands never leave the keyboard for long.
   shape. A numbered node keeps its number instead.
 - **Formulas** — `$…$` in a text block is typeset TeX: scripts, fractions,
   roots, sums with limits (`$\sum_{k=1}^{n} k^2$`).
-- **Fill** — bucket fills a shape or a single grid cell; the eraser clears
-  fills or whole objects.
+- **Fill** — bucket fills a shape or a grid cell, and a drag fills every
+  cell it crosses; the eraser clears fills or whole objects.
 - **Snapping** — smart snap to alignment guides and shape outlines (arrows
   meet circles at their edge), plus an optional snap grid.
 - **Editing** — select, move, `Alt`-drag to duplicate, copy / cut / paste,
@@ -185,7 +185,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `D` | Pen (smoothed) | `G` | Grid |
 | `W` | Line | `V` | Select / move |
 | `A` | Arrow | `E` | Eraser (on a fill: clears fills) |
-| `R` | Rectangle | `B` | Bucket (shape or grid cell) |
+| `R` | Rectangle | `B` | Bucket (shape, grid cell; drag across cells) |
 | `C` | Circle / ellipse | `H` | Hand (pan) |
 | `T` | Text | | |
 

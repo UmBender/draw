@@ -1,31 +1,155 @@
-//! Bucket: fills the clicked closed shape.
+//! Bucket: fills the clicked closed shape, or the grid cells it is dragged
+//! across.
 //!
 //! A press sets the fill of the topmost [`Shape::Rect`] or [`Shape::Ellipse`]
 //! containing the point to the current colour, as one undo step. If the
-//! topmost candidate is a [`Shape::Grid`] whose box contains the point, only
-//! the cell under the point is filled (ADR-T21-1). Refilling with the same
-//! colour, or pressing on empty space or another open shape, changes nothing
-//! and records no step. The bucket has no gesture to preview.
+//! topmost candidate is a [`Shape::Grid`] whose box contains the point, a
+//! drag starts instead (ADR-T88-1): the cell under the point and every cell
+//! of that grid the pointer passes over are painted in the preview, and the
+//! release commits them as one undo step (ADR-T21-1). Refilling with the
+//! same colour, or pressing on empty space or another open shape, changes
+//! nothing and records no step.
 //!
 //! [`Shape::Rect`]: crate::core::shape::Shape::Rect
 //! [`Shape::Ellipse`]: crate::core::shape::Shape::Ellipse
 //! [`Shape::Grid`]: crate::core::shape::Shape::Grid
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::tx_replace;
+use crate::core::document::{Document, ShapeId, tx_replace};
+use crate::core::geom::Vec2;
+use crate::core::palette::ColorId;
+use crate::core::shape::{GRID_MAX_CELLS, Shape};
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
-/// Gesture state of this tool: the bucket acts on press and keeps none.
+/// A drag across the cells of one grid (ADR-T88-1).
+#[derive(Debug, Clone, PartialEq)]
+struct Drag {
+    /// The grid pressed; the only one this drag paints.
+    id: ShapeId,
+    /// Last pointer position, in screen pixels.
+    last: Vec2,
+    /// The grid with the cells painted so far.
+    painted: Shape,
+}
+
+/// Gesture state of this tool: the drag in progress, if any.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct State;
+pub struct State {
+    /// `None` when idle, and for a press that fills a whole shape.
+    drag: Option<Drag>,
+}
 
-/// Handles one pointer event of a gesture. Returns whether a redraw is needed.
-pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = state;
-    if pointer.phase != Phase::Down {
-        return false;
+/// The cells of `grid` that the world segment `from → to` passes through,
+/// in order, each one step from the one before.
+///
+/// The segment is clipped to the box in cell coordinates (one unit per
+/// cell, from corner `a`) and then walked one column or row at a time, so
+/// it costs at most `cols + rows` cells whatever its length. A grid with a
+/// zero-size side has no cell coordinates: it gives the cell under `to`.
+fn cells_along(grid: &Shape, from: Vec2, to: Vec2) -> Vec<(u32, u32)> {
+    let Shape::Grid {
+        a, b, cols, rows, ..
+    } = *grid
+    else {
+        return Vec::new();
+    };
+    let (cols, rows) = (cols.clamp(1, GRID_MAX_CELLS), rows.clamp(1, GRID_MAX_CELLS));
+    let place = |p: Vec2| {
+        (
+            cell_coord(p.x, a.x, b.x, cols),
+            cell_coord(p.y, a.y, b.y, rows),
+        )
+    };
+    let ((u0, v0), (u1, v1)) = (place(from), place(to));
+    if ![u0, v0, u1, v1].into_iter().all(f64::is_finite) {
+        return grid.grid_cell_at(to).into_iter().collect();
     }
-    let world = ctx.camera.screen_to_world(pointer.pos);
-    let fill = Some(ctx.style.color);
+    let (du, dv) = (u1 - u0, v1 - v0);
+    let Some((enter, leave)) =
+        clip_axis((0.0, 1.0), u0, du, cols).and_then(|range| clip_axis(range, v0, dv, rows))
+    else {
+        return Vec::new();
+    };
+    let (start_u, start_v) = (u0 + enter * du, v0 + enter * dv);
+    let (end_u, end_v) = (u0 + leave * du, v0 + leave * dv);
+    let (du, dv) = (end_u - start_u, end_v - start_v);
+
+    let (mut col, mut row) = (cell_index(start_u, cols), cell_index(start_v, rows));
+    let (end_col, end_row) = (cell_index(end_u, cols), cell_index(end_v, rows));
+    let (mut cols_left, mut rows_left) = (col.abs_diff(end_col), row.abs_diff(end_row));
+    let mut cells = Vec::with_capacity((cols_left + rows_left + 1) as usize);
+    cells.push((col, row));
+    // The counters, not the floats, end the walk: rounding cannot overrun.
+    while cols_left + rows_left > 0 {
+        let crosses_col_first = rows_left == 0
+            || (cols_left > 0
+                && next_border(col, end_col, start_u, du) < next_border(row, end_row, start_v, dv));
+        if crosses_col_first {
+            col = step_towards(col, end_col);
+            cols_left -= 1;
+        } else {
+            row = step_towards(row, end_row);
+            rows_left -= 1;
+        }
+        cells.push((col, row));
+    }
+    cells
+}
+
+/// `p` on the axis from `a` to `b`, in cells: `0` at `a`, `n` at `b`.
+fn cell_coord(p: f32, a: f32, b: f32, n: u32) -> f64 {
+    (f64::from(p) - f64::from(a)) / (f64::from(b) - f64::from(a)) * f64::from(n)
+}
+
+/// `range` of the segment parameter narrowed to where `start + t * delta`
+/// lies in `0..=max`; `None` if it never does.
+fn clip_axis(range: (f64, f64), start: f64, delta: f64, max: u32) -> Option<(f64, f64)> {
+    let max = f64::from(max);
+    if delta == 0.0 {
+        return (0.0..=max).contains(&start).then_some(range);
+    }
+    let (at_zero, at_max) = (-start / delta, (max - start) / delta);
+    let (low, high) = (
+        range.0.max(at_zero.min(at_max)),
+        range.1.min(at_zero.max(at_max)),
+    );
+    (low <= high).then_some((low, high))
+}
+
+/// The cell holding coordinate `c` of `0..=n`; the far border belongs to the
+/// last cell, as in [`Shape::grid_cell_at`].
+fn cell_index(c: f64, n: u32) -> u32 {
+    (c as u32).min(n - 1)
+}
+
+/// Segment parameter at which the walk leaves `cell` on its way to `end`.
+fn next_border(cell: u32, end: u32, start: f64, delta: f64) -> f64 {
+    let border = if end > cell { cell + 1 } else { cell };
+    (f64::from(border) - start) / delta
+}
+
+/// `cell` moved one step towards `end`.
+fn step_towards(cell: u32, end: u32) -> u32 {
+    if end > cell { cell + 1 } else { cell - 1 }
+}
+
+/// `grid` with `cells` filled with `color`, and whether any cell changed.
+fn paint(mut grid: Shape, cells: &[(u32, u32)], color: ColorId) -> (Shape, bool) {
+    let mut changed = false;
+    for &(col, row) in cells {
+        if grid.cell_fill(col, row) != Some(color) {
+            grid = grid.with_cell_fill(col, row, Some(color));
+            changed = true;
+        }
+    }
+    (grid, changed)
+}
+
+/// Handles a press: starts a drag on a grid cell, fills a closed shape at
+/// once. Returns whether a redraw is needed.
+fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pos: Vec2) -> bool {
+    *state = State::default();
+    let world = ctx.camera.screen_to_world(pos);
     let Some(id) = ctx.doc.topmost_where(|shape| {
         (shape.is_closed() && shape.contains(world)) || shape.grid_cell_at(world).is_some()
     }) else {
@@ -34,10 +158,16 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let Some(shape) = ctx.doc.get(id) else {
         return false;
     };
-    let filled = match shape.grid_cell_at(world) {
-        Some((col, row)) => shape.clone().with_cell_fill(col, row, fill),
-        None => shape.clone().with_fill(fill),
-    };
+    if let Some(cell) = shape.grid_cell_at(world) {
+        let (painted, changed) = paint(shape.clone(), &[cell], ctx.style.color);
+        state.drag = Some(Drag {
+            id,
+            last: pos,
+            painted,
+        });
+        return changed;
+    }
+    let filled = shape.clone().with_fill(Some(ctx.style.color));
     if &filled == shape {
         return false;
     }
@@ -45,18 +175,99 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     ctx.commit(tx)
 }
 
-/// What the gesture in progress draws on top of the document.
+/// Continues the drag to `pos`, painting the cells on the way. Returns
+/// whether a cell changed.
+fn drag_to(state: &mut State, ctx: &ToolCtx<'_>, pos: Vec2) -> bool {
+    let Some(Drag { id, last, painted }) = state.drag.take() else {
+        return false;
+    };
+    let from = ctx.camera.screen_to_world(last);
+    let to = ctx.camera.screen_to_world(pos);
+    let cells = cells_along(&painted, from, to);
+    let (painted, changed) = paint(painted, &cells, ctx.style.color);
+    state.drag = Some(Drag {
+        id,
+        last: pos,
+        painted,
+    });
+    changed
+}
+
+/// Ends the drag at `pos`, committing the painted grid as one undo step if
+/// any cell changed. Returns whether a redraw is needed.
+fn release(state: &mut State, ctx: &mut ToolCtx<'_>, pos: Vec2) -> bool {
+    drag_to(state, ctx, pos);
+    let Some(Drag { id, painted, .. }) = state.drag.take() else {
+        return false;
+    };
+    if ctx.doc.get(id) == Some(&painted) {
+        return false;
+    }
+    let tx = tx_replace(ctx.doc, id, painted);
+    ctx.commit(tx);
+    // Even a rejected edit needs a redraw, to unhide the grid.
+    true
+}
+
+/// Handles one pointer event of a gesture. Returns whether a redraw is needed.
+pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
+    match pointer.phase {
+        Phase::Down => press(state, ctx, pointer.pos),
+        Phase::Move => drag_to(state, ctx, pointer.pos),
+        Phase::Up => release(state, ctx, pointer.pos),
+    }
+}
+
+/// What the gesture in progress draws on top of the document: the painted
+/// grid in place of the original, once a cell differs from it.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    Overlay::default()
+    match &state.drag {
+        Some(drag) if view.doc.get(drag.id) != Some(&drag.painted) => Overlay {
+            shapes: vec![drag.painted.clone()],
+            hidden: vec![drag.id],
+            ..Overlay::default()
+        },
+        _ => Overlay::default(),
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed.
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    false
+    state.drag.take().is_some()
+}
+
+impl State {
+    /// `bucket <last> <id> <painted grid>`, only while a drag runs
+    /// (snapshots, ADR-T88-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        if let Some(drag) = &self.drag {
+            w.record("bucket", |l| {
+                l.put(&drag.last).put(&drag.id).put(&drag.painted);
+            });
+        }
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote: the id must be in `doc`
+    /// and the shape a grid.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
+        if r.peek_key() != Some("bucket") {
+            return Ok(Self::default());
+        }
+        let mut t = r.record("bucket")?;
+        let last: Vec2 = t.get()?;
+        let id: ShapeId = t.get()?;
+        let painted: Shape = t.get()?;
+        t.end()?;
+        check_ids(&t, doc, &[id])?;
+        if !matches!(painted, Shape::Grid { .. }) {
+            return Err(t.error("the bucket can only drag across a grid".to_owned()));
+        }
+        Ok(Self {
+            drag: Some(Drag { id, last, painted }),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -64,10 +275,13 @@ mod tests {
     use super::*;
     use crate::core::clipboard::testkit::{Fixture, ellipse, line, ptr, rect};
     use crate::core::command::Tool;
+    use crate::core::document::ShapeId;
     use crate::core::geom::Vec2;
     use crate::core::palette::ColorId;
     use crate::core::shape::{Shape, Style};
     use crate::core::tools::Phase;
+    use proptest::prelude::*;
+    use proptest::test_runner::TestCaseError;
 
     /// Unfilled `cols × rows` grid dragged from `(x, y)` to `(x + w, y + h)`.
     fn grid(x: f32, y: f32, w: f32, h: f32, cols: u32, rows: u32) -> Shape {
@@ -91,7 +305,7 @@ mod tests {
     }
 
     fn click(fx: &mut Fixture, x: f32, y: f32) -> bool {
-        let mut state = State;
+        let mut state = State::default();
         let mut changed = on_pointer(
             &mut state,
             &mut fx.ctx(Tool::Bucket),
@@ -187,7 +401,7 @@ mod tests {
     #[test]
     fn preview_and_cancel_are_inert() {
         let (fx, _) = Fixture::new(vec![rect(0.0, 0.0, 10.0, 10.0)]);
-        let mut state = State;
+        let mut state = State::default();
 
         assert!(preview(&state, &fx.view(Tool::Bucket)).is_empty());
         assert!(!cancel(&mut state));
@@ -264,5 +478,352 @@ mod tests {
 
         assert_eq!(fx.shape(ids[0]).cell_fills(), []);
         assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    // ---- T88 drag across cells ----------------------------------------------
+
+    /// A 4 × 4 grid of 25 px cells at the origin, the bucket red, and its id.
+    fn red_board() -> (Fixture, ShapeId) {
+        let (mut fx, ids) = Fixture::new(vec![grid(0.0, 0.0, 100.0, 100.0, 4, 4)]);
+        fx.style.color = red();
+        (fx, ids[0])
+    }
+
+    fn send(fx: &mut Fixture, state: &mut State, phase: Phase, x: f32, y: f32) -> bool {
+        on_pointer(state, &mut fx.ctx(Tool::Bucket), ptr(phase, x, y))
+    }
+
+    /// Presses at the first point, moves through the others and releases at
+    /// the last. Returns the state, ended.
+    fn drag(fx: &mut Fixture, path: &[(f32, f32)]) -> State {
+        let mut state = State::default();
+        let ((x, y), rest) = match path.split_first() {
+            Some((first, rest)) => (*first, rest),
+            None => panic!("empty path"),
+        };
+        send(fx, &mut state, Phase::Down, x, y);
+        for (x, y) in rest {
+            send(fx, &mut state, Phase::Move, *x, *y);
+        }
+        let (x, y) = path[path.len() - 1];
+        send(fx, &mut state, Phase::Up, x, y);
+        state
+    }
+
+    /// `(col, row)` of the filled cells of `shape`, sorted by `(row, col)`.
+    fn cells(shape: &Shape) -> Vec<(u32, u32)> {
+        shape.cell_fills().iter().map(|f| (f.col, f.row)).collect()
+    }
+
+    #[test]
+    fn drag_fills_each_cell_passed_over() {
+        // Arrange
+        let (mut fx, id) = red_board();
+
+        // Act: right along the top row, then down the third column.
+        drag(
+            &mut fx,
+            &[(10.0, 10.0), (35.0, 10.0), (60.0, 10.0), (60.0, 35.0)],
+        );
+
+        // Assert
+        let board = fx.shape(id);
+        assert_eq!(cells(&board), [(0, 0), (1, 0), (2, 0), (2, 1)]);
+        assert!(board.cell_fills().iter().all(|f| f.color == red()));
+    }
+
+    #[test]
+    fn drag_stays_in_the_pressed_grid() {
+        // Arrange: a second grid right beside the first.
+        let (mut fx, ids) = Fixture::new(vec![
+            grid(0.0, 0.0, 100.0, 100.0, 4, 4),
+            grid(100.0, 0.0, 100.0, 100.0, 4, 4),
+        ]);
+        fx.style.color = red();
+
+        // Act
+        drag(&mut fx, &[(60.0, 10.0), (140.0, 10.0)]);
+
+        // Assert
+        assert_eq!(cells(&fx.shape(ids[0])), [(2, 0), (3, 0)]);
+        assert_eq!(cells(&fx.shape(ids[1])), []);
+    }
+
+    #[test]
+    fn drag_leaving_and_reentering_fills_only_inside() {
+        // Arrange
+        let (mut fx, id) = red_board();
+
+        // Act: out through the right side, back in one row lower.
+        drag(
+            &mut fx,
+            &[(85.0, 10.0), (160.0, 10.0), (160.0, 35.0), (85.0, 35.0)],
+        );
+
+        // Assert
+        assert_eq!(cells(&fx.shape(id)), [(3, 0), (3, 1)]);
+    }
+
+    #[test]
+    fn drag_on_reversed_grid_counts_from_the_start_corner() {
+        // Arrange: drawn from the bottom-right corner up to the origin.
+        let (mut fx, ids) = Fixture::new(vec![grid(100.0, 100.0, -100.0, -100.0, 4, 4)]);
+        fx.style.color = red();
+
+        // Act: the top row of the screen, left to right.
+        drag(&mut fx, &[(10.0, 10.0), (35.0, 10.0)]);
+
+        // Assert: column 3 is the leftmost, row 3 the topmost.
+        assert_eq!(cells(&fx.shape(ids[0])), [(2, 3), (3, 3)]);
+    }
+
+    #[test]
+    fn drag_uses_the_current_colour() {
+        // Arrange: a cell already filled with another colour.
+        let (mut fx, id) = red_board();
+        click(&mut fx, 35.0, 10.0);
+        let blue = ColorId::new(3).unwrap_or(ColorId::INK);
+        fx.style.color = blue;
+
+        // Act
+        drag(&mut fx, &[(10.0, 10.0), (35.0, 10.0)]);
+
+        // Assert
+        let board = fx.shape(id);
+        assert_eq!(board.cell_fill(0, 0), Some(blue));
+        assert_eq!(board.cell_fill(1, 0), Some(blue));
+    }
+
+    #[test]
+    fn drag_preview_shows_the_painted_grid_over_the_hidden_one() {
+        // Arrange
+        let (mut fx, id) = red_board();
+        let mut state = State::default();
+
+        // Act
+        send(&mut fx, &mut state, Phase::Down, 10.0, 10.0);
+        let redraw = send(&mut fx, &mut state, Phase::Move, 35.0, 10.0);
+        let overlay = preview(&state, &fx.view(Tool::Bucket));
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(overlay.hidden, [id]);
+        assert_eq!(overlay.shapes.len(), 1);
+        assert_eq!(cells(&overlay.shapes[0]), [(0, 0), (1, 0)]);
+    }
+
+    #[test]
+    fn fast_move_fills_every_cell_on_the_segment() {
+        // Arrange
+        let (mut fx, id) = red_board();
+
+        // Act: one move across the whole row.
+        drag(&mut fx, &[(10.0, 60.0), (90.0, 60.0)]);
+
+        // Assert
+        assert_eq!(cells(&fx.shape(id)), [(0, 2), (1, 2), (2, 2), (3, 2)]);
+    }
+
+    #[test]
+    fn fast_diagonal_move_leaves_no_gaps() {
+        // Arrange
+        let (mut fx, id) = red_board();
+
+        // Act: corner to corner, slightly off the diagonal.
+        drag(&mut fx, &[(5.0, 2.0), (95.0, 98.0)]);
+
+        // Assert: one step at a time reaches seven cells.
+        let filled = cells(&fx.shape(id));
+        assert_eq!(filled.len(), 7, "{filled:?}");
+        assert!(filled.contains(&(0, 0)));
+        assert!(filled.contains(&(3, 3)));
+    }
+
+    #[test]
+    fn release_far_from_the_last_move_walks_the_rest() {
+        // Arrange
+        let (mut fx, id) = red_board();
+        let mut state = State::default();
+        send(&mut fx, &mut state, Phase::Down, 10.0, 10.0);
+
+        // Act: no move at all before the release.
+        send(&mut fx, &mut state, Phase::Up, 90.0, 10.0);
+
+        // Assert
+        assert_eq!(cells(&fx.shape(id)), [(0, 0), (1, 0), (2, 0), (3, 0)]);
+    }
+
+    #[test]
+    fn cells_along_on_a_zero_size_grid_stays_in_range() {
+        // Arrange
+        let flat = grid(0.0, 0.0, 0.0, 100.0, 1, 4);
+
+        // Act
+        let walked = cells_along(&flat, Vec2::new(0.0, 10.0), Vec2::new(0.0, 90.0));
+
+        // Assert
+        assert!(walked.len() <= 1);
+        assert!(walked.iter().all(|&(col, row)| col == 0 && row < 4));
+    }
+
+    #[test]
+    fn drag_is_one_undo_step() {
+        // Arrange
+        let (mut fx, id) = red_board();
+        drag(&mut fx, &[(10.0, 10.0), (35.0, 10.0), (60.0, 10.0)]);
+        assert_eq!(fx.history.undo_len(), 1);
+
+        // Act
+        assert!(fx.history.undo(&mut fx.doc));
+
+        // Assert
+        assert_eq!(cells(&fx.shape(id)), []);
+    }
+
+    #[test]
+    fn drag_changes_the_document_only_on_release() {
+        // Arrange
+        let (mut fx, id) = red_board();
+        let mut state = State::default();
+
+        // Act
+        send(&mut fx, &mut state, Phase::Down, 10.0, 10.0);
+        send(&mut fx, &mut state, Phase::Move, 35.0, 10.0);
+
+        // Assert
+        assert_eq!(cells(&fx.shape(id)), []);
+        assert_eq!(fx.history.undo_len(), 0);
+        send(&mut fx, &mut state, Phase::Up, 35.0, 10.0);
+        assert_eq!(cells(&fx.shape(id)), [(0, 0), (1, 0)]);
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn drag_over_cells_of_the_same_colour_records_no_step() {
+        // Arrange
+        let (mut fx, _) = red_board();
+        drag(&mut fx, &[(10.0, 10.0), (35.0, 10.0)]);
+        assert_eq!(fx.history.undo_len(), 1);
+        let mut state = State::default();
+
+        // Act
+        let pressed = send(&mut fx, &mut state, Phase::Down, 10.0, 10.0);
+        let moved = send(&mut fx, &mut state, Phase::Move, 35.0, 10.0);
+        let overlay = preview(&state, &fx.view(Tool::Bucket));
+        let released = send(&mut fx, &mut state, Phase::Up, 35.0, 10.0);
+
+        // Assert
+        assert!(!pressed && !moved && !released);
+        assert!(overlay.is_empty());
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn cancel_discards_the_drag() {
+        // Arrange
+        let (mut fx, id) = red_board();
+        let mut state = State::default();
+        send(&mut fx, &mut state, Phase::Down, 10.0, 10.0);
+        send(&mut fx, &mut state, Phase::Move, 35.0, 10.0);
+
+        // Act
+        let redraw = cancel(&mut state);
+        let released = send(&mut fx, &mut state, Phase::Up, 35.0, 10.0);
+
+        // Assert
+        assert!(redraw);
+        assert!(!released);
+        assert!(preview(&state, &fx.view(Tool::Bucket)).is_empty());
+        assert_eq!(cells(&fx.shape(id)), []);
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn press_on_rect_fills_at_once_and_ignores_the_drag() {
+        // Arrange: a rectangle beside a grid.
+        let (mut fx, ids) = Fixture::new(vec![
+            rect(0.0, 0.0, 50.0, 50.0),
+            grid(50.0, 0.0, 100.0, 100.0, 4, 4),
+        ]);
+        fx.style.color = red();
+        let mut state = State::default();
+
+        // Act
+        assert!(send(&mut fx, &mut state, Phase::Down, 10.0, 10.0));
+        let filled_on_press = fx.shape(ids[0]).fill();
+        let moved = send(&mut fx, &mut state, Phase::Move, 90.0, 10.0);
+        let released = send(&mut fx, &mut state, Phase::Up, 90.0, 10.0);
+
+        // Assert
+        assert_eq!(filled_on_press, Some(red()));
+        assert!(!moved && !released);
+        assert_eq!(cells(&fx.shape(ids[1])), []);
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn press_on_ellipse_fills_at_once_and_ignores_the_drag() {
+        // Arrange
+        let (mut fx, ids) = Fixture::new(vec![ellipse(0.0, 0.0, 50.0, 50.0)]);
+        fx.style.color = red();
+        let mut state = State::default();
+
+        // Act
+        assert!(send(&mut fx, &mut state, Phase::Down, 25.0, 25.0));
+        let moved = send(&mut fx, &mut state, Phase::Move, 200.0, 200.0);
+
+        // Assert
+        assert_eq!(fx.shape(ids[0]).fill(), Some(red()));
+        assert!(!moved);
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn press_on_empty_space_then_drag_into_grid_fills_nothing() {
+        // Arrange
+        let (mut fx, id) = red_board();
+
+        // Act
+        drag(&mut fx, &[(150.0, 10.0), (50.0, 10.0)]);
+
+        // Assert
+        assert_eq!(cells(&fx.shape(id)), []);
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    proptest! {
+        #[test]
+        fn cells_along_is_connected_and_inside(
+            (x, y) in (-500.0f32..500.0, -500.0f32..500.0),
+            (w, h) in (1.0f32..400.0, 1.0f32..400.0),
+            (flip_x, flip_y) in (any::<bool>(), any::<bool>()),
+            (cols, rows) in (1u32..=64, 1u32..=64),
+            from in (-1000.0f32..1000.0, -1000.0f32..1000.0),
+            to in (-1000.0f32..1000.0, -1000.0f32..1000.0),
+        ) {
+            // Arrange
+            let w = if flip_x { -w } else { w };
+            let h = if flip_y { -h } else { h };
+            let board = grid(x, y, w, h, cols, rows);
+            let (from, to) = (Vec2::new(from.0, from.1), Vec2::new(to.0, to.1));
+
+            // Act
+            let walked = cells_along(&board, from, to);
+
+            // Assert: in range, one step at a time, no longer than needed.
+            prop_assert!(walked.len() <= (cols + rows) as usize);
+            prop_assert!(walked.iter().all(|&(c, r)| c < cols && r < rows));
+            for pair in walked.windows(2) {
+                let step = pair[0].0.abs_diff(pair[1].0) + pair[0].1.abs_diff(pair[1].1);
+                prop_assert_eq!(step, 1, "{:?}", walked);
+            }
+            // Endpoints inside the box are walked, give or take rounding.
+            for (end, cell) in [(from, walked.first()), (to, walked.last())] {
+                if let Some((col, row)) = board.grid_cell_at(end) {
+                    let &(c, r) = cell.ok_or_else(|| TestCaseError::fail("no cells"))?;
+                    prop_assert!(c.abs_diff(col) <= 1 && r.abs_diff(row) <= 1);
+                }
+            }
+        }
     }
 }

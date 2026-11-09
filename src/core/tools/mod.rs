@@ -218,8 +218,7 @@ impl ToolStates {
 }
 
 impl ToolStates {
-    /// Writes the `[tools]` section (snapshots, ADR-T74-1). The bucket has
-    /// no state.
+    /// Writes the `[tools]` section (snapshots, ADR-T74-1).
     pub(crate) fn write_snapshot(&self, w: &mut crate::core::snapshot::Writer) {
         w.section("tools");
         self.pen.write_snapshot(w);
@@ -227,6 +226,7 @@ impl ToolStates {
         self.grid.write_snapshot(w);
         self.text.write_snapshot(w);
         self.eraser.write_snapshot(w);
+        self.bucket.write_snapshot(w);
         self.select.write_snapshot(w);
     }
 
@@ -242,7 +242,7 @@ impl ToolStates {
             grid: grid::State::read_snapshot(r)?,
             text: text::State::read_snapshot(r, doc)?,
             eraser: eraser::State::read_snapshot(r, doc)?,
-            bucket: bucket::State,
+            bucket: bucket::State::read_snapshot(r, doc)?,
             select: select::State::read_snapshot(r, doc)?,
         })
     }
