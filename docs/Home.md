@@ -5,7 +5,8 @@ tags: [moc]
 # draw — Home
 
 A minimal, fast, keyboard-first scratch canvas for competitive programming.
-Nothing is saved: draw, think, throw away.
+No files to manage: draw, think, throw away. An autosave covers crashes
+([[Crash recovery]]).
 
 ## Principles
 

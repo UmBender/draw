@@ -5,8 +5,9 @@
 A minimal, fast, keyboard-first scratch canvas for competitive programming.
 
 Sketch a graph, a DP table or a geometry case while you think, then throw it
-away. Nothing is saved, nothing needs configuring, and every action has a
-single-key shortcut so your hands never leave the keyboard for long.
+away. There are no files to manage, nothing needs configuring, and every
+action has a single-key shortcut so your hands never leave the keyboard for
+long. If it crashes, `draw --recover` brings your drawing back.
 
 - **Never breaks during a contest** — few features, one dependency
   ([macroquad](https://github.com/not-fl3/macroquad)), no `unsafe`, fuzzed
@@ -444,7 +445,12 @@ patched copy of its window library for this (`vendor/miniquad`).
 
 ## Limitations
 
-- Nothing is saved or exported — by design, it is a scratch pad.
+- There are no files to open, save or export — by design, it is a scratch
+  pad. The only thing kept is an autosave for crashes: `draw --recover`
+  brings back the last one, and `draw --recover prev` the one before. It
+  is written at most every 30 s, on input after a change, to the state
+  directory (`~/.local/state/draw/`), and only works with the same version
+  of draw.
 - Text is one monospaced font with no wrapping, styling, or pasting from
   other apps; no IME input.
 - Shortcuts cannot be remapped.

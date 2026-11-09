@@ -7,15 +7,21 @@
 
 use std::ffi::OsString;
 use std::fs;
+use std::io::{self, Write as _};
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
-use std::thread::{JoinHandle, ThreadId};
+use std::thread::{Builder, JoinHandle, ThreadId};
 use std::time::{Duration, Instant};
 
 use crate::core::editor::Editor;
 use crate::core::snapshot::Snapshot;
+use crate::shell::diag::{self, Level};
 
 /// Shortest time between two autosaves (AC-1).
 pub const INTERVAL: Duration = Duration::from_secs(30);
+
+/// Mode of the autosave files: a drawing is private to its user (AC-2).
+const PRIVATE_MODE: u32 = 0o600;
 
 /// The newest autosave, in the state directory.
 pub const FILE: &str = "autosave.snap";
@@ -48,8 +54,18 @@ impl Launch {
     /// `--recover` are ignored, as they always were.
     #[must_use]
     pub fn from_args(args: impl IntoIterator<Item = OsString>) -> Self {
-        let _ = args.into_iter();
-        todo!()
+        let mut args = args.into_iter();
+        if args.by_ref().all(|arg| arg != "--recover") {
+            return Self::Normal;
+        }
+        match args.next() {
+            None => Self::Recover(Which::Latest),
+            Some(value) if value == "prev" => Self::Recover(Which::Previous),
+            Some(value) => Self::Invalid(format!(
+                "unknown value {}, expected nothing or prev",
+                value.display()
+            )),
+        }
     }
 }
 
@@ -57,8 +73,26 @@ impl Launch {
 /// the user and the log. [`Launch::Normal`] asks for neither.
 #[must_use]
 pub fn recover(launch: &Launch, dir: Option<&Path>) -> (Option<Snapshot>, Option<String>) {
-    let _ = (launch, dir);
-    todo!()
+    let blank = |reason: String| (None, Some(format!("--recover: {reason}; starting blank")));
+    let which = match launch {
+        Launch::Normal => return (None, None),
+        Launch::Invalid(reason) => return blank(reason.clone()),
+        Launch::Recover(which) => *which,
+    };
+    let Some(dir) = dir else {
+        return blank("no state directory".to_owned());
+    };
+    let path = dir.join(match which {
+        Which::Latest => FILE,
+        Which::Previous => PREV_FILE,
+    });
+    let parsed = fs::read_to_string(&path)
+        .map_err(|err| err.to_string())
+        .and_then(|text| Snapshot::parse(&text).map_err(|err| err.to_string()));
+    match parsed {
+        Ok(snapshot) => (Some(snapshot), None),
+        Err(err) => blank(format!("{}: {err}", path.display())),
+    }
 }
 
 /// Decides when an autosave is due (AC-1).
@@ -74,35 +108,65 @@ impl Policy {
     /// A session that starts at `now` with the document at `revision`.
     #[must_use]
     pub fn new(now: Instant, revision: u64) -> Self {
-        let _ = (now, revision);
-        todo!()
+        Self {
+            last: now,
+            saved: Some(revision),
+        }
     }
 
     /// Whether an input at `now` saves: [`INTERVAL`] has passed, the
     /// document is not the saved one, and nothing is being edited.
     #[must_use]
     pub fn is_due(&self, now: Instant, revision: u64, editing: bool) -> bool {
-        let _ = (now, revision, editing);
-        todo!()
+        !editing
+            && self.saved != Some(revision)
+            && now.saturating_duration_since(self.last) >= INTERVAL
     }
 
     /// Records a capture of `revision` at `now`.
     pub fn captured(&mut self, now: Instant, revision: u64) {
-        let _ = (now, revision);
-        todo!()
+        self.last = now;
+        self.saved = Some(revision);
     }
 
     /// Records that the last capture never reached the disk.
     pub fn failed(&mut self) {
-        todo!()
+        self.saved = None;
     }
 }
 
 /// The temporary file of this process in `dir`; two windows cannot mix
 /// their writes (ADR-T94-1).
 fn temporary_path(dir: &Path) -> PathBuf {
-    let _ = dir;
-    todo!()
+    dir.join(format!("{FILE}.tmp.{}", std::process::id()))
+}
+
+/// Writes `text` to the new or stale temporary file at `path`, on disk
+/// and readable only by the user when this returns.
+fn write_temporary(path: &Path, text: &str) -> io::Result<()> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(PRIVATE_MODE)
+        .open(path)?;
+    // `mode` only applies to a file this call creates.
+    file.set_permissions(fs::Permissions::from_mode(PRIVATE_MODE))?;
+    file.write_all(text.as_bytes())?;
+    file.sync_all()
+}
+
+/// Moves the finished `temporary` file to [`FILE`] in `dir`, the old
+/// [`FILE`] to [`PREV_FILE`] first if `rotate`.
+fn publish(dir: &Path, temporary: &Path, rotate: bool) -> io::Result<()> {
+    let file = dir.join(FILE);
+    if rotate {
+        match fs::rename(&file, dir.join(PREV_FILE)) {
+            Err(err) if err.kind() != io::ErrorKind::NotFound => return Err(err),
+            _ => {}
+        }
+    }
+    fs::rename(temporary, file)
 }
 
 /// Writes `text` as [`FILE`] in `dir`, creating `dir`: a mode `0600`
@@ -113,9 +177,15 @@ fn temporary_path(dir: &Path) -> PathBuf {
 ///
 /// The first file-system error; [`FILE`] is then unchanged, unless the
 /// final rename failed after the rotation.
-pub fn write_atomic(dir: &Path, text: &str, rotate: bool) -> std::io::Result<()> {
-    let _ = (dir, text, rotate);
-    todo!()
+pub fn write_atomic(dir: &Path, text: &str, rotate: bool) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    let temporary = temporary_path(dir);
+    let written = write_temporary(&temporary, text).and_then(|()| publish(dir, &temporary, rotate));
+    if written.is_err() {
+        // Best effort: the next write starts it over anyway.
+        let _ = fs::remove_file(&temporary);
+    }
+    written
 }
 
 /// Runs the autosaves of one session.
@@ -136,27 +206,72 @@ impl Autosaver {
     /// `now`, writing to `dir`.
     #[must_use]
     pub fn new(dir: Option<PathBuf>, editor: &Editor, now: Instant) -> Self {
-        let _ = (dir, editor, now);
-        todo!()
+        Self {
+            dir,
+            policy: Policy::new(now, editor.document_revision()),
+            rotate: true,
+            writer: None,
+        }
     }
 
     /// Call once per frame that had input: saves `editor` if it is due.
     /// A failed write goes to the diagnostics log.
     pub fn on_input(&mut self, editor: &Editor, now: Instant) {
-        let _ = (editor, now);
-        todo!()
+        if self.writer.as_ref().is_some_and(JoinHandle::is_finished)
+            && let Some(failure) = self.wait()
+        {
+            diag::log(Level::Error, &failure);
+        }
+        let Some(dir) = self.dir.clone() else {
+            return;
+        };
+        let revision = editor.document_revision();
+        let editing = editor.active_gesture().is_some() || editor.text_edit().is_some();
+        if self.writer.is_some() || !self.policy.is_due(now, revision, editing) {
+            return;
+        }
+        self.policy.captured(now, revision);
+        let snapshot = editor.snapshot();
+        let rotate = self.rotate;
+        let spawned = Builder::new().name("autosave".to_owned()).spawn(move || {
+            write_atomic(&dir, &snapshot.to_text(), rotate)
+                .map_err(|err| format!("autosave not written to {}: {err}", dir.display()))
+        });
+        match spawned {
+            Ok(writer) => self.writer = Some(writer),
+            Err(err) => {
+                self.policy.failed();
+                diag::log(
+                    Level::Error,
+                    &format!("autosave not written: no thread: {err}"),
+                );
+            }
+        }
     }
 
     /// The thread of the write in progress, if any.
     #[must_use]
     pub fn writer_thread(&self) -> Option<ThreadId> {
-        todo!()
+        self.writer.as_ref().map(|writer| writer.thread().id())
     }
 
     /// Blocks until the write in progress ends. Its failure line, if any.
     pub fn wait(&mut self) -> Option<String> {
-        let _ = fs::metadata("");
-        todo!()
+        let result = self
+            .writer
+            .take()?
+            .join()
+            .unwrap_or_else(|_| Err("autosave not written: the writer panicked".to_owned()));
+        match result {
+            Ok(()) => {
+                self.rotate = false;
+                None
+            }
+            Err(failure) => {
+                self.policy.failed();
+                Some(failure)
+            }
+        }
     }
 }
 
@@ -167,10 +282,6 @@ mod tests {
     use crate::core::geom::Vec2;
     use crate::core::input::{InputEvent, Modifiers, PointerButton};
     use proptest::prelude::*;
-    use std::ffi::OsString;
-    use std::io;
-    use std::os::unix::fs::PermissionsExt as _;
-    use std::time::Instant;
 
     const SECOND: Duration = Duration::from_secs(1);
 
@@ -534,14 +645,25 @@ mod tests {
         let mut saver = Autosaver::new(Some(dir.clone()), &ed, start);
         draw_line(&mut ed);
         saver.on_input(&ed, start + INTERVAL);
-        let first = saver.writer_thread();
+        assert_eq!(saver.wait(), None);
         draw_line(&mut ed);
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        saver.writer = Some(std::thread::spawn(move || {
+            let _ = held.recv();
+            Ok(())
+        }));
+        let running = saver.writer_thread();
+        let before = fs::read_to_string(dir.join(FILE))?;
 
-        // Act: a capture still counts as the last one until it is done.
-        saver.on_input(&ed, start + INTERVAL);
+        // Act: due, but the writer has not finished.
+        saver.on_input(&ed, start + INTERVAL * 2);
+        let during = saver.writer_thread();
+        let after = fs::read_to_string(dir.join(FILE))?;
+        let _ = release.send(());
 
         // Assert
-        assert_eq!(saver.writer_thread(), first);
+        assert_eq!(during, running);
+        assert_eq!(after, before);
         assert_eq!(saver.wait(), None);
         Ok(())
     }

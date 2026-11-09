@@ -4,6 +4,7 @@
 //! then ends the process by that signal (ADR-T48-1).
 
 use draw::shell::app;
+use draw::shell::autosave::Launch;
 use draw::shell::diag::{self, Level};
 use macroquad::miniquad::signal;
 
@@ -22,7 +23,8 @@ fn main() {
     if !signal::install_quit() {
         diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
     }
-    macroquad::Window::from_config(app::window_conf(), app::run());
+    let launch = Launch::from_args(std::env::args_os().skip(1));
+    macroquad::Window::from_config(app::window_conf(), app::run(launch));
     let received = signal::received();
     if let Some(quit) = received {
         diag::log(Level::Info, &app::signal_line(quit));
