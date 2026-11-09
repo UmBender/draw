@@ -51,15 +51,11 @@ pub fn advance(next: u32, before: usize, after: usize) -> u32 {
 
 /// The counter after an undo: `next − 1` if the number of shapes labelled
 /// `next − 1` shrank from `before` to `after`, else `next`; never below
-/// [`FIRST_NUMBER`].
+/// `first` (ADR-T86-1).
 #[must_use]
-pub fn roll_back(next: u32, before: usize, after: usize) -> u32 {
-    let next = next.max(FIRST_NUMBER);
-    if next > FIRST_NUMBER && after < before {
-        next - 1
-    } else {
-        next
-    }
+pub fn roll_back(next: u32, before: usize, after: usize, first: u32) -> u32 {
+    let _ = (next, before, after, first);
+    todo!()
 }
 
 #[cfg(test)]

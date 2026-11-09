@@ -213,7 +213,12 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     (
         KeyChord::shift(Key::N),
         Command::ResetNumbering,
-        "Restart numbering at 1",
+        "Restart numbering at the first number",
+    ),
+    (
+        KeyChord::ctrl(Key::N),
+        Command::ToggleZeroBased,
+        "First number 1 / 0",
     ),
     (
         KeyChord::bare(Key::ArrowRight),

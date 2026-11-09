@@ -65,12 +65,23 @@ pub struct Helpers {
     pub grid_snap: bool,
     /// New rectangles and ellipses are numbered.
     pub numbering: bool,
-    /// The number the next numbered shape gets, at least [`FIRST_NUMBER`].
+    /// The first number is 0 instead of [`FIRST_NUMBER`] (ADR-T86-1).
+    pub zero_based: bool,
+    /// The number the next numbered shape gets, at least
+    /// [`Self::first_number`].
     pub next_number: u32,
     /// Columns of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_cols: u32,
     /// Rows of new grids, in `1..=GRID_MAX_CELLS`.
     pub grid_rows: u32,
+}
+
+impl Helpers {
+    /// The first number given out: 0 when zero-based, else [`FIRST_NUMBER`].
+    #[must_use]
+    pub const fn first_number(&self) -> u32 {
+        todo!()
+    }
 }
 
 impl Default for Helpers {
@@ -79,6 +90,7 @@ impl Default for Helpers {
             smart_snap: false,
             grid_snap: false,
             numbering: false,
+            zero_based: false,
             next_number: FIRST_NUMBER,
             grid_cols: DEFAULT_GRID_CELLS,
             grid_rows: DEFAULT_GRID_CELLS,
@@ -617,7 +629,12 @@ impl Editor {
                 let changed = self.history.undo(&mut self.doc);
                 let after = numbering::label_count(&self.doc, given);
                 let helpers = &mut self.style.helpers;
-                helpers.next_number = numbering::roll_back(helpers.next_number, before, after);
+                helpers.next_number = numbering::roll_back(
+                    helpers.next_number,
+                    before,
+                    after,
+                    helpers.first_number(),
+                );
                 self.prune_selection();
                 changed || cancelled
             }
@@ -684,6 +701,7 @@ impl Editor {
             | Command::ToggleGridSnap
             | Command::ToggleNumbering
             | Command::ResetNumbering
+            | Command::ToggleZeroBased
             | Command::GridCols(_)
             | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
         }
@@ -1320,6 +1338,7 @@ fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
         smart_snap: t.bool("smart snap")?,
         grid_snap: t.bool("grid snap")?,
         numbering: t.bool("numbering")?,
+        zero_based: false,
         next_number: t.number("next number")?,
         grid_cols: t.number("grid columns")?,
         grid_rows: t.number("grid rows")?,
