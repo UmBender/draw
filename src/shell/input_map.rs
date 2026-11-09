@@ -97,6 +97,20 @@ pub fn map_mods(mods: KeyMods) -> Modifiers {
     }
 }
 
+/// Whether `event` asks for the system clipboard: a press of exactly
+/// `Ctrl+V` while a text edit is open (ADR-T83-1).
+#[must_use]
+pub fn wants_clipboard(event: &InputEvent, editing: bool) -> bool {
+    todo!("{event:?} {editing}")
+}
+
+/// The event for what the clipboard held; `None` when it was empty or
+/// unavailable (ADR-T83-1).
+#[must_use]
+pub fn paste_event(text: Option<String>) -> Option<InputEvent> {
+    todo!("{text:?}")
+}
+
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI
 /// scale that is not finite and positive counts as `1`.
 #[must_use]
@@ -172,7 +186,7 @@ pub struct PenSample {
 pub const PEN_BOUNCE_WINDOW: Duration = Duration::from_millis(60);
 
 /// A pen release held back by the bounce window (ADR-T42-1).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct HeldRelease {
     /// The `PointerUp` to emit if the tip stays up.
     up: InputEvent,
@@ -291,14 +305,18 @@ impl Collector {
     /// bounce window has passed at the frame time. Returns whether a
     /// release is still held, so the caller can wake again for it.
     pub fn flush_bounce(&mut self) -> bool {
-        if self.bounce.is_some_and(|held| !self.within_bounce(held)) {
+        if self
+            .bounce
+            .as_ref()
+            .is_some_and(|held| !self.within_bounce(held))
+        {
             self.release_bounce();
         }
         self.bounce.is_some()
     }
 
     /// Whether the frame time is still within the bounce window of `held`.
-    fn within_bounce(&self, held: HeldRelease) -> bool {
+    fn within_bounce(&self, held: &HeldRelease) -> bool {
         self.now.saturating_duration_since(held.at) <= self.bounce_window
     }
 
@@ -380,7 +398,7 @@ impl EventHandler for Collector {
             self.record(Event::PointerDown(button));
             let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
-            let bounced = self.bounce.is_some_and(|held| {
+            let bounced = self.bounce.as_ref().is_some_and(|held| {
                 pen && button == PointerButton::Left && self.within_bounce(held)
             });
             if bounced {

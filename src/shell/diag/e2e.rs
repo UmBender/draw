@@ -18,6 +18,10 @@ pub const DUMP_ENV: &str = "DRAW_E2E_DUMP";
 /// Environment variable naming the file that receives the sync count.
 pub const IDLE_ENV: &str = "DRAW_E2E_IDLE";
 
+/// Environment variable naming the file whose text goes on the system
+/// clipboard, for runs without `wl-copy` (ADR-T83-1).
+pub const CLIPBOARD_ENV: &str = "DRAW_E2E_CLIPBOARD";
+
 /// The chord the harness sends after each input step. Not in the keymap.
 pub const SYNC_CHORD: KeyChord = KeyChord::ctrl_shift(Key::Digit9);
 
@@ -59,6 +63,8 @@ pub struct Hooks {
     answered: u64,
     /// The sync whose dump is written, waiting for its frame to be swapped.
     armed: Option<u64>,
+    /// File the harness leaves clipboard text in.
+    clipboard: Option<PathBuf>,
 }
 
 impl Hooks {
@@ -73,16 +79,31 @@ impl Hooks {
             seen: 0,
             answered: 0,
             armed: None,
+            clipboard: None,
         })
     }
 
     /// Hooks from the environment.
     #[must_use]
     pub fn from_env() -> Option<Self> {
+        let clipboard = std::env::var_os(CLIPBOARD_ENV);
         Self::from_values(
             std::env::var_os(DUMP_ENV).as_deref(),
             std::env::var_os(IDLE_ENV).as_deref(),
         )
+        .map(|hooks| hooks.with_clipboard(clipboard.as_deref()))
+    }
+
+    /// Sets the file [`Self::take_clipboard`] reads.
+    #[must_use]
+    pub fn with_clipboard(self, path: Option<&OsStr>) -> Self {
+        todo!("{self:?} {path:?}")
+    }
+
+    /// The text the harness left for the clipboard, once.
+    #[must_use]
+    pub fn take_clipboard(&self) -> Option<String> {
+        todo!()
     }
 
     /// Records one received [`SYNC_CHORD`].

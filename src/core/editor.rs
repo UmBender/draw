@@ -554,6 +554,12 @@ impl Editor {
                     .map(|p| p.clamp(0.0, 1.0));
                 false
             }
+            InputEvent::Paste(text) => self
+                .tools
+                .text
+                .edit
+                .as_mut()
+                .is_some_and(|edit| edit.paste(&text)),
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
                     self.viewport = size;

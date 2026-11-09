@@ -819,8 +819,8 @@ fn run_session(session: &[InputEvent]) -> Result<Editor, TestCaseError> {
 /// [`run_session`] on `editor`.
 fn run_session_on(mut editor: Editor, session: &[InputEvent]) -> Result<Editor, TestCaseError> {
     check_invariants(&editor, 0)?;
-    for (i, &event) in session.iter().enumerate() {
-        editor.handle(event);
+    for (i, event) in session.iter().enumerate() {
+        editor.handle(event.clone());
         check_invariants(&editor, i + 1)?;
     }
     Ok(editor)
@@ -1357,9 +1357,9 @@ fn check_snapshot_continues_equal(
     let mut editor = run_session_on(start, head)?;
     let mut loaded = snapshot_round_trip(&editor)?;
     prop_assert!(loaded == editor, "loaded state differs at {}", cut);
-    for (i, &event) in tail.iter().enumerate() {
-        editor.handle(event);
-        loaded.handle(event);
+    for (i, event) in tail.iter().enumerate() {
+        editor.handle(event.clone());
+        loaded.handle(event.clone());
         prop_assert!(
             loaded == editor,
             "differs after event {} ({:?})",

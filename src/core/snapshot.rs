@@ -1657,8 +1657,8 @@ mod tests {
                     mods: NONE,
                 },
             ] {
-                ed.handle(event);
-                loaded.handle(event);
+                ed.handle(event.clone());
+                loaded.handle(event.clone());
                 assert_eq!(loaded, ed, "{name} after {event:?}");
             }
         }

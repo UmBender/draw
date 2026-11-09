@@ -65,23 +65,21 @@ impl TapFilter {
 
     /// Takes one event and returns the events to hand on, in order.
     pub fn filter(&mut self, event: InputEvent) -> Passed {
-        let pass = [Some(event), None];
-        if self.slop <= 0.0 {
-            return pass;
-        }
-        let (InputEvent::PointerDown { pos, .. }
-        | InputEvent::PointerMove { pos, .. }
-        | InputEvent::PointerUp { pos, .. }) = event
-        else {
-            return pass;
+        let pos = match event {
+            // The editor drops non-finite positions; they must not move the
+            // state either.
+            InputEvent::PointerDown { pos, .. }
+            | InputEvent::PointerMove { pos, .. }
+            | InputEvent::PointerUp { pos, .. }
+                if self.slop > 0.0 && pos.is_finite() =>
+            {
+                pos
+            }
+            _ => return [Some(event), None],
         };
-        // The editor drops non-finite positions; they must not move the
-        // state either.
-        if !pos.is_finite() {
-            return pass;
-        }
-        match (self.state, event) {
-            (TapState::Idle, InputEvent::PointerDown { button, .. }) => {
+        let pass = [Some(event.clone()), None];
+        match (self.state, &event) {
+            (TapState::Idle, &InputEvent::PointerDown { button, .. }) => {
                 self.state = TapState::Holding {
                     origin: pos,
                     button,
@@ -89,7 +87,7 @@ impl TapFilter {
                 };
                 pass
             }
-            (TapState::Holding { origin, button, .. }, InputEvent::PointerMove { mods, .. })
+            (TapState::Holding { origin, button, .. }, &InputEvent::PointerMove { mods, .. })
                 if pos.distance(origin) <= self.slop =>
             {
                 self.state = TapState::Holding {
@@ -101,7 +99,7 @@ impl TapFilter {
             }
             (
                 TapState::Holding { origin, button, .. },
-                InputEvent::PointerUp {
+                &InputEvent::PointerUp {
                     button: released,
                     mods,
                     ..
@@ -124,7 +122,7 @@ impl TapFilter {
             }
             (
                 TapState::Dragging { button },
-                InputEvent::PointerUp {
+                &InputEvent::PointerUp {
                     button: released, ..
                 },
             ) if released == button => {
@@ -231,7 +229,7 @@ mod tests {
     fn run(filter: &mut TapFilter, events: &[InputEvent]) -> Vec<InputEvent> {
         events
             .iter()
-            .flat_map(|&event| filter.filter(event).into_iter().flatten())
+            .flat_map(|event| filter.filter(event.clone()).into_iter().flatten())
             .collect()
     }
 

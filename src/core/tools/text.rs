@@ -26,6 +26,15 @@ pub const TEXT_PX_PER_WIDTH: f32 = 2.0;
 /// Spaces typed by `Tab`.
 pub const TAB_SPACES: usize = 4;
 
+/// Most bytes one paste inserts (ADR-T83-1).
+pub const PASTE_MAX_BYTES: usize = 64 * 1024;
+
+/// `text` as a text block holds it: see [`TextEdit::paste`] (ADR-T83-1).
+#[must_use]
+pub fn clean_paste(text: &str) -> String {
+    todo!("{text}")
+}
+
 /// On-screen font size in pixels of a new block drawn at stroke width
 /// `width_px`.
 #[must_use]
@@ -243,6 +252,14 @@ impl TextEdit {
         self.text.insert_str(self.caret, &" ".repeat(TAB_SPACES));
         self.caret += TAB_SPACES;
         true
+    }
+
+    /// Inserts clipboard text at the caret and moves past it: `\r\n` and
+    /// `\r` become line breaks, other control characters are dropped, a
+    /// tab is the `Tab` key's spaces, and at most [`PASTE_MAX_BYTES`] are
+    /// inserted. Returns whether anything was (ADR-T83-1).
+    pub fn paste(&mut self, text: &str) -> bool {
+        todo!("{text}")
     }
 
     /// Removes the `char` before the caret. Returns whether there was one.

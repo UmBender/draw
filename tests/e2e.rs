@@ -77,6 +77,8 @@ enum Step {
     Checkpoint(String),
     /// End the seat's active keyboard, then type through a new one (T79).
     EndKeyboard,
+    /// Put this text on the system clipboard (ADR-T83-1).
+    Clipboard(String),
 }
 
 /// How much two screenshots may differ.
@@ -193,6 +195,10 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
         ("text", _) if !rest.is_empty() && !rest.starts_with('-') => {
             case.steps.push(Step::Type(vec![rest.to_owned()]));
         }
+        // wl-copy would read a leading dash as an option.
+        ("clipboard", _) if !rest.is_empty() && !rest.starts_with('-') => {
+            case.steps.push(Step::Clipboard(rest.to_owned()));
+        }
         ("key", [key]) => {
             case.steps
                 .push(Step::Type(vec!["-k".to_owned(), (*key).to_owned()]));
@@ -254,6 +260,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
 /// | `sections <name>...` | compare only these snapshot sections |
 /// | `screenshot [pixels channel]` | also compare `expected.ppm` |
 /// | `text <text>` | type literally, through `wtype` |
+/// | `clipboard <text>` | put text on the system clipboard |
 /// | `key <keysym>` | one key |
 /// | `chord <mod>... <keysym>` | key with modifiers |
 /// | `hold <keysym> <ms>` | hold a key down |
@@ -952,6 +959,8 @@ struct Running<'a> {
     idle: PathBuf,
     dump: PathBuf,
     log: PathBuf,
+    /// File the app's clipboard hook reads.
+    clipboard: PathBuf,
     /// Syncs sent so far.
     sent: u64,
 }
@@ -1029,7 +1038,17 @@ impl Running<'_> {
                 let _bare = self.session.replace_active_keyboard()?;
                 self.sync_with(&[])
             }
+            Step::Clipboard(text) => {
+                self.set_clipboard(text)?;
+                self.sync_with(&[])
+            }
         }
+    }
+
+    /// Puts `text` on the clipboard with `wl-copy`, or through the app's
+    /// own hook where it is not installed (ADR-T83-1).
+    fn set_clipboard(&self, text: &str) -> Result<(), String> {
+        todo!("{text} {}", self.clipboard.display())
     }
 }
 
@@ -1050,6 +1069,7 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         std::fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     }
     let (dump, idle) = (run.join("actual.snap"), run.join("idle"));
+    let clipboard = run.join("clipboard");
     let log = state.join("draw").join("draw.log");
     let mode = format!("{}x{}", OUTPUT.0, OUTPUT.1);
     session.swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])?;
@@ -1065,6 +1085,7 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         .env("LIBGL_ALWAYS_SOFTWARE", "1")
         .env("DRAW_E2E_DUMP", &dump)
         .env("DRAW_E2E_IDLE", &idle)
+        .env("DRAW_E2E_CLIPBOARD", &clipboard)
         .stdout(stdout)
         .stderr(stderr);
     if let Some(start) = start {
@@ -1078,6 +1099,7 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         idle,
         dump,
         log: log.clone(),
+        clipboard,
         sent: 0,
     };
     running.wait_for_viewport(OUTPUT)?;

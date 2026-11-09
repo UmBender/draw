@@ -110,7 +110,7 @@ pub enum Key {
 }
 
 /// One input event, positions in screen pixels.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InputEvent {
     /// A button was pressed at `pos`.
     PointerDown {
@@ -175,6 +175,9 @@ pub enum InputEvent {
         /// Tip pressure; `None` for a mouse.
         pressure: Option<f32>,
     },
+    /// The system clipboard's text, asked for by `Ctrl+V` in an open text
+    /// block. Only a text block in edit mode uses it (ADR-T83-1).
+    Paste(String),
     /// The viewport now measures `size` pixels.
     Resize {
         /// Width and height in pixels.

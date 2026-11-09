@@ -54,7 +54,7 @@ Design: [[ADR-T83-1 Paste text through an input event]].
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
 - `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
-- `src/core/tap.rs`, `src/shell/diag/e2e.rs`, `tests/e2e.rs` (added, see *Log*)
+- `src/core/tap.rs`, `src/core/snapshot.rs`, `src/shell/toolbar.rs`, `src/shell/diag/e2e.rs`, `tests/e2e.rs` (added, see *Log*)
 - `vendor/miniquad/src/lib.rs`, `vendor/miniquad/PATCHED.md` (added, see *Log*)
 - any other test that stops compiling because `InputEvent` is no longer `Copy`
 - this note, and new `ADR-T83-<n>` notes
@@ -75,6 +75,6 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
-- 2026-11-09 — UNATTENDED CHOICE: `InputEvent::Paste(String)` makes `InputEvent` non-`Copy`, so `src/core/tap.rs` joins *Files owned*.
+- 2026-11-09 — UNATTENDED CHOICE: `InputEvent::Paste(String)` makes `InputEvent` non-`Copy`, so `src/core/tap.rs`, `src/shell/toolbar.rs` (`Route` holds an event) and a test in `src/core/snapshot.rs` join *Files owned*.
 - 2026-11-09 — UNATTENDED CHOICE: `tests/e2e.rs` (the `clipboard` directive) and `src/shell/diag/e2e.rs` (the `clipboard_set` hook) join *Files owned* for AC-6. The nightly CI job does not install `wl-copy`, so the hook is what runs there.
 - 2026-11-09 — UNATTENDED CHOICE: `vendor/miniquad/src/lib.rs` and `PATCHED.md` join *Files owned*: `clipboard_get` held the display mutex across a Wayland round trip whose handlers lock it, so `Ctrl+V` with the mouse moving would hang (ADR-T83-1).
