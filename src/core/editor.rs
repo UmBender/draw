@@ -572,11 +572,15 @@ impl Editor {
     /// Executes `command`. Returns whether the view needs a redraw.
     ///
     /// An open text block is committed first, except that
-    /// [`Command::Undo`] cancels it instead (ADR-T29-2).
+    /// [`Command::Undo`] cancels it instead (ADR-T29-2) and
+    /// [`Command::ExportView`] leaves it alone (ADR-T92-2).
     pub fn apply(&mut self, command: Command) -> bool {
         if self.tools.text.edit.is_some() {
             if command == Command::Undo {
                 return self.cancel_text();
+            }
+            if command == Command::ExportView {
+                return false;
             }
             let committed = self.finish_text();
             return self.apply(command) || committed;
@@ -683,7 +687,10 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
-            Command::ExportView => todo!(),
+            Command::ExportView => {
+                self.export_asked |= self.can_export();
+                false
+            }
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -831,12 +838,12 @@ impl Editor {
     /// gesture is in progress (ADR-T92-2).
     #[must_use]
     pub fn can_export(&self) -> bool {
-        todo!()
+        self.tools.text.edit.is_none() && self.gesture.is_none()
     }
 
     /// Whether an export was asked for since the last call (ADR-T92-2).
     pub fn take_export_request(&mut self) -> bool {
-        todo!()
+        std::mem::take(&mut self.export_asked)
     }
 
     /// Whether there is an action to undo.

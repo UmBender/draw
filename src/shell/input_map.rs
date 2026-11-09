@@ -12,8 +12,10 @@ use std::time::{Duration, Instant};
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::{EventHandler, KeyMods};
 
+use crate::core::command::Command;
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::core::keymap;
 use crate::shell::diag::detect::KeyWatch;
 use crate::shell::diag::event::{Event, char_class, key_tag};
 
@@ -427,7 +429,10 @@ impl EventHandler for Collector {
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
-            self.events.push(InputEvent::KeyDown { key, mods });
+            // Holding the chord writes one file (ADR-T92-2).
+            if !repeat || keymap::resolve(key, mods) != Some(Command::ExportView) {
+                self.events.push(InputEvent::KeyDown { key, mods });
+            }
         }
     }
 

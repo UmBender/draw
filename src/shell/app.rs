@@ -47,6 +47,7 @@ use crate::core::tools::text::TextEdit;
 use crate::shell::backend::{self, Backend};
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
+use crate::shell::export::{self, ExportError};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
@@ -582,6 +583,7 @@ pub async fn run() {
     let mut recorder = FrameRecorder::new(&editor);
     // Inert unless the end-to-end suite sets its variables (ADR-T75-1).
     let mut hooks = e2e::Hooks::from_env();
+    let mut export_pending = false;
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -616,7 +618,17 @@ pub async fn run() {
                 dirty |= dispatch(&mut editor, event);
             }
         }
+        export_pending = (export_pending || editor.take_export_request()) && editor.can_export();
+        if export_pending {
+            // Never a layer left from an older camera (ADR-T92-2).
+            frame.rerender = true;
+        }
         let presented = frame.present(&editor, viewport, dpi, dirty);
+        // A layer that lost glyphs is drawn again first (ADR-T92-2).
+        if export_pending && !frame.rerender {
+            export_pending = false;
+            export_view(&frame);
+        }
         recorder.end(&mut collector, &editor, presented, dump_asked);
         if let Some(hooks) = &mut hooks {
             answer_sync(hooks, &frame, presented, &editor);
@@ -626,6 +638,21 @@ pub async fn run() {
             hooks.after_swap();
         }
     }
+}
+
+/// Writes the view to a new PNG file in the home directory and logs the
+/// outcome; a failure never panics (ADR-T92-2).
+fn export_view(frame: &CachedFrame) {
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let home = std::env::var_os("HOME");
+    let result = frame
+        .read_view()
+        .and_then(|(rgba, size)| export::save(&rgba, size, home.as_deref(), unix));
+    let (level, line) = export::log_line(&result);
+    eprintln!("draw: {line}");
+    diag::log(level, &line);
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is
@@ -887,6 +914,18 @@ impl CachedFrame {
             eprintln!("{}", frame_log_line(redraw, elapsed, text, shapes));
         }
         Some((redraw, elapsed))
+    }
+
+    /// The window's part of the document layer, read back as RGBA rows from
+    /// the top, and its size in physical pixels (ADR-T92-2).
+    fn read_view(&self) -> Result<(Vec<u8>, (u32, u32)), ExportError> {
+        let (Some(document), Some(key)) = (&self.document, &self.key) else {
+            return Err(ExportError::Pixels);
+        };
+        let image = document.texture.get_texture_data();
+        let layer = (u32::from(image.width), u32::from(image.height));
+        let rgba = export::view_pixels(&image.bytes, layer, key.size, layer_margin(key.size))?;
+        Ok((rgba, key.size))
     }
 
     /// A render target of `size` physical pixels with this cache's sample

@@ -9,9 +9,17 @@
 use std::error::Error;
 use std::ffi::OsStr;
 use std::fmt;
+use std::fs::OpenOptions;
+use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 
-use crate::shell::diag::Level;
+use crate::shell::diag::{self, Level};
+
+/// Bytes of one RGBA pixel.
+const BYTES_PER_PIXEL: usize = 4;
+
+/// How many file names [`write_new`] tries before giving up.
+const MAX_ATTEMPTS: u32 = 10_000;
 
 /// Why the view was not exported.
 #[derive(Debug)]
@@ -32,12 +40,30 @@ pub enum ExportError {
 }
 
 impl fmt::Display for ExportError {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoHome => f.write_str("HOME is not set"),
+            Self::Pixels => f.write_str("the view's pixels could not be read"),
+            Self::Encode(err) => write!(f, "cannot encode the PNG: {err}"),
+            Self::Write { path, source } => write!(f, "{}: {source}", path.display()),
+        }
     }
 }
 
-impl Error for ExportError {}
+impl Error for ExportError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::NoHome | Self::Pixels => None,
+            Self::Encode(err) => Some(err),
+            Self::Write { source, .. } => Some(source),
+        }
+    }
+}
+
+/// Bytes of `width` × `height` RGBA pixels; `None` if that does not fit.
+fn rgba_len(width: usize, height: usize) -> Option<usize> {
+    width.checked_mul(height)?.checked_mul(BYTES_PER_PIXEL)
+}
 
 /// The `view` rectangle of a read-back `layer` of RGBA pixels, `margin`
 /// pixels in from every side: rows top-down, every pixel opaque.
@@ -47,12 +73,43 @@ impl Error for ExportError {}
 /// [`ExportError::Pixels`] if `layer` is not `layer_size` or the view with
 /// its margin does not fit in it.
 pub fn view_pixels(
-    _layer: &[u8],
-    _layer_size: (u32, u32),
-    _view: (u32, u32),
-    _margin: u32,
+    layer: &[u8],
+    layer_size: (u32, u32),
+    view: (u32, u32),
+    margin: u32,
 ) -> Result<Vec<u8>, ExportError> {
-    todo!()
+    let fits = |side: u32, layer_side: u32| {
+        u64::from(side) + 2 * u64::from(margin) <= u64::from(layer_side)
+    };
+    if !fits(view.0, layer_size.0) || !fits(view.1, layer_size.1) {
+        return Err(ExportError::Pixels);
+    }
+    let [layer_width, layer_height, width, height, margin] = [
+        layer_size.0,
+        layer_size.1,
+        view.0,
+        view.1,
+        margin,
+    ]
+    .map(|side| side as usize);
+    let stride = layer_width
+        .checked_mul(BYTES_PER_PIXEL)
+        .filter(|stride| *stride > 0)
+        .ok_or(ExportError::Pixels)?;
+    if rgba_len(layer_width, layer_height) != Some(layer.len()) {
+        return Err(ExportError::Pixels);
+    }
+    let columns = margin * BYTES_PER_PIXEL..(margin + width) * BYTES_PER_PIXEL;
+    let mut pixels = Vec::with_capacity(rgba_len(width, height).ok_or(ExportError::Pixels)?);
+    // Read-back gives the bottom row first.
+    for row in layer.chunks_exact(stride).skip(margin).take(height).rev() {
+        let row = row.get(columns.clone()).ok_or(ExportError::Pixels)?;
+        let (row, _) = row.as_chunks::<BYTES_PER_PIXEL>();
+        for [red, green, blue, _] in row {
+            pixels.extend([*red, *green, *blue, u8::MAX]);
+        }
+    }
+    Ok(pixels)
 }
 
 /// `rgba` as the bytes of a PNG file of `width` × `height` pixels.
@@ -61,8 +118,21 @@ pub fn view_pixels(
 ///
 /// [`ExportError::Pixels`] if `rgba` has the wrong length,
 /// [`ExportError::Encode`] if the encoder refuses the image.
-pub fn encode_png(_width: u32, _height: u32, _rgba: &[u8]) -> Result<Vec<u8>, ExportError> {
-    todo!()
+pub fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, ExportError> {
+    if rgba_len(width as usize, height as usize) != Some(rgba.len()) {
+        return Err(ExportError::Pixels);
+    }
+    let mut bytes = Vec::new();
+    let mut encoder = png::Encoder::new(&mut bytes, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    encoder.set_compression(png::Compression::Fast);
+    let mut writer = encoder.write_header().map_err(ExportError::Encode)?;
+    writer
+        .write_image_data(rgba)
+        .map_err(ExportError::Encode)?;
+    writer.finish().map_err(ExportError::Encode)?;
+    Ok(bytes)
 }
 
 /// The home directory named by the value of `HOME`.
@@ -70,15 +140,27 @@ pub fn encode_png(_width: u32, _height: u32, _rgba: &[u8]) -> Result<Vec<u8>, Ex
 /// # Errors
 ///
 /// [`ExportError::NoHome`] if it is unset or empty.
-pub fn home_dir(_value: Option<&OsStr>) -> Result<PathBuf, ExportError> {
-    todo!()
+pub fn home_dir(value: Option<&OsStr>) -> Result<PathBuf, ExportError> {
+    value
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or(ExportError::NoHome)
 }
 
 /// Where an export taken at `unix_secs` goes: `draw-<UTC date>-<time>.png`
 /// in `home`, with `-<attempt>` before the extension unless `attempt` is 0.
 #[must_use]
-pub fn export_path(_home: &Path, _unix_secs: u64, _attempt: u32) -> PathBuf {
-    todo!()
+pub fn export_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
+    // `20261109T143005Z` to `20261109-143005`.
+    let stamp = diag::file::utc_stamp(unix_secs)
+        .trim_end_matches('Z')
+        .replacen('T', "-", 1);
+    let name = if attempt == 0 {
+        format!("draw-{stamp}.png")
+    } else {
+        format!("draw-{stamp}-{attempt}.png")
+    };
+    home.join(name)
 }
 
 /// Writes `bytes` to the first free [`export_path`] in `home`, never
@@ -87,8 +169,28 @@ pub fn export_path(_home: &Path, _unix_secs: u64, _attempt: u32) -> PathBuf {
 /// # Errors
 ///
 /// [`ExportError::Write`] if no file could be created or written.
-pub fn write_new(_home: &Path, _unix_secs: u64, _bytes: &[u8]) -> Result<PathBuf, ExportError> {
-    todo!()
+pub fn write_new(home: &Path, unix_secs: u64, bytes: &[u8]) -> Result<PathBuf, ExportError> {
+    for attempt in 0..MAX_ATTEMPTS {
+        let path = export_path(home, unix_secs, attempt);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                return match file.write_all(bytes) {
+                    Ok(()) => Ok(path),
+                    Err(source) => {
+                        // A truncated PNG is worse than none.
+                        let _ = std::fs::remove_file(&path);
+                        Err(ExportError::Write { path, source })
+                    }
+                };
+            }
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {}
+            Err(source) => return Err(ExportError::Write { path, source }),
+        }
+    }
+    Err(ExportError::Write {
+        path: export_path(home, unix_secs, MAX_ATTEMPTS),
+        source: ErrorKind::AlreadyExists.into(),
+    })
 }
 
 /// Encodes `rgba` of `size` pixels and writes it to the directory named by
@@ -98,18 +200,26 @@ pub fn write_new(_home: &Path, _unix_secs: u64, _bytes: &[u8]) -> Result<PathBuf
 ///
 /// As [`home_dir`], [`encode_png`] and [`write_new`].
 pub fn save(
-    _rgba: &[u8],
-    _size: (u32, u32),
-    _home: Option<&OsStr>,
-    _unix_secs: u64,
+    rgba: &[u8],
+    size: (u32, u32),
+    home: Option<&OsStr>,
+    unix_secs: u64,
 ) -> Result<PathBuf, ExportError> {
-    todo!()
+    let home = home_dir(home)?;
+    let bytes = encode_png(size.0, size.1, rgba)?;
+    write_new(&home, unix_secs, &bytes)
 }
 
 /// The diagnostics log's level and line for the outcome of an export.
 #[must_use]
-pub fn log_line(_result: &Result<PathBuf, ExportError>) -> (Level, String) {
-    todo!()
+pub fn log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
+    match result {
+        Ok(path) => (
+            Level::Info,
+            format!("view exported to {}", path.display()),
+        ),
+        Err(err) => (Level::Error, format!("view not exported: {err}")),
+    }
 }
 
 #[cfg(test)]
