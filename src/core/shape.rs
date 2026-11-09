@@ -563,9 +563,16 @@ impl Shape {
                 *size = scaled_text_size(*size, factor);
             }
         }
-        // A grid's index band is the one box that can overflow while the
-        // corners are finite.
-        let bounded = !matches!(out, Self::Grid { .. }) || aabb_is_finite(&out.bounds());
+        // Finite corners can still be further apart than an `f32` holds, and
+        // a grid's index band reaches beyond them.
+        let bounded = match &out {
+            Self::Grid { a, b, .. } => sides_are_finite(*a, *b) && aabb_is_finite(&out.bounds()),
+            Self::Line { a, b, .. }
+            | Self::Arrow { a, b, .. }
+            | Self::Rect { a, b, .. }
+            | Self::Ellipse { a, b, .. } => sides_are_finite(*a, *b),
+            Self::Stroke { .. } | Self::Text { .. } => true,
+        };
         (bounded && out.is_finite()).then_some(out)
     }
 
@@ -905,6 +912,11 @@ fn side_floor(side: f32) -> f32 {
 fn scaled_text_size(size: f32, factor: f32) -> f32 {
     let scaled = (size * factor).min(MAX_TEXT_SIZE);
     if scaled > 0.0 { scaled } else { size }
+}
+
+/// Whether the distance from `a` to `b` is finite on both axes.
+fn sides_are_finite(a: Vec2, b: Vec2) -> bool {
+    (b - a).is_finite()
 }
 
 /// Whether both corners of `b` are finite.
