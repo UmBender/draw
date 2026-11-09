@@ -426,12 +426,35 @@ const CURSOR_BOX_BEFORE: i32 = 2;
 /// Copies `expected`'s pixels over the box at `pointer`, because whether a
 /// capture shows the cursor depends on the compositor (ADR-T80-1).
 fn hide_cursor_box(actual: &mut Image, expected: &Image, pointer: (i32, i32)) {
-    todo!("{actual:?} {expected:?} {pointer:?}")
+    if (actual.width, actual.height) != (expected.width, expected.height) {
+        return;
+    }
+    let span = |at: i32, limit: usize| {
+        let start = at.saturating_sub(CURSOR_BOX_BEFORE);
+        let clip = |edge: i32| usize::try_from(edge).unwrap_or(0).min(limit);
+        clip(start)..clip(start.saturating_add(CURSOR_BOX_SIZE))
+    };
+    let width = actual.width;
+    let columns = span(pointer.0, width);
+    for row in span(pointer.1, actual.height) {
+        let line = (row * width + columns.start) * 3..(row * width + columns.end) * 3;
+        actual.rgb[line.clone()].copy_from_slice(&expected.rgb[line]);
+    }
 }
 
 /// The pointer's position after `steps`, which begin with it at `start`.
 fn last_pointer(steps: &[Step], start: (i32, i32)) -> (i32, i32) {
-    todo!("{steps:?} {start:?}")
+    steps
+        .iter()
+        .rev()
+        .find_map(|step| match step {
+            Step::Pointer(args) => match args.as_slice() {
+                [verb, x, y] if verb == "set" => Some((x.parse().ok()?, y.parse().ok()?)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or(start)
 }
 
 // ---- Exit checks -------------------------------------------------------
@@ -988,9 +1011,15 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         if !status.success() {
             return Err(format!("grim failed: {status}"));
         }
-        if let Err(problem) =
-            compare_screenshot(&shot, &source.join("expected.ppm"), run, tolerance, update)
-        {
+        let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
+        if let Err(problem) = compare_screenshot(
+            &shot,
+            &source.join("expected.ppm"),
+            run,
+            tolerance,
+            pointer,
+            update,
+        ) {
             problems.push(problem);
         }
     }
@@ -1035,6 +1064,7 @@ fn compare_screenshot(
     golden: &Path,
     run: &Path,
     tolerance: Tolerance,
+    pointer: (i32, i32),
     update: bool,
 ) -> Result<(), String> {
     let bytes = std::fs::read(shot).map_err(|err| format!("{}: {err}", shot.display()))?;
@@ -1042,10 +1072,11 @@ fn compare_screenshot(
         return std::fs::write(golden, &bytes)
             .map_err(|err| format!("cannot write {}: {err}", golden.display()));
     }
-    let actual = Image::parse_ppm(&bytes)?;
+    let mut actual = Image::parse_ppm(&bytes)?;
     let expected =
         std::fs::read(golden).map_err(|err| format!("no golden at {}: {err}", golden.display()))?;
     let expected = Image::parse_ppm(&expected)?;
+    hide_cursor_box(&mut actual, &expected, pointer);
     compare_images(&actual, &expected, tolerance).map_err(|diff| {
         let path = run.join("diff.ppm");
         let saved = std::fs::write(&path, diff.image.to_ppm());
