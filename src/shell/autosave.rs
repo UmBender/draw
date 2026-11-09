@@ -1,4 +1,164 @@
 //! Autosave and crash recovery (T94, ADR-T94-1).
+//!
+//! The shell calls [`Autosaver::on_input`] once per frame that had input,
+//! so nothing wakes the blocked loop (ADR-T12-1). When a save is due the
+//! main thread only clones the editor state; a short-lived thread makes
+//! the text and writes the file. `draw --recover` reads it back.
+
+use std::ffi::OsString;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::thread::{JoinHandle, ThreadId};
+use std::time::{Duration, Instant};
+
+use crate::core::editor::Editor;
+use crate::core::snapshot::Snapshot;
+
+/// Shortest time between two autosaves (AC-1).
+pub const INTERVAL: Duration = Duration::from_secs(30);
+
+/// The newest autosave, in the state directory.
+pub const FILE: &str = "autosave.snap";
+
+/// The autosave a session found when it first saved (AC-3).
+pub const PREV_FILE: &str = "autosave.prev.snap";
+
+/// Which autosave to recover.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Which {
+    /// [`FILE`].
+    Latest,
+    /// [`PREV_FILE`].
+    Previous,
+}
+
+/// What the command line asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Launch {
+    /// No `--recover`.
+    Normal,
+    /// `--recover` or `--recover prev`.
+    Recover(Which),
+    /// `--recover` with a value it does not know, and why.
+    Invalid(String),
+}
+
+impl Launch {
+    /// Reads the arguments after the program name. Arguments other than
+    /// `--recover` are ignored, as they always were.
+    #[must_use]
+    pub fn from_args(args: impl IntoIterator<Item = OsString>) -> Self {
+        let _ = args.into_iter();
+        todo!()
+    }
+}
+
+/// The snapshot a launch starts from and the reason it starts blank, for
+/// the user and the log. [`Launch::Normal`] asks for neither.
+#[must_use]
+pub fn recover(launch: &Launch, dir: Option<&Path>) -> (Option<Snapshot>, Option<String>) {
+    let _ = (launch, dir);
+    todo!()
+}
+
+/// Decides when an autosave is due (AC-1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Policy {
+    /// The last capture, or the session start.
+    last: Instant,
+    /// The document revision on disk; `None` after a failed write.
+    saved: Option<u64>,
+}
+
+impl Policy {
+    /// A session that starts at `now` with the document at `revision`.
+    #[must_use]
+    pub fn new(now: Instant, revision: u64) -> Self {
+        let _ = (now, revision);
+        todo!()
+    }
+
+    /// Whether an input at `now` saves: [`INTERVAL`] has passed, the
+    /// document is not the saved one, and nothing is being edited.
+    #[must_use]
+    pub fn is_due(&self, now: Instant, revision: u64, editing: bool) -> bool {
+        let _ = (now, revision, editing);
+        todo!()
+    }
+
+    /// Records a capture of `revision` at `now`.
+    pub fn captured(&mut self, now: Instant, revision: u64) {
+        let _ = (now, revision);
+        todo!()
+    }
+
+    /// Records that the last capture never reached the disk.
+    pub fn failed(&mut self) {
+        todo!()
+    }
+}
+
+/// The temporary file of this process in `dir`; two windows cannot mix
+/// their writes (ADR-T94-1).
+fn temporary_path(dir: &Path) -> PathBuf {
+    let _ = dir;
+    todo!()
+}
+
+/// Writes `text` as [`FILE`] in `dir`, creating `dir`: a mode `0600`
+/// temporary file, synced, then renamed. With `rotate` the old [`FILE`]
+/// first becomes [`PREV_FILE`], once the temporary file is complete.
+///
+/// # Errors
+///
+/// The first file-system error; [`FILE`] is then unchanged, unless the
+/// final rename failed after the rotation.
+pub fn write_atomic(dir: &Path, text: &str, rotate: bool) -> std::io::Result<()> {
+    let _ = (dir, text, rotate);
+    todo!()
+}
+
+/// Runs the autosaves of one session.
+#[derive(Debug)]
+pub struct Autosaver {
+    /// The state directory; without one the autosaver does nothing.
+    dir: Option<PathBuf>,
+    /// When to save.
+    policy: Policy,
+    /// Whether the first autosave has yet to succeed (AC-3).
+    rotate: bool,
+    /// The write in progress, with its failure line.
+    writer: Option<JoinHandle<Result<(), String>>>,
+}
+
+impl Autosaver {
+    /// An autosaver for a session whose editor starts as `editor` at
+    /// `now`, writing to `dir`.
+    #[must_use]
+    pub fn new(dir: Option<PathBuf>, editor: &Editor, now: Instant) -> Self {
+        let _ = (dir, editor, now);
+        todo!()
+    }
+
+    /// Call once per frame that had input: saves `editor` if it is due.
+    /// A failed write goes to the diagnostics log.
+    pub fn on_input(&mut self, editor: &Editor, now: Instant) {
+        let _ = (editor, now);
+        todo!()
+    }
+
+    /// The thread of the write in progress, if any.
+    #[must_use]
+    pub fn writer_thread(&self) -> Option<ThreadId> {
+        todo!()
+    }
+
+    /// Blocks until the write in progress ends. Its failure line, if any.
+    pub fn wait(&mut self) -> Option<String> {
+        let _ = fs::metadata("");
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {
