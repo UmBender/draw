@@ -1,6 +1,6 @@
 ---
 tags: [architecture]
-adrs: ["[[ADR-T74-1 Line-based editor snapshot format]]", "[[ADR-T31-1 Shape text prototype behind a switch]]", "[[ADR-T35-1 Vendored miniquad with a pen tablet patch]]", "[[ADR-T35-2 Pressure as per-point width factors on pen strokes]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T32-1 Own glyph atlas rasterized with fontdue]]", "[[ADR-T32-2 Shapes and glyphs share one textured batch]]"]
+adrs: ["[[ADR-T83-1 Paste text through an input event]]", "[[ADR-T74-1 Line-based editor snapshot format]]", "[[ADR-T31-1 Shape text prototype behind a switch]]", "[[ADR-T35-1 Vendored miniquad with a pen tablet patch]]", "[[ADR-T35-2 Pressure as per-point width factors on pen strokes]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-0002 Rust and macroquad]]", "[[ADR-0003 Headless core and thin shell]]", "[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-0006 Redraw on demand]]", "[[ADR-T12-1 Blocking event loop with cached frame]]", "[[ADR-T15-1 MSAA on the cached frame]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T17-1 Snapping order and tolerances]]", "[[ADR-T24-1 Document layer keyed by a document revision]]", "[[ADR-T26-1 Reuse the document layer during pan and zoom]]", "[[ADR-T32-1 Own glyph atlas rasterized with fontdue]]", "[[ADR-T32-2 Shapes and glyphs share one textured batch]]"]
 ---
 
 # Architecture
@@ -99,7 +99,9 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    ([[ADR-T34-1 Tap slop for pen tablets detected at start-up]]). While a text block is open,
    `Editor::handle` sends characters and editing keys to it instead of
    the keymap, and `Editor::apply` commits it first
-   ([[ADR-T29-2 Text edit mode]]).
+   ([[ADR-T29-2 Text edit mode]]). `Ctrl+V` there is the one key the shell
+   answers itself: it reads the system clipboard and sends
+   `InputEvent::Paste` instead ([[ADR-T83-1 Paste text through an input event]]).
 3. The shell builds the document layer's key — `Editor::document_revision`,
    shape count, camera, framebuffer size, `overlay.hidden`, grid snap — and
    `shell::app::plan_redraw` compares it with the cached one

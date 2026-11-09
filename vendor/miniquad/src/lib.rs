@@ -354,8 +354,22 @@ pub mod window {
 
     /// Get current OS clipboard value
     pub fn clipboard_get() -> Option<String> {
-        let mut d = native_display().lock().unwrap();
-        d.clipboard.get()
+        // draw patch (ADR-T83-1): the Wayland read runs a round trip whose
+        // event handlers lock the display, so the lock is not held during it.
+        struct NoClipboard;
+        impl native::Clipboard for NoClipboard {
+            fn get(&mut self) -> Option<String> {
+                None
+            }
+            fn set(&mut self, _string: &str) {}
+        }
+        let mut clipboard = {
+            let mut d = native_display().lock().unwrap();
+            std::mem::replace(&mut d.clipboard, Box::new(NoClipboard))
+        };
+        let text = clipboard.get();
+        native_display().lock().unwrap().clipboard = clipboard;
+        text
     }
 
     /// Save value to OS clipboard

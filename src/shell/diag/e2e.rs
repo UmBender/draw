@@ -18,6 +18,10 @@ pub const DUMP_ENV: &str = "DRAW_E2E_DUMP";
 /// Environment variable naming the file that receives the sync count.
 pub const IDLE_ENV: &str = "DRAW_E2E_IDLE";
 
+/// Environment variable naming the file whose text goes on the system
+/// clipboard, for runs without `wl-copy` (ADR-T83-1).
+pub const CLIPBOARD_ENV: &str = "DRAW_E2E_CLIPBOARD";
+
 /// The chord the harness sends after each input step. Not in the keymap.
 pub const SYNC_CHORD: KeyChord = KeyChord::ctrl_shift(Key::Digit9);
 
@@ -59,6 +63,8 @@ pub struct Hooks {
     answered: u64,
     /// The sync whose dump is written, waiting for its frame to be swapped.
     armed: Option<u64>,
+    /// File the harness leaves clipboard text in.
+    clipboard: Option<PathBuf>,
 }
 
 impl Hooks {
@@ -73,16 +79,37 @@ impl Hooks {
             seen: 0,
             answered: 0,
             armed: None,
+            clipboard: None,
         })
     }
 
     /// Hooks from the environment.
     #[must_use]
     pub fn from_env() -> Option<Self> {
+        let clipboard = std::env::var_os(CLIPBOARD_ENV);
         Self::from_values(
             std::env::var_os(DUMP_ENV).as_deref(),
             std::env::var_os(IDLE_ENV).as_deref(),
         )
+        .map(|hooks| hooks.with_clipboard(clipboard.as_deref()))
+    }
+
+    /// Sets the file [`Self::take_clipboard`] reads.
+    #[must_use]
+    pub fn with_clipboard(self, path: Option<&OsStr>) -> Self {
+        Self {
+            clipboard: path_of(path),
+            ..self
+        }
+    }
+
+    /// The text the harness left for the clipboard, once.
+    #[must_use]
+    pub fn take_clipboard(&self) -> Option<String> {
+        let path = self.clipboard.as_ref()?;
+        let text = std::fs::read_to_string(path).ok()?;
+        let _ = std::fs::remove_file(path);
+        Some(text)
     }
 
     /// Records one received [`SYNC_CHORD`].
@@ -289,6 +316,43 @@ mod tests {
             // Assert
             assert_eq!(std::fs::read_to_string(dir.join("idle"))?, expected);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn env_name_of_the_clipboard_is_stable() {
+        assert_eq!(CLIPBOARD_ENV, "DRAW_E2E_CLIPBOARD");
+    }
+
+    #[test]
+    fn hooks_take_clipboard_returns_the_text_once() -> std::io::Result<()> {
+        // Arrange
+        let dir = temp_dir("clipboard")?;
+        let path = dir.join("clipboard");
+        std::fs::write(&path, "hello\n")?;
+        let hooks = hooks(&dir).with_clipboard(Some(path.as_os_str()));
+
+        // Act
+        let first = hooks.take_clipboard();
+        let second = hooks.take_clipboard();
+
+        // Assert
+        assert_eq!(first.as_deref(), Some("hello\n"));
+        assert_eq!(second, None);
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn hooks_without_clipboard_take_nothing() -> std::io::Result<()> {
+        // Arrange
+        let dir = temp_dir("no-clipboard")?;
+        let unset = hooks(&dir);
+        let missing = hooks(&dir).with_clipboard(Some(dir.join("absent").as_os_str()));
+
+        // Act / Assert
+        assert_eq!(unset.take_clipboard(), None);
+        assert_eq!(missing.take_clipboard(), None);
         Ok(())
     }
 

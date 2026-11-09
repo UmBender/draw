@@ -17,7 +17,7 @@ use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::pen;
 use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
-use macroquad::miniquad::window::schedule_update;
+use macroquad::miniquad::window::{clipboard_get, clipboard_set, schedule_update};
 use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
@@ -48,7 +48,9 @@ use crate::shell::backend::{self, Backend};
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::glyphs::GlyphAtlas;
-use crate::shell::input_map::{Collector, PEN_BOUNCE_WINDOW, PenSample};
+use crate::shell::input_map::{
+    Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, wants_clipboard,
+};
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -598,12 +600,18 @@ pub async fn run() {
             // Wake again to hand the held release on (ADR-T42-1).
             schedule_update();
         }
+        // Test-only: the harness's text, where `wl-copy` is missing (ADR-T83-1).
+        if let Some(text) = hooks.as_ref().and_then(e2e::Hooks::take_clipboard) {
+            clipboard_set(&text);
+        }
         let mut dump_asked = false;
         for event in collector.drain() {
             if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
                 continue;
             }
-            if is_dump_chord(&event) {
+            if wants_clipboard(&event, editor.text_edit().is_some()) {
+                dirty |= paste_clipboard(&mut editor);
+            } else if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
                 let line = match save_snapshot(&editor) {
@@ -626,6 +634,15 @@ pub async fn run() {
             hooks.after_swap();
         }
     }
+}
+
+/// Pastes the system clipboard into the open text edit. Returns whether
+/// the view needs a redraw (ADR-T83-1).
+fn paste_clipboard(editor: &mut Editor) -> bool {
+    let changed = paste_event(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
+    // The read may have queued input the loop would sleep on.
+    schedule_update();
+    changed
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is

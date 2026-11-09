@@ -95,7 +95,7 @@ pub struct Button {
 }
 
 /// Where an input event goes once the toolbar has seen it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Route {
     /// To the editor's canvas.
     Forward(InputEvent),
@@ -662,7 +662,10 @@ mod tests {
     fn route_hidden_toolbar_forwards() {
         let center = layout(VIEWPORT)[0].rect.center();
         let event = press(center, PointerButton::Left);
-        assert_eq!(route(false, false, VIEWPORT, event), Route::Forward(event));
+        assert_eq!(
+            route(false, false, VIEWPORT, event.clone()),
+            Route::Forward(event)
+        );
     }
 
     #[test]
@@ -690,7 +693,10 @@ mod tests {
             InputEvent::Resize { size: VIEWPORT },
         ];
         for event in events {
-            assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
+            assert_eq!(
+                route(true, false, VIEWPORT, event.clone()),
+                Route::Forward(event)
+            );
         }
     }
 
@@ -807,8 +813,14 @@ mod tests {
     fn route_without_flyout_forwards() {
         let minus_cols = flyout_layout(VIEWPORT)[0].rect.center();
         let event = press(minus_cols, PointerButton::Left);
-        assert_eq!(route(true, false, VIEWPORT, event), Route::Forward(event));
-        assert_eq!(route(false, true, VIEWPORT, event), Route::Forward(event));
+        assert_eq!(
+            route(true, false, VIEWPORT, event.clone()),
+            Route::Forward(event.clone())
+        );
+        assert_eq!(
+            route(false, true, VIEWPORT, event.clone()),
+            Route::Forward(event)
+        );
     }
 
     /// The key bound bare to `command` in the keymap, as the toolbar spells it.

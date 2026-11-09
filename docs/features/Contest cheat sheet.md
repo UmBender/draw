@@ -71,7 +71,8 @@ One page to print and keep next to the keyboard. Source of truth:
 
 Every key types; only these act: `Esc` / `Ctrl+Enter` finish · `Ctrl+Z`
 cancel · `Enter` new line · `Tab` 4 spaces · arrows, `Home`, `End` move ·
-`Backspace`, `Delete` delete · `Ctrl+]` / `Ctrl+[` bigger / smaller.
+`Backspace`, `Delete` delete · `Ctrl+]` / `Ctrl+[` bigger / smaller ·
+`Ctrl+V` paste text from the system clipboard.
 Edit again: Text click, or Select double-click.
 
 ## Typing in a shape

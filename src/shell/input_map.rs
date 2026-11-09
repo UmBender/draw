@@ -14,6 +14,7 @@ use macroquad::miniquad::{EventHandler, KeyMods};
 
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::core::keymap::KeyChord;
 use crate::shell::diag::detect::KeyWatch;
 use crate::shell::diag::event::{Event, char_class, key_tag};
 
@@ -97,6 +98,22 @@ pub fn map_mods(mods: KeyMods) -> Modifiers {
     }
 }
 
+/// Whether `event` asks for the system clipboard: a press of exactly
+/// `Ctrl+V` while a text edit is open (ADR-T83-1).
+#[must_use]
+pub fn wants_clipboard(event: &InputEvent, editing: bool) -> bool {
+    let paste = KeyChord::ctrl(Key::V);
+    editing
+        && matches!(event, InputEvent::KeyDown { key, mods } if *key == paste.key && *mods == paste.mods)
+}
+
+/// The event for what the clipboard held; `None` when it was empty or
+/// unavailable (ADR-T83-1).
+#[must_use]
+pub fn paste_event(text: Option<String>) -> Option<InputEvent> {
+    text.filter(|text| !text.is_empty()).map(InputEvent::Paste)
+}
+
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI
 /// scale that is not finite and positive counts as `1`.
 #[must_use]
@@ -172,7 +189,7 @@ pub struct PenSample {
 pub const PEN_BOUNCE_WINDOW: Duration = Duration::from_millis(60);
 
 /// A pen release held back by the bounce window (ADR-T42-1).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 struct HeldRelease {
     /// The `PointerUp` to emit if the tip stays up.
     up: InputEvent,
@@ -291,14 +308,18 @@ impl Collector {
     /// bounce window has passed at the frame time. Returns whether a
     /// release is still held, so the caller can wake again for it.
     pub fn flush_bounce(&mut self) -> bool {
-        if self.bounce.is_some_and(|held| !self.within_bounce(held)) {
+        if self
+            .bounce
+            .as_ref()
+            .is_some_and(|held| !self.within_bounce(held))
+        {
             self.release_bounce();
         }
         self.bounce.is_some()
     }
 
     /// Whether the frame time is still within the bounce window of `held`.
-    fn within_bounce(&self, held: HeldRelease) -> bool {
+    fn within_bounce(&self, held: &HeldRelease) -> bool {
         self.now.saturating_duration_since(held.at) <= self.bounce_window
     }
 
@@ -380,7 +401,7 @@ impl EventHandler for Collector {
             self.record(Event::PointerDown(button));
             let pen = self.pair_pen(x, y);
             let mods = self.held.modifiers();
-            let bounced = self.bounce.is_some_and(|held| {
+            let bounced = self.bounce.as_ref().is_some_and(|held| {
                 pen && button == PointerButton::Left && self.within_bounce(held)
             });
             if bounced {
@@ -1432,6 +1453,50 @@ mod tests {
         assert!(!has_release_request(2));
         assert!(has_release_request(3));
         assert!(has_release_request(4));
+    }
+
+    // ---- T83 paste text ----------------------------------------------------
+
+    #[test]
+    fn wants_clipboard_only_for_ctrl_v_while_editing() {
+        // Arrange
+        let down = |key, mods| InputEvent::KeyDown { key, mods };
+        let ctrl_v = down(Key::V, CTRL);
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ..CTRL
+        };
+
+        // Act / Assert
+        assert!(wants_clipboard(&ctrl_v, true));
+        assert!(!wants_clipboard(&ctrl_v, false), "shapes paste as before");
+        assert!(!wants_clipboard(&down(Key::V, Modifiers::NONE), true));
+        assert!(!wants_clipboard(&down(Key::V, ctrl_shift), true));
+        assert!(!wants_clipboard(&down(Key::C, CTRL), true));
+        assert!(!wants_clipboard(
+            &InputEvent::KeyUp {
+                key: Key::V,
+                mods: CTRL,
+            },
+            true
+        ));
+        assert!(!wants_clipboard(
+            &InputEvent::Char {
+                ch: 'v',
+                mods: CTRL,
+            },
+            true
+        ));
+    }
+
+    #[test]
+    fn paste_event_needs_some_text() {
+        assert_eq!(paste_event(None), None);
+        assert_eq!(paste_event(Some(String::new())), None);
+        assert_eq!(
+            paste_event(Some("a".to_owned())),
+            Some(InputEvent::Paste("a".to_owned()))
+        );
     }
 
     // T47: flight recorder records (ADR-T47-1).

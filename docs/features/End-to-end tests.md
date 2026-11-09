@@ -43,6 +43,7 @@ directive per line:
 | `sections <name>...` | compare only these snapshot sections |
 | `screenshot [pixels channel]` | also compare `expected.ppm` |
 | `text <text>` | type literally; may not start with `-` |
+| `clipboard <text>` | put text on the system clipboard, with `wl-copy` or else through the app's `DRAW_E2E_CLIPBOARD` hook; may not start with `-` |
 | `key <keysym>` | one key, by XKB name (`Return`, `Escape`) |
 | `chord <mod>... <keysym>` | key with modifiers, e.g. `chord ctrl shift z` |
 | `hold <keysym> <ms>` | hold a key down |

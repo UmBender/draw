@@ -241,7 +241,7 @@ While a block is open every key types; only these act:
 | `Enter` | New line | `Tab` | Four spaces |
 | `←` `→` `↑` `↓` | Move the caret | `Home` / `End` | Line start / end |
 | `Backspace` / `Delete` | Delete a character | Click outside | Finish |
-| `Ctrl+]` / `Ctrl+[` | Bigger / smaller text | | |
+| `Ctrl+]` / `Ctrl+[` | Bigger / smaller text | `Ctrl+V` | Paste text from the system clipboard |
 
 Edit a block again with the Text tool (click it) or Select (double-click
 it). Its size starts from `[` / `]` and its colour from `1`–`6` when you
@@ -445,8 +445,7 @@ patched copy of its window library for this (`vendor/miniquad`).
 ## Limitations
 
 - Nothing is saved or exported — by design, it is a scratch pad.
-- Text is one monospaced font with no wrapping, styling, or pasting from
-  other apps; no IME input.
+- Text is one monospaced font with no wrapping or styling; no IME input.
 - Shortcuts cannot be remapped.
 
 ## Development

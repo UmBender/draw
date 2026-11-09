@@ -78,6 +78,11 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
 - `src/diag.rs`: `BackendEvent::KeymapIgnored` with the format and size
   (ADR-T79-1).
 
+- `src/lib.rs`: `window::clipboard_get` takes the clipboard out of the
+  display data and releases the mutex while reading. The Wayland read runs
+  `wl_display_roundtrip`, whose handlers (pointer and tablet motion, touch,
+  output scale) lock that mutex. Marked `draw patch (ADR-T83-1)`.
+
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
   where it is used, and `respond_to_clipboard_request`
