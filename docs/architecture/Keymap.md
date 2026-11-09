@@ -69,7 +69,8 @@ Added by [[T16 Shape model v2 and helper skeleton]]
 | `X` | Smart snap on / off |
 | `Shift+G` | Grid snap on / off |
 | `N` | Auto-numbering on / off (circles and squares get numbers, new grids get axis indices — [[ADR-T22-1 Numbering toggle drives grid indices]]) |
-| `Shift+N` | Restart numbering at 1 |
+| `Shift+N` | Restart numbering at the first number |
+| `Ctrl+N` | First number 1 / 0, restarts the counter ([[ADR-T86-1 Zero-based numbering switch]]) |
 | `→` / `←` | Grid: one more / one less column (1–64, live while dragging); with the Select tool and one grid selected, of that grid ([[ADR-T85-1 Arrows resize the one selected grid]]) |
 | `↓` / `↑` | Grid: one more / one less row (1–64, live while dragging); with the Select tool and one grid selected, of that grid |
 

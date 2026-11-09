@@ -1,9 +1,9 @@
 ---
 title: Numbered nodes
 task: "[[T19 Auto-numbering]]"
-adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]"]
+adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]"]
 tutorial: "[[19 Auto-numbering and undoable counters]]"
-shortcuts: ["N", "Shift+N"]
+shortcuts: ["N", "Shift+N", "Ctrl+N"]
 tags: [feature]
 ---
 
@@ -21,11 +21,14 @@ fixing a misdrawn node does not leave a gap.
 | Action | Shortcut / gesture |
 |--------|--------------------|
 | Numbering on / off | `N` or the toolbar |
-| Restart numbering at 1 | `Shift+N` |
+| Restart numbering at the first number | `Shift+N` |
+| Switch the first number between 1 and 0, restarting the counter | `Ctrl+N` |
 | Draw a numbered node | ellipse (`C`) or rectangle (`R`) tool, drag |
 | Give the last number back | undo (`Ctrl+Z`); redo takes it again |
 
-Numbering is off at start and the counter starts at 1. Lines, arrows and
+Numbering is off at start and the counter starts at 1. After `Ctrl+N` it
+starts at 0, to match 0-indexed code; shapes already drawn keep their
+numbers, and undo never goes below the first number. Lines, arrows and
 strokes are never numbered. A grid drawn with numbering on gets 0-based
 axis indices instead (see [[Grid tool]]) and does **not** use up a number:
 circle 5, a grid, then square 6. Copy, paste and duplicate keep the
@@ -36,7 +39,8 @@ numbers of the copied shapes and do not move the counter.
 `core::numbering` (`src/core/numbering.rs`) holds pure functions:
 `label_new` puts `next_number` on a rectangle or ellipse, `label_count`
 counts the shapes with a given label, and `advance` / `roll_back` turn a
-count change into a new counter. The shape tool
+count change into a new counter, stopping at `Helpers::first_number()`
+([[ADR-T86-1 Zero-based numbering switch]]). The shape tool
 (`src/core/tools/shape_tool.rs`) labels its preview and the committed shape;
 it never writes the counter. The editor (`src/core/editor.rs`) counts the
 shapes labelled with the counter before and after a gesture end or redo
@@ -45,8 +49,11 @@ shapes labelled with the counter before and after a gesture end or redo
 
 ## Limits
 
-- Labels cannot be edited after creation; no letters, no custom start.
-- `N` and `Shift+N` are not undo steps.
+- Labels cannot be edited after creation; no letters, and the first
+  number is 1 or 0.
+- `N`, `Shift+N` and `Ctrl+N` are not undo steps.
+- No toolbar button or on-screen sign shows the first number; the next
+  node's preview does.
 - Undoing a paste that contains a copy of the newest number also gives that
   number back, so the next node repeats it.
 - Grid cells are not numbered inside; grids only get axis indices.

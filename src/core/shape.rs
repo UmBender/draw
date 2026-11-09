@@ -1861,6 +1861,32 @@ mod tests {
         assert_eq!(filled.fill(), Some(color(4)));
     }
 
+    #[test]
+    fn label_zero_behaves_like_any_label() {
+        // Arrange
+        let plain = [
+            rect(v(0.0, 0.0), v(40.0, 40.0), 2.0, None),
+            ellipse(v(0.0, 0.0), v(40.0, 40.0), 2.0, None),
+        ];
+        let points = [v(0.0, 20.0), v(20.0, 20.0), v(100.0, 100.0)];
+
+        for shape in plain {
+            // Act
+            let zero = shape.clone().with_label(Some(0));
+            let seven = shape.with_label(Some(7));
+
+            // Assert
+            assert_eq!(zero.label(), Some(0));
+            assert_eq!(zero.text_host_at(v(20.0, 20.0)), None, "number is content");
+            assert!(zero.bounds().min.approx_eq(seven.bounds().min, 1e-6));
+            assert!(zero.bounds().max.approx_eq(seven.bounds().max, 1e-6));
+            for p in points {
+                assert_eq!(zero.hit(p, 1.0), seven.hit(p, 1.0), "{p:?}");
+                assert_eq!(zero.contains(p), seven.contains(p), "{p:?}");
+            }
+        }
+    }
+
     // ---- properties ----
 
     fn coord() -> impl Strategy<Value = f32> {

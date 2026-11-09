@@ -26,7 +26,6 @@ use crate::core::document::{Document, Edit, ShapeId, Transaction};
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{Modifiers, PointerButton};
-use crate::core::numbering::FIRST_NUMBER;
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellFill, CellText, GRID_MAX_CELLS, Shape, ShapeText, Style, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
@@ -1069,9 +1068,6 @@ impl Snap for Shape {
                 let fill = tokens.opt()?;
                 let label: Option<u32> = tokens.opt()?;
                 let text: Option<ShapeText> = tokens.opt()?;
-                if label.is_some_and(|l| l < FIRST_NUMBER) {
-                    return Err(tokens.error(format!("label below {FIRST_NUMBER}")));
-                }
                 if kind == 3 {
                     Self::Rect {
                         a,
@@ -1877,6 +1873,62 @@ mod tests {
             // Assert
             assert_eq!(result.err().map(|e| e.line), Some(line + 1), "{bad}");
         }
+    }
+
+    /// A zero-based editor holding the numbered node 0.
+    fn zero_based_node() -> Editor {
+        let mut ed = editor();
+        ed.apply(Command::ToggleNumbering);
+        ed.apply(Command::ToggleZeroBased);
+        ed.apply(Command::SetTool(Tool::Ellipse));
+        drag(&mut ed, v(10.0, 10.0), v(60.0, 60.0));
+        ed
+    }
+
+    #[test]
+    fn round_trip_keeps_zero_based() {
+        // Arrange
+        let ed = zero_based_node();
+
+        // Act
+        let loaded = round_trip(&ed);
+
+        // Assert
+        assert_eq!(loaded, ed);
+        assert!(loaded.helpers().zero_based);
+        assert_eq!(loaded.helpers().next_number, 1);
+        assert_eq!(loaded.snapshot().to_text(), ed.snapshot().to_text());
+    }
+
+    #[test]
+    fn parse_accepts_label_zero() {
+        // Arrange: back to one-based, node 0 stays in the document.
+        let mut ed = zero_based_node();
+        ed.apply(Command::ToggleZeroBased);
+
+        // Act
+        let loaded = round_trip(&ed);
+
+        // Assert
+        assert_eq!(loaded, ed);
+        let labels: Vec<_> = loaded.document().shapes().map(|(_, s)| s.label()).collect();
+        assert_eq!(labels, vec![Some(0)]);
+    }
+
+    #[test]
+    fn parse_checks_the_counter_against_the_first_number() {
+        // Arrange
+        let ed = editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "helpers ");
+
+        // Act
+        let one_based = Snapshot::parse(&edited(&ed, line, "helpers 0 0 0 0 4 4 0"));
+        let zero_based = Snapshot::parse(&edited(&ed, line, "helpers 0 0 0 0 4 4 1"));
+
+        // Assert
+        assert_eq!(one_based.err().map(|e| e.line), Some(line + 1));
+        assert!(zero_based.is_ok());
     }
 
     #[test]

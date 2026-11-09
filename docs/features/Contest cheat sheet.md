@@ -56,7 +56,8 @@ One page to print and keep next to the keyboard. Source of truth:
 | Key | Action | Key | Action |
 |-----|--------|-----|--------|
 | `X` | Smart snap on / off | `Shift+G` | Grid snap on / off |
-| `N` | Numbering on / off (also grid indices) | `Shift+N` | Restart numbering at 1 |
+| `N` | Numbering on / off (also grid indices) | `Shift+N` | Restart numbering at the first number |
+| `Ctrl+N` | First number 1 / 0, restarts the counter | | |
 | `→` / `←` | Grid columns + / − (of the one selected grid, if any) | `↓` / `↑` | Grid rows + / − (same) |
 
 ## Gestures

@@ -99,9 +99,11 @@ pub enum Command {
     ToggleGridSnap,
     /// Turn auto-numbering of new rectangles and ellipses on or off.
     ToggleNumbering,
-    /// Restart auto-numbering at
-    /// [`FIRST_NUMBER`](crate::core::numbering::FIRST_NUMBER).
+    /// Restart auto-numbering at the current first number.
     ResetNumbering,
+    /// Switch the first number between 1 and 0 and restart the counter
+    /// there (ADR-T86-1).
+    ToggleZeroBased,
     /// Add this many columns to new grids (clamped, live during a drag), or
     /// to the grid that is the whole selection under the Select tool
     /// (ADR-T85-1).

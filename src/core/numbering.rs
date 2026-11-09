@@ -13,7 +13,8 @@ use crate::core::document::Document;
 use crate::core::editor::Helpers;
 use crate::core::shape::Shape;
 
-/// The first number given out, and the counter value after a reset.
+/// The first number given out by default. With the zero-based switch on
+/// it is 0 instead ([`Helpers::first_number`], ADR-T86-1).
 pub const FIRST_NUMBER: u32 = 1;
 
 /// `shape` with the label numbering gives a newly committed shape under
@@ -51,11 +52,11 @@ pub fn advance(next: u32, before: usize, after: usize) -> u32 {
 
 /// The counter after an undo: `next − 1` if the number of shapes labelled
 /// `next − 1` shrank from `before` to `after`, else `next`; never below
-/// [`FIRST_NUMBER`].
+/// `first` (ADR-T86-1).
 #[must_use]
-pub fn roll_back(next: u32, before: usize, after: usize) -> u32 {
-    let next = next.max(FIRST_NUMBER);
-    if next > FIRST_NUMBER && after < before {
+pub fn roll_back(next: u32, before: usize, after: usize, first: u32) -> u32 {
+    let next = next.max(first);
+    if next > first && after < before {
         next - 1
     } else {
         next
@@ -228,15 +229,49 @@ mod tests {
 
     #[test]
     fn roll_back_when_count_shrinks() {
-        assert_eq!(roll_back(5, 1, 0), 4);
-        assert_eq!(roll_back(2, 2, 1), 1, "a duplicate after a reset");
-        assert_eq!(roll_back(5, 1, 1), 5, "unchanged count");
-        assert_eq!(roll_back(5, 0, 1), 5, "growing count");
+        assert_eq!(roll_back(5, 1, 0, FIRST_NUMBER), 4);
+        assert_eq!(
+            roll_back(2, 2, 1, FIRST_NUMBER),
+            1,
+            "a duplicate after a reset"
+        );
+        assert_eq!(roll_back(5, 1, 1, FIRST_NUMBER), 5, "unchanged count");
+        assert_eq!(roll_back(5, 0, 1, FIRST_NUMBER), 5, "growing count");
     }
 
     #[test]
     fn roll_back_stops_at_first() {
-        assert_eq!(roll_back(FIRST_NUMBER, 1, 0), FIRST_NUMBER);
-        assert_eq!(roll_back(0, 1, 0), FIRST_NUMBER, "never below the start");
+        assert_eq!(roll_back(FIRST_NUMBER, 1, 0, FIRST_NUMBER), FIRST_NUMBER);
+        assert_eq!(
+            roll_back(0, 1, 0, FIRST_NUMBER),
+            FIRST_NUMBER,
+            "never below the start"
+        );
+    }
+
+    // ---- T86 zero-based numbering -----------------------------------------
+
+    #[test]
+    fn roll_back_stops_at_the_given_first() {
+        assert_eq!(roll_back(1, 1, 0, 0), 0, "zero can be given back");
+        assert_eq!(roll_back(0, 1, 0, 0), 0, "and stays the floor");
+        assert_eq!(roll_back(1, 1, 0, 1), 1, "one-based floor");
+        assert_eq!(roll_back(0, 1, 0, 1), 1, "never below the start");
+    }
+
+    #[test]
+    fn label_new_gives_zero() {
+        assert_eq!(label_new(ellipse(), &on(0)).label(), Some(0));
+        assert_eq!(label_new(rect(), &on(0)).label(), Some(0));
+    }
+
+    #[test]
+    fn first_number_follows_the_switch() {
+        let mut helpers = Helpers::default();
+
+        assert!(!helpers.zero_based, "one-based by default");
+        assert_eq!(helpers.first_number(), FIRST_NUMBER);
+        helpers.zero_based = true;
+        assert_eq!(helpers.first_number(), 0);
     }
 }
