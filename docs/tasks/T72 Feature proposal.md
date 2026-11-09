@@ -1,7 +1,7 @@
 ---
 id: T72
 title: Feature proposal
-status: todo
+status: in-progress
 wave: 33
 branch: docs/T72-feature-proposal
 depends_on: []
@@ -62,11 +62,27 @@ Grouped by area:
 - **AC-1** — `docs/proposals/Feature proposal.md` exists (from a new
   template in `docs/templates/Proposal.md`) and every idea has the
   fields listed in *Goal*.
+  *Check:* every `### ` idea heading is followed by the labels
+  **Problem**, **In use**, **Size**, **Cost**, **Risk**.
 - **AC-2** — Each idea links the feature note it extends or the limit it
   removes, and says whether it needs a new dependency (ADR-0014) or
   breaks a budget (ADR-T14-1, ADR-T24-5).
+  *Check:* every idea has **Extends** with a `[[wikilink]]` that resolves
+  to a note, **Dependency** and **Budgets**.
 - **AC-3** — The ideas are ranked (value ÷ cost), with a recommended
   short list of at most five for 1.5.0.
+  *Check:* the ranking table has one row per idea, sorted by score, each
+  score equal to value ÷ cost; the short list has at most five entries,
+  all of them in the table.
+
+This task produces a document, so the workflow's *Tests*, *Models*,
+*Behaviour* and *Quality* steps have no code to act on and are skipped.
+The checks above replace the tests. They are run from the scratch area
+and reported in the *Log*; `tests/` is not in *Files owned*.
+
+Scoring, so the ranking can be re-derived: **value** 1–5 for a
+competitive programmer during a contest; **cost** = size (S 1, M 2,
+L 4) + risk to the goal (low 0, medium 1, high 2).
 
 ## Out of scope
 
