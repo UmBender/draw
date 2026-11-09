@@ -114,6 +114,8 @@ enum Ending {
 struct Case {
     /// A generated start state, instead of `start.snap`.
     scene: Option<String>,
+    /// Start from the state as an autosave, through `draw --recover`.
+    recover: bool,
     /// Snapshot sections to compare; empty means the whole snapshot.
     sections: Vec<String>,
     /// Whether to compare a screenshot, and how strictly.
@@ -181,6 +183,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
     let args: Vec<&str> = rest.split_whitespace().collect();
     match (word, args.as_slice()) {
         ("scene", [name]) => case.scene = Some((*name).to_owned()),
+        ("recover", []) => case.recover = true,
         ("sections", names) if !names.is_empty() => {
             case.sections = names.iter().map(|&n| n.to_owned()).collect();
         }
@@ -257,6 +260,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
 /// | Directive | Meaning |
 /// |-----------|---------|
 /// | `scene <name>` | generated start state |
+/// | `recover` | start from the state as an autosave, with `--recover` |
 /// | `sections <name>...` | compare only these snapshot sections |
 /// | `screenshot [pixels channel]` | also compare `expected.ppm` |
 /// | `text <text>` | type literally, through `wtype` |
@@ -1077,6 +1081,25 @@ impl Drop for Running<'_> {
     }
 }
 
+/// Makes `command` start from the snapshot `start`: as an autosave in the
+/// `state` directory if `recover`, else through `DRAW_SNAPSHOT`.
+fn start_from(
+    command: &mut Command,
+    start: &Path,
+    recover: bool,
+    state: &Path,
+) -> Result<(), String> {
+    if recover {
+        let dir = state.join("draw");
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        std::fs::copy(start, dir.join("autosave.snap")).map_err(|err| err.to_string())?;
+        command.arg("--recover");
+    } else {
+        command.env("DRAW_SNAPSHOT", start);
+    }
+    Ok(())
+}
+
 /// Runs the case in `source`, using `run` as its scratch directory.
 fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(source.join("input")).map_err(|err| err.to_string())?;
@@ -1107,7 +1130,7 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         .stdout(stdout)
         .stderr(stderr);
     if let Some(start) = start {
-        command.env("DRAW_SNAPSHOT", start);
+        start_from(&mut command, &start, case.recover, &state)?;
     }
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;

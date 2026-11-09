@@ -58,8 +58,8 @@ are bound by [[T11 Keymap and macros]] and the toolbar buttons by
 
 ## Limits
 
-- The history lives in memory only; it is not saved (persistence is out of
-  scope).
+- The history lives in memory. The only copy on disk is the autosave, which
+  brings it back after `draw --recover` ([[Crash recovery]]).
 - Selection is not part of the history.
 - Beyond 500 actions, or 64 MiB of history, the oldest ones can no longer
   be undone. Moving a 5 000-stroke selection a few times can already use

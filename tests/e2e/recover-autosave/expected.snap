@@ -1,0 +1,5 @@
+draw-snapshot 1
+[document]
+next-id 2
+shape 0 rect 0 3.0 150.0 150.0 300.0 260.0 - - -
+shape 1 ellipse 0 3.0 400.0 150.0 560.0 280.0 - - -

@@ -44,6 +44,7 @@ use crate::core::palette::{Rgba, palette};
 use crate::core::snapshot::Snapshot;
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
+use crate::shell::autosave::{self, Autosaver, Launch};
 use crate::shell::backend::{self, Backend};
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
@@ -529,8 +530,8 @@ pub fn window_conf() -> WindowSettings {
     }
 }
 
-/// Runs the application until the window is closed.
-pub async fn run() {
+/// Loads the embedded fonts into the renderer's glyph atlas.
+fn load_fonts() {
     match GlyphAtlas::new(TEXT_FONT) {
         // Unit tests prove both embedded fonts parse (ADR-T32-1, ADR-T33-1).
         Ok(atlas) => match atlas.with_math(MATH_FONT) {
@@ -548,6 +549,12 @@ pub async fn run() {
             diag::log(Level::Error, &format!("embedded font not loaded: {err}"));
         }
     }
+}
+
+/// Runs the application until the window is closed. `launch` says whether
+/// to start from an autosave (ADR-T94-1).
+pub async fn run(launch: Launch) {
+    load_fonts();
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
     collector.set_wheel_units_per_notch(backend::wheel_units_per_notch(
@@ -564,21 +571,32 @@ pub async fn run() {
         collector.set_bounce_window(PEN_BOUNCE_WINDOW);
     }
     let mut editor = Editor::new().with_tap_slop(tablet.tap_slop_px());
+    let state_dir = crate::shell::crash::state_dir(
+        std::env::var_os("XDG_STATE_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+    );
     // A snapshot replaces the whole state, its switches included (T74).
-    let (snapshot, error) = startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
-        std::fs::read_to_string(path)
-    });
+    let (snapshot, error) = if launch == Launch::Normal {
+        startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
+            std::fs::read_to_string(path)
+        })
+    } else {
+        autosave::recover(&launch, state_dir.as_deref())
+    };
     if let Some(error) = error {
         eprintln!("draw: {error}");
         diag::log(Level::Error, &error);
     }
     if let Some(snapshot) = snapshot {
         editor = Editor::from_snapshot(snapshot);
-        diag::log(
-            Level::Info,
-            &format!("started from {SNAPSHOT_ENV} snapshot"),
-        );
+        let source = if launch == Launch::Normal {
+            SNAPSHOT_ENV
+        } else {
+            "autosave"
+        };
+        diag::log(Level::Info, &format!("started from {source} snapshot"));
     }
+    let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
     let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
@@ -606,7 +624,9 @@ pub async fn run() {
             clipboard_set(&text);
         }
         let mut dump_asked = false;
+        let mut had_input = false;
         for event in collector.drain() {
+            had_input = true;
             if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
                 continue;
             }
@@ -625,6 +645,10 @@ pub async fn run() {
         }
         let presented = frame.present(&editor, viewport, dpi, dirty);
         recorder.end(&mut collector, &editor, presented, dump_asked);
+        // On input only, so idle stays at 0 % (ADR-T94-1).
+        if had_input {
+            autosaver.on_input(&editor, Instant::now());
+        }
         if let Some(hooks) = &mut hooks {
             answer_sync(hooks, &frame, presented, &editor);
         }
