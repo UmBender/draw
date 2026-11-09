@@ -1629,14 +1629,19 @@ struct Parser<'a> {
     /// For each `{`, the index of its matching `}`, if it has one within
     /// [`MAX_DEPTH`].
     closes: Vec<Option<usize>>,
+    /// For each `\left`, the index of the `\` of its `\right`, if it has
+    /// one within [`MAX_DEPTH`] (ADR-T89-1).
+    rights: Vec<Option<usize>>,
 }
 
 impl<'a> Parser<'a> {
     fn new(chars: &'a [char]) -> Self {
+        let (closes, rights) = match_pairs(chars);
         Self {
             chars,
             pos: 0,
-            closes: match_braces(chars),
+            closes,
+            rights,
         }
     }
 
@@ -1817,28 +1822,21 @@ impl<'a> Parser<'a> {
     /// Reads the command name after the `\` at the cursor: a run of ASCII
     /// letters or one other character; empty at the end.
     fn name(&mut self, end: usize) -> String {
-        self.pos += 1;
-        let start = self.pos;
-        match self.chars.get(self.pos).filter(|_| self.pos < end) {
-            Some(ch) if ch.is_ascii_alphabetic() => {
-                while self.pos < end && self.chars[self.pos].is_ascii_alphabetic() {
-                    self.pos += 1;
-                }
-            }
-            Some(_) => self.pos += 1,
-            None => {}
-        }
+        let start = self.pos + 1;
+        self.pos = name_end(self.chars, start, end);
         self.chars[start..self.pos].iter().collect()
     }
 
     /// A command at the cursor (a `\`), with its arguments, or literal.
     fn command(&mut self, end: usize) -> Node {
+        let start = self.pos;
         let name = self.name(end);
         if symbol(&name).is_some() {
             return Node::Symbol(name);
         }
         let after = self.pos;
         let node = match name.as_str() {
+            "left" => self.left_right(start, end),
             "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
                 self.args(2, end).map(|args| Node::Command {
                     name: name.clone(),
@@ -1863,6 +1861,25 @@ impl<'a> Parser<'a> {
             self.pos = after;
             Node::Literal(format!("\\{name}"))
         })
+    }
+
+    /// The pair of the `\left` at `start`, its name read; `None` when it
+    /// has no matching `\right` before `end` (ADR-T89-1).
+    fn left_right(&mut self, start: usize, end: usize) -> Option<Node> {
+        let right = self.rights[start].filter(|&right| right < end)?;
+        let open = self.delimiter(end)?;
+        let body = self.list(right);
+        self.pos = right;
+        self.name(end);
+        let close = self.delimiter(end)?;
+        Some(Node::LeftRight { open, body, close })
+    }
+
+    /// The delimiter at the cursor, read past.
+    fn delimiter(&mut self, end: usize) -> Option<Delimiter> {
+        let (delimiter, past) = read_delimiter(self.chars, self.pos, end)?;
+        self.pos = past;
+        Some(delimiter)
     }
 
     /// `\operatorname`, its name read: a `*` directly after it, then a
@@ -1925,36 +1942,118 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// For each `{` of `chars`, the index of its matching `}`; escaped braces
-/// (`\{`) are skipped and braces nested deeper than [`MAX_DEPTH`] match
-/// nothing.
-fn match_braces(chars: &[char]) -> Vec<Option<usize>> {
+/// The end of the command name starting at `start`: past a run of ASCII
+/// letters or one other character; `start` when `end` is reached.
+fn name_end(chars: &[char], start: usize, end: usize) -> usize {
+    match chars.get(start).filter(|_| start < end) {
+        Some(ch) if ch.is_ascii_alphabetic() => {
+            let mut i = start;
+            while i < end && chars[i].is_ascii_alphabetic() {
+                i += 1;
+            }
+            i
+        }
+        Some(_) => start + 1,
+        None => start,
+    }
+}
+
+/// The delimiter of [`DELIMITERS`] at `pos`, after optional whitespace, and
+/// the index past it; `None` when there is no valid one before `end`.
+fn read_delimiter(chars: &[char], pos: usize, end: usize) -> Option<(Delimiter, usize)> {
+    let mut at = pos;
+    while at < end && chars[at].is_whitespace() {
+        at += 1;
+    }
+    let past = if at < end && chars[at] == '\\' {
+        name_end(chars, at + 1, end)
+    } else {
+        (at + 1).min(end)
+    };
+    let source: String = chars[at..past].iter().collect();
+    DELIMITERS.iter().any(|(s, _)| *s == source).then(|| {
+        let lead = chars[pos..at].iter().collect();
+        (Delimiter { lead, source }, past)
+    })
+}
+
+/// A `{` or `\left` still waiting for its partner in [`match_pairs`].
+struct Opening {
+    /// Its index.
+    at: usize,
+    /// Whether it is within [`MAX_DEPTH`].
+    within: bool,
+    /// Whether it is a `{`.
+    brace: bool,
+}
+
+/// For each `{` of `chars`, the index of its matching `}`, and for each
+/// `\left`, the index of the `\` of its `\right`. Escaped braces (`\{`) are
+/// skipped; what nests deeper than [`MAX_DEPTH`] matches nothing. A pair
+/// never crosses a group: a `}` drops the `\left`s still open inside it,
+/// and a `\right` only closes a `\left` on top of the stack (ADR-T89-1).
+fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     let mut closes = vec![None; chars.len()];
-    // Open braces: index and whether it is within the depth limit.
-    let mut open: Vec<(usize, bool)> = Vec::new();
-    let mut depth = 0;
+    let mut rights = vec![None; chars.len()];
+    let mut open: Vec<Opening> = Vec::new();
+    let (mut depth, mut braces) = (0, 0);
     let mut i = 0;
     while i < chars.len() {
         match chars[i] {
-            '\\' => i += 1,
+            '\\' => {
+                let after = name_end(chars, i + 1, chars.len());
+                let name = &chars[i + 1..after];
+                let is = |word: &str| name.iter().copied().eq(word.chars());
+                let past = (is("left") || is("right"))
+                    .then(|| read_delimiter(chars, after, chars.len()))
+                    .flatten()
+                    .map(|(_, past)| past);
+                if past.is_some() {
+                    if is("left") {
+                        let within = depth < MAX_DEPTH;
+                        depth += usize::from(within);
+                        open.push(Opening {
+                            at: i,
+                            within,
+                            brace: false,
+                        });
+                    } else if let Some(left) = open.pop_if(|top| !top.brace) {
+                        if left.within {
+                            rights[left.at] = Some(i);
+                            depth -= 1;
+                        }
+                    }
+                }
+                i = past.unwrap_or(after);
+                continue;
+            }
             '{' => {
                 let within = depth < MAX_DEPTH;
                 depth += usize::from(within);
-                open.push((i, within));
+                braces += 1;
+                open.push(Opening {
+                    at: i,
+                    within,
+                    brace: true,
+                });
             }
-            '}' => {
-                if let Some((start, within)) = open.pop()
-                    && within
-                {
-                    closes[start] = Some(i);
-                    depth -= 1;
+            '}' if braces > 0 => {
+                braces -= 1;
+                while let Some(top) = open.pop() {
+                    depth -= usize::from(top.within);
+                    if top.brace {
+                        if top.within {
+                            closes[top.at] = Some(i);
+                        }
+                        break;
+                    }
                 }
             }
             _ => {}
         }
         i += 1;
     }
-    closes
+    (closes, rights)
 }
 
 // ---- printing ---------------------------------------------------------------
@@ -2264,7 +2363,9 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (MathBox::upright(body, scale), class)
         }
         Node::Infix { name, left, right } => (infix(name, left, right, scale, style), Class::Ord),
-        Node::LeftRight { .. } => todo!("T89 behaviour step"),
+        Node::LeftRight { open, body, close } => {
+            (left_right(open, body, close, scale, style), Class::Ord)
+        }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
@@ -2472,6 +2573,50 @@ fn delimited(n: &[Node], k: &[Node], open: &str, close: &str, scale: f32, style:
     for b in &closes {
         place(b, true);
     }
+    out
+}
+
+/// `body` between brackets grown to cover it about the axis (ADR-T89-1).
+fn left_right(
+    open: &Delimiter,
+    body: &[Node],
+    close: &Delimiter,
+    scale: f32,
+    style: Style,
+) -> MathBox {
+    let inner = layout_styled(body, scale, style);
+    let axis = AXIS * scale;
+    let span = 2.0 * (inner.ascent - axis).max(inner.descent + axis) * DELIM_FACTOR;
+    let (left, right) = (
+        grown_bracket(open, span, scale),
+        grown_bracket(close, span, scale),
+    );
+    MathBox::row([left, inner, right])
+}
+
+/// The glyph of `delimiter` scaled to `span`, centred on the axis, at
+/// least at `scale`; a small gap for `.`.
+fn grown_bracket(delimiter: &Delimiter, span: f32, scale: f32) -> MathBox {
+    let glyph = DELIMITERS
+        .iter()
+        .find(|(source, _)| *source == delimiter.source)
+        .and_then(|(_, glyph)| *glyph);
+    let Some(ch) = glyph else {
+        return MathBox::gap(NULL_DELIM_SPACE * scale);
+    };
+    let unit = MathBox::math(ch, 1.0);
+    let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
+    let size = (span / tall).clamp(scale, LEFT_RIGHT_MAX_SCALE * scale);
+    let bracket = MathBox::math(ch, size);
+    let y = -AXIS * scale - (bracket.descent - bracket.ascent) / 2.0;
+    let mut out = MathBox {
+        width: bracket.width,
+        ascent: bracket.ascent - y,
+        descent: bracket.descent + y,
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    out.put(&bracket, Vec2::new(0.0, y));
     out
 }
 
@@ -7302,7 +7447,7 @@ mod tests {
             math("\\left \\langle x\\right  \\rangle"),
             vec![Node::LeftRight {
                 open: delim(" ", "\\langle"),
-                body: vec![Node::Char('x')],
+                body: vec![space(), Node::Char('x')],
                 close: delim("  ", "\\rangle"),
             }]
         );
