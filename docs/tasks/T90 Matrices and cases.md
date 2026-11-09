@@ -1,7 +1,7 @@
 ---
 id: T90
 title: Matrices and cases
-status: in-progress
+status: review
 wave: 52
 branch: task/T90-matrices
 depends_on: [T89]
@@ -52,12 +52,12 @@ Decisions: [[ADR-T90-1 Environments as one table node]]. All tests are in `src/c
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T90): specify matrices and cases`
-- [ ] tests — `test(T90): add failing tests`
-- [ ] models — `feat(T90): add types`
-- [ ] behaviour — `feat(T90): implement`
-- [ ] quality — `chore(T90): pass clippy and rustfmt`
-- [ ] docs — `docs(T90): update the feature note`
+- [x] spec — `docs(T90): specify matrices and cases`
+- [x] tests — `test(T90): add failing tests`
+- [x] models — `feat(T90): add types`
+- [x] behaviour — `feat(T90): implement`
+- [x] quality — `chore(T90): pass clippy and rustfmt`
+- [x] docs — `docs(T90): update the feature note`
 
 ## Learning path
 
@@ -66,3 +66,7 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
+- 2026-11-09 — UNATTENDED CHOICE: past the plan's limit of 64 rows or columns an environment is invalid and shows in red, rather than being cut off ([[ADR-T90-1 Environments as one table node]]).
+- 2026-11-09 — UNATTENDED CHOICE: for an invalid environment the whole `\begin{name}` and `\end{name}` are red, so a misspelt name reads as an error; what lies between them is parsed as usual.
+- 2026-11-09 — UNATTENDED CHOICE: spacing follows amsmath (1 em between columns, rows at least the 0.84 + 0.36 em strut, `cases` stretched 1.2 ×), and an environment is one ordinary atom, like a `\left` pair.
+- 2026-11-09 — `scripts/check.sh --fuzz` green. Nothing was viewed in the running app. Manual check for the owner: a 2×2 `pmatrix` and a `cases` recurrence.

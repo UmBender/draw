@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -252,6 +252,20 @@ bracket is the glyph scaled up, up to 12 times. (Since
 [[T89 Growing brackets]],
 [[ADR-T89-1 Left and right brackets centred on the axis]].)
 
+Matrices and piecewise definitions are environments, written on one line
+with `&` between cells and `\\` between rows:
+`$\begin{pmatrix} a & b \\ c & d \end{pmatrix}$`, `bmatrix`, `vmatrix`,
+plain `matrix` without brackets, and
+`$f(n) = \begin{cases} 1 & n = 0 \\ n f(n-1) & n > 0 \end{cases}$`.
+Matrix columns are centred, `cases` columns start at the left edge behind
+one growing brace, and the block is centred on the math axis. A short row
+leaves its missing cells empty, a trailing `\\` adds no row, and cells
+may hold any formula, even another matrix. An unknown environment, a
+missing or misspelt `\end`, or more than 64 rows or columns shows
+`\begin{…}` and `\end{…}` in red, with what is between them drawn as
+usual. (Since [[T90 Matrices and cases]],
+[[ADR-T90-1 Environments as one table node]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -285,6 +299,8 @@ bracket is the glyph scaled up, up to 12 times. (Since
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
 | Brackets | `\lfloor \rfloor \lceil \rceil \{ \} | \langle \rangle` |
 | Growing brackets | `\left( \frac{a}{b} \right)^2`, with `( ) [ ] \{ \} | \| \langle \rangle \lfloor \rfloor \lceil \rceil`, or `.` for none |
+| Matrices | `\begin{pmatrix} a & b \\ c & d \end{pmatrix}`, also `matrix`, `bmatrix`, `vmatrix` |
+| Piecewise definitions | `\begin{cases} 1 & n = 0 \\ 2 & n > 0 \end{cases}` |
 | Calculus, vectors | `\partial \nabla` |
 | Letters, constants | `\hbar \ell \Re \Im \AA \degree` |
 | Logic, sets | `\forall \exists \emptyset \prime` |
@@ -350,8 +366,13 @@ of the same batch.
 
 ## Limits
 
-- No display mode (`$$…$$`), matrices, environments or macros. Brackets
-  grow only with `\left`/`\right` and in `\binom`, `\multiset` and the
+- No display mode (`$$…$$`) or macros. The only environments are
+  `matrix`, `pmatrix`, `bmatrix`, `vmatrix` and `cases`, up to 64 rows
+  and columns: no `array` with a column spec, `smallmatrix` or `dcases`.
+  A matrix of more than about a dozen rows is taller than its brackets,
+  which stop growing at 12 times their size.
+- Brackets grow only with `\left`/`\right`, around matrices and `cases`,
+  and in `\binom`, `\multiset` and the
   infix `\choose \brack \brace`. No `\middle`, and `\vert`, `\lvert` and
   the like are not delimiters after `\left` (use `|` or `\|`). No
   `\genfrac`, `\above` or `\…withdelims`.
@@ -387,7 +408,7 @@ of the same batch.
 - No `\digamma` / `\Digamma`: the font subset has no digamma.
 - A character the math font lacks (e.g. CJK in `\text{…}`) falls back to
   a monospaced cell.
-- A formula stays on one line.
+- A formula stays on one line, matrices and `cases` included.
 - Hebrew is there as math letters only: Hebrew text (`א`–`ת` in
   `\text{…}` or plain text) and right-to-left layout are not.
 - Lines with scripts or fractions are taller than plain lines.
