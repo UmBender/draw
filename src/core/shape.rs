@@ -521,6 +521,19 @@ impl Shape {
         ))
     }
 
+    /// This grid with `cols` columns and `rows` rows added (negative:
+    /// removed), the size clamped to `1..=GRID_MAX_CELLS`.
+    ///
+    /// The cell size stays and the box changes at its right and bottom
+    /// edges; the remaining cells keep their place in the world and the
+    /// cells past the new edges are dropped (ADR-T85-1). `None` for other
+    /// shapes, when the size would not change, or when a coordinate would
+    /// stop being finite.
+    #[must_use]
+    pub fn grid_stepped(&self, cols: i32, rows: i32) -> Option<Self> {
+        todo!("resize {cols} × {rows}")
+    }
+
     /// The cell fills of a grid, sorted by `(row, col)`; empty for other
     /// shapes.
     #[must_use]

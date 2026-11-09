@@ -1230,6 +1230,18 @@ impl Editor {
         })
     }
 
+    /// The id and shape of the grid the arrow keys resize: the Select tool
+    /// is active and that grid is the whole selection (ADR-T85-1).
+    fn resizable_grid(&self) -> Option<(ShapeId, &Shape)> {
+        todo!()
+    }
+
+    /// Adds `cols` columns and `rows` rows to the [`Self::resizable_grid`]
+    /// as one undo step. Returns whether anything changed.
+    fn resize_selected_grid(&mut self, cols: i32, rows: i32) -> bool {
+        todo!("resize by {cols} × {rows}")
+    }
+
     /// Removes selected ids that are no longer in the document.
     fn prune_selection(&mut self) {
         let doc = &self.doc;
