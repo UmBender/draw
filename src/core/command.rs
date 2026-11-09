@@ -84,6 +84,9 @@ pub enum Command {
     /// Replace the only selected text block by the graph or tree its edges
     /// describe (ADR-T87-1).
     GraphFromText,
+    /// Replace the only selected text block by a coordinate plane of the
+    /// points it lists (ADR-T93-1).
+    PlotFromText,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).

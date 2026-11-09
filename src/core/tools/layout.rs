@@ -3,6 +3,9 @@
 //! [`EdgeList::parse`] reads the text; [`EdgeList::shapes`] lays it out as
 //! ordinary lines, arrows, circles and text blocks. [`replace_block`] puts
 //! them in the document in place of the block, as one undo step.
+//!
+//! [`PointList`] does the same for a text block of points, drawn as a
+//! coordinate plane (ADR-T93-1).
 
 use crate::core::document::{Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::Vec2;
@@ -23,6 +26,18 @@ pub const NODE_RADIUS_EM: f32 = 1.25;
 
 /// Space between a weight's box and its edge's stroke, in ems.
 const WEIGHT_GAP_EM: f32 = 0.15;
+
+/// Most points a plot can have.
+pub const MAX_POINTS: usize = 1000;
+
+/// Largest size of a coordinate; keeps every span finite (ADR-T93-1).
+pub const MAX_COORDINATE: f64 = 1e300;
+
+/// Length of a tick across its axis, in ems of the block's text.
+pub const TICK_LENGTH_EM: f32 = 0.5;
+
+/// Radius of a plotted point's circle, in ems.
+pub const POINT_RADIUS_EM: f32 = 0.2;
 
 /// What joins two node names in a pair token.
 const SEPARATORS: [char; 2] = ['-', '>'];
@@ -394,6 +409,121 @@ fn weight_text(weight: &str, middle: Vec2, along: Vec2, size: f32, style: Style)
             color: style.color,
             width: 0.0,
         },
+    }
+}
+
+/// Why a text cannot become a plot (ADR-T93-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlotError {
+    /// A line is not two usable numbers. Names the line, never its text:
+    /// the log does not record what was typed.
+    NotAPoint {
+        /// 1-based line number.
+        line: usize,
+    },
+    /// More than [`MAX_POINTS`] points.
+    TooManyPoints {
+        /// Points listed.
+        points: usize,
+    },
+    /// More than [`PASTE_MAX_BYTES`] of text.
+    TooLong {
+        /// Bytes of the text.
+        bytes: usize,
+    },
+}
+
+impl fmt::Display for PlotError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotAPoint { line } => write!(f, "line {line} is not a point"),
+            Self::TooManyPoints { points } => {
+                write!(f, "{points} points, a plot holds at most {MAX_POINTS}")
+            }
+            Self::TooLong { bytes } => {
+                write!(f, "{bytes} bytes of text, the limit is {PASTE_MAX_BYTES}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PlotError {}
+
+/// The distance between ticks: `mantissa × 10^exponent`, the mantissa 1, 2
+/// or 5. Kept apart so that tick numbers come from integers (ADR-T93-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TickStep {
+    /// 1, 2 or 5.
+    mantissa: i64,
+    /// The power of ten.
+    exponent: i32,
+}
+
+impl TickStep {
+    /// The smallest step that is at least `raw`, which must be positive
+    /// and finite.
+    fn covering(_raw: f64) -> Self {
+        todo!()
+    }
+
+    /// The step as a number.
+    fn value(self) -> f64 {
+        todo!()
+    }
+
+    /// The number of tick `k`, the multiple `k` of this step.
+    fn label(self, _k: i64) -> String {
+        todo!()
+    }
+}
+
+/// What a plot covers: both axes, in multiples of one step, each `lo < hi`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Frame {
+    /// The step of both axes.
+    step: TickStep,
+    /// First and last tick of the horizontal axis.
+    x: (i64, i64),
+    /// First and last tick of the vertical axis.
+    y: (i64, i64),
+}
+
+/// A text read as points (ADR-T93-1): at least one, at most [`MAX_POINTS`],
+/// every coordinate finite and at most [`MAX_COORDINATE`] in size.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointList {
+    /// The points, in the order they were written.
+    points: Vec<(f64, f64)>,
+}
+
+impl PointList {
+    /// The points `text` holds; `Ok(None)` when it is blank.
+    ///
+    /// # Errors
+    ///
+    /// [`PlotError`] if a line is not a point, there are too many points
+    /// or the text is over [`PASTE_MAX_BYTES`].
+    pub fn parse(_text: &str) -> Result<Option<Self>, PlotError> {
+        todo!()
+    }
+
+    /// The points, in the order they were written.
+    #[must_use]
+    pub fn points(&self) -> &[(f64, f64)] {
+        &self.points
+    }
+
+    /// The plot of these points at text size `size`, the top-left of all
+    /// it draws at `origin`: axes, ticks, numbers, then points. `None` if
+    /// the size is not finite and positive or a shape would not be finite.
+    #[must_use]
+    pub fn shapes(&self, _origin: Vec2, _size: f32, _style: Style) -> Option<Vec<Shape>> {
+        todo!()
+    }
+
+    /// The step and the ticks both axes run between.
+    fn frame(&self) -> Frame {
+        todo!()
     }
 }
 

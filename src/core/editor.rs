@@ -661,6 +661,7 @@ impl Editor {
             Command::SelectAll => self.run_edit(select::select_all),
             Command::GridFromText => self.grid_from_selection(),
             Command::GraphFromText => self.graph_from_selection(),
+            Command::PlotFromText => self.plot_from_selection(),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => {
                 let cancelled = self.cancel_gesture();
@@ -1109,6 +1110,13 @@ impl Editor {
         self.run_edit(|ctx| layout::replace_block(ctx, id, shapes))
     }
 
+    /// Replaces the only selected text block by the coordinate plane of
+    /// its points, as one undo step (ADR-T93-1). Returns whether a redraw
+    /// is needed.
+    fn plot_from_selection(&mut self) -> bool {
+        todo!()
+    }
+
     /// Builds the grid of clipboard `text` at the cursor, as one undo step,
     /// and selects it (ADR-T84-1). Returns whether a redraw is needed.
     fn grid_from_clipboard(&mut self, text: &str) -> bool {
@@ -1380,6 +1388,7 @@ fn edits_document(command: Command) -> bool {
             | Command::Duplicate
             | Command::GridFromText
             | Command::GraphFromText
+            | Command::PlotFromText
             | Command::DeleteSelection
             | Command::ClearAll
     )
