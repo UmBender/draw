@@ -48,7 +48,7 @@ One page to print and keep next to the keyboard. Source of truth:
 |-------|--------|-------|--------|
 | Wheel | Zoom at cursor | `0` | Reset view |
 | Middle drag, `Space`+drag | Pan | `F` | Fit to content |
-| `Tab` | Toolbar on / off | | |
+| `Tab` | Toolbar on / off | `Ctrl+E` | Export the view to PNG in `~` |
 
 ## Helpers
 

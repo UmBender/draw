@@ -1,7 +1,7 @@
 ---
 id: T92
 title: Export the view to PNG
-status: in-progress
+status: review
 wave: 51
 branch: task/T92-png-export
 depends_on: []
@@ -54,18 +54,18 @@ Design: [[ADR-T92-1 The png crate as a direct dependency]], [[ADR-T92-2 Ctrl+E r
 - `tests/e2e/**`, `tests/e2e.rs`
 - `docs/features/PNG export.md` (new)
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
-- `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
+- `docs/architecture/Keymap.md`, `docs/architecture/Architecture.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
 - this note, and new `ADR-T92-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T92): specify export the view to png`
-- [ ] tests — `test(T92): add failing tests`
-- [ ] models — `feat(T92): add types`
-- [ ] behaviour — `feat(T92): implement`
-- [ ] quality — `chore(T92): pass clippy and rustfmt`
-- [ ] docs — `docs(T92): update the feature note`
+- [x] spec — `docs(T92): specify export the view to png`
+- [x] tests — `test(T92): add failing tests`
+- [x] models — `feat(T92): add types`
+- [x] behaviour — `feat(T92): implement`
+- [x] quality — `chore(T92): pass clippy and rustfmt`
+- [x] docs — `docs(T92): update the feature note`
 
 ## Learning path
 
@@ -78,3 +78,8 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: the file name reuses `diag::file::utc_stamp`, giving `draw-20261109-143005.png`, instead of a second date helper.
 - 2026-11-09 — UNATTENDED CHOICE: the underlay dot grid is exported while grid snap is on, because AC-1 asks for the view as seen and does not list it among the exclusions (ADR-T92-2).
 - 2026-11-09 — UNATTENDED CHOICE: auto-repeats of `Ctrl+E` are dropped in `Collector`, so that holding the keys writes one file and not one per repeat (ADR-T92-2).
+- 2026-11-09 — UNATTENDED CHOICE: added `docs/architecture/Architecture.md` to *Files owned*, for the new `shell::export` row in the module map.
+- 2026-11-09 — `png` 0.17.16 built offline from the crates already downloaded, so the plan's blocking condition did not apply. `render.rs` needed no change.
+- 2026-11-09 — the quality step also moved the snapshot logging out of `app::run` and the image checks out of the harness's `run_case`, to stay under the 100-line limit without an `allow`.
+- 2026-11-09 — `scripts/check.sh` green; `scripts/e2e.sh` green, with the new `export-view` case comparing the file with the window.
+- 2026-11-09 — manual check left for the owner: export a drawing on the desktop and open the file. Under Flatpak the home directory may be sandboxed.
