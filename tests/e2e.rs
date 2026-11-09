@@ -417,6 +417,23 @@ fn compare_images(actual: &Image, expected: &Image, tolerance: Tolerance) -> Res
     Ok(())
 }
 
+/// Side of the box a screenshot comparison ignores under the pointer.
+const CURSOR_BOX_SIZE: i32 = 26;
+
+/// How far the ignored box starts above and left of the pointer.
+const CURSOR_BOX_BEFORE: i32 = 2;
+
+/// Copies `expected`'s pixels over the box at `pointer`, because whether a
+/// capture shows the cursor depends on the compositor (ADR-T80-1).
+fn hide_cursor_box(actual: &mut Image, expected: &Image, pointer: (i32, i32)) {
+    todo!("{actual:?} {expected:?} {pointer:?}")
+}
+
+/// The pointer's position after `steps`, which begin with it at `start`.
+fn last_pointer(steps: &[Step], start: (i32, i32)) -> (i32, i32) {
+    todo!("{steps:?} {start:?}")
+}
+
 // ---- Exit checks -------------------------------------------------------
 
 /// Checks how the app ended against the case's `ending`.
