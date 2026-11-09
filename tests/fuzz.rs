@@ -228,6 +228,12 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\left", "\\right", "\\left(", "\\right)", "\\left.", "\\right.", "\\left[",
             "\\right]", "\\left\\{", "\\right\\}", "\\left|", "\\right\\|",
             "\\left\\langle", "\\right\\rangle", "\\left(\\frac12\\right)^2",
+            // T90: environments, paired, unknown and without an end.
+            "\\begin", "\\end", "\\begin{matrix}", "\\end{matrix}", "\\begin{pmatrix}",
+            "\\end{pmatrix}", "\\begin{bmatrix}", "\\end{bmatrix}", "\\begin{vmatrix}",
+            "\\end{vmatrix}", "\\begin{cases}", "\\end{cases}", "\\begin{foo}", "\\end{foo}",
+            "&", "\\\\", "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}",
+            "\\begin{cases}1&x\\\\2\\end{cases}",
             // T71: infix fractions split their group, combinatorics.
             "\\choose", "\\brack", "\\brace", "\\over", "\\atop", "{n \\choose k}",
             "\\tbinom", "\\dbinom", "\\multiset", "\\multiset{n}{k}", "\\underline",
