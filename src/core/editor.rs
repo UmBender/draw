@@ -5040,6 +5040,34 @@ mod tests {
     }
 
     #[test]
+    fn regression_t91_scaled_box_side_overflow() {
+        // Arrange: a selected grid so tall that 10 % more leaves both of
+        // its corners finite but the length of its side past `f32`.
+        let snapshot = Snapshot::parse(include_str!(
+            "../../tests/snapshots/regressions/T91-scaled-box-side-overflow.snap"
+        ))
+        .unwrap_or_else(|err| panic!("{err}"));
+        let mut ed = Editor::from_snapshot(snapshot);
+        let before = ed.document().shapes().next().map(|(_, s)| s.clone());
+        let undo_len = ed.history.undo_len();
+        assert_eq!(ed.selection().len(), 1);
+
+        // Act
+        let changed = ed.handle(InputEvent::KeyDown {
+            key: Key::BracketRight,
+            mods: ALT,
+        });
+
+        // Assert: the scale is ignored.
+        assert!(!changed);
+        assert_eq!(
+            ed.document().shapes().next().map(|(_, s)| s.clone()),
+            before
+        );
+        assert_eq!(ed.history.undo_len(), undo_len);
+    }
+
+    #[test]
     fn resize_gesture_survives_a_snapshot() {
         // Arrange: stopped in the middle of a resize.
         let mut ed = selected_square(Tool::Select);

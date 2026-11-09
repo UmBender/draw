@@ -3025,6 +3025,20 @@ mod tests {
     }
 
     #[test]
+    fn scaled_about_rejects_a_side_longer_than_a_float() {
+        // Arrange: both corners stay finite, their distance does not.
+        let (a, b) = (v(0.0, -1.7e38), v(1.0, 1.0e38));
+
+        // Act / Assert
+        for shape in [box_shape(a, b), straight(a, b)] {
+            assert!(
+                shape.scaled_about(v(0.0, 0.0), 1.0, 1.7).is_none(),
+                "{shape:?}"
+            );
+        }
+    }
+
+    #[test]
     fn scaled_about_caps_text_at_the_largest_size() {
         // Arrange: already close to the limit, in a block and in a shape.
         let near = MAX_TEXT_SIZE * 0.9;
