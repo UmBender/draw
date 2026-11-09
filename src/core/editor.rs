@@ -749,10 +749,14 @@ impl Editor {
     }
 
     /// World bounds of the selected shapes, `None` if nothing is selected.
+    /// A text block being edited is left out: it shows its source, and
+    /// [`TextEdit::bounds`] is its box until the edit ends (T81).
     #[must_use]
     pub fn selection_bounds(&self) -> Option<Aabb> {
+        let editing = self.text_edit().and_then(TextEdit::target);
         self.selection
             .iter()
+            .filter(|id| Some(**id) != editing)
             .filter_map(|id| self.doc.get(*id))
             .map(Shape::bounds)
             .reduce(|a, b| a.union(&b))
