@@ -147,6 +147,23 @@ pub const MINUS: char = '\u{2212}';
 /// parsing and layout never recurse without bound.
 pub const MAX_DEPTH: usize = 32;
 
+/// Most rows, and most columns, of an environment; past it the environment
+/// is drawn as typed (ADR-T90-1).
+pub const ENVIRONMENT_MAX_CELLS: usize = 64;
+
+/// Space between the columns of an environment, in em.
+pub const ARRAY_COLUMN_GAP: f32 = 1.0;
+
+/// Least height of a row of an environment above its baseline, in em.
+pub const ARRAY_ROW_ASCENT: f32 = 0.84;
+
+/// Least depth of a row of an environment below its baseline, in em.
+pub const ARRAY_ROW_DESCENT: f32 = 0.36;
+
+/// How much `cases` stretches the least height of its rows, as amsmath's
+/// `\arraystretch` does.
+pub const CASES_STRETCH: f32 = 1.2;
+
 /// A run of a block's text.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Segment {
@@ -224,6 +241,19 @@ pub enum Node {
         /// What follows `\right`.
         close: Delimiter,
     },
+    /// A `\begin{…} … \end{…}` environment of [`ENVIRONMENTS`]
+    /// (ADR-T90-1).
+    Environment {
+        /// The name between the braces.
+        name: String,
+        /// Whitespace between `\begin` and `{`.
+        lead: String,
+        /// Whitespace between `\end` and `{`.
+        end_lead: String,
+        /// The rows, split on `\\`, of cells, split on `&`. There is at
+        /// least one row of at least one cell.
+        rows: Vec<Vec<Vec<Node>>>,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -256,6 +286,69 @@ pub const DELIMITERS: &[(&str, Option<char>)] = &[
     ("\\lceil", Some('⌈')),
     ("\\rceil", Some('⌉')),
 ];
+
+/// How the cells of a column sit in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Align {
+    /// In the middle.
+    Centre,
+    /// At the left edge.
+    Left,
+}
+
+/// One environment of the subset (ADR-T90-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EnvironmentDef {
+    /// The name between the braces.
+    pub name: &'static str,
+    /// The opening and closing delimiter, as rows of [`DELIMITERS`];
+    /// `None` for no brackets at all.
+    pub brackets: Option<(&'static str, &'static str)>,
+    /// How the cells sit in their columns.
+    pub align: Align,
+    /// Factor on the least height of a row.
+    pub stretch: f32,
+}
+
+/// The environments of the subset (ADR-T90-1).
+pub const ENVIRONMENTS: &[EnvironmentDef] = &[
+    EnvironmentDef {
+        name: "matrix",
+        brackets: None,
+        align: Align::Centre,
+        stretch: 1.0,
+    },
+    EnvironmentDef {
+        name: "pmatrix",
+        brackets: Some(("(", ")")),
+        align: Align::Centre,
+        stretch: 1.0,
+    },
+    EnvironmentDef {
+        name: "bmatrix",
+        brackets: Some(("[", "]")),
+        align: Align::Centre,
+        stretch: 1.0,
+    },
+    EnvironmentDef {
+        name: "vmatrix",
+        brackets: Some(("|", "|")),
+        align: Align::Centre,
+        stretch: 1.0,
+    },
+    EnvironmentDef {
+        name: "cases",
+        brackets: Some(("\\{", ".")),
+        align: Align::Left,
+        stretch: CASES_STRETCH,
+    },
+];
+
+/// The row of [`ENVIRONMENTS`] called `name`.
+#[must_use]
+pub fn environment(name: &str) -> Option<&'static EnvironmentDef> {
+    ENVIRONMENTS.iter().find(|def| def.name == name)
+}
 
 /// The infix commands that split their group (ADR-T71-1): `\over`,
 /// `\atop`, `\choose`, `\brack`, `\brace`.
@@ -2150,7 +2243,24 @@ fn print_node(node: &Node, out: &mut String) {
             out.push_str(&close.lead);
             out.push_str(&close.source);
         }
+        Node::Environment {
+            name,
+            lead,
+            end_lead,
+            rows,
+        } => print_environment(name, lead, end_lead, rows, out),
     }
+}
+
+/// The source of a [`Node::Environment`].
+fn print_environment(
+    _name: &str,
+    _lead: &str,
+    _end_lead: &str,
+    _rows: &[Vec<Vec<Node>>],
+    _out: &mut String,
+) {
+    todo!("T90 behaviour")
 }
 
 fn print_arg(arg: &Arg, out: &mut String) {
@@ -2365,6 +2475,9 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
         Node::Infix { name, left, right } => (infix(name, left, right, scale, style), Class::Ord),
         Node::LeftRight { open, body, close } => {
             (left_right(open, body, close, scale, style), Class::Ord)
+        }
+        Node::Environment { name, rows, .. } => {
+            (environment_box(name, rows, scale, style), Class::Ord)
         }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
@@ -2618,6 +2731,11 @@ fn grown_bracket(delimiter: &Delimiter, span: f32, scale: f32) -> MathBox {
     };
     out.put(&bracket, Vec2::new(0.0, y));
     out
+}
+
+/// The box of environment `name` (ADR-T90-1).
+fn environment_box(_name: &str, _rows: &[Vec<Vec<Node>>], _scale: f32, _style: Style) -> MathBox {
+    todo!("T90 behaviour")
 }
 
 /// The infix command `name` (one of [`INFIX`]) between `left` and
