@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::tex::{self, Layout};
+use crate::core::tex::{self, Face, Ink, Layout};
 
 /// Width of one cell, per unit of font size: every glyph of the embedded
 /// font is 600/1000 em wide.
@@ -126,15 +126,41 @@ fn fit_box(unit: Aabb, frame: Aabb, max_size: f32) -> Option<(Vec2, f32)> {
     Some((frame.center() - half, size))
 }
 
+/// The layout of a text without markup: the cells [`glyphs`] draws it in
+/// and the box [`source_bounds`] gives it. [`tex::layout`] adds up its
+/// cells instead, which drifts past that box on a long line.
+fn plain_layout(text: &str) -> Layout {
+    let (cols, rows) = extent(text);
+    let size = cell(1.0, cols, rows);
+    Layout {
+        width: size.x,
+        height: size.y,
+        ink: glyphs(Vec2::ZERO, text, 1.0)
+            .map(|glyph| Ink::Glyph {
+                ch: glyph.ch,
+                face: Face::Text,
+                pos: glyph.pos,
+                scale: 1.0,
+                warn: false,
+            })
+            .collect(),
+    }
+}
+
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
-/// once per distinct text and then shared.
+/// once per distinct text and then shared. Text without markup stays on
+/// the cell grid it is drawn on.
 #[must_use]
 pub fn typeset(text: &str) -> Rc<Layout> {
     TYPESET.with(|cache| {
         if let Some(layout) = cache.borrow().get(text) {
             return Rc::clone(layout);
         }
-        let layout = Rc::new(tex::layout(&tex::parse(text)));
+        let layout = Rc::new(if has_markup(text) {
+            tex::layout(&tex::parse(text))
+        } else {
+            plain_layout(text)
+        });
         let mut cache = cache.borrow_mut();
         if cache.len() >= TYPESET_CACHE_MAX {
             cache.clear();
@@ -443,6 +469,60 @@ mod tests {
         assert!(Rc::ptr_eq(&first, &again));
         assert!(!Rc::ptr_eq(&first, &other));
         assert_eq!(*first, tex::layout(&tex::parse("$x^2$")));
+    }
+
+    #[test]
+    fn typeset_of_long_plain_text_stays_on_the_cell_grid() {
+        // Arrange: enough cells for repeated addition of `ADVANCE` to drift.
+        let text = "a".repeat(419);
+
+        // Act
+        let layout = typeset(&text);
+
+        // Assert: every glyph is where it is drawn, inside the block's box.
+        let drawn: Vec<Vec2> = glyphs(Vec2::ZERO, &text, 1.0).map(|g| g.pos).collect();
+        assert_eq!(layout.ink.len(), drawn.len());
+        let room = bounds(Vec2::ZERO, &text, 1.0).expand(EPS);
+        for (ink, want) in layout.ink.iter().zip(&drawn) {
+            let tex::Ink::Glyph { pos, .. } = *ink else {
+                panic!("a glyph expected: {ink:?}");
+            };
+            assert!(
+                approx_eq(pos.x, want.x, EPS) && approx_eq(pos.y, want.y, EPS),
+                "{pos:?} {want:?}"
+            );
+            let ib = ink.bounds();
+            assert!(room.contains(ib.min) && room.contains(ib.max), "{ink:?}");
+        }
+    }
+
+    #[test]
+    fn typeset_of_plain_text_has_the_cell_box() {
+        // Arrange
+        let long = format!("{}\nb\n", "a".repeat(419));
+        for text in ["", "a", "ab\n\ncdef", "\\frac12", long.as_str()] {
+            // Act
+            let layout = typeset(text);
+
+            // Assert: the box `bounds` reports, no ink for the line breaks.
+            let b = source_bounds(Vec2::ZERO, text, 1.0);
+            assert!(approx_eq(layout.width, b.max.x, EPS), "{text:?}");
+            assert!(approx_eq(layout.height, b.max.y, EPS), "{text:?}");
+            assert_eq!(layout.ink.len(), glyphs(Vec2::ZERO, text, 1.0).count());
+        }
+    }
+
+    #[test]
+    fn typeset_of_markup_is_the_tex_layout() {
+        // Arrange: a formula, an escaped and a lone dollar, a long plain run.
+        let long = format!("{}$x$", "a".repeat(419));
+        for text in ["$x^2$ y", "\\$5", "a $ b", "ab\n$\\frac12$", long.as_str()] {
+            // Act
+            let layout = typeset(text);
+
+            // Assert: to the bit, so no glyph or rule of a formula moves.
+            assert_eq!(*layout, tex::layout(&tex::parse(text)), "{text:?}");
+        }
     }
 
     fn arb_text() -> impl Strategy<Value = String> {

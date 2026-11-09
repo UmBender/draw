@@ -1,7 +1,7 @@
 ---
 id: T78
 title: Formula ink outside its text box
-status: todo
+status: review
 wave: 34
 branch: fix/formula-ink-outside-box
 depends_on: [T74]
@@ -42,17 +42,41 @@ at random on this invariant.
   formula tokens grew a lot in T56–T71, so one of those commands may be
   what exposes it.
 
+## Cause (found 2026-11-08)
+
+The seed's block holds **no formula**: it is 419 characters of formula
+*source* with no `$`, so it is plain text.
+
+- Such a block is drawn from `text_layout::glyphs` (`col × ADVANCE`) and
+  its box is `source_bounds` (`cols × ADVANCE`). The drawn ink is inside
+  the box; nothing visible is wrong.
+- `text_layout::typeset`, which the fuzz invariant reads, runs the same
+  text through `tex::layout`, whose `Line::cell` *adds* `ADVANCE` once per
+  character. In `f32` that drifts: at column 418 the cell is at
+  250.80103 em instead of 250.8, past the box by more than the invariant's
+  `1e-3` em slack. The `y` of 1.0 in the report is the correct baseline.
+- With a `$` the box comes from the same sums as the ink, so they agree.
+
+The fix makes `typeset` of text without markup lay out on the cell grid
+the renderer uses. The box's definition does not change and no drawn glyph
+or rule moves (text with `$` still goes through `tex::layout` untouched),
+so no ADR is needed.
+
 ## Spec
 
-Draft; the spec step finalises it once the cause is known.
-
-- **AC-1** — The state from the seed draws no ink outside its box.
+- **AC-1** — The state from the seed has no typeset ink outside its box.
   *Test:* `core::editor::tests::regression_t78_formula_ink_outside_box`
   (lower-case id: `non_snake_case` fails under `-D warnings`), from
   `tests/snapshots/regressions/T78-formula-ink-outside-box.snap`.
-- **AC-2** — The smallest formula that shows the bug has a box that
-  contains its ink. *Test:* a named unit test beside the code at fault.
-- **AC-3** — The seed is committed in `tests/fuzz.proptest-regressions`
+- **AC-2** — The smallest case, a long line without markup, typesets on
+  the cells it is drawn at and inside its box.
+  *Test:* `core::text_layout::tests::typeset_of_long_plain_text_stays_on_the_cell_grid`,
+  `core::text_layout::tests::typeset_of_plain_text_has_the_cell_box`.
+- **AC-3** — Text with markup is laid out exactly as before: no glyph or
+  rule moves. *Test:*
+  `core::text_layout::tests::typeset_of_markup_is_the_tex_layout`, and
+  `scripts/e2e.sh` with no golden changed.
+- **AC-4** — The seed is committed in `tests/fuzz.proptest-regressions`
   and `scripts/check.sh --fuzz` is green with it. *Test:* the `tests/fuzz.rs`
   properties.
 
@@ -71,11 +95,11 @@ Draft; the spec step finalises it once the cause is known.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T78): specify the formula ink box fix`
-- [ ] regression — `test(T78): add regression test for formula ink outside its box`
-- [ ] behaviour — `fix(T78): keep formula ink inside the text box`
-- [ ] quality — `chore(T78): pass clippy and rustfmt`
-- [ ] docs — `docs(T78): record the fix and close the task`
+- [x] spec — `docs(T78): specify the formula ink box fix`
+- [x] regression — `test(T78): add regression test for formula ink outside its box`
+- [x] behaviour — `fix(T78): keep formula ink inside the text box`
+- [x] quality — no commit: the gates passed with nothing to change
+- [x] docs — `docs(T78): record the fix and close the task`
 
 ## Learning path
 
@@ -85,3 +109,24 @@ None planned.
 
 - 2026-11-08 — created from the `--fuzz` failure logged in T76. Drop the
   seed's stash only once its line is committed.
+- 2026-11-08 — cause found: see *Cause*. The seed's block has no `$`, and
+  the failing `y` in the report was a red herring; the overflow is in `x`,
+  from `Line::cell` adding `ADVANCE` per character.
+- 2026-11-08 — UNATTENDED CHOICE: the plan expected the box to grow. The
+  box was already right for what is drawn (`glyphs`, `col × ADVANCE`), so
+  growing it would only have covered ink that is never drawn, and would
+  have cost a typeset per `bounds` call on plain text. `typeset` of text
+  without `$` now uses that same cell grid instead. The box's definition
+  is unchanged, so there is no `ADR-T78-1`. The owner may want to review
+  this, since the plan said the box gives way.
+- 2026-11-08 — UNATTENDED CHOICE: the seed is committed as its `cc` hash
+  with a short comment, without the 45 KB `# shrinks to` text. Proptest
+  reads only the hash; the seed was confirmed to reproduce the failure.
+- 2026-11-08 — models step skipped: no new types or signatures. Quality
+  step produced no commit: `scripts/check.sh --fuzz` was green with
+  nothing to change. No feature or tutorial note: the fix has no
+  user-visible behaviour, and the task sets no tutorial.
+- 2026-11-08 — gates: `scripts/check.sh --fuzz` green with the seed;
+  `scripts/e2e.sh` 10 of 10 cases, no golden changed. Left for the owner:
+  select a block with a long formula and check the selection box covers
+  it; after integrating, drop the seed's stash, found by its message.
