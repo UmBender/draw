@@ -1,7 +1,7 @@
 ---
 id: T81
 title: Formula box too narrow while editing
-status: in-progress
+status: review
 wave: 34
 branch: fix/formula-box-while-editing
 depends_on: [T74]
@@ -85,10 +85,10 @@ changes, so no ADR is needed.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T81): specify the box of a formula being edited`
-- [ ] regression — `test(T81): add regression test for the box while editing`
-- [ ] behaviour — `fix(T81): keep the box of a formula on its source while editing`
-- [ ] quality — `chore(T81): pass clippy and rustfmt`
-- [ ] docs — `docs(T81): record the fix and close the task`
+- [x] regression — `test(T81): add regression test for the box while editing`
+- [x] behaviour — `fix(T81): keep the box of a formula on its source while editing`
+- [x] quality — `chore(T81): pass clippy and rustfmt`
+- [x] docs — `docs(T81): record the fix and close the task`
 
 ## Learning path
 
@@ -98,3 +98,12 @@ None planned.
 
 - 2026-11-09 — created from a screenshot by the owner, while reviewing
   T78. Not reproduced yet.
+- 2026-11-09 — cause found by reading the code (see *Cause*). Reproduced
+  in core: the regression test was red on `selection_bounds`, which still
+  gave the typeset box. Fixed there; no change in `shell`.
+- 2026-11-09 — no models step: the fix adds no types. No quality commit:
+  `scripts/check.sh` was green with no change. `scripts/e2e.sh` is green
+  with no golden changed.
+- No feature or tutorial note: the task has neither, it only removes a
+  wrong outline. The two outlines have not been checked by eye in the
+  running app; no e2e case covers this state.
