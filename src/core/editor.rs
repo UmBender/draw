@@ -4542,6 +4542,43 @@ mod tests {
         assert!(approx_eq(sizes[1], 20.0 / ZOOM_STEP, 1e-4), "{sizes:?}");
     }
 
+    // ---- T78 formula ink outside its text box -------------------------------
+
+    #[test]
+    fn regression_t78_formula_ink_outside_box() {
+        // Arrange: the seed's block, 419 characters of formula source with
+        // no `$`, still open.
+        let snapshot = Snapshot::parse(include_str!(
+            "../../tests/snapshots/regressions/T78-formula-ink-outside-box.snap"
+        ))
+        .unwrap_or_else(|err| panic!("{err}"));
+        let mut ed = Editor::from_snapshot(snapshot);
+
+        // Act: commit it.
+        key_with(&mut ed, Key::Enter, CTRL);
+
+        // Assert: its ink is inside its box, with the fuzz invariant's slack.
+        let (_, shape) = ed
+            .document()
+            .shapes()
+            .next()
+            .unwrap_or_else(|| panic!("the block was committed"));
+        let Shape::Text {
+            origin, text, size, ..
+        } = shape
+        else {
+            panic!("a text block expected: {shape:?}");
+        };
+        assert_eq!(text.chars().count(), 419);
+        let b = shape.bounds();
+        let room = b.expand(1e-3 * size);
+        for ink in &crate::core::text_layout::typeset(text).ink {
+            let ib = ink.bounds();
+            let (lo, hi) = (*origin + ib.min * *size, *origin + ib.max * *size);
+            assert!(room.contains(lo) && room.contains(hi), "{ink:?} {b:?}");
+        }
+    }
+
     // ---- T76 remembered text size past the ladder ---------------------------
 
     /// The on-screen size remembered for new blocks.

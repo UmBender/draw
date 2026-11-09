@@ -445,6 +445,60 @@ mod tests {
         assert_eq!(*first, tex::layout(&tex::parse("$x^2$")));
     }
 
+    #[test]
+    fn typeset_of_long_plain_text_stays_on_the_cell_grid() {
+        // Arrange: enough cells for repeated addition of `ADVANCE` to drift.
+        let text = "a".repeat(419);
+
+        // Act
+        let layout = typeset(&text);
+
+        // Assert: every glyph is where it is drawn, inside the block's box.
+        let drawn: Vec<Vec2> = glyphs(Vec2::ZERO, &text, 1.0).map(|g| g.pos).collect();
+        assert_eq!(layout.ink.len(), drawn.len());
+        let room = bounds(Vec2::ZERO, &text, 1.0).expand(EPS);
+        for (ink, want) in layout.ink.iter().zip(&drawn) {
+            let tex::Ink::Glyph { pos, .. } = *ink else {
+                panic!("a glyph expected: {ink:?}");
+            };
+            assert!(
+                approx_eq(pos.x, want.x, EPS) && approx_eq(pos.y, want.y, EPS),
+                "{pos:?} {want:?}"
+            );
+            let ib = ink.bounds();
+            assert!(room.contains(ib.min) && room.contains(ib.max), "{ink:?}");
+        }
+    }
+
+    #[test]
+    fn typeset_of_plain_text_has_the_cell_box() {
+        // Arrange
+        let long = format!("{}\nb\n", "a".repeat(419));
+        for text in ["", "a", "ab\n\ncdef", "\\frac12", long.as_str()] {
+            // Act
+            let layout = typeset(text);
+
+            // Assert: the box `bounds` reports, no ink for the line breaks.
+            let b = source_bounds(Vec2::ZERO, text, 1.0);
+            assert!(approx_eq(layout.width, b.max.x, EPS), "{text:?}");
+            assert!(approx_eq(layout.height, b.max.y, EPS), "{text:?}");
+            assert_eq!(layout.ink.len(), glyphs(Vec2::ZERO, text, 1.0).count());
+        }
+    }
+
+    #[test]
+    fn typeset_of_markup_is_the_tex_layout() {
+        // Arrange: a formula, an escaped and a lone dollar, a long plain run.
+        let long = format!("{}$x$", "a".repeat(419));
+        for text in ["$x^2$ y", "\\$5", "a $ b", "ab\n$\\frac12$", long.as_str()] {
+            // Act
+            let layout = typeset(text);
+
+            // Assert: to the bit, so no glyph or rule of a formula moves.
+            assert_eq!(*layout, tex::layout(&tex::parse(text)), "{text:?}");
+        }
+    }
+
     fn arb_text() -> impl Strategy<Value = String> {
         prop::collection::vec(
             prop_oneof![
