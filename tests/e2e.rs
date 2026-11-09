@@ -741,6 +741,21 @@ impl Session {
         command
     }
 
+    /// Saves what the output shows to `path` as a PPM.
+    fn screenshot(&self, path: &Path) -> Result<(), String> {
+        let status = self
+            .tool("grim")
+            .args(["-t", "ppm"])
+            .arg(path)
+            .status()
+            .map_err(|err| format!("grim: {err}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("grim failed: {status}"))
+        }
+    }
+
     fn spawn_wtype(&self, args: &[String]) -> Result<Child, String> {
         self.tool("wtype")
             .args(args)
@@ -1001,16 +1016,7 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     }
     if let Some(tolerance) = case.screenshot {
         let shot = run.join("actual.ppm");
-        let status = running
-            .session
-            .tool("grim")
-            .args(["-t", "ppm"])
-            .arg(&shot)
-            .status()
-            .map_err(|err| format!("grim: {err}"))?;
-        if !status.success() {
-            return Err(format!("grim failed: {status}"));
-        }
+        running.session.screenshot(&shot)?;
         let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
         if let Err(problem) = compare_screenshot(
             &shot,
@@ -1442,7 +1448,11 @@ mod self_tests {
             hide_cursor_box(&mut actual, &expected, (50, 50));
 
             // Assert
-            assert_eq!(compare_images(&actual, &expected, NO_ROOM), Ok(()), "{at:?}");
+            assert_eq!(
+                compare_images(&actual, &expected, NO_ROOM),
+                Ok(()),
+                "{at:?}"
+            );
         }
     }
 
@@ -1457,7 +1467,10 @@ mod self_tests {
             hide_cursor_box(&mut actual, &expected, (50, 50));
 
             // Assert
-            assert!(compare_images(&actual, &expected, NO_ROOM).is_err(), "{at:?}");
+            assert!(
+                compare_images(&actual, &expected, NO_ROOM).is_err(),
+                "{at:?}"
+            );
         }
     }
 
