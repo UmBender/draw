@@ -1,0 +1,5 @@
+# T94: draw --recover starts from the autosave, with its undo history.
+recover
+sections document
+chord ctrl z
+close
