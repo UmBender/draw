@@ -189,6 +189,9 @@ pub struct Editor {
     /// `doc_revision` of the latest change that was not a pure append of
     /// shapes on top (ADR-T24-3).
     doc_base_revision: u64,
+    /// Why the latest key refused to act, for the shell's log (ADR-T84-1).
+    /// Transient: not part of the saved state.
+    notice: Option<String>,
 }
 
 impl Default for Editor {
@@ -435,6 +438,7 @@ impl Editor {
             pressure,
             doc_revision: 0,
             doc_base_revision: 0,
+            notice: None,
         })
     }
 
@@ -462,6 +466,7 @@ impl Editor {
             pressure: None,
             doc_revision: 0,
             doc_base_revision: 0,
+            notice: None,
         }
     }
 
@@ -484,6 +489,12 @@ impl Editor {
     #[must_use]
     pub fn pressure(&self) -> Option<f32> {
         self.pressure
+    }
+
+    /// Why the latest key refused to act, once: the shell writes it to the
+    /// diagnostics log (ADR-T84-1).
+    pub fn take_notice(&mut self) -> Option<String> {
+        self.notice.take()
     }
 
     /// Replaces the keymap (used by tests and alternative bindings).
@@ -560,6 +571,7 @@ impl Editor {
                 .edit
                 .as_mut()
                 .is_some_and(|edit| edit.paste(&text)),
+            InputEvent::PasteGrid(text) => self.grid_from_clipboard(&text),
             InputEvent::Resize { size } => match size.sanitize() {
                 Some(size) if size.x >= 0.0 && size.y >= 0.0 => {
                     self.viewport = size;
@@ -641,6 +653,7 @@ impl Editor {
             Command::Paste => self.run_edit(clipboard::paste),
             Command::Duplicate => self.run_edit(clipboard::duplicate),
             Command::SelectAll => self.run_edit(select::select_all),
+            Command::GridFromText => self.grid_from_selection(),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => {
                 let cancelled = self.cancel_gesture();
@@ -1029,6 +1042,18 @@ impl Editor {
         changed || cancelled
     }
 
+    /// Replaces the only selected text block by the grid of its text, as
+    /// one undo step (ADR-T84-1). Returns whether a redraw is needed.
+    fn grid_from_selection(&mut self) -> bool {
+        todo!()
+    }
+
+    /// Builds the grid of clipboard `text` at the cursor, as one undo step,
+    /// and selects it (ADR-T84-1). Returns whether a redraw is needed.
+    fn grid_from_clipboard(&mut self, text: &str) -> bool {
+        todo!()
+    }
+
     /// Handles a key while a text block is open: editing keys edit it,
     /// `Ctrl+[` / `Ctrl+]` resize it, `Esc` and `Ctrl+Enter` commit it,
     /// `Ctrl+Z` cancels it, in a grid cell `Tab` and `Enter` (with or
@@ -1260,6 +1285,7 @@ fn edits_document(command: Command) -> bool {
             | Command::Cut
             | Command::Paste
             | Command::Duplicate
+            | Command::GridFromText
             | Command::DeleteSelection
             | Command::ClearAll
     )

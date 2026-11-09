@@ -20,7 +20,9 @@ use crate::core::shape::{GRID_MAX_CELLS, Shape, Style};
 use crate::core::snap::{self, DragKind, Snapped};
 use crate::core::snapshot::{Reader, SnapshotError, Writer};
 use crate::core::tools::shape_tool::MIN_DRAG_PX;
+use crate::core::tools::text::PASTE_MAX_BYTES;
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use std::fmt;
 
 /// Gesture state of the grid tool.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -68,6 +70,73 @@ impl Drag {
             fills: Vec::new(),
             texts: Vec::new(),
         }
+    }
+}
+
+/// Why a text cannot become a table (ADR-T84-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableError {
+    /// More than [`GRID_MAX_CELLS`] columns or rows.
+    TooManyCells {
+        /// Columns of the widest line.
+        cols: usize,
+        /// Lines that are not blank.
+        rows: usize,
+    },
+    /// More than [`PASTE_MAX_BYTES`] of text.
+    TooLong {
+        /// Bytes of the text.
+        bytes: usize,
+    },
+}
+
+impl fmt::Display for TableError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl std::error::Error for TableError {}
+
+/// A text read as a table: lines are rows, whitespace separates cells
+/// (ADR-T84-1). Has at least one cell, and fits a [`Shape::Grid`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextTable {
+    /// Cell tokens by row; no row is empty.
+    cells: Vec<Vec<String>>,
+    /// Length of the longest row.
+    cols: u32,
+}
+
+impl TextTable {
+    /// The table `text` holds; `Ok(None)` when it holds no cell.
+    ///
+    /// # Errors
+    ///
+    /// [`TableError`] if the table would not fit a grid or the text is
+    /// over [`PASTE_MAX_BYTES`]; the text is never cut to fit.
+    pub fn parse(text: &str) -> Result<Option<Self>, TableError> {
+        todo!()
+    }
+
+    /// Number of columns.
+    #[must_use]
+    pub fn cols(&self) -> u32 {
+        todo!()
+    }
+
+    /// Number of rows.
+    #[must_use]
+    pub fn rows(&self) -> u32 {
+        todo!()
+    }
+
+    /// The grid with corner `corner` showing this table at `text_size`:
+    /// its cells take the longest token at full size. `None` if the size
+    /// is not finite and positive or the grid would not be finite.
+    #[must_use]
+    pub fn shape(&self, corner: Vec2, text_size: f32, style: Style, axes: bool) -> Option<Shape> {
+        todo!()
     }
 }
 
@@ -216,7 +285,6 @@ mod tests {
     use crate::core::smoothing::SmoothingLevel;
     use crate::core::text_layout;
     use crate::core::tools::Phase;
-    use crate::core::tools::text::PASTE_MAX_BYTES;
     use proptest::prelude::*;
     use proptest::test_runner::TestCaseError;
 

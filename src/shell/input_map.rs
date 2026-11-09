@@ -114,6 +114,20 @@ pub fn paste_event(text: Option<String>) -> Option<InputEvent> {
     text.filter(|text| !text.is_empty()).map(InputEvent::Paste)
 }
 
+/// Whether `event` asks for a grid from the system clipboard: a press of
+/// exactly `Ctrl+Shift+V` with no text edit open (ADR-T84-1).
+#[must_use]
+pub fn wants_grid_clipboard(event: &InputEvent, editing: bool) -> bool {
+    todo!()
+}
+
+/// The grid event for what the clipboard held; `None` when it was empty
+/// or unavailable (ADR-T84-1).
+#[must_use]
+pub fn paste_grid_event(text: Option<String>) -> Option<InputEvent> {
+    todo!()
+}
+
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI
 /// scale that is not finite and positive counts as `1`.
 #[must_use]

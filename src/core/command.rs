@@ -78,6 +78,9 @@ pub enum Command {
     Duplicate,
     /// Select every shape.
     SelectAll,
+    /// Replace the only selected text block by a grid of its lines and
+    /// words (ADR-T84-1).
+    GridFromText,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).

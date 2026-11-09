@@ -178,6 +178,9 @@ pub enum InputEvent {
     /// The system clipboard's text, asked for by `Ctrl+V` in an open text
     /// block. Only a text block in edit mode uses it (ADR-T83-1).
     Paste(String),
+    /// The system clipboard's text, asked for by `Ctrl+Shift+V` with no
+    /// text block open: a grid of its lines and words (ADR-T84-1).
+    PasteGrid(String),
     /// The viewport now measures `size` pixels.
     Resize {
         /// Width and height in pixels.

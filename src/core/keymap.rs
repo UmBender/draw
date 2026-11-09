@@ -159,6 +159,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     ),
     (KeyChord::ctrl(Key::A), Command::SelectAll, "Select all"),
     (
+        KeyChord::ctrl(Key::T),
+        Command::GridFromText,
+        "Text block to grid",
+    ),
+    (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
         "Delete selection",
