@@ -1,7 +1,7 @@
 ---
 id: T80
 title: Mouse cursor in end-to-end screenshots
-status: in-progress
+status: review
 wave: 35
 branch: fix/e2e-cursor-in-screenshots
 depends_on: [T75]
@@ -71,12 +71,12 @@ are in `tests/e2e.rs`, `self_tests`.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T80): specify the cursor box in screenshot comparison`
-- [ ] tests — `test(T80): add failing tests for the cursor box`
-- [ ] models — `feat(T80): add the cursor box types`
-- [ ] behaviour — `fix(T80): ignore the mouse cursor in screenshot comparison`
-- [ ] quality — `chore(T80): pass clippy and rustfmt`
-- [ ] docs — `docs(T80): record the fix`
+- [x] spec — `docs(T80): specify the cursor box in screenshot comparison`
+- [x] tests — `test(T80): add failing tests for the cursor box`
+- [x] models — `feat(T80): add the cursor box types`
+- [x] behaviour — `fix(T80): ignore the mouse cursor in screenshot comparison`
+- [x] quality — `refactor(T80): move the screenshot call into the session`
+- [x] docs — `docs(T80): record the fix`
 
 ## Learning path
 
@@ -85,3 +85,11 @@ None planned.
 ## Log
 
 - 2026-11-08 — created from the first nightly run of the e2e job.
+- 2026-11-08 — AC-1 to AC-4: the `self_tests` pass. They did not compile
+  before the functions existed, and failed on the `todo!()` bodies.
+- 2026-11-08 — AC-5: `scripts/e2e.sh` passes all 10 cases with the goldens
+  unchanged. Applying the box to the 5 failing screenshots saved by run
+  42541491862 leaves 0 pixels differing by more than 8 outside it.
+  `scripts/check.sh` is green.
+- 2026-11-08 — AC-6 pending owner run: the job needs one more nightly run
+  on this fix, which also closes AC-6 of T75. No tutorial: none planned.

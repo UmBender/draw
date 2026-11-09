@@ -58,6 +58,11 @@ An optional `start.snap` holds the state to start from. Run
 screenshot before committing them. Keep screenshots to cases where pixels
 are the point: each one is 1.4 MB.
 
+The comparison ignores a 26×26 box at the pointer's last position,
+because whether a capture shows the mouse cursor depends on the compositor
+version ([[ADR-T80-1 Screenshots ignore the box under the pointer]]). So a
+case that needs the pixels there must move the pointer away first.
+
 Each case ends clean: exit code 0 (or death by `SIGINT` for a `sigint`
 case), no `crash.log`, and no `WARN` or `ERROR` line in `draw.log`.
 
