@@ -14,12 +14,15 @@
 
 mod common;
 
+use common::scenes;
 use common::snapshots::load_fixture;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use draw::core::camera::Camera;
+use draw::core::command::{Command, Tool};
 use draw::core::document::{Document, Edit, ShapeId, Transaction, tx_insert, tx_remove};
+use draw::core::editor::Editor;
 use draw::core::geom::Vec2;
 use draw::core::input::{InputEvent, Modifiers};
 use draw::core::palette::ColorId;
@@ -48,6 +51,10 @@ const BUDGET: Duration = Duration::from_millis(1);
 /// Budget of one snapped pointer move: a quarter of a 60 Hz frame
 /// (ADR-T14-1).
 const SNAP_BUDGET: Duration = Duration::from_millis(4);
+
+/// Budget of an autosave on the main thread: the overlay-only re-render of
+/// ADR-T24-5 (ADR-T94-1).
+const AUTOSAVE_BUDGET: Duration = Duration::from_millis(2);
 
 /// Timed runs per measurement.
 const RUNS: usize = 101;
@@ -702,6 +709,90 @@ fn perf_tex_layout_200_blocks_is_under_2ms() {
 
     // Assert
     assert_within_budget("tex parse + layout, 200 blocks", median, TEX_BUDGET);
+}
+
+/// The scene of ADR-T24-5: 10 pen strokes, then `Ctrl+A` and `Ctrl+D` ×9,
+/// giving 5 120 strokes.
+fn doubled_strokes() -> Editor {
+    let mut ed = scenes::editor();
+    ed.apply(Command::SetTool(Tool::Pen));
+    for i in 0..10 {
+        let y = i as f32 * 60.0 + 40.0;
+        scenes::drag(&mut ed, scenes::v(40.0, y), scenes::v(900.0, y + 20.0));
+    }
+    for _ in 0..9 {
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Duplicate);
+    }
+    assert_eq!(ed.document().len(), 5120);
+    ed
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_autosave_capture_of_5120_strokes_is_under_2ms() {
+    // Arrange
+    if !optimised() {
+        return;
+    }
+    let ed = doubled_strokes();
+
+    // Act: what the autosave costs the main thread (ADR-T94-1).
+    let median = median_time(|| (), |()| ed.snapshot());
+
+    // Assert
+    assert_within_budget("autosave capture, 5 120 strokes", median, AUTOSAVE_BUDGET);
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_autosave_text_of_5120_strokes_is_measured() {
+    // Arrange
+    if !optimised() {
+        return;
+    }
+    let ed = doubled_strokes();
+
+    // Act: the writer thread's serialisation (ADR-T94-1).
+    let median = median_time(|| ed.snapshot(), |snapshot| snapshot.to_text());
+
+    // Assert: off the frame, so only reported.
+    let bytes = ed.snapshot().to_text().len();
+    eprintln!("perf: autosave text, 5 120 strokes: median {median:?}, {bytes} bytes");
+}
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_autosave_with_full_history_is_measured() {
+    // Arrange: moving everything over and over fills the 64 MiB history
+    // (ADR-T49-1), the worst case of an autosave.
+    if !optimised() {
+        return;
+    }
+    let mut ed = doubled_strokes();
+    ed.apply(Command::SetTool(Tool::Select));
+    ed.apply(Command::SelectAll);
+    let Some(bounds) = ed.selection_bounds() else {
+        panic!("everything is selected");
+    };
+    let mut from = bounds.min + (bounds.max - bounds.min) * 0.5;
+    for i in 0..40 {
+        let to = from + scenes::v(if i % 2 == 0 { 12.0 } else { -12.0 }, 8.0);
+        scenes::straight_drag(&mut ed, from, to);
+        from = to;
+    }
+    let start = Instant::now();
+    let snapshot = ed.snapshot();
+    let capture = start.elapsed();
+
+    // Act
+    let start = Instant::now();
+    let text = snapshot.to_text();
+    let serialise = start.elapsed();
+
+    // Assert: a report for ADR-T94-1, with no budget.
+    let megabytes = text.len() / (1024 * 1024);
+    eprintln!("perf: autosave, full history: capture {capture:?}, text {serialise:?}, {megabytes} MiB");
 }
 
 #[test]
