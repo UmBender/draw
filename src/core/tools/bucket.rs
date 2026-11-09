@@ -1,11 +1,14 @@
-//! Bucket: fills the clicked closed shape.
+//! Bucket: fills the clicked closed shape, or the grid cells it is dragged
+//! across.
 //!
 //! A press sets the fill of the topmost [`Shape::Rect`] or [`Shape::Ellipse`]
 //! containing the point to the current colour, as one undo step. If the
-//! topmost candidate is a [`Shape::Grid`] whose box contains the point, only
-//! the cell under the point is filled (ADR-T21-1). Refilling with the same
-//! colour, or pressing on empty space or another open shape, changes nothing
-//! and records no step. The bucket has no gesture to preview.
+//! topmost candidate is a [`Shape::Grid`] whose box contains the point, a
+//! drag starts instead (ADR-T88-1): the cell under the point and every cell
+//! of that grid the pointer passes over are painted in the preview, and the
+//! release commits them as one undo step (ADR-T21-1). Refilling with the
+//! same colour, or pressing on empty space or another open shape, changes
+//! nothing and records no step.
 //!
 //! [`Shape::Rect`]: crate::core::shape::Shape::Rect
 //! [`Shape::Ellipse`]: crate::core::shape::Shape::Ellipse
@@ -14,7 +17,8 @@
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{Document, ShapeId, tx_replace};
 use crate::core::geom::Vec2;
-use crate::core::shape::Shape;
+use crate::core::palette::ColorId;
+use crate::core::shape::{GRID_MAX_CELLS, Shape};
 use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
 /// A drag across the cells of one grid (ADR-T88-1).
@@ -37,19 +41,115 @@ pub struct State {
 
 /// The cells of `grid` that the world segment `from → to` passes through,
 /// in order, each one step from the one before.
+///
+/// The segment is clipped to the box in cell coordinates (one unit per
+/// cell, from corner `a`) and then walked one column or row at a time, so
+/// it costs at most `cols + rows` cells whatever its length. A grid with a
+/// zero-size side has no cell coordinates: it gives the cell under `to`.
 fn cells_along(grid: &Shape, from: Vec2, to: Vec2) -> Vec<(u32, u32)> {
-    let _ = (grid, from, to);
-    todo!()
+    let Shape::Grid {
+        a, b, cols, rows, ..
+    } = *grid
+    else {
+        return Vec::new();
+    };
+    let (cols, rows) = (
+        cols.clamp(1, GRID_MAX_CELLS),
+        rows.clamp(1, GRID_MAX_CELLS),
+    );
+    let place = |p: Vec2| {
+        (
+            cell_coord(p.x, a.x, b.x, cols),
+            cell_coord(p.y, a.y, b.y, rows),
+        )
+    };
+    let ((u0, v0), (u1, v1)) = (place(from), place(to));
+    if ![u0, v0, u1, v1].into_iter().all(f64::is_finite) {
+        return grid.grid_cell_at(to).into_iter().collect();
+    }
+    let (du, dv) = (u1 - u0, v1 - v0);
+    let Some((enter, leave)) = clip_axis((0.0, 1.0), u0, du, cols)
+        .and_then(|range| clip_axis(range, v0, dv, rows))
+    else {
+        return Vec::new();
+    };
+    let (start_u, start_v) = (u0 + enter * du, v0 + enter * dv);
+    let (end_u, end_v) = (u0 + leave * du, v0 + leave * dv);
+    let (du, dv) = (end_u - start_u, end_v - start_v);
+
+    let (mut col, mut row) = (cell_index(start_u, cols), cell_index(start_v, rows));
+    let (end_col, end_row) = (cell_index(end_u, cols), cell_index(end_v, rows));
+    let (mut cols_left, mut rows_left) = (col.abs_diff(end_col), row.abs_diff(end_row));
+    let mut cells = Vec::with_capacity((cols_left + rows_left + 1) as usize);
+    cells.push((col, row));
+    // The counters, not the floats, end the walk: rounding cannot overrun.
+    while cols_left + rows_left > 0 {
+        let crosses_col_first = rows_left == 0
+            || (cols_left > 0
+                && next_border(col, end_col, start_u, du) < next_border(row, end_row, start_v, dv));
+        if crosses_col_first {
+            col = step_towards(col, end_col);
+            cols_left -= 1;
+        } else {
+            row = step_towards(row, end_row);
+            rows_left -= 1;
+        }
+        cells.push((col, row));
+    }
+    cells
 }
 
-/// Handles one pointer event of a gesture. Returns whether a redraw is needed.
-pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
-    let _ = state;
-    if pointer.phase != Phase::Down {
-        return false;
+/// `p` on the axis from `a` to `b`, in cells: `0` at `a`, `n` at `b`.
+fn cell_coord(p: f32, a: f32, b: f32, n: u32) -> f64 {
+    (f64::from(p) - f64::from(a)) / (f64::from(b) - f64::from(a)) * f64::from(n)
+}
+
+/// `range` of the segment parameter narrowed to where `start + t * delta`
+/// lies in `0..=max`; `None` if it never does.
+fn clip_axis(range: (f64, f64), start: f64, delta: f64, max: u32) -> Option<(f64, f64)> {
+    let max = f64::from(max);
+    if delta == 0.0 {
+        return (0.0..=max).contains(&start).then_some(range);
     }
-    let world = ctx.camera.screen_to_world(pointer.pos);
-    let fill = Some(ctx.style.color);
+    let (at_zero, at_max) = (-start / delta, (max - start) / delta);
+    let (low, high) = (range.0.max(at_zero.min(at_max)), range.1.min(at_zero.max(at_max)));
+    (low <= high).then_some((low, high))
+}
+
+/// The cell holding coordinate `c` of `0..=n`; the far border belongs to the
+/// last cell, as in [`Shape::grid_cell_at`].
+fn cell_index(c: f64, n: u32) -> u32 {
+    (c as u32).min(n - 1)
+}
+
+/// Segment parameter at which the walk leaves `cell` on its way to `end`.
+fn next_border(cell: u32, end: u32, start: f64, delta: f64) -> f64 {
+    let border = if end > cell { cell + 1 } else { cell };
+    (f64::from(border) - start) / delta
+}
+
+/// `cell` moved one step towards `end`.
+fn step_towards(cell: u32, end: u32) -> u32 {
+    if end > cell { cell + 1 } else { cell - 1 }
+}
+
+/// `grid` with `cells` filled with `color`, and whether any cell changed.
+fn paint(mut grid: Shape, cells: &[(u32, u32)], color: ColorId) -> (Shape, bool) {
+    let mut changed = false;
+    for &(col, row) in cells {
+        if grid.cell_fill(col, row) != Some(color) {
+            grid = grid.with_cell_fill(col, row, Some(color));
+            changed = true;
+        }
+    }
+    (grid, changed)
+}
+
+/// Handles a press: starts a drag on a grid cell, fills a closed shape at
+/// once. Returns whether a redraw is needed.
+fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pos: Vec2) -> bool {
+    *state = State::default();
+    let world = ctx.camera.screen_to_world(pos);
     let Some(id) = ctx.doc.topmost_where(|shape| {
         (shape.is_closed() && shape.contains(world)) || shape.grid_cell_at(world).is_some()
     }) else {
@@ -58,10 +158,16 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     let Some(shape) = ctx.doc.get(id) else {
         return false;
     };
-    let filled = match shape.grid_cell_at(world) {
-        Some((col, row)) => shape.clone().with_cell_fill(col, row, fill),
-        None => shape.clone().with_fill(fill),
-    };
+    if let Some(cell) = shape.grid_cell_at(world) {
+        let (painted, changed) = paint(shape.clone(), &[cell], ctx.style.color);
+        state.drag = Some(Drag {
+            id,
+            last: pos,
+            painted,
+        });
+        return changed;
+    }
+    let filled = shape.clone().with_fill(Some(ctx.style.color));
     if &filled == shape {
         return false;
     }
@@ -69,18 +175,67 @@ pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) ->
     ctx.commit(tx)
 }
 
-/// What the gesture in progress draws on top of the document.
+/// Continues the drag to `pos`, painting the cells on the way. Returns
+/// whether a cell changed.
+fn drag_to(state: &mut State, ctx: &ToolCtx<'_>, pos: Vec2) -> bool {
+    let Some(Drag { id, last, painted }) = state.drag.take() else {
+        return false;
+    };
+    let from = ctx.camera.screen_to_world(last);
+    let to = ctx.camera.screen_to_world(pos);
+    let cells = cells_along(&painted, from, to);
+    let (painted, changed) = paint(painted, &cells, ctx.style.color);
+    state.drag = Some(Drag {
+        id,
+        last: pos,
+        painted,
+    });
+    changed
+}
+
+/// Ends the drag at `pos`, committing the painted grid as one undo step if
+/// any cell changed. Returns whether a redraw is needed.
+fn release(state: &mut State, ctx: &mut ToolCtx<'_>, pos: Vec2) -> bool {
+    drag_to(state, ctx, pos);
+    let Some(Drag { id, painted, .. }) = state.drag.take() else {
+        return false;
+    };
+    if ctx.doc.get(id) == Some(&painted) {
+        return false;
+    }
+    let tx = tx_replace(ctx.doc, id, painted);
+    ctx.commit(tx);
+    // Even a rejected edit needs a redraw, to unhide the grid.
+    true
+}
+
+/// Handles one pointer event of a gesture. Returns whether a redraw is needed.
+pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
+    match pointer.phase {
+        Phase::Down => press(state, ctx, pointer.pos),
+        Phase::Move => drag_to(state, ctx, pointer.pos),
+        Phase::Up => release(state, ctx, pointer.pos),
+    }
+}
+
+/// What the gesture in progress draws on top of the document: the painted
+/// grid in place of the original, once a cell differs from it.
 #[must_use]
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
-    let _ = (state, view);
-    Overlay::default()
+    match &state.drag {
+        Some(drag) if view.doc.get(drag.id) != Some(&drag.painted) => Overlay {
+            shapes: vec![drag.painted.clone()],
+            hidden: vec![drag.id],
+            ..Overlay::default()
+        },
+        _ => Overlay::default(),
+    }
 }
 
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed.
 pub fn cancel(state: &mut State) -> bool {
-    let _ = state;
-    false
+    state.drag.take().is_some()
 }
 
 impl State {
