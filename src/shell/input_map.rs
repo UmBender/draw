@@ -118,14 +118,17 @@ pub fn paste_event(text: Option<String>) -> Option<InputEvent> {
 /// exactly `Ctrl+Shift+V` with no text edit open (ADR-T84-1).
 #[must_use]
 pub fn wants_grid_clipboard(event: &InputEvent, editing: bool) -> bool {
-    todo!()
+    let paste = KeyChord::ctrl_shift(Key::V);
+    !editing
+        && matches!(event, InputEvent::KeyDown { key, mods } if *key == paste.key && *mods == paste.mods)
 }
 
 /// The grid event for what the clipboard held; `None` when it was empty
 /// or unavailable (ADR-T84-1).
 #[must_use]
 pub fn paste_grid_event(text: Option<String>) -> Option<InputEvent> {
-    todo!()
+    text.filter(|text| !text.is_empty())
+        .map(InputEvent::PasteGrid)
 }
 
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI

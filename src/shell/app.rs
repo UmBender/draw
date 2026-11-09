@@ -49,7 +49,8 @@ use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{
-    Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, wants_clipboard,
+    Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
+    wants_grid_clipboard,
 };
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::tablet;
@@ -609,8 +610,11 @@ pub async fn run() {
             if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
                 continue;
             }
-            if wants_clipboard(&event, editor.text_edit().is_some()) {
-                dirty |= paste_clipboard(&mut editor);
+            let editing = editor.text_edit().is_some();
+            if wants_clipboard(&event, editing) {
+                dirty |= paste_clipboard(&mut editor, paste_event);
+            } else if wants_grid_clipboard(&event, editing) {
+                dirty |= paste_clipboard(&mut editor, paste_grid_event);
             } else if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
@@ -622,6 +626,9 @@ pub async fn run() {
                 diag::log(Level::Info, &line);
             } else {
                 dirty |= dispatch(&mut editor, event);
+            }
+            if let Some(notice) = editor.take_notice() {
+                diag::log(Level::Warn, &notice);
             }
         }
         let presented = frame.present(&editor, viewport, dpi, dirty);
@@ -636,10 +643,10 @@ pub async fn run() {
     }
 }
 
-/// Pastes the system clipboard into the open text edit. Returns whether
-/// the view needs a redraw (ADR-T83-1).
-fn paste_clipboard(editor: &mut Editor) -> bool {
-    let changed = paste_event(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
+/// Hands the system clipboard to the editor as the event `paste` makes of
+/// it. Returns whether the view needs a redraw (ADR-T83-1, ADR-T84-1).
+fn paste_clipboard(editor: &mut Editor, paste: fn(Option<String>) -> Option<InputEvent>) -> bool {
+    let changed = paste(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
     // The read may have queued input the loop would sleep on.
     schedule_update();
     changed

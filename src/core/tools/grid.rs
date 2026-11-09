@@ -16,9 +16,10 @@ use crate::core::command::Tool;
 use crate::core::document::tx_insert;
 use crate::core::editor::Helpers;
 use crate::core::geom::Vec2;
-use crate::core::shape::{GRID_MAX_CELLS, Shape, Style};
+use crate::core::shape::{CellText, GRID_MAX_CELLS, SHAPE_TEXT_FILL, Shape, ShapeText, Style};
 use crate::core::snap::{self, DragKind, Snapped};
 use crate::core::snapshot::{Reader, SnapshotError, Writer};
+use crate::core::text_layout;
 use crate::core::tools::shape_tool::MIN_DRAG_PX;
 use crate::core::tools::text::PASTE_MAX_BYTES;
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolView};
@@ -92,7 +93,15 @@ pub enum TableError {
 
 impl fmt::Display for TableError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            Self::TooManyCells { cols, rows } => write!(
+                f,
+                "{cols} columns and {rows} rows, a grid holds at most {GRID_MAX_CELLS} of each"
+            ),
+            Self::TooLong { bytes } => {
+                write!(f, "{bytes} bytes of text, the limit is {PASTE_MAX_BYTES}")
+            }
+        }
     }
 }
 
@@ -104,8 +113,10 @@ impl std::error::Error for TableError {}
 pub struct TextTable {
     /// Cell tokens by row; no row is empty.
     cells: Vec<Vec<String>>,
-    /// Length of the longest row.
+    /// Length of the longest row, in `1..=GRID_MAX_CELLS`.
     cols: u32,
+    /// Number of rows, in `1..=GRID_MAX_CELLS`.
+    rows: u32,
 }
 
 impl TextTable {
@@ -116,19 +127,38 @@ impl TextTable {
     /// [`TableError`] if the table would not fit a grid or the text is
     /// over [`PASTE_MAX_BYTES`]; the text is never cut to fit.
     pub fn parse(text: &str) -> Result<Option<Self>, TableError> {
-        todo!()
+        if text.len() > PASTE_MAX_BYTES {
+            return Err(TableError::TooLong { bytes: text.len() });
+        }
+        let cells: Vec<Vec<String>> = text
+            .split(['\n', '\r'])
+            .map(line_tokens)
+            .filter(|row| !row.is_empty())
+            .collect();
+        let widest = cells.iter().map(Vec::len).max().unwrap_or(0);
+        let too_many = TableError::TooManyCells {
+            cols: widest,
+            rows: cells.len(),
+        };
+        let (Ok(cols), Ok(rows)) = (u32::try_from(widest), u32::try_from(cells.len())) else {
+            return Err(too_many);
+        };
+        if cols > GRID_MAX_CELLS || rows > GRID_MAX_CELLS {
+            return Err(too_many);
+        }
+        Ok((cols > 0).then_some(Self { cells, cols, rows }))
     }
 
     /// Number of columns.
     #[must_use]
     pub fn cols(&self) -> u32 {
-        todo!()
+        self.cols
     }
 
     /// Number of rows.
     #[must_use]
     pub fn rows(&self) -> u32 {
-        todo!()
+        self.rows
     }
 
     /// The grid with corner `corner` showing this table at `text_size`:
@@ -136,8 +166,45 @@ impl TextTable {
     /// is not finite and positive or the grid would not be finite.
     #[must_use]
     pub fn shape(&self, corner: Vec2, text_size: f32, style: Style, axes: bool) -> Option<Shape> {
-        todo!()
+        if !text_size.is_finite() || text_size <= 0.0 {
+            return None;
+        }
+        // Starts at one line: an empty formula has no height of its own.
+        let (mut width, mut height) = (0.0_f32, text_layout::LINE_HEIGHT * text_size);
+        let mut texts = Vec::new();
+        for (row, line) in (0_u32..).zip(&self.cells) {
+            for (col, token) in (0_u32..).zip(line) {
+                let token_box = text_layout::bounds(Vec2::ZERO, token, text_size);
+                width = width.max(token_box.width());
+                height = height.max(token_box.height());
+                let content = ShapeText::new(token.clone(), text_size)?;
+                texts.push(CellText { col, row, content });
+            }
+        }
+        // Text takes SHAPE_TEXT_FILL of a cell; digits get square cells.
+        let cell = Vec2::new(width.max(height), height) * SHAPE_TEXT_FILL.recip();
+        let shape = Shape::Grid {
+            a: corner,
+            b: corner + Vec2::new(cell.x * self.cols as f32, cell.y * self.rows as f32),
+            cols: self.cols,
+            rows: self.rows,
+            style,
+            // Numbered grids show their indices (ADR-T22-1).
+            axes,
+            fills: Vec::new(),
+            texts,
+        };
+        shape.is_finite().then_some(shape)
     }
+}
+
+/// The cell tokens of one line: runs of whitespace separate them, control
+/// characters inside one are dropped.
+fn line_tokens(line: &str) -> Vec<String> {
+    line.split_whitespace()
+        .map(|token| token.chars().filter(|ch| !ch.is_control()).collect())
+        .filter(|token: &String| !token.is_empty())
+        .collect()
 }
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.

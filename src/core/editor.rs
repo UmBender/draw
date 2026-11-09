@@ -26,10 +26,11 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
-use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
+use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
+use crate::core::tools::grid::{TableError, TextTable};
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -1024,7 +1025,7 @@ impl Editor {
 
     /// Runs an editing command (clipboard, selection) after cancelling the
     /// gesture, then drops selected ids that no longer exist.
-    fn run_edit(&mut self, edit: fn(&mut ToolCtx<'_>) -> bool) -> bool {
+    fn run_edit(&mut self, edit: impl FnOnce(&mut ToolCtx<'_>) -> bool) -> bool {
         let cancelled = self.cancel_gesture();
         let mut ctx = ToolCtx {
             doc: &mut self.doc,
@@ -1045,13 +1046,65 @@ impl Editor {
     /// Replaces the only selected text block by the grid of its text, as
     /// one undo step (ADR-T84-1). Returns whether a redraw is needed.
     fn grid_from_selection(&mut self) -> bool {
-        todo!()
+        let &[id] = self.selection.as_slice() else {
+            return false;
+        };
+        let Some(Shape::Text {
+            origin,
+            text,
+            size,
+            style,
+        }) = self.doc.get(id)
+        else {
+            return false;
+        };
+        let (origin, size, color) = (*origin, *size, style.color);
+        let parsed = TextTable::parse(text);
+        let Some(grid) = self.table_grid(parsed, origin, size, color) else {
+            return false;
+        };
+        self.run_edit(|ctx| {
+            let tx = tx_replace(ctx.doc, id, grid);
+            ctx.commit(tx)
+        })
     }
 
     /// Builds the grid of clipboard `text` at the cursor, as one undo step,
     /// and selects it (ADR-T84-1). Returns whether a redraw is needed.
     fn grid_from_clipboard(&mut self, text: &str) -> bool {
-        todo!()
+        if self.tools.text.edit.is_some() {
+            return false;
+        }
+        let corner = self.camera.screen_to_world(self.cursor);
+        let new_size = self.tools.text.new_size_px(self.style.width_px);
+        let size = self.camera.world_len(new_size);
+        let parsed = TextTable::parse(text);
+        let Some(grid) = self.table_grid(parsed, corner, size, self.style.color) else {
+            return false;
+        };
+        self.track_document(true, |ed| {
+            ed.run_edit(|ctx| clipboard::insert_copies(ctx, vec![grid], Vec2::ZERO))
+        })
+    }
+
+    /// The grid of a parsed table in the current line width, or `None`:
+    /// there is no table, or it was refused and the reason is now the
+    /// notice (ADR-T84-1).
+    fn table_grid(
+        &mut self,
+        parsed: Result<Option<TextTable>, TableError>,
+        corner: Vec2,
+        text_size: f32,
+        color: ColorId,
+    ) -> Option<Shape> {
+        let table = parsed
+            .inspect_err(|err| self.notice = Some(format!("grid from text refused: {err}")))
+            .ok()??;
+        let style = Style {
+            color,
+            width: self.camera.world_len(self.style.width_px),
+        };
+        table.shape(corner, text_size, style, self.style.helpers.numbering)
     }
 
     /// Handles a key while a text block is open: editing keys edit it,
