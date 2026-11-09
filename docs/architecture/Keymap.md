@@ -20,7 +20,7 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `R` | Rectangle |
 | `C` | Circle / ellipse |
 | `E` | Eraser (removes whole objects; pressed on a fill, clears fills instead — [[ADR-T21-2 Eraser mode chosen on press]]) |
-| `B` | Bucket (fills the clicked rectangle/ellipse, or one grid cell) |
+| `B` | Bucket (fills the clicked rectangle/ellipse or grid cell; a drag fills every cell of that grid it crosses — [[ADR-T88-1 Bucket drag previews cells and commits on release]]) |
 | `V` | Select / move |
 | `H` | Hand (pan) |
 | `G` | Grid (table of cells) |

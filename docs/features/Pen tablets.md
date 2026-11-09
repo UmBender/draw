@@ -104,8 +104,9 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
   Wayland backend gets both.
 - On native Wayland the mouse is ignored while the pen is in proximity
   of the window.
-- The takeover cannot undo a Bucket fill, which happens on the tip's
-  press.
+- The takeover cannot undo a Bucket fill of a rectangle or ellipse,
+  which happens on the tip's press. Grid cells commit on release, so a
+  takeover before the first move cancels them.
 - In pen mode a pen stroke ends up to 60 ms after the tip lifts, and two
   pen strokes less than 60 ms apart join with a straight segment.
 - miniquad cannot tell a pen from a mouse, so with a tablet attached the

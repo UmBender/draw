@@ -1,7 +1,7 @@
 ---
 id: T88
 title: Bucket drag across cells
-status: in-progress
+status: review
 wave: 51
 branch: task/T88-bucket-drag
 depends_on: []
@@ -75,11 +75,11 @@ in `src/core/editor.rs`. Design: [[ADR-T88-1 Bucket drag previews cells and comm
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T88): specify bucket drag across cells`
-- [ ] tests — `test(T88): add failing tests`
-- [ ] models — `feat(T88): add types`
-- [ ] behaviour — `feat(T88): implement`
-- [ ] quality — `chore(T88): pass clippy and rustfmt`
-- [ ] docs — `docs(T88): update the feature note`
+- [x] tests — `test(T88): add failing tests`
+- [x] models — `feat(T88): add types`
+- [x] behaviour — `feat(T88): implement`
+- [x] quality — `chore(T88): pass clippy and rustfmt`
+- [x] docs — `docs(T88): update the feature note`
 
 ## Learning path
 
@@ -92,3 +92,5 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: added `src/core/tools/mod.rs` to *Files owned*: the bucket now has gesture state, and the `[tools]` snapshot section is written there.
 - 2026-11-09 — UNATTENDED CHOICE: added `docs/features/Pen tablets.md` to *Files owned*: its limit says a Bucket fill happens on the tip's press, which is no longer true for grid cells.
 - 2026-11-09 — UNATTENDED CHOICE: a grid press commits on release, with the cells shown in the overlay meanwhile, as the eraser's clear drag does (ADR-T88-1).
+- 2026-11-09 — no fuzz or fixture change: no new event or command, and the snapshot's `bucket` record is only written during a drag, so `VERSION` stays 1.
+- 2026-11-09 — manual check left for the owner: drag a path across a DP table in the running app (not viewed here).

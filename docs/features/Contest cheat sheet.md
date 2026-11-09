@@ -20,7 +20,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `D` | Pen (smoothed) | `G` | Grid |
 | `W` | Line | `V` | Select / move |
 | `A` | Arrow | `E` | Eraser (on a fill: clears fills) |
-| `R` | Rectangle | `B` | Bucket (shape or grid cell) |
+| `R` | Rectangle | `B` | Bucket (shape, grid cell; drag across cells) |
 | `C` | Circle / ellipse | `H` | Hand (pan) |
 | `T` | Text (click, type, `Esc`) | | |
 
