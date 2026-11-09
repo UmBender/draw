@@ -194,6 +194,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ToggleToolbar,
         "Show / hide toolbar",
     ),
+    (
+        KeyChord::ctrl(Key::E),
+        Command::ExportView,
+        "Export the view to PNG",
+    ),
     // Helpers
     (
         KeyChord::bare(Key::X),

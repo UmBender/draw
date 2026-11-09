@@ -189,6 +189,9 @@ pub struct Editor {
     /// `doc_revision` of the latest change that was not a pure append of
     /// shapes on top (ADR-T24-3).
     doc_base_revision: u64,
+    /// `Ctrl+E` was pressed and the shell has not collected it yet
+    /// (ADR-T92-2). Not saved state: the shell collects it every frame.
+    export_asked: bool,
 }
 
 impl Default for Editor {
@@ -435,6 +438,7 @@ impl Editor {
             pressure,
             doc_revision: 0,
             doc_base_revision: 0,
+            export_asked: false,
         })
     }
 
@@ -462,6 +466,7 @@ impl Editor {
             pressure: None,
             doc_revision: 0,
             doc_base_revision: 0,
+            export_asked: false,
         }
     }
 
@@ -678,6 +683,7 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
+            Command::ExportView => todo!(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -819,6 +825,18 @@ impl Editor {
     #[must_use]
     pub fn toolbar_visible(&self) -> bool {
         self.toolbar_visible
+    }
+
+    /// Whether the view may be exported now: no text block is open and no
+    /// gesture is in progress (ADR-T92-2).
+    #[must_use]
+    pub fn can_export(&self) -> bool {
+        todo!()
+    }
+
+    /// Whether an export was asked for since the last call (ADR-T92-2).
+    pub fn take_export_request(&mut self) -> bool {
+        todo!()
     }
 
     /// Whether there is an action to undo.

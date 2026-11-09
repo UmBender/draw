@@ -1,7 +1,120 @@
+//! `Ctrl+E`: the view as a PNG file in the home directory (ADR-T92-1,
+//! ADR-T92-2).
+//!
+//! Everything here is pure or plain file I/O, so it is tested without a
+//! window; `shell::app` reads the pixels and calls [`view_pixels`] and
+//! [`save`]. Every failure is a value: the release build aborts on panic,
+//! which would lose the drawing.
+
+use std::error::Error;
+use std::ffi::OsStr;
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+use crate::shell::diag::Level;
+
+/// Why the view was not exported.
+#[derive(Debug)]
+pub enum ExportError {
+    /// `HOME` is unset or empty.
+    NoHome,
+    /// The pixels do not match the size they were said to have.
+    Pixels,
+    /// The PNG encoder failed.
+    Encode(png::EncodingError),
+    /// The file could not be created or written.
+    Write {
+        /// The file.
+        path: PathBuf,
+        /// The cause.
+        source: std::io::Error,
+    },
+}
+
+impl fmt::Display for ExportError {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Error for ExportError {}
+
+/// The `view` rectangle of a read-back `layer` of RGBA pixels, `margin`
+/// pixels in from every side: rows top-down, every pixel opaque.
+///
+/// # Errors
+///
+/// [`ExportError::Pixels`] if `layer` is not `layer_size` or the view with
+/// its margin does not fit in it.
+pub fn view_pixels(
+    _layer: &[u8],
+    _layer_size: (u32, u32),
+    _view: (u32, u32),
+    _margin: u32,
+) -> Result<Vec<u8>, ExportError> {
+    todo!()
+}
+
+/// `rgba` as the bytes of a PNG file of `width` × `height` pixels.
+///
+/// # Errors
+///
+/// [`ExportError::Pixels`] if `rgba` has the wrong length,
+/// [`ExportError::Encode`] if the encoder refuses the image.
+pub fn encode_png(_width: u32, _height: u32, _rgba: &[u8]) -> Result<Vec<u8>, ExportError> {
+    todo!()
+}
+
+/// The home directory named by the value of `HOME`.
+///
+/// # Errors
+///
+/// [`ExportError::NoHome`] if it is unset or empty.
+pub fn home_dir(_value: Option<&OsStr>) -> Result<PathBuf, ExportError> {
+    todo!()
+}
+
+/// Where an export taken at `unix_secs` goes: `draw-<UTC date>-<time>.png`
+/// in `home`, with `-<attempt>` before the extension unless `attempt` is 0.
+#[must_use]
+pub fn export_path(_home: &Path, _unix_secs: u64, _attempt: u32) -> PathBuf {
+    todo!()
+}
+
+/// Writes `bytes` to the first free [`export_path`] in `home`, never
+/// replacing a file. A write that fails half-way removes its partial file.
+///
+/// # Errors
+///
+/// [`ExportError::Write`] if no file could be created or written.
+pub fn write_new(_home: &Path, _unix_secs: u64, _bytes: &[u8]) -> Result<PathBuf, ExportError> {
+    todo!()
+}
+
+/// Encodes `rgba` of `size` pixels and writes it to the directory named by
+/// `home`, the value of `HOME`. Returns the new file.
+///
+/// # Errors
+///
+/// As [`home_dir`], [`encode_png`] and [`write_new`].
+pub fn save(
+    _rgba: &[u8],
+    _size: (u32, u32),
+    _home: Option<&OsStr>,
+    _unix_secs: u64,
+) -> Result<PathBuf, ExportError> {
+    todo!()
+}
+
+/// The diagnostics log's level and line for the outcome of an export.
+#[must_use]
+pub fn log_line(_result: &Result<PathBuf, ExportError>) -> (Level, String) {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::OsStr;
     use std::path::PathBuf;
 
     /// A fresh, empty directory of this test run.
