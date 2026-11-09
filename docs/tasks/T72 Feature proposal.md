@@ -1,7 +1,7 @@
 ---
 id: T72
 title: Feature proposal
-status: in-progress
+status: review
 wave: 33
 branch: docs/T72-feature-proposal
 depends_on: []
@@ -96,8 +96,8 @@ L 4) + risk to the goal (low 0, medium 1, high 2).
 
 ## Subtasks (one commit each)
 
-- [ ] research — read every feature note's *Limits*, list the ideas
-- [ ] proposal — `docs(T72): propose features for draw`
+- [x] research — read every feature note's *Limits*, list the ideas
+- [x] proposal — `docs(T72): propose features for draw`
 - [ ] decision — owner's verdicts recorded in the proposal, `status: done`
 
 ## Learning path
@@ -107,3 +107,14 @@ None: a docs-only task.
 ## Log
 
 - 2026-11-03 — note written at the owner's request.
+- 2026-11-09 — [[Feature proposal]] written: 35 ideas, ranked, with a
+  short list of five. The starting list was refined: the array strip
+  became part of C1, the graph and tree templates became C2, and six
+  ideas came from the *Limits* sections (E1–E4, F5, K1).
+- 2026-11-09 — AC-1 to AC-3 checked with a script over the proposal
+  (fields, links resolve, table matches the ideas, sorted, scores
+  re-derived, short list at most five): all pass. Binary measured at
+  1 966 008 bytes against the 2 MiB limit in `scripts/package.sh`; the
+  per-idea binary and frame-time costs are estimates.
+- Waiting for the owner's verdicts in the proposal's *Ranking* table.
+  The *decision* subtask and `status: done` follow them.
