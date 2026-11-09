@@ -2121,6 +2121,58 @@ mod tests {
     }
 
     #[test]
+    fn reset_numbering_restarts_at_the_first_number() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.apply(Command::ToggleZeroBased);
+        ed.style.helpers.next_number = 5;
+
+        // Act / Assert
+        assert!(ed.apply(Command::ResetNumbering));
+        assert_eq!(ed.helpers().next_number, 0);
+        assert!(!ed.apply(Command::ResetNumbering), "already at the start");
+        assert!(ed.helpers().zero_based, "the switch stays");
+    }
+
+    #[test]
+    fn zero_based_switch_flips_and_restarts_the_counter() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.style.helpers.next_number = 5;
+
+        // Act / Assert: to 0 …
+        assert!(ed.apply(Command::ToggleZeroBased));
+        assert!(ed.helpers().zero_based);
+        assert_eq!(ed.helpers().first_number(), 0);
+        assert_eq!(ed.helpers().next_number, 0);
+
+        // … and back to 1.
+        ed.style.helpers.next_number = 3;
+        assert!(ed.apply(Command::ToggleZeroBased));
+        assert!(!ed.helpers().zero_based);
+        assert_eq!(ed.helpers().first_number(), FIRST_NUMBER);
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+    }
+
+    #[test]
+    fn zero_based_switch_keeps_the_gesture() {
+        // Arrange: a drag in progress.
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Ellipse));
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+
+        // Act
+        let changed = ed.apply(Command::ToggleZeroBased);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(
+            ed.active_gesture(),
+            Some(ActiveGesture::Tool(Tool::Ellipse))
+        );
+    }
+
+    #[test]
     fn grid_dims_step_by_one() {
         let mut ed = Editor::new();
 
@@ -2208,6 +2260,65 @@ mod tests {
         // Assert
         assert_eq!(labels(&ed), vec![Some(1), Some(2), None, Some(3)]);
         assert_eq!(ed.helpers().next_number, 4);
+    }
+
+    #[test]
+    fn zero_based_nodes_count_from_zero() {
+        // Arrange
+        let mut ed = numbering_editor();
+        ed.apply(Command::ToggleZeroBased);
+
+        // Act
+        for x in [0.0, 100.0, 200.0] {
+            draw_node(&mut ed, x);
+        }
+
+        // Assert
+        assert_eq!(labels(&ed), vec![Some(0), Some(1), Some(2)]);
+        assert_eq!(ed.helpers().next_number, 3);
+    }
+
+    #[test]
+    fn zero_based_undo_gives_zero_back_and_stops_there() {
+        // Arrange: nodes 0 and 1.
+        let mut ed = numbering_editor();
+        ed.apply(Command::ToggleZeroBased);
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+        assert_eq!(ed.helpers().next_number, 2);
+
+        // Act / Assert: undo all the way, past the bottom.
+        ed.apply(Command::Undo);
+        assert_eq!(ed.helpers().next_number, 1);
+        ed.apply(Command::Undo);
+        assert_eq!(ed.helpers().next_number, 0);
+        assert_eq!(labels(&ed), Vec::<Option<u32>>::new());
+        ed.apply(Command::Undo);
+        assert_eq!(ed.helpers().next_number, 0);
+
+        // Redo takes the numbers again.
+        ed.apply(Command::Redo);
+        ed.apply(Command::Redo);
+        assert_eq!(labels(&ed), vec![Some(0), Some(1)]);
+        assert_eq!(ed.helpers().next_number, 2);
+    }
+
+    #[test]
+    fn one_based_undo_ignores_labels_left_at_zero() {
+        // Arrange: node 0, then back to one-based.
+        let mut ed = numbering_editor();
+        ed.apply(Command::ToggleZeroBased);
+        draw_node(&mut ed, 0.0);
+        ed.apply(Command::ToggleZeroBased);
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
+        assert_eq!(labels(&ed), vec![Some(0)], "existing labels stay");
+
+        // Act
+        ed.apply(Command::Undo);
+
+        // Assert
+        assert_eq!(labels(&ed), Vec::<Option<u32>>::new());
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER);
     }
 
     #[test]
@@ -2642,6 +2753,7 @@ mod tests {
             Command::ToggleGridSnap,
             Command::ToggleNumbering,
             Command::ResetNumbering,
+            Command::ToggleZeroBased,
             Command::GridCols(1),
             Command::GridRows(-1),
             Command::FitView,
@@ -4151,7 +4263,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_helpers_reserved_token_is_ignored() {
+    fn snapshot_helpers_last_token_is_zero_based() {
         // Arrange: a rectangle holding text and a filled grid cell.
         let named = rect(0.0, 0.0, 200.0, 100.0)
             .with_slot_text(TextSlot::Shape, ShapeText::new("n".to_owned(), 18.0));
@@ -4160,20 +4272,24 @@ mod tests {
         let ed = shape_text_editor(vec![named, g], Tool::Select);
         let text = ed.snapshot().to_text();
 
-        // Act / Assert: the reserved token is written as 0 …
+        // Act / Assert: one-based is written as 0, what the token always
+        // held while it was reserved (ADR-T86-1) …
         assert!(
             text.lines()
                 .any(|l| l.starts_with("helpers ") && l.ends_with(" 0")),
             "{text}"
         );
-        // … and either value loads the same editor.
-        for token in ["0", "1"] {
-            let loaded = Snapshot::parse(&with_helpers_last_token(&text, token));
-            let Ok(loaded) = loaded else {
-                panic!("token {token}: {loaded:?}");
-            };
-            assert_eq!(Editor::from_snapshot(loaded), ed, "token {token}");
-        }
+        let Ok(same) = Snapshot::parse(&with_helpers_last_token(&text, "0")) else {
+            panic!("token 0 is valid");
+        };
+        assert_eq!(Editor::from_snapshot(same), ed);
+        // … and 1 loads a zero-based editor.
+        let Ok(zero) = Snapshot::parse(&with_helpers_last_token(&text, "1")) else {
+            panic!("token 1 is valid");
+        };
+        let zero = Editor::from_snapshot(zero);
+        assert!(zero.helpers().zero_based);
+        assert_eq!(zero.helpers().first_number(), 0);
     }
 
     #[test]

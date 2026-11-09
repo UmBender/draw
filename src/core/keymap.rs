@@ -385,6 +385,7 @@ mod tests {
             (Key::G, SHIFT, Command::ToggleGridSnap),
             (Key::N, NONE, Command::ToggleNumbering),
             (Key::N, SHIFT, Command::ResetNumbering),
+            (Key::N, CTRL, Command::ToggleZeroBased),
             (Key::ArrowRight, NONE, Command::GridCols(1)),
             (Key::ArrowLeft, NONE, Command::GridCols(-1)),
             (Key::ArrowDown, NONE, Command::GridRows(1)),
@@ -454,6 +455,12 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_n_switches_the_first_number() {
+        assert_eq!(resolve(Key::N, CTRL), Some(Command::ToggleZeroBased));
+        assert_eq!(resolve(Key::N, CTRL_SHIFT), None);
+    }
+
+    #[test]
     fn left_hand_keys_select_pen_line_and_smart_snap() {
         assert_eq!(resolve(Key::D, NONE), Some(Command::SetTool(Tool::Pen)));
         assert_eq!(resolve(Key::W, NONE), Some(Command::SetTool(Tool::Line)));
@@ -511,7 +518,7 @@ mod tests {
     fn shift_chords_are_exact() {
         assert_eq!(KeyChord::shift(Key::G).mods, SHIFT);
         assert_eq!(resolve(Key::G, CTRL_SHIFT), None);
-        assert_eq!(resolve(Key::N, CTRL), None);
+        assert_eq!(resolve(Key::N, ALT), None);
         assert_eq!(resolve(Key::X, SHIFT), None);
         assert_eq!(resolve(Key::ArrowLeft, SHIFT), None);
     }

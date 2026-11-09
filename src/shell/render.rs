@@ -2707,4 +2707,26 @@ mod tests {
         assert_eq!(shown_label(&numbered), Some(4));
         assert_eq!(shown_label(&named), Some(4));
     }
+
+    #[test]
+    fn number_zero_is_shown_like_any_label() {
+        // Arrange
+        let node = Shape::Ellipse {
+            a: Vec2::ZERO,
+            b: Vec2::new(100.0, 100.0),
+            style: crate::core::shape::Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            fill: None,
+            label: Some(0),
+            text: None,
+        };
+        let area = Vec2::new(100.0, 100.0);
+
+        // Act / Assert: T86, zero is a number, not an absent label.
+        assert_eq!(shown_label(&node), Some(0));
+        assert!(label_size("0".len(), area).is_some());
+        assert_eq!(label_size("0".len(), area), label_size("7".len(), area));
+    }
 }

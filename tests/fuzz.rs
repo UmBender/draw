@@ -15,7 +15,6 @@ use draw::core::geom::Vec2;
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
-use draw::core::numbering::FIRST_NUMBER;
 use draw::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
@@ -753,13 +752,8 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
             }
         }
         check_shape_text(id, shape, step)?;
-        // Only Rect and Ellipse carry a label field; a label is a number ≥ 1.
-        if let Some(label) = shape.label() {
-            prop_assert!(
-                label >= FIRST_NUMBER,
-                "step {step}: shape {id:?} has label {label}"
-            );
-        }
+        // Any number is a valid label, 0 included: switching back to
+        // one-based leaves existing labels alone (ADR-T86-1).
     }
 
     let helpers = editor.helpers();
@@ -770,9 +764,10 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
         helpers.grid_rows
     );
     prop_assert!(
-        helpers.next_number >= FIRST_NUMBER,
-        "step {step}: numbering counter {}",
-        helpers.next_number
+        helpers.next_number >= helpers.first_number(),
+        "step {step}: numbering counter {} below first number {}",
+        helpers.next_number,
+        helpers.first_number()
     );
 
     let camera = editor.camera();
