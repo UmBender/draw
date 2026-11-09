@@ -1,7 +1,7 @@
 ---
 id: T72
 title: Feature proposal
-status: todo
+status: done
 wave: 33
 branch: docs/T72-feature-proposal
 depends_on: []
@@ -62,11 +62,27 @@ Grouped by area:
 - **AC-1** — `docs/proposals/Feature proposal.md` exists (from a new
   template in `docs/templates/Proposal.md`) and every idea has the
   fields listed in *Goal*.
+  *Check:* every `### ` idea heading is followed by the labels
+  **Problem**, **In use**, **Size**, **Cost**, **Risk**.
 - **AC-2** — Each idea links the feature note it extends or the limit it
   removes, and says whether it needs a new dependency (ADR-0014) or
   breaks a budget (ADR-T14-1, ADR-T24-5).
+  *Check:* every idea has **Extends** with a `[[wikilink]]` that resolves
+  to a note, **Dependency** and **Budgets**.
 - **AC-3** — The ideas are ranked (value ÷ cost), with a recommended
   short list of at most five for 1.5.0.
+  *Check:* the ranking table has one row per idea, sorted by score, each
+  score equal to value ÷ cost; the short list has at most five entries,
+  all of them in the table.
+
+This task produces a document, so the workflow's *Tests*, *Models*,
+*Behaviour* and *Quality* steps have no code to act on and are skipped.
+The checks above replace the tests. They are run from the scratch area
+and reported in the *Log*; `tests/` is not in *Files owned*.
+
+Scoring, so the ranking can be re-derived: **value** 1–5 for a
+competitive programmer during a contest; **cost** = size (S 1, M 2,
+L 4) + risk to the goal (low 0, medium 1, high 2).
 
 ## Out of scope
 
@@ -80,9 +96,9 @@ Grouped by area:
 
 ## Subtasks (one commit each)
 
-- [ ] research — read every feature note's *Limits*, list the ideas
-- [ ] proposal — `docs(T72): propose features for draw`
-- [ ] decision — owner's verdicts recorded in the proposal, `status: done`
+- [x] research — read every feature note's *Limits*, list the ideas
+- [x] proposal — `docs(T72): propose features for draw`
+- [x] decision — owner's verdicts recorded in the proposal, `status: done`
 
 ## Learning path
 
@@ -91,3 +107,15 @@ None: a docs-only task.
 ## Log
 
 - 2026-11-03 — note written at the owner's request.
+- 2026-11-09 — [[Feature proposal]] written: 35 ideas, ranked, with a
+  short list of five. The starting list was refined: the array strip
+  became part of C1, the graph and tree templates became C2, and six
+  ideas came from the *Limits* sections (E1–E4, F5, K1).
+- 2026-11-09 — AC-1 to AC-3 checked with a script over the proposal
+  (fields, links resolve, table matches the ideas, sorted, scores
+  re-derived, short list at most five): all pass. Binary measured at
+  1 966 008 bytes against the 2 MiB limit in `scripts/package.sh`; the
+  per-idea binary and frame-time costs are estimates.
+- 2026-11-09 — owner's verdicts recorded in the proposal: twelve ideas
+  accepted (T83–T94), the others `later` by default, and the binary limit
+  raised (T82).
