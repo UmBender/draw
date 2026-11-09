@@ -1,7 +1,7 @@
 ---
 id: T78
 title: Formula ink outside its text box
-status: todo
+status: in-progress
 wave: 34
 branch: fix/formula-ink-outside-box
 depends_on: [T74]
@@ -42,17 +42,41 @@ at random on this invariant.
   formula tokens grew a lot in T56–T71, so one of those commands may be
   what exposes it.
 
+## Cause (found 2026-11-08)
+
+The seed's block holds **no formula**: it is 419 characters of formula
+*source* with no `$`, so it is plain text.
+
+- Such a block is drawn from `text_layout::glyphs` (`col × ADVANCE`) and
+  its box is `source_bounds` (`cols × ADVANCE`). The drawn ink is inside
+  the box; nothing visible is wrong.
+- `text_layout::typeset`, which the fuzz invariant reads, runs the same
+  text through `tex::layout`, whose `Line::cell` *adds* `ADVANCE` once per
+  character. In `f32` that drifts: at column 418 the cell is at
+  250.80103 em instead of 250.8, past the box by more than the invariant's
+  `1e-3` em slack. The `y` of 1.0 in the report is the correct baseline.
+- With a `$` the box comes from the same sums as the ink, so they agree.
+
+The fix makes `typeset` of text without markup lay out on the cell grid
+the renderer uses. The box's definition does not change and no drawn glyph
+or rule moves (text with `$` still goes through `tex::layout` untouched),
+so no ADR is needed.
+
 ## Spec
 
-Draft; the spec step finalises it once the cause is known.
-
-- **AC-1** — The state from the seed draws no ink outside its box.
+- **AC-1** — The state from the seed has no typeset ink outside its box.
   *Test:* `core::editor::tests::regression_t78_formula_ink_outside_box`
   (lower-case id: `non_snake_case` fails under `-D warnings`), from
   `tests/snapshots/regressions/T78-formula-ink-outside-box.snap`.
-- **AC-2** — The smallest formula that shows the bug has a box that
-  contains its ink. *Test:* a named unit test beside the code at fault.
-- **AC-3** — The seed is committed in `tests/fuzz.proptest-regressions`
+- **AC-2** — The smallest case, a long line without markup, typesets on
+  the cells it is drawn at and inside its box.
+  *Test:* `core::text_layout::tests::typeset_of_long_plain_text_stays_on_the_cell_grid`,
+  `core::text_layout::tests::typeset_of_plain_text_has_the_cell_box`.
+- **AC-3** — Text with markup is laid out exactly as before: no glyph or
+  rule moves. *Test:*
+  `core::text_layout::tests::typeset_of_markup_is_the_tex_layout`, and
+  `scripts/e2e.sh` with no golden changed.
+- **AC-4** — The seed is committed in `tests/fuzz.proptest-regressions`
   and `scripts/check.sh --fuzz` is green with it. *Test:* the `tests/fuzz.rs`
   properties.
 
