@@ -1,7 +1,7 @@
 ---
 id: T89
 title: Growing brackets
-status: in-progress
+status: review
 wave: 51
 branch: task/T89-growing-brackets
 depends_on: []
@@ -53,12 +53,12 @@ Decisions: [[ADR-T89-1 Left and right brackets centred on the axis]]. All tests 
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T89): specify growing brackets`
-- [ ] tests — `test(T89): add failing tests`
-- [ ] models — `feat(T89): add types`
-- [ ] behaviour — `feat(T89): implement`
-- [ ] quality — `chore(T89): pass clippy and rustfmt`
-- [ ] docs — `docs(T89): update the feature note`
+- [x] spec — `docs(T89): specify growing brackets`
+- [x] tests — `test(T89): add failing tests`
+- [x] models — `feat(T89): add types`
+- [x] behaviour — `feat(T89): implement`
+- [x] quality — `chore(T89): pass clippy and rustfmt`
+- [x] docs — `docs(T89): update the feature note`
 
 ## Learning path
 
@@ -67,3 +67,7 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
+- 2026-11-09 — UNATTENDED CHOICE: raised the bracket scale cap for `\left`/`\right` to 12 (`LEFT_RIGHT_MAX_SCALE`), as the plan allows, because the 3 × of `\binom` is too short for tall content; `\binom` keeps 3 × ([[ADR-T89-1 Left and right brackets centred on the axis]]).
+- 2026-11-09 — UNATTENDED CHOICE: a pair is one ordinary atom rather than TeX's Inner class, so there is no thin space beside the brackets. Delimiters are exactly the spec's list plus `.`; `\vert`, `\lvert` and the like show in red after `\left`.
+- 2026-11-09 — the behaviour commit also corrects one test expectation from the test step: whitespace after a delimiter belongs to the body.
+- 2026-11-09 — `scripts/check.sh --fuzz` green. Nothing was viewed in the running app. Manual check for the owner: `$\left( \frac{a}{b} \right)^2$`.
