@@ -2017,11 +2017,11 @@ fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
                             within,
                             brace: false,
                         });
-                    } else if let Some(left) = open.pop_if(|top| !top.brace) {
-                        if left.within {
-                            rights[left.at] = Some(i);
-                            depth -= 1;
-                        }
+                    } else if let Some(left) = open.pop_if(|top| !top.brace)
+                        && left.within
+                    {
+                        rights[left.at] = Some(i);
+                        depth -= 1;
                     }
                 }
                 i = past.unwrap_or(after);
@@ -7503,7 +7503,7 @@ mod tests {
             // Assert
             let (pos, scale) = glyph(&b.ink, *ch);
             let (top, bottom) = ink_top_bottom(*ch, pos, scale);
-            assert!(approx_eq((top + bottom) / 2.0, -AXIS, EPS), "{src}");
+            assert!(approx_eq(f32::midpoint(top, bottom), -AXIS, EPS), "{src}");
             assert!(b.ascent >= -top - EPS && b.descent >= bottom - EPS, "{src}");
         }
     }
@@ -7551,7 +7551,12 @@ mod tests {
         );
         assert_eq!(
             math("x \\right)"),
-            vec![Node::Char('x'), space(), literal("\\right"), Node::Char(')')]
+            vec![
+                Node::Char('x'),
+                space(),
+                literal("\\right"),
+                Node::Char(')')
+            ]
         );
         assert_eq!(
             math("\\left(\\right)\\right)"),
@@ -7603,21 +7608,13 @@ mod tests {
             vec![
                 literal("\\left"),
                 Node::Char('('),
-                Node::Group(vec![
-                    Node::Char('x'),
-                    literal("\\right"),
-                    Node::Char(')'),
-                ]),
+                Node::Group(vec![Node::Char('x'), literal("\\right"), Node::Char(')'),]),
             ]
         );
         assert_eq!(
             math("{\\left(x}\\right)"),
             vec![
-                Node::Group(vec![
-                    literal("\\left"),
-                    Node::Char('('),
-                    Node::Char('x'),
-                ]),
+                Node::Group(vec![literal("\\left"), Node::Char('('), Node::Char('x'),]),
                 literal("\\right"),
                 Node::Char(')'),
             ]
@@ -7644,7 +7641,11 @@ mod tests {
     #[test]
     fn tex_parse_deep_left_right_is_literal_past_the_limit() {
         // Arrange: deeper than naive recursion could go.
-        let src = format!("${}x{}$", "\\left(".repeat(10_000), "\\right)".repeat(10_000));
+        let src = format!(
+            "${}x{}$",
+            "\\left(".repeat(10_000),
+            "\\right)".repeat(10_000)
+        );
 
         // Act
         let segments = parse(&src);
@@ -7662,11 +7663,7 @@ mod tests {
             let b = boxed(src);
 
             // Assert
-            let warned: String = glyphs(&b.ink)
-                .iter()
-                .filter(|g| g.3)
-                .map(|g| g.0)
-                .collect();
+            let warned: String = glyphs(&b.ink).iter().filter(|g| g.3).map(|g| g.0).collect();
             assert_eq!(warned, word, "{src}");
         }
     }
@@ -7676,11 +7673,7 @@ mod tests {
         // Act + Assert
         assert_eq!(
             math("\\left(\\left[x\\right]\\right)"),
-            vec![pair(
-                "(",
-                vec![pair("[", vec![Node::Char('x')], "]")],
-                ")"
-            )]
+            vec![pair("(", vec![pair("[", vec![Node::Char('x')], "]")], ")")]
         );
     }
 
@@ -7712,12 +7705,15 @@ mod tests {
         // Assert
         assert!(matches!(
             math(&format!("{bare}^2")).as_slice(),
-            [Node::Scripts { base: Some(base), .. }] if matches!(**base, Node::LeftRight { .. })
+            [Node::Scripts { base: Some(node), .. }] if matches!(**node, Node::LeftRight { .. })
         ));
         let (up, up_scale) = glyph(&sup.ink, '2');
         assert!(approx_eq(up.x, pair_box.width, EPS), "{up:?}");
         assert!(approx_eq(up_scale, SCRIPT_SCALE, EPS));
-        assert!(approx_eq(up.y, -(pair_box.ascent - SUP_DROP), EPS), "{up:?}");
+        assert!(
+            approx_eq(up.y, -(pair_box.ascent - SUP_DROP), EPS),
+            "{up:?}"
+        );
         let (down, _) = glyph(&sub.ink, '2');
         assert!(approx_eq(down.x, pair_box.width, EPS), "{down:?}");
         assert!(down.y > 0.0, "{down:?}");
