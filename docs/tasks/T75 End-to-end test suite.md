@@ -225,3 +225,6 @@ tutorial of T74.
   `no_keymap` panic is now [[T79 Wayland keyboard without a keymap]].
 - 2026-11-08 — owner watched a run of the suite while working: no window
   appeared on the desktop. AC-6 is still open.
+- 2026-11-08 — first nightly run (42541491862): the 5 screenshot cases
+  failed on the mouse cursor only. AC-6 waits on
+  [[T80 Mouse cursor in end-to-end screenshots]].
