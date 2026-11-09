@@ -1,7 +1,7 @@
 ---
 id: T82
 title: Raise the binary size limit
-status: todo
+status: in-progress
 wave: 51
 branch: chore/T82-binary-limit
 depends_on: []
@@ -26,10 +26,8 @@ The shipped binary may be up to 20 MiB (20 971 520 bytes) instead of 2 MiB. The 
 
 ## Spec
 
-The spec step names the test for each criterion.
-
-- **AC-1** — `scripts/package.sh` sets `max_binary_bytes=$((20 * 1024 * 1024))`. *Test:* a new test in `tests/packaging.rs` that reads the script.
-- **AC-2** — `ADR-T82-1` records the new limit, amends ADR-T29-1, and says what still bounds size: start-up time, and the separate per-font guards, which stay.
+- **AC-1** — `scripts/package.sh` sets `max_binary_bytes=$((20 * 1024 * 1024))`. *Test:* `package_script_binary_limit_is_20_mib` in `tests/packaging.rs`, which reads the script.
+- **AC-2** — `ADR-T82-1` records the new limit, amends ADR-T29-1, and says what still bounds size: start-up time, and the separate per-font guards, which stay. *Test:* `binary_limit_adr_amends_t29_1_and_names_what_bounds_size` in `tests/packaging.rs`, which reads the ADR.
 
 ## Out of scope
 
@@ -45,7 +43,7 @@ The spec step names the test for each criterion.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T82): specify raise the binary size limit`
+- [x] spec — `docs(T82): specify raise the binary size limit`
 - [ ] tests — `test(T82): add failing tests`
 - [ ] models — `feat(T82): add types`
 - [ ] behaviour — `feat(T82): implement`
