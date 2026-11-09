@@ -12,11 +12,35 @@
 //! [`Shape::Grid`]: crate::core::shape::Shape::Grid
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
-use crate::core::document::tx_replace;
+use crate::core::document::{Document, ShapeId, tx_replace};
+use crate::core::geom::Vec2;
+use crate::core::shape::Shape;
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
-/// Gesture state of this tool: the bucket acts on press and keeps none.
+/// A drag across the cells of one grid (ADR-T88-1).
+#[derive(Debug, Clone, PartialEq)]
+struct Drag {
+    /// The grid pressed; the only one this drag paints.
+    id: ShapeId,
+    /// Last pointer position, in screen pixels.
+    last: Vec2,
+    /// The grid with the cells painted so far.
+    painted: Shape,
+}
+
+/// Gesture state of this tool: the drag in progress, if any.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct State;
+pub struct State {
+    /// `None` when idle, and for a press that fills a whole shape.
+    drag: Option<Drag>,
+}
+
+/// The cells of `grid` that the world segment `from → to` passes through,
+/// in order, each one step from the one before.
+fn cells_along(grid: &Shape, from: Vec2, to: Vec2) -> Vec<(u32, u32)> {
+    let _ = (grid, from, to);
+    todo!()
+}
 
 /// Handles one pointer event of a gesture. Returns whether a redraw is needed.
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
@@ -57,6 +81,38 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 pub fn cancel(state: &mut State) -> bool {
     let _ = state;
     false
+}
+
+impl State {
+    /// `bucket <last> <id> <painted grid>`, only while a drag runs
+    /// (snapshots, ADR-T88-1).
+    pub(crate) fn write_snapshot(&self, w: &mut Writer) {
+        if let Some(drag) = &self.drag {
+            w.record("bucket", |l| {
+                l.put(&drag.last).put(&drag.id).put(&drag.painted);
+            });
+        }
+    }
+
+    /// Reads what [`State::write_snapshot`] wrote: the id must be in `doc`
+    /// and the shape a grid.
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
+        if r.peek_key() != Some("bucket") {
+            return Ok(Self::default());
+        }
+        let mut t = r.record("bucket")?;
+        let last: Vec2 = t.get()?;
+        let id: ShapeId = t.get()?;
+        let painted: Shape = t.get()?;
+        t.end()?;
+        check_ids(&t, doc, &[id])?;
+        if !matches!(painted, Shape::Grid { .. }) {
+            return Err(t.error("the bucket can only drag across a grid".to_owned()));
+        }
+        Ok(Self {
+            drag: Some(Drag { id, last, painted }),
+        })
+    }
 }
 
 #[cfg(test)]
