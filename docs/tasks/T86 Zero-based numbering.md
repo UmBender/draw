@@ -1,7 +1,7 @@
 ---
 id: T86
 title: Zero-based numbering
-status: in-progress
+status: review
 wave: 51
 branch: task/T86-zero-based
 depends_on: []
@@ -67,12 +67,12 @@ Node numbers can start at 0, to match 0-indexed code. (idea E2 of [[Feature prop
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T86): specify zero-based numbering`
-- [ ] tests — `test(T86): add failing tests`
-- [ ] models — `feat(T86): add types`
-- [ ] behaviour — `feat(T86): implement`
-- [ ] quality — `chore(T86): pass clippy and rustfmt`
-- [ ] docs — `docs(T86): update the feature note`
+- [x] spec — `docs(T86): specify zero-based numbering`
+- [x] tests — `test(T86): add failing tests`
+- [x] models — `feat(T86): add types`
+- [x] behaviour — `feat(T86): implement`
+- [x] quality — `chore(T86): pass clippy and rustfmt`
+- [x] docs — `docs(T86): update the feature note`
 
 ## Learning path
 
@@ -83,3 +83,7 @@ None: it extends an existing area.
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
 - 2026-11-09 — UNATTENDED CHOICE: added `src/shell/render.rs` to *Files owned* for one AC-5 test, because only the shell decides which label is drawn.
 - 2026-11-09 — UNATTENDED CHOICE: the setting takes over the reserved seventh `helpers` snapshot token instead of bumping `VERSION`, so every fixture stays byte-identical ([[ADR-T86-1 Zero-based numbering switch]]).
+- 2026-11-09 — UNATTENDED CHOICE: `Helpers` allows `clippy::struct_excessive_bools`: four independent key switches are not a state machine. `Editor::undo` was split out of `execute` for the line limit.
+- 2026-11-09 — The fuzz harness reaches `Ctrl+N` without a new event: `arb_command_burst` draws from `BINDINGS`. The label check in `tests/fuzz.rs` is gone because every `u32` is now a valid label; the counter check now compares with `first_number()`.
+- 2026-11-09 — The AC-5 tests guard behaviour that already held: nothing treats label 0 specially.
+- 2026-11-09 — `scripts/check.sh` green. Manual check left for the owner: draw three nodes starting at 0.
