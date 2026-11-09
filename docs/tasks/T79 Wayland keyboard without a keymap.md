@@ -1,11 +1,11 @@
 ---
 id: T79
 title: Wayland keyboard without a keymap
-status: todo
+status: in-progress
 wave: 35
 branch: fix/wayland-no-keymap
 depends_on: [T75]
-adrs: []
+adrs: ["[[ADR-T79-1 Ignore an unusable Wayland keymap]]"]
 feature: "[[Native Wayland]]"
 tutorial: ""
 tags: [task]
@@ -50,16 +50,38 @@ arrived must not crash either; check that path in the spec step.
 
 ## Spec
 
-Draft; the spec step finalises it.
+Settled in [[ADR-T79-1 Ignore an unusable Wayland keymap]]. A keymap is
+unusable if the format is not `XKB_V1`, the size is 0, `mmap` fails, or
+libxkbcommon returns null for the keymap or the state.
 
 - **AC-1** — draw survives a `no_keymap` event in a real session, and
   typing works once a keymap arrives. *Test:* e2e case
-  `tests/e2e/regression-T79-no-keymap/`, reproducing the `wtype` sequence
-  above.
+  `tests/e2e/regression-T79-no-keymap/`, with a new `end-keyboard`
+  directive that ends the seat's active keyboard, reproducing the `wtype`
+  sequence above (harness: `parse_input_end_keyboard_is_one_step`). The
+  case uses snapshots only and passes either way on a sway that sends no
+  `no_keymap`.
 - **AC-2** — A failed keymap keeps the previous one: keys typed afterwards
-  still translate correctly. *Test:* the same case's final snapshot.
-- **AC-3** — The `fd` is closed on every path. *Test:* review in the task
-  log, unless the spec finds a cheap automatic check.
+  still translate correctly. *Test:* the same case's final snapshot shows
+  the text typed after the swap. A compositor sends no key between
+  `no_keymap` and the next keymap, so a test cannot see the old pair in
+  use; that the new pair is built before the old is released is a review
+  item in the *Log*.
+- **AC-3** — The `fd` is closed and the mapping released on every path.
+  *Test:* review in the *Log*. Counting `/proc/<pid>/fd` around a swap was
+  rejected: the renderer's own descriptors vary, so it would be flaky.
+- **AC-4** — An ignored keymap is recorded with its format and size and
+  logged at `info`, not as an anomaly. *Tests:*
+  `backend_event_maps_every_kind`, `every_record_line_fits_96_bytes`,
+  `keymap_ignored_line_names_format_and_size`,
+  `keymap_ignored_is_logged_at_info`.
+- **AC-5** — Keys, modifiers, leave and key repeat before any keymap has
+  arrived do not touch a null keymap or state. *Test:* review in the
+  *Log*: every compositor sends a keymap first, so no session reaches this
+  path.
+
+The workflow's *Models* step is skipped: the only new type is one enum
+variant, which has no use without the behaviour.
 
 ## Out of scope
 
@@ -75,10 +97,12 @@ Draft; the spec step finalises it.
 - `tests/e2e/regression-T79-no-keymap/` (new), `tests/e2e.rs` (only what
   the case needs)
 - `docs/decisions/` (an ADR for the vendored change)
+- `vendor/miniquad/src/diag.rs`, `src/shell/diag/` (only the new event;
+  added by the owner in the batch plan of 2026-11-08)
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T79): specify handling of a missing keymap`
+- [x] spec — `docs(T79): specify handling of a missing keymap`
 - [ ] regression — `test(T79): add regression test for a missing keymap`
 - [ ] behaviour — `fix(T79): survive a Wayland keyboard without a keymap`
 - [ ] quality — `chore(T79): pass clippy and rustfmt`
