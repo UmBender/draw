@@ -531,7 +531,40 @@ impl Shape {
     /// stop being finite.
     #[must_use]
     pub fn grid_stepped(&self, cols: i32, rows: i32) -> Option<Self> {
-        todo!("resize {cols} × {rows}")
+        let Self::Grid {
+            cols: old_cols,
+            rows: old_rows,
+            ..
+        } = *self
+        else {
+            return None;
+        };
+        let (new_cols, new_rows) = (stepped_cells(old_cols, cols), stepped_cells(old_rows, rows));
+        if (new_cols, new_rows) == (old_cols, old_rows) {
+            return None;
+        }
+        let mut stepped = self.clone();
+        if let Self::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            fills,
+            texts,
+            ..
+        } = &mut stepped
+        {
+            let shift_col = step_axis(&mut a.x, &mut b.x, old_cols, new_cols);
+            let shift_row = step_axis(&mut a.y, &mut b.y, old_rows, new_rows);
+            (*cols, *rows) = (new_cols, new_rows);
+            let keep = |col: &mut u32, row: &mut u32| {
+                move_cell(col, shift_col, new_cols) && move_cell(row, shift_row, new_rows)
+            };
+            fills.retain_mut(|f| keep(&mut f.col, &mut f.row));
+            texts.retain_mut(|t| keep(&mut t.col, &mut t.row));
+        }
+        let bounds = stepped.bounds();
+        (stepped.is_finite() && bounds.min.is_finite() && bounds.max.is_finite()).then_some(stepped)
     }
 
     /// The cell fills of a grid, sorted by `(row, col)`; empty for other
@@ -867,6 +900,44 @@ pub fn grid_cell_rect(a: Vec2, b: Vec2, cols: u32, rows: u32, col: u32, row: u32
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.
 fn clamp_cells(n: u32) -> u32 {
     n.clamp(1, GRID_MAX_CELLS)
+}
+
+/// The grid dimension `cells` plus `delta`, clamped to
+/// `1..=GRID_MAX_CELLS`.
+fn stepped_cells(cells: u32, delta: i32) -> u32 {
+    let stepped = (i64::from(cells) + i64::from(delta)).clamp(1, i64::from(GRID_MAX_CELLS));
+    u32::try_from(stepped).unwrap_or(GRID_MAX_CELLS)
+}
+
+/// Changes one axis of a grid from `old` to `new` cells of the same size,
+/// moving the end with the larger coordinate (right or bottom). Returns how
+/// far the cell indices along this axis shift, which is non-zero only when
+/// that end is the one indices count from, `start`.
+fn step_axis(start: &mut f32, end: &mut f32, old: u32, new: u32) -> i64 {
+    if old == new {
+        return 0;
+    }
+    let (low, high) = (start.min(*end), start.max(*end));
+    let moved = low + (high - low) / old as f32 * new as f32;
+    if *start > *end {
+        *start = moved;
+        i64::from(new) - i64::from(old)
+    } else {
+        *end = moved;
+        0
+    }
+}
+
+/// Shifts the cell index `index` by `shift`. Returns whether it is still
+/// one of the `cells` cells of its axis.
+fn move_cell(index: &mut u32, shift: i64, cells: u32) -> bool {
+    match u32::try_from(i64::from(*index) + shift) {
+        Ok(moved) if moved < cells => {
+            *index = moved;
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Arrow head triangle `[tip, left, right]` for an arrow from `a` to `b`.

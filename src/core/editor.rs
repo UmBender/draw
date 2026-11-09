@@ -678,6 +678,13 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
+            // The arrows act on the one selected grid (ADR-T85-1).
+            Command::GridCols(delta) if self.resizable_grid().is_some() => {
+                self.resize_selected_grid(delta, 0)
+            }
+            Command::GridRows(delta) if self.resizable_grid().is_some() => {
+                self.resize_selected_grid(0, delta)
+            }
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -1233,13 +1240,27 @@ impl Editor {
     /// The id and shape of the grid the arrow keys resize: the Select tool
     /// is active and that grid is the whole selection (ADR-T85-1).
     fn resizable_grid(&self) -> Option<(ShapeId, &Shape)> {
-        todo!()
+        let [id] = *self.selection.as_slice() else {
+            return None;
+        };
+        let shape = self.doc.get(id)?;
+        (self.tool == Tool::Select && matches!(shape, Shape::Grid { .. })).then_some((id, shape))
     }
 
     /// Adds `cols` columns and `rows` rows to the [`Self::resizable_grid`]
-    /// as one undo step. Returns whether anything changed.
+    /// as one undo step, cancelling the gesture in progress first. A step
+    /// that changes nothing leaves the gesture alone. Returns whether
+    /// anything changed.
     fn resize_selected_grid(&mut self, cols: i32, rows: i32) -> bool {
-        todo!("resize by {cols} × {rows}")
+        let stepped = self
+            .resizable_grid()
+            .and_then(|(id, shape)| Some((id, shape.grid_stepped(cols, rows)?)));
+        let Some((id, stepped)) = stepped else {
+            return false;
+        };
+        self.cancel_gesture();
+        let tx = tx_replace(&self.doc, id, stepped);
+        self.history.commit(&mut self.doc, tx).is_ok()
     }
 
     /// Removes selected ids that are no longer in the document.
@@ -1268,6 +1289,8 @@ fn edits_document(command: Command) -> bool {
             | Command::Duplicate
             | Command::DeleteSelection
             | Command::ClearAll
+            | Command::GridCols(_)
+            | Command::GridRows(_)
     )
 }
 

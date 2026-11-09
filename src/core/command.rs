@@ -99,9 +99,13 @@ pub enum Command {
     /// Restart auto-numbering at
     /// [`FIRST_NUMBER`](crate::core::numbering::FIRST_NUMBER).
     ResetNumbering,
-    /// Add this many columns to new grids (clamped, live during a drag).
+    /// Add this many columns to new grids (clamped, live during a drag), or
+    /// to the grid that is the whole selection under the Select tool
+    /// (ADR-T85-1).
     GridCols(i32),
-    /// Add this many rows to new grids (clamped, live during a drag).
+    /// Add this many rows to new grids (clamped, live during a drag), or
+    /// to the grid that is the whole selection under the Select tool
+    /// (ADR-T85-1).
     GridRows(i32),
 }
 
