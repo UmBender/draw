@@ -2061,8 +2061,8 @@ impl<'a> Parser<'a> {
             return None;
         }
         // A trailing `\\` adds no row, so it does not count either.
-        let blank = self.chars[cell..end].iter().all(|ch| ch.is_whitespace())
-            && rows.last()?.len() == 1;
+        let blank =
+            self.chars[cell..end].iter().all(|ch| ch.is_whitespace()) && rows.last()?.len() == 1;
         (rows.len() - usize::from(blank) <= limit).then_some(rows)
     }
 
@@ -2937,9 +2937,9 @@ fn environment_box(name: &str, rows: &[Vec<Vec<Node>>], scale: f32, style: Style
 
 /// `rows` without a last row that is blank, as after a trailing `\\`.
 fn shown_rows(rows: &[Vec<Vec<Node>>]) -> &[Vec<Vec<Node>>] {
-    let blank = rows.last().is_some_and(|row| {
-        matches!(row.as_slice(), [cell] if cell.iter().all(|n| matches!(n, Node::Space(_))))
-    });
+    let blank = rows.last().is_some_and(
+        |row| matches!(row.as_slice(), [cell] if cell.iter().all(|n| matches!(n, Node::Space(_)))),
+    );
     &rows[..rows.len() - usize::from(blank)]
 }
 
@@ -8274,10 +8274,7 @@ mod tests {
         let got = math(&matrix_of(&format!(r"{}&c", matrix_of(r"a&b\\d"))));
 
         // Assert
-        let inner = env_node(
-            "matrix",
-            vec![vec![cell('a'), cell('b')], vec![cell('d')]],
-        );
+        let inner = env_node("matrix", vec![vec![cell('a'), cell('b')], vec![cell('d')]]);
         assert_eq!(
             got,
             vec![env_node("matrix", vec![vec![vec![inner], cell('c')]])]
@@ -8339,19 +8336,12 @@ mod tests {
         let b = boxed(&matrix_of(r"x&1\\xxx&1"));
 
         // Assert
-        let (wide, narrow, one) = (
-            boxed("xxx").width,
-            boxed("x").width,
-            boxed("1").width,
-        );
+        let (wide, narrow, one) = (boxed("xxx").width, boxed("x").width, boxed("1").width);
         let g = glyphs(&b.ink);
         assert_eq!(glyph_chars(&b), [X, '1', X, X, X, '1']);
         assert!(approx_eq(g[0].1.x, (wide - narrow) / 2.0, EPS), "{g:?}");
         assert!(approx_eq(g[2].1.x, 0.0, EPS), "{g:?}");
-        assert!(
-            approx_eq(g[1].1.x, wide + ARRAY_COLUMN_GAP, EPS),
-            "{g:?}"
-        );
+        assert!(approx_eq(g[1].1.x, wide + ARRAY_COLUMN_GAP, EPS), "{g:?}");
         assert!(approx_eq(g[5].1.x, wide + ARRAY_COLUMN_GAP, EPS), "{g:?}");
         assert!(approx_eq(b.width, wide + ARRAY_COLUMN_GAP + one, EPS));
     }
@@ -8362,19 +8352,11 @@ mod tests {
         let b = boxed(&matrix_of(r"1&1\\11&1\\1&111"));
 
         // Assert
-        let (first, last, one) = (
-            boxed("11").width,
-            boxed("111").width,
-            boxed("1").width,
-        );
+        let (first, last, one) = (boxed("11").width, boxed("111").width, boxed("1").width);
         let g = glyphs(&b.ink);
         assert!(approx_eq(b.width, first + ARRAY_COLUMN_GAP + last, EPS));
         assert!(
-            approx_eq(
-                g[1].1.x,
-                first + ARRAY_COLUMN_GAP + (last - one) / 2.0,
-                EPS
-            ),
+            approx_eq(g[1].1.x, first + ARRAY_COLUMN_GAP + (last - one) / 2.0, EPS),
             "{g:?}"
         );
     }
@@ -8525,7 +8507,12 @@ mod tests {
             "{parsed:?}"
         );
         let (pos, _) = glyph(&b.ink, '2');
-        assert!(approx_eq(pos.x, base.width, EPS), "{} {}", pos.x, base.width);
+        assert!(
+            approx_eq(pos.x, base.width, EPS),
+            "{} {}",
+            pos.x,
+            base.width
+        );
     }
 
     #[test]
@@ -8543,10 +8530,7 @@ mod tests {
                 literal(r"\end{foo}"),
             ]
         );
-        assert_eq!(
-            math(r"\begin {foo}"),
-            vec![literal(r"\begin {foo}")]
-        );
+        assert_eq!(math(r"\begin {foo}"), vec![literal(r"\begin {foo}")]);
         let src = r"$\begin {foo}a&b\\c\end  {foo}$";
         assert_eq!(print(&parse(src)), src);
     }
@@ -8648,14 +8632,18 @@ mod tests {
             // Assert
             assert_eq!(got.first(), Some(&literal(r"\begin{matrix}")));
             assert_eq!(got.last(), Some(&literal(r"\end{matrix}")));
-            assert_eq!(print(&[Segment::Math(got)]), format!("${}$", matrix_of(&body)));
+            assert_eq!(
+                print(&[Segment::Math(got)]),
+                format!("${}$", matrix_of(&body))
+            );
         }
     }
 
     #[test]
     fn tex_parse_deep_environments_are_literal_past_the_limit() {
         // Arrange
-        let src = r"\begin{matrix}".repeat(MAX_DEPTH + 8) + "x" + &r"\end{matrix}".repeat(MAX_DEPTH + 8);
+        let src =
+            r"\begin{matrix}".repeat(MAX_DEPTH + 8) + "x" + &r"\end{matrix}".repeat(MAX_DEPTH + 8);
 
         // Act
         let mut nodes = math(&src);
@@ -8731,6 +8719,6 @@ mod tests {
         let g = glyphs(&b.ink);
         assert_eq!(glyph_chars(&b), ['(', ')']);
         assert!(g.iter().all(|g| approx_eq(g.2, 1.0, EPS)), "{g:?}");
-        assert!(plain.ink.is_empty());
+        assert_eq!(plain.ink.len(), 0);
     }
 }
