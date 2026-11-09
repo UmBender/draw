@@ -552,6 +552,34 @@ fn load_fonts() {
     }
 }
 
+/// The editor to start with: `editor`, unless `launch` or the environment
+/// names a snapshot that loads (ADR-T94-1).
+fn restored_editor(editor: Editor, launch: &Launch, state_dir: Option<&std::path::Path>) -> Editor {
+    // A snapshot replaces the whole state, its switches included (T74).
+    let (snapshot, error) = if *launch == Launch::Normal {
+        startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
+            std::fs::read_to_string(path)
+        })
+    } else {
+        autosave::recover(launch, state_dir)
+    };
+    if let Some(error) = error {
+        eprintln!("draw: {error}");
+        diag::log(Level::Error, &error);
+    }
+    if let Some(snapshot) = snapshot {
+        let restored = Editor::from_snapshot(snapshot);
+        let source = if *launch == Launch::Normal {
+            SNAPSHOT_ENV
+        } else {
+            "autosave"
+        };
+        diag::log(Level::Info, &format!("started from {source} snapshot"));
+        return restored;
+    }
+    editor
+}
+
 /// Runs the application until the window is closed. `launch` says whether
 /// to start from an autosave (ADR-T94-1).
 pub async fn run(launch: Launch) {
@@ -576,27 +604,7 @@ pub async fn run(launch: Launch) {
         std::env::var_os("XDG_STATE_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
     );
-    // A snapshot replaces the whole state, its switches included (T74).
-    let (snapshot, error) = if launch == Launch::Normal {
-        startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
-            std::fs::read_to_string(path)
-        })
-    } else {
-        autosave::recover(&launch, state_dir.as_deref())
-    };
-    if let Some(error) = error {
-        eprintln!("draw: {error}");
-        diag::log(Level::Error, &error);
-    }
-    if let Some(snapshot) = snapshot {
-        editor = Editor::from_snapshot(snapshot);
-        let source = if launch == Launch::Normal {
-            SNAPSHOT_ENV
-        } else {
-            "autosave"
-        };
-        diag::log(Level::Info, &format!("started from {source} snapshot"));
-    }
+    editor = restored_editor(editor, &launch, state_dir.as_deref());
     let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
