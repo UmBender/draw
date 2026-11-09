@@ -669,11 +669,92 @@ fn arb_grid_drag() -> impl Strategy<Value = Vec<InputEvent>> {
         })
 }
 
+/// A resize session (T91): draw a box at a known place, select it, drag
+/// one of its handles with any modifiers (released or not) and press the
+/// scale keys. Handles sit about 5 px outside the drawn corners.
+fn arb_resize_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    let none = Modifiers::NONE;
+    let (left, top) = (Vec2::new(300.0, 300.0), Vec2::new(500.0, 420.0));
+    let corners = vec![
+        Vec2::new(left.x - 5.0, left.y - 5.0),
+        Vec2::new(top.x + 5.0, left.y - 5.0),
+        Vec2::new(top.x + 5.0, top.y + 5.0),
+        Vec2::new(left.x - 5.0, top.y + 5.0),
+    ];
+    (
+        select(vec![Key::R, Key::C, Key::G, Key::W, Key::D]),
+        select(corners),
+        arb_mods(),
+        prop::collection::vec(arb_pos(), 0..6),
+        any::<bool>(),
+        prop::collection::vec(any::<bool>(), 0..12),
+    )
+        .prop_map(move |(tool, handle, mods, steps, release, grows)| {
+            let left_button = PointerButton::Left;
+            let mut events = vec![
+                InputEvent::KeyDown {
+                    key: tool,
+                    mods: none,
+                },
+                InputEvent::PointerDown {
+                    pos: left,
+                    button: left_button,
+                    mods: none,
+                },
+                InputEvent::PointerMove {
+                    pos: top,
+                    mods: none,
+                },
+                InputEvent::PointerUp {
+                    pos: top,
+                    button: left_button,
+                    mods: none,
+                },
+                InputEvent::KeyDown {
+                    key: Key::V,
+                    mods: none,
+                },
+                InputEvent::KeyDown {
+                    key: Key::A,
+                    mods: Modifiers { ctrl: true, ..none },
+                },
+                InputEvent::PointerDown {
+                    pos: handle,
+                    button: left_button,
+                    mods,
+                },
+            ];
+            let mut last = handle;
+            for pos in steps {
+                last = pos;
+                events.push(InputEvent::PointerMove { pos, mods });
+            }
+            if release {
+                events.push(InputEvent::PointerUp {
+                    pos: last,
+                    button: left_button,
+                    mods,
+                });
+            }
+            let alt = Modifiers { alt: true, ..none };
+            events.extend(grows.into_iter().map(|grow| InputEvent::KeyDown {
+                key: if grow {
+                    Key::BracketRight
+                } else {
+                    Key::BracketLeft
+                },
+                mods: alt,
+            }));
+            events
+        })
+}
+
 /// A session of 1..=500 events, biased towards realistic gestures.
 fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
     let chunk = prop_oneof![
         6 => arb_gesture(),
         1 => arb_grid_drag(),
+        1 => arb_resize_session(),
         3 => arb_command_burst(),
         1 => arb_space_drag(),
         2 => arb_text_session(),
@@ -1098,6 +1179,37 @@ fn session_strategy_respects_length_bounds() {
         // Assert
         assert!((1..=MAX_SESSION_LEN).contains(&session.len()));
     }
+}
+
+/// The resize sessions must really change the size of what they draw.
+#[test]
+fn resize_sessions_resize_shapes() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_resize_session();
+    let mut resized = 0;
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_resize_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        let mut sizes: Vec<(f32, f32)> = Vec::new();
+        for event in tree.current() {
+            editor.handle(event);
+            if let Some((_, shape)) = editor.document().shapes().next() {
+                let b = shape.geometry_bounds();
+                if sizes.last() != Some(&(b.width(), b.height())) {
+                    sizes.push((b.width(), b.height()));
+                }
+            }
+        }
+        resized += usize::from(sizes.len() > 1);
+    }
+
+    // Assert
+    assert!(resized >= 20, "sessions that resized: {resized}/200");
 }
 
 #[test]

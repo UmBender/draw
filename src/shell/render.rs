@@ -31,6 +31,7 @@ use crate::core::shape::{
 use crate::core::snap::GRID_STEP;
 use crate::core::tex::Ink;
 use crate::core::text_layout::{bounds, glyphs, has_markup, typeset};
+use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
@@ -357,7 +358,7 @@ pub const MAX_SEGMENTS: u16 = 256;
 pub const SELECTION_WIDTH_PX: f32 = 1.0;
 
 /// Gap in pixels between the selected shapes' bounds and the selection outline.
-pub const SELECTION_PAD_PX: f32 = 4.0;
+pub const SELECTION_PAD_PX: f32 = select::SELECTION_PAD_PX;
 
 /// Labels smaller than this many pixels on screen are not drawn.
 pub const LABEL_MIN_PX: f32 = 8.0;
@@ -993,6 +994,30 @@ pub fn draw_selection(bounds: Aabb, camera: &Camera) {
         SELECTION_WIDTH_PX,
         hex_color(theme::SELECTION_OUTLINE),
     );
+    batch.finish();
+}
+
+/// The square of the resize handle centred at screen `center`, the same
+/// size at every zoom (ADR-T91-1).
+#[must_use]
+pub fn selection_handle_rect(center: Vec2) -> Aabb {
+    Aabb::from_corners(center, center).expand(select::HANDLE_SIZE_PX * 0.5)
+}
+
+/// Draws the resize handles at the screen `centers`: filled squares in the
+/// canvas colour with a selection-coloured outline.
+pub fn draw_selection_handles(centers: &[Vec2; 4]) {
+    let mut batch = Batch::new(GlSink);
+    for center in centers {
+        let rect = selection_handle_rect(*center);
+        batch.rect(rect, hex_color(theme::CANVAS));
+        draw_rect_outline(
+            &mut batch,
+            rect,
+            SELECTION_WIDTH_PX,
+            hex_color(theme::SELECTION_OUTLINE),
+        );
+    }
     batch.finish();
 }
 
@@ -2728,5 +2753,55 @@ mod tests {
         assert_eq!(shown_label(&node), Some(0));
         assert!(label_size("0".len(), area).is_some());
         assert_eq!(label_size("0".len(), area), label_size("7".len(), area));
+    }
+
+    // T91
+
+    #[test]
+    fn selection_handle_rect_has_constant_screen_size() {
+        // Arrange
+        let center = Vec2::new(30.0, 40.0);
+
+        // Act
+        let rect = selection_handle_rect(center);
+
+        // Assert
+        assert!(approx_eq(rect.width(), select::HANDLE_SIZE_PX, EPS));
+        assert!(approx_eq(rect.height(), select::HANDLE_SIZE_PX, EPS));
+        assert!(rect.center().approx_eq(center, EPS));
+    }
+
+    #[test]
+    fn handle_centers_are_the_selection_rect_corners() {
+        // Arrange
+        let square = Shape::Rect {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(10.0, 20.0),
+            style: crate::core::shape::Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+            fill: None,
+            label: None,
+            text: None,
+        };
+        let mut doc = crate::core::document::Document::default();
+        let tx = crate::core::document::tx_insert(&mut doc, vec![square.clone()]);
+        assert!(doc.apply(&tx).is_ok());
+        let ids: Vec<_> = doc.shapes().map(|(id, _)| id).collect();
+        let camera = Camera::new(Vec2::new(-10.0, 5.0), 3.0);
+
+        // Act
+        let rect = selection_rect(square.bounds(), &camera);
+        let centers = select::handle_centers(&doc, &ids, &camera);
+
+        // Assert
+        let Some(centers) = centers else {
+            panic!("the square has no handles");
+        };
+        assert!(centers[0].approx_eq(rect.min, EPS));
+        assert!(centers[2].approx_eq(rect.max, EPS));
+        assert!(centers[1].approx_eq(Vec2::new(rect.max.x, rect.min.y), EPS));
+        assert!(centers[3].approx_eq(Vec2::new(rect.min.x, rect.max.y), EPS));
     }
 }

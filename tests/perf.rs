@@ -565,6 +565,39 @@ fn perf_typing_with_500_blocks_is_under_1ms() {
     assert_within_budget("typing, 500 blocks", median, BUDGET);
 }
 
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_resize_preview_of_5k_strokes_is_under_2ms() {
+    // Arrange: 5 000 strokes of 30 points, all being resized (T91).
+    if !optimised() {
+        return;
+    }
+    let strokes: Vec<Shape> = mixed_shapes(30_000)
+        .into_iter()
+        .filter(|shape| matches!(shape, Shape::Stroke { .. }))
+        .collect();
+    assert_eq!(strokes.len(), 5_000);
+    let pivot = Vec2::new(10.0, 20.0);
+
+    // Act: what the preview does for each frame of the drag.
+    let median = median_time(
+        || (),
+        |()| {
+            strokes
+                .iter()
+                .map(|shape| shape.scaled_about(pivot, 1.5, 0.75))
+                .collect::<Option<Vec<Shape>>>()
+        },
+    );
+
+    // Assert
+    assert_within_budget(
+        "resize preview, 5k strokes",
+        median,
+        Duration::from_millis(2),
+    );
+}
+
 /// Counts the chunks and indices a batch submits, without a GPU.
 #[derive(Default)]
 struct CountingSink {

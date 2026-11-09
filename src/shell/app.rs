@@ -1026,6 +1026,9 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         && let Some(bounds) = editor.selection_bounds()
     {
         render::draw_selection(bounds, camera);
+        if let Some(handles) = editor.selection_handles() {
+            render::draw_selection_handles(&handles);
+        }
     }
     if let Some(marquee) = overlay.marquee {
         let rect = Aabb::from_corners(

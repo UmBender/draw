@@ -657,6 +657,8 @@ impl Editor {
             Command::SelectAll => self.run_edit(select::select_all),
             Command::GridFromText => self.grid_from_selection(),
             Command::GraphFromText => self.graph_from_selection(),
+            Command::ScaleUp => self.run_edit(select::scale_selection_up),
+            Command::ScaleDown => self.run_edit(select::scale_selection_down),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
             Command::Cancel => {
@@ -674,19 +676,7 @@ impl Editor {
                 self.camera.reset();
                 self.camera != before
             }
-            Command::FitView => {
-                let before = self.camera;
-                let content = self
-                    .doc
-                    .shapes()
-                    .map(|(_, shape)| shape.bounds())
-                    .reduce(|a, b| a.union(&b));
-                match content {
-                    Some(bounds) => self.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
-                    None => self.camera.reset(),
-                }
-                self.camera != before
-            }
+            Command::FitView => self.fit_view(),
             Command::ToggleToolbar => {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
@@ -723,6 +713,22 @@ impl Editor {
             numbering::roll_back(helpers.next_number, before, after, helpers.first_number());
         self.prune_selection();
         changed || cancelled
+    }
+
+    /// Frames all content, or resets the view of an empty document. Returns
+    /// whether the camera moved.
+    fn fit_view(&mut self) -> bool {
+        let before = self.camera;
+        let content = self
+            .doc
+            .shapes()
+            .map(|(_, shape)| shape.bounds())
+            .reduce(|a, b| a.union(&b));
+        match content {
+            Some(bounds) => self.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
+            None => self.camera.reset(),
+        }
+        self.camera != before
     }
 
     /// The document.
@@ -796,6 +802,17 @@ impl Editor {
             .filter_map(|id| self.doc.get(*id))
             .map(Shape::bounds)
             .reduce(|a, b| a.union(&b))
+    }
+
+    /// Screen centres of the resize handles, clockwise from the top-left
+    /// corner: `Some` only in the Select tool, with no gesture and no open
+    /// text block, for a selection that can scale (ADR-T91-1).
+    #[must_use]
+    pub fn selection_handles(&self) -> Option<[Vec2; 4]> {
+        if self.tool != Tool::Select || self.gesture.is_some() || self.text_edit().is_some() {
+            return None;
+        }
+        select::handle_centers(&self.doc, &self.selection, &self.camera)
     }
 
     /// The first shape of [`Editor::overlay`]: the shape being drawn, if any.
@@ -1433,6 +1450,8 @@ fn edits_document(command: Command) -> bool {
             | Command::ClearAll
             | Command::GridCols(_)
             | Command::GridRows(_)
+            | Command::ScaleUp
+            | Command::ScaleDown
     )
 }
 
@@ -6347,5 +6366,179 @@ mod tests {
         }
         assert_eq!(loaded, ed);
         assert_eq!(filled_cells(&loaded, id), [(0, 0), (1, 0), (2, 0)]);
+    }
+
+    // ---- T91 resize handles -----------------------------------------------
+
+    const ALT: Modifiers = Modifiers {
+        shift: false,
+        ctrl: false,
+        alt: true,
+    };
+
+    /// The `(a, b)` corners of the only rectangle.
+    fn rect_box(ed: &Editor) -> (Vec2, Vec2) {
+        match ed.document().shapes().next() {
+            Some((_, Shape::Rect { a, b, .. })) => (*a, *b),
+            other => panic!("expected a rectangle, got {other:?}"),
+        }
+    }
+
+    /// An editor in `tool` with one selected 100 × 100 square at the origin.
+    fn selected_square(tool: Tool) -> Editor {
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 100.0, 100.0)], tool);
+        ed.selection = ids(&ed);
+        ed
+    }
+
+    #[test]
+    fn alt_brackets_scale_the_selection() {
+        // Arrange
+        let mut ed = selected_square(Tool::Pen);
+        let revision = ed.document_revision();
+        let undo_len = ed.history.undo_len();
+
+        // Act: any tool can use the keys.
+        let changed = ed.handle(InputEvent::KeyDown {
+            key: Key::BracketRight,
+            mods: ALT,
+        });
+
+        // Assert
+        assert!(changed);
+        let (a, b) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::new(-5.0, -5.0), 1e-3));
+        assert!(b.approx_eq(Vec2::new(105.0, 105.0), 1e-3));
+        assert_eq!(ed.history.undo_len(), undo_len + 1);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+
+        // Act: the other key, then undoing it.
+        ed.handle(InputEvent::KeyDown {
+            key: Key::BracketLeft,
+            mods: ALT,
+        });
+        let (a, _) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::new(0.5, 0.5), 1e-3));
+        assert!(ed.apply(Command::Undo));
+        let (a, _) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::new(-5.0, -5.0), 1e-3));
+    }
+
+    #[test]
+    fn plain_brackets_still_change_the_stroke_width() {
+        // Arrange
+        let mut ed = selected_square(Tool::Select);
+        let before = rect_box(&ed);
+        let width = ed.style().width_px;
+
+        // Act
+        key(&mut ed, Key::BracketRight);
+
+        // Assert
+        assert!(ed.style().width_px > width);
+        assert_eq!(rect_box(&ed), before);
+    }
+
+    #[test]
+    fn selection_handles_show_only_when_idle_in_select() {
+        // Arrange: another tool, then the Select tool.
+        let mut ed = selected_square(Tool::Pen);
+        assert!(ed.selection_handles().is_none());
+        ed.apply(Command::SetTool(Tool::Select));
+        assert!(ed.selection_handles().is_some());
+
+        let Some(handles) = ed.selection_handles() else {
+            panic!("no handles");
+        };
+        let at = handles[2];
+
+        // Act / Assert: hidden during a gesture.
+        down(&mut ed, PointerButton::Left, at.x, at.y);
+        assert!(ed.selection_handles().is_none());
+        up(&mut ed, PointerButton::Left, at.x, at.y);
+        assert!(ed.selection_handles().is_some());
+
+        // Act / Assert: hidden while the shape's text is open.
+        down(&mut ed, PointerButton::Left, 50.0, 50.0);
+        up(&mut ed, PointerButton::Left, 50.0, 50.0);
+        assert!(ed.text_edit().is_some());
+        assert!(ed.selection_handles().is_none());
+    }
+
+    #[test]
+    fn resize_commits_through_the_editor() {
+        // Arrange
+        let mut ed = selected_square(Tool::Select);
+        let Some(handles) = ed.selection_handles() else {
+            panic!("no handles");
+        };
+        let at = handles[2];
+        let revision = ed.document_revision();
+
+        // Act
+        down(&mut ed, PointerButton::Left, at.x, at.y);
+        move_to(&mut ed, at.x + 100.0, at.y);
+        assert_eq!(ed.document_revision(), revision);
+        up(&mut ed, PointerButton::Left, at.x + 100.0, at.y);
+
+        // Assert
+        let (a, b) = rect_box(&ed);
+        assert!(a.approx_eq(Vec2::ZERO, 1e-3));
+        assert!(b.approx_eq(Vec2::new(200.0, 100.0), 1e-3));
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+    }
+
+    #[test]
+    fn regression_t91_scaled_box_side_overflow() {
+        // Arrange: a selected grid so tall that 10 % more leaves both of
+        // its corners finite but the length of its side past `f32`.
+        let snapshot = Snapshot::parse(include_str!(
+            "../../tests/snapshots/regressions/T91-scaled-box-side-overflow.snap"
+        ))
+        .unwrap_or_else(|err| panic!("{err}"));
+        let mut ed = Editor::from_snapshot(snapshot);
+        let before = ed.document().shapes().next().map(|(_, s)| s.clone());
+        let undo_len = ed.history.undo_len();
+        assert_eq!(ed.selection().len(), 1);
+
+        // Act
+        let changed = ed.handle(InputEvent::KeyDown {
+            key: Key::BracketRight,
+            mods: ALT,
+        });
+
+        // Assert: the scale is ignored.
+        assert!(!changed);
+        assert_eq!(
+            ed.document().shapes().next().map(|(_, s)| s.clone()),
+            before
+        );
+        assert_eq!(ed.history.undo_len(), undo_len);
+    }
+
+    #[test]
+    fn resize_gesture_survives_a_snapshot() {
+        // Arrange: stopped in the middle of a resize.
+        let mut ed = selected_square(Tool::Select);
+        let Some(handles) = ed.selection_handles() else {
+            panic!("no handles");
+        };
+        let at = handles[2];
+        down(&mut ed, PointerButton::Left, at.x, at.y);
+        move_to(&mut ed, at.x + 30.0, at.y + 10.0);
+
+        // Act
+        let text = ed.snapshot().to_text();
+        let restored = match crate::core::snapshot::Snapshot::parse(&text) {
+            Ok(snapshot) => Editor::from_snapshot(snapshot),
+            Err(error) => panic!("{error}"),
+        };
+
+        // Assert
+        assert_eq!(restored.snapshot().to_text(), text);
+        assert_eq!(restored.overlay(), ed.overlay());
+        assert!(text.contains("select resize"));
     }
 }

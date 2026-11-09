@@ -8,6 +8,7 @@
 
 use crate::core::geom::{Aabb, Vec2, distance_to_segment};
 use crate::core::palette::ColorId;
+use crate::core::snapshot::MAX_TEXT_SIZE;
 use crate::core::text_layout;
 
 /// Arrow head length per unit of stroke width. The head has no absolute
@@ -23,6 +24,9 @@ pub const GRID_MAX_CELLS: u32 = 64;
 /// Fraction of a shape's or cell's box (an ellipse's inscribed rectangle)
 /// that its text may use, per axis, about the centre (ADR-T31-1).
 pub const SHAPE_TEXT_FILL: f32 = 0.8;
+
+/// Smallest size, in world units, that a resize leaves a shape (ADR-T91-1).
+pub const MIN_SCALED_SIZE: f32 = 4.0;
 
 /// Outline style shared by every shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -470,6 +474,108 @@ impl Shape {
         }
     }
 
+    /// The box a resize scales: the shape's own points and corners, leaving
+    /// out the outline, arrow heads and grid index bands; the layout box
+    /// of a text block (ADR-T91-1).
+    #[must_use]
+    pub fn geometry_bounds(&self) -> Aabb {
+        match self {
+            Self::Text { .. } => self.bounds(),
+            Self::Stroke { points, .. } => Aabb::from_points(points)
+                .unwrap_or_else(|| Aabb::from_corners(Vec2::ZERO, Vec2::ZERO)),
+            Self::Line { a, b, .. }
+            | Self::Arrow { a, b, .. }
+            | Self::Rect { a, b, .. }
+            | Self::Ellipse { a, b, .. }
+            | Self::Grid { a, b, .. } => Aabb::from_corners(*a, *b),
+        }
+    }
+
+    /// The smallest factor per axis that a resize may apply to this shape
+    /// so that it does not become smaller than [`MIN_SCALED_SIZE`]; `0` on
+    /// an axis that sets no limit, `1` on one that cannot shrink
+    /// (ADR-T91-1).
+    #[must_use]
+    pub fn min_scale(&self) -> Vec2 {
+        let geometry = self.geometry_bounds();
+        let (w, h) = (geometry.width(), geometry.height());
+        match self {
+            Self::Text { size, .. } => {
+                let floor = side_floor(*size);
+                Vec2::new(floor, floor)
+            }
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } if w >= h => {
+                Vec2::new(side_floor(w), 0.0)
+            }
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } => {
+                Vec2::new(0.0, side_floor(h))
+            }
+            Self::Rect { .. } | Self::Ellipse { .. } | Self::Grid { .. } => {
+                Vec2::new(side_floor(w), side_floor(h))
+            }
+        }
+    }
+
+    /// A copy scaled about `pivot` by `sx` and `sy`: points and box corners
+    /// follow, and the size of text takes the smaller factor. Stroke widths
+    /// do not change. `None` if a factor is not finite and positive or the
+    /// result would not be finite (ADR-T91-1).
+    #[must_use]
+    pub fn scaled_about(&self, pivot: Vec2, sx: f32, sy: f32) -> Option<Self> {
+        let usable = |s: f32| s.is_finite() && s > 0.0;
+        if !usable(sx) || !usable(sy) || !pivot.is_finite() {
+            return None;
+        }
+        let map = |p: Vec2| {
+            Vec2::new(
+                pivot.x + (p.x - pivot.x) * sx,
+                pivot.y + (p.y - pivot.y) * sy,
+            )
+        };
+        let factor = sx.min(sy);
+        let mut out = self.clone();
+        match &mut out {
+            Self::Stroke { points, .. } => {
+                for point in points {
+                    *point = map(*point);
+                }
+            }
+            Self::Line { a, b, .. } | Self::Arrow { a, b, .. } => {
+                *a = map(*a);
+                *b = map(*b);
+            }
+            Self::Rect { a, b, text, .. } | Self::Ellipse { a, b, text, .. } => {
+                *a = map(*a);
+                *b = map(*b);
+                if let Some(text) = text {
+                    text.size = scaled_text_size(text.size, factor);
+                }
+            }
+            Self::Grid { a, b, texts, .. } => {
+                *a = map(*a);
+                *b = map(*b);
+                for cell in texts {
+                    cell.content.size = scaled_text_size(cell.content.size, factor);
+                }
+            }
+            Self::Text { origin, size, .. } => {
+                *origin = map(*origin);
+                *size = scaled_text_size(*size, factor);
+            }
+        }
+        // Finite corners can still be further apart than an `f32` holds, and
+        // a grid's index band reaches beyond them.
+        let bounded = match &out {
+            Self::Grid { a, b, .. } => sides_are_finite(*a, *b) && aabb_is_finite(&out.bounds()),
+            Self::Line { a, b, .. }
+            | Self::Arrow { a, b, .. }
+            | Self::Rect { a, b, .. }
+            | Self::Ellipse { a, b, .. } => sides_are_finite(*a, *b),
+            Self::Stroke { .. } | Self::Text { .. } => true,
+        };
+        (bounded && out.is_finite()).then_some(out)
+    }
+
     /// Returns the shape with its fill set to `fill`; open shapes are
     /// returned unchanged.
     #[must_use]
@@ -834,6 +940,34 @@ impl Shape {
                 Self::Text { origin, size, .. } => origin.is_finite() && size.is_finite(),
             }
     }
+}
+
+/// Smallest factor that keeps a side of length `side` at
+/// [`MIN_SCALED_SIZE`]: `0` for a side with no length, `1` for one that is
+/// already at or under the minimum.
+fn side_floor(side: f32) -> f32 {
+    if side <= 0.0 || !side.is_finite() {
+        0.0
+    } else {
+        (MIN_SCALED_SIZE / side).min(1.0)
+    }
+}
+
+/// `size` times `factor`, at most [`MAX_TEXT_SIZE`]; `size` itself if that
+/// is not positive (ADR-T91-2).
+fn scaled_text_size(size: f32, factor: f32) -> f32 {
+    let scaled = (size * factor).min(MAX_TEXT_SIZE);
+    if scaled > 0.0 { scaled } else { size }
+}
+
+/// Whether the distance from `a` to `b` is finite on both axes.
+fn sides_are_finite(a: Vec2, b: Vec2) -> bool {
+    (b - a).is_finite()
+}
+
+/// Whether both corners of `b` are finite.
+fn aabb_is_finite(b: &Aabb) -> bool {
+    b.min.is_finite() && b.max.is_finite()
 }
 
 /// The lines of a `cols × rows` grid in the box `a`–`b`: `cols + 1`
@@ -2950,5 +3084,345 @@ mod tests {
         for shape in &shapes {
             assert_eq!(shape.heap_bytes(), 0, "{shape:?}");
         }
+    }
+
+    // ---- T91 scaling ------------------------------------------------------
+
+    fn scaled(shape: &Shape, sx: f32, sy: f32) -> Shape {
+        match shape.scaled_about(v(0.0, 0.0), sx, sy) {
+            Some(shape) => shape,
+            None => panic!("{shape:?} did not scale by ({sx}, {sy})"),
+        }
+    }
+
+    fn box_shape(a: Vec2, b: Vec2) -> Shape {
+        Shape::Rect {
+            a,
+            b,
+            style: style(2.0),
+            fill: None,
+            label: None,
+            text: None,
+        }
+    }
+
+    fn straight(a: Vec2, b: Vec2) -> Shape {
+        Shape::Line {
+            a,
+            b,
+            style: style(2.0),
+        }
+    }
+
+    fn block(origin: Vec2, text: &str, size: f32) -> Shape {
+        Shape::Text {
+            origin,
+            text: text.to_owned(),
+            size,
+            style: style(0.0),
+        }
+    }
+
+    fn grid_shape(a: Vec2, b: Vec2, axes: bool) -> Shape {
+        Shape::Grid {
+            a,
+            b,
+            cols: 4,
+            rows: 2,
+            style: style(2.0),
+            axes,
+            fills: Vec::new(),
+            texts: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn scaled_about_moves_stroke_points_and_keeps_widths() {
+        // Arrange
+        let stroke = Shape::Stroke {
+            points: vec![v(10.0, 20.0), v(30.0, 40.0)],
+            widths: Some(vec![0.5, 2.0]),
+            style: style(3.0),
+        };
+
+        // Act
+        let Some(result) = stroke.scaled_about(v(10.0, 20.0), 2.0, 0.5) else {
+            panic!("the stroke did not scale");
+        };
+
+        // Assert: the pivot stays put, points scale, widths do not.
+        let Shape::Stroke {
+            points,
+            widths,
+            style: got,
+        } = result
+        else {
+            panic!("the kind changed");
+        };
+        assert!(points[0].approx_eq(v(10.0, 20.0), EPS));
+        assert!(points[1].approx_eq(v(50.0, 30.0), EPS));
+        assert_eq!(widths, Some(vec![0.5, 2.0]));
+        assert!(approx_eq(got.width, 3.0, EPS));
+    }
+
+    #[test]
+    fn scaled_about_moves_line_and_arrow_ends() {
+        // Arrange
+        let line = straight(v(1.0, 2.0), v(3.0, 4.0));
+        let arrow = Shape::Arrow {
+            a: v(1.0, 2.0),
+            b: v(3.0, 4.0),
+            style: style(2.0),
+        };
+
+        // Act / Assert
+        for shape in [line, arrow] {
+            match scaled(&shape, 2.0, 3.0) {
+                Shape::Line { a, b, style } | Shape::Arrow { a, b, style } => {
+                    assert!(a.approx_eq(v(2.0, 6.0), EPS));
+                    assert!(b.approx_eq(v(6.0, 12.0), EPS));
+                    assert!(approx_eq(style.width, 2.0, EPS));
+                }
+                other => panic!("the kind changed: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn scaled_about_moves_boxes_and_keeps_cells() {
+        // Arrange
+        let filled =
+            grid_shape(v(1.0, 1.0), v(5.0, 3.0), true).with_cell_fill(1, 1, Some(ColorId::INK));
+
+        // Act
+        let result = scaled(&filled, 2.0, 4.0);
+
+        // Assert
+        let Shape::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            axes,
+            ..
+        } = result.clone()
+        else {
+            panic!("the kind changed");
+        };
+        assert!(a.approx_eq(v(2.0, 4.0), EPS) && b.approx_eq(v(10.0, 12.0), EPS));
+        assert_eq!((cols, rows), (4, 2));
+        assert!(axes);
+        assert_eq!(result.cell_fill(1, 1), Some(ColorId::INK));
+
+        let ellipse = Shape::Ellipse {
+            a: v(1.0, 1.0),
+            b: v(2.0, 3.0),
+            style: style(1.0),
+            fill: None,
+            label: Some(3),
+            text: None,
+        };
+        match scaled(&ellipse, 3.0, 2.0) {
+            Shape::Ellipse { a, b, label, .. } => {
+                assert!(a.approx_eq(v(3.0, 2.0), EPS) && b.approx_eq(v(6.0, 6.0), EPS));
+                assert_eq!(label, Some(3));
+            }
+            other => panic!("the kind changed: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn scaled_about_scales_text_block_origin_and_size() {
+        // Act
+        let result = scaled(&block(v(10.0, 20.0), "ab", 8.0), 2.0, 2.0);
+
+        // Assert
+        match result {
+            Shape::Text { origin, size, .. } => {
+                assert!(origin.approx_eq(v(20.0, 40.0), EPS));
+                assert!(approx_eq(size, 16.0, EPS));
+            }
+            other => panic!("the kind changed: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn scaled_about_scales_shape_and_cell_text() {
+        // Arrange
+        let host =
+            box_shape(v(0.0, 0.0), v(100.0, 100.0)).with_slot_text(TextSlot::Shape, st("a", 10.0));
+        let table = grid_shape(v(0.0, 0.0), v(100.0, 100.0), false)
+            .with_slot_text(TextSlot::Cell { col: 1, row: 0 }, st("b", 20.0));
+
+        // Act
+        let host = scaled(&host, 3.0, 3.0);
+        let table = scaled(&table, 0.5, 0.5);
+
+        // Assert
+        let size = |shape: &Shape, slot| shape.slot_text(slot).map(|t: &ShapeText| t.size);
+        assert!(size(&host, TextSlot::Shape).is_some_and(|s| approx_eq(s, 30.0, EPS)));
+        assert!(
+            size(&table, TextSlot::Cell { col: 1, row: 0 })
+                .is_some_and(|s| approx_eq(s, 10.0, EPS))
+        );
+    }
+
+    #[test]
+    fn scaled_about_uneven_text_follows_smaller_factor() {
+        // Act: x doubles, y grows only by half.
+        let result = scaled(&block(v(10.0, 10.0), "ab", 8.0), 2.0, 1.5);
+
+        // Assert: the size follows 1.5, the origin each axis.
+        match result {
+            Shape::Text { origin, size, .. } => {
+                assert!(origin.approx_eq(v(20.0, 15.0), EPS));
+                assert!(approx_eq(size, 12.0, EPS));
+            }
+            other => panic!("the kind changed: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn geometry_bounds_leave_out_outline_and_axes() {
+        // Arrange: a wide outline and a band of grid indices.
+        let wide = box_shape(v(0.0, 0.0), v(10.0, 20.0));
+        let indexed = grid_shape(v(0.0, 0.0), v(40.0, 20.0), true);
+        let arrow = Shape::Arrow {
+            a: v(0.0, 0.0),
+            b: v(10.0, 0.0),
+            style: style(4.0),
+        };
+
+        // Act / Assert
+        for (shape, far) in [
+            (wide, v(10.0, 20.0)),
+            (indexed, v(40.0, 20.0)),
+            (arrow, v(10.0, 0.0)),
+        ] {
+            let g = shape.geometry_bounds();
+            assert!(g.min.approx_eq(v(0.0, 0.0), EPS), "{shape:?}: {g:?}");
+            assert!(g.max.approx_eq(far, EPS), "{shape:?}: {g:?}");
+        }
+        let text = block(v(5.0, 5.0), "ab", 10.0);
+        assert_eq!(text.geometry_bounds(), text.bounds());
+    }
+
+    #[test]
+    fn min_scale_limits_each_side_of_a_box() {
+        // Act / Assert
+        assert!(
+            box_shape(v(0.0, 0.0), v(100.0, 50.0))
+                .min_scale()
+                .approx_eq(v(0.04, 0.08), EPS)
+        );
+        assert!(
+            box_shape(v(0.0, 0.0), v(100.0, 0.0))
+                .min_scale()
+                .approx_eq(v(0.04, 0.0), EPS)
+        );
+    }
+
+    #[test]
+    fn min_scale_limits_only_the_longest_side_of_a_line() {
+        // Act / Assert
+        assert!(
+            straight(v(0.0, 0.0), v(100.0, 10.0))
+                .min_scale()
+                .approx_eq(v(0.04, 0.0), EPS)
+        );
+        assert!(
+            straight(v(0.0, 0.0), v(10.0, 100.0))
+                .min_scale()
+                .approx_eq(v(0.0, 0.04), EPS)
+        );
+    }
+
+    #[test]
+    fn min_scale_limits_the_size_of_text() {
+        // Act / Assert
+        assert!(
+            block(v(0.0, 0.0), "ab", 20.0)
+                .min_scale()
+                .approx_eq(v(0.2, 0.2), EPS)
+        );
+    }
+
+    #[test]
+    fn min_scale_keeps_small_shapes_from_shrinking() {
+        // Act / Assert
+        assert!(
+            box_shape(v(0.0, 0.0), v(2.0, 100.0))
+                .min_scale()
+                .approx_eq(v(1.0, 0.04), EPS)
+        );
+        assert!(
+            straight(v(0.0, 0.0), v(2.0, 1.0))
+                .min_scale()
+                .approx_eq(v(1.0, 0.0), EPS)
+        );
+        assert!(
+            block(v(0.0, 0.0), "ab", 3.0)
+                .min_scale()
+                .approx_eq(v(1.0, 1.0), EPS)
+        );
+    }
+
+    #[test]
+    fn scaled_about_rejects_bad_factors() {
+        // Arrange
+        let shape = box_shape(v(1.0, 1.0), v(2.0, 2.0));
+
+        // Act / Assert
+        for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -1.0] {
+            assert!(shape.scaled_about(v(0.0, 0.0), bad, 1.0).is_none(), "{bad}");
+            assert!(shape.scaled_about(v(0.0, 0.0), 1.0, bad).is_none(), "{bad}");
+        }
+        assert!(shape.scaled_about(v(f32::NAN, 0.0), 2.0, 2.0).is_none());
+    }
+
+    #[test]
+    fn scaled_about_rejects_overflow() {
+        // Arrange: results beyond the finite range.
+        let far = box_shape(v(1e38, 0.0), v(3e38, 1.0));
+        let far_text = block(v(3e38, 0.0), "ab", 8.0);
+
+        // Act / Assert
+        assert!(far.scaled_about(v(0.0, 0.0), 2.0, 1.0).is_none());
+        assert!(far_text.scaled_about(v(0.0, 0.0), 2.0, 2.0).is_none());
+    }
+
+    #[test]
+    fn scaled_about_rejects_a_side_longer_than_a_float() {
+        // Arrange: both corners stay finite, their distance does not.
+        let (a, b) = (v(0.0, -1.7e38), v(1.0, 1.0e38));
+
+        // Act / Assert
+        for shape in [box_shape(a, b), straight(a, b)] {
+            assert!(
+                shape.scaled_about(v(0.0, 0.0), 1.0, 1.7).is_none(),
+                "{shape:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn scaled_about_caps_text_at_the_largest_size() {
+        // Arrange: already close to the limit, in a block and in a shape.
+        let near = MAX_TEXT_SIZE * 0.9;
+        let text = block(v(0.0, 0.0), "ab", near);
+        let host =
+            box_shape(v(0.0, 0.0), v(10.0, 10.0)).with_slot_text(TextSlot::Shape, st("a", near));
+
+        // Act
+        let text = scaled(&text, 2.0, 2.0);
+        let host = scaled(&host, 2.0, 2.0);
+
+        // Assert
+        let Shape::Text { size, .. } = text else {
+            panic!("the kind changed");
+        };
+        assert!(approx_eq(size, MAX_TEXT_SIZE, EPS));
+        let hosted = host.slot_text(TextSlot::Shape).map(|t| t.size);
+        assert!(hosted.is_some_and(|s| approx_eq(s, MAX_TEXT_SIZE, EPS)));
     }
 }

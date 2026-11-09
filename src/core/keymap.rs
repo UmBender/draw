@@ -56,6 +56,19 @@ impl KeyChord {
         }
     }
 
+    /// `Alt` + `key`.
+    #[must_use]
+    pub const fn alt(key: Key) -> Self {
+        Self {
+            key,
+            mods: Modifiers {
+                shift: false,
+                ctrl: false,
+                alt: true,
+            },
+        }
+    }
+
     /// `Ctrl` + `Shift` + `key`.
     #[must_use]
     pub const fn ctrl_shift(key: Key) -> Self {
@@ -167,6 +180,16 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         KeyChord::ctrl(Key::L),
         Command::GraphFromText,
         "Text block to graph",
+    ),
+    (
+        KeyChord::alt(Key::BracketRight),
+        Command::ScaleUp,
+        "Grow selection 10 %",
+    ),
+    (
+        KeyChord::alt(Key::BracketLeft),
+        Command::ScaleDown,
+        "Shrink selection 10 %",
     ),
     (
         KeyChord::bare(Key::Delete),
@@ -389,6 +412,8 @@ mod tests {
             (Key::A, CTRL, Command::SelectAll),
             (Key::T, CTRL, Command::GridFromText),
             (Key::L, CTRL, Command::GraphFromText),
+            (Key::BracketRight, ALT, Command::ScaleUp),
+            (Key::BracketLeft, ALT, Command::ScaleDown),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
