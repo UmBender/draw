@@ -1722,8 +1722,9 @@ struct Parser<'a> {
     /// For each `{`, the index of its matching `}`, if it has one within
     /// [`MAX_DEPTH`].
     closes: Vec<Option<usize>>,
-    /// For each `\left`, the index of the `\` of its `\right`, if it has
-    /// one within [`MAX_DEPTH`] (ADR-T89-1).
+    /// For each `\left`, the index of the `\` of its `\right`, and for
+    /// each `\begin`, the index of the `\` of its `\end`, if it has one
+    /// within [`MAX_DEPTH`] (ADR-T89-1, ADR-T90-1).
     rights: Vec<Option<usize>>,
 }
 
@@ -1930,6 +1931,8 @@ impl<'a> Parser<'a> {
         let after = self.pos;
         let node = match name.as_str() {
             "left" => self.left_right(start, end),
+            "begin" => return self.environment(start, end),
+            "end" => return self.stray_end(start, end),
             "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
                 self.args(2, end).map(|args| Node::Command {
                     name: name.clone(),
@@ -1966,6 +1969,101 @@ impl<'a> Parser<'a> {
         self.name(end);
         let close = self.delimiter(end)?;
         Some(Node::LeftRight { open, body, close })
+    }
+
+    /// The environment of the `\begin` at `start`, its name read; a literal
+    /// when it is invalid (ADR-T90-1).
+    fn environment(&mut self, start: usize, end: usize) -> Node {
+        let Some((lead, name, past)) = read_environment_name(self.chars, self.pos, end) else {
+            return Node::Literal("\\begin".to_owned());
+        };
+        let table = self.rights[start]
+            .filter(|&close| close < end)
+            .and_then(|close| Some((close, self.cell_spans(past, close)?)));
+        let closing = table.as_ref().and_then(|(close, _)| {
+            let after = name_end(self.chars, close + 1, end);
+            read_environment_name(self.chars, after, end)
+        });
+        let (Some((_, spans)), Some((end_lead, _, after))) = (table, closing) else {
+            self.pos = past;
+            return Node::Literal(self.chars[start..past].iter().collect());
+        };
+        let mut rows = Vec::with_capacity(spans.len());
+        for row in spans {
+            let mut cells = Vec::with_capacity(row.len());
+            for (from, to) in row {
+                self.pos = from;
+                cells.push(self.list(to));
+            }
+            rows.push(cells);
+        }
+        self.pos = after;
+        Node::Environment {
+            name,
+            lead,
+            end_lead,
+            rows,
+        }
+    }
+
+    /// An `\end` at `start` that closes no environment, its name read: a
+    /// literal, with its `{name}` if it has one.
+    fn stray_end(&mut self, start: usize, end: usize) -> Node {
+        let Some((_, _, past)) = read_environment_name(self.chars, self.pos, end) else {
+            return Node::Literal("\\end".to_owned());
+        };
+        self.pos = past;
+        Node::Literal(self.chars[start..past].iter().collect())
+    }
+
+    /// The `(from, to)` spans of the cells of the environment body
+    /// `start..end`, by row, without parsing them. A separator inside a
+    /// group, a `\left` pair or a nested environment is not the body's.
+    /// `None` past [`ENVIRONMENT_MAX_CELLS`] rows or columns (ADR-T90-1).
+    fn cell_spans(&self, start: usize, end: usize) -> Option<Vec<Vec<(usize, usize)>>> {
+        let limit = ENVIRONMENT_MAX_CELLS;
+        let mut rows = vec![Vec::new()];
+        let (mut cell, mut i) = (start, start);
+        while i < end {
+            match self.chars[i] {
+                '\\' => {
+                    if let Some(partner) = self.rights[i].filter(|&partner| partner < end) {
+                        i = partner;
+                    } else if i + 1 < end && self.chars[i + 1] == '\\' {
+                        let row = rows.last_mut()?;
+                        row.push((cell, i));
+                        if row.len() > limit || rows.len() > limit {
+                            return None;
+                        }
+                        rows.push(Vec::new());
+                        i += 2;
+                        cell = i;
+                    } else {
+                        i = name_end(self.chars, i + 1, end);
+                    }
+                }
+                '&' => {
+                    let row = rows.last_mut()?;
+                    row.push((cell, i));
+                    if row.len() >= limit {
+                        return None;
+                    }
+                    i += 1;
+                    cell = i;
+                }
+                '{' => i = self.closes[i].filter(|&close| close < end).unwrap_or(i) + 1,
+                _ => i += 1,
+            }
+        }
+        let row = rows.last_mut()?;
+        row.push((cell, end));
+        if row.len() > limit {
+            return None;
+        }
+        // A trailing `\\` adds no row, so it does not count either.
+        let blank = self.chars[cell..end].iter().all(|ch| ch.is_whitespace())
+            && rows.last()?.len() == 1;
+        (rows.len() - usize::from(blank) <= limit).then_some(rows)
     }
 
     /// The delimiter at the cursor, read past.
@@ -2070,21 +2168,62 @@ fn read_delimiter(chars: &[char], pos: usize, end: usize) -> Option<(Delimiter, 
     })
 }
 
-/// A `{` or `\left` still waiting for its partner in [`match_pairs`].
+/// The whitespace, the name and the index past the `}` of a `{name}` of
+/// ASCII letters at `pos`, after optional whitespace; `None` when there is
+/// none before `end`.
+fn read_environment_name(
+    chars: &[char],
+    pos: usize,
+    end: usize,
+) -> Option<(String, String, usize)> {
+    let mut brace = pos;
+    while brace < end && chars[brace].is_whitespace() {
+        brace += 1;
+    }
+    if brace >= end || chars[brace] != '{' {
+        return None;
+    }
+    let mut close = brace + 1;
+    while close < end && chars[close].is_ascii_alphabetic() {
+        close += 1;
+    }
+    (close < end && chars[close] == '}').then(|| {
+        (
+            chars[pos..brace].iter().collect(),
+            chars[brace + 1..close].iter().collect(),
+            close + 1,
+        )
+    })
+}
+
+/// What an [`Opening`] opened.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Opener {
+    /// A `{`.
+    Brace,
+    /// A `\left`.
+    Left,
+    /// A `\begin` of the environment with this name.
+    Begin(&'static str),
+}
+
+/// A `{`, `\left` or `\begin` still waiting for its partner in
+/// [`match_pairs`].
 struct Opening {
     /// Its index.
     at: usize,
     /// Whether it is within [`MAX_DEPTH`].
     within: bool,
-    /// Whether it is a `{`.
-    brace: bool,
+    /// What it is.
+    kind: Opener,
 }
 
 /// For each `{` of `chars`, the index of its matching `}`, and for each
-/// `\left`, the index of the `\` of its `\right`. Escaped braces (`\{`) are
-/// skipped; what nests deeper than [`MAX_DEPTH`] matches nothing. A pair
-/// never crosses a group: a `}` drops the `\left`s still open inside it,
-/// and a `\right` only closes a `\left` on top of the stack (ADR-T89-1).
+/// `\left` or `\begin`, the index of the `\` of its `\right` or `\end`.
+/// Escaped braces (`\{`) are skipped; what nests deeper than [`MAX_DEPTH`]
+/// matches nothing. A pair never crosses a group: a `}` drops the `\left`s
+/// and `\begin`s still open inside it, and a `\right` or `\end` only closes
+/// its own opener on top of the stack (ADR-T89-1, ADR-T90-1).
 fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     let mut closes = vec![None; chars.len()];
     let mut rights = vec![None; chars.len()];
@@ -2097,6 +2236,28 @@ fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
                 let after = name_end(chars, i + 1, chars.len());
                 let name = &chars[i + 1..after];
                 let is = |word: &str| name.iter().copied().eq(word.chars());
+                let known = (is("begin") || is("end"))
+                    .then(|| read_environment_name(chars, after, chars.len()))
+                    .flatten()
+                    .and_then(|(_, name, past)| Some((environment(&name)?.name, past)));
+                if let Some((name, past)) = known {
+                    if is("begin") {
+                        let within = depth < MAX_DEPTH;
+                        depth += usize::from(within);
+                        open.push(Opening {
+                            at: i,
+                            within,
+                            kind: Opener::Begin(name),
+                        });
+                    } else if let Some(begin) = open.pop_if(|top| top.kind == Opener::Begin(name))
+                        && begin.within
+                    {
+                        rights[begin.at] = Some(i);
+                        depth -= 1;
+                    }
+                    i = past;
+                    continue;
+                }
                 let past = (is("left") || is("right"))
                     .then(|| read_delimiter(chars, after, chars.len()))
                     .flatten()
@@ -2108,9 +2269,9 @@ fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
                         open.push(Opening {
                             at: i,
                             within,
-                            brace: false,
+                            kind: Opener::Left,
                         });
-                    } else if let Some(left) = open.pop_if(|top| !top.brace)
+                    } else if let Some(left) = open.pop_if(|top| top.kind == Opener::Left)
                         && left.within
                     {
                         rights[left.at] = Some(i);
@@ -2127,14 +2288,14 @@ fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
                 open.push(Opening {
                     at: i,
                     within,
-                    brace: true,
+                    kind: Opener::Brace,
                 });
             }
             '}' if braces > 0 => {
                 braces -= 1;
                 while let Some(top) = open.pop() {
                     depth -= usize::from(top.within);
-                    if top.brace {
+                    if top.kind == Opener::Brace {
                         if top.within {
                             closes[top.at] = Some(i);
                         }
@@ -2254,13 +2415,32 @@ fn print_node(node: &Node, out: &mut String) {
 
 /// The source of a [`Node::Environment`].
 fn print_environment(
-    _name: &str,
-    _lead: &str,
-    _end_lead: &str,
-    _rows: &[Vec<Vec<Node>>],
-    _out: &mut String,
+    name: &str,
+    lead: &str,
+    end_lead: &str,
+    rows: &[Vec<Vec<Node>>],
+    out: &mut String,
 ) {
-    todo!("T90 behaviour")
+    let command = |word: &str, lead: &str, out: &mut String| {
+        out.push_str(word);
+        out.push_str(lead);
+        out.push('{');
+        out.push_str(name);
+        out.push('}');
+    };
+    command("\\begin", lead, out);
+    for (r, row) in rows.iter().enumerate() {
+        if r > 0 {
+            out.push_str("\\\\");
+        }
+        for (c, cell) in row.iter().enumerate() {
+            if c > 0 {
+                out.push('&');
+            }
+            print_nodes(cell, out);
+        }
+    }
+    command("\\end", end_lead, out);
 }
 
 fn print_arg(arg: &Arg, out: &mut String) {
@@ -2697,7 +2877,17 @@ fn left_right(
     scale: f32,
     style: Style,
 ) -> MathBox {
-    let inner = layout_styled(body, scale, style);
+    fenced(
+        &open.source,
+        layout_styled(body, scale, style),
+        &close.source,
+        scale,
+    )
+}
+
+/// `inner` between the delimiters `open` and `close`, grown to cover it
+/// about the axis (ADR-T89-1).
+fn fenced(open: &str, inner: MathBox, close: &str, scale: f32) -> MathBox {
     let axis = AXIS * scale;
     let span = 2.0 * (inner.ascent - axis).max(inner.descent + axis) * DELIM_FACTOR;
     let (left, right) = (
@@ -2707,12 +2897,12 @@ fn left_right(
     MathBox::row([left, inner, right])
 }
 
-/// The glyph of `delimiter` scaled to `span`, centred on the axis, at
-/// least at `scale`; a small gap for `.`.
-fn grown_bracket(delimiter: &Delimiter, span: f32, scale: f32) -> MathBox {
+/// The glyph of delimiter `source` scaled to `span`, centred on the axis,
+/// at least at `scale`; a small gap for `.`.
+fn grown_bracket(source: &str, span: f32, scale: f32) -> MathBox {
     let glyph = DELIMITERS
         .iter()
-        .find(|(source, _)| *source == delimiter.source)
+        .find(|(known, _)| *known == source)
         .and_then(|(_, glyph)| *glyph);
     let Some(ch) = glyph else {
         return MathBox::gap(NULL_DELIM_SPACE * scale);
@@ -2734,8 +2924,83 @@ fn grown_bracket(delimiter: &Delimiter, span: f32, scale: f32) -> MathBox {
 }
 
 /// The box of environment `name` (ADR-T90-1).
-fn environment_box(_name: &str, _rows: &[Vec<Vec<Node>>], _scale: f32, _style: Style) -> MathBox {
-    todo!("T90 behaviour")
+fn environment_box(name: &str, rows: &[Vec<Vec<Node>>], scale: f32, style: Style) -> MathBox {
+    let Some(def) = environment(name) else {
+        return MathBox::word(&format!("\\begin{{{name}}}"), scale, true);
+    };
+    let inner = table(shown_rows(rows), def, scale, style);
+    match def.brackets {
+        Some((open, close)) => fenced(open, inner, close, scale),
+        None => inner,
+    }
+}
+
+/// `rows` without a last row that is blank, as after a trailing `\\`.
+fn shown_rows(rows: &[Vec<Vec<Node>>]) -> &[Vec<Vec<Node>>] {
+    let blank = rows.last().is_some_and(|row| {
+        matches!(row.as_slice(), [cell] if cell.iter().all(|n| matches!(n, Node::Space(_))))
+    });
+    &rows[..rows.len() - usize::from(blank)]
+}
+
+/// The cells of `rows` in columns, centred on the axis (ADR-T90-1).
+fn table(rows: &[Vec<Vec<Node>>], def: &EnvironmentDef, scale: f32, style: Style) -> MathBox {
+    let boxes: Vec<Vec<MathBox>> = rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .map(|cell| layout_styled(cell, scale, style))
+                .collect()
+        })
+        .collect();
+    let columns = boxes.iter().map(Vec::len).max().unwrap_or(0);
+    let mut widths = vec![0.0_f32; columns];
+    for row in &boxes {
+        for (width, cell) in widths.iter_mut().zip(row) {
+            *width = width.max(cell.width);
+        }
+    }
+    let gap = ARRAY_COLUMN_GAP * scale;
+    let mut lefts = Vec::with_capacity(columns);
+    let mut right = 0.0;
+    for width in &widths {
+        lefts.push(right);
+        right += width + gap;
+    }
+    let least = (
+        ARRAY_ROW_ASCENT * def.stretch * scale,
+        ARRAY_ROW_DESCENT * def.stretch * scale,
+    );
+    let extents: Vec<(f32, f32)> = boxes
+        .iter()
+        .map(|row| {
+            row.iter().fold(least, |(ascent, descent), cell| {
+                (ascent.max(cell.ascent), descent.max(cell.descent))
+            })
+        })
+        .collect();
+    let half = extents.iter().map(|(a, d)| a + d).sum::<f32>() / 2.0;
+    let axis = AXIS * scale;
+    let mut out = MathBox {
+        width: (right - gap).max(0.0),
+        ascent: (half + axis).max(0.0),
+        descent: (half - axis).max(0.0),
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    let mut top = -axis - half;
+    for (row, (ascent, descent)) in boxes.iter().zip(extents) {
+        let baseline = top + ascent;
+        for ((cell, left), width) in row.iter().zip(&lefts).zip(&widths) {
+            let indent = match def.align {
+                Align::Centre => (width - cell.width) / 2.0,
+                Align::Left => 0.0,
+            };
+            out.put(cell, Vec2::new(left + indent, baseline));
+        }
+        top = baseline + descent;
+    }
+    out
 }
 
 /// The infix command `name` (one of [`INFIX`]) between `left` and
