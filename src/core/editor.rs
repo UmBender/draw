@@ -31,6 +31,7 @@ use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
 use crate::core::tools::grid::{TableError, TextTable};
+use crate::core::tools::layout::{self, EdgeList};
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -655,6 +656,7 @@ impl Editor {
             Command::Duplicate => self.run_edit(clipboard::duplicate),
             Command::SelectAll => self.run_edit(select::select_all),
             Command::GridFromText => self.grid_from_selection(),
+            Command::GraphFromText => self.graph_from_selection(),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
             Command::Cancel => {
@@ -1083,6 +1085,40 @@ impl Editor {
         })
     }
 
+    /// Replaces the only selected text block by the graph of its edges, as
+    /// one undo step (ADR-T87-1). Returns whether a redraw is needed.
+    fn graph_from_selection(&mut self) -> bool {
+        let &[id] = self.selection.as_slice() else {
+            return false;
+        };
+        let Some(Shape::Text {
+            origin,
+            text,
+            size,
+            style,
+        }) = self.doc.get(id)
+        else {
+            return false;
+        };
+        let (origin, size, color) = (*origin, *size, style.color);
+        let list = match EdgeList::parse(text) {
+            Ok(Some(list)) => list,
+            Ok(None) => return false,
+            Err(err) => {
+                self.notice = Some(format!("graph from text refused: {err}"));
+                return false;
+            }
+        };
+        let style = Style {
+            color,
+            width: self.camera.world_len(self.style.width_px),
+        };
+        let Some(shapes) = list.shapes(origin, size, style) else {
+            return false;
+        };
+        self.run_edit(|ctx| layout::replace_block(ctx, id, shapes))
+    }
+
     /// Builds the grid of clipboard `text` at the cursor, as one undo step,
     /// and selects it (ADR-T84-1). Returns whether a redraw is needed.
     fn grid_from_clipboard(&mut self, text: &str) -> bool {
@@ -1392,6 +1428,7 @@ fn edits_document(command: Command) -> bool {
             | Command::Paste
             | Command::Duplicate
             | Command::GridFromText
+            | Command::GraphFromText
             | Command::DeleteSelection
             | Command::ClearAll
             | Command::GridCols(_)
@@ -5931,5 +5968,291 @@ mod tests {
         assert_eq!(ed, before);
         assert_eq!(ed.history.undo_len(), 0);
         assert_eq!(ed.take_notice(), None);
+    }
+
+    // ---- T87 graph from an edge list --------------------------------------
+
+    fn ctrl_l(ed: &mut Editor) -> bool {
+        key_with(ed, Key::L, CTRL)
+    }
+
+    fn count(ed: &Editor, wanted: fn(&Shape) -> bool) -> usize {
+        ed.document().shapes().filter(|(_, s)| wanted(s)).count()
+    }
+
+    fn is_ellipse(shape: &Shape) -> bool {
+        matches!(shape, Shape::Ellipse { .. })
+    }
+
+    fn is_line(shape: &Shape) -> bool {
+        matches!(shape, Shape::Line { .. })
+    }
+
+    fn is_text(shape: &Shape) -> bool {
+        matches!(shape, Shape::Text { .. })
+    }
+
+    #[test]
+    fn graph_from_text_replaces_the_block() {
+        // Arrange
+        let mut ed = selected_block("1-2");
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ed.document().len(), 3);
+        assert_eq!(count(&ed, is_line), 1);
+        assert_eq!(count(&ed, is_ellipse), 2);
+        assert_eq!(count(&ed, is_text), 0);
+    }
+
+    #[test]
+    fn graph_from_text_keeps_the_block_place_and_colour() {
+        // Arrange
+        let red = ColorId::from_key_digit(2).unwrap_or(ColorId::INK);
+        let original = Shape::Text {
+            origin: Vec2::new(40.0, 60.0),
+            text: "1-2".to_owned(),
+            size: 18.0,
+            style: Style {
+                color: red,
+                width: 0.0,
+            },
+        };
+        let mut ed = shape_text_editor(
+            vec![
+                rect(0.0, 0.0, 10.0, 10.0),
+                original,
+                rect(0.0, 0.0, 20.0, 20.0),
+            ],
+            Tool::Select,
+        );
+        let (bottom, top) = (ids(&ed)[0], ids(&ed)[2]);
+        ed.selection = vec![ids(&ed)[1]];
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert: between the two rectangles, in the block's colour.
+        let now = ids(&ed);
+        assert_eq!(now.len(), 5);
+        assert_eq!((now[0], now[4]), (bottom, top));
+        for index in 1..4 {
+            let style = shape_at(&ed, index).style();
+            assert_eq!(style.color, red);
+            assert!(approx_eq(style.width, ed.style().width_px, 1e-4));
+        }
+    }
+
+    #[test]
+    fn graph_from_text_is_one_undo_step() {
+        // Arrange
+        let mut ed = selected_block("1-2 2-3");
+        let original = shape_at(&ed, 0).clone();
+        let steps = ed.history.undo_len();
+        let revision = ed.document_revision();
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document().len(), 5);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+        assert_eq!(shape_at(&ed, 0), &original);
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(ed.document().len(), 5);
+        assert_eq!(count(&ed, is_text), 0);
+    }
+
+    #[test]
+    fn graph_from_text_selects_the_result() {
+        // Arrange
+        let mut ed = selected_block("1-2");
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert
+        assert_eq!(ed.selection(), ids(&ed));
+    }
+
+    #[test]
+    fn graph_from_text_cancels_a_gesture() {
+        // Arrange: a rectangle drag in progress with the block selected.
+        let mut ed = selected_block("1-2");
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 400.0, 400.0);
+        move_to(&mut ed, 450.0, 450.0);
+        assert!(ed.active_gesture().is_some());
+
+        // Act
+        ctrl_l(&mut ed);
+        up(&mut ed, PointerButton::Left, 450.0, 450.0);
+
+        // Assert
+        assert!(ed.active_gesture().is_none());
+        assert_eq!(ed.document().len(), 3);
+    }
+
+    #[test]
+    fn graph_from_text_in_open_edit_only_types() {
+        // Arrange: Ctrl+L while a block is open is not a binding.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "1-2");
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert
+        assert_eq!(editing(&ed).as_deref(), Some("1-2"));
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn graph_from_text_shapes_are_ordinary() {
+        // Arrange
+        let mut ed = selected_block("1-2 2>3");
+        ctrl_l(&mut ed);
+        let len = ed.document().len();
+
+        // Act / Assert: selection commands treat them like any shape.
+        ed.apply(Command::Duplicate);
+        assert_eq!(ed.document().len(), 2 * len);
+        ed.apply(Command::DeleteSelection);
+        assert_eq!(ed.document().len(), len);
+
+        // Act: the Select tool drags one circle by its outline.
+        ed.apply(Command::Cancel);
+        let Some((id, circle)) = ed
+            .document()
+            .shapes()
+            .find(|(_, s)| is_ellipse(s))
+            .map(|(id, s)| (id, s.bounds()))
+        else {
+            panic!("no circle");
+        };
+        let grip = ed
+            .camera()
+            .world_to_screen(Vec2::new(circle.center().x, circle.min.y));
+        down(&mut ed, PointerButton::Left, grip.x, grip.y);
+        move_to(&mut ed, grip.x + 30.0, grip.y);
+        up(&mut ed, PointerButton::Left, grip.x + 30.0, grip.y);
+
+        // Assert
+        assert_eq!(ed.selection(), [id]);
+        let moved = ed.document().get(id).map(Shape::bounds);
+        assert!(moved.is_some_and(|b| b.center().x > circle.center().x + 15.0));
+    }
+
+    #[test]
+    fn graph_from_text_survives_a_snapshot() {
+        // Arrange: node 0 included, a weight, an arrow.
+        let mut ed = selected_block("0 1 5\n1>2");
+        ctrl_l(&mut ed);
+
+        // Act
+        let loaded = Snapshot::parse(&ed.snapshot().to_text());
+
+        // Assert
+        match loaded {
+            Ok(snapshot) => assert_eq!(Editor::from_snapshot(snapshot), ed),
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    #[test]
+    fn graph_from_text_leaves_the_counter_alone() {
+        // Arrange
+        let mut ed = selected_block("5-6");
+        ed.style.helpers.next_number = 3;
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert
+        assert_eq!(ed.helpers().next_number, 3);
+    }
+
+    #[test]
+    fn graph_from_text_bad_text_changes_nothing_and_leaves_a_notice() {
+        // Arrange: a drag in progress must survive a refused key.
+        let mut ed = selected_block("1-2\nhello world");
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 400.0, 400.0);
+        move_to(&mut ed, 450.0, 450.0);
+        let before = ed.clone();
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        let notice = ed.take_notice().unwrap_or_default();
+        assert!(notice.contains("line 2"), "{notice}");
+        assert!(!notice.contains("hello"), "{notice}");
+        assert_eq!(ed.take_notice(), None, "taken once");
+    }
+
+    #[test]
+    fn graph_from_text_too_many_nodes_changes_nothing_and_leaves_a_notice() {
+        // Arrange
+        let edges: Vec<String> = (1..=200).map(|i| format!("{i}-{}", i + 1)).collect();
+        let mut ed = selected_block(&edges.join("\n"));
+        let before = ed.clone();
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        let notice = ed.take_notice().unwrap_or_default();
+        assert!(notice.contains("201"), "{notice}");
+    }
+
+    #[test]
+    fn graph_from_text_without_one_text_block_does_nothing() {
+        // Arrange: nothing selected, two blocks, a rectangle, blank text.
+        let mut none = selected_block("1-2");
+        none.selection.clear();
+        let mut two = shape_text_editor(
+            vec![block(0.0, 0.0, "1-2"), block(90.0, 0.0, "3-4")],
+            Tool::Select,
+        );
+        two.apply(Command::SelectAll);
+        let mut other = shape_text_editor(vec![rect(0.0, 0.0, 9.0, 9.0)], Tool::Select);
+        other.apply(Command::SelectAll);
+        let blank = selected_block(" \n ");
+
+        for mut ed in [none, two, other, blank] {
+            let before = ed.clone();
+
+            // Act
+            let changed = ctrl_l(&mut ed);
+
+            // Assert
+            assert!(!changed);
+            assert_eq!(ed, before);
+            assert_eq!(ed.take_notice(), None);
+        }
+    }
+
+    #[test]
+    fn graph_from_text_only_self_loops_draws_the_nodes() {
+        // Arrange
+        let mut ed = selected_block("1-1 2-2");
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert
+        assert_eq!(count(&ed, is_ellipse), 2);
+        assert_eq!(ed.document().len(), 2);
     }
 }
