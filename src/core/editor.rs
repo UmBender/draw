@@ -4897,4 +4897,137 @@ mod tests {
         assert!(ed.document_revision() > before);
         assert_eq!(ed.document().len(), 3);
     }
+
+    // ---- T83 paste text ----------------------------------------------------
+
+    /// Sends clipboard text as the shell does.
+    fn paste_text(ed: &mut Editor, text: &str) -> bool {
+        ed.handle(InputEvent::Paste(text.to_owned()))
+    }
+
+    #[test]
+    fn paste_event_in_open_edit_inserts_at_caret() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "ab");
+        key(&mut ed, Key::ArrowLeft);
+
+        // Act
+        let changed = paste_text(&mut ed, "xy");
+        typed(&mut ed, "!");
+
+        // Assert: the caret ended after the pasted text.
+        assert!(changed);
+        assert_eq!(editing(&ed).as_deref(), Some("axy!b"));
+    }
+
+    #[test]
+    fn paste_event_in_shape_text_goes_to_the_shape() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Text);
+        click(&mut ed, 100.0, 50.0);
+
+        // Act
+        assert!(paste_text(&mut ed, "hi"));
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(slot_text(&ed, 0, TextSlot::Shape).as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn paste_event_in_grid_cell_keeps_line_breaks() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![grid(0.0, 0.0, 200.0, 200.0, 4, 4)], Tool::Text);
+        click(&mut ed, 25.0, 25.0);
+        let cell = TextSlot::Cell { col: 0, row: 0 };
+        assert_eq!(editing_host(&ed).map(|(_, slot)| slot), Some(cell));
+
+        // Act
+        assert!(paste_text(&mut ed, "1\r\n2"));
+
+        // Assert: still in the same cell, unlike the Enter key.
+        assert_eq!(editing_host(&ed).map(|(_, slot)| slot), Some(cell));
+        assert_eq!(editing(&ed).as_deref(), Some("1\n2"));
+        key(&mut ed, Key::Escape);
+        assert_eq!(slot_text(&ed, 0, cell).as_deref(), Some("1\n2"));
+    }
+
+    #[test]
+    fn paste_event_with_nothing_to_insert_changes_nothing() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "ab");
+
+        // Act
+        let empty = paste_text(&mut ed, "");
+        let controls = paste_text(&mut ed, "\u{7}");
+
+        // Assert
+        assert!(!empty && !controls);
+        assert_eq!(editing(&ed).as_deref(), Some("ab"));
+    }
+
+    #[test]
+    fn paste_event_without_open_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+
+        // Act
+        let changed = paste_text(&mut ed, "text");
+
+        // Assert
+        assert!(!changed);
+        assert!(ed.text_edit().is_none());
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn paste_event_then_ctrl_z_discards_the_new_block() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "ab");
+        paste_text(&mut ed, "cd");
+
+        // Act
+        let cancelled = key_with(&mut ed, Key::Z, CTRL);
+
+        // Assert
+        assert!(cancelled);
+        assert!(ed.text_edit().is_none());
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn paste_event_then_ctrl_z_keeps_the_old_text() {
+        // Arrange: a finished block, opened again.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "ab");
+        key(&mut ed, Key::Escape);
+        click(&mut ed, 104.0, 106.0);
+        assert_eq!(editing(&ed).as_deref(), Some("ab"));
+        paste_text(&mut ed, "cd");
+
+        // Act
+        key_with(&mut ed, Key::Z, CTRL);
+
+        // Assert
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["ab"]);
+    }
+
+    #[test]
+    fn ctrl_v_outside_edit_still_pastes_shapes() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Select);
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+
+        // Act
+        key_with(&mut ed, Key::V, CTRL);
+
+        // Assert
+        assert_eq!(ed.document().len(), 2);
+    }
 }

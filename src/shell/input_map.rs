@@ -1434,6 +1434,50 @@ mod tests {
         assert!(has_release_request(4));
     }
 
+    // ---- T83 paste text ----------------------------------------------------
+
+    #[test]
+    fn wants_clipboard_only_for_ctrl_v_while_editing() {
+        // Arrange
+        let down = |key, mods| InputEvent::KeyDown { key, mods };
+        let ctrl_v = down(Key::V, CTRL);
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ..CTRL
+        };
+
+        // Act / Assert
+        assert!(wants_clipboard(&ctrl_v, true));
+        assert!(!wants_clipboard(&ctrl_v, false), "shapes paste as before");
+        assert!(!wants_clipboard(&down(Key::V, Modifiers::NONE), true));
+        assert!(!wants_clipboard(&down(Key::V, ctrl_shift), true));
+        assert!(!wants_clipboard(&down(Key::C, CTRL), true));
+        assert!(!wants_clipboard(
+            &InputEvent::KeyUp {
+                key: Key::V,
+                mods: CTRL,
+            },
+            true
+        ));
+        assert!(!wants_clipboard(
+            &InputEvent::Char {
+                ch: 'v',
+                mods: CTRL,
+            },
+            true
+        ));
+    }
+
+    #[test]
+    fn paste_event_needs_some_text() {
+        assert_eq!(paste_event(None), None);
+        assert_eq!(paste_event(Some(String::new())), None);
+        assert_eq!(
+            paste_event(Some("a".to_owned())),
+            Some(InputEvent::Paste("a".to_owned()))
+        );
+    }
+
     // T47: flight recorder records (ADR-T47-1).
 
     fn records(collector: &mut Collector) -> Vec<crate::shell::diag::event::Event> {

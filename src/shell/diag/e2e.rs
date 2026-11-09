@@ -293,6 +293,43 @@ mod tests {
     }
 
     #[test]
+    fn env_name_of_the_clipboard_is_stable() {
+        assert_eq!(CLIPBOARD_ENV, "DRAW_E2E_CLIPBOARD");
+    }
+
+    #[test]
+    fn hooks_take_clipboard_returns_the_text_once() -> std::io::Result<()> {
+        // Arrange
+        let dir = temp_dir("clipboard")?;
+        let path = dir.join("clipboard");
+        std::fs::write(&path, "hello\n")?;
+        let hooks = hooks(&dir).with_clipboard(Some(path.as_os_str()));
+
+        // Act
+        let first = hooks.take_clipboard();
+        let second = hooks.take_clipboard();
+
+        // Assert
+        assert_eq!(first.as_deref(), Some("hello\n"));
+        assert_eq!(second, None);
+        assert!(!path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn hooks_without_clipboard_take_nothing() -> std::io::Result<()> {
+        // Arrange
+        let dir = temp_dir("no-clipboard")?;
+        let unset = hooks(&dir);
+        let missing = hooks(&dir).with_clipboard(Some(dir.join("absent").as_os_str()));
+
+        // Act / Assert
+        assert_eq!(unset.take_clipboard(), None);
+        assert_eq!(missing.take_clipboard(), None);
+        Ok(())
+    }
+
+    #[test]
     fn hooks_unwritable_path_does_not_panic() {
         // Arrange
         let bad = Path::new("/nonexistent-dir/deep/file");

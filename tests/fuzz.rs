@@ -292,7 +292,18 @@ fn arb_event() -> impl Strategy<Value = InputEvent> {
         arb_pos().prop_map(|size| InputEvent::Resize { size }),
         (arb_char(), arb_mods()).prop_map(|(ch, mods)| InputEvent::Char { ch, mods }),
         arb_pressure().prop_map(|pressure| InputEvent::Pressure { pressure }),
+        arb_paste_text().prop_map(InputEvent::Paste),
     ]
+}
+
+/// Clipboard text: short, with line breaks, tabs, control characters and
+/// formula source (T83).
+fn arb_paste_text() -> impl Strategy<Value = String> {
+    let ch = prop_oneof![
+        3 => select(vec!['a', '\n', '\r', '\t', '\u{7}', 'β', '$', '\\', '{']),
+        1 => arb_char(),
+    ];
+    prop::collection::vec(ch, 0..24).prop_map(|chars| chars.into_iter().collect())
 }
 
 /// A pen pressure: mostly in range, sometimes out of it, non-finite or
@@ -342,6 +353,7 @@ fn arb_text_session() -> impl Strategy<Value = Vec<InputEvent>> {
             src.chars().map(|ch| InputEvent::Char { ch, mods: none }).collect()
         }),
         3 => select(TEXT_KEYS.to_vec()).prop_map(move |key| vec![InputEvent::KeyDown { key, mods: none }]),
+        1 => arb_paste_text().prop_map(|text| vec![InputEvent::Paste(text)]),
         1 => (arb_key(), arb_mods()).prop_map(|(key, mods)| vec![InputEvent::KeyDown { key, mods }]),
         1 => arb_screen_pos().prop_map(move |pos| vec![
             InputEvent::PointerDown { pos, button: PointerButton::Left, mods: none },
@@ -403,6 +415,7 @@ fn arb_host_session() -> impl Strategy<Value = Vec<InputEvent>> {
             vec![InputEvent::KeyDown { key, mods: if s { shift } else { none } }]
         }),
         2 => select(TEXT_KEYS.to_vec()).prop_map(move |key| vec![InputEvent::KeyDown { key, mods: none }]),
+        1 => arb_paste_text().prop_map(|text| vec![InputEvent::Paste(text)]),
         1 => (-1.0f32..1.0, -1.0f32..1.0).prop_map(|(x, y)| vec![
             InputEvent::PointerDown { pos: Vec2::new(x, y), button: PointerButton::Left, mods: Modifiers::NONE },
             InputEvent::PointerUp { pos: Vec2::new(x, y), button: PointerButton::Left, mods: Modifiers::NONE },
@@ -889,6 +902,7 @@ fn strategies_generate_all_variants() {
                 (7, None)
             }
             InputEvent::Pressure { .. } => (8, None),
+            InputEvent::Paste(_) => (9, None),
         };
         variants.insert(variant);
         if let Some(pos) = pos {
@@ -898,7 +912,7 @@ fn strategies_generate_all_variants() {
     }
 
     // Assert
-    assert_eq!(variants.len(), 9, "event variants seen: {variants:?}");
+    assert_eq!(variants.len(), 10, "event variants seen: {variants:?}");
     assert_eq!(keys.len(), ALL_KEYS.len(), "keys seen: {keys:?}");
     assert_eq!(
         buttons.len(),

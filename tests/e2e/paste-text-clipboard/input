@@ -1,0 +1,9 @@
+# T83: Ctrl+V pastes the system clipboard at the caret of an open block.
+clipboard pasted from outside
+key t
+click 120 120
+text ab
+key Left
+chord ctrl v
+text !
+key Escape

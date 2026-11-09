@@ -1386,6 +1386,20 @@ mod self_tests {
     }
 
     #[test]
+    fn parse_input_clipboard_is_one_step() {
+        assert_eq!(
+            parsed("clipboard pasted from outside\n").steps,
+            [Step::Clipboard("pasted from outside".to_owned())]
+        );
+    }
+
+    #[test]
+    fn parse_input_rejects_clipboard_text_that_looks_like_an_option() {
+        assert!(parse_input("clipboard -oops\n").is_err());
+        assert!(parse_input("clipboard\n").is_err());
+    }
+
+    #[test]
     fn select_sections_keeps_only_the_named_ones_and_the_header() {
         let snapshot = "draw-snapshot 1\n[editor]\ntool pen\n[document]\nshape 0\n";
 

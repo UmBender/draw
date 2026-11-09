@@ -1040,4 +1040,121 @@ mod tests {
             }
         }
     }
+
+    // ---- T83 paste text ----------------------------------------------------
+
+    #[test]
+    fn clean_paste_normalises_line_breaks() {
+        assert_eq!(clean_paste("a\r\nb\rc\nd"), "a\nb\nc\nd");
+        assert_eq!(clean_paste("\r\r\n"), "\n\n");
+    }
+
+    #[test]
+    fn clean_paste_drops_control_characters() {
+        assert_eq!(clean_paste("a\u{0}b\u{7}c\u{1b}[0m\u{7f}\u{85}d"), "abc[0md");
+    }
+
+    #[test]
+    fn clean_paste_tab_is_the_tab_key_spaces() {
+        assert_eq!(
+            clean_paste("a\tb"),
+            format!("a{}b", " ".repeat(TAB_SPACES))
+        );
+    }
+
+    #[test]
+    fn clean_paste_cuts_at_the_limit() {
+        // Arrange
+        let long = "a".repeat(PASTE_MAX_BYTES + 10);
+
+        // Act
+        let cleaned = clean_paste(&long);
+
+        // Assert
+        assert_eq!(cleaned.len(), PASTE_MAX_BYTES);
+    }
+
+    #[test]
+    fn clean_paste_cuts_on_a_char_boundary() {
+        // Arrange: one byte, then two-byte characters past the limit, so
+        // the limit falls inside one of them.
+        let long = format!("a{}", "β".repeat(PASTE_MAX_BYTES));
+
+        // Act
+        let cleaned = clean_paste(&long);
+
+        // Assert
+        assert_eq!(cleaned.len(), PASTE_MAX_BYTES - 1);
+        assert!(cleaned.ends_with('β'));
+    }
+
+    #[test]
+    fn clean_paste_limit_counts_expanded_tabs() {
+        // Arrange: a tab's spaces do not fit in the two bytes left.
+        let long = format!("{}\tb", "a".repeat(PASTE_MAX_BYTES - 2));
+
+        // Act
+        let cleaned = clean_paste(&long);
+
+        // Assert
+        assert_eq!(cleaned.len(), PASTE_MAX_BYTES - 2);
+        assert!(cleaned.ends_with('a'));
+    }
+
+    proptest! {
+        #[test]
+        fn clean_paste_any_text_is_bounded_and_clean(
+            chars in prop::collection::vec(any::<char>(), 0..200),
+        ) {
+            // Arrange
+            let text: String = chars.into_iter().collect();
+
+            // Act
+            let cleaned = clean_paste(&text);
+
+            // Assert
+            prop_assert!(cleaned.len() <= PASTE_MAX_BYTES);
+            prop_assert!(cleaned.chars().all(|c| c == '\n' || !c.is_control()));
+        }
+    }
+
+    #[test]
+    fn edit_paste_inserts_at_caret_and_moves_past_it() {
+        // Arrange
+        let mut e = edit("ac", 1);
+
+        // Act
+        let changed = e.paste("xβ\ny");
+
+        // Assert
+        assert!(changed);
+        assert_eq!(e.text(), "axβ\nyc");
+        assert_eq!(e.caret(), 1 + "xβ\ny".len());
+    }
+
+    #[test]
+    fn edit_paste_cleans_the_text() {
+        let mut e = edit("", 0);
+
+        assert!(e.paste("a\r\n\u{7}b"));
+
+        assert_eq!(e.text(), "a\nb");
+        assert_eq!(e.caret(), 3);
+    }
+
+    #[test]
+    fn edit_paste_of_nothing_changes_nothing() {
+        for text in ["", "\u{7}\u{0}"] {
+            // Arrange
+            let mut e = edit("ab", 1);
+
+            // Act
+            let changed = e.paste(text);
+
+            // Assert
+            assert!(!changed, "{text:?}");
+            assert_eq!(e.text(), "ab");
+            assert_eq!(e.caret(), 1);
+        }
+    }
 }
