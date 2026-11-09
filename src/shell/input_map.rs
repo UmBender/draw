@@ -640,6 +640,50 @@ mod tests {
     // AC-1b
 
     #[test]
+    fn export_chord_repeat_is_dropped() {
+        // Arrange
+        let mut c = Collector::new();
+        let mods = KeyMods {
+            ctrl: true,
+            ..NO_MODS
+        };
+
+        // Act: a press, then what holding the keys sends.
+        c.key_down_event(KeyCode::E, mods, false);
+        c.key_down_event(KeyCode::E, mods, true);
+        c.key_down_event(KeyCode::E, mods, true);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [InputEvent::KeyDown {
+                key: Key::E,
+                mods: CTRL,
+            }]
+        );
+    }
+
+    #[test]
+    fn repeat_of_other_chords_is_kept() {
+        // Arrange
+        let mut c = Collector::new();
+        let mods = KeyMods {
+            ctrl: true,
+            ..NO_MODS
+        };
+
+        // Act
+        c.key_down_event(KeyCode::Z, mods, false);
+        c.key_down_event(KeyCode::Z, mods, true);
+        c.key_down_event(KeyCode::E, NO_MODS, true);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(events.len(), 3, "{events:?}");
+    }
+
+    #[test]
     fn collector_translates_in_order() {
         // Arrange
         let mut c = Collector::new();

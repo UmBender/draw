@@ -12,6 +12,8 @@ repository = "https://github.com/UmBender/draw"
 macroquad = "0.4"
 # Same version macroquad uses: no second copy (ADR-T32-1).
 fontdue = "0.9"
+# Same version macroquad uses: no second copy (ADR-T92-1).
+png = "0.17"
 
 [dev-dependencies]
 proptest = "1"

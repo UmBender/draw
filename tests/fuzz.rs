@@ -1164,6 +1164,20 @@ proptest! {
     }
 
     #[test]
+    fn export_requests_never_change_the_editor(session in arb_session()) {
+        // Arrange
+        let mut editor = run_session_on(Editor::new(), &session)?;
+        let before = editor.clone();
+
+        // Act
+        let redraw = editor.apply(Command::ExportView);
+
+        // Assert
+        prop_assert!(!redraw, "an export needs no redraw");
+        prop_assert!(editor == before, "the export changed the editor");
+    }
+
+    #[test]
     fn undo_all_then_redo_all_is_symmetric(session in arb_session()) {
         check_undo_redo_symmetric(&session, Editor::new())?;
     }

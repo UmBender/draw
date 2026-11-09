@@ -4325,6 +4325,95 @@ mod tests {
         );
     }
 
+    // ---- T92 export the view ------------------------------------------------
+
+    fn ctrl_e(ed: &mut Editor) -> bool {
+        key_with(ed, Key::E, CTRL)
+    }
+
+    #[test]
+    fn export_view_when_idle_asks_once() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = ctrl_e(&mut ed);
+
+        // Assert: nothing but the request changes.
+        assert!(!redraw);
+        assert!(ed == before);
+        assert!(ed.take_export_request());
+        assert!(!ed.take_export_request(), "a request is answered once");
+    }
+
+    #[test]
+    fn export_view_is_not_requested_by_default() {
+        assert!(!Editor::new().take_export_request());
+    }
+
+    #[test]
+    fn export_view_during_text_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hi");
+        assert!(ed.text_edit().is_some());
+
+        // Act
+        ctrl_e(&mut ed);
+
+        // Assert
+        assert!(!ed.take_export_request());
+        assert!(ed.text_edit().is_some(), "the block stays open");
+    }
+
+    #[test]
+    fn export_view_command_during_text_edit_keeps_the_block_open() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hi");
+
+        // Act
+        let redraw = ed.apply(Command::ExportView);
+
+        // Assert
+        assert!(!redraw);
+        assert!(!ed.take_export_request());
+        assert!(ed.text_edit().is_some(), "the block is not committed");
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn export_view_during_gesture_is_ignored() {
+        // Arrange: a pen stroke in progress.
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 20.0, 20.0);
+        assert!(ed.active_gesture().is_some());
+
+        // Act
+        ctrl_e(&mut ed);
+
+        // Assert
+        assert!(!ed.take_export_request());
+        assert!(ed.active_gesture().is_some(), "the stroke goes on");
+    }
+
+    #[test]
+    fn can_export_is_false_during_text_edit_and_gesture() {
+        // Arrange
+        let idle = Editor::new();
+        let mut drawing = Editor::new();
+        down(&mut drawing, PointerButton::Left, 10.0, 10.0);
+        let mut typing = text_editor();
+        place(&mut typing, 100.0, 100.0, "hi");
+
+        // Act / Assert
+        assert!(idle.can_export());
+        assert!(!drawing.can_export());
+        assert!(!typing.can_export());
+    }
+
     // ---- T35 pressure -------------------------------------------------------
 
     fn press(ed: &mut Editor, pressure: Option<f32>) -> bool {

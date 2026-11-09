@@ -116,6 +116,8 @@ struct Case {
     sections: Vec<String>,
     /// Whether to compare a screenshot, and how strictly.
     screenshot: Option<Tolerance>,
+    /// Whether the case must leave one exported PNG, showing the window.
+    export: bool,
     /// The input.
     steps: Vec<Step>,
     /// How the case ends.
@@ -189,6 +191,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
                 channel: number(channel)?,
             });
         }
+        ("export", []) => case.export = true,
         // wtype would read a leading dash as an option.
         ("text", _) if !rest.is_empty() && !rest.starts_with('-') => {
             case.steps.push(Step::Type(vec![rest.to_owned()]));
@@ -253,6 +256,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
 /// | `scene <name>` | generated start state |
 /// | `sections <name>...` | compare only these snapshot sections |
 /// | `screenshot [pixels channel]` | also compare `expected.ppm` |
+/// | `export` | `$HOME` must hold one PNG that shows the final window |
 /// | `text <text>` | type literally, through `wtype` |
 /// | `key <keysym>` | one key |
 /// | `chord <mod>... <keysym>` | key with modifiers |
@@ -1112,6 +1116,15 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         }
     }
 
+    if case.export {
+        let shot = run.join("window.ppm");
+        running.session.screenshot(&shot)?;
+        let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
+        if let Err(problem) = check_export(&home, &shot, run, pointer) {
+            problems.push(problem);
+        }
+    }
+
     match case.ending {
         Ending::Close => {
             running.session.swaymsg(&["[app_id=\"draw\"]", "kill"])?;
@@ -1169,6 +1182,70 @@ fn compare_screenshot(
         let path = run.join("diff.ppm");
         let saved = std::fs::write(&path, diff.image.to_ppm());
         format!("{} (diff: {} {saved:?})", diff.message, path.display())
+    })
+}
+
+/// The one exported PNG in `home`; an error if there is none or several.
+fn find_export(home: &Path) -> Result<PathBuf, String> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(home)
+        .map_err(|err| format!("{}: {err}", home.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            name.starts_with("draw-") && name.ends_with(".png")
+        })
+        .collect();
+    found.sort();
+    match found.as_slice() {
+        [path] => Ok(path.clone()),
+        other => Err(format!("expected one exported PNG, found {other:?}")),
+    }
+}
+
+/// Decodes 8-bit RGBA PNG `bytes` to an RGB [`Image`].
+fn decode_png(bytes: &[u8]) -> Result<Image, String> {
+    let bad = |err: png::DecodingError| format!("png: {err}");
+    let mut reader = png::Decoder::new(bytes).read_info().map_err(bad)?;
+    let mut rgba = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut rgba).map_err(bad)?;
+    if (info.color_type, info.bit_depth) != (png::ColorType::Rgba, png::BitDepth::Eight) {
+        return Err(format!("png: {:?} {:?}", info.color_type, info.bit_depth));
+    }
+    rgba.truncate(info.buffer_size());
+    let rgb = rgba
+        .chunks_exact(4)
+        .flat_map(|pixel| pixel.iter().take(3).copied())
+        .collect();
+    Ok(Image {
+        width: info.width as usize,
+        height: info.height as usize,
+        rgb,
+    })
+}
+
+/// Checks that `home` holds one PNG, of the window's size, showing what the
+/// screenshot at `shot` shows.
+fn check_export(
+    home: &Path,
+    shot: &Path,
+    run: &Path,
+    pointer: (i32, i32),
+) -> Result<(), String> {
+    let path = find_export(home)?;
+    let bytes = std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let exported = decode_png(&bytes)?;
+    if (exported.width, exported.height) != (OUTPUT.0 as usize, OUTPUT.1 as usize) {
+        return Err(format!(
+            "the export is {}x{}, the window {}x{}",
+            exported.width, exported.height, OUTPUT.0, OUTPUT.1
+        ));
+    }
+    let bytes = std::fs::read(shot).map_err(|err| format!("{}: {err}", shot.display()))?;
+    let mut window = Image::parse_ppm(&bytes)?;
+    hide_cursor_box(&mut window, &exported, pointer);
+    compare_images(&exported, &window, Tolerance::default()).map_err(|diff| {
+        let saved = std::fs::write(run.join("export-diff.ppm"), diff.image.to_ppm());
+        format!("the export differs from the window: {} {saved:?}", diff.message)
     })
 }
 
@@ -1367,6 +1444,56 @@ mod self_tests {
             })
         );
         assert_eq!(case.ending, Ending::Sigint);
+    }
+
+    #[test]
+    fn parse_input_reads_the_export_option() {
+        assert!(parsed("export\n").export);
+        assert!(!parsed("key a\n").export);
+        assert!(parse_input("export now\n").is_err());
+    }
+
+    #[test]
+    fn find_export_needs_exactly_one_file() {
+        // Arrange
+        let home = temp_dir("find-export");
+        let write = |name: &str| {
+            std::fs::write(home.join(name), b"").unwrap_or_else(|err| panic!("{err}"));
+        };
+
+        // Act / Assert
+        assert!(find_export(&home).is_err(), "no file yet");
+        write("draw-1.png");
+        write("draw.log");
+        assert_eq!(find_export(&home), Ok(home.join("draw-1.png")));
+        write("draw-2.png");
+        assert!(find_export(&home).is_err(), "two files");
+    }
+
+    #[test]
+    fn decode_png_gives_the_rgb_rows_in_order() {
+        // Arrange: a 1×2 image, red over blue.
+        let rgba = [255, 0, 0, 255, 0, 0, 255, 255];
+        let bytes = draw::shell::export::encode_png(1, 2, &rgba)
+            .unwrap_or_else(|err| panic!("{err}"));
+
+        // Act
+        let image = decode_png(&bytes);
+
+        // Assert
+        assert_eq!(
+            image,
+            Ok(Image {
+                width: 1,
+                height: 2,
+                rgb: vec![255, 0, 0, 0, 0, 255],
+            })
+        );
+    }
+
+    #[test]
+    fn decode_png_rejects_garbage() {
+        assert!(decode_png(b"not a png").is_err());
     }
 
     #[test]

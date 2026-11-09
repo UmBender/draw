@@ -1,0 +1,12 @@
+# Ctrl+E writes the view, not the toolbar or the selection: the file is
+# taken with both showing and must match the window once they are hidden.
+# The rectangle is off-centre, so a flipped file does not match either.
+key r
+drag 100 80 300 200
+key v
+click 100 140
+checkpoint selected
+chord ctrl e
+key Escape
+key Tab
+export

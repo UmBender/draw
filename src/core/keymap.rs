@@ -380,6 +380,7 @@ mod tests {
             (Key::Digit0, NONE, Command::ResetView),
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
+            (Key::E, CTRL, Command::ExportView),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),
@@ -438,6 +439,13 @@ mod tests {
         assert_eq!(resolve(Key::Digit1, ALT), None);
         assert_eq!(resolve(Key::Z, NONE), None);
         assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn resolve_ctrl_e_exports_the_view() {
+        assert_eq!(resolve(Key::E, CTRL), Some(Command::ExportView));
+        assert_eq!(resolve(Key::E, NONE), Some(Command::SetTool(Tool::Eraser)));
+        assert_eq!(resolve(Key::E, CTRL_SHIFT), None);
     }
 
     #[test]
