@@ -53,6 +53,8 @@ pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 
 /// Helper settings for new shapes: snapping, grid size and numbering
 /// (ADR-T16-3). Only [`Editor::apply`] changes them.
+// Each bool is an independent switch with its own key, not a hidden state.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Helpers {
     /// Smart snapping (round, sizes, alignment) is on.
@@ -618,22 +620,7 @@ impl Editor {
                 self.smoothing = self.smoothing.next();
                 true
             }
-            Command::Undo => {
-                let cancelled = self.cancel_gesture();
-                let given = self.helpers().next_number.saturating_sub(1);
-                let before = numbering::label_count(&self.doc, given);
-                let changed = self.history.undo(&mut self.doc);
-                let after = numbering::label_count(&self.doc, given);
-                let helpers = &mut self.style.helpers;
-                helpers.next_number = numbering::roll_back(
-                    helpers.next_number,
-                    before,
-                    after,
-                    helpers.first_number(),
-                );
-                self.prune_selection();
-                changed || cancelled
-            }
+            Command::Undo => self.undo(),
             Command::Redo => {
                 let cancelled = self.cancel_gesture();
                 let next = self.helpers().next_number;
@@ -701,6 +688,21 @@ impl Editor {
             | Command::GridCols(_)
             | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
         }
+    }
+
+    /// Undoes one step and gives its number back (ADR-T19-1). Returns
+    /// whether anything changed.
+    fn undo(&mut self) -> bool {
+        let cancelled = self.cancel_gesture();
+        let given = self.helpers().next_number.saturating_sub(1);
+        let before = numbering::label_count(&self.doc, given);
+        let changed = self.history.undo(&mut self.doc);
+        let after = numbering::label_count(&self.doc, given);
+        let helpers = &mut self.style.helpers;
+        helpers.next_number =
+            numbering::roll_back(helpers.next_number, before, after, helpers.first_number());
+        self.prune_selection();
+        changed || cancelled
     }
 
     /// The document.
