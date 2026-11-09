@@ -769,7 +769,10 @@ impl Editor {
     /// text block, for a selection that can scale (ADR-T91-1).
     #[must_use]
     pub fn selection_handles(&self) -> Option<[Vec2; 4]> {
-        todo!("T91 behaviour step")
+        if self.tool != Tool::Select || self.gesture.is_some() || self.text_edit().is_some() {
+            return None;
+        }
+        select::handle_centers(&self.doc, &self.selection, &self.camera)
     }
 
     /// The first shape of [`Editor::overlay`]: the shape being drawn, if any.

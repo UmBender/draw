@@ -1001,8 +1001,24 @@ pub fn draw_selection(bounds: Aabb, camera: &Camera) {
 /// size at every zoom (ADR-T91-1).
 #[must_use]
 pub fn selection_handle_rect(center: Vec2) -> Aabb {
-    let _ = center;
-    todo!("T91 behaviour step")
+    Aabb::from_corners(center, center).expand(select::HANDLE_SIZE_PX * 0.5)
+}
+
+/// Draws the resize handles at the screen `centers`: filled squares in the
+/// canvas colour with a selection-coloured outline.
+pub fn draw_selection_handles(centers: &[Vec2; 4]) {
+    let mut batch = Batch::new(GlSink);
+    for center in centers {
+        let rect = selection_handle_rect(*center);
+        batch.rect(rect, hex_color(theme::CANVAS));
+        draw_rect_outline(
+            &mut batch,
+            rect,
+            SELECTION_WIDTH_PX,
+            hex_color(theme::SELECTION_OUTLINE),
+        );
+    }
+    batch.finish();
 }
 
 /// Adds one shape to `batch` (its labels are drawn right away, after a

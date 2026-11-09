@@ -5,7 +5,7 @@ status: in-progress
 wave: 51
 branch: task/T91-resize-handles
 depends_on: []
-adrs: [ADR-T91-1]
+adrs: [ADR-T91-1, ADR-T91-2]
 feature: "[[Editing tools]]"
 tutorial: ""
 tags: [task]
@@ -91,7 +91,7 @@ for the minimum size, text and uneven scales are in
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
 - `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `src/shell/app.rs` (draws the handles; only `draw_overlay` changes)
-- `tests/fuzz.rs`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
+- `tests/fuzz.rs`, `tests/fuzz.proptest-regressions`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
 - this note, and new `ADR-T91-<n>` notes
 
 ## Subtasks (one commit each)
@@ -112,3 +112,5 @@ None: it extends an existing area.
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
 - 2026-11-09 — UNATTENDED CHOICE: added `src/shell/app.rs` to *Files owned*. `draw_selection` also outlines the open text block, so the handles need their own call in `draw_overlay`.
 - 2026-11-09 — UNATTENDED CHOICE: the rules the spec leaves open (which shapes the 4-unit minimum binds, text under uneven scales, handles only in the Select tool, no snapping) are recorded in [[ADR-T91-1 Resize handles and scale rules]].
+- 2026-11-09 — UNATTENDED CHOICE: the fuzzer showed a resize could push text past `snapshot::MAX_TEXT_SIZE`, which snapshots refuse. The size is now capped at it ([[ADR-T91-2 Scaled text stays within the largest text size]]). The bug only existed in this step's uncommitted code, so its test `scaled_about_caps_text_at_the_largest_size` went in with the behaviour commit, and `scaled_about_rejects_overflow` now tests the text's origin instead of its box.
+- 2026-11-09 — UNATTENDED CHOICE: added `tests/fuzz.proptest-regressions` to *Files owned*: the shrunk failing session of that bug stays as a regression seed, as [[Quality Gates]] asks.

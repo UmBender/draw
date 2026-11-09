@@ -10,6 +10,10 @@
 //! - A press on empty space clears the selection (kept with `Shift`) and a
 //!   drag draws a marquee; the release selects every shape whose bounds
 //!   intersect it.
+//! - A press on a corner handle of the selection, without `Alt`, scales it
+//!   about the opposite corner: the preview shows scaled copies, the release
+//!   commits one `Replace` transaction; `Shift` keeps the proportions
+//!   (ADR-T91-1).
 //!
 //! Every entry point first drops selected ids missing from the document, so a
 //! stale selection is never acted on.
@@ -20,7 +24,7 @@ use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::camera::Camera;
 use crate::core::clipboard;
 use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
-use crate::core::geom::{Aabb, Vec2};
+use crate::core::geom::{Aabb, Vec2, approx_eq};
 use crate::core::shape::Shape;
 use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
 
@@ -42,6 +46,13 @@ pub const SCALE_UP_FACTOR: f32 = 1.1;
 
 /// Factor of [`Command::ScaleDown`](crate::core::command::Command::ScaleDown).
 pub const SCALE_DOWN_FACTOR: f32 = 0.9;
+
+/// Smallest factor a resize ever applies: keeps every factor positive on
+/// the axes that set no limit of their own.
+const MIN_FACTOR: f32 = 1e-3;
+
+/// How close to 1 a factor counts as no change.
+const IDENTITY_EPS: f32 = 1e-6;
 
 /// What a resize scales, worked out once at the press (ADR-T91-1). World
 /// units.
@@ -102,30 +113,167 @@ enum Gesture {
     },
 }
 
+impl ResizeFrame {
+    /// The factors per axis for the dragged corner moved by the world
+    /// `delta`, or `None` if they are not finite. A side with no extent
+    /// keeps factor 1; `proportional` gives both axes the larger factor.
+    /// Never flips and never goes below the limits (ADR-T91-1).
+    fn factors(&self, delta: Vec2, proportional: bool) -> Option<(f32, f32)> {
+        if !delta.is_finite() {
+            return None;
+        }
+        let extent = self.corner - self.pivot;
+        let ratio = |side: f32, moved: f32| (side.abs() > 0.0).then(|| (side + moved) / side);
+        let (rx, ry) = (ratio(extent.x, delta.x), ratio(extent.y, delta.y));
+        if rx.is_some_and(|r| !r.is_finite()) || ry.is_some_and(|r| !r.is_finite()) {
+            return None;
+        }
+        if proportional {
+            let larger = match (rx, ry) {
+                (Some(x), Some(y)) => x.max(y),
+                (Some(r), None) | (None, Some(r)) => r,
+                (None, None) => return None,
+            };
+            let s = larger.max(self.floor.x.max(self.floor.y)).max(MIN_FACTOR);
+            return Some((s, s));
+        }
+        let clamp = |r: Option<f32>, floor: f32| r.map_or(1.0, |r| r.max(floor).max(MIN_FACTOR));
+        Some((clamp(rx, self.floor.x), clamp(ry, self.floor.y)))
+    }
+}
+
+/// The corners of `b`, clockwise from the top-left one.
+fn corners(b: Aabb) -> [Vec2; 4] {
+    [
+        b.min,
+        Vec2::new(b.max.x, b.min.y),
+        b.max,
+        Vec2::new(b.min.x, b.max.y),
+    ]
+}
+
+/// The joint geometry box of `selection` (see [`Shape::geometry_bounds`]);
+/// unknown ids are skipped.
+fn selection_geometry(doc: &Document, selection: &[ShapeId]) -> Option<Aabb> {
+    selection
+        .iter()
+        .filter_map(|id| doc.get(*id))
+        .map(Shape::geometry_bounds)
+        .reduce(|a, b| a.union(&b))
+}
+
+/// The smallest factor per axis that every shape of `selection` allows.
+fn selection_floor(doc: &Document, selection: &[ShapeId]) -> Vec2 {
+    selection
+        .iter()
+        .filter_map(|id| doc.get(*id))
+        .map(Shape::min_scale)
+        .fold(Vec2::ZERO, |a, b| Vec2::new(a.x.max(b.x), a.y.max(b.y)))
+}
+
 /// Screen centres of the four handles of `selection`, clockwise from the
 /// top-left corner, or `None` when it has nothing to scale (ADR-T91-1).
 #[must_use]
-pub fn handle_centers(
-    doc: &Document,
-    selection: &[ShapeId],
-    camera: &Camera,
-) -> Option<[Vec2; 4]> {
-    let _ = (doc, selection, camera);
-    todo!("T91 behaviour step")
+pub fn handle_centers(doc: &Document, selection: &[ShapeId], camera: &Camera) -> Option<[Vec2; 4]> {
+    let geometry = selection_geometry(doc, selection)?;
+    if geometry.width() <= 0.0 && geometry.height() <= 0.0 {
+        return None;
+    }
+    let bounds = selection
+        .iter()
+        .filter_map(|id| doc.get(*id))
+        .map(Shape::bounds)
+        .reduce(|a, b| a.union(&b))?;
+    let outline = Aabb::from_corners(
+        camera.world_to_screen(bounds.min),
+        camera.world_to_screen(bounds.max),
+    )
+    .expand(SELECTION_PAD_PX);
+    let centers = corners(outline);
+    centers.iter().all(|c| c.is_finite()).then_some(centers)
+}
+
+/// The handle of `selection` under the screen position `pos`: the nearest
+/// one whose square holds it.
+fn handle_at(doc: &Document, selection: &[ShapeId], camera: &Camera, pos: Vec2) -> Option<usize> {
+    let reach = HANDLE_SIZE_PX * 0.5;
+    handle_centers(doc, selection, camera)?
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| (c.x - pos.x).abs() <= reach && (c.y - pos.y).abs() <= reach)
+        .min_by(|(_, a), (_, b)| a.distance(pos).total_cmp(&b.distance(pos)))
+        .map(|(index, _)| index)
+}
+
+/// The frame for a drag of handle `index` of `selection`.
+fn resize_frame(doc: &Document, selection: &[ShapeId], index: usize) -> Option<ResizeFrame> {
+    let box_corners = corners(selection_geometry(doc, selection)?);
+    Some(ResizeFrame {
+        pivot: *box_corners.get((index + 2) % box_corners.len())?,
+        corner: *box_corners.get(index)?,
+        floor: selection_floor(doc, selection),
+    })
+}
+
+/// Copies of `shapes` scaled about `pivot`; `None` if any cannot be
+/// (the whole operation is then ignored).
+fn scaled(shapes: &[(ShapeId, &Shape)], pivot: Vec2, sx: f32, sy: f32) -> Option<Vec<Shape>> {
+    shapes
+        .iter()
+        .map(|(_, shape)| shape.scaled_about(pivot, sx, sy))
+        .collect()
+}
+
+/// `Replace` edits turning `before` into `after`, pairwise.
+fn replace_edits(before: &[(ShapeId, &Shape)], after: Vec<Shape>) -> Transaction {
+    let edits: Vec<Edit> = before
+        .iter()
+        .zip(after)
+        .map(|((id, before), after)| Edit::Replace {
+            id: *id,
+            before: (*before).clone(),
+            after,
+        })
+        .collect();
+    Transaction::from(edits)
+}
+
+/// Scales `ids` about `pivot` as one undo step; factors of 1 record
+/// nothing. Returns whether the document changed.
+fn commit_scale(ctx: &mut ToolCtx<'_>, ids: &[ShapeId], pivot: Vec2, sx: f32, sy: f32) -> bool {
+    if approx_eq(sx, 1.0, IDENTITY_EPS) && approx_eq(sy, 1.0, IDENTITY_EPS) {
+        return false;
+    }
+    let before = selected_shapes(ctx.doc, ids);
+    let Some(after) = scaled(&before, pivot, sx, sy) else {
+        return false;
+    };
+    let tx = replace_edits(&before, after);
+    ctx.commit(tx)
+}
+
+/// Scales the selection by `factor` about its centre, within its limits.
+fn scale_selection(ctx: &mut ToolCtx<'_>, factor: f32) -> bool {
+    prune(ctx.selection, ctx.doc);
+    let Some(geometry) = selection_geometry(ctx.doc, ctx.selection) else {
+        return false;
+    };
+    let floor = selection_floor(ctx.doc, ctx.selection);
+    let s = factor.max(floor.x.max(floor.y)).max(MIN_FACTOR);
+    let ids = ctx.selection.clone();
+    commit_scale(ctx, &ids, geometry.center(), s, s)
 }
 
 /// Grows the selection by 10 % about its centre as one undo step. Returns
 /// whether the document changed.
 pub fn scale_selection_up(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    todo!("T91 behaviour step")
+    scale_selection(ctx, SCALE_UP_FACTOR)
 }
 
-/// Shrinks the selection by 10 % about its centre as one undo step. Returns
-/// whether the document changed.
+/// Shrinks the selection by 10 % about its centre as one undo step, down to
+/// its limits. Returns whether the document changed.
 pub fn scale_selection_down(ctx: &mut ToolCtx<'_>) -> bool {
-    let _ = ctx;
-    todo!("T91 behaviour step")
+    scale_selection(ctx, SCALE_DOWN_FACTOR)
 }
 
 /// Drops selected ids that are not in the document.
@@ -164,19 +312,35 @@ fn translated(shapes: &[(ShapeId, &Shape)], delta: Vec2) -> Vec<Shape> {
 pub fn on_pointer(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     match pointer.phase {
         Phase::Down => press(state, ctx, pointer),
-        Phase::Move => drag_to(state, pointer.pos),
+        Phase::Move => drag_to(state, pointer.pos, pointer.mods.shift),
         Phase::Up => {
-            drag_to(state, pointer.pos);
+            drag_to(state, pointer.pos, pointer.mods.shift);
             release(state, ctx)
         }
     }
 }
 
-/// Starts a gesture: picks, toggles or clears, then arms a move or marquee.
+/// Starts a gesture: takes a handle, or picks, toggles or clears and arms a
+/// move or marquee.
 fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     prune(ctx.selection, ctx.doc);
     let before = ctx.selection.clone();
     let pos = pointer.pos;
+    // ADR-T91-1: a handle wins only on its own square, and never with Alt,
+    // which duplicates.
+    if !pointer.mods.alt
+        && let Some(frame) = handle_at(ctx.doc, ctx.selection, ctx.camera, pos)
+            .and_then(|index| resize_frame(ctx.doc, ctx.selection, index))
+    {
+        state.gesture = Some(Gesture::Resize {
+            start: pos,
+            current: pos,
+            proportional: pointer.mods.shift,
+            ids: ctx.selection.clone(),
+            frame,
+        });
+        return *ctx.selection != before;
+    }
     let world = ctx.camera.screen_to_world(pos);
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     // The inside of the only selected shape grabs it when it can host
@@ -229,15 +393,25 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     *ctx.selection != before
 }
 
-/// Moves the pointer of the gesture in progress. Returns whether it moved.
-fn drag_to(state: &mut State, pos: Vec2) -> bool {
+/// Moves the pointer of the gesture in progress, with `shift` as now held.
+/// Returns whether anything it draws changed.
+fn drag_to(state: &mut State, pos: Vec2, shift: bool) -> bool {
     match &mut state.gesture {
         Some(Gesture::Marquee { current, .. } | Gesture::Move { current, .. }) => {
             let moved = current.distance(pos) > 0.0;
             *current = pos;
             moved
         }
-        Some(Gesture::Resize { .. }) => todo!("T91 behaviour step"),
+        Some(Gesture::Resize {
+            current,
+            proportional,
+            ..
+        }) => {
+            let changed = current.distance(pos) > 0.0 || *proportional != shift;
+            *current = pos;
+            *proportional = shift;
+            changed
+        }
         None => false,
     }
 }
@@ -291,21 +465,28 @@ fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
                 clipboard::insert_copies(ctx, copies, delta);
             } else {
                 let after = translated(&moving, delta);
-                let edits: Vec<Edit> = moving
-                    .iter()
-                    .zip(after)
-                    .map(|((id, before), after)| Edit::Replace {
-                        id: *id,
-                        before: (*before).clone(),
-                        after,
-                    })
-                    .collect();
-                ctx.commit(Transaction::from(edits));
+                ctx.commit(replace_edits(&moving, after));
             }
             // The preview disappears even if the edit was rejected.
             true
         }
-        Gesture::Resize { .. } => todo!("T91 behaviour step"),
+        Gesture::Resize {
+            start,
+            current,
+            proportional,
+            ids,
+            frame,
+        } => {
+            if is_click(start, current) {
+                return start.distance(current) > 0.0;
+            }
+            let delta = camera.screen_to_world(current) - camera.screen_to_world(start);
+            if let Some((sx, sy)) = frame.factors(delta, proportional) {
+                commit_scale(ctx, &ids, frame.pivot, sx, sy);
+            }
+            // The preview disappears even if the edit was rejected.
+            true
+        }
     }
 }
 
@@ -344,7 +525,27 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
                 ..Overlay::default()
             }
         }
-        Some(Gesture::Resize { .. }) => todo!("T91 behaviour step"),
+        Some(Gesture::Resize {
+            start,
+            current,
+            proportional,
+            ids,
+            frame,
+        }) => {
+            if is_click(*start, *current) {
+                return Overlay::default();
+            }
+            let delta = camera.screen_to_world(*current) - camera.screen_to_world(*start);
+            let moving = selected_shapes(view.doc, ids);
+            let after = frame
+                .factors(delta, *proportional)
+                .and_then(|(sx, sy)| scaled(&moving, frame.pivot, sx, sy));
+            after.map_or_else(Overlay::default, |shapes| Overlay {
+                shapes,
+                hidden: moving.iter().map(|(id, _)| *id).collect(),
+                ..Overlay::default()
+            })
+        }
     }
 }
 
@@ -376,9 +577,10 @@ pub fn delete_selection(ctx: &mut ToolCtx<'_>) -> bool {
 }
 
 impl State {
-    /// `select -`, `select marquee <start> <current> <additive>` or
-    /// `select move <start> <current> <clicked> <duplicate> <ids>`
-    /// (snapshots, ADR-T74-1).
+    /// `select -`, `select marquee <start> <current> <additive>`,
+    /// `select move <start> <current> <clicked> <duplicate> <ids>` or
+    /// `select resize <start> <current> <proportional> <pivot> <corner>
+    /// <floor> <ids>` (snapshots, ADR-T74-1).
     pub(crate) fn write_snapshot(&self, w: &mut Writer) {
         w.record("select", |l| match &self.gesture {
             None => {
@@ -405,7 +607,22 @@ impl State {
                     .bool(*duplicate)
                     .put(ids);
             }
-            Some(Gesture::Resize { .. }) => todo!("T91 behaviour step"),
+            Some(Gesture::Resize {
+                start,
+                current,
+                proportional,
+                ids,
+                frame,
+            }) => {
+                l.word("resize")
+                    .put(start)
+                    .put(current)
+                    .bool(*proportional)
+                    .put(&frame.pivot)
+                    .put(&frame.corner)
+                    .put(&frame.floor)
+                    .put(ids);
+            }
         });
     }
 
@@ -435,6 +652,25 @@ impl State {
                         clicked,
                         ids,
                         duplicate,
+                    })
+                }
+                "resize" => {
+                    let start = t.loose_vec2()?;
+                    let current = t.loose_vec2()?;
+                    let proportional = t.bool("proportional")?;
+                    let frame = ResizeFrame {
+                        pivot: t.get()?,
+                        corner: t.get()?,
+                        floor: t.get()?,
+                    };
+                    let ids: Vec<ShapeId> = t.get()?;
+                    check_ids(&t, doc, &ids)?;
+                    Some(Gesture::Resize {
+                        start,
+                        current,
+                        proportional,
+                        ids,
+                        frame,
                     })
                 }
                 other => return Err(t.error(format!("unknown select gesture `{other}`"))),
