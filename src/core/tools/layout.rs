@@ -4,11 +4,15 @@
 //! ordinary lines, arrows, circles and text blocks. [`replace_block`] puts
 //! them in the document in place of the block, as one undo step.
 
-use crate::core::document::ShapeId;
+use crate::core::document::{Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::Vec2;
-use crate::core::shape::{Shape, Style};
+use crate::core::numbering::FIRST_NUMBER;
+use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
+use crate::core::text_layout;
 use crate::core::tools::ToolCtx;
 use crate::core::tools::text::PASTE_MAX_BYTES;
+use std::collections::{HashMap, HashSet};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 use std::fmt;
 
 /// Most nodes a graph can have.
@@ -16,6 +20,12 @@ pub const MAX_NODES: usize = 200;
 
 /// Radius of a node's circle, in ems of the block's text.
 pub const NODE_RADIUS_EM: f32 = 1.25;
+
+/// Space between a weight's box and its edge's stroke, in ems.
+const WEIGHT_GAP_EM: f32 = 0.15;
+
+/// What joins two node names in a pair token.
+const SEPARATORS: [char; 2] = ['-', '>'];
 
 /// Why a text cannot become a graph (ADR-T87-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,8 +94,47 @@ impl EdgeList {
     ///
     /// [`GraphError`] if a line is not an edge, there are too many nodes
     /// or the text is over [`PASTE_MAX_BYTES`].
-    pub fn parse(_text: &str) -> Result<Option<Self>, GraphError> {
-        todo!()
+    pub fn parse(text: &str) -> Result<Option<Self>, GraphError> {
+        if text.len() > PASTE_MAX_BYTES {
+            return Err(GraphError::TooLong { bytes: text.len() });
+        }
+        let mut names = Vec::new();
+        let mut index_of = HashMap::new();
+        let mut edges: Vec<Edge> = Vec::new();
+        let mut seen = HashSet::new();
+        for (number, line) in text.lines().enumerate() {
+            let parsed = line_edges(line).ok_or(GraphError::NotAnEdge { line: number + 1 })?;
+            for raw in parsed {
+                let mut node = |name| {
+                    *index_of.entry(name).or_insert_with(|| {
+                        names.push(name);
+                        names.len() - 1
+                    })
+                };
+                let (from, to) = (node(raw.u), node(raw.v));
+                if from == to {
+                    continue;
+                }
+                // An undirected edge is the same edge read either way.
+                let ends = if raw.directed {
+                    (from, to)
+                } else {
+                    (from.min(to), from.max(to))
+                };
+                if seen.insert((ends, raw.directed, raw.weight)) {
+                    edges.push(Edge {
+                        from,
+                        to,
+                        directed: raw.directed,
+                        weight: raw.weight.map(str::to_owned),
+                    });
+                }
+            }
+        }
+        if names.len() > MAX_NODES {
+            return Err(GraphError::TooManyNodes { nodes: names.len() });
+        }
+        Ok((!names.is_empty()).then_some(Self { names, edges }))
     }
 
     /// Node names, in the order they were first named.
@@ -104,15 +153,272 @@ impl EdgeList {
     /// nodes at `origin`: edges, then circles, then weights. `None` if the
     /// size is not finite and positive or a shape would not be finite.
     #[must_use]
-    pub fn shapes(&self, _origin: Vec2, _size: f32, _style: Style) -> Option<Vec<Shape>> {
-        todo!()
+    pub fn shapes(&self, origin: Vec2, size: f32, style: Style) -> Option<Vec<Shape>> {
+        if !size.is_finite() || size <= 0.0 {
+            return None;
+        }
+        let radius = NODE_RADIUS_EM * size;
+        let widest_weight = self
+            .edges
+            .iter()
+            .filter_map(|edge| edge.weight.as_deref())
+            .map(|weight| text_layout::bounds(Vec2::ZERO, weight, size).width())
+            .fold(0.0, f32::max);
+        let pitch = 2.0 * radius + (2.0 * radius).max(widest_weight + size) + 2.0 * style.width;
+        let centres = self.layers(pitch).unwrap_or_else(|| self.circle(pitch));
+        let shift = origin + Vec2::new(radius, radius) - top_left(&centres);
+
+        let mut lines = Vec::with_capacity(self.edges.len());
+        let mut weights = Vec::new();
+        for edge in &self.edges {
+            let (from, to) = (centres[edge.from], centres[edge.to]);
+            let delta = to - from;
+            let length = delta.length();
+            if length <= 0.0 {
+                return None;
+            }
+            let along = delta / length;
+            // Just off both strokes, as outline snapping leaves it.
+            let reach = along * (radius + style.width);
+            let (a, b) = (from + reach + shift, to - reach + shift);
+            lines.push(if edge.directed {
+                Shape::Arrow { a, b, style }
+            } else {
+                Shape::Line { a, b, style }
+            });
+            if let Some(weight) = &edge.weight {
+                weights.push(weight_text(weight, a.lerp(b, 0.5), along, size, style));
+            }
+        }
+        let circles = self
+            .names
+            .iter()
+            .zip(&centres)
+            .map(|(name, centre)| node_circle(*name, *centre + shift, radius, size, style));
+        let shapes: Vec<Shape> = lines.into_iter().chain(circles).chain(weights).collect();
+        shapes.iter().all(Shape::is_finite).then_some(shapes)
+    }
+
+    /// Node centres of the layered drawing, or `None` if the edges are not
+    /// a tree. Arrow directions do not count. The root is the first node
+    /// named; every leaf takes a column of its own and every parent sits
+    /// centred over its children.
+    fn layers(&self, pitch: f32) -> Option<Vec<Vec2>> {
+        let n = self.names.len();
+        if self.edges.len() + 1 != n {
+            return None;
+        }
+        let mut neighbours = vec![Vec::new(); n];
+        for edge in &self.edges {
+            neighbours[edge.from].push(edge.to);
+            neighbours[edge.to].push(edge.from);
+        }
+        // Preorder, children in the order they were named.
+        let mut parent = vec![None; n];
+        let mut depth = vec![0_u32; n];
+        let mut seen = vec![false; n];
+        seen[0] = true;
+        let mut order = Vec::with_capacity(n);
+        let mut stack = vec![0];
+        while let Some(node) = stack.pop() {
+            order.push(node);
+            for &next in neighbours[node].iter().rev() {
+                if !seen[next] {
+                    seen[next] = true;
+                    parent[next] = Some(node);
+                    depth[next] = depth[node] + 1;
+                    stack.push(next);
+                }
+            }
+        }
+        if order.len() != n {
+            return None;
+        }
+
+        let children = |node: usize| {
+            let own_parent = parent[node];
+            neighbours[node]
+                .iter()
+                .copied()
+                .filter(move |next| Some(*next) != own_parent)
+        };
+        let mut column = vec![0.0_f32; n];
+        let mut next_leaf = 0.0;
+        for &node in &order {
+            if children(node).next().is_none() {
+                column[node] = next_leaf;
+                next_leaf += 1.0;
+            }
+        }
+        for &node in order.iter().rev() {
+            let mut below = children(node);
+            if let Some(first) = below.next() {
+                let last = below.last().unwrap_or(first);
+                column[node] = (column[first] + column[last]) * 0.5;
+            }
+        }
+
+        let layer_gap = pitch * (1.0 + (n as f32).sqrt() / 4.0);
+        Some(
+            column
+                .iter()
+                .zip(&depth)
+                .map(|(x, y)| Vec2::new(x * pitch, *y as f32 * layer_gap))
+                .collect(),
+        )
+    }
+
+    /// Node centres on a circle whose neighbours are `pitch` apart, in the
+    /// order named, from the top and clockwise on screen. Only for two
+    /// nodes or more: a single node is always a tree.
+    fn circle(&self, pitch: f32) -> Vec<Vec2> {
+        let n = self.names.len() as f32;
+        let radius = pitch / (2.0 * (PI / n).sin());
+        (0..self.names.len())
+            .map(|i| {
+                let angle = TAU * i as f32 / n - FRAC_PI_2;
+                Vec2::new(angle.cos(), angle.sin()) * radius
+            })
+            .collect()
+    }
+}
+
+/// One edge as written, before its nodes get indices.
+struct RawEdge<'a> {
+    /// First node's name.
+    u: u32,
+    /// Second node's name.
+    v: u32,
+    /// Whether it was written `u>v`.
+    directed: bool,
+    /// Its weight as written.
+    weight: Option<&'a str>,
+}
+
+/// The edges of one line, none for a blank line; `None` if it is not edges.
+fn line_edges(line: &str) -> Option<Vec<RawEdge<'_>>> {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    match tokens.as_slice() {
+        [first, ..] if first.contains(SEPARATORS) => {
+            tokens.iter().map(|token| pair(token)).collect()
+        }
+        [u, v] => Some(vec![plain_edge(u, v, None)?]),
+        [u, v, weight] => Some(vec![plain_edge(u, v, Some(weight))?]),
+        [] => Some(Vec::new()),
+        _ => None,
+    }
+}
+
+/// The edge a token `u-v` or `u>v` writes.
+fn pair(token: &str) -> Option<RawEdge<'_>> {
+    let at = token.find(SEPARATORS)?;
+    let (u, rest) = token.split_at(at);
+    Some(RawEdge {
+        u: node_name(u)?,
+        v: node_name(rest.get(1..)?)?,
+        directed: rest.starts_with('>'),
+        weight: None,
+    })
+}
+
+/// The edge of a line `u v` or `u v w`.
+fn plain_edge<'a>(u: &str, v: &str, weight: Option<&'a str>) -> Option<RawEdge<'a>> {
+    let finite = |w: &str| w.parse::<f64>().is_ok_and(f64::is_finite);
+    if weight.is_some_and(|w| !finite(w)) {
+        return None;
+    }
+    Some(RawEdge {
+        u: node_name(u)?,
+        v: node_name(v)?,
+        directed: false,
+        weight,
+    })
+}
+
+/// A node name: ASCII digits that fit a `u32`.
+fn node_name(token: &str) -> Option<u32> {
+    if token.starts_with('+') {
+        return None;
+    }
+    token.parse().ok()
+}
+
+/// The smallest `x` and the smallest `y` of `points`.
+fn top_left(points: &[Vec2]) -> Vec2 {
+    let corner = Vec2::new(f32::MAX, f32::MAX);
+    points.iter().fold(corner, |corner, p| {
+        Vec2::new(corner.x.min(p.x), corner.y.min(p.y))
+    })
+}
+
+/// The circle of node `name`: labelled, or holding the text `0`, a number
+/// below every label (ADR-T87-1).
+fn node_circle(name: u32, centre: Vec2, radius: f32, size: f32, style: Style) -> Shape {
+    let corner = Vec2::new(radius, radius);
+    let circle = Shape::Ellipse {
+        a: centre - corner,
+        b: centre + corner,
+        style,
+        fill: None,
+        label: None,
+        text: None,
+    };
+    if name >= FIRST_NUMBER {
+        circle.with_label(Some(name))
+    } else {
+        circle.with_slot_text(TextSlot::Shape, ShapeText::new(name.to_string(), size))
+    }
+}
+
+/// The text block of `weight`, beside the point `middle` of an edge
+/// running along the unit vector `along`, on its upper right side.
+fn weight_text(weight: &str, middle: Vec2, along: Vec2, size: f32, style: Style) -> Shape {
+    let bounds = text_layout::bounds(Vec2::ZERO, weight, size);
+    let half = Vec2::new(bounds.width(), bounds.height()) * 0.5;
+    let normal = Vec2::new(along.y, -along.x);
+    let normal = if normal.x - normal.y < 0.0 {
+        -normal
+    } else {
+        normal
+    };
+    // How far the box's centre must be for the box to clear the stroke.
+    let clear = half.x * normal.x.abs()
+        + half.y * normal.y.abs()
+        + style.width * 0.5
+        + WEIGHT_GAP_EM * size;
+    Shape::Text {
+        origin: middle + normal * clear - half,
+        text: weight.to_owned(),
+        size,
+        style: Style {
+            color: style.color,
+            width: 0.0,
+        },
     }
 }
 
 /// Replaces the shape `id` by `shapes` at its place in the z-order, as one
 /// undo step, and selects them. Returns whether the document changed.
-pub fn replace_block(_ctx: &mut ToolCtx<'_>, _id: ShapeId, _shapes: Vec<Shape>) -> bool {
-    todo!()
+pub fn replace_block(ctx: &mut ToolCtx<'_>, id: ShapeId, shapes: Vec<Shape>) -> bool {
+    let Some(index) = ctx.doc.index_of(id) else {
+        return false;
+    };
+    let mut edits = tx_remove(ctx.doc, &[id]).0;
+    let mut ids = Vec::with_capacity(shapes.len());
+    for (offset, shape) in shapes.into_iter().enumerate() {
+        let new = ctx.doc.next_id();
+        ids.push(new);
+        edits.push(Edit::Insert {
+            index: index + offset,
+            id: new,
+            shape,
+        });
+    }
+    let committed = ctx.commit(Transaction(edits));
+    if committed {
+        *ctx.selection = ids;
+    }
+    committed
 }
 
 #[cfg(test)]
@@ -290,8 +596,15 @@ mod tests {
                 .collect();
             let left = circles.iter().map(|b| b.min.x).fold(f32::MAX, f32::min);
             let top = circles.iter().map(|b| b.min.y).fold(f32::MAX, f32::min);
-            assert!(approx_eq(left, origin.x, 1e-2), "{text}: {left}");
-            assert!(approx_eq(top, origin.y, 1e-2), "{text}: {top}");
+            // A shape's bounds include half its stroke.
+            assert!(
+                approx_eq(left, origin.x - WIDTH * 0.5, 1e-2),
+                "{text}: {left}"
+            );
+            assert!(
+                approx_eq(top, origin.y - WIDTH * 0.5, 1e-2),
+                "{text}: {top}"
+            );
         }
     }
 
