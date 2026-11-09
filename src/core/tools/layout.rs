@@ -534,6 +534,9 @@ impl TickStep {
     }
 }
 
+/// Ticks of one axis that carry a number, with the number.
+type TickNumbers = Vec<(i64, String)>;
+
 /// What a plot covers: both axes, in multiples of one step, each `lo < hi`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Frame {
@@ -611,7 +614,9 @@ impl PointList {
             return None;
         }
 
-        let (cross_x, cross_y) = (frame.x.0.max(0).min(frame.x.1), frame.y.0.max(0).min(frame.y.1));
+        // Where each axis runs: through the origin, or on the nearest edge.
+        let cross_x = 0_i64.clamp(frame.x.0, frame.x.1);
+        let cross_y = 0_i64.clamp(frame.y.0, frame.y.1);
         let at = |x: f64, y: f64| {
             Vec2::new(
                 (x - frame.x.0 as f64) as f32 * pitch,
@@ -630,8 +635,12 @@ impl PointList {
             line(tick_x(frame.x.0), tick_x(frame.x.1)),
             line(tick_y(frame.y.0), tick_y(frame.y.1)),
         ];
-        shapes.extend((frame.x.0..=frame.x.1).map(|k| line(tick_x(k) - across_x, tick_x(k) + across_x)));
-        shapes.extend((frame.y.0..=frame.y.1).map(|k| line(tick_y(k) - across_y, tick_y(k) + across_y)));
+        shapes.extend(
+            (frame.x.0..=frame.x.1).map(|k| line(tick_x(k) - across_x, tick_x(k) + across_x)),
+        );
+        shapes.extend(
+            (frame.y.0..=frame.y.1).map(|k| line(tick_y(k) - across_y, tick_y(k) + across_y)),
+        );
         shapes.extend(x_numbers.into_iter().map(|(k, number)| {
             let half = text_layout::bounds(Vec2::ZERO, &number, size).width() * 0.5;
             number_text(number, tick_x(k) + Vec2::new(-half, gap), size, style)
@@ -642,9 +651,11 @@ impl PointList {
             number_text(number, tick_y(k) + corner, size, style)
         }));
         let unit = frame.step.value();
-        shapes.extend(self.points.iter().map(|(x, y)| {
-            point_dot(at(x / unit, y / unit), POINT_RADIUS_EM * size, style)
-        }));
+        shapes.extend(
+            self.points
+                .iter()
+                .map(|(x, y)| point_dot(at(x / unit, y / unit), POINT_RADIUS_EM * size, style)),
+        );
 
         if !shapes.iter().all(Shape::is_finite) {
             return None;
@@ -684,7 +695,7 @@ impl Frame {
     /// The ticks that carry a number and their numbers, horizontal axis
     /// then vertical. When both axes pass through the origin only the
     /// horizontal one numbers it.
-    fn numbers(&self) -> (Vec<(i64, String)>, Vec<(i64, String)>) {
+    fn numbers(&self) -> (TickNumbers, TickNumbers) {
         let holds_zero = |(low, high): (i64, i64)| low <= 0 && 0 <= high;
         let origin_inside = holds_zero(self.x) && holds_zero(self.y);
         let numbered = |k: i64| (k, self.step.label(k));
@@ -1455,7 +1466,7 @@ mod tests {
         let (xs, ys) = (x_ticks(shapes), y_ticks(shapes));
         assert!(xs.len() >= 2, "{xs:?}");
         assert!(ys.len() >= 2, "{ys:?}");
-        assert!(!numbers(shapes).is_empty());
+        assert_ne!(numbers(shapes).len(), 0);
         let centres = dots(shapes);
         assert_eq!(centres.len(), wanted_dots);
         let reach = |values: &[f32]| {
@@ -1550,9 +1561,7 @@ mod tests {
             let origin = Vec2::new(40.0, 60.0);
 
             // Act
-            let shapes = points(text)
-                .shapes(origin, SIZE, STYLE)
-                .unwrap_or_default();
+            let shapes = points(text).shapes(origin, SIZE, STYLE).unwrap_or_default();
 
             // Assert
             let left = shapes
@@ -1739,7 +1748,11 @@ mod tests {
         assert!(approx_eq(x_axis.0.x, xs[0], 1e-2));
         assert!(approx_eq(x_axis.1.x, xs[xs.len() - 1], 1e-2));
         assert!(approx_eq(y_axis.0.y.max(y_axis.1.y), ys[0], 1e-2));
-        assert!(approx_eq(y_axis.0.y.min(y_axis.1.y), ys[ys.len() - 1], 1e-2));
+        assert!(approx_eq(
+            y_axis.0.y.min(y_axis.1.y),
+            ys[ys.len() - 1],
+            1e-2
+        ));
     }
 
     #[test]
@@ -1770,7 +1783,11 @@ mod tests {
         let (x_axis, y_axis) = plot_axes(&shapes);
         let centres = dots(&shapes);
         assert!(approx_eq(x_axis.0.y, centres[0].y, 1e-2));
-        assert!(approx_eq(y_axis.0.x, centres[0].lerp(centres[1], 0.5).x, 1e-2));
+        assert!(approx_eq(
+            y_axis.0.x,
+            centres[0].lerp(centres[1], 0.5).x,
+            1e-2
+        ));
     }
 
     #[test]

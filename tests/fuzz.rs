@@ -330,8 +330,18 @@ fn arb_graph_session() -> impl Strategy<Value = Vec<InputEvent>> {
 /// A list of points: mostly whole lines the parser reads, sometimes not.
 fn arb_point_text() -> impl Strategy<Value = String> {
     let line = select(vec![
-        "0 0", "1 2", "-3 4.5", "10 -20", "2.5 2.5", "1e3 7", "1e300 -1e300", "1e-300 0", "5 5",
-        "-0.001 0.002", "100 100", "1 nan",
+        "0 0",
+        "1 2",
+        "-3 4.5",
+        "10 -20",
+        "2.5 2.5",
+        "1e3 7",
+        "1e300 -1e300",
+        "1e-300 0",
+        "5 5",
+        "-0.001 0.002",
+        "100 100",
+        "1 nan",
     ]);
     prop::collection::vec(line, 1..12).prop_map(|lines| lines.join("\n"))
 }
@@ -1109,15 +1119,12 @@ fn plot_sessions_turn_text_blocks_into_plots() {
         for event in tree.current() {
             editor.handle(event);
         }
-        plots += usize::from(editor.document().shapes().any(|(_, shape)| {
-            matches!(
-                shape,
-                Shape::Ellipse {
-                    fill: Some(_),
-                    ..
-                }
-            )
-        }));
+        plots += usize::from(
+            editor
+                .document()
+                .shapes()
+                .any(|(_, shape)| matches!(shape, Shape::Ellipse { fill: Some(_), .. })),
+        );
     }
 
     // Assert: a harness that never reaches `Ctrl+P` on a block proves nothing.
