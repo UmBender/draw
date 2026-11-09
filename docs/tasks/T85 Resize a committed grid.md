@@ -1,7 +1,7 @@
 ---
 id: T85
 title: Resize a committed grid
-status: review
+status: done
 wave: 51
 branch: task/T85-resize-grid
 depends_on: []
@@ -74,3 +74,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: `Editor::clear_all` was split out of `execute` to stay under the clippy line limit, with no behaviour change. `src/core/tools/select.rs` and `src/core/keymap.rs` did not need changes.
 - 2026-11-09 — no new command or event, so `arb_session` is unchanged; `grid_resize_sessions_keep_invariants` was added to `tests/fuzz.rs`. Snapshot format unchanged.
 - 2026-11-09 — manual check left for the owner: add a column to a filled table and undo it.
+- 2026-11-09 — integrated. Left for the owner: add a column to a filled table and undo it.

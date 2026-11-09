@@ -1,7 +1,7 @@
 ---
 id: T87
 title: Graph or tree from an edge list
-status: review
+status: done
 wave: 53
 branch: task/T87-graph-from-edges
 depends_on: [T84]
@@ -82,3 +82,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` was added to *Files owned* for the new module's row. `p_l_m_are_unbound` now excepts `Ctrl+L`, the one chord this task binds. `Editor::undo` was split out of `execute`, which the new command took over the function length lint.
 - 2026-11-09 — quality: the behaviour commit also corrected one test expectation (shape bounds include half a stroke, so the nodes' top-left is half a stroke past the block's corner); the behaviour was right.
 - 2026-11-09 — manual check left for the owner: try a tree and a cyclic graph with `Ctrl+L` and judge the layout. Geometry is tested; nothing was looked at in the running app, and writing the refusal to `draw.log` was not exercised there.
+- 2026-11-09 — integrated. Left for the owner: try a tree and a cyclic graph and judge the layout.

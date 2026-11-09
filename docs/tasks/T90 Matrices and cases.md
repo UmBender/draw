@@ -1,7 +1,7 @@
 ---
 id: T90
 title: Matrices and cases
-status: review
+status: done
 wave: 52
 branch: task/T90-matrices
 depends_on: [T89]
@@ -70,3 +70,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: for an invalid environment the whole `\begin{name}` and `\end{name}` are red, so a misspelt name reads as an error; what lies between them is parsed as usual.
 - 2026-11-09 — UNATTENDED CHOICE: spacing follows amsmath (1 em between columns, rows at least the 0.84 + 0.36 em strut, `cases` stretched 1.2 ×), and an environment is one ordinary atom, like a `\left` pair.
 - 2026-11-09 — `scripts/check.sh --fuzz` green. Nothing was viewed in the running app. Manual check for the owner: a 2×2 `pmatrix` and a `cases` recurrence.
+- 2026-11-09 — integrated. Left for the owner: check a 2×2 `pmatrix` and a `cases` recurrence.

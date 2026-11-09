@@ -328,18 +328,18 @@ flowchart TD
 | [[T79 Wayland keyboard without a keymap]] | done | T75 | `fix/wayland-no-keymap` |
 | [[T80 Mouse cursor in end-to-end screenshots]] | done | T75 | `fix/e2e-cursor-in-screenshots` |
 | [[T81 Formula box too narrow while editing]] | done | T74 | `fix/formula-box-while-editing` |
-| [[T82 Raise the binary size limit]] | todo | — | `chore/T82-binary-limit` |
-| [[T83 Paste text from the clipboard]] | todo | — | `task/T83-paste-text` |
-| [[T84 Grid from text]] | todo | T83 | `task/T84-grid-from-text` |
-| [[T85 Resize a committed grid]] | todo | — | `task/T85-resize-grid` |
-| [[T86 Zero-based numbering]] | todo | — | `task/T86-zero-based` |
-| [[T87 Graph or tree from an edge list]] | todo | T84 | `task/T87-graph-from-edges` |
-| [[T88 Bucket drag across cells]] | todo | — | `task/T88-bucket-drag` |
-| [[T89 Growing brackets]] | todo | — | `task/T89-growing-brackets` |
-| [[T90 Matrices and cases]] | todo | T89 | `task/T90-matrices` |
-| [[T91 Resize handles]] | todo | — | `task/T91-resize-handles` |
-| [[T92 Export the view to PNG]] | todo | — | `task/T92-png-export` |
-| [[T93 Coordinate plane from points]] | todo | T87 | `task/T93-coordinate-plane` |
-| [[T94 Autosave and crash recovery]] | todo | — | `task/T94-autosave` |
+| [[T82 Raise the binary size limit]] | done | — | `chore/T82-binary-limit` |
+| [[T83 Paste text from the clipboard]] | done | — | `task/T83-paste-text` |
+| [[T84 Grid from text]] | done | T83 | `task/T84-grid-from-text` |
+| [[T85 Resize a committed grid]] | done | — | `task/T85-resize-grid` |
+| [[T86 Zero-based numbering]] | done | — | `task/T86-zero-based` |
+| [[T87 Graph or tree from an edge list]] | done | T84 | `task/T87-graph-from-edges` |
+| [[T88 Bucket drag across cells]] | done | — | `task/T88-bucket-drag` |
+| [[T89 Growing brackets]] | done | — | `task/T89-growing-brackets` |
+| [[T90 Matrices and cases]] | done | T89 | `task/T90-matrices` |
+| [[T91 Resize handles]] | done | — | `task/T91-resize-handles` |
+| [[T92 Export the view to PNG]] | done | — | `task/T92-png-export` |
+| [[T93 Coordinate plane from points]] | done | T87 | `task/T93-coordinate-plane` |
+| [[T94 Autosave and crash recovery]] | done | — | `task/T94-autosave` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T94 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

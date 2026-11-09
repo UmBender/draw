@@ -1,7 +1,7 @@
 ---
 id: T82
 title: Raise the binary size limit
-status: review
+status: done
 wave: 51
 branch: chore/T82-binary-limit
 depends_on: []
@@ -62,3 +62,4 @@ None: it extends an existing area.
 - 2026-11-09 — AC-1 test confirmed red against the 2 MiB line before the change. AC-2's test passed from its first run, because the ADR is written in the spec step.
 - 2026-11-09 — `scripts/package.sh` itself was not run (it needs `podman` and a full packaging build); the limit is checked by reading the script. The binary size did not change.
 - 2026-11-09 — UNATTENDED CHOICE: added a test for AC-2 that reads the ADR, because the Definition of Done asks for a test per criterion and the note named none.
+- 2026-11-09 — integrated.

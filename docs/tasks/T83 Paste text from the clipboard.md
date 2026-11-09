@@ -1,7 +1,7 @@
 ---
 id: T83
 title: Paste text from the clipboard
-status: review
+status: done
 wave: 51
 branch: task/T83-paste-text
 depends_on: []
@@ -84,3 +84,4 @@ None: it extends an existing area.
 - 2026-11-09 — `paste-text-clipboard` passed through both paths: `wl-copy`, which is installed here, and the hook, forced by temporarily renaming the tool in the harness. The nightly CI job has no `wl-copy`, so it takes the hook path.
 - 2026-11-09 — not covered by an automated test: the vendored lock fix. `paste-text-clipboard` runs the read, but moving the pointer at the exact moment of the round trip cannot be timed in the suite.
 - 2026-11-09 — manual check for the owner: copy text from a browser and paste it into a block on the desktop. Also press `Ctrl+V` while moving the mouse; the app must not freeze.
+- 2026-11-09 — integrated. Left for the owner: copy text from a browser and paste it into a block.

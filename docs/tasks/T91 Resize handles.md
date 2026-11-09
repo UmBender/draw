@@ -1,7 +1,7 @@
 ---
 id: T91
 title: Resize handles
-status: review
+status: done
 wave: 51
 branch: task/T91-resize-handles
 depends_on: []
@@ -119,3 +119,4 @@ None: it extends an existing area.
 - 2026-11-09 — Quality step: `execute` went over clippy's function length limit, so `Editor::fit_view` was split out; no `chore` commit was needed.
 - 2026-11-09 — Bug found by `scripts/check.sh --fuzz` in the behaviour commit: a resize could leave a box's corners finite with the length of its side past `f32`, and text in a grid then produced NaN. A result like that now counts as non-finite and is ignored, as AC-5 asks, for lines, arrows, rectangles, ellipses and grids. Regression: `regression_t91_scaled_box_side_overflow`, with its snapshot and the fuzz seed. Strokes are not checked: it would cost a pass over their points on every preview frame, and no fuzz invariant needs it.
 - 2026-11-09 — Not run: the handles were not seen in the running app. Manual checks left for the owner: resize a mixed selection, look at the handles, and record the `DRAW_FRAME_TIMES` overlay numbers on a 5 000-stroke scene (ADR-T24-5).
+- 2026-11-09 — integrated. Left for the owner: resize a mixed selection and record the `DRAW_FRAME_TIMES` overlay numbers on a 5 000-stroke scene.

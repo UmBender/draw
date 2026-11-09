@@ -1,7 +1,7 @@
 ---
 id: T92
 title: Export the view to PNG
-status: review
+status: done
 wave: 51
 branch: task/T92-png-export
 depends_on: []
@@ -83,3 +83,4 @@ None: it extends an existing area.
 - 2026-11-09 — the quality step also moved the snapshot logging out of `app::run` and the image checks out of the harness's `run_case`, to stay under the 100-line limit without an `allow`.
 - 2026-11-09 — `scripts/check.sh` green; `scripts/e2e.sh` green, with the new `export-view` case comparing the file with the window.
 - 2026-11-09 — manual check left for the owner: export a drawing on the desktop and open the file. Under Flatpak the home directory may be sandboxed.
+- 2026-11-09 — integrated. Left for the owner: export a drawing and open the file.

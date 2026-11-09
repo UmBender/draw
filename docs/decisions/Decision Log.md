@@ -102,3 +102,18 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 91 | [[ADR-T75-2 Wheel notches through the virtual pointer]] | accepted | decision | — | amends T75-1 |
 | 92 | [[ADR-T80-1 Screenshots ignore the box under the pointer]] | accepted | decision | — | amends T75-1 |
 | 93 | [[ADR-T79-1 Ignore an unusable Wayland keymap]] | accepted | decision | T35-1, T47-1 | — |
+| 94 | [[ADR-T82-1 Shipped binary limit of 20 MiB]] | accepted | decision | T27-3 | amends T29-1 |
+| 95 | [[ADR-T83-1 Paste text through an input event]] | accepted | decision | T29-2, T35-1, T75-1, T12-1 | amends T29-2 |
+| 96 | [[ADR-T84-1 Grid from text keys and table rules]] | accepted | decision | T83-1, T11-1, T16-1, T22-1, T31-1, T47-1 | — |
+| 97 | [[ADR-T85-1 Arrows resize the one selected grid]] | accepted | decision | T16-1, T16-2, T18-3, T21-1, T31-1, 0005 | amends T16-2 |
+| 98 | [[ADR-T86-1 Zero-based numbering switch]] | accepted | decision | T16-2, T16-3, T19-1 | amends T52-1, amends T74-1 |
+| 99 | [[ADR-T87-1 Graph from an edge list key and layout rules]] | accepted | decision | T84-1, T11-1, T16-1, T19-1, T20-1, T31-1, T47-1 | — |
+| 100 | [[ADR-T88-1 Bucket drag previews cells and commits on release]] | accepted | decision | T21-1, T21-2, T74-1 | — |
+| 101 | [[ADR-T89-1 Left and right brackets centred on the axis]] | accepted | decision | T30-1, T33-1 | — |
+| 102 | [[ADR-T90-1 Environments as one table node]] | accepted | decision | T30-1, T89-1 | — |
+| 103 | [[ADR-T91-1 Resize handles and scale rules]] | accepted | decision | 0004, 0005, T08-1, T24-2 | — |
+| 104 | [[ADR-T91-2 Scaled text stays within the largest text size]] | accepted | decision | T74-1 | amends T91-1 |
+| 105 | [[ADR-T94-1 Autosave captured on input and written off the frame]] | accepted | decision | T12-1, T24-5, T47-1, T74-1 | — |
+| 106 | [[ADR-T92-1 The png crate as a direct dependency]] | accepted | decision | 0014, T32-1 | amends 0014 |
+| 107 | [[ADR-T92-2 Ctrl+E reads back the document layer]] | accepted | decision | 0003, T11-1, T15-1, T24-1, T24-2, T26-1, T29-2, T32-1, T92-1 | — |
+| 108 | [[ADR-T93-1 Coordinate plane key and plotting rules]] | accepted | decision | T87-1, T84-1, T11-1, T47-1 | — |

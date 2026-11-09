@@ -1,7 +1,7 @@
 ---
 id: T89
 title: Growing brackets
-status: review
+status: done
 wave: 51
 branch: task/T89-growing-brackets
 depends_on: []
@@ -71,3 +71,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: a pair is one ordinary atom rather than TeX's Inner class, so there is no thin space beside the brackets. Delimiters are exactly the spec's list plus `.`; `\vert`, `\lvert` and the like show in red after `\left`.
 - 2026-11-09 — the behaviour commit also corrects one test expectation from the test step: whitespace after a delimiter belongs to the body.
 - 2026-11-09 — `scripts/check.sh --fuzz` green. Nothing was viewed in the running app. Manual check for the owner: `$\left( \frac{a}{b} \right)^2$`.
+- 2026-11-09 — integrated. Left for the owner: check `$\left( \frac{a}{b} \right)^2$`.

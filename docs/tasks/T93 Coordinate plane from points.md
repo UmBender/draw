@@ -1,7 +1,7 @@
 ---
 id: T93
 title: Coordinate plane from points
-status: review
+status: done
 wave: 54
 branch: task/T93-coordinate-plane
 depends_on: [T87]
@@ -76,3 +76,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: the top-left of everything drawn, numbers included, is the block's top-left, and the result is selected, as for [[T87 Graph or tree from an edge list]].
 - 2026-11-09 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` was added to *Files owned* for the `core::tools::layout` row. `p_l_m_are_unbound` now excepts `Ctrl+P`, the one chord this task binds. `Editor::graph_from_selection` and the new plot key now share `block_to_shapes` instead of repeating it; the graph tests pass unchanged.
 - 2026-11-09 — manual check left for the owner: plot a sample from a geometry problem with `Ctrl+P` and judge the look. Geometry is tested; nothing was viewed in the running app, and writing the refusal to `draw.log` was not exercised there.
+- 2026-11-09 — integrated. Left for the owner: plot a sample from a geometry problem.

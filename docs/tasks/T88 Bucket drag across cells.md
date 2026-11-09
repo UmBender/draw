@@ -1,7 +1,7 @@
 ---
 id: T88
 title: Bucket drag across cells
-status: review
+status: done
 wave: 51
 branch: task/T88-bucket-drag
 depends_on: []
@@ -94,3 +94,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: a grid press commits on release, with the cells shown in the overlay meanwhile, as the eraser's clear drag does (ADR-T88-1).
 - 2026-11-09 — no fuzz or fixture change: no new event or command, and the snapshot's `bucket` record is only written during a drag, so `VERSION` stays 1.
 - 2026-11-09 — manual check left for the owner: drag a path across a DP table in the running app (not viewed here).
+- 2026-11-09 — integrated. Left for the owner: drag a path across a DP table.

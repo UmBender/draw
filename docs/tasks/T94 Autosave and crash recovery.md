@@ -1,7 +1,7 @@
 ---
 id: T94
 title: Autosave and crash recovery
-status: review
+status: done
 wave: 51
 branch: task/T94-autosave
 depends_on: []
@@ -90,3 +90,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: added a `recover` directive to `tests/e2e.rs` and the case `tests/e2e/recover-autosave/` to *Files owned*. It is an extra check of the command line and start-up path, so its `test` commit comes after the code; every `AC-n` test was committed red before the code.
 - 2026-11-09 — AC-7 on the development machine, release build: capture 1.2 ms (budget 2 ms), text 31 ms on the writer thread, 2.3 MB. A full 64 MiB history costs 59 ms to capture, 1.17 s of text, 77 MiB. Not timed on the target laptop.
 - 2026-11-09 — `scripts/check.sh` green; `scripts/e2e.sh` 12 of 12 cases, including `recover-autosave`. Manual check left to the owner: `kill -9` draw during a drawing, at least 30 s after a change, then `draw --recover`. The real 30 s autosave was only exercised through injected clocks.
+- 2026-11-09 — integrated. Left for the owner: `kill -9` draw during a drawing, then run `draw --recover`.

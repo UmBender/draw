@@ -41,6 +41,30 @@ All notable changes to draw are listed here. The format follows
   `\Tr`.
 - Build-time themes: every colour is a constant in `src/theme.rs`; edit
   it and rebuild to restyle draw.
+- Text from other apps: `Ctrl+V` in an open text block or shape text
+  inserts the system clipboard's text at the caret.
+- Grids from text: `Ctrl+T` turns the one selected text block into a grid
+  (lines are rows, whitespace separates cells), and `Ctrl+Shift+V` builds
+  one from the clipboard at the cursor.
+- The arrow keys add or remove columns and rows of the one selected grid
+  under the Select tool, keeping its contents.
+- Zero-based numbering: `Ctrl+N` switches the first number between 1 and 0
+  and restarts the counter.
+- Graphs from text: `Ctrl+L` turns the one selected text block of edges
+  into a layered tree or a circle graph, in one undo step.
+- Coordinate planes from text: `Ctrl+P` turns the one selected text block
+  of `x y` lines into axes, numbered ticks and filled points.
+- Dragging the bucket across a grid fills every cell it crosses, in one
+  undo step; `Esc` cancels.
+- `\left` and `\right` in formulas draw brackets that grow to fit their
+  content.
+- `matrix`, `pmatrix`, `bmatrix`, `vmatrix` and `cases` environments in
+  formulas.
+- Resize handles on the corners of a selection under the Select tool, and
+  `Alt+]` / `Alt+[` to grow or shrink it by 10 %.
+- `Ctrl+E` exports the view to `~/draw-<date>-<time>.png`.
+- Autosave for crashes: `draw --recover` brings back the last autosave and
+  `draw --recover prev` the one before.
 
 ### Changed
 

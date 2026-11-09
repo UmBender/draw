@@ -1,7 +1,7 @@
 ---
 id: T84
 title: Grid from text
-status: review
+status: done
 wave: 52
 branch: task/T84-grid-from-text
 depends_on: [T83]
@@ -79,3 +79,4 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: cells are never narrower than they are tall, so a matrix of digits gets square cells, and a text over 64 KiB is refused whole like one over 64 columns or rows.
 - 2026-11-09 — UNATTENDED CHOICE: `t_selects_text_tool` asserted that `Ctrl+T` was unbound; that assertion moved to the new `ctrl_t_builds_a_grid_from_text`. `docs/architecture/Architecture.md` is not in *Files owned* and its module map was left as it is; the integrator may add `TextTable` to the `core::tools::grid` row.
 - 2026-11-09 — manual check left for the owner: paste a sample matrix with `Ctrl+Shift+V` and check the table. The chord check, the event and the editor are tested; reading the real clipboard for this chord and writing the refusal to `draw.log` were not exercised in the running app.
+- 2026-11-09 — integrated. Left for the owner: paste a sample matrix with `Ctrl+Shift+V`.
