@@ -527,9 +527,8 @@ pub fn window_conf() -> WindowSettings {
     }
 }
 
-/// Runs the application until the window is closed. `launch` says whether
-/// to start from an autosave (ADR-T94-1).
-pub async fn run(launch: Launch) {
+/// Loads the embedded fonts into the renderer's glyph atlas.
+fn load_fonts() {
     match GlyphAtlas::new(TEXT_FONT) {
         // Unit tests prove both embedded fonts parse (ADR-T32-1, ADR-T33-1).
         Ok(atlas) => match atlas.with_math(MATH_FONT) {
@@ -547,6 +546,12 @@ pub async fn run(launch: Launch) {
             diag::log(Level::Error, &format!("embedded font not loaded: {err}"));
         }
     }
+}
+
+/// Runs the application until the window is closed. `launch` says whether
+/// to start from an autosave (ADR-T94-1).
+pub async fn run(launch: Launch) {
+    load_fonts();
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
     collector.set_wheel_units_per_notch(backend::wheel_units_per_notch(

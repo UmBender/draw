@@ -285,6 +285,9 @@ mod tests {
 
     const SECOND: Duration = Duration::from_secs(1);
 
+    /// One second short of [`INTERVAL`].
+    const ALMOST: Duration = Duration::from_secs(29);
+
     fn temp_dir(name: &str) -> io::Result<PathBuf> {
         let dir = std::env::temp_dir().join(format!("draw-autosave-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
@@ -380,7 +383,7 @@ mod tests {
 
         // Act / Assert
         assert!(!policy.is_due(start, 1, false));
-        assert!(!policy.is_due(start + INTERVAL - SECOND, 1, false));
+        assert!(!policy.is_due(start + ALMOST, 1, false));
     }
 
     #[test]
@@ -404,7 +407,7 @@ mod tests {
         policy.captured(start + INTERVAL * 2, 1);
 
         // Assert
-        assert!(!policy.is_due(start + INTERVAL * 3 - SECOND, 2, false));
+        assert!(!policy.is_due(start + INTERVAL * 2 + ALMOST, 2, false));
         assert!(policy.is_due(start + INTERVAL * 3, 2, false));
     }
 
@@ -440,7 +443,7 @@ mod tests {
         draw_line(&mut ed);
 
         // Act
-        saver.on_input(&ed, start + INTERVAL - SECOND);
+        saver.on_input(&ed, start + ALMOST);
         let early = entries(&dir)?;
         saver.on_input(&ed, start + INTERVAL);
         let failure = saver.wait();
@@ -851,7 +854,10 @@ mod tests {
         let error = failed_recovery(Some(&dir), &Launch::Recover(Which::Previous));
 
         // Assert
-        assert!(error.contains(PREV_FILE) && error.contains("line 2"), "{error}");
+        assert!(
+            error.contains(PREV_FILE) && error.contains("line 2"),
+            "{error}"
+        );
         Ok(())
     }
 

@@ -792,7 +792,9 @@ fn perf_autosave_with_full_history_is_measured() {
 
     // Assert: a report for ADR-T94-1, with no budget.
     let megabytes = text.len() / (1024 * 1024);
-    eprintln!("perf: autosave, full history: capture {capture:?}, text {serialise:?}, {megabytes} MiB");
+    eprintln!(
+        "perf: autosave, full history: capture {capture:?}, text {serialise:?}, {megabytes} MiB"
+    );
 }
 
 #[test]
