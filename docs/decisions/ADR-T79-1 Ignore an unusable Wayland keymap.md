@@ -1,7 +1,7 @@
 ---
 id: ADR-T79-1
 title: Ignore an unusable Wayland keymap
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-08
 task: T79
