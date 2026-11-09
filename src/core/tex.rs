@@ -96,6 +96,16 @@ pub const SQRT_SIGN: f32 = 0.55;
 /// Largest scale of a binomial's parentheses.
 pub const BINOM_MAX_SCALE: f32 = 3.0;
 
+/// Largest scale of a bracket of `\left` and `\right` (ADR-T89-1).
+pub const LEFT_RIGHT_MAX_SCALE: f32 = 12.0;
+
+/// Part of the content's span that a growing bracket must reach, TeX's
+/// `\delimiterfactor` (ADR-T89-1).
+pub const DELIM_FACTOR: f32 = 0.901;
+
+/// Width of the empty delimiter `.`, TeX's `\nulldelimiterspace`.
+pub const NULL_DELIM_SPACE: f32 = 0.12;
+
 /// Gap between an accent's ink and the top of its argument (ADR-T39-1).
 pub const ACCENT_GAP: f32 = 0.06;
 
@@ -204,9 +214,48 @@ pub enum Node {
         /// The nodes after the command.
         right: Vec<Node>,
     },
+    /// A `\left … \right` pair with brackets grown to its body
+    /// (ADR-T89-1).
+    LeftRight {
+        /// What follows `\left`.
+        open: Delimiter,
+        /// The nodes between the two commands.
+        body: Vec<Node>,
+        /// What follows `\right`.
+        close: Delimiter,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
+
+/// The delimiter after `\left` or `\right`, as typed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delimiter {
+    /// Whitespace between the command and the delimiter.
+    pub lead: String,
+    /// Its source: a row of [`DELIMITERS`].
+    pub source: String,
+}
+
+/// What `\left` and `\right` accept: each delimiter's source and the glyph
+/// it draws; `.` draws none (ADR-T89-1).
+pub const DELIMITERS: &[(&str, Option<char>)] = &[
+    (".", None),
+    ("(", Some('(')),
+    (")", Some(')')),
+    ("[", Some('[')),
+    ("]", Some(']')),
+    ("\\{", Some('{')),
+    ("\\}", Some('}')),
+    ("|", Some('|')),
+    ("\\|", Some('‖')),
+    ("\\langle", Some('⟨')),
+    ("\\rangle", Some('⟩')),
+    ("\\lfloor", Some('⌊')),
+    ("\\rfloor", Some('⌋')),
+    ("\\lceil", Some('⌈')),
+    ("\\rceil", Some('⌉')),
+];
 
 /// The infix commands that split their group (ADR-T71-1): `\over`,
 /// `\atop`, `\choose`, `\brack`, `\brace`.
@@ -1580,14 +1629,19 @@ struct Parser<'a> {
     /// For each `{`, the index of its matching `}`, if it has one within
     /// [`MAX_DEPTH`].
     closes: Vec<Option<usize>>,
+    /// For each `\left`, the index of the `\` of its `\right`, if it has
+    /// one within [`MAX_DEPTH`] (ADR-T89-1).
+    rights: Vec<Option<usize>>,
 }
 
 impl<'a> Parser<'a> {
     fn new(chars: &'a [char]) -> Self {
+        let (closes, rights) = match_pairs(chars);
         Self {
             chars,
             pos: 0,
-            closes: match_braces(chars),
+            closes,
+            rights,
         }
     }
 
@@ -1768,28 +1822,21 @@ impl<'a> Parser<'a> {
     /// Reads the command name after the `\` at the cursor: a run of ASCII
     /// letters or one other character; empty at the end.
     fn name(&mut self, end: usize) -> String {
-        self.pos += 1;
-        let start = self.pos;
-        match self.chars.get(self.pos).filter(|_| self.pos < end) {
-            Some(ch) if ch.is_ascii_alphabetic() => {
-                while self.pos < end && self.chars[self.pos].is_ascii_alphabetic() {
-                    self.pos += 1;
-                }
-            }
-            Some(_) => self.pos += 1,
-            None => {}
-        }
+        let start = self.pos + 1;
+        self.pos = name_end(self.chars, start, end);
         self.chars[start..self.pos].iter().collect()
     }
 
     /// A command at the cursor (a `\`), with its arguments, or literal.
     fn command(&mut self, end: usize) -> Node {
+        let start = self.pos;
         let name = self.name(end);
         if symbol(&name).is_some() {
             return Node::Symbol(name);
         }
         let after = self.pos;
         let node = match name.as_str() {
+            "left" => self.left_right(start, end),
             "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
                 self.args(2, end).map(|args| Node::Command {
                     name: name.clone(),
@@ -1814,6 +1861,25 @@ impl<'a> Parser<'a> {
             self.pos = after;
             Node::Literal(format!("\\{name}"))
         })
+    }
+
+    /// The pair of the `\left` at `start`, its name read; `None` when it
+    /// has no matching `\right` before `end` (ADR-T89-1).
+    fn left_right(&mut self, start: usize, end: usize) -> Option<Node> {
+        let right = self.rights[start].filter(|&right| right < end)?;
+        let open = self.delimiter(end)?;
+        let body = self.list(right);
+        self.pos = right;
+        self.name(end);
+        let close = self.delimiter(end)?;
+        Some(Node::LeftRight { open, body, close })
+    }
+
+    /// The delimiter at the cursor, read past.
+    fn delimiter(&mut self, end: usize) -> Option<Delimiter> {
+        let (delimiter, past) = read_delimiter(self.chars, self.pos, end)?;
+        self.pos = past;
+        Some(delimiter)
     }
 
     /// `\operatorname`, its name read: a `*` directly after it, then a
@@ -1876,36 +1942,118 @@ impl<'a> Parser<'a> {
     }
 }
 
-/// For each `{` of `chars`, the index of its matching `}`; escaped braces
-/// (`\{`) are skipped and braces nested deeper than [`MAX_DEPTH`] match
-/// nothing.
-fn match_braces(chars: &[char]) -> Vec<Option<usize>> {
+/// The end of the command name starting at `start`: past a run of ASCII
+/// letters or one other character; `start` when `end` is reached.
+fn name_end(chars: &[char], start: usize, end: usize) -> usize {
+    match chars.get(start).filter(|_| start < end) {
+        Some(ch) if ch.is_ascii_alphabetic() => {
+            let mut i = start;
+            while i < end && chars[i].is_ascii_alphabetic() {
+                i += 1;
+            }
+            i
+        }
+        Some(_) => start + 1,
+        None => start,
+    }
+}
+
+/// The delimiter of [`DELIMITERS`] at `pos`, after optional whitespace, and
+/// the index past it; `None` when there is no valid one before `end`.
+fn read_delimiter(chars: &[char], pos: usize, end: usize) -> Option<(Delimiter, usize)> {
+    let mut at = pos;
+    while at < end && chars[at].is_whitespace() {
+        at += 1;
+    }
+    let past = if at < end && chars[at] == '\\' {
+        name_end(chars, at + 1, end)
+    } else {
+        (at + 1).min(end)
+    };
+    let source: String = chars[at..past].iter().collect();
+    DELIMITERS.iter().any(|(s, _)| *s == source).then(|| {
+        let lead = chars[pos..at].iter().collect();
+        (Delimiter { lead, source }, past)
+    })
+}
+
+/// A `{` or `\left` still waiting for its partner in [`match_pairs`].
+struct Opening {
+    /// Its index.
+    at: usize,
+    /// Whether it is within [`MAX_DEPTH`].
+    within: bool,
+    /// Whether it is a `{`.
+    brace: bool,
+}
+
+/// For each `{` of `chars`, the index of its matching `}`, and for each
+/// `\left`, the index of the `\` of its `\right`. Escaped braces (`\{`) are
+/// skipped; what nests deeper than [`MAX_DEPTH`] matches nothing. A pair
+/// never crosses a group: a `}` drops the `\left`s still open inside it,
+/// and a `\right` only closes a `\left` on top of the stack (ADR-T89-1).
+fn match_pairs(chars: &[char]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     let mut closes = vec![None; chars.len()];
-    // Open braces: index and whether it is within the depth limit.
-    let mut open: Vec<(usize, bool)> = Vec::new();
-    let mut depth = 0;
+    let mut rights = vec![None; chars.len()];
+    let mut open: Vec<Opening> = Vec::new();
+    let (mut depth, mut braces) = (0, 0);
     let mut i = 0;
     while i < chars.len() {
         match chars[i] {
-            '\\' => i += 1,
+            '\\' => {
+                let after = name_end(chars, i + 1, chars.len());
+                let name = &chars[i + 1..after];
+                let is = |word: &str| name.iter().copied().eq(word.chars());
+                let past = (is("left") || is("right"))
+                    .then(|| read_delimiter(chars, after, chars.len()))
+                    .flatten()
+                    .map(|(_, past)| past);
+                if past.is_some() {
+                    if is("left") {
+                        let within = depth < MAX_DEPTH;
+                        depth += usize::from(within);
+                        open.push(Opening {
+                            at: i,
+                            within,
+                            brace: false,
+                        });
+                    } else if let Some(left) = open.pop_if(|top| !top.brace)
+                        && left.within
+                    {
+                        rights[left.at] = Some(i);
+                        depth -= 1;
+                    }
+                }
+                i = past.unwrap_or(after);
+                continue;
+            }
             '{' => {
                 let within = depth < MAX_DEPTH;
                 depth += usize::from(within);
-                open.push((i, within));
+                braces += 1;
+                open.push(Opening {
+                    at: i,
+                    within,
+                    brace: true,
+                });
             }
-            '}' => {
-                if let Some((start, within)) = open.pop()
-                    && within
-                {
-                    closes[start] = Some(i);
-                    depth -= 1;
+            '}' if braces > 0 => {
+                braces -= 1;
+                while let Some(top) = open.pop() {
+                    depth -= usize::from(top.within);
+                    if top.brace {
+                        if top.within {
+                            closes[top.at] = Some(i);
+                        }
+                        break;
+                    }
                 }
             }
             _ => {}
         }
         i += 1;
     }
-    closes
+    (closes, rights)
 }
 
 // ---- printing ---------------------------------------------------------------
@@ -1992,6 +2140,15 @@ fn print_node(node: &Node, out: &mut String) {
             out.push('\\');
             out.push_str(name);
             print_nodes(right, out);
+        }
+        Node::LeftRight { open, body, close } => {
+            out.push_str("\\left");
+            out.push_str(&open.lead);
+            out.push_str(&open.source);
+            print_nodes(body, out);
+            out.push_str("\\right");
+            out.push_str(&close.lead);
+            out.push_str(&close.source);
         }
     }
 }
@@ -2206,6 +2363,9 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (MathBox::upright(body, scale), class)
         }
         Node::Infix { name, left, right } => (infix(name, left, right, scale, style), Class::Ord),
+        Node::LeftRight { open, body, close } => {
+            (left_right(open, body, close, scale, style), Class::Ord)
+        }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
@@ -2413,6 +2573,50 @@ fn delimited(n: &[Node], k: &[Node], open: &str, close: &str, scale: f32, style:
     for b in &closes {
         place(b, true);
     }
+    out
+}
+
+/// `body` between brackets grown to cover it about the axis (ADR-T89-1).
+fn left_right(
+    open: &Delimiter,
+    body: &[Node],
+    close: &Delimiter,
+    scale: f32,
+    style: Style,
+) -> MathBox {
+    let inner = layout_styled(body, scale, style);
+    let axis = AXIS * scale;
+    let span = 2.0 * (inner.ascent - axis).max(inner.descent + axis) * DELIM_FACTOR;
+    let (left, right) = (
+        grown_bracket(open, span, scale),
+        grown_bracket(close, span, scale),
+    );
+    MathBox::row([left, inner, right])
+}
+
+/// The glyph of `delimiter` scaled to `span`, centred on the axis, at
+/// least at `scale`; a small gap for `.`.
+fn grown_bracket(delimiter: &Delimiter, span: f32, scale: f32) -> MathBox {
+    let glyph = DELIMITERS
+        .iter()
+        .find(|(source, _)| *source == delimiter.source)
+        .and_then(|(_, glyph)| *glyph);
+    let Some(ch) = glyph else {
+        return MathBox::gap(NULL_DELIM_SPACE * scale);
+    };
+    let unit = MathBox::math(ch, 1.0);
+    let tall = (unit.ascent + unit.descent).max(f32::EPSILON);
+    let size = (span / tall).clamp(scale, LEFT_RIGHT_MAX_SCALE * scale);
+    let bracket = MathBox::math(ch, size);
+    let y = -AXIS * scale - (bracket.descent - bracket.ascent) / 2.0;
+    let mut out = MathBox {
+        width: bracket.width,
+        ascent: bracket.ascent - y,
+        descent: bracket.descent + y,
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    out.put(&bracket, Vec2::new(0.0, y));
     out
 }
 
@@ -3181,6 +3385,8 @@ mod tests {
                 "\\mathcal", "f", "j", "\\text{日}", "\\int", "\\oint", "\\,",
                 "\\partial", "\\vec", "\\hat", "\\bar", "\\dot", "\\ddot", "\\tilde",
                 "\\overline", "\\mathrm", "\\mathit", "\\mathnormal", "\\Gamma",
+                "\\left", "\\right", "\\left(", "\\right)", "\\left.", "\\right.",
+                "\\left\\{", "\\right\\rangle", "\\left\\|",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -7176,5 +7382,360 @@ mod tests {
             assert_eq!(got, want, "{short} vs {long}");
             assert!(glyphs(&got.ink).iter().all(|g| !g.3), "{short}");
         }
+    }
+
+    // ---- T89 \left and \right ------------------------------------------------
+
+    /// Every delimiter that draws a glyph: its source and the glyph.
+    const DRAWN_DELIMITERS: &[(&str, char)] = &[
+        ("(", '('),
+        (")", ')'),
+        ("[", '['),
+        ("]", ']'),
+        ("\\{", '{'),
+        ("\\}", '}'),
+        ("|", '|'),
+        ("\\|", '‖'),
+        ("\\langle", '⟨'),
+        ("\\rangle", '⟩'),
+        ("\\lfloor", '⌊'),
+        ("\\rfloor", '⌋'),
+        ("\\lceil", '⌈'),
+        ("\\rceil", '⌉'),
+    ];
+
+    const TALL: &str = "\\frac{a}{b}";
+
+    fn delim(lead: &str, source: &str) -> Delimiter {
+        Delimiter {
+            lead: lead.to_owned(),
+            source: source.to_owned(),
+        }
+    }
+
+    fn literal(text: &str) -> Node {
+        Node::Literal(text.to_owned())
+    }
+
+    fn pair(open: &str, body: Vec<Node>, close: &str) -> Node {
+        Node::LeftRight {
+            open: delim("", open),
+            body,
+            close: delim("", close),
+        }
+    }
+
+    /// Height a bracket must reach for `inner`, centred on the axis.
+    fn target_height(inner: &MathBox) -> f32 {
+        2.0 * (inner.ascent - AXIS).max(inner.descent + AXIS) * DELIM_FACTOR
+    }
+
+    /// Top and bottom (y down) of glyph `ch` at `pos` and `scale`.
+    fn ink_top_bottom(ch: char, pos: Vec2, scale: f32) -> (f32, f32) {
+        let m = mm(ch);
+        (pos.y - m.y_max * scale, pos.y - m.y_min * scale)
+    }
+
+    #[test]
+    fn tex_parse_left_right_is_one_node_keeping_its_source() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left(x\\right)"),
+            vec![pair("(", vec![Node::Char('x')], ")")]
+        );
+        assert_eq!(
+            math("\\left \\langle x\\right  \\rangle"),
+            vec![Node::LeftRight {
+                open: delim(" ", "\\langle"),
+                body: vec![space(), Node::Char('x')],
+                close: delim("  ", "\\rangle"),
+            }]
+        );
+        let src = "$a\\left [ \\frac12 \\right\\}^2 b$";
+        assert_eq!(print(&parse(src)), src);
+    }
+
+    #[test]
+    fn tex_layout_left_right_scales_brackets_to_the_content() {
+        // Arrange
+        let inner = boxed(TALL);
+        let want = target_height(&inner);
+
+        // Act
+        let b = boxed(&format!("\\left({TALL}\\right)"));
+
+        // Assert
+        let g = glyphs(&b.ink);
+        let (first, last) = (g[0], g[g.len() - 1]);
+        assert_eq!((first.0, last.0), ('(', ')'));
+        let tall = mm('(').y_max - mm('(').y_min;
+        assert!(first.2 > 1.0, "{g:?}");
+        assert!(approx_eq(first.2, want / tall, EPS), "{g:?}");
+        assert!(approx_eq(last.2, want / tall, EPS), "{g:?}");
+        assert!(approx_eq(first.1.x, 0.0, EPS));
+        assert!(approx_eq(last.1.x + adv(")") * last.2, b.width, EPS));
+    }
+
+    #[test]
+    fn tex_layout_left_right_grows_every_delimiter() {
+        let want = target_height(&boxed(TALL));
+        for (src, ch) in DRAWN_DELIMITERS {
+            // Act
+            let b = boxed(&format!("\\left{src}{TALL}\\right{src}"));
+
+            // Assert
+            let g = glyphs(&b.ink);
+            let (first, last) = (g[0], g[g.len() - 1]);
+            assert_eq!((first.0, last.0), (*ch, *ch), "{src}: {g:?}");
+            let tall = mm(*ch).y_max - mm(*ch).y_min;
+            assert!(approx_eq(first.2, want / tall, EPS), "{src}: {g:?}");
+            assert!(approx_eq(last.2, want / tall, EPS), "{src}: {g:?}");
+            assert!(g.iter().all(|g| !g.3), "{src}: {g:?}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_left_right_centres_brackets_on_the_axis() {
+        for (src, ch) in DRAWN_DELIMITERS {
+            // Act
+            let b = boxed(&format!("\\left{src}{TALL}\\right{src}"));
+
+            // Assert
+            let (pos, scale) = glyph(&b.ink, *ch);
+            let (top, bottom) = ink_top_bottom(*ch, pos, scale);
+            assert!(approx_eq(f32::midpoint(top, bottom), -AXIS, EPS), "{src}");
+            assert!(b.ascent >= -top - EPS && b.descent >= bottom - EPS, "{src}");
+        }
+    }
+
+    #[test]
+    fn tex_layout_left_right_stops_at_the_scale_limit() {
+        // Arrange: a stack far taller than the largest bracket.
+        let tower = "\\frac{".repeat(28) + "x" + &"}{x}".repeat(28);
+
+        // Act
+        let b = boxed(&format!("\\left({tower}\\right)"));
+
+        // Assert
+        let tall = mm('(').y_max - mm('(').y_min;
+        assert!(b.ascent + b.descent > LEFT_RIGHT_MAX_SCALE * tall);
+        let (_, scale) = glyph(&b.ink, '(');
+        assert!(approx_eq(scale, LEFT_RIGHT_MAX_SCALE, EPS), "{scale}");
+    }
+
+    #[test]
+    fn tex_layout_left_right_null_delimiter_draws_nothing() {
+        // Act
+        let one = boxed("\\left.x\\right|");
+        let other = boxed("\\left(x\\right.");
+        let both = boxed("\\left.x\\right.");
+
+        // Assert
+        let chars = |b: &MathBox| glyphs(&b.ink).iter().map(|g| g.0).collect::<Vec<_>>();
+        assert_eq!(chars(&one), [X, '|']);
+        assert_eq!(chars(&other), ['(', X]);
+        assert_eq!(chars(&both), [X]);
+        assert!(approx_eq(
+            both.width,
+            2.0 * NULL_DELIM_SPACE + mm(X).advance,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_parse_unmatched_left_or_right_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left( x"),
+            vec![literal("\\left"), Node::Char('('), space(), Node::Char('x')]
+        );
+        assert_eq!(
+            math("x \\right)"),
+            vec![
+                Node::Char('x'),
+                space(),
+                literal("\\right"),
+                Node::Char(')')
+            ]
+        );
+        assert_eq!(
+            math("\\left(\\right)\\right)"),
+            vec![pair("(", vec![], ")"), literal("\\right"), Node::Char(')')]
+        );
+    }
+
+    #[test]
+    fn tex_parse_left_or_right_without_a_delimiter_is_literal() {
+        // Act + Assert
+        assert_eq!(math("\\left"), vec![literal("\\left")]);
+        assert_eq!(
+            math("\\left x\\right)"),
+            vec![
+                literal("\\left"),
+                space(),
+                Node::Char('x'),
+                literal("\\right"),
+                Node::Char(')'),
+            ]
+        );
+        assert_eq!(
+            math("\\left(x\\right y"),
+            vec![
+                literal("\\left"),
+                Node::Char('('),
+                Node::Char('x'),
+                literal("\\right"),
+                space(),
+                Node::Char('y'),
+            ]
+        );
+        assert_eq!(
+            math("\\left{x}\\right)"),
+            vec![
+                literal("\\left"),
+                Node::Group(vec![Node::Char('x')]),
+                literal("\\right"),
+                Node::Char(')'),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_left_right_across_a_group_is_literal() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left({x\\right)}"),
+            vec![
+                literal("\\left"),
+                Node::Char('('),
+                Node::Group(vec![Node::Char('x'), literal("\\right"), Node::Char(')'),]),
+            ]
+        );
+        assert_eq!(
+            math("{\\left(x}\\right)"),
+            vec![
+                Node::Group(vec![literal("\\left"), Node::Char('('), Node::Char('x'),]),
+                literal("\\right"),
+                Node::Char(')'),
+            ]
+        );
+        // A stray `}` stays inside the pair, as a literal.
+        assert_eq!(
+            math("\\left(}\\right)"),
+            vec![pair("(", vec![literal("}")], ")")]
+        );
+    }
+
+    #[test]
+    fn tex_parse_left_after_text_is_not_a_body() {
+        // Act
+        let nodes = math("\\text\\left(x\\right)");
+
+        // Assert
+        assert_eq!(
+            nodes,
+            vec![literal("\\text"), pair("(", vec![Node::Char('x')], ")")]
+        );
+    }
+
+    #[test]
+    fn tex_parse_deep_left_right_is_literal_past_the_limit() {
+        // Arrange: deeper than naive recursion could go.
+        let src = format!(
+            "${}x{}$",
+            "\\left(".repeat(10_000),
+            "\\right)".repeat(10_000)
+        );
+
+        // Act
+        let segments = parse(&src);
+
+        // Assert
+        assert_eq!(print(&segments), src);
+        let l = layout(&segments);
+        assert!(l.width.is_finite() && l.height.is_finite());
+    }
+
+    #[test]
+    fn tex_layout_unmatched_left_right_is_drawn_in_the_warning_colour() {
+        for (src, word) in [("\\left( x", "\\left"), ("x \\right)", "\\right")] {
+            // Act
+            let b = boxed(src);
+
+            // Assert
+            let warned: String = glyphs(&b.ink).iter().filter(|g| g.3).map(|g| g.0).collect();
+            assert_eq!(warned, word, "{src}");
+        }
+    }
+
+    #[test]
+    fn tex_parse_left_right_pairs_nest() {
+        // Act + Assert
+        assert_eq!(
+            math("\\left(\\left[x\\right]\\right)"),
+            vec![pair("(", vec![pair("[", vec![Node::Char('x')], "]")], ")")]
+        );
+    }
+
+    #[test]
+    fn tex_layout_left_right_outer_pair_is_at_least_as_tall_as_inner() {
+        // Act
+        let b = boxed(&format!("\\left(\\left[{TALL}\\right]\\right)"));
+
+        // Assert
+        let g = glyphs(&b.ink);
+        let chars: Vec<char> = g.iter().map(|g| g.0).collect();
+        assert_eq!(chars, ['(', '[', A, B, ']', ')'], "{g:?}");
+        assert!(g[0].2 >= g[1].2 - EPS, "{g:?}");
+        assert!(approx_eq(g[0].2, g[5].2, EPS), "{g:?}");
+        assert!(approx_eq(g[1].2, g[4].2, EPS), "{g:?}");
+        assert!(g[0].1.x < g[1].1.x && g[4].1.x < g[5].1.x, "{g:?}");
+    }
+
+    #[test]
+    fn tex_layout_left_right_script_attaches_to_the_closing_bracket() {
+        // Arrange
+        let bare = format!("\\left({TALL}\\right)");
+        let pair_box = boxed(&bare);
+
+        // Act
+        let sup = boxed(&format!("{bare}^2"));
+        let sub = boxed(&format!("{bare}_2"));
+
+        // Assert
+        assert!(matches!(
+            math(&format!("{bare}^2")).as_slice(),
+            [Node::Scripts { base: Some(node), .. }] if matches!(**node, Node::LeftRight { .. })
+        ));
+        let (up, up_scale) = glyph(&sup.ink, '2');
+        assert!(approx_eq(up.x, pair_box.width, EPS), "{up:?}");
+        assert!(approx_eq(up_scale, SCRIPT_SCALE, EPS));
+        assert!(
+            approx_eq(up.y, -(pair_box.ascent - SUP_DROP), EPS),
+            "{up:?}"
+        );
+        let (down, _) = glyph(&sub.ink, '2');
+        assert!(approx_eq(down.x, pair_box.width, EPS), "{down:?}");
+        assert!(down.y > 0.0, "{down:?}");
+    }
+
+    #[test]
+    fn tex_layout_left_right_short_content_keeps_normal_size() {
+        for content in ["x", "a+b", "2", ""] {
+            // Act
+            let got = boxed(&format!("\\left({content}\\right)"));
+            let plain = boxed(&format!("({content})"));
+
+            // Assert
+            let g = glyphs(&got.ink);
+            let (first, last) = (g[0], g[g.len() - 1]);
+            assert!(approx_eq(first.2, 1.0, EPS), "{content}: {g:?}");
+            assert!(approx_eq(last.2, 1.0, EPS), "{content}: {g:?}");
+            assert!(approx_eq(first.1.y, 0.0, EPS), "{content}: {g:?}");
+            assert!(approx_eq(got.width, plain.width, EPS), "{content}");
+        }
+        // A superscript barely reaches past the normal bracket.
+        let (_, scale) = glyph(&boxed("\\left(x^2\\right)").ink, '(');
+        assert!(scale < 1.1, "{scale}");
     }
 }

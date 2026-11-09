@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -239,6 +239,19 @@ trace `$\Tr\rho$` beside `\tr`, and products of kets use `\otimes`:
 `$\ket{0}\otimes\ket{1}$`. Brackets keep their normal size. (Since
 [[T70 Quantum notation]].)
 
+Brackets grow to fit what they enclose with `\left` and `\right`:
+`$\left( \frac{a}{b} \right)^2$`, `$\left[ \sum_{i=1}^{n} x_i \right]$`.
+Each takes one of `( ) [ ] \{ \} | \| \langle \rangle \lfloor \rfloor
+\lceil \rceil`, the two sides need not match, and `.` draws nothing on
+its side, as in `$\left. \frac{x}{2} \right|_0^1$`. Pairs nest, and a
+script after `\right` attaches to the closing bracket. Short content
+keeps the brackets at their normal size. A `\left` without its `\right`
+in the same group, or the reverse, is drawn in red, and so is one
+without a valid delimiter. The font has no size variants, so a tall
+bracket is the glyph scaled up, up to 12 times. (Since
+[[T89 Growing brackets]],
+[[ADR-T89-1 Left and right brackets centred on the axis]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -271,6 +284,7 @@ trace `$\Tr\rho$` beside `\tr`, and products of kets use `\otimes`:
 | Overline, underline | `\overline{AB}`, `\underline{AB}` (as wide as their argument) |
 | Relations, operators | `\le \ge \ne \approx \equiv \cdot \times \div \pm \to \leftarrow \Rightarrow \iff \in \notin \subset \cup \cap \land \lor \neg \oplus \infty \ldots \cdots` |
 | Brackets | `\lfloor \rfloor \lceil \rceil \{ \} | \langle \rangle` |
+| Growing brackets | `\left( \frac{a}{b} \right)^2`, with `( ) [ ] \{ \} | \| \langle \rangle \lfloor \rfloor \lceil \rceil`, or `.` for none |
 | Calculus, vectors | `\partial \nabla` |
 | Letters, constants | `\hbar \ell \Re \Im \AA \degree` |
 | Logic, sets | `\forall \exists \emptyset \prime` |
@@ -336,10 +350,11 @@ of the same batch.
 
 ## Limits
 
-- No display mode (`$$…$$`), matrices, environments, macros or
-  `\left`/`\right` — brackets do not grow (only those of `\binom`,
-  `\multiset` and the infix `\choose \brack \brace` do). No `\genfrac`,
-  `\above` or `\…withdelims`.
+- No display mode (`$$…$$`), matrices, environments or macros. Brackets
+  grow only with `\left`/`\right` and in `\binom`, `\multiset` and the
+  infix `\choose \brack \brace`. No `\middle`, and `\vert`, `\lvert` and
+  the like are not delimiters after `\left` (use `|` or `\|`). No
+  `\genfrac`, `\above` or `\…withdelims`.
 - Accents do not grow: no `\widehat`, `\widetilde`, `\overrightarrow`,
   and no `\underbrace`. An accent takes
   one letter, a symbol or a `{group}`, not another accent without braces
