@@ -610,11 +610,7 @@ pub async fn run() {
                 continue;
             }
             if wants_clipboard(&event, editor.text_edit().is_some()) {
-                if let Some(paste) = paste_event(clipboard_get()) {
-                    dirty |= dispatch(&mut editor, paste);
-                }
-                // The read may have queued input the loop would sleep on.
-                schedule_update();
+                dirty |= paste_clipboard(&mut editor);
             } else if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
@@ -638,6 +634,15 @@ pub async fn run() {
             hooks.after_swap();
         }
     }
+}
+
+/// Pastes the system clipboard into the open text edit. Returns whether
+/// the view needs a redraw (ADR-T83-1).
+fn paste_clipboard(editor: &mut Editor) -> bool {
+    let changed = paste_event(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
+    // The read may have queued input the loop would sleep on.
+    schedule_update();
+    changed
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is

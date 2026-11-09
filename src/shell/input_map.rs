@@ -103,7 +103,8 @@ pub fn map_mods(mods: KeyMods) -> Modifiers {
 #[must_use]
 pub fn wants_clipboard(event: &InputEvent, editing: bool) -> bool {
     let paste = KeyChord::ctrl(Key::V);
-    editing && matches!(event, InputEvent::KeyDown { key, mods } if *key == paste.key && *mods == paste.mods)
+    editing
+        && matches!(event, InputEvent::KeyDown { key, mods } if *key == paste.key && *mods == paste.mods)
 }
 
 /// The event for what the clipboard held; `None` when it was empty or

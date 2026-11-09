@@ -1089,15 +1089,15 @@ mod tests {
 
     #[test]
     fn clean_paste_drops_control_characters() {
-        assert_eq!(clean_paste("a\u{0}b\u{7}c\u{1b}[0m\u{7f}\u{85}d"), "abc[0md");
+        assert_eq!(
+            clean_paste("a\u{0}b\u{7}c\u{1b}[0m\u{7f}\u{85}d"),
+            "abc[0md"
+        );
     }
 
     #[test]
     fn clean_paste_tab_is_the_tab_key_spaces() {
-        assert_eq!(
-            clean_paste("a\tb"),
-            format!("a{}b", " ".repeat(TAB_SPACES))
-        );
+        assert_eq!(clean_paste("a\tb"), format!("a{}b", " ".repeat(TAB_SPACES)));
     }
 
     #[test]
