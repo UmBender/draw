@@ -96,6 +96,16 @@ pub const SQRT_SIGN: f32 = 0.55;
 /// Largest scale of a binomial's parentheses.
 pub const BINOM_MAX_SCALE: f32 = 3.0;
 
+/// Largest scale of a bracket of `\left` and `\right` (ADR-T89-1).
+pub const LEFT_RIGHT_MAX_SCALE: f32 = 12.0;
+
+/// Part of the content's span that a growing bracket must reach, TeX's
+/// `\delimiterfactor` (ADR-T89-1).
+pub const DELIM_FACTOR: f32 = 0.901;
+
+/// Width of the empty delimiter `.`, TeX's `\nulldelimiterspace`.
+pub const NULL_DELIM_SPACE: f32 = 0.12;
+
 /// Gap between an accent's ink and the top of its argument (ADR-T39-1).
 pub const ACCENT_GAP: f32 = 0.06;
 
@@ -204,9 +214,48 @@ pub enum Node {
         /// The nodes after the command.
         right: Vec<Node>,
     },
+    /// A `\left … \right` pair with brackets grown to its body
+    /// (ADR-T89-1).
+    LeftRight {
+        /// What follows `\left`.
+        open: Delimiter,
+        /// The nodes between the two commands.
+        body: Vec<Node>,
+        /// What follows `\right`.
+        close: Delimiter,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
+
+/// The delimiter after `\left` or `\right`, as typed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delimiter {
+    /// Whitespace between the command and the delimiter.
+    pub lead: String,
+    /// Its source: a row of [`DELIMITERS`].
+    pub source: String,
+}
+
+/// What `\left` and `\right` accept: each delimiter's source and the glyph
+/// it draws; `.` draws none (ADR-T89-1).
+pub const DELIMITERS: &[(&str, Option<char>)] = &[
+    (".", None),
+    ("(", Some('(')),
+    (")", Some(')')),
+    ("[", Some('[')),
+    ("]", Some(']')),
+    ("\\{", Some('{')),
+    ("\\}", Some('}')),
+    ("|", Some('|')),
+    ("\\|", Some('‖')),
+    ("\\langle", Some('⟨')),
+    ("\\rangle", Some('⟩')),
+    ("\\lfloor", Some('⌊')),
+    ("\\rfloor", Some('⌋')),
+    ("\\lceil", Some('⌈')),
+    ("\\rceil", Some('⌉')),
+];
 
 /// The infix commands that split their group (ADR-T71-1): `\over`,
 /// `\atop`, `\choose`, `\brack`, `\brace`.
@@ -1993,6 +2042,15 @@ fn print_node(node: &Node, out: &mut String) {
             out.push_str(name);
             print_nodes(right, out);
         }
+        Node::LeftRight { open, body, close } => {
+            out.push_str("\\left");
+            out.push_str(&open.lead);
+            out.push_str(&open.source);
+            print_nodes(body, out);
+            out.push_str("\\right");
+            out.push_str(&close.lead);
+            out.push_str(&close.source);
+        }
     }
 }
 
@@ -2206,6 +2264,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (MathBox::upright(body, scale), class)
         }
         Node::Infix { name, left, right } => (infix(name, left, right, scale, style), Class::Ord),
+        Node::LeftRight { .. } => todo!("T89 behaviour step"),
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
