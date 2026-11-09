@@ -70,8 +70,8 @@ Added by [[T16 Shape model v2 and helper skeleton]]
 | `Shift+G` | Grid snap on / off |
 | `N` | Auto-numbering on / off (circles and squares get numbers, new grids get axis indices — [[ADR-T22-1 Numbering toggle drives grid indices]]) |
 | `Shift+N` | Restart numbering at 1 |
-| `→` / `←` | Grid: one more / one less column (1–64, live while dragging) |
-| `↓` / `↑` | Grid: one more / one less row (1–64, live while dragging) |
+| `→` / `←` | Grid: one more / one less column (1–64, live while dragging); with the Select tool and one grid selected, of that grid ([[ADR-T85-1 Arrows resize the one selected grid]]) |
+| `↓` / `↑` | Grid: one more / one less row (1–64, live while dragging); with the Select tool and one grid selected, of that grid |
 
 ## Text edit mode
 

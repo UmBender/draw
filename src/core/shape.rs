@@ -521,6 +521,52 @@ impl Shape {
         ))
     }
 
+    /// This grid with `cols` columns and `rows` rows added (negative:
+    /// removed), the size clamped to `1..=GRID_MAX_CELLS`.
+    ///
+    /// The cell size stays and the box changes at its right and bottom
+    /// edges; the remaining cells keep their place in the world and the
+    /// cells past the new edges are dropped (ADR-T85-1). `None` for other
+    /// shapes, when the size would not change, or when a coordinate would
+    /// stop being finite.
+    #[must_use]
+    pub fn grid_stepped(&self, cols: i32, rows: i32) -> Option<Self> {
+        let Self::Grid {
+            cols: old_cols,
+            rows: old_rows,
+            ..
+        } = *self
+        else {
+            return None;
+        };
+        let (new_cols, new_rows) = (stepped_cells(old_cols, cols), stepped_cells(old_rows, rows));
+        if (new_cols, new_rows) == (old_cols, old_rows) {
+            return None;
+        }
+        let mut stepped = self.clone();
+        if let Self::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            fills,
+            texts,
+            ..
+        } = &mut stepped
+        {
+            let shift_col = step_axis(&mut a.x, &mut b.x, old_cols, new_cols);
+            let shift_row = step_axis(&mut a.y, &mut b.y, old_rows, new_rows);
+            (*cols, *rows) = (new_cols, new_rows);
+            let keep = |col: &mut u32, row: &mut u32| {
+                move_cell(col, shift_col, new_cols) && move_cell(row, shift_row, new_rows)
+            };
+            fills.retain_mut(|f| keep(&mut f.col, &mut f.row));
+            texts.retain_mut(|t| keep(&mut t.col, &mut t.row));
+        }
+        let bounds = stepped.bounds();
+        (stepped.is_finite() && bounds.min.is_finite() && bounds.max.is_finite()).then_some(stepped)
+    }
+
     /// The cell fills of a grid, sorted by `(row, col)`; empty for other
     /// shapes.
     #[must_use]
@@ -854,6 +900,44 @@ pub fn grid_cell_rect(a: Vec2, b: Vec2, cols: u32, rows: u32, col: u32, row: u32
 /// `n` clamped to the valid grid dimension range `1..=GRID_MAX_CELLS`.
 fn clamp_cells(n: u32) -> u32 {
     n.clamp(1, GRID_MAX_CELLS)
+}
+
+/// The grid dimension `cells` plus `delta`, clamped to
+/// `1..=GRID_MAX_CELLS`.
+pub(crate) fn stepped_cells(cells: u32, delta: i32) -> u32 {
+    let stepped = (i64::from(cells) + i64::from(delta)).clamp(1, i64::from(GRID_MAX_CELLS));
+    u32::try_from(stepped).unwrap_or(GRID_MAX_CELLS)
+}
+
+/// Changes one axis of a grid from `old` to `new` cells of the same size,
+/// moving the end with the larger coordinate (right or bottom). Returns how
+/// far the cell indices along this axis shift, which is non-zero only when
+/// that end is the one indices count from, `start`.
+fn step_axis(start: &mut f32, end: &mut f32, old: u32, new: u32) -> i64 {
+    if old == new {
+        return 0;
+    }
+    let (low, high) = (start.min(*end), start.max(*end));
+    let moved = low + (high - low) / old as f32 * new as f32;
+    if *start > *end {
+        *start = moved;
+        i64::from(new) - i64::from(old)
+    } else {
+        *end = moved;
+        0
+    }
+}
+
+/// Shifts the cell index `index` by `shift`. Returns whether it is still
+/// one of the `cells` cells of its axis.
+fn move_cell(index: &mut u32, shift: i64, cells: u32) -> bool {
+    match u32::try_from(i64::from(*index) + shift) {
+        Ok(moved) if moved < cells => {
+            *index = moved;
+            true
+        }
+        _ => false,
+    }
 }
 
 /// Arrow head triangle `[tip, left, right]` for an arrow from `a` to `b`.
@@ -2021,6 +2105,251 @@ mod tests {
         assert_eq!(g.grid_cell_at(Vec2::new(f32::NAN, 5.0)), None);
         let other = rect(Vec2::ZERO, Vec2::new(40.0, 20.0), 1.0, None);
         assert_eq!(other.grid_cell_at(Vec2::new(5.0, 5.0)), None);
+    }
+
+    // ---- T85 resizing a committed grid -------------------------------------
+
+    /// `cols × rows` grid from `a` to `b` with a fill and a text in each of
+    /// `cells`, given as `(col, row)` sorted by `(row, col)`.
+    fn filled_grid(a: Vec2, b: Vec2, cols: u32, rows: u32, cells: &[(u32, u32)]) -> Shape {
+        let fills = cells
+            .iter()
+            .map(|&(col, row)| CellFill {
+                col,
+                row,
+                color: color(1),
+            })
+            .collect();
+        let texts = cells
+            .iter()
+            .map(|&(col, row)| CellText {
+                col,
+                row,
+                content: ShapeText {
+                    text: format!("{col},{row}"),
+                    size: 5.0,
+                },
+            })
+            .collect();
+        Shape::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            style: style(1.0),
+            axes: false,
+            fills,
+            texts,
+        }
+    }
+
+    /// `(a, b, cols, rows)` of a grid; panics on other shapes.
+    fn grid_parts(shape: &Shape) -> (Vec2, Vec2, u32, u32) {
+        match *shape {
+            Shape::Grid {
+                a, b, cols, rows, ..
+            } => (a, b, cols, rows),
+            _ => panic!("not a grid: {shape:?}"),
+        }
+    }
+
+    /// The `(col, row)` of every fill, after checking that the texts sit in
+    /// the same cells and still say where they started.
+    fn filled_cells(shape: &Shape) -> Vec<(u32, u32)> {
+        let fills: Vec<_> = shape.cell_fills().iter().map(|f| (f.col, f.row)).collect();
+        let texts: Vec<_> = shape.cell_texts().iter().map(|t| (t.col, t.row)).collect();
+        assert_eq!(fills, texts);
+        fills
+    }
+
+    #[test]
+    fn grid_stepped_moves_right_and_bottom_edges() {
+        // Arrange: 4 × 2 cells of 10 × 10.
+        let shape = grid(v(10.0, 20.0), v(50.0, 40.0), 4, 2, 1.0);
+
+        // Act
+        let wider = shape.grid_stepped(1, 0).map(|s| grid_parts(&s));
+        let shorter = shape.grid_stepped(0, -1).map(|s| grid_parts(&s));
+
+        // Assert
+        let Some((a, b, cols, rows)) = wider else {
+            panic!("the column was not added");
+        };
+        assert_vec_eq(a, v(10.0, 20.0));
+        assert_vec_eq(b, v(60.0, 40.0));
+        assert_eq!((cols, rows), (5, 2));
+        let Some((a, b, cols, rows)) = shorter else {
+            panic!("the row was not removed");
+        };
+        assert_vec_eq(a, v(10.0, 20.0));
+        assert_vec_eq(b, v(50.0, 30.0));
+        assert_eq!((cols, rows), (4, 1));
+    }
+
+    #[test]
+    fn grid_stepped_reversed_grid_moves_right_and_bottom_edges() {
+        // Arrange: drawn up and to the left, so `a` is the bottom-right.
+        let shape = grid(v(50.0, 40.0), v(10.0, 20.0), 4, 2, 1.0);
+
+        // Act
+        let wider = shape.grid_stepped(1, 0).map(|s| grid_parts(&s));
+        let shorter = shape.grid_stepped(0, -1).map(|s| grid_parts(&s));
+
+        // Assert: the right and bottom edges moved, left and top did not.
+        let Some((a, b, cols, _)) = wider else {
+            panic!("the column was not added");
+        };
+        assert_vec_eq(a, v(60.0, 40.0));
+        assert_vec_eq(b, v(10.0, 20.0));
+        assert_eq!(cols, 5);
+        let Some((a, b, _, rows)) = shorter else {
+            panic!("the row was not removed");
+        };
+        assert_vec_eq(a, v(50.0, 30.0));
+        assert_vec_eq(b, v(10.0, 20.0));
+        assert_eq!(rows, 1);
+    }
+
+    #[test]
+    fn grid_stepped_clamps_large_deltas() {
+        // Arrange
+        let shape = grid(v(0.0, 0.0), v(40.0, 40.0), 4, 4, 1.0);
+
+        // Act
+        let most = shape.grid_stepped(i32::MAX, 0).map(|s| grid_parts(&s));
+        let least = shape.grid_stepped(i32::MIN, 0).map(|s| grid_parts(&s));
+
+        // Assert
+        let Some((_, b, cols, _)) = most else {
+            panic!("the grid did not grow");
+        };
+        assert_eq!(cols, GRID_MAX_CELLS);
+        assert_vec_eq(b, v(10.0 * GRID_MAX_CELLS as f32, 40.0));
+        let Some((_, b, cols, _)) = least else {
+            panic!("the grid did not shrink");
+        };
+        assert_eq!(cols, 1);
+        assert_vec_eq(b, v(10.0, 40.0));
+    }
+
+    #[test]
+    fn grid_stepped_without_a_change_is_none() {
+        // Arrange
+        let smallest = grid(v(0.0, 0.0), v(10.0, 10.0), 1, 1, 1.0);
+        let largest = grid(v(0.0, 0.0), v(64.0, 64.0), 64, 64, 1.0);
+        let other = rect(v(0.0, 0.0), v(10.0, 10.0), 1.0, None);
+
+        // Act / Assert
+        assert_eq!(smallest.grid_stepped(-1, 0), None);
+        assert_eq!(smallest.grid_stepped(0, -1), None);
+        assert_eq!(largest.grid_stepped(1, 0), None);
+        assert_eq!(largest.grid_stepped(0, 1), None);
+        assert_eq!(smallest.grid_stepped(0, 0), None);
+        assert_eq!(other.grid_stepped(1, 0), None);
+    }
+
+    #[test]
+    fn grid_stepped_keeps_remaining_cells_drops_removed() {
+        // Arrange: 3 × 2 with cells in the last column and the last row.
+        let cells = [(0, 0), (2, 0), (1, 1), (2, 1)];
+        let shape = filled_grid(v(0.0, 0.0), v(30.0, 20.0), 3, 2, &cells);
+
+        // Act
+        let fewer_cols = shape.grid_stepped(-1, 0);
+        let fewer_rows = shape.grid_stepped(0, -1);
+        let more_cols = shape.grid_stepped(1, 0);
+
+        // Assert
+        let cells_of = |s: Option<Shape>| s.map(|s| filled_cells(&s));
+        assert_eq!(cells_of(fewer_cols), Some(vec![(0, 0), (1, 1)]));
+        assert_eq!(cells_of(fewer_rows), Some(vec![(0, 0), (2, 0)]));
+        assert_eq!(cells_of(more_cols), Some(cells.to_vec()));
+    }
+
+    #[test]
+    fn grid_stepped_reversed_grid_keeps_cells_in_place() {
+        // Arrange: drawn leftwards, so column 0 is the right-hand one.
+        let (a, b) = (v(30.0, 0.0), v(0.0, 20.0));
+        let cells = [(0, 0), (2, 0), (1, 1)];
+        let shape = filled_grid(a, b, 3, 2, &cells);
+        let world = |col, row| grid_cell_rect(a, b, 3, 2, col, row);
+
+        // Act
+        let fewer = shape.grid_stepped(-1, 0);
+        let more = shape.grid_stepped(1, 0);
+
+        // Assert: the right-hand column went, the others did not move.
+        let Some(fewer) = fewer else {
+            panic!("the column was not removed");
+        };
+        assert_eq!(filled_cells(&fewer), vec![(1, 0), (0, 1)]);
+        let (a2, b2, cols, rows) = grid_parts(&fewer);
+        let rect = grid_cell_rect(a2, b2, cols, rows, 1, 0);
+        assert_aabb_eq(rect, world(2, 0).min, world(2, 0).max);
+
+        // A new right-hand column shifts every index by one.
+        let Some(more) = more else {
+            panic!("the column was not added");
+        };
+        assert_eq!(filled_cells(&more), vec![(1, 0), (3, 0), (2, 1)]);
+        let (a2, b2, cols, rows) = grid_parts(&more);
+        let rect = grid_cell_rect(a2, b2, cols, rows, 3, 0);
+        assert_aabb_eq(rect, world(2, 0).min, world(2, 0).max);
+    }
+
+    #[test]
+    fn grid_stepped_refuses_non_finite_result() {
+        // Arrange: one more cell would go past `f32::MAX`.
+        let forward = grid(v(0.0, 0.0), v(3e38, 10.0), 1, 1, 1.0);
+        let reversed = grid(v(3e38, 0.0), v(0.0, 10.0), 1, 1, 1.0);
+
+        // Act / Assert
+        assert_eq!(forward.grid_stepped(1, 0), None);
+        assert_eq!(reversed.grid_stepped(1, 0), None);
+    }
+
+    proptest! {
+        /// T85 AC-2, AC-3: any step leaves a valid grid of the same cell
+        /// size.
+        #[test]
+        fn grid_stepped_stays_valid(
+            (ax, ay, bx, by) in (-1000.0f32..1000.0, -1000.0f32..1000.0, -1000.0f32..1000.0, -1000.0f32..1000.0),
+            (cols, rows) in (1..=GRID_MAX_CELLS, 1..=GRID_MAX_CELLS),
+            (dcols, drows) in (-70i32..70, -70i32..70),
+            picked in prop::collection::btree_set((0u32..64, 0u32..64), 0..30),
+        ) {
+            // Arrange: `picked` holds `(row, col)`, so it iterates sorted.
+            let cells: Vec<(u32, u32)> = picked
+                .into_iter()
+                .filter(|&(row, col)| col < cols && row < rows)
+                .map(|(row, col)| (col, row))
+                .collect();
+            let (a, b) = (v(ax, ay), v(bx, by));
+            let shape = filled_grid(a, b, cols, rows, &cells);
+
+            // Act
+            let stepped = shape.grid_stepped(dcols, drows);
+
+            // Assert
+            let Some(stepped) = stepped else {
+                let same_cols = i64::from(cols) + i64::from(dcols);
+                let same_rows = i64::from(rows) + i64::from(drows);
+                let range = 1..=i64::from(GRID_MAX_CELLS);
+                prop_assert!(
+                    same_cols.clamp(*range.start(), *range.end()) == i64::from(cols)
+                        && same_rows.clamp(*range.start(), *range.end()) == i64::from(rows)
+                );
+                return Ok(());
+            };
+            let (a2, b2, cols2, rows2) = grid_parts(&stepped);
+            prop_assert!((1..=GRID_MAX_CELLS).contains(&cols2));
+            prop_assert!((1..=GRID_MAX_CELLS).contains(&rows2));
+            prop_assert!(approx_eq((b2.x - a2.x) / cols2 as f32, (b.x - a.x) / cols as f32, 1e-2));
+            prop_assert!(approx_eq((b2.y - a2.y) / rows2 as f32, (b.y - a.y) / rows as f32, 1e-2));
+            let kept = filled_cells(&stepped);
+            prop_assert!(kept.iter().all(|&(col, row)| col < cols2 && row < rows2));
+            prop_assert!(kept.windows(2).all(|w| (w[0].1, w[0].0) < (w[1].1, w[1].0)));
+        }
     }
 
     #[test]

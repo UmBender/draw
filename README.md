@@ -24,7 +24,8 @@ single-key shortcut so your hands never leave the keyboard for long.
 - **Drawing tools** — smoothed pen, line, arrow, rectangle, ellipse; `Shift`
   constrains to squares, circles and 45° angles.
 - **Grid tool** — drag out a table, size it live with the arrow keys
-  (up to 64 × 64), with optional row and column indices.
+  (up to 64 × 64), with optional row and column indices. Select a finished
+  table and the arrows add or remove its columns and rows.
 - **Numbered nodes** — with numbering on, every new circle or box gets the
   next number: graphs in seconds.
 - **Text blocks** — click and type notes with Greek letters and math
@@ -221,7 +222,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 |-----|--------|-----|--------|
 | `X` | Smart snap on / off | `Shift+G` | Grid snap on / off |
 | `N` | Numbering on / off (also grid indices) | `Shift+N` | Restart numbering at 1 |
-| `→` / `←` | Grid columns + / − | `↓` / `↑` | Grid rows + / − |
+| `→` / `←` | Grid columns + / − (of the one selected grid, if any) | `↓` / `↑` | Grid rows + / − (same) |
 
 ### Gestures
 
