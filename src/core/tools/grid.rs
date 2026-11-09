@@ -967,11 +967,17 @@ mod tests {
         // Act / Assert
         assert_eq!(
             TextTable::parse(&wide),
-            Err(TableError::TooManyCells { cols: cells, rows: 1 })
+            Err(TableError::TooManyCells {
+                cols: cells,
+                rows: 1
+            })
         );
         assert_eq!(
             TextTable::parse(&tall),
-            Err(TableError::TooManyCells { cols: 1, rows: cells })
+            Err(TableError::TooManyCells {
+                cols: 1,
+                rows: cells
+            })
         );
     }
 

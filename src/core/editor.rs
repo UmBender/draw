@@ -5227,7 +5227,11 @@ mod tests {
             },
         };
         let mut ed = shape_text_editor(
-            vec![rect(0.0, 0.0, 10.0, 10.0), original, rect(0.0, 0.0, 20.0, 20.0)],
+            vec![
+                rect(0.0, 0.0, 10.0, 10.0),
+                original,
+                rect(0.0, 0.0, 20.0, 20.0),
+            ],
             Tool::Select,
         );
         let id = ids(&ed)[1];
@@ -5470,7 +5474,7 @@ mod tests {
         assert_eq!(ed.selection(), [ids(&ed)[1]]);
         assert!(ed.apply(Command::Undo));
         assert_eq!(ed.document().len(), 1);
-        assert!(ed.selection().is_empty());
+        assert_eq!(ed.selection(), []);
     }
 
     #[test]

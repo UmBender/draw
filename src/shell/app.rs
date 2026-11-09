@@ -618,17 +618,9 @@ pub async fn run() {
             } else if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
-                let line = match save_snapshot(&editor) {
-                    Ok(path) => format!("snapshot written to {}", path.display()),
-                    Err(err) => format!("snapshot not written: {err}"),
-                };
-                eprintln!("draw: {line}");
-                diag::log(Level::Info, &line);
+                report_snapshot(&editor);
             } else {
                 dirty |= dispatch(&mut editor, event);
-            }
-            if let Some(notice) = editor.take_notice() {
-                diag::log(Level::Warn, &notice);
             }
         }
         let presented = frame.present(&editor, viewport, dpi, dirty);
@@ -641,6 +633,16 @@ pub async fn run() {
             hooks.after_swap();
         }
     }
+}
+
+/// Saves a snapshot of `editor` and says where, or why it failed.
+fn report_snapshot(editor: &Editor) {
+    let line = match save_snapshot(editor) {
+        Ok(path) => format!("snapshot written to {}", path.display()),
+        Err(err) => format!("snapshot not written: {err}"),
+    };
+    eprintln!("draw: {line}");
+    diag::log(Level::Info, &line);
 }
 
 /// Hands the system clipboard to the editor as the event `paste` makes of
@@ -754,11 +756,16 @@ fn pen_samples() -> Vec<PenSample> {
 /// needs a redraw.
 fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     let flyout = editor.tool() == Tool::Grid;
-    match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
+    let changed = match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
         Route::Forward(event) => editor.handle(event),
         Route::Apply(command) => editor.apply(command),
         Route::Swallow => false,
+    };
+    // A key that refused to act says why (ADR-T84-1).
+    if let Some(notice) = editor.take_notice() {
+        diag::log(Level::Warn, &notice);
     }
+    changed
 }
 
 /// The document layer: background, underlay and document shapes in a
