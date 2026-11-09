@@ -26,7 +26,7 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
-use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot};
+use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, TextSlot, stepped_cells};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
@@ -636,16 +636,7 @@ impl Editor {
             Command::Duplicate => self.run_edit(clipboard::duplicate),
             Command::SelectAll => self.run_edit(select::select_all),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
-            Command::ClearAll => {
-                let cancelled = self.cancel_gesture();
-                if self.doc.is_empty() {
-                    return cancelled;
-                }
-                let tx = tx_clear(&self.doc);
-                let changed = self.history.commit(&mut self.doc, tx).is_ok();
-                self.selection.clear();
-                changed || cancelled
-            }
+            Command::ClearAll => self.clear_all(),
             Command::Cancel => {
                 if self.cancel_gesture() {
                     true
@@ -1237,6 +1228,19 @@ impl Editor {
         })
     }
 
+    /// Removes every shape as one undo step, after cancelling the gesture.
+    /// Returns whether anything changed.
+    fn clear_all(&mut self) -> bool {
+        let cancelled = self.cancel_gesture();
+        if self.doc.is_empty() {
+            return cancelled;
+        }
+        let tx = tx_clear(&self.doc);
+        let changed = self.history.commit(&mut self.doc, tx).is_ok();
+        self.selection.clear();
+        changed || cancelled
+    }
+
     /// The id and shape of the grid the arrow keys resize: the Select tool
     /// is active and that grid is the whole selection (ADR-T85-1).
     fn resizable_grid(&self) -> Option<(ShapeId, &Shape)> {
@@ -1324,8 +1328,7 @@ fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
 /// Adds `delta` to the grid dimension `cells`, clamped to
 /// `1..=GRID_MAX_CELLS`. Returns whether it changed.
 fn step_cells(cells: &mut u32, delta: i32) -> bool {
-    let stepped = (i64::from(*cells) + i64::from(delta)).clamp(1, i64::from(GRID_MAX_CELLS));
-    let stepped = u32::try_from(stepped).unwrap_or(GRID_MAX_CELLS);
+    let stepped = stepped_cells(*cells, delta);
     let changed = *cells != stepped;
     *cells = stepped;
     changed
@@ -2211,10 +2214,7 @@ mod tests {
     fn plain_grid(cols: u32, rows: u32) -> Shape {
         Shape::Grid {
             a: Vec2::new(100.0, 100.0),
-            b: Vec2::new(
-                100.0 + 100.0 * cols as f32,
-                100.0 + 100.0 * rows as f32,
-            ),
+            b: Vec2::new(100.0 + 100.0 * cols as f32, 100.0 + 100.0 * rows as f32),
             cols,
             rows,
             style: Style {
@@ -2285,10 +2285,7 @@ mod tests {
         assert_eq!(first_grid_size(&smallest), (1, 1));
         assert!(!arrow(&mut largest, Key::ArrowRight));
         assert!(!arrow(&mut largest, Key::ArrowDown));
-        assert_eq!(
-            first_grid_size(&largest),
-            (GRID_MAX_CELLS, GRID_MAX_CELLS)
-        );
+        assert_eq!(first_grid_size(&largest), (GRID_MAX_CELLS, GRID_MAX_CELLS));
         assert_eq!(helper_size(&smallest), helpers);
         assert_eq!(helper_size(&largest), helpers);
     }

@@ -904,7 +904,7 @@ fn clamp_cells(n: u32) -> u32 {
 
 /// The grid dimension `cells` plus `delta`, clamped to
 /// `1..=GRID_MAX_CELLS`.
-fn stepped_cells(cells: u32, delta: i32) -> u32 {
+pub(crate) fn stepped_cells(cells: u32, delta: i32) -> u32 {
     let stepped = (i64::from(cells) + i64::from(delta)).clamp(1, i64::from(GRID_MAX_CELLS));
     u32::try_from(stepped).unwrap_or(GRID_MAX_CELLS)
 }
