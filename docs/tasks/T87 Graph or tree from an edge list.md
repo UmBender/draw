@@ -1,7 +1,7 @@
 ---
 id: T87
 title: Graph or tree from an edge list
-status: in-progress
+status: review
 wave: 53
 branch: task/T87-graph-from-edges
 depends_on: [T84]
@@ -54,18 +54,18 @@ The fuzzer reaches `Ctrl+L` through the bound chords and through a session built
 - `src/core/numbering.rs`
 - `docs/features/Numbered nodes.md`
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
-- `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
+- `docs/architecture/Keymap.md`, `docs/architecture/Architecture.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
 - this note, and new `ADR-T87-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T87): specify graph or tree from an edge list`
-- [ ] tests — `test(T87): add failing tests`
-- [ ] models — `feat(T87): add types`
-- [ ] behaviour — `feat(T87): implement`
-- [ ] quality — `chore(T87): pass clippy and rustfmt`
-- [ ] docs — `docs(T87): update the feature note`
+- [x] spec — `docs(T87): specify graph or tree from an edge list`
+- [x] tests — `test(T87): add failing tests`
+- [x] models — `feat(T87): add types`
+- [x] behaviour — `feat(T87): implement`
+- [x] quality — `chore(T87): pass clippy and rustfmt`
+- [x] docs — `docs(T87): update the feature note`
 
 ## Learning path
 
@@ -74,3 +74,11 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
+- 2026-11-09 — implemented on `task/T87-graph-from-edges`, branched from `task/T84-grid-from-text`.
+- 2026-11-09 — UNATTENDED CHOICE: a weight sits beside the middle of its edge, its box just clear of the stroke, not centred on it, because a line through the digits is hard to read and text has no background ([[ADR-T87-1 Graph from an edge list key and layout rules]]). To centre it, drop the normal offset in `weight_text`.
+- 2026-11-09 — UNATTENDED CHOICE: a node named 0 is a circle holding the text `0`, because on this base a label below 1 is refused by the snapshot parser and the fuzzer, and the change that lifts this belongs to [[T86 Zero-based numbering]]. Once T86 is merged it can become a label.
+- 2026-11-09 — UNATTENDED CHOICE: a duplicate means the same two nodes, direction and weight; edges that differ in direction or weight are all drawn and overlap. Such a pair is not a tree, so it goes on the circle.
+- 2026-11-09 — UNATTENDED CHOICE: more than 64 KiB of text is refused whole, as for [[T84 Grid from text]], and a refusal logs the line number, not the text. The result is selected and the numbering counter does not move; undoing a graph holding the number just below the counter also gives that number back, the limit a paste already has.
+- 2026-11-09 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` was added to *Files owned* for the new module's row. `p_l_m_are_unbound` now excepts `Ctrl+L`, the one chord this task binds. `Editor::undo` was split out of `execute`, which the new command took over the function length lint.
+- 2026-11-09 — quality: the behaviour commit also corrected one test expectation (shape bounds include half a stroke, so the nodes' top-left is half a stroke past the block's corner); the behaviour was right.
+- 2026-11-09 — manual check left for the owner: try a tree and a cyclic graph with `Ctrl+L` and judge the layout. Geometry is tested; nothing was looked at in the running app, and writing the refusal to `draw.log` was not exercised there.
