@@ -1368,6 +1368,98 @@ mod self_tests {
         assert!(err.is_err_and(|diff| diff.message.contains("2x2")));
     }
 
+    // ---- T80 cursor box -------------------------------------------------
+
+    /// A solid image with one pixel set to white.
+    fn with_white_pixel(width: usize, height: usize, at: (usize, usize)) -> Image {
+        let mut image = solid(width, height, 100);
+        let offset = (at.1 * width + at.0) * 3;
+        image.rgb[offset..offset + 3].fill(255);
+        image
+    }
+
+    const NO_ROOM: Tolerance = Tolerance {
+        pixels: 0,
+        channel: 8,
+    };
+
+    #[test]
+    fn cursor_box_hides_a_difference_at_the_pointer() {
+        // Arrange: the corners of the box, relative to the pointer.
+        let expected = solid(100, 100, 100);
+        for at in [(48, 48), (73, 73), (50, 50)] {
+            let mut actual = with_white_pixel(100, 100, at);
+
+            // Act
+            hide_cursor_box(&mut actual, &expected, (50, 50));
+
+            // Assert
+            assert_eq!(compare_images(&actual, &expected, NO_ROOM), Ok(()), "{at:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_box_keeps_a_difference_outside_it() {
+        // Arrange: one pixel past each side of the box.
+        let expected = solid(100, 100, 100);
+        for at in [(47, 50), (50, 47), (74, 50), (50, 74)] {
+            let mut actual = with_white_pixel(100, 100, at);
+
+            // Act
+            hide_cursor_box(&mut actual, &expected, (50, 50));
+
+            // Assert
+            assert!(compare_images(&actual, &expected, NO_ROOM).is_err(), "{at:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_box_at_the_image_edge_is_clipped() {
+        // Arrange
+        let expected = solid(10, 10, 100);
+        for pointer in [(9, 9), (0, 0), (-5, -5), (500, 500)] {
+            let mut actual = solid(10, 10, 100);
+
+            // Act
+            hide_cursor_box(&mut actual, &expected, pointer);
+
+            // Assert
+            assert_eq!(actual, expected, "{pointer:?}");
+        }
+    }
+
+    #[test]
+    fn cursor_box_ignores_a_golden_of_another_size() {
+        // Arrange
+        let mut actual = with_white_pixel(4, 4, (1, 1));
+        let before = actual.clone();
+
+        // Act
+        hide_cursor_box(&mut actual, &solid(2, 2, 100), (1, 1));
+
+        // Assert
+        assert_eq!(actual, before);
+    }
+
+    #[test]
+    fn last_pointer_is_the_last_set_step() {
+        // Arrange
+        let mut steps = drag((10, 20), (440, 350), 4);
+        steps.push(pointer(&["press", "button1"]));
+        steps.push(Step::Wheel(1));
+
+        // Act
+        let last = last_pointer(&steps, (1, 2));
+
+        // Assert
+        assert_eq!(last, (440, 350));
+    }
+
+    #[test]
+    fn last_pointer_without_moves_is_the_start() {
+        assert_eq!(last_pointer(&[Step::Wheel(1)], (1, 2)), (1, 2));
+    }
+
     // ---- AC-4 no sleeps -------------------------------------------------
 
     fn sleeper() -> Child {
