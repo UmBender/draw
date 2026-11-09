@@ -1,7 +1,7 @@
 ---
 id: T89
 title: Growing brackets
-status: todo
+status: in-progress
 wave: 51
 branch: task/T89-growing-brackets
 depends_on: []
@@ -24,13 +24,18 @@ tags: [task]
 
 ## Spec
 
-The spec step names the test for each criterion.
+Decisions: [[ADR-T89-1 Left and right brackets centred on the axis]]. All tests are in `src/core/tex.rs`.
 
 - **AC-1** — `\left( … \right)` scales both brackets to the enclosed height, for `( ) [ ] \{ \} | \| \langle \rangle \lfloor \rfloor \lceil \rceil`.
+  Tests: `tex_parse_left_right_is_one_node_keeping_its_source`, `tex_layout_left_right_scales_brackets_to_the_content`, `tex_layout_left_right_grows_every_delimiter`, `tex_layout_left_right_centres_brackets_on_the_axis`, `tex_layout_left_right_stops_at_the_scale_limit`, and the proptests over `arb_source`.
 - **AC-2** — `.` draws nothing on that side.
+  Test: `tex_layout_left_right_null_delimiter_draws_nothing`.
 - **AC-3** — An unmatched `\left` or `\right` is drawn in red, as other invalid input is, and never panics.
+  Tests: `tex_parse_unmatched_left_or_right_is_literal`, `tex_parse_left_or_right_without_a_delimiter_is_literal`, `tex_parse_left_right_across_a_group_is_literal`, `tex_parse_left_after_text_is_not_a_body`, `tex_parse_deep_left_right_is_literal_past_the_limit`, `tex_layout_unmatched_left_right_is_drawn_in_the_warning_colour`, and `tests/fuzz.rs`.
 - **AC-4** — Pairs nest, and scripts on the closing bracket attach to it.
+  Tests: `tex_parse_left_right_pairs_nest`, `tex_layout_left_right_outer_pair_is_at_least_as_tall_as_inner`, `tex_layout_left_right_script_attaches_to_the_closing_bracket`.
 - **AC-5** — Short content leaves the brackets at normal size.
+  Test: `tex_layout_left_right_short_content_keeps_normal_size`.
 
 ## Out of scope
 
