@@ -13,7 +13,8 @@ use crate::core::document::Document;
 use crate::core::editor::Helpers;
 use crate::core::shape::Shape;
 
-/// The first number given out, and the counter value after a reset.
+/// The first number given out by default. With the zero-based switch on
+/// it is 0 instead ([`Helpers::first_number`], ADR-T86-1).
 pub const FIRST_NUMBER: u32 = 1;
 
 /// `shape` with the label numbering gives a newly committed shape under
@@ -54,8 +55,12 @@ pub fn advance(next: u32, before: usize, after: usize) -> u32 {
 /// `first` (ADR-T86-1).
 #[must_use]
 pub fn roll_back(next: u32, before: usize, after: usize, first: u32) -> u32 {
-    let _ = (next, before, after, first);
-    todo!()
+    let next = next.max(first);
+    if next > first && after < before {
+        next - 1
+    } else {
+        next
+    }
 }
 
 #[cfg(test)]

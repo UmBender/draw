@@ -26,7 +26,6 @@ use crate::core::document::{Document, Edit, ShapeId, Transaction};
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{Modifiers, PointerButton};
-use crate::core::numbering::FIRST_NUMBER;
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellFill, CellText, GRID_MAX_CELLS, Shape, ShapeText, Style, TextSlot};
 use crate::core::smoothing::SmoothingLevel;
@@ -1069,9 +1068,6 @@ impl Snap for Shape {
                 let fill = tokens.opt()?;
                 let label: Option<u32> = tokens.opt()?;
                 let text: Option<ShapeText> = tokens.opt()?;
-                if label.is_some_and(|l| l < FIRST_NUMBER) {
-                    return Err(tokens.error(format!("label below {FIRST_NUMBER}")));
-                }
                 if kind == 3 {
                     Self::Rect {
                         a,

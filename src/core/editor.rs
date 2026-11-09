@@ -48,10 +48,6 @@ pub const FIT_MARGIN_PX: f32 = 32.0;
 /// Columns and rows of a new editor's grids.
 pub const DEFAULT_GRID_CELLS: u32 = 4;
 
-/// Value written for the seventh `helpers` snapshot token, which held the
-/// removed shape-text switch; it is ignored when read (ADR-T52-1).
-const RESERVED_HELPERS_TOKEN: bool = false;
-
 /// Maps a key chord to a command; [`keymap::resolve`] by default.
 pub type Keymap = fn(Key, Modifiers) -> Option<Command>;
 
@@ -80,7 +76,7 @@ impl Helpers {
     /// The first number given out: 0 when zero-based, else [`FIRST_NUMBER`].
     #[must_use]
     pub const fn first_number(&self) -> u32 {
-        todo!()
+        if self.zero_based { 0 } else { FIRST_NUMBER }
     }
 }
 
@@ -270,7 +266,7 @@ impl Editor {
                 .word(helpers.next_number)
                 .word(helpers.grid_cols)
                 .word(helpers.grid_rows)
-                .bool(RESERVED_HELPERS_TOKEN);
+                .bool(helpers.zero_based);
         });
         w.record("smoothing", |l| {
             l.put(&self.smoothing);
@@ -1294,9 +1290,15 @@ fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
             true
         }
         Command::ResetNumbering => {
-            let changed = helpers.next_number != FIRST_NUMBER;
-            helpers.next_number = FIRST_NUMBER;
+            let first = helpers.first_number();
+            let changed = helpers.next_number != first;
+            helpers.next_number = first;
             changed
+        }
+        Command::ToggleZeroBased => {
+            helpers.zero_based = !helpers.zero_based;
+            helpers.next_number = helpers.first_number();
+            true
         }
         Command::GridCols(delta) => step_cells(&mut helpers.grid_cols, delta),
         Command::GridRows(delta) => step_cells(&mut helpers.grid_rows, delta),
@@ -1338,16 +1340,15 @@ fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
         smart_snap: t.bool("smart snap")?,
         grid_snap: t.bool("grid snap")?,
         numbering: t.bool("numbering")?,
-        zero_based: false,
         next_number: t.number("next number")?,
         grid_cols: t.number("grid columns")?,
         grid_rows: t.number("grid rows")?,
+        // Last token, the old reserved one (ADR-T86-1).
+        zero_based: t.bool("zero based")?,
     };
-    // The old shape-text switch, reserved and ignored (ADR-T52-1).
-    let _reserved = t.bool("reserved")?;
     t.end()?;
     let cells = 1..=GRID_MAX_CELLS;
-    if helpers.next_number < FIRST_NUMBER
+    if helpers.next_number < helpers.first_number()
         || !cells.contains(&helpers.grid_cols)
         || !cells.contains(&helpers.grid_rows)
     {
