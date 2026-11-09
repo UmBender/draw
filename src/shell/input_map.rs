@@ -114,6 +114,23 @@ pub fn paste_event(text: Option<String>) -> Option<InputEvent> {
     text.filter(|text| !text.is_empty()).map(InputEvent::Paste)
 }
 
+/// Whether `event` asks for a grid from the system clipboard: a press of
+/// exactly `Ctrl+Shift+V` with no text edit open (ADR-T84-1).
+#[must_use]
+pub fn wants_grid_clipboard(event: &InputEvent, editing: bool) -> bool {
+    let paste = KeyChord::ctrl_shift(Key::V);
+    !editing
+        && matches!(event, InputEvent::KeyDown { key, mods } if *key == paste.key && *mods == paste.mods)
+}
+
+/// The grid event for what the clipboard held; `None` when it was empty
+/// or unavailable (ADR-T84-1).
+#[must_use]
+pub fn paste_grid_event(text: Option<String>) -> Option<InputEvent> {
+    text.filter(|text| !text.is_empty())
+        .map(InputEvent::PasteGrid)
+}
+
 /// Logical position of physical pixel `(x, y)` at DPI scale `dpi`. A DPI
 /// scale that is not finite and positive counts as `1`.
 #[must_use]
@@ -1496,6 +1513,42 @@ mod tests {
         assert_eq!(
             paste_event(Some("a".to_owned())),
             Some(InputEvent::Paste("a".to_owned()))
+        );
+    }
+
+    // ---- T84 grid from text ------------------------------------------------
+
+    #[test]
+    fn wants_grid_clipboard_only_for_ctrl_shift_v_outside_edit() {
+        // Arrange
+        let down = |key, mods| InputEvent::KeyDown { key, mods };
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ..CTRL
+        };
+        let chord = down(Key::V, ctrl_shift);
+
+        // Act / Assert
+        assert!(wants_grid_clipboard(&chord, false));
+        assert!(!wants_grid_clipboard(&chord, true), "no grid while editing");
+        assert!(!wants_grid_clipboard(&down(Key::V, CTRL), false));
+        assert!(!wants_grid_clipboard(&down(Key::C, ctrl_shift), false));
+        assert!(!wants_grid_clipboard(
+            &InputEvent::KeyUp {
+                key: Key::V,
+                mods: ctrl_shift,
+            },
+            false
+        ));
+    }
+
+    #[test]
+    fn paste_grid_event_needs_some_text() {
+        assert_eq!(paste_grid_event(None), None);
+        assert_eq!(paste_grid_event(Some(String::new())), None);
+        assert_eq!(
+            paste_grid_event(Some("a".to_owned())),
+            Some(InputEvent::PasteGrid("a".to_owned()))
         );
     }
 

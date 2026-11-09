@@ -1,9 +1,9 @@
 ---
 title: Grid tool
 task: "[[T18 Grid tool]]"
-adrs: ["[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-2 Helper key bindings]]", "[[ADR-T16-3 Helper settings and hooks]]"]
+adrs: ["[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-2 Helper key bindings]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T84-1 Grid from text keys and table rules]]"]
 tutorial: "[[18 A grid tool with live parameters]]"
-shortcuts: ["G", "←", "→", "↑", "↓", "N", "Shift"]
+shortcuts: ["G", "←", "→", "↑", "↓", "N", "Shift", "Ctrl+T", "Ctrl+Shift+V"]
 tags: [feature]
 ---
 
@@ -29,6 +29,20 @@ copy and undo it like any other.
 | Square cells | hold `Shift` |
 | No snapping for this drag | hold `Alt` |
 | Abort the drag | `Esc` |
+| Turn the selected text block into a grid | `Ctrl+T` |
+| Build a grid from the system clipboard, at the cursor | `Ctrl+Shift+V` |
+
+**Grid from text.** Lines become rows and runs of whitespace separate the
+cells, so a DP table or a sample matrix appears at once. Blank lines are
+ignored, short rows leave empty cells, one line gives a one-row strip.
+`Ctrl+T` needs exactly one selected text block: the grid replaces it at its
+top-left, in its colour and text size, as one undo step, and stays
+selected. `Ctrl+Shift+V` puts the grid's corner at the cursor, in the
+current colour and the size of a new text block, and selects it. Cells are
+as wide as the longest token needs (square for digits). Axis indices follow
+numbering. A text over 64 columns, 64 rows or 64 KiB changes nothing: it is
+never cut, and the reason goes to the diagnostics log
+(`~/.local/state/draw/draw.log` on most systems).
 
 **Axis indices.** With numbering on (`N`, the same switch that numbers
 circles and squares, [[ADR-T22-1 Numbering toggle drives grid indices]]),
@@ -74,6 +88,13 @@ renderer draws all indices at one size (`render::axis_label_size`, fitted
 to the longest index), hidden when cells are too small on screen
 ([[ADR-T18-3 Grid axis indices]]).
 
+Grid from text: `tools::grid::TextTable::parse` is the pure text-to-cells
+step and `TextTable::shape` builds the `Shape::Grid`. `Editor` runs it for
+`Command::GridFromText` and for `InputEvent::PasteGrid`, the event the shell
+makes of the clipboard for `Ctrl+Shift+V`. A refusal leaves its reason in
+`Editor::take_notice`, which `shell::app::dispatch` writes to the log
+([[ADR-T84-1 Grid from text keys and table rules]]).
+
 ## Limits
 
 - No per-cell fill, numbering or merged cells.
@@ -81,6 +102,8 @@ to the longest index), hidden when cells are too small on screen
   redraw it.
 - Clicking an index does not select the grid; click a grid line.
 - Axes cannot be toggled on a committed grid — redraw it.
+- Grid from text splits formulas that contain spaces like any text, and a
+  grid cannot be turned back into text.
 - The flyout covers about 130 × 60 px of canvas at the left edge while the
   grid tool is active; a drag cannot start there.
 - With smart snap on, an almost-square box snaps to exactly square even

@@ -49,7 +49,8 @@ use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{
-    Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, wants_clipboard,
+    Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
+    wants_grid_clipboard,
 };
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::tablet;
@@ -609,17 +610,15 @@ pub async fn run() {
             if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
                 continue;
             }
-            if wants_clipboard(&event, editor.text_edit().is_some()) {
-                dirty |= paste_clipboard(&mut editor);
+            let editing = editor.text_edit().is_some();
+            if wants_clipboard(&event, editing) {
+                dirty |= paste_clipboard(&mut editor, paste_event);
+            } else if wants_grid_clipboard(&event, editing) {
+                dirty |= paste_clipboard(&mut editor, paste_grid_event);
             } else if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
-                let line = match save_snapshot(&editor) {
-                    Ok(path) => format!("snapshot written to {}", path.display()),
-                    Err(err) => format!("snapshot not written: {err}"),
-                };
-                eprintln!("draw: {line}");
-                diag::log(Level::Info, &line);
+                report_snapshot(&editor);
             } else {
                 dirty |= dispatch(&mut editor, event);
             }
@@ -636,10 +635,20 @@ pub async fn run() {
     }
 }
 
-/// Pastes the system clipboard into the open text edit. Returns whether
-/// the view needs a redraw (ADR-T83-1).
-fn paste_clipboard(editor: &mut Editor) -> bool {
-    let changed = paste_event(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
+/// Saves a snapshot of `editor` and says where, or why it failed.
+fn report_snapshot(editor: &Editor) {
+    let line = match save_snapshot(editor) {
+        Ok(path) => format!("snapshot written to {}", path.display()),
+        Err(err) => format!("snapshot not written: {err}"),
+    };
+    eprintln!("draw: {line}");
+    diag::log(Level::Info, &line);
+}
+
+/// Hands the system clipboard to the editor as the event `paste` makes of
+/// it. Returns whether the view needs a redraw (ADR-T83-1, ADR-T84-1).
+fn paste_clipboard(editor: &mut Editor, paste: fn(Option<String>) -> Option<InputEvent>) -> bool {
+    let changed = paste(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
     // The read may have queued input the loop would sleep on.
     schedule_update();
     changed
@@ -747,11 +756,16 @@ fn pen_samples() -> Vec<PenSample> {
 /// needs a redraw.
 fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     let flyout = editor.tool() == Tool::Grid;
-    match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
+    let changed = match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
         Route::Forward(event) => editor.handle(event),
         Route::Apply(command) => editor.apply(command),
         Route::Swallow => false,
+    };
+    // A key that refused to act says why (ADR-T84-1).
+    if let Some(notice) = editor.take_notice() {
+        diag::log(Level::Warn, &notice);
     }
+    changed
 }
 
 /// The document layer: background, underlay and document shapes in a

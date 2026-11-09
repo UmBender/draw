@@ -43,6 +43,8 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste at cursor |
 | `Ctrl+D` | Duplicate selection (macro: copy + paste with offset) |
 | `Ctrl+A` | Select all |
+| `Ctrl+T` | Replace the only selected text block by a grid of its lines and words ([[ADR-T84-1 Grid from text keys and table rules]]) |
+| `Ctrl+Shift+V` | Build a grid from the system clipboard at the cursor; read by the shell, not in the keymap table ([[ADR-T84-1 Grid from text keys and table rules]]) |
 | `Delete`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) |
 | `Esc` | Cancel current gesture / clear selection |
