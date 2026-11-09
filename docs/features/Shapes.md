@@ -1,9 +1,9 @@
 ---
 title: Shapes
 task: "[[T05 Shape model]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T93-1 Coordinate plane key and plotting rules]]"]
 tutorial: "[[05 Modelling shapes and hit-testing]]"
-shortcuts: []
+shortcuts: ["Ctrl+P"]
 tags: [feature]
 ---
 
@@ -26,6 +26,23 @@ note with their shortcuts.
 | Action | Shortcut / gesture |
 |--------|--------------------|
 | Draw a line, arrow, rectangle or ellipse | `W` / `A` / `R` / `C`, then drag — see [[Drawing tools]] |
+| Turn a selected text block of `x y` lines into a coordinate plane | `Ctrl+P` |
+
+### Coordinate plane from points
+
+Write one point per line in a text block, for example:
+
+```
+0 0
+3.5 2
+-1 4
+```
+
+Select the block and press `Ctrl+P`. It becomes two axes, numbered ticks and
+a small filled circle per point, all ordinary shapes, as one undo step. A
+line that is not two numbers, a value that is not finite, or more than
+1 000 points changes nothing, and the reason goes to the diagnostics log.
+One point, or equal coordinates, still gives a plot.
 
 ## How it works
 
@@ -72,6 +89,19 @@ pixels through the camera:
 
 Tutorial: [[07 Rendering with macroquad and culling]].
 
+### Coordinate plane
+
+`src/core/tools/layout.rs` ([[T93 Coordinate plane from points]],
+[[ADR-T93-1 Coordinate plane key and plotting rules]]):
+
+- `PointList::parse` reads the text; `PointList::shapes` draws it, and
+  `replace_block` swaps the result for the block.
+- Both axes share one step, 1, 2 or 5 × 10ⁿ, at most about eight intervals
+  on the longer axis, and one length per unit.
+- Each axis runs between whole multiples of the step. It passes through the
+  origin when that is in range, otherwise along the edge nearest it.
+- Tick numbers are built from integers, so they show no float noise.
+
 ## Limits
 
 - Very large ellipses (radius above ~3300 px on screen) hit the 256-segment
@@ -84,3 +114,5 @@ Tutorial: [[07 Rendering with macroquad and culling]].
 - Strokes are open polylines: a stroke that loops back on itself has no
   interior and cannot be filled (see ADR-0004 rollback plan).
 - Hit-testing is a linear scan with AABB rejection; no spatial index.
+- In a plot, points can cover tick numbers when the axes run through the
+  data, and coordinates above `1e300` in size are refused.

@@ -1,7 +1,7 @@
 ---
 id: T93
 title: Coordinate plane from points
-status: in-progress
+status: review
 wave: 54
 branch: task/T93-coordinate-plane
 depends_on: [T87]
@@ -49,18 +49,18 @@ The fuzzer reaches `Ctrl+P` through the bound chords and through a session built
 - `src/core/tools/layout.rs`, `src/core/tools/mod.rs`, `src/core/shape.rs`
 - `docs/features/Shapes.md`
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
-- `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
+- `docs/architecture/Keymap.md`, `docs/architecture/Architecture.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
 - this note, and new `ADR-T93-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T93): specify coordinate plane from points`
-- [ ] tests — `test(T93): add failing tests`
-- [ ] models — `feat(T93): add types`
-- [ ] behaviour — `feat(T93): implement`
-- [ ] quality — `chore(T93): pass clippy and rustfmt`
-- [ ] docs — `docs(T93): update the feature note`
+- [x] spec — `docs(T93): specify coordinate plane from points`
+- [x] tests — `test(T93): add failing tests`
+- [x] models — `feat(T93): add types`
+- [x] behaviour — `feat(T93): implement`
+- [x] quality — `chore(T93): pass clippy and rustfmt`
+- [x] docs — `docs(T93): update the feature note`
 
 ## Learning path
 
@@ -69,3 +69,10 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
+- 2026-11-09 — implemented on `task/T93-coordinate-plane`, branched from `task/T87-graph-from-edges`.
+- 2026-11-09 — UNATTENDED CHOICE: a coordinate above `1e300` in size is refused like a non-finite one, because the span of `±1e308` overflows. Exponents such as `1e3` are accepted as numbers ([[ADR-T93-1 Coordinate plane key and plotting rules]]).
+- 2026-11-09 — UNATTENDED CHOICE: when the origin is out of range an axis goes on the edge nearest the origin, not always the bottom or left, so the edge shows which way the origin lies. To change it, replace the `clamp` in `PointList::shapes`.
+- 2026-11-09 — UNATTENDED CHOICE: when both axes pass through the origin it is numbered once, on the horizontal axis, to avoid two zeros side by side.
+- 2026-11-09 — UNATTENDED CHOICE: the top-left of everything drawn, numbers included, is the block's top-left, and the result is selected, as for [[T87 Graph or tree from an edge list]].
+- 2026-11-09 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` was added to *Files owned* for the `core::tools::layout` row. `p_l_m_are_unbound` now excepts `Ctrl+P`, the one chord this task binds. `Editor::graph_from_selection` and the new plot key now share `block_to_shapes` instead of repeating it; the graph tests pass unchanged.
+- 2026-11-09 — manual check left for the owner: plot a sample from a geometry problem with `Ctrl+P` and judge the look. Geometry is tested; nothing was viewed in the running app, and writing the refusal to `draw.log` was not exercised there.
