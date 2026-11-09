@@ -663,19 +663,7 @@ impl Editor {
                 self.camera.reset();
                 self.camera != before
             }
-            Command::FitView => {
-                let before = self.camera;
-                let content = self
-                    .doc
-                    .shapes()
-                    .map(|(_, shape)| shape.bounds())
-                    .reduce(|a, b| a.union(&b));
-                match content {
-                    Some(bounds) => self.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
-                    None => self.camera.reset(),
-                }
-                self.camera != before
-            }
+            Command::FitView => self.fit_view(),
             Command::ToggleToolbar => {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
@@ -689,6 +677,22 @@ impl Editor {
             | Command::GridCols(_)
             | Command::GridRows(_) => apply_helper(&mut self.style.helpers, command),
         }
+    }
+
+    /// Frames all content, or resets the view of an empty document. Returns
+    /// whether the camera moved.
+    fn fit_view(&mut self) -> bool {
+        let before = self.camera;
+        let content = self
+            .doc
+            .shapes()
+            .map(|(_, shape)| shape.bounds())
+            .reduce(|a, b| a.union(&b));
+        match content {
+            Some(bounds) => self.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
+            None => self.camera.reset(),
+        }
+        self.camera != before
     }
 
     /// The document.
