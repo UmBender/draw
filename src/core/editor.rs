@@ -5847,4 +5847,236 @@ mod tests {
         assert_eq!(count(&ed, is_ellipse), 2);
         assert_eq!(ed.document().len(), 2);
     }
+
+    // ---- T93 coordinate plane from points ---------------------------------
+
+    fn ctrl_p(ed: &mut Editor) -> bool {
+        key_with(ed, Key::P, CTRL)
+    }
+
+    /// Two points; the layout's own tests count what they draw.
+    const PLOT_TEXT: &str = "0 0\n2 1";
+
+    #[test]
+    fn plot_from_text_replaces_the_block() {
+        // Arrange
+        let mut ed = selected_block(PLOT_TEXT);
+
+        // Act
+        let changed = ctrl_p(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(count(&ed, is_ellipse), 2);
+        assert!(count(&ed, is_line) >= 2 + 4);
+        assert!(count(&ed, is_text) >= 3);
+        assert!(
+            ed.document()
+                .shapes()
+                .all(|(_, s)| !matches!(s, Shape::Text { text, .. } if text == PLOT_TEXT)),
+            "the block is gone"
+        );
+    }
+
+    #[test]
+    fn plot_from_text_keeps_the_block_place_and_colour() {
+        // Arrange
+        let red = ColorId::from_key_digit(2).unwrap_or(ColorId::INK);
+        let original = Shape::Text {
+            origin: Vec2::new(40.0, 60.0),
+            text: PLOT_TEXT.to_owned(),
+            size: 18.0,
+            style: Style {
+                color: red,
+                width: 0.0,
+            },
+        };
+        let mut ed = shape_text_editor(
+            vec![
+                rect(0.0, 0.0, 10.0, 10.0),
+                original,
+                rect(0.0, 0.0, 20.0, 20.0),
+            ],
+            Tool::Select,
+        );
+        let (bottom, top) = (ids(&ed)[0], ids(&ed)[2]);
+        ed.selection = vec![ids(&ed)[1]];
+
+        // Act
+        ctrl_p(&mut ed);
+
+        // Assert: between the two rectangles, in the block's colour.
+        let now = ids(&ed);
+        let last = now.len() - 1;
+        assert_eq!((now[0], now[last]), (bottom, top));
+        for index in 1..last {
+            assert_eq!(shape_at(&ed, index).style().color, red);
+        }
+        let dot = shape_at(&ed, last - 1);
+        assert_eq!(dot.fill(), Some(red));
+        assert!(approx_eq(dot.style().width, ed.style().width_px, 1e-4));
+    }
+
+    #[test]
+    fn plot_from_text_is_one_undo_step() {
+        // Arrange
+        let mut ed = selected_block(PLOT_TEXT);
+        let original = shape_at(&ed, 0).clone();
+        let steps = ed.history.undo_len();
+        let revision = ed.document_revision();
+
+        // Act
+        ctrl_p(&mut ed);
+        let len = ed.document().len();
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert!(ed.document_revision() > revision);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+        assert_eq!(shape_at(&ed, 0), &original);
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(ed.document().len(), len);
+    }
+
+    #[test]
+    fn plot_from_text_selects_the_result() {
+        // Arrange
+        let mut ed = selected_block(PLOT_TEXT);
+
+        // Act
+        ctrl_p(&mut ed);
+
+        // Assert
+        assert_eq!(ed.selection(), ids(&ed));
+    }
+
+    #[test]
+    fn plot_from_text_cancels_a_gesture() {
+        // Arrange: a rectangle drag in progress with the block selected.
+        let mut ed = selected_block(PLOT_TEXT);
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 400.0, 400.0);
+        move_to(&mut ed, 450.0, 450.0);
+        assert!(ed.active_gesture().is_some());
+
+        // Act
+        ctrl_p(&mut ed);
+        up(&mut ed, PointerButton::Left, 450.0, 450.0);
+
+        // Assert
+        assert!(ed.active_gesture().is_none());
+        assert_eq!(count(&ed, is_ellipse), 2);
+    }
+
+    #[test]
+    fn plot_from_text_in_open_edit_only_types() {
+        // Arrange: Ctrl+P while a block is open is not a binding.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "1 2");
+
+        // Act
+        ctrl_p(&mut ed);
+
+        // Assert
+        assert_eq!(editing(&ed).as_deref(), Some("1 2"));
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn plot_from_text_shapes_are_ordinary() {
+        // Arrange
+        let mut ed = selected_block(PLOT_TEXT);
+        ctrl_p(&mut ed);
+        let len = ed.document().len();
+
+        // Act / Assert: selection commands treat them like any shape.
+        ed.apply(Command::Duplicate);
+        assert_eq!(ed.document().len(), 2 * len);
+        ed.apply(Command::DeleteSelection);
+        assert_eq!(ed.document().len(), len);
+    }
+
+    #[test]
+    fn plot_from_text_survives_a_snapshot() {
+        // Arrange
+        let mut ed = selected_block("-1.5 2\n3 -4.25");
+        ctrl_p(&mut ed);
+
+        // Act
+        let loaded = Snapshot::parse(&ed.snapshot().to_text());
+
+        // Assert
+        match loaded {
+            Ok(snapshot) => assert_eq!(Editor::from_snapshot(snapshot), ed),
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    #[test]
+    fn plot_from_text_bad_text_changes_nothing_and_leaves_a_notice() {
+        for (text, wanted) in [("1 2\nhello world", "line 2"), ("1 2\n3 inf", "line 2")] {
+            // Arrange: a drag in progress must survive a refused key.
+            let mut ed = selected_block(text);
+            ed.apply(Command::SetTool(Tool::Rect));
+            down(&mut ed, PointerButton::Left, 400.0, 400.0);
+            move_to(&mut ed, 450.0, 450.0);
+            let before = ed.clone();
+
+            // Act
+            let changed = ctrl_p(&mut ed);
+
+            // Assert
+            assert!(!changed);
+            assert_eq!(ed, before);
+            let notice = ed.take_notice().unwrap_or_default();
+            assert!(notice.contains(wanted), "{notice}");
+            assert!(!notice.contains("hello"), "{notice}");
+            assert_eq!(ed.take_notice(), None, "taken once");
+        }
+    }
+
+    #[test]
+    fn plot_from_text_too_many_points_changes_nothing_and_leaves_a_notice() {
+        // Arrange
+        let lines: Vec<String> = (0..=1000).map(|i| format!("{i} {i}")).collect();
+        let mut ed = selected_block(&lines.join("\n"));
+        let before = ed.clone();
+
+        // Act
+        let changed = ctrl_p(&mut ed);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        let notice = ed.take_notice().unwrap_or_default();
+        assert!(notice.contains("1001"), "{notice}");
+    }
+
+    #[test]
+    fn plot_from_text_without_one_text_block_does_nothing() {
+        // Arrange: nothing selected, two blocks, a rectangle, blank text.
+        let mut none = selected_block("1 2");
+        none.selection.clear();
+        let mut two = shape_text_editor(
+            vec![block(0.0, 0.0, "1 2"), block(90.0, 0.0, "3 4")],
+            Tool::Select,
+        );
+        two.apply(Command::SelectAll);
+        let mut other = shape_text_editor(vec![rect(0.0, 0.0, 9.0, 9.0)], Tool::Select);
+        other.apply(Command::SelectAll);
+        let blank = selected_block(" \n ");
+
+        for mut ed in [none, two, other, blank] {
+            let before = ed.clone();
+
+            // Act
+            let changed = ctrl_p(&mut ed);
+
+            // Assert
+            assert!(!changed);
+            assert_eq!(ed, before);
+            assert_eq!(ed.take_notice(), None);
+        }
+    }
 }
