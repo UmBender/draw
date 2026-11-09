@@ -1100,30 +1100,7 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     if let Err(problem) = compare_snapshot(&actual, &source.join("expected.snap"), update) {
         problems.push(problem);
     }
-    if let Some(tolerance) = case.screenshot {
-        let shot = run.join("actual.ppm");
-        running.session.screenshot(&shot)?;
-        let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
-        if let Err(problem) = compare_screenshot(
-            &shot,
-            &source.join("expected.ppm"),
-            run,
-            tolerance,
-            pointer,
-            update,
-        ) {
-            problems.push(problem);
-        }
-    }
-
-    if case.export {
-        let shot = run.join("window.ppm");
-        running.session.screenshot(&shot)?;
-        let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
-        if let Err(problem) = check_export(&home, &shot, run, pointer) {
-            problems.push(problem);
-        }
-    }
+    problems.extend(check_images(&running, &case, source, run, update)?);
 
     match case.ending {
         Ending::Close => {
@@ -1156,6 +1133,35 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     } else {
         Err(problems.join("\n"))
     }
+}
+
+/// The problems with the case's screenshot and exported file, if it asks
+/// for them.
+fn check_images(
+    running: &Running<'_>,
+    case: &Case,
+    source: &Path,
+    run: &Path,
+    update: bool,
+) -> Result<Vec<String>, String> {
+    let mut problems = Vec::new();
+    let pointer = last_pointer(&case.steps, (PARK.0 + 1, PARK.1));
+    if let Some(tolerance) = case.screenshot {
+        let shot = run.join("actual.ppm");
+        running.session.screenshot(&shot)?;
+        let golden = source.join("expected.ppm");
+        if let Err(problem) = compare_screenshot(&shot, &golden, run, tolerance, pointer, update) {
+            problems.push(problem);
+        }
+    }
+    if case.export {
+        let shot = run.join("window.ppm");
+        running.session.screenshot(&shot)?;
+        if let Err(problem) = check_export(&run.join("home"), &shot, run, pointer) {
+            problems.push(problem);
+        }
+    }
+    Ok(problems)
 }
 
 /// Compares the screenshot at `shot`; writes `diff.ppm` into `run` on a
@@ -1212,9 +1218,10 @@ fn decode_png(bytes: &[u8]) -> Result<Image, String> {
         return Err(format!("png: {:?} {:?}", info.color_type, info.bit_depth));
     }
     rgba.truncate(info.buffer_size());
-    let rgb = rgba
-        .chunks_exact(4)
-        .flat_map(|pixel| pixel.iter().take(3).copied())
+    let (pixels, _) = rgba.as_chunks::<4>();
+    let rgb = pixels
+        .iter()
+        .flat_map(|[red, green, blue, _]| [*red, *green, *blue])
         .collect();
     Ok(Image {
         width: info.width as usize,
@@ -1225,12 +1232,7 @@ fn decode_png(bytes: &[u8]) -> Result<Image, String> {
 
 /// Checks that `home` holds one PNG, of the window's size, showing what the
 /// screenshot at `shot` shows.
-fn check_export(
-    home: &Path,
-    shot: &Path,
-    run: &Path,
-    pointer: (i32, i32),
-) -> Result<(), String> {
+fn check_export(home: &Path, shot: &Path, run: &Path, pointer: (i32, i32)) -> Result<(), String> {
     let path = find_export(home)?;
     let bytes = std::fs::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     let exported = decode_png(&bytes)?;
@@ -1245,7 +1247,10 @@ fn check_export(
     hide_cursor_box(&mut window, &exported, pointer);
     compare_images(&exported, &window, Tolerance::default()).map_err(|diff| {
         let saved = std::fs::write(run.join("export-diff.ppm"), diff.image.to_ppm());
-        format!("the export differs from the window: {} {saved:?}", diff.message)
+        format!(
+            "the export differs from the window: {} {saved:?}",
+            diff.message
+        )
     })
 }
 
@@ -1474,8 +1479,8 @@ mod self_tests {
     fn decode_png_gives_the_rgb_rows_in_order() {
         // Arrange: a 1×2 image, red over blue.
         let rgba = [255, 0, 0, 255, 0, 0, 255, 255];
-        let bytes = draw::shell::export::encode_png(1, 2, &rgba)
-            .unwrap_or_else(|err| panic!("{err}"));
+        let bytes =
+            draw::shell::export::encode_png(1, 2, &rgba).unwrap_or_else(|err| panic!("{err}"));
 
         // Act
         let image = decode_png(&bytes);

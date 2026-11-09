@@ -687,10 +687,7 @@ impl Editor {
                 self.toolbar_visible = !self.toolbar_visible;
                 true
             }
-            Command::ExportView => {
-                self.export_asked |= self.can_export();
-                false
-            }
+            Command::ExportView => self.ask_export(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -839,6 +836,13 @@ impl Editor {
     #[must_use]
     pub fn can_export(&self) -> bool {
         self.tools.text.edit.is_none() && self.gesture.is_none()
+    }
+
+    /// Records an export request if the view may be exported now. An
+    /// export never needs a redraw of its own, so this returns `false`.
+    fn ask_export(&mut self) -> bool {
+        self.export_asked |= self.can_export();
+        false
     }
 
     /// Whether an export was asked for since the last call (ADR-T92-2).
@@ -4367,7 +4371,7 @@ mod tests {
 
         // Assert: nothing but the request changes.
         assert!(!redraw);
-        assert!(ed == before);
+        assert_eq!(ed, before);
         assert!(ed.take_export_request());
         assert!(!ed.take_export_request(), "a request is answered once");
     }

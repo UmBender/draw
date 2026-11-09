@@ -84,14 +84,8 @@ pub fn view_pixels(
     if !fits(view.0, layer_size.0) || !fits(view.1, layer_size.1) {
         return Err(ExportError::Pixels);
     }
-    let [layer_width, layer_height, width, height, margin] = [
-        layer_size.0,
-        layer_size.1,
-        view.0,
-        view.1,
-        margin,
-    ]
-    .map(|side| side as usize);
+    let [layer_width, layer_height, width, height, margin] =
+        [layer_size.0, layer_size.1, view.0, view.1, margin].map(|side| side as usize);
     let stride = layer_width
         .checked_mul(BYTES_PER_PIXEL)
         .filter(|stride| *stride > 0)
@@ -128,9 +122,7 @@ pub fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, Expor
     encoder.set_depth(png::BitDepth::Eight);
     encoder.set_compression(png::Compression::Fast);
     let mut writer = encoder.write_header().map_err(ExportError::Encode)?;
-    writer
-        .write_image_data(rgba)
-        .map_err(ExportError::Encode)?;
+    writer.write_image_data(rgba).map_err(ExportError::Encode)?;
     writer.finish().map_err(ExportError::Encode)?;
     Ok(bytes)
 }
@@ -214,10 +206,7 @@ pub fn save(
 #[must_use]
 pub fn log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
     match result {
-        Ok(path) => (
-            Level::Info,
-            format!("view exported to {}", path.display()),
-        ),
+        Ok(path) => (Level::Info, format!("view exported to {}", path.display())),
         Err(err) => (Level::Error, format!("view not exported: {err}")),
     }
 }
@@ -270,7 +259,7 @@ mod tests {
     fn files_in(dir: &Path) -> Vec<String> {
         let mut names: Vec<String> = std::fs::read_dir(dir)
             .unwrap_or_else(|err| panic!("{err}"))
-            .filter_map(|entry| entry.ok())
+            .filter_map(Result::ok)
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
         names.sort();
@@ -370,7 +359,10 @@ mod tests {
         let result = write_new(&file, 0, b"png");
 
         // Assert
-        assert!(matches!(result, Err(ExportError::Write { .. })), "{result:?}");
+        assert!(
+            matches!(result, Err(ExportError::Write { .. })),
+            "{result:?}"
+        );
         assert_eq!(files_in(&dir), ["not-a-directory"]);
     }
 

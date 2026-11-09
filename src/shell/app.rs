@@ -436,6 +436,17 @@ fn save_snapshot(editor: &Editor) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+/// Saves a snapshot of `editor` and reports the outcome on stderr and in
+/// the log.
+fn save_and_log_snapshot(editor: &Editor) {
+    let line = match save_snapshot(editor) {
+        Ok(path) => format!("snapshot written to {}", path.display()),
+        Err(err) => format!("snapshot not written: {err}"),
+    };
+    eprintln!("draw: {line}");
+    diag::log(Level::Info, &line);
+}
+
 /// The flight recorder's kind of a frame that re-rendered something.
 fn frame_kind(redraw: Redraw) -> Option<FrameKind> {
     match redraw {
@@ -608,12 +619,7 @@ pub async fn run() {
             if is_dump_chord(&event) {
                 dump_asked = true;
             } else if is_snapshot_chord(&event) {
-                let line = match save_snapshot(&editor) {
-                    Ok(path) => format!("snapshot written to {}", path.display()),
-                    Err(err) => format!("snapshot not written: {err}"),
-                };
-                eprintln!("draw: {line}");
-                diag::log(Level::Info, &line);
+                save_and_log_snapshot(&editor);
             } else {
                 dirty |= dispatch(&mut editor, event);
             }
