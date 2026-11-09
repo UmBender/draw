@@ -1,7 +1,7 @@
 ---
 id: T72
 title: Feature proposal
-status: review
+status: done
 wave: 33
 branch: docs/T72-feature-proposal
 depends_on: []
@@ -98,7 +98,7 @@ L 4) + risk to the goal (low 0, medium 1, high 2).
 
 - [x] research — read every feature note's *Limits*, list the ideas
 - [x] proposal — `docs(T72): propose features for draw`
-- [ ] decision — owner's verdicts recorded in the proposal, `status: done`
+- [x] decision — owner's verdicts recorded in the proposal, `status: done`
 
 ## Learning path
 
@@ -116,5 +116,6 @@ None: a docs-only task.
   re-derived, short list at most five): all pass. Binary measured at
   1 966 008 bytes against the 2 MiB limit in `scripts/package.sh`; the
   per-idea binary and frame-time costs are estimates.
-- Waiting for the owner's verdicts in the proposal's *Ranking* table.
-  The *decision* subtask and `status: done` follow them.
+- 2026-11-09 — owner's verdicts recorded in the proposal: twelve ideas
+  accepted (T83–T94), the others `later` by default, and the binary limit
+  raised (T82).

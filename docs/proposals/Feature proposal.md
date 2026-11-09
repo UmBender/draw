@@ -2,7 +2,7 @@
 title: Feature proposal
 task: "[[T72 Feature proposal]]"
 date: 2026-11-09
-status: awaiting-verdicts
+status: decided
 tags: [proposal]
 ---
 
@@ -60,41 +60,41 @@ Fill *Verdict* with `accepted`, `later` or `rejected`.
 
 | # | Idea | Value | Size | Risk | Cost | Score | Verdict |
 |---|------|-------|------|------|------|-------|---------|
-| 1 | C1 Grid from text | 5 | S | low | 1 | 5.00 | pending |
-| 2 | K1 Paste text from the clipboard | 4 | S | low | 1 | 4.00 | pending |
-| 3 | E1 Resize a committed grid | 4 | S | low | 1 | 4.00 | pending |
-| 4 | F1 Growing brackets | 3 | S | low | 1 | 3.00 | pending |
-| 5 | E2 Zero-based numbering | 3 | S | low | 1 | 3.00 | pending |
-| 6 | E3 Bucket drag across cells | 3 | S | low | 1 | 3.00 | pending |
-| 7 | C2 Graph or tree from an edge list | 5 | M | low | 2 | 2.50 | pending |
-| 8 | E4 Resize handles | 4 | M | low | 2 | 2.00 | pending |
-| 9 | F4 Labelled extensible arrows | 2 | S | low | 1 | 2.00 | pending |
-| 10 | F5 Spacing commands | 2 | S | low | 1 | 2.00 | pending |
-| 11 | E5 Align and distribute | 2 | S | low | 1 | 2.00 | pending |
-| 12 | E6 Z-order keys | 2 | S | low | 1 | 2.00 | pending |
-| 13 | K4 Export the view to PNG | 3 | S | medium | 2 | 1.50 | pending |
-| 14 | C4 Coordinate plane from points | 3 | M | low | 2 | 1.50 | pending |
-| 15 | F2 Matrices and cases | 3 | M | low | 2 | 1.50 | pending |
-| 16 | K2 Autosave and crash recovery | 4 | M | medium | 3 | 1.33 | pending |
-| 17 | C3 Segment tree drawing | 3 | M | medium | 3 | 1.00 | pending |
-| 18 | F3 Display mode | 2 | M | low | 2 | 1.00 | pending |
-| 19 | V3 Fading laser pointer | 2 | S | medium | 2 | 1.00 | pending |
-| 20 | E8 Lock | 1 | S | low | 1 | 1.00 | pending |
-| 21 | K3 Save and load | 3 | M | high | 4 | 0.75 | pending |
-| 22 | V5 Ruler and protractor | 2 | M | medium | 3 | 0.67 | pending |
-| 23 | E7 Group and ungroup | 2 | M | medium | 3 | 0.67 | pending |
-| 24 | I2 Shape recognition | 2 | M | medium | 3 | 0.67 | pending |
-| 25 | V4 Presenter mode | 1 | S | medium | 2 | 0.50 | pending |
-| 26 | E9 Find text | 1 | M | low | 2 | 0.50 | pending |
-| 27 | K5 Export to SVG | 2 | L | medium | 5 | 0.40 | pending |
-| 28 | K6 Copy the selection as an image | 2 | L | medium | 5 | 0.40 | pending |
-| 29 | V1 Pages | 2 | L | medium | 5 | 0.40 | pending |
-| 30 | V2 Minimap | 1 | M | medium | 3 | 0.33 | pending |
-| 31 | E10 Command palette | 1 | M | medium | 3 | 0.33 | pending |
-| 32 | F6 User macros | 1 | M | medium | 3 | 0.33 | pending |
-| 33 | I1 Pressure highlighter | 1 | M | medium | 3 | 0.33 | pending |
-| 34 | F7 Commutative diagrams | 1 | L | high | 6 | 0.17 | pending |
-| 35 | I3 Handwriting to TeX | 1 | L | high | 6 | 0.17 | pending |
+| 1 | C1 Grid from text | 5 | S | low | 1 | 5.00 | accepted |
+| 2 | K1 Paste text from the clipboard | 4 | S | low | 1 | 4.00 | accepted |
+| 3 | E1 Resize a committed grid | 4 | S | low | 1 | 4.00 | accepted |
+| 4 | F1 Growing brackets | 3 | S | low | 1 | 3.00 | accepted |
+| 5 | E2 Zero-based numbering | 3 | S | low | 1 | 3.00 | accepted |
+| 6 | E3 Bucket drag across cells | 3 | S | low | 1 | 3.00 | accepted |
+| 7 | C2 Graph or tree from an edge list | 5 | M | low | 2 | 2.50 | accepted |
+| 8 | E4 Resize handles | 4 | M | low | 2 | 2.00 | accepted |
+| 9 | F4 Labelled extensible arrows | 2 | S | low | 1 | 2.00 | later |
+| 10 | F5 Spacing commands | 2 | S | low | 1 | 2.00 | later |
+| 11 | E5 Align and distribute | 2 | S | low | 1 | 2.00 | later |
+| 12 | E6 Z-order keys | 2 | S | low | 1 | 2.00 | later |
+| 13 | K4 Export the view to PNG | 3 | S | medium | 2 | 1.50 | accepted |
+| 14 | C4 Coordinate plane from points | 3 | M | low | 2 | 1.50 | accepted |
+| 15 | F2 Matrices and cases | 3 | M | low | 2 | 1.50 | accepted |
+| 16 | K2 Autosave and crash recovery | 4 | M | medium | 3 | 1.33 | accepted |
+| 17 | C3 Segment tree drawing | 3 | M | medium | 3 | 1.00 | later |
+| 18 | F3 Display mode | 2 | M | low | 2 | 1.00 | later |
+| 19 | V3 Fading laser pointer | 2 | S | medium | 2 | 1.00 | later |
+| 20 | E8 Lock | 1 | S | low | 1 | 1.00 | later |
+| 21 | K3 Save and load | 3 | M | high | 4 | 0.75 | later |
+| 22 | V5 Ruler and protractor | 2 | M | medium | 3 | 0.67 | later |
+| 23 | E7 Group and ungroup | 2 | M | medium | 3 | 0.67 | later |
+| 24 | I2 Shape recognition | 2 | M | medium | 3 | 0.67 | later |
+| 25 | V4 Presenter mode | 1 | S | medium | 2 | 0.50 | later |
+| 26 | E9 Find text | 1 | M | low | 2 | 0.50 | later |
+| 27 | K5 Export to SVG | 2 | L | medium | 5 | 0.40 | later |
+| 28 | K6 Copy the selection as an image | 2 | L | medium | 5 | 0.40 | later |
+| 29 | V1 Pages | 2 | L | medium | 5 | 0.40 | later |
+| 30 | V2 Minimap | 1 | M | medium | 3 | 0.33 | later |
+| 31 | E10 Command palette | 1 | M | medium | 3 | 0.33 | later |
+| 32 | F6 User macros | 1 | M | medium | 3 | 0.33 | later |
+| 33 | I1 Pressure highlighter | 1 | M | medium | 3 | 0.33 | later |
+| 34 | F7 Commutative diagrams | 1 | L | high | 6 | 0.17 | later |
+| 35 | I3 Handwriting to TeX | 1 | L | high | 6 | 0.17 | later |
 
 ## Recommended short list
 
@@ -121,6 +121,16 @@ take F1 or E3, in either order.
    only because this decision is the owner's.
 2. **Is five about right?** Every accepted idea delays 1.5.0 and adds
    code that 2.0.0 has to carry through its refactor. Fewer is fine.
+
+## Owner's decisions (2026-11-09)
+
+- The five ideas of the short list are accepted, plus E3, F1, F2, E4,
+  K4, C4 and K2: twelve in all, tasks T83–T94.
+- K2 is accepted, so `draw` keeps a crash-recovery file; K3 stays out.
+- K4 uses the `png` crate as a direct dependency.
+- The other ideas are marked `later` by default. Nothing is rejected.
+- The binary limit goes from 2 MiB to 20 MiB ([[T82 Raise the binary size limit]]),
+  so the binary figures above no longer constrain any idea.
 
 ## Ideas
 
