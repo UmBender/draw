@@ -1,7 +1,7 @@
 ---
 id: ADR-T94-1
 title: Autosave captured on input and written off the frame
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-09
 task: T94

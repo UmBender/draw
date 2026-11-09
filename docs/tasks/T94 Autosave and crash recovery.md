@@ -1,7 +1,7 @@
 ---
 id: T94
 title: Autosave and crash recovery
-status: in-progress
+status: review
 wave: 51
 branch: task/T94-autosave
 depends_on: []
@@ -63,17 +63,18 @@ Design: [[ADR-T94-1 Autosave captured on input and written off the frame]].
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
 - `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/perf.rs`, `docs/architecture/Architecture.md`
+- `tests/e2e.rs`, `tests/e2e/recover-autosave/`
 - `tests/fuzz.rs`, `tests/snapshots/**` (a changed snapshot format regenerates fixtures, never drops them)
 - this note, and new `ADR-T94-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T94): specify autosave and crash recovery`
-- [ ] tests — `test(T94): add failing tests`
-- [ ] models — `feat(T94): add types`
-- [ ] behaviour — `feat(T94): implement`
-- [ ] quality — `chore(T94): pass clippy and rustfmt`
-- [ ] docs — `docs(T94): update the feature note`
+- [x] spec — `docs(T94): specify autosave and crash recovery`
+- [x] tests — `test(T94): add failing tests`
+- [x] models — `feat(T94): add types`
+- [x] behaviour — `feat(T94): implement`
+- [x] quality — `chore(T94): pass clippy and rustfmt`
+- [x] docs — `docs(T94): update the feature note`
 
 ## Learning path
 
@@ -86,3 +87,6 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: the plan's default serialises on the main thread only if under budget. The text takes 31 ms for 5 120 strokes, so the main thread only clones the state (1.2 ms) and the writer thread makes the text; see ADR-T94-1.
 - 2026-11-09 — UNATTENDED CHOICE: the 30 s of the first autosave count from the session start, and the temporary file is named per process so two windows cannot mix their writes; see ADR-T94-1.
 - 2026-11-09 — The spec step took two commits: an edit of this note failed, so the first commit holds only ADR-T94-1 although its message describes the criteria too. The second holds this note. History was left as it is.
+- 2026-11-09 — UNATTENDED CHOICE: added a `recover` directive to `tests/e2e.rs` and the case `tests/e2e/recover-autosave/` to *Files owned*. It is an extra check of the command line and start-up path, so its `test` commit comes after the code; every `AC-n` test was committed red before the code.
+- 2026-11-09 — AC-7 on the development machine, release build: capture 1.2 ms (budget 2 ms), text 31 ms on the writer thread, 2.3 MB. A full 64 MiB history costs 59 ms to capture, 1.17 s of text, 77 MiB. Not timed on the target laptop.
+- 2026-11-09 — `scripts/check.sh` green; `scripts/e2e.sh` 12 of 12 cases, including `recover-autosave`. Manual check left to the owner: `kill -9` draw during a drawing, at least 30 s after a change, then `draw --recover`. The real 30 s autosave was only exercised through injected clocks.

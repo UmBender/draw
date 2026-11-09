@@ -18,7 +18,8 @@ committed snapshot instead of replaying thousands of events, and a bug
 seen in the app becomes a regression test: save the state just before
 it, commit the file, and replay the trigger in a test.
 
-This is a debugging and testing tool, not a way to save drawings.
+This is a debugging and testing tool, not a way to save drawings. The
+crash autosave uses the same format ([[Crash recovery]]).
 
 ## How to use
 
