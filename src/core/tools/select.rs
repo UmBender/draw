@@ -17,6 +17,7 @@
 use std::collections::HashSet;
 
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
+use crate::core::camera::Camera;
 use crate::core::clipboard;
 use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::{Aabb, Vec2};
@@ -28,6 +29,31 @@ pub const CLICK_SLOP_PX: f32 = 3.0;
 
 /// Hit tolerance for picking shapes, in screen pixels.
 pub const HIT_TOLERANCE_PX: f32 = 6.0;
+
+/// Gap in pixels between the selected shapes' bounds and the selection
+/// outline, whose corners carry the handles.
+pub const SELECTION_PAD_PX: f32 = 4.0;
+
+/// Side of a resize handle in screen pixels, independent of zoom (ADR-T91-1).
+pub const HANDLE_SIZE_PX: f32 = 10.0;
+
+/// Factor of [`Command::ScaleUp`](crate::core::command::Command::ScaleUp).
+pub const SCALE_UP_FACTOR: f32 = 1.1;
+
+/// Factor of [`Command::ScaleDown`](crate::core::command::Command::ScaleDown).
+pub const SCALE_DOWN_FACTOR: f32 = 0.9;
+
+/// What a resize scales, worked out once at the press (ADR-T91-1). World
+/// units.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ResizeFrame {
+    /// The corner that stays put.
+    pivot: Vec2,
+    /// The corner being dragged.
+    corner: Vec2,
+    /// Smallest factor per axis the selection allows.
+    floor: Vec2,
+}
 
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -61,6 +87,45 @@ enum Gesture {
         /// `Alt` was held: insert moved copies, keep the originals.
         duplicate: bool,
     },
+    /// Dragging a corner handle of the selection.
+    Resize {
+        /// Press position.
+        start: Vec2,
+        /// Latest pointer position.
+        current: Vec2,
+        /// `Shift` is held: keep the proportions.
+        proportional: bool,
+        /// Shapes being resized (the selection at press time).
+        ids: Vec<ShapeId>,
+        /// Pivot, dragged corner and limits.
+        frame: ResizeFrame,
+    },
+}
+
+/// Screen centres of the four handles of `selection`, clockwise from the
+/// top-left corner, or `None` when it has nothing to scale (ADR-T91-1).
+#[must_use]
+pub fn handle_centers(
+    doc: &Document,
+    selection: &[ShapeId],
+    camera: &Camera,
+) -> Option<[Vec2; 4]> {
+    let _ = (doc, selection, camera);
+    todo!("T91 behaviour step")
+}
+
+/// Grows the selection by 10 % about its centre as one undo step. Returns
+/// whether the document changed.
+pub fn scale_selection_up(ctx: &mut ToolCtx<'_>) -> bool {
+    let _ = ctx;
+    todo!("T91 behaviour step")
+}
+
+/// Shrinks the selection by 10 % about its centre as one undo step. Returns
+/// whether the document changed.
+pub fn scale_selection_down(ctx: &mut ToolCtx<'_>) -> bool {
+    let _ = ctx;
+    todo!("T91 behaviour step")
 }
 
 /// Drops selected ids that are not in the document.
@@ -172,6 +237,7 @@ fn drag_to(state: &mut State, pos: Vec2) -> bool {
             *current = pos;
             moved
         }
+        Some(Gesture::Resize { .. }) => todo!("T91 behaviour step"),
         None => false,
     }
 }
@@ -239,6 +305,7 @@ fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
             // The preview disappears even if the edit was rejected.
             true
         }
+        Gesture::Resize { .. } => todo!("T91 behaviour step"),
     }
 }
 
@@ -277,6 +344,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
                 ..Overlay::default()
             }
         }
+        Some(Gesture::Resize { .. }) => todo!("T91 behaviour step"),
     }
 }
 
@@ -337,6 +405,7 @@ impl State {
                     .bool(*duplicate)
                     .put(ids);
             }
+            Some(Gesture::Resize { .. }) => todo!("T91 behaviour step"),
         });
     }
 

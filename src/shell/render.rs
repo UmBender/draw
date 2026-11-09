@@ -31,6 +31,7 @@ use crate::core::shape::{
 use crate::core::snap::GRID_STEP;
 use crate::core::tex::Ink;
 use crate::core::text_layout::{bounds, glyphs, has_markup, typeset};
+use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
@@ -357,7 +358,7 @@ pub const MAX_SEGMENTS: u16 = 256;
 pub const SELECTION_WIDTH_PX: f32 = 1.0;
 
 /// Gap in pixels between the selected shapes' bounds and the selection outline.
-pub const SELECTION_PAD_PX: f32 = 4.0;
+pub const SELECTION_PAD_PX: f32 = select::SELECTION_PAD_PX;
 
 /// Labels smaller than this many pixels on screen are not drawn.
 pub const LABEL_MIN_PX: f32 = 8.0;
@@ -994,6 +995,14 @@ pub fn draw_selection(bounds: Aabb, camera: &Camera) {
         hex_color(theme::SELECTION_OUTLINE),
     );
     batch.finish();
+}
+
+/// The square of the resize handle centred at screen `center`, the same
+/// size at every zoom (ADR-T91-1).
+#[must_use]
+pub fn selection_handle_rect(center: Vec2) -> Aabb {
+    let _ = center;
+    todo!("T91 behaviour step")
 }
 
 /// Adds one shape to `batch` (its labels are drawn right away, after a

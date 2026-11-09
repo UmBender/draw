@@ -78,6 +78,10 @@ pub enum Command {
     Duplicate,
     /// Select every shape.
     SelectAll,
+    /// Grow the selection by 10 % about its centre.
+    ScaleUp,
+    /// Shrink the selection by 10 % about its centre.
+    ScaleDown,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).

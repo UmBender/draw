@@ -635,6 +635,8 @@ impl Editor {
             Command::Paste => self.run_edit(clipboard::paste),
             Command::Duplicate => self.run_edit(clipboard::duplicate),
             Command::SelectAll => self.run_edit(select::select_all),
+            Command::ScaleUp => self.run_edit(select::scale_selection_up),
+            Command::ScaleDown => self.run_edit(select::scale_selection_down),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => {
                 let cancelled = self.cancel_gesture();
@@ -760,6 +762,14 @@ impl Editor {
             .filter_map(|id| self.doc.get(*id))
             .map(Shape::bounds)
             .reduce(|a, b| a.union(&b))
+    }
+
+    /// Screen centres of the resize handles, clockwise from the top-left
+    /// corner: `Some` only in the Select tool, with no gesture and no open
+    /// text block, for a selection that can scale (ADR-T91-1).
+    #[must_use]
+    pub fn selection_handles(&self) -> Option<[Vec2; 4]> {
+        todo!("T91 behaviour step")
     }
 
     /// The first shape of [`Editor::overlay`]: the shape being drawn, if any.
@@ -1256,6 +1266,8 @@ fn edits_document(command: Command) -> bool {
             | Command::Duplicate
             | Command::DeleteSelection
             | Command::ClearAll
+            | Command::ScaleUp
+            | Command::ScaleDown
     )
 }
 

@@ -24,6 +24,9 @@ pub const GRID_MAX_CELLS: u32 = 64;
 /// that its text may use, per axis, about the centre (ADR-T31-1).
 pub const SHAPE_TEXT_FILL: f32 = 0.8;
 
+/// Smallest size, in world units, that a resize leaves a shape (ADR-T91-1).
+pub const MIN_SCALED_SIZE: f32 = 4.0;
+
 /// Outline style shared by every shape.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Style {
@@ -468,6 +471,33 @@ impl Shape {
             }
             Self::Text { origin, .. } => *origin += delta,
         }
+    }
+
+    /// The box a resize scales: the shape's own points and corners, leaving
+    /// out the outline, arrow heads and grid index bands; the layout box
+    /// of a text block (ADR-T91-1).
+    #[must_use]
+    pub fn geometry_bounds(&self) -> Aabb {
+        todo!("T91 behaviour step")
+    }
+
+    /// The smallest factor per axis that a resize may apply to this shape
+    /// so that it does not become smaller than [`MIN_SCALED_SIZE`]; `0` on
+    /// an axis that sets no limit, `1` on one that cannot shrink
+    /// (ADR-T91-1).
+    #[must_use]
+    pub fn min_scale(&self) -> Vec2 {
+        todo!("T91 behaviour step")
+    }
+
+    /// A copy scaled about `pivot` by `sx` and `sy`: points and box corners
+    /// follow, and the size of text takes the smaller factor. Stroke widths
+    /// do not change. `None` if a factor is not finite and positive or the
+    /// result would not be finite (ADR-T91-1).
+    #[must_use]
+    pub fn scaled_about(&self, pivot: Vec2, sx: f32, sy: f32) -> Option<Self> {
+        let _ = (pivot, sx, sy);
+        todo!("T91 behaviour step")
     }
 
     /// Returns the shape with its fill set to `fill`; open shapes are
