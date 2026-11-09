@@ -204,6 +204,9 @@ pub struct Editor {
     /// Why the latest key refused to act, for the shell's log (ADR-T84-1).
     /// Transient: not part of the saved state.
     notice: Option<String>,
+    /// `Ctrl+E` was pressed and the shell has not collected it yet
+    /// (ADR-T92-2). Not saved state: the shell collects it every frame.
+    export_asked: bool,
 }
 
 impl Default for Editor {
@@ -451,6 +454,7 @@ impl Editor {
             doc_revision: 0,
             doc_base_revision: 0,
             notice: None,
+            export_asked: false,
         })
     }
 
@@ -479,6 +483,7 @@ impl Editor {
             doc_revision: 0,
             doc_base_revision: 0,
             notice: None,
+            export_asked: false,
         }
     }
 
@@ -597,11 +602,15 @@ impl Editor {
     /// Executes `command`. Returns whether the view needs a redraw.
     ///
     /// An open text block is committed first, except that
-    /// [`Command::Undo`] cancels it instead (ADR-T29-2).
+    /// [`Command::Undo`] cancels it instead (ADR-T29-2) and
+    /// [`Command::ExportView`] leaves it alone (ADR-T92-2).
     pub fn apply(&mut self, command: Command) -> bool {
         if self.tools.text.edit.is_some() {
             if command == Command::Undo {
                 return self.cancel_text();
+            }
+            if command == Command::ExportView {
+                return false;
             }
             let committed = self.finish_text();
             return self.apply(command) || committed;
@@ -688,6 +697,7 @@ impl Editor {
             Command::GridRows(delta) if self.resizable_grid().is_some() => {
                 self.resize_selected_grid(0, delta)
             }
+            Command::ExportView => self.ask_export(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -872,6 +882,25 @@ impl Editor {
     #[must_use]
     pub fn toolbar_visible(&self) -> bool {
         self.toolbar_visible
+    }
+
+    /// Whether the view may be exported now: no text block is open and no
+    /// gesture is in progress (ADR-T92-2).
+    #[must_use]
+    pub fn can_export(&self) -> bool {
+        self.tools.text.edit.is_none() && self.gesture.is_none()
+    }
+
+    /// Records an export request if the view may be exported now. An
+    /// export never needs a redraw of its own, so this returns `false`.
+    fn ask_export(&mut self) -> bool {
+        self.export_asked |= self.can_export();
+        false
+    }
+
+    /// Whether an export was asked for since the last call (ADR-T92-2).
+    pub fn take_export_request(&mut self) -> bool {
+        std::mem::take(&mut self.export_asked)
     }
 
     /// Whether there is an action to undo.
@@ -4876,6 +4905,95 @@ mod tests {
             points.last().is_some_and(|p| p.approx_eq(last, 1e-3)),
             "{points:?}"
         );
+    }
+
+    // ---- T92 export the view ------------------------------------------------
+
+    fn ctrl_e(ed: &mut Editor) -> bool {
+        key_with(ed, Key::E, CTRL)
+    }
+
+    #[test]
+    fn export_view_when_idle_asks_once() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = ctrl_e(&mut ed);
+
+        // Assert: nothing but the request changes.
+        assert!(!redraw);
+        assert_eq!(ed, before);
+        assert!(ed.take_export_request());
+        assert!(!ed.take_export_request(), "a request is answered once");
+    }
+
+    #[test]
+    fn export_view_is_not_requested_by_default() {
+        assert!(!Editor::new().take_export_request());
+    }
+
+    #[test]
+    fn export_view_during_text_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hi");
+        assert!(ed.text_edit().is_some());
+
+        // Act
+        ctrl_e(&mut ed);
+
+        // Assert
+        assert!(!ed.take_export_request());
+        assert!(ed.text_edit().is_some(), "the block stays open");
+    }
+
+    #[test]
+    fn export_view_command_during_text_edit_keeps_the_block_open() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hi");
+
+        // Act
+        let redraw = ed.apply(Command::ExportView);
+
+        // Assert
+        assert!(!redraw);
+        assert!(!ed.take_export_request());
+        assert!(ed.text_edit().is_some(), "the block is not committed");
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn export_view_during_gesture_is_ignored() {
+        // Arrange: a pen stroke in progress.
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 20.0, 20.0);
+        assert!(ed.active_gesture().is_some());
+
+        // Act
+        ctrl_e(&mut ed);
+
+        // Assert
+        assert!(!ed.take_export_request());
+        assert!(ed.active_gesture().is_some(), "the stroke goes on");
+    }
+
+    #[test]
+    fn can_export_is_false_during_text_edit_and_gesture() {
+        // Arrange
+        let idle = Editor::new();
+        let mut drawing = Editor::new();
+        down(&mut drawing, PointerButton::Left, 10.0, 10.0);
+        let mut typing = text_editor();
+        place(&mut typing, 100.0, 100.0, "hi");
+
+        // Act / Assert
+        assert!(idle.can_export());
+        assert!(!drawing.can_export());
+        assert!(!typing.can_export());
     }
 
     // ---- T35 pressure -------------------------------------------------------

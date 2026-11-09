@@ -60,6 +60,7 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `0` | Reset view (origin, zoom 1) |
 | `F` | Fit view to all content |
 | `Tab` | Show / hide toolbar |
+| `Ctrl+E` | Export the view to a PNG file in the home directory ([[ADR-T92-2 Ctrl+E reads back the document layer]]); ignored during a text edit or a gesture |
 
 ## Helpers
 

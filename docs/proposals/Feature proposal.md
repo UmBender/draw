@@ -58,43 +58,43 @@ score as a tie.
 
 Fill *Verdict* with `accepted`, `later` or `rejected`.
 
-| # | Idea | Value | Size | Risk | Cost | Score | Verdict |
-|---|------|-------|------|------|------|-------|---------|
-| 1 | C1 Grid from text | 5 | S | low | 1 | 5.00 | accepted |
-| 2 | K1 Paste text from the clipboard | 4 | S | low | 1 | 4.00 | accepted |
-| 3 | E1 Resize a committed grid | 4 | S | low | 1 | 4.00 | accepted |
-| 4 | F1 Growing brackets | 3 | S | low | 1 | 3.00 | accepted |
-| 5 | E2 Zero-based numbering | 3 | S | low | 1 | 3.00 | accepted |
-| 6 | E3 Bucket drag across cells | 3 | S | low | 1 | 3.00 | accepted |
-| 7 | C2 Graph or tree from an edge list | 5 | M | low | 2 | 2.50 | accepted |
-| 8 | E4 Resize handles | 4 | M | low | 2 | 2.00 | accepted |
-| 9 | F4 Labelled extensible arrows | 2 | S | low | 1 | 2.00 | later |
-| 10 | F5 Spacing commands | 2 | S | low | 1 | 2.00 | later |
-| 11 | E5 Align and distribute | 2 | S | low | 1 | 2.00 | later |
-| 12 | E6 Z-order keys | 2 | S | low | 1 | 2.00 | later |
-| 13 | K4 Export the view to PNG | 3 | S | medium | 2 | 1.50 | accepted |
-| 14 | C4 Coordinate plane from points | 3 | M | low | 2 | 1.50 | accepted |
-| 15 | F2 Matrices and cases | 3 | M | low | 2 | 1.50 | accepted |
-| 16 | K2 Autosave and crash recovery | 4 | M | medium | 3 | 1.33 | accepted |
-| 17 | C3 Segment tree drawing | 3 | M | medium | 3 | 1.00 | later |
-| 18 | F3 Display mode | 2 | M | low | 2 | 1.00 | later |
-| 19 | V3 Fading laser pointer | 2 | S | medium | 2 | 1.00 | later |
-| 20 | E8 Lock | 1 | S | low | 1 | 1.00 | later |
-| 21 | K3 Save and load | 3 | M | high | 4 | 0.75 | later |
-| 22 | V5 Ruler and protractor | 2 | M | medium | 3 | 0.67 | later |
-| 23 | E7 Group and ungroup | 2 | M | medium | 3 | 0.67 | later |
-| 24 | I2 Shape recognition | 2 | M | medium | 3 | 0.67 | later |
-| 25 | V4 Presenter mode | 1 | S | medium | 2 | 0.50 | later |
-| 26 | E9 Find text | 1 | M | low | 2 | 0.50 | later |
-| 27 | K5 Export to SVG | 2 | L | medium | 5 | 0.40 | later |
-| 28 | K6 Copy the selection as an image | 2 | L | medium | 5 | 0.40 | later |
-| 29 | V1 Pages | 2 | L | medium | 5 | 0.40 | later |
-| 30 | V2 Minimap | 1 | M | medium | 3 | 0.33 | later |
-| 31 | E10 Command palette | 1 | M | medium | 3 | 0.33 | later |
-| 32 | F6 User macros | 1 | M | medium | 3 | 0.33 | later |
-| 33 | I1 Pressure highlighter | 1 | M | medium | 3 | 0.33 | later |
-| 34 | F7 Commutative diagrams | 1 | L | high | 6 | 0.17 | later |
-| 35 | I3 Handwriting to TeX | 1 | L | high | 6 | 0.17 | later |
+| #   | Idea                               | Value | Size | Risk   | Cost | Score | Verdict  |
+| --- | ---------------------------------- | ----- | ---- | ------ | ---- | ----- | -------- |
+| 1   | C1 Grid from text                  | 5     | S    | low    | 1    | 5.00  | accepted |
+| 2   | K1 Paste text from the clipboard   | 4     | S    | low    | 1    | 4.00  | accepted |
+| 3   | E1 Resize a committed grid         | 4     | S    | low    | 1    | 4.00  | accepted |
+| 4   | F1 Growing brackets                | 3     | S    | low    | 1    | 3.00  | accepted |
+| 5   | E2 Zero-based numbering            | 3     | S    | low    | 1    | 3.00  | accepted |
+| 6   | E3 Bucket drag across cells        | 3     | S    | low    | 1    | 3.00  | accepted |
+| 7   | C2 Graph or tree from an edge list | 5     | M    | low    | 2    | 2.50  | accepted |
+| 8   | E4 Resize handles                  | 4     | M    | low    | 2    | 2.00  | accepted |
+| 9   | F4 Labelled extensible arrows      | 2     | S    | low    | 1    | 2.00  | later    |
+| 10  | F5 Spacing commands                | 2     | S    | low    | 1    | 2.00  | later    |
+| 11  | E5 Align and distribute            | 2     | S    | low    | 1    | 2.00  | later    |
+| 12  | E6 Z-order keys                    | 2     | S    | low    | 1    | 2.00  | later    |
+| 13  | K4 Export the view to PNG          | 3     | S    | medium | 2    | 1.50  | accepted |
+| 14  | C4 Coordinate plane from points    | 3     | M    | low    | 2    | 1.50  | accepted |
+| 15  | F2 Matrices and cases              | 3     | M    | low    | 2    | 1.50  | accepted |
+| 16  | K2 Autosave and crash recovery     | 4     | M    | medium | 3    | 1.33  | accepted |
+| 17  | C3 Segment tree drawing            | 3     | M    | medium | 3    | 1.00  | later    |
+| 18  | F3 Display mode                    | 2     | M    | low    | 2    | 1.00  | later    |
+| 19  | V3 Fading laser pointer            | 2     | S    | medium | 2    | 1.00  | later    |
+| 20  | E8 Lock                            | 1     | S    | low    | 1    | 1.00  | later    |
+| 21  | K3 Save and load                   | 3     | M    | high   | 4    | 0.75  | later    |
+| 22  | V5 Ruler and protractor            | 2     | M    | medium | 3    | 0.67  | later    |
+| 23  | E7 Group and ungroup               | 2     | M    | medium | 3    | 0.67  | later    |
+| 24  | I2 Shape recognition               | 2     | M    | medium | 3    | 0.67  | later    |
+| 25  | V4 Presenter mode                  | 1     | S    | medium | 2    | 0.50  | later    |
+| 26  | E9 Find text                       | 1     | M    | low    | 2    | 0.50  | later    |
+| 27  | K5 Export to SVG                   | 2     | L    | medium | 5    | 0.40  | later    |
+| 28  | K6 Copy the selection as an image  | 2     | L    | medium | 5    | 0.40  | later    |
+| 29  | V1 Pages                           | 2     | L    | medium | 5    | 0.40  | later    |
+| 30  | V2 Minimap                         | 1     | M    | medium | 3    | 0.33  | later    |
+| 31  | E10 Command palette                | 1     | M    | medium | 3    | 0.33  | later    |
+| 32  | F6 User macros                     | 1     | M    | medium | 3    | 0.33  | later    |
+| 33  | I1 Pressure highlighter            | 1     | M    | medium | 3    | 0.33  | later    |
+| 34  | F7 Commutative diagrams            | 1     | L    | high   | 6    | 0.17  | later    |
+| 35  | I3 Handwriting to TeX              | 1     | L    | high   | 6    | 0.17  | later    |
 
 ## Recommended short list
 

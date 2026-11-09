@@ -100,6 +100,8 @@ pub enum Command {
     FitView,
     /// Show or hide the toolbar.
     ToggleToolbar,
+    /// Ask the shell to write the view to a PNG file (ADR-T92-2).
+    ExportView,
     /// Turn smart snapping (round, sizes, alignment) on or off.
     ToggleSmartSnap,
     /// Turn snapping to the world grid on or off.
