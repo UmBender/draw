@@ -297,6 +297,6 @@ flowchart TD
 | [[T78 Formula ink outside its text box]] | done | T74 | `fix/formula-ink-outside-box` |
 | [[T79 Wayland keyboard without a keymap]] | done | T75 | `fix/wayland-no-keymap` |
 | [[T80 Mouse cursor in end-to-end screenshots]] | done | T75 | `fix/e2e-cursor-in-screenshots` |
-| [[T81 Formula box too narrow while editing]] | todo | T74 | `fix/formula-box-while-editing` |
+| [[T81 Formula box too narrow while editing]] | done | T74 | `fix/formula-box-while-editing` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T81 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

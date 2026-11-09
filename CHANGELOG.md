@@ -76,6 +76,8 @@ All notable changes to draw are listed here. The format follows
   draw cannot load.
 - On the native Wayland backend, draw no longer crashes when a keyboard
   arrives without a usable keymap: the last good keymap stays.
+- While a block with a formula is edited, no second outline ends in the
+  middle of its source text.
 
 ## [1.4.3] - 2026-10-22
 

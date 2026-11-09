@@ -1,7 +1,7 @@
 ---
 id: T81
 title: Formula box too narrow while editing
-status: review
+status: done
 wave: 34
 branch: fix/formula-box-while-editing
 depends_on: [T74]
@@ -107,3 +107,4 @@ None planned.
 - No feature or tutorial note: the task has neither, it only removes a
   wrong outline. The two outlines have not been checked by eye in the
   running app; no e2e case covers this state.
+- 2026-11-09 — checked in the running app by the owner: works. Merged.
