@@ -1,7 +1,7 @@
 ---
 id: T83
 title: Paste text from the clipboard
-status: in-progress
+status: review
 wave: 51
 branch: task/T83-paste-text
 depends_on: []
@@ -61,12 +61,12 @@ Design: [[ADR-T83-1 Paste text through an input event]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T83): specify paste text from the clipboard`
-- [ ] tests — `test(T83): add failing tests`
-- [ ] models — `feat(T83): add types`
-- [ ] behaviour — `feat(T83): implement`
-- [ ] quality — `chore(T83): pass clippy and rustfmt`
-- [ ] docs — `docs(T83): update the feature note`
+- [x] spec — `docs(T83): specify paste text from the clipboard`
+- [x] tests — `test(T83): add failing tests`
+- [x] models — `feat(T83): add types`
+- [x] behaviour — `feat(T83): implement`
+- [x] quality — `chore(T83): pass clippy and rustfmt`
+- [x] docs — `docs(T83): update the feature note`
 
 ## Learning path
 
@@ -78,3 +78,9 @@ None: it extends an existing area.
 - 2026-11-09 — UNATTENDED CHOICE: `InputEvent::Paste(String)` makes `InputEvent` non-`Copy`, so `src/core/tap.rs`, `src/shell/toolbar.rs` (`Route` holds an event) and a test in `src/core/snapshot.rs` join *Files owned*.
 - 2026-11-09 — UNATTENDED CHOICE: `tests/e2e.rs` (the `clipboard` directive) and `src/shell/diag/e2e.rs` (the `clipboard_set` hook) join *Files owned* for AC-6. The nightly CI job does not install `wl-copy`, so the hook is what runs there.
 - 2026-11-09 — UNATTENDED CHOICE: `vendor/miniquad/src/lib.rs` and `PATCHED.md` join *Files owned*: `clipboard_get` held the display mutex across a Wayland round trip whose handlers lock it, so `Ctrl+V` with the mouse moving would hang (ADR-T83-1).
+- 2026-11-09 — UNATTENDED CHOICE: the 64 KiB limit counts the cleaned text, and a tab that does not fit whole ends the paste there (ADR-T83-1).
+- 2026-11-09 — UNATTENDED CHOICE: a pasted line break stays in a grid cell, although the `Enter` key walks to the next cell there (ADR-T83-1).
+- 2026-11-09 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` and `docs/features/End-to-end tests.md` join *Files owned*, for the data flow and the new `clipboard` directive.
+- 2026-11-09 — `paste-text-clipboard` passed through both paths: `wl-copy`, which is installed here, and the hook, forced by temporarily renaming the tool in the harness. The nightly CI job has no `wl-copy`, so it takes the hook path.
+- 2026-11-09 — not covered by an automated test: the vendored lock fix. `paste-text-clipboard` runs the read, but moving the pointer at the exact moment of the round trip cannot be timed in the suite.
+- 2026-11-09 — manual check for the owner: copy text from a browser and paste it into a block on the desktop. Also press `Ctrl+V` while moving the mouse; the app must not freeze.

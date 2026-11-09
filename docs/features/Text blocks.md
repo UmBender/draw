@@ -1,9 +1,9 @@
 ---
 title: Text blocks
 task: "[[T29 Text blocks]]"
-adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-T29-3 Resize text while typing]]", "[[ADR-T37-1 Remember the last text size]]"]
+adrs: ["[[ADR-T29-1 Text shape with monospaced layout and an embedded font]]", "[[ADR-T29-2 Text edit mode]]", "[[ADR-T29-3 Resize text while typing]]", "[[ADR-T37-1 Remember the last text size]]", "[[ADR-T83-1 Paste text through an input event]]"]
 tutorial: "[[29 Typing on a canvas without losing the shortcuts]]"
-shortcuts: ["T", "Esc", "Ctrl+Enter", "Enter", "Tab", "Ctrl+Z", "Ctrl+[", "Ctrl+]"]
+shortcuts: ["T", "Esc", "Ctrl+Enter", "Enter", "Tab", "Ctrl+Z", "Ctrl+[", "Ctrl+]", "Ctrl+V"]
 tags: [feature]
 ---
 
@@ -29,6 +29,7 @@ back.
 | Indent | `Tab` (four spaces) |
 | Move the caret | `←` `→` `↑` `↓`, `Home`, `End`, or click inside the block |
 | Delete | `Backspace`, `Delete` |
+| Paste text from another app | `Ctrl+V` while the block or shape text is open |
 | Throw the edit away | `Ctrl+Z` while typing |
 | Edit a block again | Text tool: click it · Select tool: double-click it (or click it when it is already selected) |
 | Text size | `[` / `]` before clicking (the stroke width ladder: 14–76 px) |
@@ -63,6 +64,12 @@ font and path ([[ADR-T32-1 Own glyph atlas rasterized with fontdue]],
 The remembered size is `text::State::size_px`, in on-screen pixels so it
 survives a zoom; `State::new_size_px` gives it or the width rule
 ([[ADR-T37-1 Remember the last text size]]).
+`Ctrl+V` in an open edit makes the shell read the system clipboard and send
+`InputEvent::Paste`; `text::clean_paste` keeps line breaks, drops control
+characters, turns a tab into four spaces and stops at 64 KiB. Pasted text
+is part of the edit, so `Ctrl+Z` during it throws it away. Outside an edit
+`Ctrl+V` still pastes shapes
+([[ADR-T83-1 Paste text through an input event]]).
 While typing, only the overlay is redrawn and the caret does not blink, so
 the app stays idle between keys.
 
@@ -71,8 +78,9 @@ the app stays idle between keys.
 - The remembered size lasts for the session only.
 - One monospaced font, one style; no word wrap, alignment, rich text or
   font choice.
-- No pasting from the system clipboard and no IME composition (dead keys
-  work through the keyboard layout).
+- No IME composition (dead keys work through the keyboard layout).
+- `Ctrl+V` reads only `UTF8_STRING` text, and waits for the app that owns
+  the clipboard; each paste holds at most 64 KiB.
 - Characters outside the font's Latin, Greek and math ranges show a
   replacement box; wide (CJK) characters overlap their neighbour.
 - Text inside rectangles and grid cells is

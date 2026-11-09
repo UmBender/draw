@@ -88,6 +88,7 @@ block is open **no binding above fires**: every key types its character
 | `Home` / `End` | Start / end of the line |
 | `Backspace` / `Delete` | Delete the character before / after the caret |
 | `Ctrl+]` / `Ctrl+[` | Bigger / smaller text, one step of the 14–76 px ladder ([[ADR-T29-3 Resize text while typing]]) |
+| `Ctrl+V` | Paste text from the system clipboard at the caret ([[ADR-T83-1 Paste text through an input event]]) |
 
 A press outside the block (that does not pan) commits it too; toolbar
 buttons commit it before acting, except Undo, which cancels it.
