@@ -604,6 +604,20 @@ impl Editor {
         }
     }
 
+    /// Undoes the last step and gives back the number it took (ADR-T19-1).
+    /// Returns whether a redraw is needed.
+    fn undo(&mut self) -> bool {
+        let cancelled = self.cancel_gesture();
+        let given = self.helpers().next_number.saturating_sub(1);
+        let before = numbering::label_count(&self.doc, given);
+        let changed = self.history.undo(&mut self.doc);
+        let after = numbering::label_count(&self.doc, given);
+        let helpers = &mut self.style.helpers;
+        helpers.next_number = numbering::roll_back(helpers.next_number, before, after);
+        self.prune_selection();
+        changed || cancelled
+    }
+
     /// Executes `command` without tracking document changes.
     fn execute(&mut self, command: Command) -> bool {
         match command {
@@ -630,17 +644,7 @@ impl Editor {
                 self.smoothing = self.smoothing.next();
                 true
             }
-            Command::Undo => {
-                let cancelled = self.cancel_gesture();
-                let given = self.helpers().next_number.saturating_sub(1);
-                let before = numbering::label_count(&self.doc, given);
-                let changed = self.history.undo(&mut self.doc);
-                let after = numbering::label_count(&self.doc, given);
-                let helpers = &mut self.style.helpers;
-                helpers.next_number = numbering::roll_back(helpers.next_number, before, after);
-                self.prune_selection();
-                changed || cancelled
-            }
+            Command::Undo => self.undo(),
             Command::Redo => {
                 let cancelled = self.cancel_gesture();
                 let next = self.helpers().next_number;

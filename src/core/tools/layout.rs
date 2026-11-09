@@ -253,8 +253,8 @@ impl EdgeList {
         for &node in order.iter().rev() {
             let mut below = children(node);
             if let Some(first) = below.next() {
-                let last = below.last().unwrap_or(first);
-                column[node] = (column[first] + column[last]) * 0.5;
+                let last = below.next_back().unwrap_or(first);
+                column[node] = f32::midpoint(column[first], column[last]);
             }
         }
 
@@ -651,11 +651,7 @@ mod tests {
     fn parse_reads_directed_pairs() {
         assert_eq!(
             edges(&list("2>1\n1>3 3-4")),
-            [
-                (2, 1, true, None),
-                (1, 3, true, None),
-                (3, 4, false, None)
-            ]
+            [(2, 1, true, None), (1, 3, true, None), (3, 4, false, None)]
         );
     }
 
@@ -763,12 +759,8 @@ mod tests {
         let shapes = drawn("1-2 1-3 1-4");
 
         // Assert
-        let (root, first, last) = (
-            centre(&shapes, 1),
-            centre(&shapes, 2),
-            centre(&shapes, 4),
-        );
-        assert!(approx_eq(root.x, (first.x + last.x) * 0.5, 1e-3));
+        let (root, first, last) = (centre(&shapes, 1), centre(&shapes, 2), centre(&shapes, 4));
+        assert!(approx_eq(root.x, f32::midpoint(first.x, last.x), 1e-3));
     }
 
     #[test]
@@ -982,7 +974,7 @@ mod tests {
 
         // Assert
         assert_eq!(parsed.names(), [1, 2]);
-        assert!(parsed.edges().is_empty());
+        assert_eq!(parsed.edges(), []);
     }
 
     #[test]
