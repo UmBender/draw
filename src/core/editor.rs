@@ -5036,4 +5036,405 @@ mod tests {
         // Assert
         assert_eq!(ed.document().len(), 2);
     }
+
+    // ---- T84 grid from text ------------------------------------------------
+
+    /// A size-18 text block at `(x, y)`.
+    fn block(x: f32, y: f32, text: &str) -> Shape {
+        Shape::Text {
+            origin: Vec2::new(x, y),
+            text: text.to_owned(),
+            size: 18.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        }
+    }
+
+    /// Editor holding one selected block at `(40, 60)`.
+    fn selected_block(text: &str) -> Editor {
+        let mut ed = shape_text_editor(vec![block(40.0, 60.0, text)], Tool::Select);
+        ed.apply(Command::SelectAll);
+        ed
+    }
+
+    fn ctrl_t(ed: &mut Editor) -> bool {
+        key_with(ed, Key::T, CTRL)
+    }
+
+    fn paste_grid(ed: &mut Editor, text: &str) -> bool {
+        ed.handle(InputEvent::PasteGrid(text.to_owned()))
+    }
+
+    /// The `index`-th shape (bottom first).
+    fn shape_at(ed: &Editor, index: usize) -> &Shape {
+        match ed.document().shapes().nth(index) {
+            Some((_, shape)) => shape,
+            None => panic!("no shape {index}"),
+        }
+    }
+
+    /// `(corner, cols, rows)` of a grid.
+    fn grid_layout(shape: &Shape) -> (Vec2, u32, u32) {
+        match shape {
+            Shape::Grid { a, cols, rows, .. } => (*a, *cols, *rows),
+            other => panic!("expected a grid, got {other:?}"),
+        }
+    }
+
+    /// `(col, row, text)` of every cell of `shape`.
+    fn cell_strings(shape: &Shape) -> Vec<(u32, u32, String)> {
+        shape
+            .cell_texts()
+            .iter()
+            .map(|t| (t.col, t.row, t.content.text.clone()))
+            .collect()
+    }
+
+    /// A line of `n` tokens.
+    fn wide_line(n: u32) -> String {
+        vec!["x"; n as usize].join(" ")
+    }
+
+    #[test]
+    fn grid_from_text_replaces_the_block_at_its_top_left() {
+        // Arrange
+        let mut ed = selected_block("1 2 3\n4 5 6");
+
+        // Act
+        let changed = ctrl_t(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ed.document().len(), 1);
+        let (corner, cols, rows) = grid_layout(shape_at(&ed, 0));
+        assert!(corner.approx_eq(Vec2::new(40.0, 60.0), 1e-4), "{corner:?}");
+        assert_eq!((cols, rows), (3, 2));
+        assert_eq!(shape_at(&ed, 0).cell_texts().len(), 6);
+    }
+
+    #[test]
+    fn grid_from_text_is_one_undo_step() {
+        // Arrange
+        let mut ed = selected_block("1 2\n3 4");
+        let original = shape_at(&ed, 0).clone();
+        let steps = ed.history.undo_len();
+        let revision = ed.document_revision();
+
+        // Act
+        ctrl_t(&mut ed);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert!(ed.document_revision() > revision);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(shape_at(&ed, 0), &original);
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(grid_layout(shape_at(&ed, 0)).1, 2);
+    }
+
+    #[test]
+    fn grid_from_text_keeps_colour_size_and_selection() {
+        // Arrange
+        let red = ColorId::from_key_digit(2).unwrap_or(ColorId::INK);
+        let original = Shape::Text {
+            origin: Vec2::new(40.0, 60.0),
+            text: "1 2".to_owned(),
+            size: 30.0,
+            style: Style {
+                color: red,
+                width: 0.0,
+            },
+        };
+        let mut ed = shape_text_editor(
+            vec![rect(0.0, 0.0, 10.0, 10.0), original, rect(0.0, 0.0, 20.0, 20.0)],
+            Tool::Select,
+        );
+        let id = ids(&ed)[1];
+        ed.selection = vec![id];
+
+        // Act
+        ctrl_t(&mut ed);
+
+        // Assert: same id, same place in the z-order.
+        assert_eq!(ed.selection(), [id]);
+        assert_eq!(ids(&ed)[1], id);
+        let shape = shape_at(&ed, 1);
+        assert!(matches!(shape, Shape::Grid { style, .. } if style.color == red));
+        assert!(
+            shape
+                .cell_texts()
+                .iter()
+                .all(|t| approx_eq(t.content.size, 30.0, 1e-4))
+        );
+    }
+
+    #[test]
+    fn grid_from_text_cancels_a_gesture() {
+        // Arrange: a rectangle drag in progress with the block selected.
+        let mut ed = selected_block("1 2");
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 400.0, 400.0);
+        move_to(&mut ed, 450.0, 450.0);
+        assert!(ed.active_gesture().is_some());
+
+        // Act
+        ctrl_t(&mut ed);
+        up(&mut ed, PointerButton::Left, 450.0, 450.0);
+
+        // Assert
+        assert!(ed.active_gesture().is_none());
+        assert_eq!(ed.document().len(), 1);
+        assert!(matches!(shape_at(&ed, 0), Shape::Grid { .. }));
+    }
+
+    #[test]
+    fn grid_from_text_axes_follow_numbering() {
+        // Arrange
+        let mut off = selected_block("1 2");
+        let mut on = selected_block("1 2");
+        on.apply(Command::ToggleNumbering);
+
+        // Act
+        ctrl_t(&mut off);
+        ctrl_t(&mut on);
+
+        // Assert
+        assert!(matches!(shape_at(&off, 0), Shape::Grid { axes: false, .. }));
+        assert!(matches!(shape_at(&on, 0), Shape::Grid { axes: true, .. }));
+    }
+
+    #[test]
+    fn grid_from_text_in_open_edit_only_types() {
+        // Arrange: Ctrl+T while a block is open is not a binding.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "1 2");
+
+        // Act
+        ctrl_t(&mut ed);
+
+        // Assert
+        assert_eq!(editing(&ed).as_deref(), Some("1 2"));
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn grid_from_text_too_wide_changes_nothing_and_leaves_a_notice() {
+        // Arrange
+        let mut ed = selected_block(&wide_line(GRID_MAX_CELLS + 1));
+        let before = ed.clone();
+        let revision = ed.document_revision();
+
+        // Act
+        let changed = ctrl_t(&mut ed);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        assert_eq!(ed.document_revision(), revision);
+        let notice = ed.take_notice().unwrap_or_default();
+        assert!(notice.contains("65"), "{notice}");
+        assert_eq!(ed.take_notice(), None, "the notice is handed over once");
+    }
+
+    #[test]
+    fn grid_from_text_refused_keeps_a_gesture() {
+        // Arrange
+        let mut ed = selected_block(&wide_line(GRID_MAX_CELLS + 1));
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 400.0, 400.0);
+
+        // Act
+        ctrl_t(&mut ed);
+
+        // Assert
+        assert!(ed.active_gesture().is_some());
+    }
+
+    #[test]
+    fn grid_from_clipboard_too_tall_changes_nothing_and_leaves_a_notice() {
+        // Arrange
+        let mut ed = shape_text_editor(Vec::new(), Tool::Select);
+        let tall = vec!["x"; GRID_MAX_CELLS as usize + 1].join("\n");
+        let before = ed.clone();
+
+        // Act
+        let changed = paste_grid(&mut ed, &tall);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        assert!(ed.document().is_empty(), "nothing was cut to fit");
+        assert!(ed.take_notice().is_some_and(|n| n.contains("65")));
+    }
+
+    #[test]
+    fn take_notice_is_empty_after_a_success() {
+        // Arrange
+        let mut ed = selected_block("1 2");
+
+        // Act
+        ctrl_t(&mut ed);
+
+        // Assert
+        assert_eq!(ed.take_notice(), None);
+    }
+
+    #[test]
+    fn grid_from_text_without_one_text_block_does_nothing() {
+        // Arrange: nothing selected, a rectangle, and two blocks.
+        let mut none = shape_text_editor(vec![block(0.0, 0.0, "1 2")], Tool::Select);
+        let mut other = shape_text_editor(vec![rect(0.0, 0.0, 9.0, 9.0)], Tool::Select);
+        other.apply(Command::SelectAll);
+        let two = vec![block(0.0, 0.0, "1 2"), block(0.0, 90.0, "3 4")];
+        let mut both = shape_text_editor(two, Tool::Select);
+        both.apply(Command::SelectAll);
+
+        for ed in [&mut none, &mut other, &mut both] {
+            let before = ed.clone();
+
+            // Act
+            let changed = ctrl_t(ed);
+
+            // Assert
+            assert!(!changed);
+            assert_eq!(*ed, before);
+            assert_eq!(ed.take_notice(), None);
+        }
+    }
+
+    #[test]
+    fn grid_from_text_with_blank_text_does_nothing() {
+        // Arrange
+        let mut ed = selected_block("  \n ");
+        let before = ed.clone();
+
+        // Act
+        let changed = ctrl_t(&mut ed);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        assert_eq!(ed.take_notice(), None);
+    }
+
+    #[test]
+    fn grid_from_clipboard_puts_the_corner_at_the_cursor() {
+        // Arrange: a camera that is not the identity.
+        let mut ed = shape_text_editor(Vec::new(), Tool::Select);
+        ed.camera = Camera::new(Vec2::new(100.0, 50.0), 2.0);
+        move_to(&mut ed, 300.0, 200.0);
+        let world = ed.camera().screen_to_world(Vec2::new(300.0, 200.0));
+
+        // Act
+        let changed = paste_grid(&mut ed, "1 2\n3 4");
+
+        // Assert
+        assert!(changed);
+        let (corner, cols, rows) = grid_layout(shape_at(&ed, 0));
+        assert!(corner.approx_eq(world, 1e-3), "{corner:?} vs {world:?}");
+        assert_eq!((cols, rows), (2, 2));
+    }
+
+    #[test]
+    fn grid_from_clipboard_has_the_cells_of_ctrl_t() {
+        // Arrange
+        let text = "1 22\n\n333";
+        let mut from_block = selected_block(text);
+        let mut from_paste = shape_text_editor(Vec::new(), Tool::Select);
+
+        // Act
+        ctrl_t(&mut from_block);
+        paste_grid(&mut from_paste, text);
+
+        // Assert
+        let (block_shape, paste_shape) = (shape_at(&from_block, 0), shape_at(&from_paste, 0));
+        assert_eq!(cell_strings(block_shape), cell_strings(paste_shape));
+        let dims = |shape| {
+            let (_, cols, rows) = grid_layout(shape);
+            (cols, rows)
+        };
+        assert_eq!(dims(block_shape), dims(paste_shape));
+    }
+
+    #[test]
+    fn grid_from_clipboard_uses_the_new_text_size_on_screen() {
+        // Arrange: at zoom 2 a new block is half as big in the world.
+        let mut ed = shape_text_editor(Vec::new(), Tool::Select);
+        ed.camera = Camera::new(Vec2::ZERO, 2.0);
+        let expected = ed
+            .camera()
+            .world_len(text::text_size_px(ed.style().width_px));
+
+        // Act
+        paste_grid(&mut ed, "1");
+
+        // Assert
+        let size = shape_at(&ed, 0).cell_texts()[0].content.size;
+        assert!(approx_eq(size, expected, 1e-4), "{size} vs {expected}");
+    }
+
+    #[test]
+    fn grid_from_clipboard_is_one_undo_step_and_selected() {
+        // Arrange: another shape stays below and leaves the selection.
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 9.0, 9.0)], Tool::Select);
+        ed.apply(Command::SelectAll);
+        let steps = ed.history.undo_len();
+
+        // Act
+        paste_grid(&mut ed, "1 2");
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert_eq!(ed.document().len(), 2);
+        assert_eq!(ed.selection(), [ids(&ed)[1]]);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+        assert!(ed.selection().is_empty());
+    }
+
+    #[test]
+    fn grid_from_clipboard_only_appends_to_the_document() {
+        // Arrange
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 9.0, 9.0)], Tool::Select);
+        let base = ed.document_base_revision();
+
+        // Act
+        paste_grid(&mut ed, "1 2");
+
+        // Assert
+        assert_eq!(ed.document_base_revision(), base);
+    }
+
+    #[test]
+    fn grid_from_clipboard_in_open_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "ab");
+
+        // Act
+        let changed = paste_grid(&mut ed, "1 2");
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(editing(&ed).as_deref(), Some("ab"));
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn grid_from_clipboard_blank_does_nothing() {
+        // Arrange
+        let mut ed = shape_text_editor(Vec::new(), Tool::Select);
+        let before = ed.clone();
+
+        // Act
+        let changed = paste_grid(&mut ed, " \n\t ");
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed, before);
+        assert_eq!(ed.history.undo_len(), 0);
+        assert_eq!(ed.take_notice(), None);
+    }
 }

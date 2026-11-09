@@ -212,10 +212,13 @@ mod tests {
     use crate::core::history::History;
     use crate::core::input::Modifiers;
     use crate::core::palette::ColorId;
-    use crate::core::shape::{GRID_MAX_CELLS, Shape, Style};
+    use crate::core::shape::{GRID_MAX_CELLS, SHAPE_TEXT_FILL, Shape, Style, TextSlot};
     use crate::core::smoothing::SmoothingLevel;
+    use crate::core::text_layout;
     use crate::core::tools::Phase;
+    use crate::core::tools::text::PASTE_MAX_BYTES;
     use proptest::prelude::*;
+    use proptest::test_runner::TestCaseError;
 
     const EPS: f32 = 1e-4;
 
@@ -698,5 +701,297 @@ mod tests {
         // Assert
         assert!(has_axes(previewed(&overlay)));
         assert!(has_axes(f.last_shape()));
+    }
+
+    // ---- T84 tables from text ----------------------------------------------
+
+    const TABLE_STYLE: Style = Style {
+        color: ColorId::INK,
+        width: 1.0,
+    };
+
+    /// The table `text` parses to.
+    fn table(text: &str) -> TextTable {
+        match TextTable::parse(text) {
+            Ok(Some(table)) => table,
+            other => panic!("expected a table from {text:?}, got {other:?}"),
+        }
+    }
+
+    /// The grid of `text` at the origin, text size 18.
+    fn table_shape(text: &str) -> Shape {
+        match table(text).shape(Vec2::ZERO, 18.0, TABLE_STYLE, false) {
+            Some(shape) => shape,
+            None => panic!("no grid from {text:?}"),
+        }
+    }
+
+    /// `(col, row, text)` of every cell of `shape`.
+    fn table_cells(shape: &Shape) -> Vec<(u32, u32, String)> {
+        shape
+            .cell_texts()
+            .iter()
+            .map(|t| (t.col, t.row, t.content.text.clone()))
+            .collect()
+    }
+
+    /// `n` tokens on a line.
+    fn tokens(n: usize) -> String {
+        vec!["x"; n].join(" ")
+    }
+
+    /// Width and height of one cell of `shape`.
+    fn cell_size(shape: &Shape) -> (f32, f32) {
+        let (a, b, cols, rows, _) = grid(shape);
+        ((b.x - a.x) / cols as f32, (b.y - a.y) / rows as f32)
+    }
+
+    #[test]
+    fn table_parse_splits_lines_and_whitespace() {
+        // Act
+        let shape = table_shape("1  2\t3\n4 5 6");
+
+        // Assert
+        assert_eq!((grid(&shape).2, grid(&shape).3), (3, 2));
+        let cells = table_cells(&shape);
+        let text: Vec<&str> = cells.iter().map(|c| c.2.as_str()).collect();
+        assert_eq!(text, ["1", "2", "3", "4", "5", "6"]);
+    }
+
+    #[test]
+    fn table_parse_ignores_blank_lines() {
+        let parsed = table("\n1 2\n   \n\n3 4\n\n");
+
+        assert_eq!((parsed.cols(), parsed.rows()), (2, 2));
+    }
+
+    #[test]
+    fn table_parse_short_rows_leave_empty_cells() {
+        // Act
+        let shape = table_shape("1 2 3\n4");
+
+        // Assert: row 1 holds one cell, columns 1 and 2 stay empty.
+        assert_eq!((grid(&shape).2, grid(&shape).3), (3, 2));
+        assert_eq!(
+            table_cells(&shape).last(),
+            Some(&(0, 1, "4".to_owned())),
+            "{shape:?}"
+        );
+        assert_eq!(shape.cell_texts().len(), 4);
+    }
+
+    #[test]
+    fn table_parse_handles_line_endings_and_controls() {
+        // Act: `\r\n`, a bare `\r`, a bell inside a token and a lone one.
+        let shape = table_shape("1 2\r\n3\u{7}4 \u{7}\r5");
+
+        // Assert
+        assert_eq!(
+            table_cells(&shape),
+            [
+                (0, 0, "1".to_owned()),
+                (1, 0, "2".to_owned()),
+                (0, 1, "34".to_owned()),
+                (0, 2, "5".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn table_parse_one_line_is_a_strip() {
+        let parsed = table("3 1 4 1 5");
+
+        assert_eq!((parsed.cols(), parsed.rows()), (5, 1));
+    }
+
+    #[test]
+    fn table_parse_blank_text_is_no_table() {
+        for text in ["", "   ", "\n \t\r\n", "\u{7}"] {
+            assert_eq!(TextTable::parse(text), Ok(None), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn table_parse_at_the_limits_is_accepted() {
+        // Arrange
+        let wide = tokens(GRID_MAX_CELLS as usize);
+        let tall = vec!["x"; GRID_MAX_CELLS as usize].join("\n");
+
+        // Act / Assert
+        assert_eq!(table(&wide).cols(), GRID_MAX_CELLS);
+        assert_eq!(table(&tall).rows(), GRID_MAX_CELLS);
+    }
+
+    #[test]
+    fn table_parse_over_the_limits_is_refused() {
+        // Arrange
+        let cells = GRID_MAX_CELLS as usize + 1;
+        let wide = tokens(cells);
+        let tall = vec!["x"; cells].join("\n");
+
+        // Act / Assert
+        assert_eq!(
+            TextTable::parse(&wide),
+            Err(TableError::TooManyCells { cols: cells, rows: 1 })
+        );
+        assert_eq!(
+            TextTable::parse(&tall),
+            Err(TableError::TooManyCells { cols: 1, rows: cells })
+        );
+    }
+
+    #[test]
+    fn table_parse_over_the_byte_limit_is_refused() {
+        // Arrange: one token, so only the byte count is over a limit.
+        let at_limit = "x".repeat(PASTE_MAX_BYTES);
+        let over = "x".repeat(PASTE_MAX_BYTES + 1);
+
+        // Act / Assert
+        assert_eq!(table(&at_limit).cols(), 1);
+        assert_eq!(
+            TextTable::parse(&over),
+            Err(TableError::TooLong {
+                bytes: PASTE_MAX_BYTES + 1
+            })
+        );
+    }
+
+    #[test]
+    fn table_error_names_the_reason() {
+        let cells = TableError::TooManyCells { cols: 70, rows: 2 }.to_string();
+        let long = TableError::TooLong { bytes: 70_000 }.to_string();
+
+        assert!(cells.contains("70") && cells.contains("64"), "{cells}");
+        assert!(long.contains("70000"), "{long}");
+    }
+
+    #[test]
+    fn table_shape_places_tokens_in_sorted_cells() {
+        // Act
+        let shape = table_shape("a b\nc");
+
+        // Assert
+        assert_eq!(
+            table_cells(&shape),
+            [
+                (0, 0, "a".to_owned()),
+                (1, 0, "b".to_owned()),
+                (0, 1, "c".to_owned()),
+            ]
+        );
+        assert!(
+            shape
+                .cell_texts()
+                .iter()
+                .all(|t| approx_eq(t.content.size, 18.0, EPS))
+        );
+    }
+
+    #[test]
+    fn table_shape_cells_follow_the_longest_token() {
+        // Arrange: 20 characters at size 18 are 216 wide.
+        let longest = "x".repeat(20);
+        let unit = crate::core::text_layout::bounds(Vec2::ZERO, &longest, 18.0);
+
+        // Act
+        let shape = table_shape(&format!("1 {longest}\n2 3"));
+
+        // Assert
+        let (w, h) = cell_size(&shape);
+        assert!(approx_eq(w, unit.width() / SHAPE_TEXT_FILL, EPS), "{w}");
+        assert!(approx_eq(h, unit.height() / SHAPE_TEXT_FILL, EPS), "{h}");
+    }
+
+    #[test]
+    fn table_shape_digits_get_square_cells() {
+        let (w, h) = cell_size(&table_shape("1 2\n3 4"));
+
+        assert!(approx_eq(w, h, EPS), "{w} × {h}");
+    }
+
+    #[test]
+    fn table_shape_text_fits_at_full_size() {
+        // Arrange: a long token and a formula.
+        let shape = table_shape("abcdefgh $\\frac{a}{b}$\n1 2");
+
+        // Act / Assert: no cell has to shrink its text.
+        for t in shape.cell_texts() {
+            let slot = TextSlot::Cell {
+                col: t.col,
+                row: t.row,
+            };
+            let frame = shape.text_frame(slot);
+            let fitted = frame.and_then(|f| text_layout::fit(&t.content.text, f, 18.0));
+            let size = fitted.map_or(0.0, |(_, size)| size);
+            assert!(approx_eq(size, 18.0, 1e-2), "{:?}: {size}", t.content.text);
+        }
+    }
+
+    #[test]
+    fn table_shape_uses_corner_style_and_axes() {
+        // Act
+        let shape = table("1 2").shape(Vec2::new(5.0, 7.0), 18.0, TABLE_STYLE, true);
+
+        // Assert
+        let Some(shape) = shape else {
+            panic!("no grid");
+        };
+        let (a, _, _, _, style) = grid(&shape);
+        assert!(a.approx_eq(Vec2::new(5.0, 7.0), EPS));
+        assert_eq!(style, TABLE_STYLE);
+        assert!(has_axes(&shape));
+    }
+
+    #[test]
+    fn table_shape_with_bad_size_is_none() {
+        let parsed = table("1 2");
+
+        for size in [0.0, -1.0, f32::NAN, f32::INFINITY, f32::MAX] {
+            assert_eq!(
+                parsed.shape(Vec2::ZERO, size, TABLE_STYLE, false),
+                None,
+                "{size}"
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn table_parse_and_shape_hold_the_invariants(
+            text in "[a-z0-9$\\\\{} \t\r\n\u{7}β]{0,300}",
+            size in 1.0_f32..200.0,
+        ) {
+            let Ok(Some(parsed)) = TextTable::parse(&text) else {
+                return Ok(());
+            };
+            let tokens = text
+                .split(['\n', '\r'])
+                .flat_map(str::split_whitespace)
+                .filter(|token| token.chars().any(|ch| !ch.is_control()))
+                .count();
+
+            let Some(shape) = parsed.shape(Vec2::ZERO, size, TABLE_STYLE, false) else {
+                return Err(TestCaseError::fail("no grid"));
+            };
+
+            let (_, _, cols, rows, _) = grid(&shape);
+            prop_assert!(shape.is_finite());
+            prop_assert!((1..=GRID_MAX_CELLS).contains(&cols));
+            prop_assert!((1..=GRID_MAX_CELLS).contains(&rows));
+            let cells = shape.cell_texts();
+            prop_assert_eq!(cells.len(), tokens);
+            for pair in cells.windows(2) {
+                prop_assert!((pair[0].row, pair[0].col) < (pair[1].row, pair[1].col));
+            }
+            for cell in cells {
+                prop_assert!(cell.col < cols && cell.row < rows);
+                prop_assert!(!cell.content.text.trim().is_empty());
+            }
+        }
+
+        #[test]
+        fn table_parse_never_panics(text in "\\PC{0,200}") {
+            let _ = TextTable::parse(&text);
+        }
     }
 }

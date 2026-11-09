@@ -1499,6 +1499,42 @@ mod tests {
         );
     }
 
+    // ---- T84 grid from text ------------------------------------------------
+
+    #[test]
+    fn wants_grid_clipboard_only_for_ctrl_shift_v_outside_edit() {
+        // Arrange
+        let down = |key, mods| InputEvent::KeyDown { key, mods };
+        let ctrl_shift = Modifiers {
+            shift: true,
+            ..CTRL
+        };
+        let chord = down(Key::V, ctrl_shift);
+
+        // Act / Assert
+        assert!(wants_grid_clipboard(&chord, false));
+        assert!(!wants_grid_clipboard(&chord, true), "no grid while editing");
+        assert!(!wants_grid_clipboard(&down(Key::V, CTRL), false));
+        assert!(!wants_grid_clipboard(&down(Key::C, ctrl_shift), false));
+        assert!(!wants_grid_clipboard(
+            &InputEvent::KeyUp {
+                key: Key::V,
+                mods: ctrl_shift,
+            },
+            false
+        ));
+    }
+
+    #[test]
+    fn paste_grid_event_needs_some_text() {
+        assert_eq!(paste_grid_event(None), None);
+        assert_eq!(paste_grid_event(Some(String::new())), None);
+        assert_eq!(
+            paste_grid_event(Some("a".to_owned())),
+            Some(InputEvent::PasteGrid("a".to_owned()))
+        );
+    }
+
     // T47: flight recorder records (ADR-T47-1).
 
     fn records(collector: &mut Collector) -> Vec<crate::shell::diag::event::Event> {

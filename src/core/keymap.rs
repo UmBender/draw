@@ -372,6 +372,7 @@ mod tests {
             (Key::V, CTRL, Command::Paste),
             (Key::D, CTRL, Command::Duplicate),
             (Key::A, CTRL, Command::SelectAll),
+            (Key::T, CTRL, Command::GridFromText),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
@@ -486,7 +487,18 @@ mod tests {
     fn t_selects_text_tool() {
         assert_eq!(resolve(Key::T, NONE), Some(Command::SetTool(Tool::Text)));
         assert_eq!(resolve(Key::T, SHIFT), None);
-        assert_eq!(resolve(Key::T, CTRL), None);
+    }
+
+    #[test]
+    fn ctrl_t_builds_a_grid_from_text() {
+        assert_eq!(resolve(Key::T, CTRL), Some(Command::GridFromText));
+        assert_eq!(resolve(Key::T, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn ctrl_shift_v_is_left_to_the_shell() {
+        // T84: the shell reads the clipboard, the keymap has no text.
+        assert_eq!(resolve(Key::V, CTRL_SHIFT), None);
     }
 
     #[test]
