@@ -655,6 +655,7 @@ impl Editor {
             Command::Duplicate => self.run_edit(clipboard::duplicate),
             Command::SelectAll => self.run_edit(select::select_all),
             Command::GridFromText => self.grid_from_selection(),
+            Command::GraphFromText => self.graph_from_selection(),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => {
                 let cancelled = self.cancel_gesture();
@@ -1069,6 +1070,12 @@ impl Editor {
         })
     }
 
+    /// Replaces the only selected text block by the graph of its edges, as
+    /// one undo step (ADR-T87-1). Returns whether a redraw is needed.
+    fn graph_from_selection(&mut self) -> bool {
+        todo!()
+    }
+
     /// Builds the grid of clipboard `text` at the cursor, as one undo step,
     /// and selects it (ADR-T84-1). Returns whether a redraw is needed.
     fn grid_from_clipboard(&mut self, text: &str) -> bool {
@@ -1339,6 +1346,7 @@ fn edits_document(command: Command) -> bool {
             | Command::Paste
             | Command::Duplicate
             | Command::GridFromText
+            | Command::GraphFromText
             | Command::DeleteSelection
             | Command::ClearAll
     )

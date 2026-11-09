@@ -1,3 +1,120 @@
+//! A text block of edges read and drawn as a graph or tree (ADR-T87-1).
+//!
+//! [`EdgeList::parse`] reads the text; [`EdgeList::shapes`] lays it out as
+//! ordinary lines, arrows, circles and text blocks. [`replace_block`] puts
+//! them in the document in place of the block, as one undo step.
+
+use crate::core::document::ShapeId;
+use crate::core::geom::Vec2;
+use crate::core::shape::{Shape, Style};
+use crate::core::tools::ToolCtx;
+use crate::core::tools::text::PASTE_MAX_BYTES;
+use std::fmt;
+
+/// Most nodes a graph can have.
+pub const MAX_NODES: usize = 200;
+
+/// Radius of a node's circle, in ems of the block's text.
+pub const NODE_RADIUS_EM: f32 = 1.25;
+
+/// Why a text cannot become a graph (ADR-T87-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphError {
+    /// A line is not an edge. Names the line, never its text: the log
+    /// does not record what was typed.
+    NotAnEdge {
+        /// 1-based line number.
+        line: usize,
+    },
+    /// More than [`MAX_NODES`] nodes.
+    TooManyNodes {
+        /// Distinct nodes named.
+        nodes: usize,
+    },
+    /// More than [`PASTE_MAX_BYTES`] of text.
+    TooLong {
+        /// Bytes of the text.
+        bytes: usize,
+    },
+}
+
+impl fmt::Display for GraphError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotAnEdge { line } => write!(f, "line {line} is not an edge"),
+            Self::TooManyNodes { nodes } => {
+                write!(f, "{nodes} nodes, a graph holds at most {MAX_NODES}")
+            }
+            Self::TooLong { bytes } => {
+                write!(f, "{bytes} bytes of text, the limit is {PASTE_MAX_BYTES}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for GraphError {}
+
+/// One edge of an [`EdgeList`]; never a self-loop.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Edge {
+    /// Index of its first node in [`EdgeList::names`].
+    pub from: usize,
+    /// Index of its second node in [`EdgeList::names`].
+    pub to: usize,
+    /// Whether it is drawn as an arrow from `from` to `to`.
+    pub directed: bool,
+    /// Its weight as written, if any.
+    pub weight: Option<String>,
+}
+
+/// A text read as a graph (ADR-T87-1): at least one node, at most
+/// [`MAX_NODES`], no self-loop and no repeated edge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeList {
+    /// Node names, in the order they were first named.
+    names: Vec<u32>,
+    /// The edges, in the order they were written.
+    edges: Vec<Edge>,
+}
+
+impl EdgeList {
+    /// The graph `text` holds; `Ok(None)` when it is blank.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError`] if a line is not an edge, there are too many nodes
+    /// or the text is over [`PASTE_MAX_BYTES`].
+    pub fn parse(_text: &str) -> Result<Option<Self>, GraphError> {
+        todo!()
+    }
+
+    /// Node names, in the order they were first named.
+    #[must_use]
+    pub fn names(&self) -> &[u32] {
+        &self.names
+    }
+
+    /// The edges, in the order they were written.
+    #[must_use]
+    pub fn edges(&self) -> &[Edge] {
+        &self.edges
+    }
+
+    /// The drawing of this graph at text size `size`, the top-left of its
+    /// nodes at `origin`: edges, then circles, then weights. `None` if the
+    /// size is not finite and positive or a shape would not be finite.
+    #[must_use]
+    pub fn shapes(&self, _origin: Vec2, _size: f32, _style: Style) -> Option<Vec<Shape>> {
+        todo!()
+    }
+}
+
+/// Replaces the shape `id` by `shapes` at its place in the z-order, as one
+/// undo step, and selects them. Returns whether the document changed.
+pub fn replace_block(_ctx: &mut ToolCtx<'_>, _id: ShapeId, _shapes: Vec<Shape>) -> bool {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5,7 +122,6 @@ mod tests {
     use crate::core::palette::ColorId;
     use crate::core::shape::TextSlot;
     use crate::core::text_layout;
-    use crate::core::tools::text::PASTE_MAX_BYTES;
     use proptest::prelude::*;
 
     const SIZE: f32 = 20.0;

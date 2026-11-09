@@ -164,6 +164,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Text block to grid",
     ),
     (
+        KeyChord::ctrl(Key::L),
+        Command::GraphFromText,
+        "Text block to graph",
+    ),
+    (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
         "Delete selection",

@@ -81,6 +81,9 @@ pub enum Command {
     /// Replace the only selected text block by a grid of its lines and
     /// words (ADR-T84-1).
     GridFromText,
+    /// Replace the only selected text block by the graph or tree its edges
+    /// describe (ADR-T87-1).
+    GraphFromText,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).
