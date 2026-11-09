@@ -31,7 +31,7 @@ use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
 use crate::core::tools::grid::{TableError, TextTable};
-use crate::core::tools::layout::{self, EdgeList};
+use crate::core::tools::layout::{self, EdgeList, GraphError, PlotError, PointList};
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
@@ -1079,6 +1079,31 @@ impl Editor {
     /// Replaces the only selected text block by the graph of its edges, as
     /// one undo step (ADR-T87-1). Returns whether a redraw is needed.
     fn graph_from_selection(&mut self) -> bool {
+        self.block_to_shapes("graph", |text, origin, size, style| {
+            let list = EdgeList::parse(text)?;
+            Ok::<_, GraphError>(list.and_then(|list| list.shapes(origin, size, style)))
+        })
+    }
+
+    /// Replaces the only selected text block by the coordinate plane of
+    /// its points, as one undo step (ADR-T93-1). Returns whether a redraw
+    /// is needed.
+    fn plot_from_selection(&mut self) -> bool {
+        self.block_to_shapes("plot", |text, origin, size, style| {
+            let list = PointList::parse(text)?;
+            Ok::<_, PlotError>(list.and_then(|list| list.shapes(origin, size, style)))
+        })
+    }
+
+    /// Replaces the only selected text block by what `build` makes of its
+    /// text, origin and size, in its colour and the current line width.
+    /// A refusal becomes a notice naming `what`. Returns whether a redraw
+    /// is needed.
+    fn block_to_shapes<E: std::fmt::Display>(
+        &mut self,
+        what: &str,
+        build: impl FnOnce(&str, Vec2, f32, Style) -> Result<Option<Vec<Shape>>, E>,
+    ) -> bool {
         let &[id] = self.selection.as_slice() else {
             return false;
         };
@@ -1091,30 +1116,18 @@ impl Editor {
         else {
             return false;
         };
-        let (origin, size, color) = (*origin, *size, style.color);
-        let list = match EdgeList::parse(text) {
-            Ok(Some(list)) => list,
-            Ok(None) => return false,
-            Err(err) => {
-                self.notice = Some(format!("graph from text refused: {err}"));
-                return false;
-            }
-        };
         let style = Style {
-            color,
+            color: style.color,
             width: self.camera.world_len(self.style.width_px),
         };
-        let Some(shapes) = list.shapes(origin, size, style) else {
-            return false;
-        };
-        self.run_edit(|ctx| layout::replace_block(ctx, id, shapes))
-    }
-
-    /// Replaces the only selected text block by the coordinate plane of
-    /// its points, as one undo step (ADR-T93-1). Returns whether a redraw
-    /// is needed.
-    fn plot_from_selection(&mut self) -> bool {
-        todo!()
+        match build(text, *origin, *size, style) {
+            Ok(Some(shapes)) => self.run_edit(|ctx| layout::replace_block(ctx, id, shapes)),
+            Ok(None) => false,
+            Err(err) => {
+                self.notice = Some(format!("{what} from text refused: {err}"));
+                false
+            }
+        }
     }
 
     /// Builds the grid of clipboard `text` at the cursor, as one undo step,
