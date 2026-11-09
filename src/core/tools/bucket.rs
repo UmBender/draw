@@ -53,10 +53,7 @@ fn cells_along(grid: &Shape, from: Vec2, to: Vec2) -> Vec<(u32, u32)> {
     else {
         return Vec::new();
     };
-    let (cols, rows) = (
-        cols.clamp(1, GRID_MAX_CELLS),
-        rows.clamp(1, GRID_MAX_CELLS),
-    );
+    let (cols, rows) = (cols.clamp(1, GRID_MAX_CELLS), rows.clamp(1, GRID_MAX_CELLS));
     let place = |p: Vec2| {
         (
             cell_coord(p.x, a.x, b.x, cols),
@@ -68,8 +65,8 @@ fn cells_along(grid: &Shape, from: Vec2, to: Vec2) -> Vec<(u32, u32)> {
         return grid.grid_cell_at(to).into_iter().collect();
     }
     let (du, dv) = (u1 - u0, v1 - v0);
-    let Some((enter, leave)) = clip_axis((0.0, 1.0), u0, du, cols)
-        .and_then(|range| clip_axis(range, v0, dv, rows))
+    let Some((enter, leave)) =
+        clip_axis((0.0, 1.0), u0, du, cols).and_then(|range| clip_axis(range, v0, dv, rows))
     else {
         return Vec::new();
     };
@@ -112,7 +109,10 @@ fn clip_axis(range: (f64, f64), start: f64, delta: f64, max: u32) -> Option<(f64
         return (0.0..=max).contains(&start).then_some(range);
     }
     let (at_zero, at_max) = (-start / delta, (max - start) / delta);
-    let (low, high) = (range.0.max(at_zero.min(at_max)), range.1.min(at_zero.max(at_max)));
+    let (low, high) = (
+        range.0.max(at_zero.min(at_max)),
+        range.1.min(at_zero.max(at_max)),
+    );
     (low <= high).then_some((low, high))
 }
 
@@ -557,12 +557,7 @@ mod tests {
         // Act: out through the right side, back in one row lower.
         drag(
             &mut fx,
-            &[
-                (85.0, 10.0),
-                (160.0, 10.0),
-                (160.0, 35.0),
-                (85.0, 35.0),
-            ],
+            &[(85.0, 10.0), (160.0, 10.0), (160.0, 35.0), (85.0, 35.0)],
         );
 
         // Assert
