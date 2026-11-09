@@ -336,6 +336,30 @@ fn arb_graph_session() -> impl Strategy<Value = Vec<InputEvent>> {
     arb_block_key_session(arb_edge_text(), Key::L)
 }
 
+/// A list of points: mostly whole lines the parser reads, sometimes not.
+fn arb_point_text() -> impl Strategy<Value = String> {
+    let line = select(vec![
+        "0 0",
+        "1 2",
+        "-3 4.5",
+        "10 -20",
+        "2.5 2.5",
+        "1e3 7",
+        "1e300 -1e300",
+        "1e-300 0",
+        "5 5",
+        "-0.001 0.002",
+        "100 100",
+        "1 nan",
+    ]);
+    prop::collection::vec(line, 1..12).prop_map(|lines| lines.join("\n"))
+}
+
+/// A text block turned into a plot (T93), as [`arb_table_session`].
+fn arb_plot_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    arb_block_key_session(arb_point_text(), Key::P)
+}
+
 /// `T`, a click, pasted `text`, `Esc`, then `V`, a click on the block and
 /// `Ctrl` + `key`.
 fn arb_block_key_session(
@@ -761,6 +785,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         1 => arb_host_session(),
         1 => arb_table_session(),
         1 => arb_graph_session(),
+        1 => arb_plot_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
     ];
@@ -1161,6 +1186,35 @@ fn graph_sessions_turn_text_blocks_into_graphs() {
 
     // Assert: a harness that never reaches `Ctrl+L` on a block proves nothing.
     assert!(graphs >= 50, "sessions that built a graph: {graphs}/200");
+}
+
+#[test]
+fn plot_sessions_turn_text_blocks_into_plots() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_plot_session();
+    let mut plots = 0;
+
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_plot_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+
+        // Act
+        for event in tree.current() {
+            editor.handle(event);
+        }
+        plots += usize::from(
+            editor
+                .document()
+                .shapes()
+                .any(|(_, shape)| matches!(shape, Shape::Ellipse { fill: Some(_), .. })),
+        );
+    }
+
+    // Assert: a harness that never reaches `Ctrl+P` on a block proves nothing.
+    assert!(plots >= 50, "sessions that built a plot: {plots}/200");
 }
 
 #[test]

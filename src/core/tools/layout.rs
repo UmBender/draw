@@ -3,6 +3,9 @@
 //! [`EdgeList::parse`] reads the text; [`EdgeList::shapes`] lays it out as
 //! ordinary lines, arrows, circles and text blocks. [`replace_block`] puts
 //! them in the document in place of the block, as one undo step.
+//!
+//! [`PointList`] does the same for a text block of points, drawn as a
+//! coordinate plane (ADR-T93-1).
 
 use crate::core::document::{Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::Vec2;
@@ -23,6 +26,42 @@ pub const NODE_RADIUS_EM: f32 = 1.25;
 
 /// Space between a weight's box and its edge's stroke, in ems.
 const WEIGHT_GAP_EM: f32 = 0.15;
+
+/// Most points a plot can have.
+pub const MAX_POINTS: usize = 1000;
+
+/// Largest size of a coordinate; keeps every span finite (ADR-T93-1).
+pub const MAX_COORDINATE: f64 = 1e300;
+
+/// Length of a tick across its axis, in ems of the block's text.
+pub const TICK_LENGTH_EM: f32 = 0.5;
+
+/// Radius of a plotted point's circle, in ems.
+pub const POINT_RADIUS_EM: f32 = 0.2;
+
+/// Intervals the longer axis is divided into, at most, before rounding.
+const PLOT_INTERVALS: f64 = 8.0;
+
+/// A span below this has no usable scale of its own.
+const DEGENERATE_SPAN: f64 = 1e-290;
+
+/// A span below this share of the largest coordinate has none either.
+const DEGENERATE_RATIO: f64 = 1e-9;
+
+/// How close to a multiple of the step, in steps, counts as on it.
+const TICK_SNAP: f64 = 1e-9;
+
+/// Shortest distance between two ticks, in ems.
+const MIN_TICK_GAP_EM: f32 = 3.0;
+
+/// Space kept beside the widest tick number, in ems.
+const NUMBER_ROOM_EM: f32 = 1.0;
+
+/// Space between a tick's end and its number, in ems.
+const NUMBER_GAP_EM: f32 = 0.25;
+
+/// Exponents beyond this size are written `15e-9`.
+const MAX_PLAIN_EXPONENT: i32 = 6;
 
 /// What joins two node names in a pair token.
 const SEPARATORS: [char; 2] = ['-', '>'];
@@ -394,6 +433,330 @@ fn weight_text(weight: &str, middle: Vec2, along: Vec2, size: f32, style: Style)
             color: style.color,
             width: 0.0,
         },
+    }
+}
+
+/// Why a text cannot become a plot (ADR-T93-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlotError {
+    /// A line is not two usable numbers. Names the line, never its text:
+    /// the log does not record what was typed.
+    NotAPoint {
+        /// 1-based line number.
+        line: usize,
+    },
+    /// More than [`MAX_POINTS`] points.
+    TooManyPoints {
+        /// Points listed.
+        points: usize,
+    },
+    /// More than [`PASTE_MAX_BYTES`] of text.
+    TooLong {
+        /// Bytes of the text.
+        bytes: usize,
+    },
+}
+
+impl fmt::Display for PlotError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotAPoint { line } => write!(f, "line {line} is not a point"),
+            Self::TooManyPoints { points } => {
+                write!(f, "{points} points, a plot holds at most {MAX_POINTS}")
+            }
+            Self::TooLong { bytes } => {
+                write!(f, "{bytes} bytes of text, the limit is {PASTE_MAX_BYTES}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PlotError {}
+
+/// The distance between ticks: `mantissa × 10^exponent`, the mantissa 1, 2
+/// or 5. Kept apart so that tick numbers come from integers (ADR-T93-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TickStep {
+    /// 1, 2 or 5.
+    mantissa: i64,
+    /// The power of ten.
+    exponent: i32,
+}
+
+impl TickStep {
+    /// The smallest step that is at least `raw`, which must be positive
+    /// and finite.
+    fn covering(raw: f64) -> Self {
+        let exponent = raw.log10().floor() as i32;
+        let fraction = raw / 10_f64.powi(exponent);
+        // The tolerance keeps 1.0000000000000002 at 1 instead of 2.
+        let fits = |mantissa: &i32| f64::from(*mantissa) * (1.0 + 1e-9) >= fraction;
+        match [1, 2, 5].iter().find(|m| fits(m)) {
+            Some(mantissa) => Self {
+                mantissa: i64::from(*mantissa),
+                exponent,
+            },
+            None => Self {
+                mantissa: 1,
+                exponent: exponent + 1,
+            },
+        }
+    }
+
+    /// The step as a number.
+    fn value(self) -> f64 {
+        self.mantissa as f64 * 10_f64.powi(self.exponent)
+    }
+
+    /// The number of tick `k`, the multiple `k` of this step: built from
+    /// integers, so it never shows float noise.
+    fn label(self, k: i64) -> String {
+        let value = k.saturating_mul(self.mantissa);
+        if value == 0 {
+            return "0".to_owned();
+        }
+        if self.exponent.abs() > MAX_PLAIN_EXPONENT {
+            return format!("{value}e{}", self.exponent);
+        }
+        let Ok(places) = usize::try_from(-self.exponent) else {
+            let zeros = usize::try_from(self.exponent).unwrap_or(0);
+            return format!("{value}{}", "0".repeat(zeros));
+        };
+        let divisor = 10_u64.pow(self.exponent.unsigned_abs());
+        let size = value.unsigned_abs();
+        let sign = if value < 0 { "-" } else { "" };
+        let whole = size / divisor;
+        let digits = format!("{:0places$}", size % divisor);
+        match digits.trim_end_matches('0') {
+            "" => format!("{sign}{whole}"),
+            fraction => format!("{sign}{whole}.{fraction}"),
+        }
+    }
+}
+
+/// Ticks of one axis that carry a number, with the number.
+type TickNumbers = Vec<(i64, String)>;
+
+/// What a plot covers: both axes, in multiples of one step, each `lo < hi`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Frame {
+    /// The step of both axes.
+    step: TickStep,
+    /// First and last tick of the horizontal axis.
+    x: (i64, i64),
+    /// First and last tick of the vertical axis.
+    y: (i64, i64),
+}
+
+/// A text read as points (ADR-T93-1): at least one, at most [`MAX_POINTS`],
+/// every coordinate finite and at most [`MAX_COORDINATE`] in size.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointList {
+    /// The points, in the order they were written.
+    points: Vec<(f64, f64)>,
+}
+
+impl PointList {
+    /// The points `text` holds; `Ok(None)` when it is blank.
+    ///
+    /// # Errors
+    ///
+    /// [`PlotError`] if a line is not a point, there are too many points
+    /// or the text is over [`PASTE_MAX_BYTES`].
+    pub fn parse(text: &str) -> Result<Option<Self>, PlotError> {
+        if text.len() > PASTE_MAX_BYTES {
+            return Err(PlotError::TooLong { bytes: text.len() });
+        }
+        let mut points = Vec::new();
+        for (number, line) in text.lines().enumerate() {
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            match tokens.as_slice() {
+                [] => {}
+                [x, y] => points.push(
+                    coordinate(x)
+                        .zip(coordinate(y))
+                        .ok_or(PlotError::NotAPoint { line: number + 1 })?,
+                ),
+                _ => return Err(PlotError::NotAPoint { line: number + 1 }),
+            }
+        }
+        if points.len() > MAX_POINTS {
+            return Err(PlotError::TooManyPoints {
+                points: points.len(),
+            });
+        }
+        Ok((!points.is_empty()).then_some(Self { points }))
+    }
+
+    /// The points, in the order they were written.
+    #[must_use]
+    pub fn points(&self) -> &[(f64, f64)] {
+        &self.points
+    }
+
+    /// The plot of these points at text size `size`, the top-left of all
+    /// it draws at `origin`: axes, ticks, numbers, then points. `None` if
+    /// the size is not finite and positive or a shape would not be finite.
+    #[must_use]
+    pub fn shapes(&self, origin: Vec2, size: f32, style: Style) -> Option<Vec<Shape>> {
+        if !size.is_finite() || size <= 0.0 {
+            return None;
+        }
+        let frame = self.frame();
+        let (x_numbers, y_numbers) = frame.numbers();
+        let widest = x_numbers
+            .iter()
+            .chain(&y_numbers)
+            .map(|(_, number)| text_layout::bounds(Vec2::ZERO, number, size).width())
+            .fold(0.0, f32::max);
+        let pitch = (MIN_TICK_GAP_EM * size).max(widest + NUMBER_ROOM_EM * size);
+        if !pitch.is_finite() {
+            return None;
+        }
+
+        // Where each axis runs: through the origin, or on the nearest edge.
+        let cross_x = 0_i64.clamp(frame.x.0, frame.x.1);
+        let cross_y = 0_i64.clamp(frame.y.0, frame.y.1);
+        let at = |x: f64, y: f64| {
+            Vec2::new(
+                (x - frame.x.0 as f64) as f32 * pitch,
+                (frame.y.1 as f64 - y) as f32 * pitch,
+            )
+        };
+        let tick_x = |k: i64| at(k as f64, cross_y as f64);
+        let tick_y = |k: i64| at(cross_x as f64, k as f64);
+        let line = |a: Vec2, b: Vec2| Shape::Line { a, b, style };
+        let reach = TICK_LENGTH_EM * size * 0.5;
+        let across_x = Vec2::new(0.0, reach);
+        let across_y = Vec2::new(reach, 0.0);
+        let gap = reach + NUMBER_GAP_EM * size;
+
+        let mut shapes = vec![
+            line(tick_x(frame.x.0), tick_x(frame.x.1)),
+            line(tick_y(frame.y.0), tick_y(frame.y.1)),
+        ];
+        shapes.extend(
+            (frame.x.0..=frame.x.1).map(|k| line(tick_x(k) - across_x, tick_x(k) + across_x)),
+        );
+        shapes.extend(
+            (frame.y.0..=frame.y.1).map(|k| line(tick_y(k) - across_y, tick_y(k) + across_y)),
+        );
+        shapes.extend(x_numbers.into_iter().map(|(k, number)| {
+            let half = text_layout::bounds(Vec2::ZERO, &number, size).width() * 0.5;
+            number_text(number, tick_x(k) + Vec2::new(-half, gap), size, style)
+        }));
+        shapes.extend(y_numbers.into_iter().map(|(k, number)| {
+            let bounds = text_layout::bounds(Vec2::ZERO, &number, size);
+            let corner = Vec2::new(-gap - bounds.width(), -bounds.height() * 0.5);
+            number_text(number, tick_y(k) + corner, size, style)
+        }));
+        let unit = frame.step.value();
+        shapes.extend(
+            self.points
+                .iter()
+                .map(|(x, y)| point_dot(at(x / unit, y / unit), POINT_RADIUS_EM * size, style)),
+        );
+
+        if !shapes.iter().all(Shape::is_finite) {
+            return None;
+        }
+        let corners: Vec<Vec2> = shapes.iter().map(|shape| shape.bounds().min).collect();
+        let shift = origin - top_left(&corners);
+        for shape in &mut shapes {
+            shape.translate(shift);
+        }
+        shapes.iter().all(Shape::is_finite).then_some(shapes)
+    }
+
+    /// The step and the ticks both axes run between (ADR-T93-1).
+    fn frame(&self) -> Frame {
+        let (x_low, x_high) = extent(self.points.iter().map(|point| point.0));
+        let (y_low, y_high) = extent(self.points.iter().map(|point| point.1));
+        let span = (x_high - x_low).max(y_high - y_low);
+        let largest = [x_low, x_high, y_low, y_high]
+            .iter()
+            .fold(0.0, |largest: f64, value| largest.max(value.abs()));
+        let degenerate = span < DEGENERATE_SPAN || span < largest * DEGENERATE_RATIO;
+        let raw = if degenerate {
+            (largest / 10.0).max(1.0)
+        } else {
+            span / PLOT_INTERVALS
+        };
+        let step = TickStep::covering(raw);
+        Frame {
+            step,
+            x: ticks_over(x_low, x_high, step.value()),
+            y: ticks_over(y_low, y_high, step.value()),
+        }
+    }
+}
+
+impl Frame {
+    /// The ticks that carry a number and their numbers, horizontal axis
+    /// then vertical. When both axes pass through the origin only the
+    /// horizontal one numbers it.
+    fn numbers(&self) -> (TickNumbers, TickNumbers) {
+        let holds_zero = |(low, high): (i64, i64)| low <= 0 && 0 <= high;
+        let origin_inside = holds_zero(self.x) && holds_zero(self.y);
+        let numbered = |k: i64| (k, self.step.label(k));
+        let horizontal = (self.x.0..=self.x.1).map(numbered).collect();
+        let vertical = (self.y.0..=self.y.1)
+            .filter(|k| !origin_inside || *k != 0)
+            .map(numbered)
+            .collect();
+        (horizontal, vertical)
+    }
+}
+
+/// A coordinate: a finite number no larger than [`MAX_COORDINATE`].
+fn coordinate(token: &str) -> Option<f64> {
+    let value: f64 = token.parse().ok()?;
+    // Also false for NaN.
+    (value.abs() <= MAX_COORDINATE).then_some(value)
+}
+
+/// The smallest and the largest of `values`.
+fn extent(values: impl Iterator<Item = f64>) -> (f64, f64) {
+    values.fold((f64::MAX, f64::MIN), |(low, high), value| {
+        (low.min(value), high.max(value))
+    })
+}
+
+/// The ticks, in multiples of `step`, an axis over `low..=high` runs
+/// between; one step either side when the values sit on one multiple.
+fn ticks_over(low: f64, high: f64, step: f64) -> (i64, i64) {
+    let first = (low / step + TICK_SNAP).floor() as i64;
+    let last = (high / step - TICK_SNAP).ceil() as i64;
+    if first < last {
+        (first, last)
+    } else {
+        (first - 1, first + 1)
+    }
+}
+
+/// The text block of a tick's `number`, its top-left at `origin`.
+fn number_text(number: String, origin: Vec2, size: f32, style: Style) -> Shape {
+    Shape::Text {
+        origin,
+        text: number,
+        size,
+        style: Style {
+            color: style.color,
+            width: 0.0,
+        },
+    }
+}
+
+/// The filled circle of a plotted point.
+fn point_dot(centre: Vec2, radius: f32, style: Style) -> Shape {
+    let corner = Vec2::new(radius, radius);
+    Shape::Ellipse {
+        a: centre - corner,
+        b: centre + corner,
+        style,
+        fill: Some(style.color),
+        label: None,
+        text: None,
     }
 }
 
@@ -1009,6 +1372,628 @@ mod tests {
             if let Ok(Some(list)) = parsed {
                 prop_assert!(list.names().len() <= MAX_NODES);
                 prop_assert!(list.edges().iter().all(|e| e.from != e.to));
+                let style = Style { width, ..STYLE };
+                if let Some(shapes) = list.shapes(Vec2::new(x, 0.0), size, style) {
+                    prop_assert!(shapes.iter().all(Shape::is_finite));
+                }
+            }
+        }
+    }
+
+    // ---- T93 coordinate plane ---------------------------------------------
+
+    const TICK: f32 = TICK_LENGTH_EM * SIZE;
+
+    fn points(text: &str) -> PointList {
+        match PointList::parse(text) {
+            Ok(Some(list)) => list,
+            other => panic!("{text:?} gave {other:?}"),
+        }
+    }
+
+    fn plot(text: &str) -> Vec<Shape> {
+        match points(text).shapes(Vec2::ZERO, SIZE, STYLE) {
+            Some(shapes) => shapes,
+            None => panic!("{text:?} has no plot"),
+        }
+    }
+
+    fn step(mantissa: i64, exponent: i32) -> TickStep {
+        TickStep { mantissa, exponent }
+    }
+
+    fn is_tick(segment: &(Vec2, Vec2)) -> bool {
+        approx_eq(segment.0.distance(segment.1), TICK, 1e-2)
+    }
+
+    /// The horizontal axis, then the vertical one.
+    fn plot_axes(shapes: &[Shape]) -> ((Vec2, Vec2), (Vec2, Vec2)) {
+        let axes: Vec<_> = segments(shapes)
+            .into_iter()
+            .filter(|s| !is_tick(s))
+            .collect();
+        assert_eq!(axes.len(), 2, "{axes:?}");
+        assert!(approx_eq(axes[0].0.y, axes[0].1.y, 1e-2), "x axis is level");
+        assert!(approx_eq(axes[1].0.x, axes[1].1.x, 1e-2), "y axis is plumb");
+        (axes[0], axes[1])
+    }
+
+    /// Where the ticks across the `x` axis are, along it.
+    fn x_ticks(shapes: &[Shape]) -> Vec<f32> {
+        segments(shapes)
+            .iter()
+            .filter(|s| is_tick(s) && approx_eq(s.0.x, s.1.x, 1e-3))
+            .map(|s| s.0.x)
+            .collect()
+    }
+
+    /// Where the ticks across the `y` axis are, along it.
+    fn y_ticks(shapes: &[Shape]) -> Vec<f32> {
+        segments(shapes)
+            .iter()
+            .filter(|s| is_tick(s) && approx_eq(s.0.y, s.1.y, 1e-3))
+            .map(|s| s.0.y)
+            .collect()
+    }
+
+    fn numbers(shapes: &[Shape]) -> Vec<(&str, crate::core::geom::Aabb)> {
+        shapes
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Text {
+                    origin, text, size, ..
+                } => Some((text.as_str(), text_layout::bounds(*origin, text, *size))),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn dots(shapes: &[Shape]) -> Vec<Vec2> {
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .map(|s| s.bounds().center())
+            .collect()
+    }
+
+    /// Every plot, however odd its data: two axes, ticks on both, one dot
+    /// per point and every dot on the axes' frame.
+    fn assert_valid_plot(shapes: &[Shape], wanted_dots: usize) {
+        assert!(shapes.iter().all(Shape::is_finite));
+        let (x_axis, y_axis) = plot_axes(shapes);
+        assert!(x_axis.0.distance(x_axis.1) > 0.0);
+        assert!(y_axis.0.distance(y_axis.1) > 0.0);
+        let (xs, ys) = (x_ticks(shapes), y_ticks(shapes));
+        assert!(xs.len() >= 2, "{xs:?}");
+        assert!(ys.len() >= 2, "{ys:?}");
+        assert_ne!(numbers(shapes).len(), 0);
+        let centres = dots(shapes);
+        assert_eq!(centres.len(), wanted_dots);
+        let reach = |values: &[f32]| {
+            let low = values.iter().copied().fold(f32::MAX, f32::min);
+            let high = values.iter().copied().fold(f32::MIN, f32::max);
+            (low - 0.1, high + 0.1)
+        };
+        let ((left, right), (top, bottom)) = (reach(&xs), reach(&ys));
+        for dot in centres {
+            assert!(left <= dot.x && dot.x <= right, "{dot:?} {left} {right}");
+            assert!(top <= dot.y && dot.y <= bottom, "{dot:?} {top} {bottom}");
+        }
+    }
+
+    // ---- T93 AC-1 ---------------------------------------------------------
+
+    #[test]
+    fn plot_draws_axes_ticks_numbers_and_one_dot_per_point() {
+        // Act: step 2, x over 0..=10 and y over 0..=6.
+        let shapes = plot("0 0\n10 5");
+
+        // Assert
+        plot_axes(&shapes);
+        assert_eq!(x_ticks(&shapes).len(), 6);
+        assert_eq!(y_ticks(&shapes).len(), 4);
+        assert_eq!(numbers(&shapes).len(), 6 + 3);
+        assert_eq!(dots(&shapes).len(), 2);
+        assert_eq!(shapes.len(), 2 + 10 + 9 + 2);
+    }
+
+    #[test]
+    fn plot_points_are_small_filled_circles() {
+        // Act
+        let shapes = plot("1 2\n3 4");
+
+        // Assert
+        let wide = 2.0 * POINT_RADIUS_EM * SIZE;
+        let mut seen = 0;
+        for shape in &shapes {
+            if let Shape::Ellipse {
+                a,
+                b,
+                style,
+                fill,
+                label,
+                text,
+            } = shape
+            {
+                seen += 1;
+                assert!(approx_eq(b.x - a.x, wide, 1e-3));
+                assert!(approx_eq(b.y - a.y, wide, 1e-3));
+                assert_eq!(*style, STYLE);
+                assert_eq!(*fill, Some(STYLE.color));
+                assert_eq!(*label, None);
+                assert_eq!(*text, None);
+            }
+        }
+        assert_eq!(seen, 2);
+    }
+
+    #[test]
+    fn plot_points_sit_where_their_coordinates_say() {
+        // Act: step 2, so one tick gap is two units.
+        let shapes = plot("0 0\n10 5\n4 2");
+
+        // Assert
+        let xs = x_ticks(&shapes);
+        let gap = xs[1] - xs[0];
+        let centres = dots(&shapes);
+        assert!(approx_eq(centres[0].x, xs[0], 1e-2));
+        let far = centres[1] - centres[0];
+        assert!(approx_eq(far.x, 5.0 * gap, 1e-2), "{far:?}");
+        assert!(approx_eq(far.y, -2.5 * gap, 1e-2), "{far:?}");
+        let near = centres[2] - centres[0];
+        assert!(approx_eq(near.x, 2.0 * gap, 1e-2), "{near:?}");
+        assert!(approx_eq(near.y, -gap, 1e-2), "{near:?}");
+    }
+
+    #[test]
+    fn plot_y_grows_upward() {
+        // Act
+        let centres = dots(&plot("0 0\n0 9"));
+
+        // Assert: screen y grows downward.
+        assert!(centres[1].y < centres[0].y);
+    }
+
+    #[test]
+    fn plot_puts_its_top_left_at_the_origin() {
+        for text in ["0 0\n10 5", "-5 -5\n5 5", "3 4"] {
+            // Arrange
+            let origin = Vec2::new(40.0, 60.0);
+
+            // Act
+            let shapes = points(text).shapes(origin, SIZE, STYLE).unwrap_or_default();
+
+            // Assert
+            let left = shapes
+                .iter()
+                .map(|s| s.bounds().min.x)
+                .fold(f32::MAX, f32::min);
+            let top = shapes
+                .iter()
+                .map(|s| s.bounds().min.y)
+                .fold(f32::MAX, f32::min);
+            assert!(approx_eq(left, origin.x, 1e-2), "{text}: {left}");
+            assert!(approx_eq(top, origin.y, 1e-2), "{text}: {top}");
+        }
+    }
+
+    #[test]
+    fn plot_stacks_axes_ticks_numbers_points() {
+        // Act
+        let shapes = plot("-4 -2\n6 8");
+
+        // Assert
+        let rank = |shape: &Shape| match shape {
+            Shape::Line { a, b, .. } if is_tick(&(*a, *b)) => 1,
+            Shape::Line { .. } => 0,
+            Shape::Text { .. } => 2,
+            _ => 3,
+        };
+        assert!(shapes.windows(2).all(|w| rank(&w[0]) <= rank(&w[1])));
+    }
+
+    #[test]
+    fn plot_refuses_a_size_that_is_not_positive_and_finite() {
+        for size in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(points("1 2").shapes(Vec2::ZERO, size, STYLE), None);
+        }
+        // Far enough that the layout overflows.
+        let huge = Vec2::new(f32::MAX, f32::MAX);
+        assert_eq!(points("0 0\n9 9").shapes(huge, f32::MAX, STYLE), None);
+    }
+
+    // ---- T93 AC-2 ---------------------------------------------------------
+
+    proptest! {
+        #[test]
+        fn step_is_one_two_or_five_times_a_power_of_ten(
+            exponent in -280_i32..280,
+            mantissa in 1.0_f64..10.0,
+        ) {
+            // Arrange
+            let raw = mantissa * 10_f64.powi(exponent);
+
+            // Act
+            let tick = TickStep::covering(raw);
+
+            // Assert
+            prop_assert!([1, 2, 5].contains(&tick.mantissa));
+            prop_assert!(tick.value() >= raw * (1.0 - 1e-9));
+            prop_assert!(tick.value() < raw * 2.5 * (1.0 + 1e-9));
+        }
+    }
+
+    #[test]
+    fn step_rounds_up_to_the_next_nice_value() {
+        for (raw, wanted) in [
+            (1.0, step(1, 0)),
+            (1.25, step(2, 0)),
+            (2.0, step(2, 0)),
+            (2.1, step(5, 0)),
+            (5.5, step(1, 1)),
+            (1000.0, step(1, 3)),
+            (0.03, step(5, -2)),
+        ] {
+            assert_eq!(TickStep::covering(raw), wanted, "{raw}");
+        }
+    }
+
+    #[test]
+    fn frame_uses_one_step_for_both_axes() {
+        assert_eq!(
+            points("0 0\n100 1").frame(),
+            Frame {
+                step: step(2, 1),
+                x: (0, 5),
+                y: (0, 1),
+            }
+        );
+        assert_eq!(
+            points("-5 -3\n7 1").frame(),
+            Frame {
+                step: step(2, 0),
+                x: (-3, 4),
+                y: (-2, 1),
+            }
+        );
+    }
+
+    #[test]
+    fn plot_axes_share_one_scale() {
+        // Act
+        let shapes = plot("0 0\n100 40");
+
+        // Assert
+        let (xs, ys) = (x_ticks(&shapes), y_ticks(&shapes));
+        let gap = xs[1] - xs[0];
+        for pair in xs.windows(2) {
+            assert!(approx_eq(pair[1] - pair[0], gap, 1e-2));
+        }
+        for pair in ys.windows(2) {
+            assert!(approx_eq(pair[0] - pair[1], gap, 1e-2), "{ys:?}");
+        }
+    }
+
+    #[test]
+    fn ticks_are_numbered_with_their_values() {
+        // Act
+        let shapes = plot("0 0\n10 5");
+
+        // Assert
+        let found = numbers(&shapes);
+        let texts: Vec<&str> = found.iter().map(|(text, _)| *text).collect();
+        assert_eq!(texts, ["0", "2", "4", "6", "8", "10", "2", "4", "6"]);
+        let (x_axis, y_axis) = plot_axes(&shapes);
+        for ((_, bounds), x) in found[..6].iter().zip(x_ticks(&shapes)) {
+            assert!(approx_eq(bounds.center().x, x, 1e-2));
+            assert!(bounds.min.y > x_axis.0.y);
+        }
+        // The `y` numbers skip the zero, the lowest tick.
+        for ((_, bounds), y) in found[6..].iter().zip(&y_ticks(&shapes)[1..]) {
+            assert!(approx_eq(bounds.center().y, *y, 1e-2));
+            assert!(bounds.max.x < y_axis.0.x);
+        }
+    }
+
+    #[test]
+    fn tick_labels_are_exact_decimals() {
+        for (tick, k, wanted) in [
+            (step(1, -1), 3, "0.3"),
+            (step(5, -1), 3, "1.5"),
+            (step(2, -1), 5, "1"),
+            (step(5, -2), -3, "-0.15"),
+            (step(1, -1), -1, "-0.1"),
+            (step(2, 1), 3, "60"),
+            (step(1, 0), 0, "0"),
+            (step(5, -1), 0, "0"),
+            (step(1, 6), 2, "2000000"),
+            (step(1, -6), 15, "0.000015"),
+        ] {
+            assert_eq!(tick.label(k), wanted, "{tick:?} {k}");
+        }
+    }
+
+    #[test]
+    fn tick_labels_use_an_exponent_when_long() {
+        assert_eq!(step(5, 7).label(3), "15e7");
+        assert_eq!(step(1, -9).label(15), "15e-9");
+        assert_eq!(step(1, 300).label(-2), "-2e300");
+        assert_eq!(step(1, 300).label(0), "0");
+    }
+
+    #[test]
+    fn long_numbers_widen_the_ticks() {
+        // Act
+        let long = x_ticks(&plot("0 0\n8000000 1"));
+        let short = x_ticks(&plot("0 0\n8 1"));
+
+        // Assert
+        assert!(approx_eq(short[1] - short[0], 3.0 * SIZE, 1e-2));
+        assert!(long[1] - long[0] > short[1] - short[0]);
+    }
+
+    // ---- T93 AC-3 ---------------------------------------------------------
+
+    #[test]
+    fn axes_cross_at_the_origin_when_it_is_in_range() {
+        // Act: the third point is the origin.
+        let shapes = plot("-4 -2\n6 8\n0 0");
+
+        // Assert
+        let (x_axis, y_axis) = plot_axes(&shapes);
+        let origin = dots(&shapes)[2];
+        assert!(approx_eq(x_axis.0.y, origin.y, 1e-2));
+        assert!(approx_eq(y_axis.0.x, origin.x, 1e-2));
+        let (xs, ys) = (x_ticks(&shapes), y_ticks(&shapes));
+        assert!(approx_eq(x_axis.0.x, xs[0], 1e-2));
+        assert!(approx_eq(x_axis.1.x, xs[xs.len() - 1], 1e-2));
+        assert!(approx_eq(y_axis.0.y.max(y_axis.1.y), ys[0], 1e-2));
+        assert!(approx_eq(
+            y_axis.0.y.min(y_axis.1.y),
+            ys[ys.len() - 1],
+            1e-2
+        ));
+    }
+
+    #[test]
+    fn axes_sit_on_the_edge_nearest_the_origin() {
+        for (text, corner) in [
+            // All positive: the first point is the bottom-left corner.
+            ("3 4\n9 8", 0),
+            // All negative: the second point is the top-right corner.
+            ("-9 -8\n-3 -4", 1),
+        ] {
+            // Act
+            let shapes = plot(text);
+
+            // Assert
+            let (x_axis, y_axis) = plot_axes(&shapes);
+            let at = dots(&shapes)[corner];
+            assert!(approx_eq(x_axis.0.y, at.y, 1e-2), "{text}");
+            assert!(approx_eq(y_axis.0.x, at.x, 1e-2), "{text}");
+        }
+    }
+
+    #[test]
+    fn axes_treat_each_direction_on_its_own() {
+        // Act: x runs through 0, every y is positive.
+        let shapes = plot("-3 4\n3 9");
+
+        // Assert
+        let (x_axis, y_axis) = plot_axes(&shapes);
+        let centres = dots(&shapes);
+        assert!(approx_eq(x_axis.0.y, centres[0].y, 1e-2));
+        assert!(approx_eq(
+            y_axis.0.x,
+            centres[0].lerp(centres[1], 0.5).x,
+            1e-2
+        ));
+    }
+
+    #[test]
+    fn origin_is_numbered_once() {
+        for (text, zeros) in [("-4 -2\n6 8", 1), ("3 4\n9 8", 0), ("-3 4\n3 9", 1)] {
+            // Act
+            let shapes = plot(text);
+
+            // Assert
+            let found = numbers(&shapes);
+            let count = found.iter().filter(|(number, _)| *number == "0").count();
+            assert_eq!(count, zeros, "{text}");
+        }
+    }
+
+    // ---- T93 AC-4 ---------------------------------------------------------
+
+    #[test]
+    fn parse_reads_integers_decimals_and_negatives() {
+        assert_eq!(
+            points("1 2\n-3.5 4.25\r\n\n  0\t-7  ").points(),
+            [(1.0, 2.0), (-3.5, 4.25), (0.0, -7.0)]
+        );
+    }
+
+    #[test]
+    fn parse_blank_text_is_no_plot() {
+        for text in ["", "  \n\t\n "] {
+            assert_eq!(PointList::parse(text), Ok(None));
+        }
+    }
+
+    #[test]
+    fn parse_refuses_what_is_not_a_point() {
+        for text in [
+            "a b",
+            "1",
+            "1 2 3",
+            "1,2",
+            "1 x",
+            "inf 2",
+            "1 -inf",
+            "NaN 1",
+            "1 infinity",
+            "1e999 0",
+            "0 -1e999",
+            "1e301 0",
+            "$x$ 1",
+        ] {
+            assert_eq!(
+                PointList::parse(text),
+                Err(PlotError::NotAPoint { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_refuses_too_much_plot_text() {
+        // Arrange
+        let text = "1 2\n".repeat(PASTE_MAX_BYTES / 4 + 1);
+
+        // Act / Assert
+        assert_eq!(
+            PointList::parse(&text),
+            Err(PlotError::TooLong { bytes: text.len() })
+        );
+    }
+
+    #[test]
+    fn plot_error_names_the_line_not_its_text() {
+        // Act
+        let err = PointList::parse("1 2\n\nsecret");
+
+        // Assert
+        assert_eq!(err, Err(PlotError::NotAPoint { line: 3 }));
+        let reason = PlotError::NotAPoint { line: 3 }.to_string();
+        assert!(reason.contains('3') && !reason.contains("secret"));
+    }
+
+    // ---- T93 AC-5 ---------------------------------------------------------
+
+    fn many_points(n: usize) -> String {
+        (0..n)
+            .map(|i| format!("{i} {}", 2 * i))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn parse_accepts_1000_points() {
+        assert_eq!(points(&many_points(1000)).points().len(), MAX_POINTS);
+    }
+
+    #[test]
+    fn parse_refuses_more_than_1000_points() {
+        assert_eq!(
+            PointList::parse(&many_points(1001)),
+            Err(PlotError::TooManyPoints { points: 1001 })
+        );
+    }
+
+    #[test]
+    fn single_point_gives_a_valid_plot() {
+        for text in ["3 4", "0 0", "-1000 2.5", "0.001 0.001"] {
+            assert_valid_plot(&plot(text), 1);
+        }
+        assert_eq!(
+            points("3 4").frame(),
+            Frame {
+                step: step(1, 0),
+                x: (2, 4),
+                y: (3, 5),
+            }
+        );
+    }
+
+    #[test]
+    fn equal_coordinates_give_a_valid_plot() {
+        assert_valid_plot(&plot("5 5\n5 5\n5 5"), 3);
+    }
+
+    #[test]
+    fn one_flat_axis_gives_a_valid_plot() {
+        // Act
+        let shapes = plot("0 200\n1000 200");
+
+        // Assert: the flat axis runs one step either side of the value.
+        assert_valid_plot(&shapes, 2);
+        assert_eq!(
+            points("0 200\n1000 200").frame(),
+            Frame {
+                step: step(2, 2),
+                x: (0, 5),
+                y: (0, 2),
+            }
+        );
+    }
+
+    #[test]
+    fn extreme_coordinates_give_a_valid_plot() {
+        for text in [
+            "1e300 -1e300",
+            "1e300 1\n-1e300 1",
+            "1e-300 2e-300",
+            "5e-324 0",
+            "1e15 0\n1000000000000001 1",
+        ] {
+            assert_valid_plot(&plot(text), text.lines().count());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn plot_holds_for_any_points(
+            coordinates in prop::collection::vec(
+                (
+                    prop_oneof![
+                        -1e6_f64..1e6,
+                        (-20_i32..20).prop_map(f64::from),
+                        Just(1e300),
+                        Just(-1e300),
+                        Just(1e-300),
+                    ],
+                    prop_oneof![
+                        -1e6_f64..1e6,
+                        (-20_i32..20).prop_map(f64::from),
+                        Just(7.0),
+                    ],
+                ),
+                1..60,
+            ),
+        ) {
+            // Arrange
+            let text = coordinates
+                .iter()
+                .map(|(x, y)| format!("{x} {y}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let list = points(&text);
+
+            // Act
+            let frame = list.frame();
+
+            // Assert: never many ticks, never a flat axis.
+            prop_assert!(frame.x.0 < frame.x.1 && frame.x.1 - frame.x.0 <= 12);
+            prop_assert!(frame.y.0 < frame.y.1 && frame.y.1 - frame.y.0 <= 12);
+            assert_valid_plot(&plot(&text), coordinates.len());
+        }
+
+        #[test]
+        fn parse_and_plot_hold_for_any_text(
+            text in prop_oneof![
+                any::<String>(),
+                "[0-9 .\\-\ne]{0,80}",
+            ],
+            size in 0.01_f32..5000.0,
+            width in 0.0_f32..100.0,
+            x in -1e6_f32..1e6,
+        ) {
+            // Act: must never panic.
+            let parsed = PointList::parse(&text);
+
+            // Assert
+            if let Ok(Some(list)) = parsed {
+                prop_assert!(list.points().len() <= MAX_POINTS);
                 let style = Style { width, ..STYLE };
                 if let Some(shapes) = list.shapes(Vec2::new(x, 0.0), size, style) {
                     prop_assert!(shapes.iter().all(Shape::is_finite));

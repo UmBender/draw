@@ -47,6 +47,7 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `Ctrl+Shift+V` | Build a grid from the system clipboard at the cursor; read by the shell, not in the keymap table ([[ADR-T84-1 Grid from text keys and table rules]]) |
 | `Ctrl+L` | Replace the only selected text block by the graph or tree of its edges ([[ADR-T87-1 Graph from an edge list key and layout rules]]) |
 | `Alt+]` / `Alt+[` | Grow / shrink the selection by 10 % about its centre ([[ADR-T91-1 Resize handles and scale rules]]) |
+| `Ctrl+P` | Replace the only selected text block by a coordinate plane of its `x y` points ([[ADR-T93-1 Coordinate plane key and plotting rules]]) |
 | `Delete`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) |
 | `Esc` | Cancel current gesture / clear selection |

@@ -88,6 +88,9 @@ pub enum Command {
     ScaleUp,
     /// Shrink the selection by 10 % about its centre.
     ScaleDown,
+    /// Replace the only selected text block by a coordinate plane of the
+    /// points it lists (ADR-T93-1).
+    PlotFromText,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).

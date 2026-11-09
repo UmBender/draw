@@ -192,6 +192,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Shrink selection 10 %",
     ),
     (
+        KeyChord::ctrl(Key::P),
+        Command::PlotFromText,
+        "Text block to plot",
+    ),
+    (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
         "Delete selection",
@@ -419,6 +424,7 @@ mod tests {
             (Key::L, CTRL, Command::GraphFromText),
             (Key::BracketRight, ALT, Command::ScaleUp),
             (Key::BracketLeft, ALT, Command::ScaleDown),
+            (Key::P, CTRL, Command::PlotFromText),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
@@ -539,11 +545,18 @@ mod tests {
         // T38: pen, line and smart snap moved to the left hand.
         for key in [Key::P, Key::L, Key::M] {
             for mods in all_mods() {
-                if (key, mods) != (Key::L, CTRL) {
+                if (key, mods) != (Key::L, CTRL) && (key, mods) != (Key::P, CTRL) {
                     assert_eq!(resolve(key, mods), None, "{key:?} {mods:?}");
                 }
             }
         }
+    }
+
+    #[test]
+    fn ctrl_p_builds_a_plot_from_text() {
+        assert_eq!(resolve(Key::P, CTRL), Some(Command::PlotFromText));
+        assert_eq!(resolve(Key::P, CTRL_SHIFT), None);
+        assert_eq!(resolve(Key::P, NONE), None);
     }
 
     #[test]
