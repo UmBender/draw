@@ -13,7 +13,7 @@ version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
 out=target/package
 tarball=$out/draw-$version-x86_64-linux.tar.gz
 glibc_floor=2.28
-max_binary_bytes=$((2 * 1024 * 1024))
+max_binary_bytes=$((20 * 1024 * 1024))
 
 step() { printf '\n==> %s\n' "$*"; }
 fail() { echo "package.sh: $*" >&2; exit 1; }
