@@ -1,7 +1,7 @@
 ---
 title: Grid tool
 task: "[[T18 Grid tool]]"
-adrs: ["[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-2 Helper key bindings]]", "[[ADR-T16-3 Helper settings and hooks]]"]
+adrs: ["[[ADR-T18-1 Grid drag reads live dims and snaps as a box]]", "[[ADR-T18-2 Grid size flyout in the toolbar]]", "[[ADR-T18-3 Grid axis indices]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-2 Helper key bindings]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T85-1 Arrows resize the one selected grid]]"]
 tutorial: "[[18 A grid tool with live parameters]]"
 shortcuts: ["G", "←", "→", "↑", "↓", "N", "Shift"]
 tags: [feature]
@@ -24,6 +24,7 @@ copy and undo it like any other.
 | Draw a grid | left drag |
 | One column more / fewer | `→` / `←` (also before or between drags) |
 | One row more / fewer | `↓` / `↑` |
+| Resize a finished grid | Select tool, select only that grid, then `→` `←` `↓` `↑` |
 | Change columns / rows with the mouse | `-` / `+` in the flyout next to `G` |
 | Axis indices on / off | numbering: `N` or the toolbar `N` button |
 | Square cells | hold `Shift` |
@@ -46,6 +47,13 @@ the arrow keys too. Grids start at 4 × 4; columns and rows range over `1..=64`.
 stay for the next grid. With snapping on, corners snap like a rectangle's
 (world grid, sizes of other boxes and grid cells, alignment guides).
 
+**Resizing a finished grid.** With the Select tool and exactly one grid
+selected, the arrow keys change that grid instead of the size of the next
+one. The cell size stays and the box changes at its right and bottom edges,
+whichever way it was drawn. Cells that remain keep their text and fill;
+those of a removed column or row go, and `Ctrl+Z` brings them back. Each
+press is one undo step, and a press at 1 or 64 does nothing.
+
 ## How it works
 
 `core::tools::grid` (`src/core/tools/grid.rs`) keeps a `Drag` with the
@@ -66,6 +74,14 @@ as the arrow keys, and `route` swallows presses on the panel when
 `shell::app` reports the grid tool active
 ([[ADR-T18-2 Grid size flyout in the toolbar]]).
 
+Resizing: `Editor::execute` sends `GridCols` and `GridRows` to
+`Shape::grid_stepped` when `resizable_grid` finds a single selected grid
+under the Select tool, and commits the result as one `Replace` edit, so the
+history brings removed cells back. When corner `a` is on the moving edge (a
+grid drawn leftwards or upwards), `a` moves and the cell indices shift, so
+the remaining cells stay where they are
+([[ADR-T85-1 Arrows resize the one selected grid]]).
+
 Axis indices: `Shape::Grid` has `axes: bool`; `a` is the drag start, so
 the orientation is already in the shape and survives moves.
 `shape::grid_axis_labels` gives each index's world box (one cell, just
@@ -77,8 +93,8 @@ to the longest index), hidden when cells are too small on screen
 ## Limits
 
 - No per-cell fill, numbering or merged cells.
-- A committed grid cannot be resized or have its dimensions changed —
-  redraw it.
+- Rows and columns are added or removed only at the right and bottom
+  edges; to insert one in the middle, redraw the grid.
 - Clicking an index does not select the grid; click a grid line.
 - Axes cannot be toggled on a committed grid — redraw it.
 - The flyout covers about 130 × 60 px of canvas at the left edge while the

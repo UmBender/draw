@@ -1,7 +1,7 @@
 ---
 id: T85
 title: Resize a committed grid
-status: in-progress
+status: review
 wave: 51
 branch: task/T85-resize-grid
 depends_on: []
@@ -56,11 +56,11 @@ The decision and its edge cases are in [[ADR-T85-1 Arrows resize the one selecte
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T85): specify resize a committed grid`
-- [ ] tests — `test(T85): add failing tests`
-- [ ] models — `feat(T85): add types`
-- [ ] behaviour — `feat(T85): implement`
-- [ ] quality — `chore(T85): pass clippy and rustfmt`
-- [ ] docs — `docs(T85): update the feature note`
+- [x] tests — `test(T85): add failing tests`
+- [x] models — `feat(T85): add types`
+- [x] behaviour — `feat(T85): implement`
+- [x] quality — `chore(T85): pass clippy and rustfmt`
+- [x] docs — `docs(T85): update the feature note`
 
 ## Learning path
 
@@ -69,3 +69,8 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
+- 2026-11-09 — UNATTENDED CHOICE: on a grid drawn leftwards or upwards the right or bottom edge is corner `a`, so that corner moves and the cell indices shift, which keeps AC-2 and AC-3 true on screen ([[ADR-T85-1 Arrows resize the one selected grid]]). On such a grid with axis indices the numbers of the existing cells change by the step.
+- 2026-11-09 — UNATTENDED CHOICE: a step that changes the grid cancels a gesture in progress, like the other document-editing commands; a press at the limit leaves it alone.
+- 2026-11-09 — UNATTENDED CHOICE: `Editor::clear_all` was split out of `execute` to stay under the clippy line limit, with no behaviour change. `src/core/tools/select.rs` and `src/core/keymap.rs` did not need changes.
+- 2026-11-09 — no new command or event, so `arb_session` is unchanged; `grid_resize_sessions_keep_invariants` was added to `tests/fuzz.rs`. Snapshot format unchanged.
+- 2026-11-09 — manual check left for the owner: add a column to a filled table and undo it.
