@@ -282,6 +282,7 @@ impl Diag {
             | Event::DeviceCreated(_)
             | Event::DeviceReleased(_)
             | Event::RepeatInfo { .. }
+            | Event::KeymapIgnored { .. }
             | Event::ToolAdded
             | Event::ToolRemoved => {
                 if self.enabled(Level::Info) {

@@ -66,6 +66,14 @@ pub enum BackendEvent {
     },
     /// `wl_keyboard.keymap`.
     Keymap,
+    /// `wl_keyboard.keymap` with no usable keymap; the last one stays
+    /// (draw patch, ADR-T79-1).
+    KeymapIgnored {
+        /// `wl_keyboard.keymap_format`; 0 is `no_keymap`.
+        format: u32,
+        /// Size of the keymap in bytes.
+        size: u32,
+    },
     /// A tablet tool was added.
     ToolAdded,
     /// A tablet tool was removed.

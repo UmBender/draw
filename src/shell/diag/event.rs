@@ -174,6 +174,13 @@ pub enum Event {
     },
     /// A new keymap.
     Keymap,
+    /// A keymap event with no usable keymap; the last one stays.
+    KeymapIgnored {
+        /// `wl_keyboard.keymap_format`; 0 is `no_keymap`.
+        format: u32,
+        /// Size of the keymap in bytes.
+        size: u32,
+    },
     /// A tablet tool was added.
     ToolAdded,
     /// A tablet tool was removed.
@@ -372,6 +379,9 @@ impl fmt::Display for Event {
             }
             Self::RepeatTimer { expirations } => write!(f, "repeat timer x{expirations}"),
             Self::Keymap => f.write_str("keymap"),
+            Self::KeymapIgnored { format, size } => {
+                write!(f, "keymap ignored format {format} size {size}")
+            }
             Self::ToolAdded => f.write_str("tablet tool added"),
             Self::ToolRemoved => f.write_str("tablet tool removed"),
             Self::ProximityIn => f.write_str("pen in"),
@@ -501,6 +511,7 @@ pub fn from_backend(event: BackendEvent) -> Event {
             expirations: u32::try_from(expirations).unwrap_or(u32::MAX),
         },
         BackendEvent::Keymap => Event::Keymap,
+        BackendEvent::KeymapIgnored { format, size } => Event::KeymapIgnored { format, size },
         BackendEvent::ToolAdded => Event::ToolAdded,
         BackendEvent::ToolRemoved => Event::ToolRemoved,
         BackendEvent::ProximityIn => Event::ProximityIn,
