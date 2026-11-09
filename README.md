@@ -204,6 +204,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+C` | Copy | `Ctrl+X` | Cut |
 | `Ctrl+V` | Paste at cursor | `Ctrl+D` | Duplicate selection |
 | `Ctrl+A` | Select all | `Del`, `Backspace` | Delete selection |
+| `Ctrl+T` | Text block to grid | `Ctrl+Shift+V` | Grid from clipboard |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
 
 ### View

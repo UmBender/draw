@@ -1,7 +1,7 @@
 ---
 id: T84
 title: Grid from text
-status: in-progress
+status: review
 wave: 52
 branch: task/T84-grid-from-text
 depends_on: [T83]
@@ -58,12 +58,12 @@ The fuzzer sends `InputEvent::PasteGrid`, and `Ctrl+T` through the bound chords 
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T84): specify grid from text`
-- [ ] tests — `test(T84): add failing tests`
-- [ ] models — `feat(T84): add types`
-- [ ] behaviour — `feat(T84): implement`
-- [ ] quality — `chore(T84): pass clippy and rustfmt`
-- [ ] docs — `docs(T84): update the feature note`
+- [x] spec — `docs(T84): specify grid from text`
+- [x] tests — `test(T84): add failing tests`
+- [x] models — `feat(T84): add types`
+- [x] behaviour — `feat(T84): implement`
+- [x] quality — `chore(T84): pass clippy and rustfmt`
+- [x] docs — `docs(T84): update the feature note`
 
 ## Learning path
 
@@ -72,3 +72,10 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's verdicts on [[Feature proposal]].
+- 2026-11-09 — implemented on `task/T84-grid-from-text`, branched from `task/T83-paste-text`. `scripts/check.sh --fuzz` is green.
+- 2026-11-09 — UNATTENDED CHOICE: `Ctrl+Shift+V` uses a new `InputEvent::PasteGrid`, built the same way as T83's event, because [[ADR-T83-1 Paste text through an input event]] and a T83 test fix that `Paste` with no open edit does nothing ([[ADR-T84-1 Grid from text keys and table rules]]).
+- 2026-11-09 — UNATTENDED CHOICE: `Ctrl+T` keeps the block's own text size, so the text looks the same after the conversion; only `Ctrl+Shift+V` uses the current size for new text. The plan's default says "the current text size" without separating the two.
+- 2026-11-09 — UNATTENDED CHOICE: the pasted grid's top-left corner goes at the cursor, not its centre as for pasted shapes, so a large table starts where the pointer is.
+- 2026-11-09 — UNATTENDED CHOICE: cells are never narrower than they are tall, so a matrix of digits gets square cells, and a text over 64 KiB is refused whole like one over 64 columns or rows.
+- 2026-11-09 — UNATTENDED CHOICE: `t_selects_text_tool` asserted that `Ctrl+T` was unbound; that assertion moved to the new `ctrl_t_builds_a_grid_from_text`. `docs/architecture/Architecture.md` is not in *Files owned* and its module map was left as it is; the integrator may add `TextTable` to the `core::tools::grid` row.
+- 2026-11-09 — manual check left for the owner: paste a sample matrix with `Ctrl+Shift+V` and check the table. The chord check, the event and the editor are tested; reading the real clipboard for this chord and writing the refusal to `draw.log` were not exercised in the running app.
