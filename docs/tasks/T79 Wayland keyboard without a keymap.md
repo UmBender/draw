@@ -1,7 +1,7 @@
 ---
 id: T79
 title: Wayland keyboard without a keymap
-status: review
+status: done
 wave: 35
 branch: fix/wayland-no-keymap
 depends_on: [T75]
@@ -151,3 +151,5 @@ None planned.
 - 2026-11-08 — for the integrator: *Native Wayland* (a keymap with no
   usable content is ignored) and *End-to-end tests* (the `end-keyboard`
   directive) are outside *Files owned* and were not updated.
+- 2026-11-09 — integrated, with both feature notes updated. Typing in
+  draw on the desktop and one nightly run wait on the owner.

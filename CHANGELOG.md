@@ -74,6 +74,8 @@ All notable changes to draw are listed here. The format follows
   whatever the zoom was when the edit ended: zooming far in during an
   edit no longer makes the next block huge, or leaves a snapshot that
   draw cannot load.
+- On the native Wayland backend, draw no longer crashes when a keyboard
+  arrives without a usable keymap: the last good keymap stays.
 
 ## [1.4.3] - 2026-10-22
 

@@ -1,7 +1,7 @@
 ---
 id: T78
 title: Formula ink outside its text box
-status: review
+status: done
 wave: 34
 branch: fix/formula-ink-outside-box
 depends_on: [T74]
@@ -130,3 +130,6 @@ None planned.
   `scripts/e2e.sh` 10 of 10 cases, no golden changed. Left for the owner:
   select a block with a long formula and check the selection box covers
   it; after integrating, drop the seed's stash, found by its message.
+- 2026-11-09 — integrated. Text with markup is unchanged here; a short
+  outline around a formula being edited is
+  [[T81 Formula box too narrow while editing]].

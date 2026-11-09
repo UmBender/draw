@@ -46,6 +46,7 @@ directive per line:
 | `key <keysym>` | one key, by XKB name (`Return`, `Escape`) |
 | `chord <mod>... <keysym>` | key with modifiers, e.g. `chord ctrl shift z` |
 | `hold <keysym> <ms>` | hold a key down |
+| `end-keyboard` | end the active keyboard (may send `no_keymap`) |
 | `move x y`, `press [button]`, `release [button]` | pointer |
 | `click x y`, `drag x1 y1 x2 y2 [segments]` | left button |
 | `wheel up`, `wheel down` | one wheel notch |

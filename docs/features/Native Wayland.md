@@ -62,6 +62,11 @@ creates those that came back, so every key and button arrives once
 ([[T44 One keyboard per Wayland seat]],
 [[ADR-T44-1 Wayland seat devices follow the announced capabilities]]).
 
+A keymap with no usable content (`no_keymap`, size 0, or one that does not
+compile) is ignored and the last good one stays, so draw keeps running and
+typing ([[T79 Wayland keyboard without a keymap]],
+[[ADR-T79-1 Ignore an unusable Wayland keymap]]).
+
 ## Limits
 
 - miniquad 0.4.11 has no fractional-scale support, so text may be no
