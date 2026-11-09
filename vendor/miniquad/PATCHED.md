@@ -69,6 +69,15 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   `XNextEvent` (the upstream "+1 hack"), then order the quit the same
   way. Marked `draw patch (ADR-T48-1)`.
 
+- `src/native/linux_wayland.rs`: `keyboard_handle_keymap` ignores a
+  keymap whose format is not `XKB_V1`, whose size is 0, whose `mmap`
+  fails or that libxkbcommon rejects. It builds the new keymap and state
+  before releasing the old ones, so the last good pair stays, and closes
+  `fd` on every path. Key, modifier, leave and key repeat paths do not
+  touch a null keymap or state. Marked `draw patch (ADR-T79-1)`.
+- `src/diag.rs`: `BackendEvent::KeymapIgnored` with the format and size
+  (ADR-T79-1).
+
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
   where it is used, and `respond_to_clipboard_request`

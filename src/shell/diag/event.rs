@@ -174,6 +174,13 @@ pub enum Event {
     },
     /// A new keymap.
     Keymap,
+    /// A keymap event with no usable keymap; the last one stays.
+    KeymapIgnored {
+        /// `wl_keyboard.keymap_format`; 0 is `no_keymap`.
+        format: u32,
+        /// Size of the keymap in bytes.
+        size: u32,
+    },
     /// A tablet tool was added.
     ToolAdded,
     /// A tablet tool was removed.
@@ -372,6 +379,9 @@ impl fmt::Display for Event {
             }
             Self::RepeatTimer { expirations } => write!(f, "repeat timer x{expirations}"),
             Self::Keymap => f.write_str("keymap"),
+            Self::KeymapIgnored { format, size } => {
+                write!(f, "keymap ignored format {format} size {size}")
+            }
             Self::ToolAdded => f.write_str("tablet tool added"),
             Self::ToolRemoved => f.write_str("tablet tool removed"),
             Self::ProximityIn => f.write_str("pen in"),
@@ -501,6 +511,7 @@ pub fn from_backend(event: BackendEvent) -> Event {
             expirations: u32::try_from(expirations).unwrap_or(u32::MAX),
         },
         BackendEvent::Keymap => Event::Keymap,
+        BackendEvent::KeymapIgnored { format, size } => Event::KeymapIgnored { format, size },
         BackendEvent::ToolAdded => Event::ToolAdded,
         BackendEvent::ToolRemoved => Event::ToolRemoved,
         BackendEvent::ProximityIn => Event::ProximityIn,
@@ -725,6 +736,10 @@ mod tests {
                 },
             ),
             (BackendEvent::Keymap, Event::Keymap),
+            (
+                BackendEvent::KeymapIgnored { format: 0, size: 7 },
+                Event::KeymapIgnored { format: 0, size: 7 },
+            ),
             (BackendEvent::ToolAdded, Event::ToolAdded),
             (BackendEvent::ToolRemoved, Event::ToolRemoved),
             (BackendEvent::ProximityIn, Event::ProximityIn),
@@ -739,6 +754,18 @@ mod tests {
             // Act / Assert
             assert_eq!(from_backend(backend), expected);
         }
+    }
+
+    #[test]
+    fn keymap_ignored_line_names_format_and_size() {
+        // Arrange
+        let event = Event::KeymapIgnored { format: 0, size: 0 };
+
+        // Act
+        let line = event.to_string();
+
+        // Assert
+        assert_eq!(line, "keymap ignored format 0 size 0");
     }
 
     #[test]
@@ -771,6 +798,10 @@ mod tests {
                 expirations: u32::MAX,
             },
             Event::Keymap,
+            Event::KeymapIgnored {
+                format: u32::MAX,
+                size: u32::MAX,
+            },
             Event::ToolAdded,
             Event::ToolRemoved,
             Event::ProximityIn,

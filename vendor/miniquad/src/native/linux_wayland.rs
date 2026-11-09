@@ -393,6 +393,10 @@ impl KeyboardContext {
         xkb_state: *mut xkb_state,
         events: &mut Vec<WaylandEvent>,
     ) {
+        // draw patch (ADR-T79-1): nothing to translate with before the first keymap.
+        if keymap.xkb_keymap.is_null() || xkb_state.is_null() {
+            return;
+        }
         if let Some(key) = self.repeated_key {
             self.generate_key_events(libxkb, keymap, xkb_state, key, true, events)
         }
@@ -747,33 +751,55 @@ enum WaylandEvent {
 unsafe extern "C" fn keyboard_handle_keymap(
     data: *mut ::core::ffi::c_void,
     _wl_keyboard: *mut wl_keyboard,
-    _format: u32,
+    format: u32,
     fd: i32,
     size: u32,
 ) {
+    // draw patch (ADR-T79-1): `wl_keyboard.keymap_format.xkb_v1`.
+    const KEYMAP_FORMAT_XKB_V1: u32 = 1;
     let display: &mut WaylandPayload = &mut *(data as *mut _);
-    let map_shm = libc::mmap(
-        std::ptr::null_mut::<std::ffi::c_void>(),
-        size as usize,
-        libc::PROT_READ,
-        libc::MAP_PRIVATE,
-        fd,
-        0,
-    );
-    assert!(map_shm != libc::MAP_FAILED);
-    (display.xkb.xkb_keymap_unref)(display.keymap.xkb_keymap);
-    display.keymap.xkb_keymap = (display.xkb.xkb_keymap_new_from_string)(
-        display.xkb_context,
-        map_shm as *mut libc::FILE,
-        1,
-        0,
-    );
-    libc::munmap(map_shm, size as usize);
+    // draw patch (ADR-T79-1): an unusable keymap (`no_keymap` has size 0)
+    // is ignored. The new pair is built before the old one is released, so
+    // a failure keeps the last good keymap; `fd` is closed on every path.
+    let mut new_keymap = std::ptr::null_mut();
+    if format == KEYMAP_FORMAT_XKB_V1 && size != 0 {
+        let map_shm = libc::mmap(
+            std::ptr::null_mut::<std::ffi::c_void>(),
+            size as usize,
+            libc::PROT_READ,
+            libc::MAP_PRIVATE,
+            fd,
+            0,
+        );
+        if map_shm != libc::MAP_FAILED {
+            new_keymap = (display.xkb.xkb_keymap_new_from_string)(
+                display.xkb_context,
+                map_shm as *mut libc::FILE,
+                1,
+                0,
+            );
+            libc::munmap(map_shm, size as usize);
+        }
+    }
     libc::close(fd);
+    let new_state = if new_keymap.is_null() {
+        std::ptr::null_mut()
+    } else {
+        (display.xkb.xkb_state_new)(new_keymap)
+    };
+    if new_state.is_null() {
+        if !new_keymap.is_null() {
+            (display.xkb.xkb_keymap_unref)(new_keymap);
+        }
+        crate::diag::push(crate::diag::BackendEvent::KeymapIgnored { format, size });
+        return;
+    }
     crate::diag::push(crate::diag::BackendEvent::Keymap); // draw patch (ADR-T47-1)
-    display.keymap.cache_mod_indices(&mut display.xkb);
+    (display.xkb.xkb_keymap_unref)(display.keymap.xkb_keymap);
     (display.xkb.xkb_state_unref)(display.xkb_state);
-    display.xkb_state = (display.xkb.xkb_state_new)(display.keymap.xkb_keymap);
+    display.keymap.xkb_keymap = new_keymap;
+    display.keymap.cache_mod_indices(&mut display.xkb);
+    display.xkb_state = new_state;
 }
 unsafe extern "C" fn keyboard_handle_enter(
     data: *mut ::core::ffi::c_void,
@@ -796,7 +822,10 @@ unsafe extern "C" fn keyboard_handle_leave(
 ) {
     // Clear modifiers
     let display: &mut WaylandPayload = &mut *(data as *mut _);
-    (display.xkb.xkb_state_update_mask)(display.xkb_state, 0, 0, 0, 0, 0, 0);
+    // draw patch (ADR-T79-1): there is no state before the first keymap.
+    if !display.xkb_state.is_null() {
+        (display.xkb.xkb_state_update_mask)(display.xkb_state, 0, 0, 0, 0, 0, 0);
+    }
     display.keyboard_context.repeated_key = None;
     display.keyboard_context.enter_serial = None;
     crate::diag::push(crate::diag::BackendEvent::KeyboardLeave); // draw patch (ADR-T47-1)
@@ -814,6 +843,10 @@ unsafe extern "C" fn keyboard_handle_key(
     let libxkb = &mut display.xkb;
     let xkb_keymap = display.keymap.xkb_keymap;
     let xkb_state = display.xkb_state;
+    // draw patch (ADR-T79-1): a key cannot be translated before the first keymap.
+    if xkb_keymap.is_null() || xkb_state.is_null() {
+        return;
+    }
     // https://wayland-book.com/seat/keyboard.html
     // To translate this to an XKB scancode, you must add 8 to the evdev scancode.
     let keysym = libxkb.keymap_key_get_sym_without_mod(xkb_keymap, key + 8);
@@ -861,6 +894,10 @@ unsafe extern "C" fn keyboard_handle_modifiers(
     group: u32,
 ) {
     let display: &mut WaylandPayload = &mut *(data as *mut _);
+    // draw patch (ADR-T79-1): there is no state before the first keymap.
+    if display.xkb_state.is_null() {
+        return;
+    }
     (display.xkb.xkb_state_update_mask)(
         display.xkb_state,
         mods_depressed,

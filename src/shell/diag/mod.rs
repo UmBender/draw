@@ -282,6 +282,7 @@ impl Diag {
             | Event::DeviceCreated(_)
             | Event::DeviceReleased(_)
             | Event::RepeatInfo { .. }
+            | Event::KeymapIgnored { .. }
             | Event::ToolAdded
             | Event::ToolRemoved => {
                 if self.enabled(Level::Info) {
@@ -703,6 +704,25 @@ mod tests {
 
         // Assert
         assert!(!quiet.join(LOG_FILE).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn keymap_ignored_is_logged_at_info() -> io::Result<()> {
+        // Arrange
+        let dir = temp_dir("keymap-ignored")?;
+        let mut diag = diag(&dir, Level::Info);
+
+        // Act
+        diag.record(Instant::now(), Event::KeymapIgnored { format: 0, size: 0 });
+
+        // Assert: a WARN line would fail the e2e exit check.
+        let text = log_text(&dir);
+        assert!(
+            text.contains("INFO keymap ignored format 0 size 0"),
+            "{text}"
+        );
+        assert!(!text.contains(" WARN "), "{text}");
         Ok(())
     }
 

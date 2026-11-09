@@ -75,6 +75,8 @@ enum Step {
     Output(u32, u32),
     /// Compare the state with `<name>.snap` here.
     Checkpoint(String),
+    /// End the seat's active keyboard, then type through a new one (T79).
+    EndKeyboard,
 }
 
 /// How much two screenshots may differ.
@@ -235,6 +237,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
         ("wheel", ["down"]) => case.steps.push(Step::Wheel(1)),
         ("resize", [w, h]) => case.steps.push(Step::Output(number(w)?, number(h)?)),
         ("checkpoint", [name]) => case.steps.push(Step::Checkpoint((*name).to_owned())),
+        ("end-keyboard", []) => case.steps.push(Step::EndKeyboard),
         ("close", []) => case.ending = Ending::Close,
         ("sigint", []) => case.ending = Ending::Sigint,
         _ => return Err(format!("unknown directive: {line}")),
@@ -259,6 +262,7 @@ fn parse_line(line: &str, case: &mut Case) -> Result<(), String> {
 /// | `wheel up/down` | one wheel notch |
 /// | `resize w h` | resize the output, wait for the window |
 /// | `checkpoint <name>` | compare with `<name>.snap` |
+/// | `end-keyboard` | end the active keyboard (may send `no_keymap`) |
 /// | `close`, `sigint` | how the case ends (default `close`) |
 fn parse_input(text: &str) -> Result<Case, String> {
     let mut case = Case::default();
@@ -659,12 +663,9 @@ fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
     (found, done)
 }
 
-/// Creates a virtual pointer and keeps it while the stream is open. It
-/// gives the seat a pointer (ADR-T75-1) and carries wheel notches
-/// (ADR-T75-2); `swaymsg` drives every other pointer event.
-fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
-    const INTERFACE: &str = "zwlr_virtual_pointer_manager_v1";
-    let fail = |err: std::io::Error| format!("virtual pointer: {err}");
+/// Connects to `socket` and reads every global the compositor announces.
+fn connect_registry(socket: &Path, what: &str) -> Result<(UnixStream, Vec<u8>), String> {
+    let fail = |err: std::io::Error| format!("{what}: {err}");
     let mut stream = UnixStream::connect(socket).map_err(fail)?;
     stream.set_read_timeout(Some(SYNC_TIMEOUT)).map_err(fail)?;
     // wl_display.get_registry(2), wl_display.sync(3).
@@ -673,28 +674,71 @@ fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
     stream.write_all(&hello).map_err(fail)?;
     let mut received = Vec::new();
     let mut chunk = [0u8; 4096];
-    let name = loop {
+    loop {
         let n = stream.read(&mut chunk).map_err(fail)?;
         if n == 0 {
-            return Err("virtual pointer: the compositor hung up".to_owned());
+            return Err(format!("{what}: the compositor hung up"));
         }
         received.extend_from_slice(chunk.get(..n).unwrap_or(&[]));
-        let (found, done) = scan_registry(&received, INTERFACE);
-        if done {
-            break found.ok_or("virtual pointer: the compositor has no manager")?;
+        if scan_registry(&received, "").1 {
+            return Ok((stream, received));
         }
-    };
-    // wl_registry.bind(name, interface, 1, id 4).
+    }
+}
+
+/// `wl_registry.bind(name, interface, version 1, id)`.
+fn bind_message(name: u32, interface: &str, id: u32) -> Vec<u8> {
     let mut bind = name.to_ne_bytes().to_vec();
-    bind.extend(wire_string(INTERFACE));
+    bind.extend(wire_string(interface));
     bind.extend(1u32.to_ne_bytes());
-    bind.extend(4u32.to_ne_bytes());
+    bind.extend(id.to_ne_bytes());
+    wire(2, 0, &bind)
+}
+
+/// Creates a virtual pointer and keeps it while the stream is open. It
+/// gives the seat a pointer (ADR-T75-1) and carries wheel notches
+/// (ADR-T75-2); `swaymsg` drives every other pointer event.
+fn announce_pointer(socket: &Path) -> Result<UnixStream, String> {
+    const INTERFACE: &str = "zwlr_virtual_pointer_manager_v1";
+    let (mut stream, globals) = connect_registry(socket, "virtual pointer")?;
+    let name = scan_registry(&globals, INTERFACE)
+        .0
+        .ok_or("virtual pointer: the compositor has no manager")?;
     // create_virtual_pointer(no seat, id 5).
     let mut create = 0u32.to_ne_bytes().to_vec();
     create.extend(VIRTUAL_POINTER_ID.to_ne_bytes());
-    let mut message = wire(2, 0, &bind);
+    let mut message = bind_message(name, INTERFACE, 4);
     message.extend(wire(4, 0, &create));
-    stream.write_all(&message).map_err(fail)?;
+    stream
+        .write_all(&message)
+        .map_err(|err| format!("virtual pointer: {err}"))?;
+    Ok(stream)
+}
+
+/// Creates a virtual keyboard that never gets a keymap and keeps it while
+/// the stream is open. On a seat with no keyboard sway adopts it, so
+/// clients get `no_keymap` (ADR-T75-1, T79).
+fn announce_bare_keyboard(socket: &Path) -> Result<UnixStream, String> {
+    const MANAGER: &str = "zwp_virtual_keyboard_manager_v1";
+    const SEAT: &str = "wl_seat";
+    const MANAGER_ID: u32 = 4;
+    const SEAT_ID: u32 = 5;
+    const KEYBOARD_ID: u32 = 6;
+    let (mut stream, globals) = connect_registry(socket, "virtual keyboard")?;
+    let global = |interface: &str| {
+        scan_registry(&globals, interface)
+            .0
+            .ok_or_else(|| format!("virtual keyboard: the compositor has no {interface}"))
+    };
+    let mut message = bind_message(global(MANAGER)?, MANAGER, MANAGER_ID);
+    message.extend(bind_message(global(SEAT)?, SEAT, SEAT_ID));
+    // create_virtual_keyboard(seat, id).
+    let mut create = SEAT_ID.to_ne_bytes().to_vec();
+    create.extend(KEYBOARD_ID.to_ne_bytes());
+    message.extend(wire(MANAGER_ID, 0, &create));
+    stream
+        .write_all(&message)
+        .map_err(|err| format!("virtual keyboard: {err}"))?;
     Ok(stream)
 }
 
@@ -812,6 +856,40 @@ impl Session {
             }
             if started.elapsed() >= SYNC_TIMEOUT {
                 return Err("the window never appeared".to_owned());
+            }
+            std::thread::sleep(POLL);
+        }
+    }
+
+    /// Stops the newest keyboard, which is the active one, so that sway
+    /// adopts a new keyboard without a keymap. An idle spare keeps the
+    /// seat's keyboard capability, so the app keeps its `wl_keyboard`. The
+    /// returned stream holds the new keyboard (ADR-T75-1, T79).
+    fn replace_active_keyboard(&mut self) -> Result<UnixStream, String> {
+        let Some(mut active) = self.keyboards.pop_back() else {
+            return Err("no active keyboard to end".to_owned());
+        };
+        let spare = self.spawn_wtype(&["-s".to_owned(), KEEP_ALIVE_MS.to_owned()])?;
+        self.keyboards.push_back(spare);
+        self.wait_for_keyboards(2)?;
+        let _ = active.kill();
+        let _ = active.wait();
+        self.wait_for_keyboards(1)?;
+        let bare = announce_bare_keyboard(&self.guard.wayland)?;
+        self.wait_for_keyboards(2)?;
+        Ok(bare)
+    }
+
+    /// Waits until the compositor lists exactly `count` keyboards.
+    fn wait_for_keyboards(&self, count: usize) -> Result<(), String> {
+        let started = Instant::now();
+        loop {
+            let inputs = self.swaymsg(&["-t", "get_inputs"])?;
+            if inputs.matches("\"type\": \"keyboard\"").count() == count {
+                return Ok(());
+            }
+            if started.elapsed() >= SYNC_TIMEOUT {
+                return Err(format!("the compositor never listed {count} keyboards"));
             }
             std::thread::sleep(POLL);
         }
@@ -946,6 +1024,10 @@ impl Running<'_> {
                     &source.join(format!("{name}.snap")),
                     update_requested(),
                 )
+            }
+            Step::EndKeyboard => {
+                let _bare = self.session.replace_active_keyboard()?;
+                self.sync_with(&[])
             }
         }
     }
@@ -1295,6 +1377,12 @@ mod self_tests {
             err.contains("line 2") && err.contains("frobnicate"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn parse_input_end_keyboard_is_one_step() {
+        assert_eq!(parsed("end-keyboard\n").steps, [Step::EndKeyboard]);
+        assert!(parse_input("end-keyboard now\n").is_err());
     }
 
     #[test]
