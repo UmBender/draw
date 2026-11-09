@@ -153,3 +153,5 @@ None planned.
   directive) are outside *Files owned* and were not updated.
 - 2026-11-09 — integrated, with both feature notes updated. Typing in
   draw on the desktop and one nightly run wait on the owner.
+- 2026-11-09 — owner checks passed: typing in draw on the desktop showed
+  nothing wrong, and nightly run 42557112765 on `88936f1` succeeded.
