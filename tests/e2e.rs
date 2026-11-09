@@ -1044,6 +1044,25 @@ impl Drop for Running<'_> {
     }
 }
 
+/// Makes `command` start from the snapshot `start`: as an autosave in the
+/// `state` directory if `recover`, else through `DRAW_SNAPSHOT`.
+fn start_from(
+    command: &mut Command,
+    start: &Path,
+    recover: bool,
+    state: &Path,
+) -> Result<(), String> {
+    if recover {
+        let dir = state.join("draw");
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        std::fs::copy(start, dir.join("autosave.snap")).map_err(|err| err.to_string())?;
+        command.arg("--recover");
+    } else {
+        command.env("DRAW_SNAPSHOT", start);
+    }
+    Ok(())
+}
+
 /// Runs the case in `source`, using `run` as its scratch directory.
 fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(source.join("input")).map_err(|err| err.to_string())?;
@@ -1071,17 +1090,8 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         .env("DRAW_E2E_IDLE", &idle)
         .stdout(stdout)
         .stderr(stderr);
-    match start {
-        Some(start) if case.recover => {
-            let dir = state.join("draw");
-            std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-            std::fs::copy(start, dir.join("autosave.snap")).map_err(|err| err.to_string())?;
-            command.arg("--recover");
-        }
-        Some(start) => {
-            command.env("DRAW_SNAPSHOT", start);
-        }
-        None => {}
+    if let Some(start) = start {
+        start_from(&mut command, &start, case.recover, &state)?;
     }
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;
