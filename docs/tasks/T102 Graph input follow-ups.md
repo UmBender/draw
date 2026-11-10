@@ -1,7 +1,7 @@
 ---
 id: T102
 title: Graph input follow-ups
-status: in-progress
+status: review
 wave: 57
 branch: task/T102-graph-input-follow-ups
 depends_on: []
@@ -54,12 +54,12 @@ Decisions: [[ADR-T102-1 Weights after pairs, root 0 and weighted keywords]] (ame
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T102): specify graph input follow-ups`
-- [ ] tests — `test(T102): add failing tests for graph input follow-ups`
-- [ ] models — `feat(T102): …`
-- [ ] behaviour — `feat(T102): …`
-- [ ] quality — `chore(T102): pass clippy and rustfmt`
-- [ ] docs — `docs(T102): update the feature note`
+- [x] spec — `docs(T102): specify graph input follow-ups`
+- [x] tests — `test(T102): add failing tests for graph input follow-ups`
+- [x] models — skipped: no new types or signatures (see *Log*)
+- [x] behaviour — `feat(T102): read weights after pairs, a 0 root and weighted keywords`
+- [x] quality — skipped: `scripts/check.sh --fuzz` was green with no change (see *Log*)
+- [x] docs — `docs(T102): update the feature note`
 
 ## Learning path
 
@@ -68,3 +68,9 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written in the batch plan with the owner; owner decisions are in *Spec* and in `.batch/plan.md`.
+- 2026-11-10 — spec: [[ADR-T102-1 Weights after pairs, root 0 and weighted keywords]] amends ADR-T96-1 and ADR-T97-1. Tests named per AC.
+- 2026-11-10 — tests: 8 new behaviour tests failed for the right reason; the refusal guards (`parse_refuses_a_weight_without_its_pair`, `parse_parents0_keeps_zero_as_a_node`) passed already, as they pin down unchanged behaviour. `1 > 3 7` left `parse_refuses_a_dangling_separator`. Fuzz edge text gains weighted pairs, the `w` keywords and a `00` parent entry.
+- 2026-11-10 — models: skipped, the change adds only private helpers (`pair_edges`, `is_weight`); no new types or public signatures.
+- 2026-11-10 — behaviour: `joined_pairs` now returns `Cow` tokens so a weight stays borrowed from the line. UNATTENDED CHOICE: the T87 case `1-2 3` in `parse_refuses_what_is_not_an_edge` is now a weighted pair by the owner's AC-1 (same form as `1-2 5`), so it became `1-2 3 4` (two weights in a row, still refused). UNATTENDED CHOICE: any entry worth 0 (`0`, `00`) is the root marker under `parents:`, not only the literal `0`, so `00` cannot name a node that list cannot have.
+- 2026-11-10 — quality: skipped, `scripts/check.sh --fuzz` green (fmt, clippy, tests, docs, fuzz) with no change. `scripts/e2e.sh` not run: no key or drawing change.
+- 2026-11-10 — manual check left for the owner: paste `1>3 7` and a `parents:` list with a `0` root, press `Ctrl+L`.
