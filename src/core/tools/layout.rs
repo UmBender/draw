@@ -22,6 +22,12 @@ use std::fmt;
 /// Most nodes a graph can have.
 pub const MAX_NODES: usize = 200;
 
+/// Most positions a `segtree:` block can cover (ADR-T104-1).
+pub const MAX_SEGMENT_TREE_SIZE: u32 = 100;
+
+/// The first line of a segment tree block, before its size (ADR-T104-1).
+const SEGTREE_KEYWORD: &str = "segtree:";
+
 /// Radius of a node's circle, in ems of the block's text.
 pub const NODE_RADIUS_EM: f32 = 1.25;
 
@@ -92,12 +98,23 @@ pub enum GraphError {
         /// Bytes of the text.
         bytes: usize,
     },
+    /// The size of a `segtree:` block is not one number from 1 to
+    /// [`MAX_SEGMENT_TREE_SIZE`] (ADR-T104-1). Names the line, never its
+    /// text.
+    NotATreeSize {
+        /// 1-based line number.
+        line: usize,
+    },
 }
 
 impl fmt::Display for GraphError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotAnEdge { line } => write!(f, "line {line} is not an edge"),
+            Self::NotATreeSize { line } => write!(
+                f,
+                "line {line} is not one size from 1 to {MAX_SEGMENT_TREE_SIZE}"
+            ),
             Self::TooManyNodes { nodes } => {
                 write!(f, "{nodes} nodes, a graph holds at most {MAX_NODES}")
             }
@@ -213,6 +230,19 @@ impl EdgeList {
             return Err(GraphError::TooManyNodes { nodes: names.len() });
         }
         Ok((!names.is_empty()).then_some(Self { names, edges }))
+    }
+
+    /// The graph `text` holds when positions start at `first`, the
+    /// editor's first number (ADR-T104-1); `Ok(None)` when it is blank.
+    /// Only a `segtree:` block reads `first`.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError`] as [`Self::parse`], and
+    /// [`GraphError::NotATreeSize`] for a bad `segtree:` size.
+    pub fn parse_numbered(text: &str, first: u32) -> Result<Option<Self>, GraphError> {
+        let _ = (text, first);
+        todo!("T104: read segtree: blocks")
     }
 
     /// Node names, in the order they were first named.
