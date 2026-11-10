@@ -323,11 +323,7 @@ impl Document {
     /// `next_id`, and that every locked id is one of them (snapshots,
     /// ADR-T74-1, ADR-T107-1).
     #[must_use]
-    pub(crate) fn from_parts(
-        shapes: Vec<(ShapeId, Shape)>,
-        locked: IdSet,
-        next_id: u64,
-    ) -> Self {
+    pub(crate) fn from_parts(shapes: Vec<(ShapeId, Shape)>, locked: IdSet, next_id: u64) -> Self {
         let ids = shapes.iter().map(|(id, _)| *id).collect();
         Self {
             shapes,
@@ -347,7 +343,9 @@ impl Document {
 
     /// The locked ids, bottom to top (ADR-T107-1).
     pub fn locked_ids(&self) -> impl Iterator<Item = ShapeId> + '_ {
-        self.shapes().map(|(id, _)| id).filter(|id| self.is_locked(*id))
+        self.shapes()
+            .map(|(id, _)| id)
+            .filter(|id| self.is_locked(*id))
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.
@@ -401,10 +399,7 @@ impl Document {
 
     /// The topmost unlocked shape satisfying `pred`, searching from the
     /// top down: what a click can select (ADR-T107-1).
-    pub fn topmost_unlocked_where(
-        &self,
-        mut pred: impl FnMut(&Shape) -> bool,
-    ) -> Option<ShapeId> {
+    pub fn topmost_unlocked_where(&self, mut pred: impl FnMut(&Shape) -> bool) -> Option<ShapeId> {
         self.shapes
             .iter()
             .rev()

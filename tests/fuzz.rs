@@ -1164,7 +1164,12 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
 /// or a text edit does not (T107).
 fn anchor_of(shape: &Shape) -> Vec<u32> {
     let points: Vec<Vec2> = match shape {
-        Shape::Stroke { points, .. } => points.first().into_iter().chain(points.last()).copied().collect(),
+        Shape::Stroke { points, .. } => points
+            .first()
+            .into_iter()
+            .chain(points.last())
+            .copied()
+            .collect(),
         Shape::Line { a, b, .. }
         | Shape::Arrow { a, b, .. }
         | Shape::Rect { a, b, .. }
