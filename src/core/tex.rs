@@ -1848,6 +1848,7 @@ impl<'a> Parser<'a> {
         self.pos += 1;
         match ch {
             '{' | '}' => Node::Literal(ch.to_string()),
+            '~' => Node::Kern(ch.to_string()),
             _ => Node::Char(ch),
         }
     }
@@ -1921,7 +1922,16 @@ impl<'a> Parser<'a> {
             }),
             Some('\\') => {
                 let name = self.name(end);
-                symbol(&name).map(|_| (false, vec![Node::Symbol(name)]))
+                let source = format!("\\{name}");
+                if symbol(&name).is_some() {
+                    Some((false, vec![Node::Symbol(name)]))
+                } else {
+                    kern(&source).map(|_| (false, vec![Node::Kern(source)]))
+                }
+            }
+            Some('~') => {
+                self.pos += 1;
+                Some((false, vec![Node::Kern("~".to_owned())]))
             }
             Some('}' | '^' | '_') | None => None,
             Some(ch) => {
@@ -1953,6 +1963,10 @@ impl<'a> Parser<'a> {
         let name = self.name(end);
         if symbol(&name).is_some() {
             return Node::Symbol(name);
+        }
+        let source = format!("\\{name}");
+        if kern(&source).is_some() {
+            return Node::Kern(source);
         }
         let after = self.pos;
         let node = match name.as_str() {
@@ -2502,7 +2516,10 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
         1.0
     };
     let mut atoms: Vec<(MathBox, Class)> = Vec::with_capacity(nodes.len());
-    push_atoms(nodes, scale, style, &mut atoms);
+    // The kerns typed before each atom, then those after the last one
+    // (ADR-T99-1): one more entry than atoms.
+    let mut kerns: Vec<f32> = vec![0.0];
+    push_atoms(nodes, scale, style, &mut atoms, &mut kerns);
     // A binary operator without an operand on both sides is ordinary.
     for i in 0..atoms.len() {
         if atoms[i].1 != Class::Bin {
@@ -2527,29 +2544,75 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
             atoms[i].1 = Class::Ord;
         }
     }
-    let mut boxes = Vec::with_capacity(atoms.len() * 2);
+    let mut boxes = Vec::with_capacity(atoms.len() * 3 + 1);
+    // Width laid out so far: a negative kern never takes the cursor left
+    // of the row's start (ADR-T99-1).
+    let mut cursor = 0.0_f32;
     let mut prev: Option<Class> = None;
-    for (b, class) in atoms {
+    for ((b, class), kern) in atoms.into_iter().zip(kerns.iter().copied()) {
         if let Some(prev) = prev {
             let space = spacing(prev, class, scale);
             if space > 0.0 {
-                boxes.push(MathBox::gap(space));
+                push_box(&mut boxes, &mut cursor, MathBox::gap(space));
             }
         }
+        push_kern(&mut boxes, &mut cursor, kern);
         prev = Some(class);
-        boxes.push(b);
+        push_box(&mut boxes, &mut cursor, b);
     }
+    push_kern(&mut boxes, &mut cursor, kerns.last().copied().unwrap_or(0.0));
     MathBox::row(boxes)
 }
 
+/// Pushes `b` onto a row being built and moves its `cursor` past it.
+fn push_box(boxes: &mut Vec<MathBox>, cursor: &mut f32, b: MathBox) {
+    *cursor += b.width;
+    boxes.push(b);
+}
+
+/// Pushes a kern `width` wide onto a row being built, cut so the cursor
+/// never goes left of the row's start (ADR-T99-1).
+fn push_kern(boxes: &mut Vec<MathBox>, cursor: &mut f32, width: f32) {
+    let width = width.max(-*cursor);
+    if width.is_finite() && width != 0.0 {
+        push_box(boxes, cursor, MathBox::gap(width));
+    }
+}
+
 /// The atoms of `nodes` onto `out`, with each shortcut's long form
-/// spliced in among its neighbours (ADR-T69-1).
-fn push_atoms(nodes: &[Node], scale: f32, style: Style, out: &mut Vec<(MathBox, Class)>) {
+/// spliced in among its neighbours (ADR-T69-1). Kerns add to the last
+/// entry of `kerns`, and each atom opens a new one (ADR-T99-1).
+fn push_atoms(
+    nodes: &[Node],
+    scale: f32,
+    style: Style,
+    out: &mut Vec<(MathBox, Class)>,
+    kerns: &mut Vec<f32>,
+) {
     for node in nodes {
-        match expand(node) {
-            Some(long) => push_atoms(&long, scale, style, out),
-            None => out.extend(atom(node, scale, style)),
+        if let Some(width) = kern_width(node, scale) {
+            if let Some(last) = kerns.last_mut() {
+                *last += width;
+            }
+            continue;
         }
+        match expand(node) {
+            Some(long) => push_atoms(&long, scale, style, out, kerns),
+            None => {
+                if let Some(a) = atom(node, scale, style) {
+                    out.push(a);
+                    kerns.push(0.0);
+                }
+            }
+        }
+    }
+}
+
+/// The width of a [`Node::Kern`] at `scale`; `None` for other nodes.
+fn kern_width(node: &Node, scale: f32) -> Option<f32> {
+    match node {
+        Node::Kern(source) => Some(kern(source).unwrap_or(0.0) * scale),
+        _ => None,
     }
 }
 
@@ -2606,7 +2669,12 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
     }
     let atom = match node {
         Node::Space(_) => return None,
-        Node::Kern(_) => todo!("T99: a kern on its own"),
+        // A kern on its own (a script's base) is an empty box; never
+        // negative, so nothing hangs left of it (ADR-T99-1).
+        Node::Kern(_) => (
+            MathBox::gap(kern_width(node, scale).unwrap_or(0.0).max(0.0)),
+            Class::Ord,
+        ),
         Node::Char(ch) => {
             let shown = if *ch == '-' { MINUS } else { style.map(*ch) };
             (MathBox::math(shown, scale), char_class(*ch))
