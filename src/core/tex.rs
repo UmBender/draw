@@ -280,6 +280,15 @@ pub enum Node {
     /// A spacing command of [`KERNS`], as typed: space that is not an
     /// atom, so it never changes its neighbours' classes (ADR-T99-1).
     Kern(String),
+    /// An extensible arrow of [`XARROWS`] with its labels (ADR-T103-1).
+    XArrow {
+        /// Name without the backslash.
+        name: String,
+        /// The optional `[…]` label set under the arrow.
+        below: Option<Bracket>,
+        /// The required label set above the arrow.
+        above: Arg,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -408,6 +417,93 @@ pub struct Arg {
     /// The argument's nodes.
     pub nodes: Vec<Node>,
 }
+
+/// An optional `[…]` argument (ADR-T103-1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bracket {
+    /// Whitespace skipped before the `[`.
+    pub lead: String,
+    /// The nodes between the brackets.
+    pub nodes: Vec<Node>,
+}
+
+/// What a stretched extensible arrow draws at the end its head does not
+/// point to (ADR-T103-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tail {
+    /// Nothing: the shaft just ends.
+    Plain,
+    /// A vertical bar, as `↦`'s.
+    Bar,
+    /// A hook above the shaft, as `↪`'s.
+    Hook,
+}
+
+/// One extensible arrow of the subset (ADR-T103-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XArrowDef {
+    /// Name without the backslash.
+    pub name: &'static str,
+    /// The plain arrow glyph it draws at its natural length.
+    pub glyph: char,
+    /// The head glyph at the left end of a stretched arrow, if any.
+    pub left: Option<char>,
+    /// The head glyph at the right end of a stretched arrow, if any.
+    pub right: Option<char>,
+    /// Whether the shaft is two rules (`⇒`) instead of one (`→`).
+    pub double: bool,
+    /// What the end without a head draws.
+    pub tail: Tail,
+}
+
+/// The extensible arrows of the subset (ADR-T103-1).
+pub const XARROWS: &[XArrowDef] = &[
+    xarrow_def("xrightarrow", '→', None, Some('→'), false, Tail::Plain),
+    xarrow_def("xleftarrow", '←', Some('←'), None, false, Tail::Plain),
+    xarrow_def("xleftrightarrow", '↔', Some('←'), Some('→'), false, Tail::Plain),
+    xarrow_def("xRightarrow", '⇒', None, Some('⇒'), true, Tail::Plain),
+    xarrow_def("xLeftarrow", '⇐', Some('⇐'), None, true, Tail::Plain),
+    xarrow_def("xLeftrightarrow", '⇔', Some('⇐'), Some('⇒'), true, Tail::Plain),
+    xarrow_def("xmapsto", '↦', None, Some('→'), false, Tail::Bar),
+    xarrow_def("xhookrightarrow", '↪', None, Some('→'), false, Tail::Hook),
+];
+
+/// Shorthand for a row of [`XARROWS`].
+const fn xarrow_def(
+    name: &'static str,
+    glyph: char,
+    left: Option<char>,
+    right: Option<char>,
+    double: bool,
+    tail: Tail,
+) -> XArrowDef {
+    XArrowDef {
+        name,
+        glyph,
+        left,
+        right,
+        double,
+        tail,
+    }
+}
+
+/// The row of [`XARROWS`] called `name`.
+#[must_use]
+pub fn xarrow(name: &str) -> Option<&'static XArrowDef> {
+    XARROWS.iter().find(|def| def.name == name)
+}
+
+/// Space on each side of the wider label of an extensible arrow, in em
+/// of the arrow's size (ADR-T103-1).
+pub const XARROW_PAD: f32 = 0.5;
+
+/// Gap between an extensible arrow's ink and its labels: TeX's
+/// `\bigopspacing1` (ADR-T103-1).
+pub const XARROW_GAP: f32 = 0.111;
+
+/// Number of rules of the hook of a stretched `\xhookrightarrow`
+/// (ADR-T103-1).
+pub const XARROW_HOOK_SEGMENTS: usize = 8;
 
 /// TeX atom class, which sets the space between neighbours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1990,6 +2086,7 @@ impl<'a> Parser<'a> {
             }
             "text" => self.text_body(end),
             "operatorname" => return self.operator_name(end),
+            n if xarrow(n).is_some() => self.xarrow(&name, end),
             n if expansion(n).is_some() => self.shortcut(&name, end),
             _ => None,
         };
@@ -2149,6 +2246,23 @@ impl<'a> Parser<'a> {
             name: name.to_owned(),
             args,
         })
+    }
+
+    /// The labels of extensible arrow `name`, its name read: an optional
+    /// `[…]`, then a required argument; `None` when either is broken
+    /// (ADR-T103-1).
+    fn xarrow(&mut self, name: &str, end: usize) -> Option<Node> {
+        let _ = (name, end);
+        todo!()
+    }
+
+    /// An optional `[…]` argument at the cursor: whitespace, `[`, nodes
+    /// up to the first `]` outside braces before `end`. `Ok(None)`
+    /// (cursor unchanged) when no `[` follows, `Err(())` when it has no
+    /// `]` (ADR-T103-1).
+    fn bracket(&mut self, end: usize) -> Result<Option<Bracket>, ()> {
+        let _ = end;
+        todo!()
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -2450,6 +2564,17 @@ fn print_node(node: &Node, out: &mut String) {
             end_lead,
             rows,
         } => print_environment(name, lead, end_lead, rows, out),
+        Node::XArrow { name, below, above } => {
+            out.push('\\');
+            out.push_str(name);
+            if let Some(below) = below {
+                out.push_str(&below.lead);
+                out.push('[');
+                print_nodes(&below.nodes, out);
+                out.push(']');
+            }
+            print_arg(above, out);
+        }
     }
 }
 
@@ -2758,9 +2883,30 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
         Node::Environment { name, rows, .. } => {
             (environment_box(name, rows, scale, style), Class::Ord)
         }
+        Node::XArrow { name, below, above } => {
+            let below = below.as_ref().map_or(&[][..], |b| &b.nodes[..]);
+            let b = match xarrow(name) {
+                Some(def) => extensible_arrow(def, &above.nodes, below, scale, style),
+                None => MathBox::word(&format!("\\{name}"), scale, true),
+            };
+            (b, Class::Rel)
+        }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
+}
+
+/// Extensible arrow `def` with label `above` over it and `below` under
+/// it, at `scale` (ADR-T103-1).
+fn extensible_arrow(
+    def: &XArrowDef,
+    above: &[Node],
+    below: &[Node],
+    scale: f32,
+    style: Style,
+) -> MathBox {
+    let _ = (def, above, below, scale, style);
+    todo!()
 }
 
 /// The box of a table symbol: a glyph (a letter in `style`), an enlarged
