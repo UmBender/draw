@@ -222,7 +222,10 @@ impl EdgeList {
     /// # Errors
     ///
     /// [`GraphError::TooManyNodes`] over [`MAX_NODES`].
-    fn from_raws(root: Option<NodeName>, raws: Vec<RawEdge<'_>>) -> Result<Option<Self>, GraphError> {
+    fn from_raws(
+        root: Option<NodeName>,
+        raws: Vec<RawEdge<'_>>,
+    ) -> Result<Option<Self>, GraphError> {
         let mut names = Vec::new();
         let mut index_of = HashMap::new();
         let mut node = |name: NodeName| {
@@ -553,7 +556,8 @@ fn segment_tree_edges(
     let push_children = |stack: &mut Vec<_>, node: (u32, u32)| {
         let (l, r) = node;
         if l < r {
-            let m = l + (r - l) / 2;
+            // ⌊(l + r) / 2⌋, without overflow.
+            let m = u32::midpoint(l, r);
             stack.push((node, (m + 1, r)));
             stack.push((node, (l, m)));
         }
@@ -2435,7 +2439,8 @@ mod tests {
                 assert!(below.is_empty(), "leaf [{l}, {r}] has children");
                 leaves.push(l);
             } else {
-                let m = (l + r) / 2;
+                // ⌊(l + r) / 2⌋.
+                let m = u32::midpoint(l, r);
                 assert_eq!(below, &[(l, m), (m + 1, r)], "[{l}, {r}]");
             }
         }
@@ -2468,7 +2473,12 @@ mod tests {
         let wanted = segtree("segtree: 8", 1);
 
         // Act, Assert
-        for text in ["segtree:\n8", "  segtree:8  ", "segtree:\n\n 8 \n", "\nsegtree: \n8"] {
+        for text in [
+            "segtree:\n8",
+            "  segtree:8  ",
+            "segtree:\n\n 8 \n",
+            "\nsegtree: \n8",
+        ] {
             assert_eq!(segtree(text, 1), wanted, "{text:?}");
         }
     }
@@ -2493,7 +2503,7 @@ mod tests {
 
         // Assert
         assert_eq!(single.names(), [NodeName::Math(range(1, 1))]);
-        assert!(single.edges().is_empty());
+        assert_eq!(single.edges(), []);
         assert_segment_tree(&largest, 100, 0);
     }
 
@@ -2506,7 +2516,13 @@ mod tests {
 
     #[test]
     fn parse_without_segtree_ignores_the_first_number() {
-        for text in ["1-2 2-3", "0 1 5", "parents:\n1 1", "parents0:\n0 0", "$a$ 1"] {
+        for text in [
+            "1-2 2-3",
+            "0 1 5",
+            "parents:\n1 1",
+            "parents0:\n0 0",
+            "$a$ 1",
+        ] {
             assert_eq!(
                 EdgeList::parse_numbered(text, 0),
                 EdgeList::parse(text),
@@ -2624,7 +2640,7 @@ mod tests {
                 if l == r {
                     continue;
                 }
-                let m = (l + r) / 2;
+                let m = u32::midpoint(l, r);
                 let left = circle_holding(&shapes, &range(l, m));
                 let right = circle_holding(&shapes, &range(m + 1, r));
                 assert!(approx_eq(left.y, right.y, 1e-3));
@@ -2632,7 +2648,9 @@ mod tests {
                 assert!(left.x < at.x && at.x < right.x, "[{l}, {r}]");
             }
             // Leaves read left to right in position order.
-            let xs: Vec<f32> = (1..=n).map(|i| circle_holding(&shapes, &range(i, i)).x).collect();
+            let xs: Vec<f32> = (1..=n)
+                .map(|i| circle_holding(&shapes, &range(i, i)).x)
+                .collect();
             assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
         }
     }

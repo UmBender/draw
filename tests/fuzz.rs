@@ -397,6 +397,24 @@ fn arb_graph_session() -> impl Strategy<Value = Vec<InputEvent>> {
     arb_block_key_session(arb_edge_text(), Key::L)
 }
 
+/// [`arb_graph_session`], sometimes undone with `Ctrl+Z`, as when a
+/// drawing is not the one wanted. The undo keeps redo states reachable in
+/// [`arb_session`] (T104).
+fn arb_graph_session_maybe_undone() -> impl Strategy<Value = Vec<InputEvent>> {
+    (arb_graph_session(), any::<bool>()).prop_map(|(mut events, undo)| {
+        if undo {
+            events.push(InputEvent::KeyDown {
+                key: Key::Z,
+                mods: Modifiers {
+                    ctrl: true,
+                    ..Modifiers::NONE
+                },
+            });
+        }
+        events
+    })
+}
+
 /// A list of points: mostly whole lines the parser reads, sometimes not.
 fn arb_point_text() -> impl Strategy<Value = String> {
     let line = select(vec![
@@ -849,7 +867,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         2 => arb_text_session(),
         1 => arb_host_session(),
         1 => arb_table_session(),
-        1 => arb_graph_session(),
+        1 => arb_graph_session_maybe_undone(),
         1 => arb_plot_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
