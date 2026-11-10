@@ -46,6 +46,9 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 | `Ctrl+]` | Raise selection one step | `Ctrl+[` | Lower selection one step |
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |
+| `Alt+←` | Align left edges | `Alt+→` | Align right edges |
+| `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
+| `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
 
 ## View
 

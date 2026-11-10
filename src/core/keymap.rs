@@ -7,7 +7,7 @@
 //! bound: the editor consumes it as the pan modifier. While a text block is
 //! being edited no binding fires (ADR-T29-2).
 
-use crate::core::command::{Command, Tool};
+use crate::core::command::{Axis, Command, Side, Tool};
 use crate::core::input::{Key, Modifiers};
 use crate::core::palette::ColorId;
 
@@ -217,6 +217,36 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Selection to the bottom",
     ),
     (
+        KeyChord::alt(Key::ArrowLeft),
+        Command::Align(Side::Left),
+        "Align left edges",
+    ),
+    (
+        KeyChord::alt(Key::ArrowRight),
+        Command::Align(Side::Right),
+        "Align right edges",
+    ),
+    (
+        KeyChord::alt(Key::ArrowUp),
+        Command::Align(Side::Top),
+        "Align top edges",
+    ),
+    (
+        KeyChord::alt(Key::ArrowDown),
+        Command::Align(Side::Bottom),
+        "Align bottom edges",
+    ),
+    (
+        KeyChord::alt(Key::H),
+        Command::Distribute(Axis::Horizontal),
+        "Lay out as a row, no overlap",
+    ),
+    (
+        KeyChord::alt(Key::V),
+        Command::Distribute(Axis::Vertical),
+        "Lay out as a column, no overlap",
+    ),
+    (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
         "Delete selection",
@@ -321,6 +351,7 @@ pub fn resolve(key: Key, mods: Modifiers) -> Option<Command> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::command::{Axis, Side};
     use proptest::prelude::*;
 
     const NONE: Modifiers = Modifiers::NONE;
@@ -449,6 +480,12 @@ mod tests {
             (Key::BracketLeft, CTRL, Command::LowerSelection),
             (Key::BracketRight, CTRL_SHIFT, Command::SelectionToTop),
             (Key::BracketLeft, CTRL_SHIFT, Command::SelectionToBottom),
+            (Key::ArrowLeft, ALT, Command::Align(Side::Left)),
+            (Key::ArrowRight, ALT, Command::Align(Side::Right)),
+            (Key::ArrowUp, ALT, Command::Align(Side::Top)),
+            (Key::ArrowDown, ALT, Command::Align(Side::Bottom)),
+            (Key::H, ALT, Command::Distribute(Axis::Horizontal)),
+            (Key::V, ALT, Command::Distribute(Axis::Vertical)),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
@@ -605,6 +642,37 @@ mod tests {
         assert_eq!(resolve(Key::BracketRight, NONE), Some(Command::WidthUp));
         assert_eq!(resolve(Key::BracketRight, ALT), Some(Command::ScaleUp));
         assert_eq!(resolve(Key::BracketLeft, SHIFT), None);
+    }
+
+    #[test]
+    fn alt_arrows_align_and_alt_h_v_distribute() {
+        assert_eq!(
+            resolve(Key::ArrowLeft, ALT),
+            Some(Command::Align(Side::Left))
+        );
+        assert_eq!(
+            resolve(Key::ArrowRight, ALT),
+            Some(Command::Align(Side::Right))
+        );
+        assert_eq!(resolve(Key::ArrowUp, ALT), Some(Command::Align(Side::Top)));
+        assert_eq!(
+            resolve(Key::ArrowDown, ALT),
+            Some(Command::Align(Side::Bottom))
+        );
+        assert_eq!(
+            resolve(Key::H, ALT),
+            Some(Command::Distribute(Axis::Horizontal))
+        );
+        assert_eq!(
+            resolve(Key::V, ALT),
+            Some(Command::Distribute(Axis::Vertical))
+        );
+        // The other chords of these keys keep their meaning.
+        assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
+        assert_eq!(resolve(Key::H, NONE), Some(Command::SetTool(Tool::Hand)));
+        assert_eq!(resolve(Key::V, CTRL), Some(Command::Paste));
+        assert_eq!(resolve(Key::ArrowLeft, CTRL), None);
+        assert_eq!(resolve(Key::H, CTRL), None);
     }
 
     #[test]

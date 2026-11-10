@@ -50,6 +50,8 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `Ctrl+P` | Replace the only selected text block by a coordinate plane of its `x y` points ([[ADR-T93-1 Coordinate plane key and plotting rules]]) |
 | `Ctrl+]` / `Ctrl+[` | Raise / lower the selection one step, past the nearest shape that overlaps it ([[ADR-T100-1 Z-order keys and restack transactions]]); in text edit mode they resize text instead |
 | `Ctrl+Shift+]` / `Ctrl+Shift+[` | Selection to the top / bottom of the stacking order |
+| `Alt+←` / `Alt+→` / `Alt+↑` / `Alt+↓` | Align the selected shapes' left / right / top / bottom edges to that side of the selection's box ([[ADR-T101-1 Align and distribute keys]]); in text edit mode they move the caret |
+| `Alt+H` / `Alt+V` | Space three or more selected shapes with equal horizontal / vertical gaps, the outer two fixed |
 | `Delete`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) |
 | `Esc` | Cancel current gesture / clear selection |

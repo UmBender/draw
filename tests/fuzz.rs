@@ -1889,8 +1889,158 @@ fn z_order_session_click_selects_and_raises() {
     assert_eq!(after, vec![before[1], before[0], before[2]]);
 }
 
+/// The keys of the align and distribute commands (T101), all with `Alt`.
+const ARRANGE_KEYS: [Key; 6] = [
+    Key::ArrowLeft,
+    Key::ArrowRight,
+    Key::ArrowUp,
+    Key::ArrowDown,
+    Key::H,
+    Key::V,
+];
+
+/// Draws one rectangle per corner, `300 × 250` screen pixels each, with
+/// the Rect tool, then switches to the Select tool (T101).
+fn arrange_editor(corners: &[(f32, f32)]) -> Editor {
+    let left = PointerButton::Left;
+    let none = Modifiers::NONE;
+    let mut editor = Editor::new();
+    editor.handle(InputEvent::Resize {
+        size: Vec2::new(1_200.0, 800.0),
+    });
+    editor.apply(Command::SetTool(Tool::Rect));
+    for &(x, y) in corners {
+        let (from, to) = (Vec2::new(x, y), Vec2::new(x + 300.0, y + 250.0));
+        editor.handle(InputEvent::PointerDown {
+            pos: from,
+            button: left,
+            mods: none,
+        });
+        editor.handle(InputEvent::PointerMove {
+            pos: to,
+            mods: none,
+        });
+        editor.handle(InputEvent::PointerUp {
+            pos: to,
+            button: left,
+            mods: none,
+        });
+    }
+    editor.apply(Command::SetTool(Tool::Select));
+    editor
+}
+
+/// T101: in the align session `Ctrl+A` then `Alt+←` and `Alt+H` really
+/// move shapes, so the property below really aligns and distributes.
+#[test]
+fn align_session_select_all_aligns() {
+    // Arrange
+    let mut editor = arrange_editor(&[(10.0, 10.0), (100.0, 300.0), (400.0, 120.0)]);
+    let alt = Modifiers {
+        alt: true,
+        ..Modifiers::NONE
+    };
+    let ctrl = Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
+    };
+    editor.handle(InputEvent::KeyDown {
+        key: Key::A,
+        mods: ctrl,
+    });
+    assert_eq!(editor.selection().len(), 3);
+    let drawn = shapes_of(&editor);
+
+    // Act
+    let aligned = editor.handle(InputEvent::KeyDown {
+        key: Key::ArrowUp,
+        mods: alt,
+    });
+    let tops: Vec<f32> = editor
+        .document()
+        .shapes()
+        .map(|(_, s)| s.bounds().min.y)
+        .collect();
+    let spaced = editor.handle(InputEvent::KeyDown {
+        key: Key::H,
+        mods: alt,
+    });
+
+    // Assert
+    assert!(aligned);
+    assert!(spaced);
+    assert_ne!(shapes_of(&editor), drawn);
+    assert!(tops.iter().all(|y| (y - tops[0]).abs() < 1e-3), "{tops:?}");
+}
+
 proptest! {
     #![proptest_config(config())]
+
+    /// T101 AC-5: align and distribute keys on random selections of drawn
+    /// rectangles keep the invariants (finite shapes included) and every
+    /// shape; undo and redo give the states back, and undoing every step
+    /// gives the drawn shapes back.
+    #[test]
+    fn align_sessions_stay_finite_and_undo(
+        corners in prop::collection::vec((0.0f32..600.0, 0.0f32..400.0), 1..7),
+        steps in prop::collection::vec(
+            (
+                select(ARRANGE_KEYS.to_vec()),
+                any::<bool>(),
+                prop::option::of(any::<prop::sample::Index>()),
+                any::<bool>(),
+            ),
+            0..40,
+        ),
+    ) {
+        // Arrange
+        let left = PointerButton::Left;
+        let none = Modifiers::NONE;
+        let alt = Modifiers { alt: true, ..none };
+        let ctrl = Modifiers { ctrl: true, ..none };
+        let mut editor = arrange_editor(&corners);
+        let drawn = shapes_of(&editor);
+        prop_assert_eq!(drawn.len(), corners.len());
+        let mut arranged = 0usize;
+
+        // Act
+        for (step, (key, select_all, click, undo_redo)) in steps.into_iter().enumerate() {
+            // Select everything, or click a corner (adds or clears).
+            if select_all {
+                editor.handle(InputEvent::KeyDown { key: Key::A, mods: ctrl });
+            } else if let Some(index) = click {
+                let (x, y) = corners[index.index(corners.len())];
+                let pos = Vec2::new(x + 2.0, y + 2.0);
+                editor.handle(InputEvent::PointerDown { pos, button: left, mods: none });
+                editor.handle(InputEvent::PointerUp { pos, button: left, mods: none });
+            }
+            let selection = editor.selection().to_vec();
+            let before = shapes_of(&editor);
+            editor.handle(InputEvent::KeyDown { key, mods: alt });
+            let after = shapes_of(&editor);
+            prop_assert_eq!(editor.selection(), selection.as_slice(), "step {}", step);
+            if after != before {
+                arranged += 1;
+                if undo_redo {
+                    prop_assert!(editor.apply(Command::Undo));
+                    prop_assert_eq!(&shapes_of(&editor), &before, "step {}: undo", step);
+                    prop_assert!(editor.apply(Command::Redo));
+                    prop_assert_eq!(&shapes_of(&editor), &after, "step {}: redo", step);
+                }
+            }
+
+            // Assert
+            check_invariants(&editor, step)?;
+            prop_assert_eq!(editor.document().len(), corners.len(), "step {}", step);
+        }
+        // A second click on the only selected rectangle opens its text
+        // (ADR-T31-1), which `Undo` would cancel instead: close it first.
+        editor.handle(InputEvent::KeyDown { key: Key::Escape, mods: none });
+        for _ in 0..arranged {
+            prop_assert!(editor.apply(Command::Undo));
+        }
+        prop_assert_eq!(shapes_of(&editor), drawn);
+    }
 
     /// T85: resizing a committed grid at random keeps every invariant, and
     /// undoing everything empties the document.

@@ -14,6 +14,9 @@
 //!   about the opposite corner: the preview shows scaled copies, the release
 //!   commits one `Replace` transaction; `Shift` keeps the proportions
 //!   (ADR-T91-1).
+//! - [`align_selection`] and [`distribute_selection`] translate the
+//!   selected shapes by their bounds as one `Replace` transaction
+//!   (ADR-T101-1).
 //!
 //! Every entry point first drops selected ids missing from the document, so a
 //! stale selection is never acted on.
@@ -23,6 +26,7 @@ use std::collections::HashSet;
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::camera::Camera;
 use crate::core::clipboard;
+use crate::core::command::{Axis, Side};
 use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::{Aabb, Vec2, approx_eq};
 use crate::core::shape::Shape;
@@ -274,6 +278,147 @@ pub fn scale_selection_up(ctx: &mut ToolCtx<'_>) -> bool {
 /// its limits. Returns whether the document changed.
 pub fn scale_selection_down(ctx: &mut ToolCtx<'_>) -> bool {
     scale_selection(ctx, SCALE_DOWN_FACTOR)
+}
+
+/// Moves each selected shape so its bounds touch `side` of the selection's
+/// box, as one undo step (ADR-T101-1). Needs two or more selected shapes;
+/// records nothing when no shape would move or a moved shape would not be
+/// finite. Returns whether the document changed.
+pub fn align_selection(ctx: &mut ToolCtx<'_>, side: Side) -> bool {
+    prune(ctx.selection, ctx.doc);
+    let boxes = selected_bounds(ctx.doc, ctx.selection);
+    if boxes.len() < 2 {
+        return false;
+    }
+    let Some(frame) = boxes.iter().map(|(_, b)| *b).reduce(|a, b| a.union(&b)) else {
+        return false;
+    };
+    let moves: Vec<(ShapeId, Vec2)> = boxes
+        .iter()
+        .map(|&(id, b)| {
+            let offset = match side {
+                Side::Left => Vec2::new(frame.min.x - b.min.x, 0.0),
+                Side::Right => Vec2::new(frame.max.x - b.max.x, 0.0),
+                Side::Top => Vec2::new(0.0, frame.min.y - b.min.y),
+                Side::Bottom => Vec2::new(0.0, frame.max.y - b.max.y),
+            };
+            (id, offset)
+        })
+        .collect();
+    commit_moves(ctx, &moves, frame)
+}
+
+/// Lays two or more selected shapes out as a row (`Horizontal`) or column
+/// (`Vertical`) without overlap, as one undo step (ADR-T101-2). Sorted by
+/// near edge, the first shape stays put and the others are centred on its
+/// line across `axis`; neighbours get equal gaps of a quarter of the
+/// largest size along `axis` (ADR-T101-3). Records nothing when no shape
+/// would move or a moved shape would not be finite. Returns whether the
+/// document changed.
+pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
+    prune(ctx.selection, ctx.doc);
+    let mut order = selected_bounds(ctx.doc, ctx.selection);
+    if order.len() < 2 {
+        return false;
+    }
+    let Some(frame) = order.iter().map(|(_, b)| *b).reduce(|a, b| a.union(&b)) else {
+        return false;
+    };
+    let near = |b: &Aabb| match axis {
+        Axis::Horizontal => b.min.x,
+        Axis::Vertical => b.min.y,
+    };
+    let far = |b: &Aabb| match axis {
+        Axis::Horizontal => b.max.x,
+        Axis::Vertical => b.max.y,
+    };
+    let across = |b: &Aabb| match axis {
+        Axis::Horizontal => b.center().y,
+        Axis::Vertical => b.center().x,
+    };
+    let offset = |along: f32, across: f32| match axis {
+        Axis::Horizontal => Vec2::new(along, across),
+        Axis::Vertical => Vec2::new(across, along),
+    };
+    // Near edge, then far edge, then stacking order (the sort is stable).
+    order.sort_by(|(_, p), (_, q)| near(p).total_cmp(&near(q)).then(far(p).total_cmp(&far(q))));
+    let Some(&(_, first_box)) = order.first() else {
+        return false;
+    };
+    let size = |b: &Aabb| far(b) - near(b);
+    let gap = order.iter().map(|(_, b)| size(b)).fold(0.0, f32::max) * GAP_RATIO;
+    let line = across(&first_box);
+    let mut cursor = far(&first_box) + gap;
+    let moves: Vec<(ShapeId, Vec2)> = order
+        .iter()
+        .skip(1)
+        .map(|(id, b)| {
+            let shift = offset(cursor - near(b), line - across(b));
+            cursor += size(b) + gap;
+            (*id, shift)
+        })
+        .collect();
+    commit_moves(ctx, &moves, frame)
+}
+
+/// Gap of a row or column, as a share of the largest selected size along
+/// its axis (ADR-T101-3).
+const GAP_RATIO: f32 = 0.25;
+
+/// Relative tolerance under which a whole align or distribute is a no-op
+/// (ADR-T101-1).
+const ARRANGE_EPS: f32 = 1e-5;
+
+/// The selected shapes' ids and bounds, in stacking order.
+fn selected_bounds(doc: &Document, selection: &[ShapeId]) -> Vec<(ShapeId, Aabb)> {
+    selected_shapes(doc, selection)
+        .into_iter()
+        .map(|(id, shape)| (id, shape.bounds()))
+        .collect()
+}
+
+/// Translates each shape of `moves` by its offset as one undo step
+/// (ADR-T101-1). Records nothing when every offset is within
+/// [`ARRANGE_EPS`] of `frame`'s magnitude, or when an offset or a moved
+/// shape is not finite. Returns whether the document changed.
+fn commit_moves(ctx: &mut ToolCtx<'_>, moves: &[(ShapeId, Vec2)], frame: Aabb) -> bool {
+    let magnitude = [frame.min.x, frame.min.y, frame.max.x, frame.max.y]
+        .into_iter()
+        .fold(1.0f32, |m, c| m.max(c.abs()));
+    let tolerance = ARRANGE_EPS * magnitude;
+    if !tolerance.is_finite() {
+        return false;
+    }
+    let negligible = |d: Vec2| d.x.abs() <= tolerance && d.y.abs() <= tolerance;
+    if moves.iter().all(|&(_, offset)| negligible(offset)) {
+        return false;
+    }
+    let mut edits = Vec::with_capacity(moves.len());
+    for &(id, offset) in moves {
+        if !offset.is_finite() {
+            return false;
+        }
+        if offset == Vec2::ZERO {
+            continue;
+        }
+        let Some(before) = ctx.doc.get(id) else {
+            continue;
+        };
+        let mut after = before.clone();
+        after.translate(offset);
+        let bounds = after.bounds();
+        if !after.is_finite() || !bounds.min.is_finite() || !bounds.max.is_finite() {
+            return false;
+        }
+        if after != *before {
+            edits.push(Edit::Replace {
+                id,
+                before: before.clone(),
+                after,
+            });
+        }
+    }
+    ctx.commit(Transaction::from(edits))
 }
 
 /// Drops selected ids that are not in the document.
@@ -1658,5 +1803,199 @@ mod tests {
         // Assert
         assert_box(&fx.shape(ids[0]), (0.0, 0.0), (150.0, 150.0));
         assert_eq!(fx.selection, vec![ids[0]]);
+    }
+
+    // ---- T101 align and distribute -----------------------------------------
+
+    use crate::core::command::{Axis, Side};
+    use proptest::prelude::*;
+
+    /// Unfilled rectangle with corners `a` and `b` and outline `width`.
+    fn outlined(a: Vec2, b: Vec2, width: f32) -> Shape {
+        Shape::Rect {
+            a,
+            b,
+            style: Style {
+                color: ColorId::INK,
+                width,
+            },
+            fill: None,
+            label: None,
+            text: None,
+        }
+    }
+
+    #[test]
+    fn align_selection_moves_by_bounds() {
+        // Arrange: outlines 1 and 5 wide; bounds start at -0.5 and 37.5.
+        let (mut fx, ids) = Fixture::new(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            outlined(Vec2::new(40.0, 25.0), Vec2::new(60.0, 30.0), 5.0),
+        ]);
+        fx.selection = ids.clone();
+
+        // Act
+        let changed = align_selection(&mut fx.ctx(Tool::Select), Side::Left);
+
+        // Assert: the bounds meet, so the thick rectangle's corner is
+        // 2 further right than the thin one's.
+        assert!(changed);
+        assert!(approx_eq(fx.shape(ids[1]).bounds().min.x, -0.5, 1e-4));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
+        assert_box(&fx.shape(ids[1]), (2.0, 25.0), (22.0, 30.0));
+        assert_eq!(fx.history.undo_len(), 1);
+        assert_eq!(fx.selection, ids);
+    }
+
+    #[test]
+    fn distribute_sorts_by_left_edge_not_selection_order() {
+        // Arrange: x = 0, 100, 30 bottom first; selection order mixed.
+        // gap = 11 / 4 = 2.75, so the bounds start at 13.25 and 27 (corners
+        // 13.75 and 27.5); all centres meet the first one's y 5.
+        let (mut fx, ids) = Fixture::new(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(100.0, 5.0, 10.0, 10.0),
+            rect(30.0, 70.0, 10.0, 10.0),
+        ]);
+        fx.selection = vec![ids[1], ids[2], ids[0]];
+
+        // Act
+        let changed = distribute_selection(&mut fx.ctx(Tool::Select), Axis::Horizontal);
+
+        // Assert
+        assert!(changed);
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
+        assert_box(&fx.shape(ids[1]), (27.5, 0.0), (37.5, 10.0));
+        assert_box(&fx.shape(ids[2]), (13.75, 0.0), (23.75, 10.0));
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn arrange_without_enough_shapes_records_nothing() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        fx.selection = vec![ids[1]];
+
+        // Act / Assert: one shape neither aligns nor distributes.
+        for axis in [Axis::Horizontal, Axis::Vertical] {
+            assert!(
+                !distribute_selection(&mut fx.ctx(Tool::Select), axis),
+                "{axis:?}"
+            );
+        }
+        for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
+            assert!(
+                !align_selection(&mut fx.ctx(Tool::Select), side),
+                "{side:?}"
+            );
+        }
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    /// Rectangles from `(x, y, w, h)` tuples.
+    fn boxes(specs: &[(f32, f32, f32, f32)]) -> Vec<Shape> {
+        specs.iter().map(|&(x, y, w, h)| rect(x, y, w, h)).collect()
+    }
+
+    /// Any coordinate, huge ones included.
+    fn any_coord() -> impl Strategy<Value = f32> {
+        prop_oneof![
+            4 => -1_000.0f32..1_000.0,
+            1 => -f32::MAX..f32::MAX,
+            1 => prop_oneof![Just(f32::MAX), Just(-f32::MAX), Just(0.0f32)],
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn distribute_lays_out_a_compact_row(
+            specs in prop::collection::vec(
+                (0.0f32..1_000.0, 0.0f32..1_000.0, 1.0f32..100.0, 1.0f32..100.0),
+                2..8,
+            ),
+            vertical: bool,
+        ) {
+            // Arrange
+            let (mut fx, ids) = Fixture::new(boxes(&specs));
+            fx.selection = ids.clone();
+            let axis = if vertical { Axis::Vertical } else { Axis::Horizontal };
+            let lo = |b: &Aabb| if vertical { b.min.y } else { b.min.x };
+            let hi = |b: &Aabb| if vertical { b.max.y } else { b.max.x };
+            let mid = |b: &Aabb| if vertical {
+                f32::midpoint(b.min.x, b.max.x)
+            } else {
+                f32::midpoint(b.min.y, b.max.y)
+            };
+            let before: Vec<Aabb> = ids.iter().map(|&i| fx.shape(i).bounds()).collect();
+            let mut order: Vec<usize> = (0..ids.len()).collect();
+            order.sort_by(|&p, &q| {
+                lo(&before[p])
+                    .total_cmp(&lo(&before[q]))
+                    .then(hi(&before[p]).total_cmp(&hi(&before[q])))
+                    .then(p.cmp(&q))
+            });
+            let first = order[0];
+            let size = |b: &Aabb| hi(b) - lo(b);
+            let min_gap = before.iter().map(size).fold(0.0f32, f32::max) / 4.0;
+
+            // Act
+            distribute_selection(&mut fx.ctx(Tool::Select), axis);
+
+            // Assert: first fixed, one line, every gap a quarter of the
+            // largest size, sizes kept.
+            let after: Vec<Aabb> = ids.iter().map(|&i| fx.shape(i).bounds()).collect();
+            prop_assert_eq!(after[first], before[first]);
+            let gaps: Vec<f32> = order
+                .windows(2)
+                .map(|w| lo(&after[w[1]]) - hi(&after[w[0]]))
+                .collect();
+            for gap in &gaps {
+                prop_assert!(approx_eq(*gap, min_gap, 1e-2), "{:?} != {}", gaps, min_gap);
+            }
+            for k in 0..ids.len() {
+                prop_assert!(approx_eq(mid(&after[k]), mid(&before[first]), 1e-2));
+                prop_assert!(approx_eq(size(&after[k]), size(&before[k]), 1e-2));
+            }
+            prop_assert!(fx.history.undo_len() <= 1);
+        }
+
+        #[test]
+        fn align_and_distribute_stay_finite(
+            corners in prop::collection::vec((any_coord(), any_coord(), any_coord(), any_coord()), 1..6),
+        ) {
+            // Arrange
+            let shapes: Vec<Shape> = corners
+                .iter()
+                .map(|&(ax, ay, bx, by)| outlined(Vec2::new(ax, ay), Vec2::new(bx, by), 1.0))
+                .collect();
+            let (mut fx, ids) = Fixture::new(shapes);
+            fx.selection = ids.clone();
+
+            // Act
+            for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
+                align_selection(&mut fx.ctx(Tool::Select), side);
+            }
+            for axis in [Axis::Horizontal, Axis::Vertical] {
+                distribute_selection(&mut fx.ctx(Tool::Select), axis);
+            }
+
+            // Assert: every shape is still there and finite; undo restores.
+            prop_assert_eq!(fx.ids(), ids.clone());
+            for &i in &ids {
+                let shape = fx.shape(i);
+                prop_assert!(shape.is_finite(), "{:?}", shape);
+                prop_assert!(shape.bounds().min.is_finite(), "{:?}", shape);
+                prop_assert!(shape.bounds().max.is_finite(), "{:?}", shape);
+            }
+            prop_assert_eq!(&fx.selection, &ids);
+            prop_assert!(fx.history.undo_len() <= 6);
+            while fx.history.undo(&mut fx.doc) {}
+            for (&i, &(ax, ay, bx, by)) in ids.iter().zip(&corners) {
+                prop_assert_eq!(
+                    fx.shape(i),
+                    outlined(Vec2::new(ax, ay), Vec2::new(bx, by), 1.0)
+                );
+            }
+        }
     }
 }

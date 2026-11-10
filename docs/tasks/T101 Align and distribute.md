@@ -1,11 +1,11 @@
 ---
 id: T101
 title: Align and distribute
-status: todo
+status: review
 wave: 58
 branch: task/T101-align-distribute
 depends_on: [T100]
-adrs: []
+adrs: ["[[ADR-T101-1 Align and distribute keys]]", "[[ADR-T101-2 Rows and columns without overlap]]", "[[ADR-T101-3 Compact rows and columns]]"]
 feature: "[[Editing tools]]"
 tutorial: ""
 tags: [task]
@@ -15,7 +15,7 @@ tags: [task]
 
 ## Goal
 
-With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side of the selection's box, and with three or more `Alt+H` / `Alt+V` space them with equal gaps, each one undo step.
+With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side of the selection's box, and `Alt+H` / `Alt+V` lay them out as a row / column without overlap, each one undo step.
 
 ## Known facts (2026-11-10)
 
@@ -25,13 +25,34 @@ With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side 
 
 ## Spec
 
-The spec step names the test functions of each AC.
+Rules: [[ADR-T101-1 Align and distribute keys]], amended by [[ADR-T101-2 Rows and columns without overlap]] and [[ADR-T101-3 Compact rows and columns]].
 
 - **AC-1** — `Alt+←` moves every selected shape so its left edge meets the selection box's left edge; `→`, `↑`, `↓` likewise for right, top and bottom. Each shape moves as a whole (by its bounds).
-- **AC-2** (owner) — `Alt+H` keeps the leftmost and rightmost shapes in place and moves the others so the horizontal gaps between neighbours (sorted by left edge) are equal; `Alt+V` does the same vertically. Overlapping shapes may get a negative gap.
-- **AC-3** — Fewer than two shapes (align) or three (distribute), or nothing that would move, changes nothing and adds no undo step.
+  - `keymap::tests::alt_arrows_align_and_alt_h_v_distribute`, `keymap::tests::every_documented_binding`
+  - `editor::tests::alt_arrow_left_aligns_left_edges`
+  - `editor::tests::alt_arrows_align_each_side`
+  - `editor::tests::align_moves_grid_and_text_as_whole_shapes`
+  - `select::tests::align_selection_moves_by_bounds`
+- **AC-2** (owner, amended by ADR-T101-2 and ADR-T101-3) — `Alt+H` lays two or more shapes out as a compact row: sorted by left edge, the first one never moves, every shape's centre `y` meets the first one's, and neighbours get equal gaps of `¼ ×` the largest width, whatever the starting spacing, so nothing overlaps. `Alt+V` does the same as a column.
+  - `editor::tests::alt_h_spaces_shapes_with_equal_gaps`
+  - `editor::tests::alt_v_spaces_shapes_with_equal_vertical_gaps`
+  - `editor::tests::distribute_overlapping_shapes_grows_the_row`
+  - `editor::tests::distribute_two_overlapping_shapes_separates_them`
+  - `select::tests::distribute_sorts_by_left_edge_not_selection_order`
+  - `select::tests::distribute_lays_out_a_compact_row` (proptest)
+- **AC-3** — Fewer than two shapes, or nothing that would move, changes nothing and adds no undo step.
+  - `editor::tests::align_with_one_shape_does_nothing`
+  - `editor::tests::distribute_with_one_shape_does_nothing`
+  - `editor::tests::align_when_already_aligned_adds_no_undo_step`
+  - `editor::tests::distribute_twice_adds_one_undo_step`
 - **AC-4** — Each command is one undo step and keeps the selection; ignored during a gesture or text edit.
+  - `editor::tests::align_is_one_undo_step_and_keeps_selection`
+  - `editor::tests::align_during_gesture_does_nothing`
+  - `editor::tests::alt_arrow_in_text_edit_moves_caret_not_shapes`
 - **AC-5** — Fuzzed; results stay finite.
+  - `select::tests::align_and_distribute_stay_finite` (proptest, huge coordinates)
+  - `fuzz::align_sessions_stay_finite_and_undo` (proptest), and the new chords in `arb_command_burst` through `BINDINGS`
+  - `fuzz::align_session_select_all_aligns` (coverage: the session's keys really move shapes)
 
 ## Out of scope
 
@@ -40,7 +61,7 @@ The spec step names the test functions of each AC.
 
 ## Files owned
 
-- `src/core/tools/select.rs` (only if a move helper is shared), `src/core/geom.rs`
+- `src/core/tools/select.rs` (the align and distribute functions reuse its move helpers), `src/core/geom.rs`
 - `docs/features/Editing tools.md`
 - `src/core/editor.rs`, `src/core/command.rs`, `src/core/keymap.rs`, `src/core/input.rs`
 - `docs/architecture/Keymap.md`, `docs/features/Contest cheat sheet.md`, `README.md`
@@ -49,12 +70,12 @@ The spec step names the test functions of each AC.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T101): specify align and distribute`
-- [ ] tests — `test(T101): add failing tests for align and distribute`
-- [ ] models — `feat(T101): …`
-- [ ] behaviour — `feat(T101): …`
-- [ ] quality — `chore(T101): pass clippy and rustfmt`
-- [ ] docs — `docs(T101): update the feature note`
+- [x] spec — `docs(T101): specify align and distribute`
+- [x] tests — `test(T101): add failing tests for align and distribute`
+- [x] models — `feat(T101): add align and distribute commands and bindings`
+- [x] behaviour — `feat(T101): implement aligning and distributing the selection`
+- [x] quality — skipped: `scripts/check.sh --fuzz` was green on the behaviour commit with nothing to change (see *Log*)
+- [x] docs — `docs(T101): update the feature note`
 
 ## Learning path
 
@@ -63,3 +84,12 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written in the batch plan with the owner; owner decisions are in *Spec* and in `.batch/plan.md`.
+- 2026-11-10 — implemented in a batch run. `Command::Align(Side)` on `Alt+←/→/↑/↓` and `Command::Distribute(Axis)` on `Alt+H` / `Alt+V` (`Side`, `Axis` in `core::command`); `select::align_selection` / `select::distribute_selection` build one `Replace` transaction; the editor's `arrange` ignores them during a gesture. The shell already passes `Alt` with every key (as for `Alt+]`), so `Alt+arrow` reaches the core; no alternative key was needed. `scripts/check.sh --fuzz` and `scripts/e2e.sh` green; no golden changed.
+- 2026-11-10 — quality step skipped: `cargo fmt` ran in every step and `scripts/check.sh --fuzz` (fmt, clippy `-D warnings`, tests, docs, 20 000 fuzz cases) passed on the behaviour commit with no change.
+- 2026-11-10 — UNATTENDED CHOICE: distribute sorts by near edge, then far edge, then stacking order, and keeps the first and last of that order fixed; the gap is `(last.min − first.max − Σ middle sizes) / (n − 1)` (ADR-T101-1). Alternative: equal centre spacing.
+- 2026-11-10 — UNATTENDED CHOICE: the logic lives in `tools/select.rs` (listed as owned when a move helper is shared): it reuses `selected_shapes`, `prune` and the `Replace` transaction of moves and scaling.
+- 2026-11-10 — UNATTENDED CHOICE: the no-op tolerance (`1e-5` of the box's magnitude, at least `1e-5` world units) applies to the command as a whole: when every offset is within it nothing is recorded, otherwise every shape with a non-zero offset moves by its exact offset, so the gaps come out equal. ADR-T101-1 words it per shape; the two only differ below that tolerance.
+- 2026-11-10 — found while fuzzing (no bug): a second click on the only selected rectangle opens its text (ADR-T31-1), so a following `Alt+←` moves the caret and `Undo` cancels the text. The fuzz property closes the text with `Esc` before its final undos, as the T100 one does.
+- 2026-11-10 — manual checks for the owner: align a few uneven graph nodes with `Alt+arrows`, space them with `Alt+H` / `Alt+V`, undo; `Alt+arrow` on X11 and Wayland (some desktops bind `Alt+arrow` themselves).
+- 2026-11-10 — owner review: `Alt+H` / `Alt+V` left overlapping nodes overlapped and off the line. The owner chose a row / column without overlap: ADR-T101-2 amends the distribute rule (cross-axis centring on the first shape, minimum gap ¼ of the largest size, two shapes enough).
+- 2026-11-10 — owner review: rows should always be compact. ADR-T101-3 makes the gap always ¼ of the largest size; the last shape moves too.

@@ -51,6 +51,29 @@ impl Tool {
     ];
 }
 
+/// A side of a box, for [`Command::Align`]. The world is `y`-down: the
+/// top is the smaller `y`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Side {
+    /// Smallest `x`.
+    Left,
+    /// Largest `x`.
+    Right,
+    /// Smallest `y`.
+    Top,
+    /// Largest `y`.
+    Bottom,
+}
+
+/// A direction along which shapes are spaced, for [`Command::Distribute`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Axis {
+    /// Along `x`: gaps between right and left edges.
+    Horizontal,
+    /// Along `y`: gaps between bottom and top edges.
+    Vertical,
+}
+
 /// A discrete editor action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Command {
@@ -103,6 +126,12 @@ pub enum Command {
     /// Move the selection to the bottom of the stacking order
     /// (ADR-T100-1).
     SelectionToBottom,
+    /// Move each selected shape so its bounds touch that side of the
+    /// selection's box (ADR-T101-1).
+    Align(Side),
+    /// Space three or more selected shapes with equal gaps along the axis,
+    /// the outer two fixed (ADR-T101-1).
+    Distribute(Axis),
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).

@@ -1,9 +1,9 @@
 ---
 title: Editing tools
 task: "[[T10 Editing tools]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]", "[[ADR-T100-1 Z-order keys and restack transactions]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]", "[[ADR-T100-1 Z-order keys and restack transactions]]", "[[ADR-T101-1 Align and distribute keys]]"]
 tutorial: "[[10 Selection, clipboard and fill]]"
-shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]", "Ctrl+[", "Ctrl+]", "Ctrl+Shift+[", "Ctrl+Shift+]"]
+shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]", "Ctrl+[", "Ctrl+]", "Ctrl+Shift+[", "Ctrl+Shift+]", "Alt+←", "Alt+→", "Alt+↑", "Alt+↓", "Alt+H", "Alt+V"]
 tags: [feature]
 ---
 
@@ -38,6 +38,8 @@ what the tools do with them.
 | Grow / shrink by 10 % about the centre | `Alt+]` / `Alt+[` |
 | Raise / lower one step, past the nearest overlapping shape | `Ctrl+]` / `Ctrl+[` |
 | Bring to the top / send to the bottom | `Ctrl+Shift+]` / `Ctrl+Shift+[` |
+| Align left / right / top / bottom edges (two or more shapes) | `Alt+←` / `Alt+→` / `Alt+↑` / `Alt+↓` |
+| Lay out as a row / column, equal gaps, no overlap (two or more) | `Alt+H` / `Alt+V` |
 | Select all | `Ctrl+A` |
 | Delete selection | `Delete`, `Backspace` |
 | Copy / cut / paste at cursor | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
@@ -82,6 +84,23 @@ what the tools do with them.
   down and inserts it bottom up, so undo restores the order exactly. A
   press that would not change the order, an empty selection or a
   gesture in progress records nothing.
+- Align and distribute ([[ADR-T101-1 Align and distribute keys]],
+  [[ADR-T101-2 Rows and columns without overlap]],
+  [[ADR-T101-3 Compact rows and columns]]):
+  `select::align_selection` and `select::distribute_selection` measure
+  each selected shape by its `Shape::bounds()` (a grid with its index
+  bands, a text block by its layout box) and translate it whole. Align
+  moves each box to the chosen side of the selection's union box.
+  Distribute sorts by the near edge (then far edge, then stacking
+  order), keeps the first shape still, centres the others on its line
+  across the axis and places each one equal gap after the previous one.
+  The gap is always a quarter of the largest size along the axis, so
+  every press gives a compact row: overlapping shapes are pushed apart
+  and spread-out ones pulled together. The moves are one
+  transaction of `Replace` edits, so ids, stacking and the selection
+  stay. Nothing is recorded with too few shapes, when every offset is
+  within `1e-5` of the box's magnitude, when a moved shape would not be
+  finite, or during a gesture.
 - Selection hygiene: the editor prunes the selection after undo, redo and every
   gesture (T08); every select and clipboard entry point also drops stale ids
   first, so a stale id can never be moved, copied or deleted.
@@ -98,6 +117,12 @@ what the tools do with them.
   of the box counts too. Grid cells and text inside shapes have no
   order of their own.
 - In text edit mode `Ctrl+]` / `Ctrl+[` resize the text, not the order.
+- Align and distribute work only on the selection's own box: there is no
+  aligning to the canvas or to a key shape, and no toolbar button. Graph
+  edges are separate shapes, so they stay put when their nodes move.
+- Distribute uses the order of the near edges before the move, and
+  always centres on the first shape's line; to line up on another shape,
+  align with `Alt+arrow` first.
 - The eraser removes whole shapes, never parts of a stroke.
 - The bucket fills only rectangles and ellipses, not regions enclosed by
   strokes or lines.
