@@ -349,6 +349,12 @@ fn arb_edge_text() -> impl Strategy<Value = String> {
         "$b$ 1 $w_1$",
         "$x y$ > 2",
         "$a 1",
+        // Weights after pairs (T102).
+        "1>3 7",
+        "1 > 3 $w$",
+        "1-2 5 2-3 9",
+        "2>1 -5",
+        "1-2 5 6",
     ]);
     // A keyword, and sometimes a count line, on top (T96).
     let header = select(vec![
@@ -360,10 +366,15 @@ fn arb_edge_text() -> impl Strategy<Value = String> {
         "dgraph:\n",
         "tree:\n3\n",
         "dgraph:\n9 2\n",
+        // Weighted keywords (T102).
+        "wtree:\n",
+        "wgraph:\n",
+        "wdgraph:\n",
     ]);
     let edges = (header, prop::collection::vec(line, 1..12))
         .prop_map(|(header, lines)| format!("{header}{}", lines.join("\n")));
-    let entry = select(vec!["1", "1", "2", "3", "0", "-1", "x"]);
+    // `0` is a root marker under `parents:` and a node under `parents0:` (T102).
+    let entry = select(vec!["1", "1", "2", "3", "0", "00", "-1", "x"]);
     let parents = (
         select(vec!["parents:", "parents0:", "parents:\n4"]),
         prop::collection::vec(entry, 1..12),

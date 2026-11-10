@@ -6345,6 +6345,30 @@ mod tests {
     }
 
     #[test]
+    fn graph_from_text_reads_weights_after_pairs() {
+        // Arrange
+        let mut ed = selected_block("1>3 7\n3 - 2 $w$");
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(count(&ed, is_ellipse), 3);
+        assert_eq!(count(&ed, |s| matches!(s, Shape::Arrow { .. })), 1);
+        assert_eq!(count(&ed, is_line), 1);
+        let weights: Vec<&str> = ed
+            .document()
+            .shapes()
+            .filter_map(|(_, s)| match s {
+                Shape::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(weights, ["7", "$w$"]);
+    }
+
+    #[test]
     fn graph_from_text_reads_a_parent_list() {
         // Arrange
         let mut ed = selected_block("parents:\n4\n1 1 2");

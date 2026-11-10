@@ -14,6 +14,7 @@ use crate::core::shape::{SHAPE_TEXT_FILL, Shape, ShapeText, Style, TextSlot};
 use crate::core::text_layout;
 use crate::core::tools::ToolCtx;
 use crate::core::tools::text::PASTE_MAX_BYTES;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::f32::consts::{FRAC_PI_2, PI, SQRT_2, TAU};
 use std::fmt;
@@ -398,8 +399,9 @@ impl InputFormat {
     /// The format a keyword line names; `None` if it is not one.
     fn of_keyword(line: &str) -> Option<Self> {
         match line.trim() {
-            "graph:" | "tree:" => Some(Self::Edges { directed: false }),
-            "dgraph:" => Some(Self::Edges { directed: true }),
+            // `w` keywords only document weights (ADR-T102-1).
+            "graph:" | "tree:" | "wgraph:" | "wtree:" => Some(Self::Edges { directed: false }),
+            "dgraph:" | "wdgraph:" => Some(Self::Edges { directed: true }),
             "parents:" => Some(Self::Parents { first: 1 }),
             "parents0:" => Some(Self::Parents { first: 0 }),
             _ => None,
@@ -495,8 +497,11 @@ fn parent_edges<'a>(
     };
     let not_an_edge = |line| GraphError::NotAnEdge { line };
     let name_at = |index: usize| u32::try_from(index).ok().and_then(|i| first.checked_add(i));
+    // `-1` marks the root; so does `0` where nodes start at 1 (ADR-T102-1).
+    let is_root =
+        |entry: &str| entry == ROOT_ENTRY || (first != 0 && number_name(entry) == Some(0));
     let roots: Vec<usize> = (0..entries.len())
-        .filter(|&index| entries[index].1 == ROOT_ENTRY)
+        .filter(|&index| is_root(entries[index].1))
         .collect();
     // Without `-1` the list starts at the node after the root.
     let (root, offset) = match roots.as_slice() {
@@ -507,7 +512,7 @@ fn parent_edges<'a>(
     let root = root.ok_or(not_an_edge(first_line))?;
     let mut raws = Vec::new();
     for (index, &(number, entry)) in entries.iter().enumerate() {
-        if entry == ROOT_ENTRY {
+        if is_root(entry) {
             continue;
         }
         let child = index
@@ -530,11 +535,11 @@ fn parent_edges<'a>(
 fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
     let tokens = tokens(line)?;
     if let Some(joined) = joined_pairs(&tokens) {
-        return joined.iter().map(|token| pair(token)).collect();
+        return pair_edges(joined);
     }
     match tokens.as_slice() {
         [first, ..] if separator_at(first).is_some() => {
-            tokens.iter().map(|token| pair(token)).collect()
+            pair_edges(tokens.iter().map(|&token| Cow::Borrowed(token)))
         }
         [u, v] => Some(vec![plain_edge(u, v, None, directed)?]),
         [u, v, weight] => Some(vec![plain_edge(u, v, Some(weight), directed)?]),
@@ -547,20 +552,44 @@ fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
 /// `None` when nothing is joined. A token ending in `-` or `>` takes the
 /// next one, and a token starting with `>`, or a lone `-`, joins the one
 /// before. `-5` never joins, so it stays a weight.
-fn joined_pairs(tokens: &[&str]) -> Option<Vec<String>> {
+fn joined_pairs<'a>(tokens: &[&'a str]) -> Option<Vec<Cow<'a, str>>> {
     let opens = |token: &str| token.ends_with(SEPARATORS);
     let closes = |token: &str| token.starts_with('>') || token == "-";
     if !tokens.iter().any(|token| opens(token) || closes(token)) {
         return None;
     }
-    let mut joined: Vec<String> = Vec::with_capacity(tokens.len());
+    let mut joined: Vec<Cow<'a, str>> = Vec::with_capacity(tokens.len());
     for &token in tokens {
         match joined.last_mut() {
-            Some(last) if opens(last) || closes(token) => last.push_str(token),
-            _ => joined.push(token.to_owned()),
+            Some(last) if opens(last) || closes(token) => last.to_mut().push_str(token),
+            _ => joined.push(Cow::Borrowed(token)),
         }
     }
     Some(joined)
+}
+
+/// The edges of a line of pairs, each pair maybe followed by its weight
+/// (ADR-T102-1); `None` if a token is neither, or a weight follows no
+/// pair. A weight is never joined, so it is always borrowed from the line.
+fn pair_edges<'a>(tokens: impl IntoIterator<Item = Cow<'a, str>>) -> Option<Vec<RawEdge<'a>>> {
+    let mut raws: Vec<RawEdge<'a>> = Vec::new();
+    // Whether the last token read may not take a weight.
+    let mut weighed = true;
+    for token in tokens {
+        if let Some(raw) = pair(&token) {
+            raws.push(raw);
+            weighed = false;
+            continue;
+        }
+        match token {
+            Cow::Borrowed(weight) if !weighed && is_weight(weight) => {
+                raws.last_mut()?.weight = Some(weight);
+                weighed = true;
+            }
+            _ => return None,
+        }
+    }
+    Some(raws)
 }
 
 /// The edge a token `u-v` or `u>v` writes.
@@ -582,8 +611,7 @@ fn plain_edge<'a>(
     weight: Option<&'a str>,
     directed: bool,
 ) -> Option<RawEdge<'a>> {
-    let finite = |w: &str| w.parse::<f64>().is_ok_and(f64::is_finite);
-    if weight.is_some_and(|w| !finite(w) && !is_math(w)) {
+    if weight.is_some_and(|w| !is_weight(w)) {
         return None;
     }
     Some(RawEdge {
@@ -592,6 +620,12 @@ fn plain_edge<'a>(
         directed,
         weight,
     })
+}
+
+/// Whether `token` is a weight: a finite number or a math token
+/// (ADR-T98-1).
+fn is_weight(token: &str) -> bool {
+    token.parse::<f64>().is_ok_and(f64::is_finite) || is_math(token)
 }
 
 /// A node name: a number name or a math token (ADR-T98-1).
@@ -1630,7 +1664,8 @@ mod tests {
             "a b",
             "1",
             "1 2 3 4",
-            "1-2 3",
+            // `1-2 3` is a weighted pair since ADR-T102-1.
+            "1-2 3 4",
             "1-2-3",
             "-1 2",
             "1 2 x",
@@ -1844,7 +1879,7 @@ mod tests {
 
     #[test]
     fn parse_refuses_a_dangling_separator() {
-        for text in ["1 >", "> 2", "1 -", "5 1 > 3", "1 > 3 7", "1 -3"] {
+        for text in ["1 >", "> 2", "1 -", "5 1 > 3", "1 -3"] {
             assert_eq!(
                 EdgeList::parse(text),
                 Err(GraphError::NotAnEdge { line: 1 }),
@@ -2140,6 +2175,112 @@ mod tests {
         ] {
             assert_eq!(EdgeList::parse(text), Ok(None), "{text:?}");
         }
+    }
+
+    // ---- T102 graph input follow-ups ---------------------------------------
+
+    #[test]
+    fn parse_reads_a_weight_after_a_pair() {
+        assert_eq!(edges(&list("1>3 7")), [(1, 3, true, Some("7"))]);
+        assert_eq!(edges(&list("1-3 1.5")), [(1, 3, false, Some("1.5"))]);
+    }
+
+    #[test]
+    fn parse_reads_a_weight_after_a_spaced_pair() {
+        assert_eq!(edges(&list("1 > 3 7")), [(1, 3, true, Some("7"))]);
+        assert_eq!(
+            written_edges(&list("1 > 3 $w$")),
+            [edge("1", "3", true, Some("$w$"))]
+        );
+    }
+
+    #[test]
+    fn parse_reads_weights_after_several_pairs() {
+        assert_eq!(
+            edges(&list("1-2 5 2-3 9")),
+            [(1, 2, false, Some("5")), (2, 3, false, Some("9"))]
+        );
+        assert_eq!(
+            edges(&list("1-2 2>3 4")),
+            [(1, 2, false, None), (2, 3, true, Some("4"))]
+        );
+    }
+
+    #[test]
+    fn parse_refuses_a_weight_without_its_pair() {
+        for text in [
+            "1>3 7 8",
+            "1-2 5 $w$ 2-3",
+            "7 1>3",
+            "$w$ 1 > 3",
+            "1>3 x",
+            "1>3 inf",
+            "1>3 NaN",
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_reads_a_negative_weight_after_a_pair() {
+        assert_eq!(edges(&list("1>3 -5")), [(1, 3, true, Some("-5"))]);
+        assert_eq!(edges(&list("1 - 3 -5")), [(1, 3, false, Some("-5"))]);
+        assert_eq!(edges(&list("1>3 1e-5")), [(1, 3, true, Some("1e-5"))]);
+    }
+
+    #[test]
+    fn parse_parents_reads_zero_as_the_root() {
+        assert_eq!(graph("parents:\n2 0 2"), graph("parents:\n2 -1 2"));
+        assert_eq!(graph("parents:\n0 1 1 2"), graph("1 2\n1 3\n2 4"));
+        assert_eq!(graph("parents:\n3\n2 00 2"), graph("parents:\n2 -1 2"));
+        assert_eq!(graph("parents:\n2 0 2").names()[0], NodeName::Number(2));
+    }
+
+    #[test]
+    fn parse_parents_refuses_a_second_root_marker() {
+        for (text, line) in [
+            ("parents:\n0 0", 2),
+            ("parents:\n0 1\n-1", 3),
+            ("parents:\n-1\n1 0", 3),
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line }),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_parents0_keeps_zero_as_a_node() {
+        assert_eq!(graph("parents0:\n0 0 1"), graph("0 1\n0 2\n1 3"));
+        assert_eq!(graph("parents0:\n-1 0 0"), graph("0 1\n0 2"));
+    }
+
+    #[test]
+    fn parse_weighted_keywords_read_as_their_plain_keywords() {
+        let body = "3 2\n1 2 5\n2 3 $w$";
+        for (weighted, plain) in [
+            ("wtree:", "tree:"),
+            ("wgraph:", "graph:"),
+            ("wdgraph:", "dgraph:"),
+        ] {
+            assert_eq!(
+                graph(&format!("{weighted}\n{body}")),
+                graph(&format!("{plain}\n{body}")),
+                "{weighted}"
+            );
+        }
+        assert!(
+            graph(&format!("wdgraph:\n{body}"))
+                .edges()
+                .iter()
+                .all(|e| e.directed)
+        );
     }
 
     fn points(text: &str) -> PointList {
