@@ -1,7 +1,7 @@
 ---
 id: T103
 title: Labelled extensible arrows
-status: in-progress
+status: review
 wave: 58
 branch: task/T103-labelled-arrows
 depends_on: [T99]
@@ -52,12 +52,12 @@ Design: [[ADR-T103-1 Extensible arrows from the arrow glyph and a ruled shaft]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T103): specify labelled extensible arrows`
-- [ ] tests — `test(T103): add failing tests for labelled extensible arrows`
-- [ ] models — `feat(T103): …`
-- [ ] behaviour — `feat(T103): …`
-- [ ] quality — `chore(T103): pass clippy and rustfmt`
-- [ ] docs — `docs(T103): update the feature note`
+- [x] spec — `docs(T103): specify labelled extensible arrows`
+- [x] tests — `test(T103): add failing tests for labelled extensible arrows`
+- [x] models — `feat(T103): add the extensible arrow node and table`
+- [x] behaviour — `feat(T103): lay out labelled extensible arrows`
+- [x] quality — `chore(T103): pass clippy and rustfmt`
+- [x] docs — `docs(T103): update the feature note`
 
 ## Learning path
 
@@ -70,3 +70,8 @@ None: it extends an existing area.
 - 2026-11-10 — UNATTENDED CHOICE: the required label may be a single token (`\xrightarrow f`), as for every other command and in amsmath; only a missing label is invalid.
 - 2026-11-10 — UNATTENDED CHOICE: labels sit `XARROW_GAP` = 0.111 em (TeX's `\bigopspacing1`) from the arrow's ink.
 - 2026-11-10 — UNATTENDED CHOICE: the stretched `\xhookrightarrow` hook is a half circle of rules, since a glyph tail would show its own head mid-shaft (ADR-T103-1).
+- 2026-11-10 — tests failed to compile for the right reason (no `Node::XArrow`, `Bracket`, `XARROW_*`); all green after the behaviour step. `src/shell/render.rs` was not needed: rules already draw.
+- 2026-11-10 — quality: clippy asked for no `Option<Option<_>>` in the bracket parser (now a look-ahead) and longer test binding names.
+- 2026-11-10 — FINDING (not T103): the first `scripts/check.sh --fuzz` run failed `snapshot_mutated_text_is_total` with "numbered shape holds text" — a graph from `Paste("1-2\n1-2 2-3\n$a$ $b$\n1-2\n1-2")`, `Ctrl+L`, a snapshot mutated with token `0`, then `Ctrl+Shift+Z`. Snapshot and editor code, outside this task's files; random seed `cc b900c994181812be68ac3e9325f0843a37d0a578f56661327f33479782fd6906`. The seed line was left out of `tests/fuzz.proptest-regressions` (not owned); the rerun was green. Worth a `fix/` task.
+- 2026-11-10 — `scripts/check.sh --fuzz` green; `scripts/e2e.sh` green, no golden changed. `Contest cheat sheet.md` has no formula table, so it is unchanged.
+- 2026-11-10 — manual check left for the owner: type `$A \xrightarrow[n\to\infty]{f_n} B \xleftarrow{g} C$` and judge, and look at a stretched `\xhookrightarrow` and `\xRightarrow` (shaft rules meeting the head glyphs).

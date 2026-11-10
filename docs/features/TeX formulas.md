@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]", "[[ADR-T99-1 Spacing commands as kerns outside the atom list]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]", "[[ADR-T99-1 Spacing commands as kerns outside the atom list]]", "[[ADR-T103-1 Extensible arrows from the arrow glyph and a ruled shaft]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -278,6 +278,23 @@ formula never gets narrower than nothing, and `\!` at the very start
 does nothing. (Since [[T99 Spacing commands]],
 [[ADR-T99-1 Spacing commands as kerns outside the atom list]].)
 
+Arrows stretch to fit a label: `$A \xrightarrow{f} B$`, and with an
+optional label under the arrow, `$A \xrightarrow[n\to\infty]{f_n} B
+\xleftarrow{g} C$`. The eight commands are `\xrightarrow \xleftarrow
+\xleftrightarrow \xRightarrow \xLeftarrow \xLeftrightarrow \xmapsto
+\xhookrightarrow`. Labels are set at script size, centred above and
+under the arrow; the arrow is as long as the wider label plus half an
+em on each side, and never shorter than its plain arrow. With empty
+labels (`\xrightarrow{}`) it is exactly the plain arrow. It is a
+relation on the math axis, spaced like `\rightarrow`, and labels may
+hold any formula, another arrow too. A stretched arrow is the font's
+arrow head with a ruled shaft (two rules for the double arrows, a bar
+for `\xmapsto`, a drawn hook for `\xhookrightarrow`). The `{…}` label
+is required (a single token such as `\xrightarrow f` works, as for
+other commands); without it, or with a `[` that has no `]`, the command
+is drawn in red. (Since [[T103 Labelled extensible arrows]],
+[[ADR-T103-1 Extensible arrows from the arrow glyph and a ruled shaft]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -329,6 +346,7 @@ does nothing. (Since [[T99 Spacing commands]],
 | Category theory | `f\colon A \to B`, `F \dashv G`, `\Ob \Mor`, `\mathcal{C}^{\op}`, `\mathbf{Set}` |
 | Monos, epis, long arrows | `\hookrightarrow \twoheadrightarrow \rightarrowtail` (and `\hookleftarrow \twoheadleftarrow \leftarrowtail`), `\longrightarrow \longleftarrow \longleftrightarrow \longmapsto \Longrightarrow \Longleftarrow \Longleftrightarrow` |
 | Parallel, diagonal, double arrows | `\rightrightarrows \leftleftarrows \leftrightarrows \rightleftarrows`, `\nearrow \searrow \swarrow \nwarrow`, `\Uparrow \Downarrow \Updownarrow \updownarrow` |
+| Labelled arrows (stretch to the label) | `A \xrightarrow{f} B`, `\xrightarrow[n\to\infty]{f_n}`, `\xleftarrow \xleftrightarrow \xRightarrow \xLeftarrow \xLeftrightarrow \xmapsto \xhookrightarrow` |
 | Classical physics | `\dddot{x}`, `\Box \square \triangle \angle`, units `\ohm \micro \degree \AA`, `\grad \curl` |
 | Physics shortcuts | `\dd{x}`, `\dv{f}{x}`, `\dv{x}`, `\pdv{f}{x}`, `\pdv{x}`, `\abs{x}`, `\norm{v}`, `\order{h^2}`, `\vb{F}`, `\vu{n}` (each draws its long form) |
 | Quantum notation | `\bra{\psi}`, `\ket{0}`, `\braket{\phi}{\psi}`, `\ketbra{0}{1}`, `\expval{H}`, `\mel{n}{H}{m}`, `\comm{A}{B}`, `\acomm{A}{B}`, `A^\dag`, `\Tr\rho` |
@@ -373,7 +391,7 @@ neighbours, so a shortcut draws its long form's ink
 snapping, selection) the typeset box; the edit session keeps the source
 box (`source_bounds`). `shell::render` draws the glyphs through the T32
 atlas — keyed by face, one font per face — at their own scales and the
-fraction bars and root signs as quads
+fraction bars, root signs and arrow shafts as quads
 of the same batch.
 
 ## Limits
@@ -406,8 +424,11 @@ of the same batch.
   (`\dv[2]{f}{x}`; write `\frac{\mathrm{d}^2 f}{\mathrm{d}x^2}`), no
   starred forms, no `\qty`, `\eval`, `\vdot`, `\cross`, `\fdv`, `\var`
   or `\mqty`.
-- No commutative diagrams (`tikz-cd`) and no labelled extensible arrows
-  (`\xrightarrow{f}`); arrows have a fixed length.
+- No commutative diagrams (`tikz-cd`). Of the extensible arrows only the
+  eight `\x…` commands listed exist (no `\xtwoheadrightarrow`,
+  `\xlongequal` or harpoons), and no `\overset`, `\underset`,
+  `\stackrel` or `\overrightarrow`. The hook of a stretched
+  `\xhookrightarrow` is drawn with rules, not the font's curve.
 - No `\not` prefix: only the negated relations listed (`\notin`,
   `\nsubseteq`, `\ne`) exist. `\varnothing` looks like `\emptyset`.
 - `\mathcal` and `\mathscr` have capitals only and look the same (the
