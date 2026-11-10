@@ -495,6 +495,9 @@ fn parent_edges<'a>(
 /// Plain `u v` lines are arrows when `directed`.
 fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
+    if let Some(joined) = joined_pairs(&tokens) {
+        return joined.iter().map(|token| pair(token)).collect();
+    }
     match tokens.as_slice() {
         [first, ..] if first.contains(SEPARATORS) => {
             tokens.iter().map(|token| pair(token)).collect()
@@ -510,14 +513,24 @@ fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
 /// `None` when nothing is joined. A token ending in `-` or `>` takes the
 /// next one, and a token starting with `>`, or a lone `-`, joins the one
 /// before. `-5` never joins, so it stays a weight.
-#[expect(dead_code, reason = "used once implemented")]
 fn joined_pairs(tokens: &[&str]) -> Option<Vec<String>> {
-    let _ = tokens;
-    todo!()
+    let opens = |token: &str| token.ends_with(SEPARATORS);
+    let closes = |token: &str| token.starts_with('>') || token == "-";
+    if !tokens.iter().any(|token| opens(token) || closes(token)) {
+        return None;
+    }
+    let mut joined: Vec<String> = Vec::with_capacity(tokens.len());
+    for &token in tokens {
+        match joined.last_mut() {
+            Some(last) if opens(last) || closes(token) => last.push_str(token),
+            _ => joined.push(token.to_owned()),
+        }
+    }
+    Some(joined)
 }
 
 /// The edge a token `u-v` or `u>v` writes.
-fn pair(token: &str) -> Option<RawEdge<'_>> {
+fn pair<'a>(token: &str) -> Option<RawEdge<'a>> {
     let at = token.find(SEPARATORS)?;
     let (u, rest) = token.split_at(at);
     Some(RawEdge {
