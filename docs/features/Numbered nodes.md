@@ -1,7 +1,7 @@
 ---
 title: Numbered nodes
 task: "[[T19 Auto-numbering]]"
-adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]", "[[ADR-T87-1 Graph from an edge list key and layout rules]]"]
+adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]", "[[ADR-T87-1 Graph from an edge list key and layout rules]]", "[[ADR-T96-1 Keywords for graph input]]"]
 tutorial: "[[19 Auto-numbering and undoable counters]]"
 shortcuts: ["N", "Shift+N", "Ctrl+N", "Ctrl+L"]
 tags: [feature]
@@ -55,6 +55,30 @@ direction and weight is drawn once. With more than 200 nodes, or a line that
 is not an edge, nothing changes and the reason, with the line number, goes
 to the diagnostics log.
 
+#### Pasting a problem's input
+
+Put one keyword on the first line and paste the input under it as it is
+([[T96 Keywords for graph input]]):
+
+| First line | What follows |
+|------------|--------------|
+| `graph:` or `tree:` | Edges as above |
+| `dgraph:` | Edges, with `u v` and `u v w` as arrows from `u` to `v` |
+| `parents:` | Parents of nodes 2, 3, …; the root is 1 |
+| `parents0:` | Parents of nodes 1, 2, …; the root is 0 |
+
+```
+parents:
+5
+1 1 2 2
+```
+
+After a keyword, a first line that only counts — `n`, or `n m` when `m`
+lines follow and no node is above `n` — is skipped. A parent list may span
+lines. If it holds one `-1`, it has one entry per node, counted from 1
+(`parents:`) or 0 (`parents0:`), and the `-1` marks the root. A parent
+list's tree is drawn from its root.
+
 ## How it works
 
 `core::numbering` (`src/core/numbering.rs`) holds pure functions:
@@ -71,7 +95,10 @@ shapes labelled with the counter before and after a gesture end or redo
 `core::tools::layout` (`src/core/tools/layout.rs`) reads an edge list
 (`EdgeList::parse`), lays it out (`EdgeList::shapes`) and swaps it for the
 block (`replace_block`). See
-[[ADR-T87-1 Graph from an edge list key and layout rules]].
+[[ADR-T87-1 Graph from an edge list key and layout rules]]. A keyword first
+line picks an `InputFormat`; `skip_count_line` and `parent_edges` turn a
+pasted input into the same edges
+([[ADR-T96-1 Keywords for graph input]]).
 
 ## Limits
 
@@ -87,6 +114,9 @@ block (`replace_block`). See
   a paste, undoing a graph that holds the number just below the counter
   gives that number back, and redoing one that holds the counter's own
   number takes it.
-- Node names in an edge list must be numbers. A leading `n m` line is read
-  as an edge.
+- Node names in an edge list must be numbers. Without a keyword, a leading
+  `n m` line is read as an edge. With one, a first edge `u v` is taken for
+  a count line when `v` lines follow and no node after it is above `u`.
+- A parent list cannot mark its root with `0`, and a list without `-1`
+  always has root 1 (`parents:`) or 0 (`parents0:`).
 - Parallel edges of different weights overlap.
