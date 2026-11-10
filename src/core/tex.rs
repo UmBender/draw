@@ -2252,17 +2252,40 @@ impl<'a> Parser<'a> {
     /// `[…]`, then a required argument; `None` when either is broken
     /// (ADR-T103-1).
     fn xarrow(&mut self, name: &str, end: usize) -> Option<Node> {
-        let _ = (name, end);
-        todo!()
+        let below = self.bracket(end)?;
+        let above = self.arg(end)?;
+        Some(Node::XArrow {
+            name: name.to_owned(),
+            below,
+            above,
+        })
     }
 
     /// An optional `[…]` argument at the cursor: whitespace, `[`, nodes
-    /// up to the first `]` outside braces before `end`. `Ok(None)`
-    /// (cursor unchanged) when no `[` follows, `Err(())` when it has no
-    /// `]` (ADR-T103-1).
-    fn bracket(&mut self, end: usize) -> Result<Option<Bracket>, ()> {
-        let _ = end;
-        todo!()
+    /// up to the first `]` outside braces before `end`. `Some(None)`
+    /// (cursor unchanged) when no `[` follows, `None` (the cursor may
+    /// then have moved) when the `[` has no `]` (ADR-T103-1).
+    fn bracket(&mut self, end: usize) -> Option<Option<Bracket>> {
+        let start = self.pos;
+        let lead = self.whitespace(end);
+        if self.pos >= end || self.peek() != Some('[') {
+            self.pos = start;
+            return Some(None);
+        }
+        let open = self.pos;
+        let mut i = open + 1;
+        let close = loop {
+            match self.chars.get(i).filter(|_| i < end)? {
+                ']' => break i,
+                '{' => i = self.closes[i].filter(|&close| close < end).unwrap_or(i) + 1,
+                '\\' => i = name_end(self.chars, i + 1, end),
+                _ => i += 1,
+            }
+        };
+        self.pos = open + 1;
+        let nodes = self.list(close);
+        self.pos = close + 1;
+        Some(Some(Bracket { lead, nodes }))
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -2905,8 +2928,132 @@ fn extensible_arrow(
     scale: f32,
     style: Style,
 ) -> MathBox {
-    let _ = (def, above, below, scale, style);
-    todo!()
+    let plain = MathBox::math(def.glyph, scale);
+    let ss = script_scale(scale);
+    let (up, down) = (
+        layout_styled(above, ss, style),
+        layout_styled(below, ss, style),
+    );
+    if up.ink.is_empty() && down.ink.is_empty() && up.width <= 0.0 && down.width <= 0.0 {
+        return plain;
+    }
+    let label = up.width.max(down.width);
+    let width = plain.width.max(label + 2.0 * XARROW_PAD * scale);
+    let mut out = if width > plain.width {
+        stretched_arrow(def, width, scale)
+    } else {
+        plain
+    };
+    let gap = XARROW_GAP * scale;
+    let (top, bottom) = (out.ascent, out.descent);
+    if !up.ink.is_empty() {
+        let y = -top - gap - up.descent;
+        out.put(&up, Vec2::new((width - up.width) / 2.0, y));
+        out.ascent = out.ascent.max(up.ascent - y);
+    }
+    if !down.ink.is_empty() {
+        let y = bottom + gap + down.ascent;
+        out.put(&down, Vec2::new((width - down.width) / 2.0, y));
+        out.descent = out.descent.max(y + down.descent);
+    }
+    out.italic = 0.0;
+    out
+}
+
+/// Extensible arrow `def` stretched to `width` at `scale`: its head
+/// glyphs at their natural size, a shaft of rules overlapping them and
+/// its tail (ADR-T103-1).
+fn stretched_arrow(def: &XArrowDef, width: f32, scale: f32) -> MathBox {
+    let plain = MathBox::math(def.glyph, scale);
+    let (x_min, right_bearing) =
+        math_metrics::get(def.glyph).map_or((0.0, 0.0), |m| (m.x_min, m.advance - m.x_max));
+    let t = RULE * scale;
+    let mut out = MathBox {
+        width,
+        ascent: plain.ascent,
+        descent: plain.descent,
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    // The shaft runs from `start` to `end`, through the middle of each
+    // head so it overlaps the glyph's own shaft.
+    let start = if let Some(ch) = def.left {
+        let head = MathBox::math(ch, scale);
+        out.put(&head, Vec2::ZERO);
+        head.width / 2.0
+    } else {
+        let edge = x_min * scale;
+        match def.tail {
+            Tail::Plain => edge,
+            Tail::Bar => {
+                let x = edge + t / 2.0;
+                out.ink.push(Ink::Rule {
+                    a: Vec2::new(x, plain.descent),
+                    b: Vec2::new(x, -plain.ascent),
+                    width: t,
+                });
+                x
+            }
+            Tail::Hook => hook(&mut out, edge + t / 2.0, plain.ascent - t / 2.0, scale),
+        }
+    };
+    let end = if let Some(ch) = def.right {
+        let head = MathBox::math(ch, scale);
+        out.put(&head, Vec2::new(width - head.width, 0.0));
+        width - head.width / 2.0
+    } else {
+        width - right_bearing * scale
+    };
+    let bars = if def.double {
+        let (lo, hi) = math_metrics::get('=').map_or((AXIS - 0.097, AXIS + 0.097), |eq| {
+            (eq.y_min + RULE / 2.0, eq.y_max - RULE / 2.0)
+        });
+        vec![lo, hi]
+    } else {
+        vec![AXIS]
+    };
+    for bar in bars {
+        let y = -bar * scale;
+        out.ink.push(Ink::Rule {
+            a: Vec2::new(start, y),
+            b: Vec2::new(end, y),
+            width: t,
+        });
+    }
+    // Rules are counted with half their width all round, as their bounds.
+    let (mut ascent, mut descent) = (out.ascent, out.descent);
+    for ink in &out.ink {
+        let b = ink.bounds();
+        ascent = ascent.max(-b.min.y);
+        descent = descent.max(b.max.y);
+    }
+    out.ascent = ascent;
+    out.descent = descent;
+    out
+}
+
+/// Pushes onto `out` the hook of a stretched `\xhookrightarrow`: a half
+/// circle of [`XARROW_HOOK_SEGMENTS`] rules above the shaft, its leftmost
+/// point at `left` and its top at `top` above the baseline. Returns the x
+/// where the shaft starts, under the hook's end (ADR-T103-1).
+fn hook(out: &mut MathBox, left: f32, top: f32, scale: f32) -> f32 {
+    let axis = AXIS * scale;
+    let r = ((top - axis) / 2.0).max(0.0);
+    let (cx, cy) = (left + r, axis + r);
+    // y up from the bottom of the circle (on the shaft) round its left
+    // side to its top.
+    let point = |k: usize| {
+        let phi = std::f32::consts::PI * (1.5 - k as f32 / XARROW_HOOK_SEGMENTS as f32);
+        Vec2::new(cx + r * phi.cos(), -(cy + r * phi.sin()))
+    };
+    for k in 0..XARROW_HOOK_SEGMENTS {
+        out.ink.push(Ink::Rule {
+            a: point(k),
+            b: point(k + 1),
+            width: RULE * scale,
+        });
+    }
+    cx
 }
 
 /// The box of a table symbol: a glyph (a letter in `style`), an enlarged
