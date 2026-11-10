@@ -394,7 +394,7 @@ fn gates_limit_threads() {
     assert_eq!(run.code, Some(0), "{}", run.output);
     assert_eq!(subcommands(&run), GATES);
     for step in &run.steps {
-        assert_eq!(field(step, "jobs"), "3", "{step}");
+        assert_eq!(field(step, "jobs"), "2", "{step}");
         assert_eq!(field(step, "threads"), "3", "{step}");
     }
 }
@@ -449,7 +449,7 @@ fn gates_warn_without_a_memory_cap() {
     assert_eq!(subcommands(&run), GATES);
     for step in &run.steps {
         assert_eq!(field(step, "scope"), "", "{step}");
-        assert_eq!(field(step, "jobs"), "3", "{step}");
+        assert_eq!(field(step, "jobs"), "2", "{step}");
         assert_eq!(field(step, "threads"), "3", "{step}");
         assert_eq!(field(step, "nice"), "19", "{step}");
         assert_eq!(field(step, "io"), "idle", "{step}");

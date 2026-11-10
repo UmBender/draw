@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-readonly JOBS=3
+readonly JOBS=2
 readonly TEST_THREADS=3
 readonly MEMORY_MAX=1G
 readonly MEMORY_SWAP_MAX=0

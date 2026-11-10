@@ -28,7 +28,8 @@ are named at the top of the script.
 
 | Limit | Value | Applied with |
 |-------|-------|--------------|
-| Build jobs, test threads | 3 | `CARGO_BUILD_JOBS`, `RUST_TEST_THREADS` |
+| Build jobs | 2 in `check.sh`, 3 in `e2e.sh` | `CARGO_BUILD_JOBS` |
+| Test threads | 3 | `RUST_TEST_THREADS` |
 | Memory | 1 GB, no swap | `MemoryMax`, `MemorySwapMax` on a `systemd-run --user --scope` |
 | CPU | 3 CPUs | `CPUQuota` on the scope |
 | Priority | lowest | `nice`, `ionice` idle class, `CPUWeight=1`, `IOWeight=1` |
