@@ -322,6 +322,35 @@ impl EdgeList {
     }
 }
 
+/// How the lines after a keyword first line are read (ADR-T96-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputFormat {
+    /// `graph:`, `tree:` or `dgraph:`: edges, plain `u v` lines directed
+    /// when `directed`.
+    Edges {
+        /// Whether a plain `u v` line is an arrow from `u` to `v`.
+        directed: bool,
+    },
+    /// `parents:` or `parents0:`: one parent per node.
+    Parents {
+        /// The first node's name, and the root of a list without `-1`.
+        first: u32,
+    },
+}
+
+impl InputFormat {
+    /// The format a keyword line names; `None` if it is not one.
+    fn of_keyword(line: &str) -> Option<Self> {
+        match line.trim() {
+            "graph:" | "tree:" => Some(Self::Edges { directed: false }),
+            "dgraph:" => Some(Self::Edges { directed: true }),
+            "parents:" => Some(Self::Parents { first: 1 }),
+            "parents0:" => Some(Self::Parents { first: 0 }),
+            _ => None,
+        }
+    }
+}
+
 /// One edge as written, before its nodes get indices.
 struct RawEdge<'a> {
     /// First node's name.
