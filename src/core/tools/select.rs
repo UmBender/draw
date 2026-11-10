@@ -308,15 +308,17 @@ pub fn align_selection(ctx: &mut ToolCtx<'_>, side: Side) -> bool {
     commit_moves(ctx, &moves, frame)
 }
 
-/// Spaces three or more selected shapes along `axis` with equal gaps
-/// between neighbours sorted by their near edge, the first and last fixed,
-/// as one undo step (ADR-T101-1). The gap may be negative. Records nothing
-/// when no shape would move or a moved shape would not be finite. Returns
-/// whether the document changed.
+/// Lays two or more selected shapes out as a row (`Horizontal`) or column
+/// (`Vertical`) without overlap, as one undo step (ADR-T101-2). Sorted by
+/// near edge, the first shape stays put and the others are centred on its
+/// line across `axis`; neighbours get equal gaps of the larger of the gap
+/// that keeps the last shape in place and a quarter of the largest size
+/// along `axis`. Records nothing when no shape would move or a moved shape
+/// would not be finite. Returns whether the document changed.
 pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
     prune(ctx.selection, ctx.doc);
     let mut order = selected_bounds(ctx.doc, ctx.selection);
-    if order.len() < 3 {
+    if order.len() < 2 {
         return false;
     }
     let Some(frame) = order.iter().map(|(_, b)| *b).reduce(|a, b| a.union(&b)) else {
@@ -330,31 +332,44 @@ pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
         Axis::Horizontal => b.max.x,
         Axis::Vertical => b.max.y,
     };
-    let along = |d: f32| match axis {
-        Axis::Horizontal => Vec2::new(d, 0.0),
-        Axis::Vertical => Vec2::new(0.0, d),
+    let across = |b: &Aabb| match axis {
+        Axis::Horizontal => b.center().y,
+        Axis::Vertical => b.center().x,
+    };
+    let offset = |along: f32, across: f32| match axis {
+        Axis::Horizontal => Vec2::new(along, across),
+        Axis::Vertical => Vec2::new(across, along),
     };
     // Near edge, then far edge, then stacking order (the sort is stable).
     order.sort_by(|(_, p), (_, q)| near(p).total_cmp(&near(q)).then(far(p).total_cmp(&far(q))));
     let (Some(&(_, first_box)), Some(&(_, last_box))) = (order.first(), order.last()) else {
         return false;
     };
+    let size = |b: &Aabb| far(b) - near(b);
     let middle = order.get(1..order.len() - 1).unwrap_or_default();
-    let sizes: f32 = middle.iter().map(|(_, b)| far(b) - near(b)).sum();
+    let sizes: f32 = middle.iter().map(|(_, b)| size(b)).sum();
     #[allow(clippy::cast_precision_loss)] // A selection is far below 2^24 shapes.
     let gaps = (order.len() - 1) as f32;
-    let gap = (near(&last_box) - far(&first_box) - sizes) / gaps;
+    let natural = (near(&last_box) - far(&first_box) - sizes) / gaps;
+    let min_gap = order.iter().map(|(_, b)| size(b)).fold(0.0, f32::max) * MIN_GAP_RATIO;
+    let gap = natural.max(min_gap);
+    let line = across(&first_box);
     let mut cursor = far(&first_box) + gap;
-    let moves: Vec<(ShapeId, Vec2)> = middle
+    let moves: Vec<(ShapeId, Vec2)> = order
         .iter()
+        .skip(1)
         .map(|(id, b)| {
-            let offset = along(cursor - near(b));
-            cursor += far(b) - near(b) + gap;
-            (*id, offset)
+            let shift = offset(cursor - near(b), line - across(b));
+            cursor += size(b) + gap;
+            (*id, shift)
         })
         .collect();
     commit_moves(ctx, &moves, frame)
 }
+
+/// Smallest gap of a row or column, as a share of the largest selected
+/// size along its axis (ADR-T101-2).
+const MIN_GAP_RATIO: f32 = 0.25;
 
 /// Relative tolerance under which a whole align or distribute is a no-op
 /// (ADR-T101-1).
@@ -1913,9 +1928,9 @@ mod tests {
             let lo = |b: &Aabb| if vertical { b.min.y } else { b.min.x };
             let hi = |b: &Aabb| if vertical { b.max.y } else { b.max.x };
             let mid = |b: &Aabb| if vertical {
-                (b.min.x + b.max.x) / 2.0
+                f32::midpoint(b.min.x, b.max.x)
             } else {
-                (b.min.y + b.max.y) / 2.0
+                f32::midpoint(b.min.y, b.max.y)
             };
             let before: Vec<Aabb> = ids.iter().map(|&i| fx.shape(i).bounds()).collect();
             let mut order: Vec<usize> = (0..ids.len()).collect();

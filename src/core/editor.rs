@@ -7602,6 +7602,7 @@ mod tests {
             rect(0.0, 0.0, 40.0, 40.0),
             rect(10.0, 30.0, 40.0, 40.0),
         ]);
+        let undo = ed.history.undo_len();
 
         // Act
         let changed = key_with(&mut ed, Key::H, ALT);
@@ -7611,7 +7612,7 @@ mod tests {
         let second = bounds_of(&ed, id[1]);
         assert!(approx_eq(second.min.x, 50.75, ARRANGE_EPS), "{second:?}");
         assert!(approx_eq(second.min.y, -0.5, ARRANGE_EPS), "{second:?}");
-        assert_eq!(ed.history.undo_len(), 1);
+        assert_eq!(ed.history.undo_len(), undo + 1);
     }
 
     #[test]
