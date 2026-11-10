@@ -1839,9 +1839,7 @@ pub fn parse(text: &str) -> Vec<Segment> {
             .flatten()
         {
             flush(&mut plain, &mut segments);
-            segments.push(Segment::Display(
-                Parser::new(&chars[i + 2..close]).parse(),
-            ));
+            segments.push(Segment::Display(Parser::new(&chars[i + 2..close]).parse()));
             i = close + 2;
         } else if let Some(close) = (ch == '$').then(|| closing_dollar(&chars, i)).flatten() {
             flush(&mut plain, &mut segments);
@@ -10035,7 +10033,10 @@ mod tests {
             // Assert
             let (pos, k) = glyph(&display.ink, ch);
             assert!(approx_eq(k, DISPLAY_OP_SCALE, EPS), "{name}: {k}");
-            assert!(approx_eq(scale_of(&inline, ch), BIG_OP_SCALE, EPS), "{name}");
+            assert!(
+                approx_eq(scale_of(&inline, ch), BIG_OP_SCALE, EPS),
+                "{name}"
+            );
             // Its middle on the axis (y down).
             let middle = pos.y - (mm(ch).y_max + mm(ch).y_min) * k / 2.0;
             assert!(approx_eq(middle, -AXIS, EPS), "{name}: {middle}");
@@ -10159,10 +10160,7 @@ mod tests {
             math("\\dfrac{a}{b}"),
             vec![Node::Command {
                 name: "dfrac".to_owned(),
-                args: vec![
-                    braced(vec![Node::Char('a')]),
-                    braced(vec![Node::Char('b')]),
-                ],
+                args: vec![braced(vec![Node::Char('a')]), braced(vec![Node::Char('b')]),],
             }]
         );
         assert_eq!(
@@ -10225,7 +10223,11 @@ mod tests {
             math("\\displaystylex"),
             vec![Node::Literal("\\displaystylex".to_owned())]
         );
-        for src in ["$\\displaystyle\\sum$", "${\\textstyle x}^2$", "$\\displaystyle^2$"] {
+        for src in [
+            "$\\displaystyle\\sum$",
+            "${\\textstyle x}^2$",
+            "$\\displaystyle^2$",
+        ] {
             assert_eq!(print(&parse(src)), src);
         }
     }
@@ -10300,7 +10302,10 @@ mod tests {
         assert!(a.approx_eq(v(0.0, text_layout::BASELINE), EPS), "{a:?}");
         assert!(approx_eq(x.y, line + text_layout::BASELINE, EPS), "{x:?}");
         assert!(
-            c.approx_eq(v(text_layout::ADVANCE, 2.0 * line + text_layout::BASELINE), EPS),
+            c.approx_eq(
+                v(text_layout::ADVANCE, 2.0 * line + text_layout::BASELINE),
+                EPS
+            ),
             "{c:?}"
         );
         assert!(approx_eq(l.height, 3.0 * line, EPS));
@@ -10339,7 +10344,11 @@ mod tests {
 
         // Assert
         let line = text_layout::LINE_HEIGHT;
-        assert!(approx_eq(around.height, 3.0 * line, EPS), "{}", around.height);
+        assert!(
+            approx_eq(around.height, 3.0 * line, EPS),
+            "{}",
+            around.height
+        );
         assert!(approx_eq(alone.height, line, EPS), "{}", alone.height);
         assert!(approx_eq(pair.height, 2.0 * line, EPS), "{}", pair.height);
         assert!(approx_eq(trailing.height, 2.0 * line, EPS));
