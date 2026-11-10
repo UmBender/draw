@@ -351,6 +351,10 @@ fn arb_point_text() -> impl Strategy<Value = String> {
         "-0.001 0.002",
         "100 100",
         "1 nan",
+        "1 2 A",
+        "3 -1 top left",
+        "0 0 $p_1$",
+        "2 2 1 2 3",
     ]);
     prop::collection::vec(line, 1..12).prop_map(|lines| lines.join("\n"))
 }

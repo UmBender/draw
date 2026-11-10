@@ -1,7 +1,7 @@
 ---
 title: Shapes
 task: "[[T05 Shape model]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T93-1 Coordinate plane key and plotting rules]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T07-1 Screen-space tessellation in the renderer]]", "[[ADR-T93-1 Coordinate plane key and plotting rules]]", "[[ADR-T95-1 Plotted point labels]]"]
 tutorial: "[[05 Modelling shapes and hit-testing]]"
 shortcuts: ["Ctrl+P"]
 tags: [feature]
@@ -26,21 +26,24 @@ note with their shortcuts.
 | Action | Shortcut / gesture |
 |--------|--------------------|
 | Draw a line, arrow, rectangle or ellipse | `W` / `A` / `R` / `C`, then drag — see [[Drawing tools]] |
-| Turn a selected text block of `x y` lines into a coordinate plane | `Ctrl+P` |
+| Turn a selected text block of `x y` lines, each with an optional label, into a coordinate plane | `Ctrl+P` |
 
 ### Coordinate plane from points
 
 Write one point per line in a text block, for example:
 
 ```
-0 0
+0 0 O
 3.5 2
--1 4
+-1 4 $p_1$
 ```
 
 Select the block and press `Ctrl+P`. It becomes two axes, numbered ticks and
-a small filled circle per point, all ordinary shapes, as one undo step. A
-line that is not two numbers, a value that is not finite, or more than
+a small filled circle per point, all ordinary shapes, as one undo step.
+Anything after a line's two numbers is that point's label, written just up
+and to the right of it; it may contain spaces or a `$…$` formula, and it
+never changes the axes. A line that does not start with two numbers, a
+value that is not finite, or more than
 1 000 points changes nothing, and the reason goes to the diagnostics log.
 One point, or equal coordinates, still gives a plot.
 
@@ -101,6 +104,9 @@ Tutorial: [[07 Rendering with macroquad and culling]].
 - Each axis runs between whole multiples of the step. It passes through the
   origin when that is in range, otherwise along the edge nearest it.
 - Tick numbers are built from integers, so they show no float noise.
+- `PointList::labels` holds each labelled point's index and label
+  ([[T95 Labels on plotted points]], [[ADR-T95-1 Plotted point labels]]).
+  Labels are drawn last and take no part in the frame.
 
 ## Limits
 

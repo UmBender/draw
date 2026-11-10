@@ -6774,6 +6774,39 @@ mod tests {
     }
 
     #[test]
+    fn plot_from_text_keeps_the_labels_of_the_points() {
+        // Arrange
+        let mut ed = selected_block("0 0 A\n2 1 top right");
+
+        // Act
+        let changed = ctrl_p(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(count(&ed, is_ellipse), 2);
+        let texts = texts(&ed);
+        assert!(texts.iter().any(|t| t == "A"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "top right"), "{texts:?}");
+    }
+
+    #[test]
+    fn plot_from_text_undoes_a_labelled_plot_in_one_step() {
+        // Arrange
+        let mut ed = selected_block("0 0 A\n2 1");
+        let original = shape_at(&ed, 0).clone();
+        let steps = ed.history.undo_len();
+
+        // Act
+        ctrl_p(&mut ed);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+        assert_eq!(shape_at(&ed, 0), &original);
+    }
+
+    #[test]
     fn plot_from_text_selects_the_result() {
         // Arrange
         let mut ed = selected_block(PLOT_TEXT);
