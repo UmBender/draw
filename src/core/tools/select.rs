@@ -311,10 +311,10 @@ pub fn align_selection(ctx: &mut ToolCtx<'_>, side: Side) -> bool {
 /// Lays two or more selected shapes out as a row (`Horizontal`) or column
 /// (`Vertical`) without overlap, as one undo step (ADR-T101-2). Sorted by
 /// near edge, the first shape stays put and the others are centred on its
-/// line across `axis`; neighbours get equal gaps of the larger of the gap
-/// that keeps the last shape in place and a quarter of the largest size
-/// along `axis`. Records nothing when no shape would move or a moved shape
-/// would not be finite. Returns whether the document changed.
+/// line across `axis`; neighbours get equal gaps of a quarter of the
+/// largest size along `axis` (ADR-T101-3). Records nothing when no shape
+/// would move or a moved shape would not be finite. Returns whether the
+/// document changed.
 pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
     prune(ctx.selection, ctx.doc);
     let mut order = selected_bounds(ctx.doc, ctx.selection);
@@ -342,17 +342,11 @@ pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
     };
     // Near edge, then far edge, then stacking order (the sort is stable).
     order.sort_by(|(_, p), (_, q)| near(p).total_cmp(&near(q)).then(far(p).total_cmp(&far(q))));
-    let (Some(&(_, first_box)), Some(&(_, last_box))) = (order.first(), order.last()) else {
+    let Some(&(_, first_box)) = order.first() else {
         return false;
     };
     let size = |b: &Aabb| far(b) - near(b);
-    let middle = order.get(1..order.len() - 1).unwrap_or_default();
-    let sizes: f32 = middle.iter().map(|(_, b)| size(b)).sum();
-    #[allow(clippy::cast_precision_loss)] // A selection is far below 2^24 shapes.
-    let gaps = (order.len() - 1) as f32;
-    let natural = (near(&last_box) - far(&first_box) - sizes) / gaps;
-    let min_gap = order.iter().map(|(_, b)| size(b)).fold(0.0, f32::max) * MIN_GAP_RATIO;
-    let gap = natural.max(min_gap);
+    let gap = order.iter().map(|(_, b)| size(b)).fold(0.0, f32::max) * GAP_RATIO;
     let line = across(&first_box);
     let mut cursor = far(&first_box) + gap;
     let moves: Vec<(ShapeId, Vec2)> = order
@@ -367,9 +361,9 @@ pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
     commit_moves(ctx, &moves, frame)
 }
 
-/// Smallest gap of a row or column, as a share of the largest selected
-/// size along its axis (ADR-T101-2).
-const MIN_GAP_RATIO: f32 = 0.25;
+/// Gap of a row or column, as a share of the largest selected size along
+/// its axis (ADR-T101-3).
+const GAP_RATIO: f32 = 0.25;
 
 /// Relative tolerance under which a whole align or distribute is a no-op
 /// (ADR-T101-1).
