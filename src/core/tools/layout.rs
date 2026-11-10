@@ -1825,7 +1825,6 @@ mod tests {
         for text in [
             "a b",
             "1",
-            "1 2 3",
             "1,2",
             "1 x",
             "inf 2",
@@ -1843,6 +1842,124 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    // ---- T95 labels on plotted points ---------------------------------------
+
+    /// The box of the text block reading `label`.
+    fn label_box(shapes: &[Shape], label: &str) -> crate::core::geom::Aabb {
+        match shapes
+            .iter()
+            .find(|s| matches!(s, Shape::Text { text, .. } if text == label))
+        {
+            Some(shape) => shape.bounds(),
+            None => panic!("no label {label:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_reads_an_optional_label() {
+        // Act
+        let list = points("1 2 A\n3 4\n5 6 7");
+
+        // Assert
+        assert_eq!(list.points().len(), 3);
+        assert_eq!(list.labels(), [(0, "A".to_owned()), (2, "7".to_owned())]);
+    }
+
+    #[test]
+    fn parse_keeps_the_spaces_inside_a_label() {
+        // Act
+        let list = points("1 2   top  left  \n3 4\t$p_1$");
+
+        // Assert
+        assert_eq!(
+            list.labels(),
+            [(0, "top  left".to_owned()), (1, "$p_1$".to_owned())]
+        );
+    }
+
+    #[test]
+    fn plot_draws_one_text_per_label() {
+        // Arrange
+        let plain = plot("0 0\n4 4\n2 1");
+
+        // Act
+        let labelled = plot("0 0 A\n4 4\n2 1 B");
+
+        // Assert
+        assert_eq!(numbers(&labelled).len(), numbers(&plain).len() + 2);
+        let texts: Vec<&str> = numbers(&labelled).into_iter().map(|(t, _)| t).collect();
+        assert!(texts.contains(&"A") && texts.contains(&"B"), "{texts:?}");
+    }
+
+    #[test]
+    fn plot_puts_a_label_up_and_right_of_its_point() {
+        // Act
+        let shapes = plot("0 0\n4 4\n2 1 A");
+
+        // Assert: clear of the dot, but within an em of it.
+        let dot = dots(&shapes)[2];
+        let radius = POINT_RADIUS_EM * SIZE;
+        let label = label_box(&shapes, "A");
+        assert!(label.min.x > dot.x + radius, "{label:?} {dot:?}");
+        assert!(label.max.y < dot.y - radius, "{label:?} {dot:?}");
+        assert!(label.min.x < dot.x + radius + SIZE, "{label:?} {dot:?}");
+        assert!(label.max.y > dot.y - radius - SIZE, "{label:?} {dot:?}");
+    }
+
+    #[test]
+    fn plot_draws_labels_last() {
+        // Act
+        let shapes = plot("0 0 A\n4 4 B");
+
+        // Assert
+        let n = shapes.len();
+        assert!(matches!(&shapes[n - 1], Shape::Text { text, .. } if text == "B"));
+        assert!(matches!(&shapes[n - 2], Shape::Text { text, .. } if text == "A"));
+        assert!(matches!(shapes[n - 3], Shape::Ellipse { .. }));
+    }
+
+    #[test]
+    fn plot_labels_leave_the_rest_of_the_plot_alone() {
+        // Arrange: a label inside the frame moves nothing.
+        let plain = plot("0 0\n4 4");
+
+        // Act
+        let labelled = plot("0 0 A\n4 4");
+
+        // Assert
+        assert_eq!(labelled.len(), plain.len() + 1);
+        assert_eq!(&labelled[..plain.len()], plain.as_slice());
+    }
+
+    #[test]
+    fn plot_top_left_counts_its_labels() {
+        // Arrange: the label of the top point sticks out above the frame.
+        let origin = Vec2::new(40.0, 60.0);
+        let label = "a label above the frame";
+
+        // Act
+        let shapes = points(&format!("0 0\n4 4 {label}"))
+            .shapes(origin, SIZE, STYLE)
+            .unwrap_or_default();
+
+        // Assert
+        let top = shapes
+            .iter()
+            .map(|s| s.bounds().min.y)
+            .fold(f32::MAX, f32::min);
+        assert!(approx_eq(top, origin.y, 1e-3), "{top}");
+        assert!(approx_eq(label_box(&shapes, label).min.y, origin.y, 1e-3));
+    }
+
+    #[test]
+    fn plot_label_may_be_a_formula() {
+        // Act
+        let shapes = plot("1 1 $p_1$");
+
+        // Assert
+        assert!(label_box(&shapes, "$p_1$").width() > 0.0);
     }
 
     #[test]

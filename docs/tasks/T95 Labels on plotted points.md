@@ -35,7 +35,7 @@ Rules: [[ADR-T95-1 Plotted point labels]]. Tests live in `src/core/tools/layout.
 - **AC-4** — A label may be a formula.
   Test: `plot_label_may_be_a_formula`.
 - **AC-5** — `Ctrl+P` on a labelled list is one undo step, and bad text still changes nothing.
-  Tests: `ctrl_p_keeps_the_labels_of_the_points`, `ctrl_p_undoes_a_labelled_plot_in_one_step`.
+  Tests: `plot_from_text_keeps_the_labels_of_the_points`, `plot_from_text_undoes_a_labelled_plot_in_one_step`.
 
 The fuzzer's point lists include labels (`arb_point_text` in `tests/fuzz.rs`).
 
