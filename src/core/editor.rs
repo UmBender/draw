@@ -6507,7 +6507,7 @@ mod tests {
     fn circle_texts(ed: &Editor) -> Vec<String> {
         ed.document()
             .shapes()
-            .filter(|(_, s)| is_ellipse(s))
+            .filter(|(_, s)| is_ellipse(s) || matches!(s, Shape::Rect { .. }))
             .filter_map(|(_, s)| s.slot_text(TextSlot::Shape).map(|t| t.text.clone()))
             .collect()
     }
@@ -6522,7 +6522,8 @@ mod tests {
 
         // Assert
         assert!(changed);
-        assert_eq!(count(&ed, is_ellipse), 15);
+        assert_eq!(count(&ed, is_ellipse), 0);
+        assert_eq!(count(&ed, |s| matches!(s, Shape::Rect { .. })), 30);
         assert_eq!(count(&ed, is_line), 14);
         let texts = circle_texts(&ed);
         assert_eq!(texts.len(), 15);
@@ -6560,7 +6561,7 @@ mod tests {
 
         // Assert
         assert_eq!(ed.history.undo_len(), steps + 1);
-        assert_eq!(ed.document().len(), 7 + 6);
+        assert_eq!(ed.document().len(), 2 * 7 + 6);
         assert_eq!(ed.selection(), ids(&ed));
         assert!(ed.apply(Command::Undo));
         assert_eq!(ed.document().len(), 1);

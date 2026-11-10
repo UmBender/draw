@@ -5,7 +5,7 @@ status: review
 wave: 58
 branch: task/T104-segment-tree
 depends_on: [T102]
-adrs: [ADR-T104-1, "[[ADR-T104-2 Segment tree nodes as boxes]]"]
+adrs: [ADR-T104-1, ADR-T104-2]
 feature: "[[Numbered nodes]]"
 tutorial: ""
 tags: [task]

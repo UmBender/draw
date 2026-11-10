@@ -2448,13 +2448,22 @@ mod tests {
         assert_eq!(leaves, (first..first + n).collect::<Vec<_>>());
     }
 
-    /// The centre of the circle holding `text`.
-    fn circle_holding(shapes: &[Shape], text: &str) -> Vec2 {
+    /// The rectangles of `shapes` holding a text (the range boxes) and
+    /// those holding none (the value boxes).
+    fn segtree_boxes(shapes: &[Shape]) -> (Vec<&Shape>, Vec<&Shape>) {
         shapes
             .iter()
-            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .filter(|s| matches!(s, Shape::Rect { .. }))
+            .partition(|s| s.slot_text(TextSlot::Shape).is_some())
+    }
+
+    /// The centre of the square holding `text`.
+    fn square_holding(shapes: &[Shape], text: &str) -> Vec2 {
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Rect { .. }))
             .find(|s| s.slot_text(TextSlot::Shape).is_some_and(|t| t.text == text))
-            .map_or_else(|| panic!("no circle holds {text}"), |s| s.bounds().center())
+            .map_or_else(|| panic!("no square holds {text}"), |s| s.bounds().center())
     }
 
     #[test]
@@ -2580,7 +2589,7 @@ mod tests {
     }
 
     #[test]
-    fn shapes_segtree_circles_hold_their_ranges_at_one_size() {
+    fn shapes_segtree_squares_hold_their_ranges_at_one_size() {
         for n in [8, 100] {
             // Arrange
             let list = segtree(&format!("segtree: {n}"), 1);
@@ -2588,13 +2597,12 @@ mod tests {
             // Act
             let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
 
-            // Assert: one circle per node, typeset text, no number label.
-            let circles: Vec<&Shape> = shapes
-                .iter()
-                .filter(|s| matches!(s, Shape::Ellipse { .. }))
-                .collect();
-            assert_eq!(circles.len(), list.names().len());
-            let mut held: Vec<String> = circles
+            // Assert: no circle; one range square per node, typeset text,
+            // no number label.
+            assert!(!shapes.iter().any(|s| matches!(s, Shape::Ellipse { .. })));
+            let (ranges, _) = segtree_boxes(&shapes);
+            assert_eq!(ranges.len(), list.names().len());
+            let mut held: Vec<String> = ranges
                 .iter()
                 .map(|s| {
                     assert_eq!(s.label(), None);
@@ -2606,18 +2614,88 @@ mod tests {
             held.sort();
             wanted.sort();
             assert_eq!(held, wanted);
-            // One size, fitting the widest label at full size.
-            let width = circles[0].bounds().width();
-            let Some(frame) = circles[0].text_frame(TextSlot::Shape) else {
-                panic!("an ellipse has a frame");
+            // One square size, fitting the widest label at full size.
+            let side = ranges[0].bounds().width();
+            let Some(frame) = ranges[0].text_frame(TextSlot::Shape) else {
+                panic!("a rectangle has a frame");
             };
-            for circle in &circles {
-                assert!(approx_eq(circle.bounds().width(), width, 1e-3));
-                let text = circle.slot_text(TextSlot::Shape).map_or("", |t| &t.text);
+            for square in &ranges {
+                let b = square.bounds();
+                assert!(approx_eq(b.width(), side, 1e-3));
+                assert!(approx_eq(b.height(), side, 1e-3));
+                let text = square.slot_text(TextSlot::Shape).map_or("", |t| &t.text);
                 let label = text_layout::bounds(Vec2::ZERO, text, SIZE);
                 assert!(frame.width() + 1e-3 >= label.width(), "{text}");
                 assert!(frame.height() + 1e-3 >= label.height(), "{text}");
             }
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_has_an_empty_value_box_under_each_node() {
+        // Arrange
+        let list = segtree("segtree: 5", 1);
+
+        // Act
+        let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+        // Assert: as many empty squares as nodes, each the size of the
+        // range square above it and touching it.
+        let (ranges, values) = segtree_boxes(&shapes);
+        assert_eq!(ranges.len(), 9);
+        assert_eq!(values.len(), 9);
+        for range in &ranges {
+            let above = range.bounds();
+            let below = values.iter().map(|s| s.bounds()).find(|b| {
+                approx_eq(b.min.x, above.min.x, 1e-3)
+                    && approx_eq(b.min.y, above.max.y - STYLE.width, 1e-3)
+            });
+            let Some(below) = below else {
+                panic!("no value box under {above:?}");
+            };
+            assert!(approx_eq(below.width(), above.width(), 1e-3));
+            assert!(approx_eq(below.height(), above.height(), 1e-3));
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_edges_join_value_box_to_child() {
+        // Arrange
+        let list = segtree("segtree: 4", 1);
+
+        // Act
+        let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+        // Assert: every line starts just under a value box's bottom edge,
+        // at its middle, and ends just over a range box's top edge.
+        let (ranges, values) = segtree_boxes(&shapes);
+        let lines: Vec<(Vec2, Vec2)> = shapes
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Line { a, b, .. } => Some((*a, *b)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(lines.len(), 6);
+        let near = |p: Vec2, x: f32, y: f32| {
+            approx_eq(p.x, x, 1e-3) && (p.y - y).abs() <= 2.0 * STYLE.width
+        };
+        for (a, b) in lines {
+            assert!(
+                values
+                    .iter()
+                    .map(|s| s.bounds())
+                    .any(|v| near(a, v.center().x, v.max.y)),
+                "{a:?}"
+            );
+            assert!(
+                ranges
+                    .iter()
+                    .map(|s| s.bounds())
+                    .any(|r| near(b, r.center().x, r.min.y)),
+                "{b:?}"
+            );
+            assert!(b.y > a.y);
         }
     }
 
@@ -2632,24 +2710,24 @@ mod tests {
 
             // Assert: the root on top, each child one layer down, left
             // child left of the right one, the parent between them.
-            let root = circle_holding(&shapes, &range(1, n));
+            let root = square_holding(&shapes, &range(1, n));
             for name in list.names() {
                 let (l, r) = range_of(name);
-                let at = circle_holding(&shapes, &range(l, r));
+                let at = square_holding(&shapes, &range(l, r));
                 assert!(root.y <= at.y + 1e-3);
                 if l == r {
                     continue;
                 }
                 let m = u32::midpoint(l, r);
-                let left = circle_holding(&shapes, &range(l, m));
-                let right = circle_holding(&shapes, &range(m + 1, r));
+                let left = square_holding(&shapes, &range(l, m));
+                let right = square_holding(&shapes, &range(m + 1, r));
                 assert!(approx_eq(left.y, right.y, 1e-3));
                 assert!(left.y > at.y + 1.0);
                 assert!(left.x < at.x && at.x < right.x, "[{l}, {r}]");
             }
             // Leaves read left to right in position order.
             let xs: Vec<f32> = (1..=n)
-                .map(|i| circle_holding(&shapes, &range(i, i)).x)
+                .map(|i| square_holding(&shapes, &range(i, i)).x)
                 .collect();
             assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
         }
