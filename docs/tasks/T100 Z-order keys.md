@@ -1,7 +1,7 @@
 ---
 id: T100
 title: Z-order keys
-status: in-progress
+status: review
 wave: 57
 branch: task/T100-z-order-keys
 depends_on: []
@@ -53,6 +53,7 @@ Rules: [[ADR-T100-1 Z-order keys and restack transactions]].
 - **AC-5** — The new commands are fuzzed; the document order stays a permutation (no shape lost or doubled).
   - `document::tests::tx_restack_keeps_a_permutation_and_undoes_exactly` (proptest)
   - `fuzz::z_order_sessions_keep_a_permutation` (proptest), and the new chords in `arb_command_burst` through `BINDINGS`
+  - `fuzz::z_order_session_click_selects_and_raises` (coverage: the session's clicks really restack)
 
 ## Out of scope
 
@@ -70,12 +71,12 @@ Rules: [[ADR-T100-1 Z-order keys and restack transactions]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T100): specify z-order keys`
-- [ ] tests — `test(T100): add failing tests for z-order keys`
-- [ ] models — `feat(T100): …`
-- [ ] behaviour — `feat(T100): …`
-- [ ] quality — `chore(T100): pass clippy and rustfmt`
-- [ ] docs — `docs(T100): update the feature note`
+- [x] spec — `docs(T100): specify z-order keys`
+- [x] tests — `test(T100): add failing tests for z-order keys`
+- [x] models — `feat(T100): add restack commands and bindings`
+- [x] behaviour — `feat(T100): implement restacking the selection`
+- [x] quality — `chore(T100): pass clippy and rustfmt`
+- [x] docs — `docs(T100): update the feature note`
 
 ## Learning path
 
@@ -84,3 +85,9 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written in the batch plan with the owner; owner decisions are in *Spec* and in `.batch/plan.md`.
+- 2026-11-10 — implemented in a batch run. `Command::{RaiseSelection, LowerSelection, SelectionToTop, SelectionToBottom}` bound to `Ctrl+]` / `Ctrl+[` with and without `Shift`; `document::tx_restack` builds the move from `Remove` + `Insert` edits, so no new edit kind and no snapshot format change. `scripts/check.sh --fuzz` and `scripts/e2e.sh` green; no golden changed.
+- 2026-11-10 — UNATTENDED CHOICE: "the selection's bounds" is the union box of the selected shapes (the box the Select tool draws), and one step passes the nearest overlapping unselected shape above the *topmost* (below the *bottommost*) selected shape, the selection moving as one block (ADR-T100-1). Alternative: per-shape overlap.
+- 2026-11-10 — UNATTENDED CHOICE: the restack logic lives in `editor.rs` (owned), not in `tools/select.rs` (not owned).
+- 2026-11-10 — UNATTENDED CHOICE: macroquad has no brace key code, so the core binds `BracketRight` / `BracketLeft` with `Ctrl+Shift`. Whether every backend (X11, Wayland) reports the bracket key code while `Shift` is held cannot be checked headless — owner manual check: `Ctrl+Shift+]` on a selected shape in the running app.
+- 2026-11-10 — the coverage test `z_order_session_click_selects_and_raises` was added in the behaviour commit (it passes by construction once the code exists); it confirms the fuzz session's clicks select a shape that `Ctrl+]` raises.
+- 2026-11-10 — manual checks for the owner: fill a cell under a shape, raise and lower it, undo; `Ctrl+Shift+]` / `Ctrl+Shift+[` on X11 and Wayland.
