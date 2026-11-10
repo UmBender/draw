@@ -10,12 +10,12 @@
 use crate::core::document::{Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::Vec2;
 use crate::core::numbering::FIRST_NUMBER;
-use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
+use crate::core::shape::{SHAPE_TEXT_FILL, Shape, ShapeText, Style, TextSlot};
 use crate::core::text_layout;
 use crate::core::tools::ToolCtx;
 use crate::core::tools::text::PASTE_MAX_BYTES;
 use std::collections::{HashMap, HashSet};
-use std::f32::consts::{FRAC_PI_2, PI, TAU};
+use std::f32::consts::{FRAC_PI_2, PI, SQRT_2, TAU};
 use std::fmt;
 
 /// Most nodes a graph can have.
@@ -109,6 +109,15 @@ impl fmt::Display for GraphError {
 
 impl std::error::Error for GraphError {}
 
+/// The name of a node of an [`EdgeList`] (ADR-T98-1).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NodeName {
+    /// ASCII digits that fit a `u32`, drawn as a numbered circle.
+    Number(u32),
+    /// A `$…$` formula as written, drawn as text inside its circle.
+    Math(String),
+}
+
 /// One edge of an [`EdgeList`]; never a self-loop.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Edge {
@@ -127,7 +136,7 @@ pub struct Edge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeList {
     /// Node names, in the order they were first named.
-    names: Vec<u32>,
+    names: Vec<NodeName>,
     /// The edges, in the order they were written.
     edges: Vec<Edge>,
 }
@@ -167,15 +176,15 @@ impl EdgeList {
 
         let mut names = Vec::new();
         let mut index_of = HashMap::new();
-        let mut node = |name| {
-            *index_of.entry(name).or_insert_with(|| {
+        let mut node = |name: NodeName| {
+            *index_of.entry(name.clone()).or_insert_with(|| {
                 names.push(name);
                 names.len() - 1
             })
         };
         // A parent list's root is named first, so the tree hangs from it.
         if let Some(root) = root {
-            node(root);
+            node(NodeName::Number(root));
         }
         let mut edges: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
@@ -207,7 +216,7 @@ impl EdgeList {
 
     /// Node names, in the order they were first named.
     #[must_use]
-    pub fn names(&self) -> &[u32] {
+    pub fn names(&self) -> &[NodeName] {
         &self.names
     }
 
@@ -225,7 +234,7 @@ impl EdgeList {
         if !size.is_finite() || size <= 0.0 {
             return None;
         }
-        let radius = NODE_RADIUS_EM * size;
+        let radius = self.node_radius(size);
         let widest_weight = self
             .edges
             .iter()
@@ -262,9 +271,27 @@ impl EdgeList {
             .names
             .iter()
             .zip(&centres)
-            .map(|(name, centre)| node_circle(*name, *centre + shift, radius, size, style));
+            .map(|(name, centre)| node_circle(name, *centre + shift, radius, size, style));
         let shapes: Vec<Shape> = lines.into_iter().chain(circles).chain(weights).collect();
         shapes.iter().all(Shape::is_finite).then_some(shapes)
+    }
+
+    /// The radius of every circle at text size `size`: [`NODE_RADIUS_EM`],
+    /// or more when the widest math name needs it to be typeset at full
+    /// size in the circle's text frame (ADR-T98-1).
+    fn node_radius(&self, size: f32) -> f32 {
+        let widest = self
+            .names
+            .iter()
+            .filter_map(|name| match name {
+                NodeName::Math(math) => Some(text_layout::bounds(Vec2::ZERO, math, size)),
+                NodeName::Number(_) => None,
+            })
+            .map(|bounds| bounds.width().max(bounds.height()))
+            .fold(0.0, f32::max);
+        // The frame of a circle is its inscribed square, `r·√2` wide,
+        // scaled by `SHAPE_TEXT_FILL`.
+        (NODE_RADIUS_EM * size).max(widest / (SQRT_2 * SHAPE_TEXT_FILL))
     }
 
     /// Node centres of the layered drawing, or `None` if the edges are not
@@ -383,9 +410,9 @@ impl InputFormat {
 /// One edge as written, before its nodes get indices.
 struct RawEdge<'a> {
     /// First node's name.
-    u: u32,
+    u: NodeName,
     /// Second node's name.
-    v: u32,
+    v: NodeName,
     /// Whether it was written `u>v`.
     directed: bool,
     /// Its weight as written.
@@ -424,7 +451,11 @@ fn skip_count_line<'a, 'b>(lines: &'b [(usize, &'a str)]) -> &'b [(usize, &'a st
                 .iter()
                 .filter_map(|(_, line)| line_edges(line, false))
                 .flatten()
-                .map(|raw| raw.u.max(raw.v))
+                .flat_map(|raw| [raw.u, raw.v])
+                .filter_map(|name| match name {
+                    NodeName::Number(n) => Some(n),
+                    NodeName::Math(_) => None,
+                })
                 .max()
                 .unwrap_or(0);
             n.parse::<u32>().is_ok_and(|n| n >= largest)
@@ -483,10 +514,10 @@ fn parent_edges<'a>(
             .checked_add(offset)
             .and_then(name_at)
             .ok_or(not_an_edge(number))?;
-        let parent = node_name(entry).ok_or(not_an_edge(number))?;
+        let parent = number_name(entry).ok_or(not_an_edge(number))?;
         raws.push(RawEdge {
-            u: parent,
-            v: child,
+            u: NodeName::Number(parent),
+            v: NodeName::Number(child),
             directed: false,
             weight: None,
         });
@@ -497,12 +528,12 @@ fn parent_edges<'a>(
 /// The edges of one line, none for a blank line; `None` if it is not edges.
 /// Plain `u v` lines are arrows when `directed`.
 fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
-    let tokens: Vec<&str> = line.split_whitespace().collect();
+    let tokens = tokens(line)?;
     if let Some(joined) = joined_pairs(&tokens) {
         return joined.iter().map(|token| pair(token)).collect();
     }
     match tokens.as_slice() {
-        [first, ..] if first.contains(SEPARATORS) => {
+        [first, ..] if separator_at(first).is_some() => {
             tokens.iter().map(|token| pair(token)).collect()
         }
         [u, v] => Some(vec![plain_edge(u, v, None, directed)?]),
@@ -534,7 +565,7 @@ fn joined_pairs(tokens: &[&str]) -> Option<Vec<String>> {
 
 /// The edge a token `u-v` or `u>v` writes.
 fn pair<'a>(token: &str) -> Option<RawEdge<'a>> {
-    let at = token.find(SEPARATORS)?;
+    let at = separator_at(token)?;
     let (u, rest) = token.split_at(at);
     Some(RawEdge {
         u: node_name(u)?,
@@ -552,7 +583,7 @@ fn plain_edge<'a>(
     directed: bool,
 ) -> Option<RawEdge<'a>> {
     let finite = |w: &str| w.parse::<f64>().is_ok_and(f64::is_finite);
-    if weight.is_some_and(|w| !finite(w)) {
+    if weight.is_some_and(|w| !finite(w) && !is_math(w)) {
         return None;
     }
     Some(RawEdge {
@@ -563,12 +594,70 @@ fn plain_edge<'a>(
     })
 }
 
-/// A node name: ASCII digits that fit a `u32`.
-fn node_name(token: &str) -> Option<u32> {
+/// A node name: a number name or a math token (ADR-T98-1).
+fn node_name(token: &str) -> Option<NodeName> {
+    if is_math(token) {
+        return Some(NodeName::Math(token.to_owned()));
+    }
+    number_name(token).map(NodeName::Number)
+}
+
+/// A number name: ASCII digits that fit a `u32`.
+fn number_name(token: &str) -> Option<u32> {
     if token.starts_with('+') {
         return None;
     }
     token.parse().ok()
+}
+
+/// Whether `token` is one formula: `$`, then text with no `$` that is not
+/// blank, then `$` (ADR-T98-1).
+fn is_math(token: &str) -> bool {
+    token
+        .strip_prefix('$')
+        .and_then(|rest| rest.strip_suffix('$'))
+        .is_some_and(|inner| !inner.contains('$') && !inner.trim().is_empty())
+}
+
+/// The tokens of `line`, split on whitespace outside `$…$`; `None` when a
+/// `$` is not closed (ADR-T98-1).
+fn tokens(line: &str) -> Option<Vec<&str>> {
+    let mut tokens = Vec::new();
+    let mut start = None;
+    let mut in_math = false;
+    for (at, ch) in line.char_indices() {
+        if ch == '$' {
+            in_math = !in_math;
+        }
+        if ch.is_whitespace() && !in_math {
+            if let Some(from) = start.take() {
+                tokens.push(line.get(from..at)?);
+            }
+        } else if start.is_none() {
+            start = Some(at);
+        }
+    }
+    if in_math {
+        return None;
+    }
+    if let Some(from) = start {
+        tokens.push(line.get(from..)?);
+    }
+    Some(tokens)
+}
+
+/// The byte index of the first `-` or `>` of `token` outside `$…$`.
+fn separator_at(token: &str) -> Option<usize> {
+    let mut in_math = false;
+    token
+        .char_indices()
+        .find(|&(_, ch)| {
+            if ch == '$' {
+                in_math = !in_math;
+            }
+            !in_math && SEPARATORS.contains(&ch)
+        })
+        .map(|(at, _)| at)
 }
 
 /// The smallest `x` and the smallest `y` of `points`.
@@ -581,7 +670,7 @@ fn top_left(points: &[Vec2]) -> Vec2 {
 
 /// The circle of node `name`: labelled, or holding the text `0`, a number
 /// below every label (ADR-T87-1).
-fn node_circle(name: u32, centre: Vec2, radius: f32, size: f32, style: Style) -> Shape {
+fn node_circle(name: &NodeName, centre: Vec2, radius: f32, size: f32, style: Style) -> Shape {
     let corner = Vec2::new(radius, radius);
     let circle = Shape::Ellipse {
         a: centre - corner,
@@ -591,10 +680,14 @@ fn node_circle(name: u32, centre: Vec2, radius: f32, size: f32, style: Style) ->
         label: None,
         text: None,
     };
-    if name >= FIRST_NUMBER {
-        circle.with_label(Some(name))
-    } else {
-        circle.with_slot_text(TextSlot::Shape, ShapeText::new(name.to_string(), size))
+    match name {
+        NodeName::Number(n) if *n >= FIRST_NUMBER => circle.with_label(Some(*n)),
+        NodeName::Number(n) => {
+            circle.with_slot_text(TextSlot::Shape, ShapeText::new(n.to_string(), size))
+        }
+        NodeName::Math(math) => {
+            circle.with_slot_text(TextSlot::Shape, ShapeText::new(math.clone(), size))
+        }
     }
 }
 
@@ -1013,6 +1106,7 @@ mod tests {
     use crate::core::shape::TextSlot;
     use crate::core::text_layout;
     use proptest::prelude::*;
+    use std::f32::consts::FRAC_1_SQRT_2;
 
     const SIZE: f32 = 20.0;
     const WIDTH: f32 = 2.0;
@@ -1036,14 +1130,45 @@ mod tests {
         }
     }
 
+    /// The number of a node name; panics on a math name.
+    fn number(name: &NodeName) -> u32 {
+        match name {
+            NodeName::Number(n) => *n,
+            NodeName::Math(math) => panic!("{math} is not a number"),
+        }
+    }
+
+    /// A node name as written.
+    fn written(name: &NodeName) -> String {
+        match name {
+            NodeName::Number(n) => n.to_string(),
+            NodeName::Math(math) => math.clone(),
+        }
+    }
+
+    /// `(from, to, directed, weight)` of every edge, names as written.
+    fn written_edges(list: &EdgeList) -> Vec<(String, String, bool, Option<&str>)> {
+        list.edges()
+            .iter()
+            .map(|e| {
+                (
+                    written(&list.names()[e.from]),
+                    written(&list.names()[e.to]),
+                    e.directed,
+                    e.weight.as_deref(),
+                )
+            })
+            .collect()
+    }
+
     /// `(name of from, name of to, directed, weight)` of every edge.
     fn edges(list: &EdgeList) -> Vec<(u32, u32, bool, Option<&str>)> {
         list.edges()
             .iter()
             .map(|e| {
                 (
-                    list.names()[e.from],
-                    list.names()[e.to],
+                    number(&list.names()[e.from]),
+                    number(&list.names()[e.to]),
                     e.directed,
                     e.weight.as_deref(),
                 )
@@ -1254,7 +1379,8 @@ mod tests {
 
     #[test]
     fn parse_names_nodes_in_first_named_order() {
-        assert_eq!(list("5-3 3-9\n1 5").names(), [5, 3, 9, 1]);
+        let names: Vec<u32> = list("5-3 3-9\n1 5").names().iter().map(number).collect();
+        assert_eq!(names, [5, 3, 9, 1]);
     }
 
     #[test]
@@ -1471,8 +1597,8 @@ mod tests {
             let ends = segments(&shapes);
             let named = list(text);
             for (edge, (a, b)) in named.edges().iter().zip(&ends) {
-                let from = centre(&shapes, named.names()[edge.from]);
-                let to = centre(&shapes, named.names()[edge.to]);
+                let from = centre(&shapes, number(&named.names()[edge.from]));
+                let to = centre(&shapes, number(&named.names()[edge.to]));
                 assert!(approx_eq(a.distance(from), reach, 1e-2), "{text}");
                 assert!(approx_eq(b.distance(to), reach, 1e-2), "{text}");
                 assert!(
@@ -1516,7 +1642,6 @@ mod tests {
             "1--2",
             "+1 2",
             "4294967296 1",
-            "$x$ 2",
         ] {
             assert_eq!(
                 EdgeList::parse(text),
@@ -1557,7 +1682,7 @@ mod tests {
         let parsed = list("1-1\n2 2");
 
         // Assert
-        assert_eq!(parsed.names(), [1, 2]);
+        assert_eq!(parsed.names(), [NodeName::Number(1), NodeName::Number(2)]);
         assert_eq!(parsed.edges(), []);
     }
 
@@ -1618,7 +1743,14 @@ mod tests {
     fn parse_without_a_keyword_keeps_the_t87_rules() {
         // Act, Assert: a count line is still an edge, `u v` undirected.
         let list = graph("3 2\n1 2\n2 3");
-        assert_eq!(list.names(), [3, 2, 1]);
+        assert_eq!(
+            list.names(),
+            [
+                NodeName::Number(3),
+                NodeName::Number(2),
+                NodeName::Number(1)
+            ]
+        );
         assert!(list.edges().iter().all(|edge| !edge.directed));
     }
 
@@ -1657,7 +1789,10 @@ mod tests {
         assert!(edges.iter().all(|edge| edge.directed));
         assert_eq!(edges[1].weight.as_deref(), Some("5"));
         assert_eq!(
-            (list.names()[edges[1].from], list.names()[edges[1].to]),
+            (
+                number(&list.names()[edges[1].from]),
+                number(&list.names()[edges[1].to])
+            ),
             (2, 3)
         );
     }
@@ -1726,6 +1861,169 @@ mod tests {
         );
     }
 
+    // ---- T98: math names and weights ---------------------------------------
+
+    fn edge(
+        u: &str,
+        v: &str,
+        directed: bool,
+        weight: Option<&'static str>,
+    ) -> (String, String, bool, Option<&'static str>) {
+        (u.to_owned(), v.to_owned(), directed, weight)
+    }
+
+    #[test]
+    fn parse_reads_math_node_names() {
+        assert_eq!(
+            written_edges(&list("$s$ $a$\n$a$ $t$")),
+            [
+                edge("$s$", "$a$", false, None),
+                edge("$a$", "$t$", false, None)
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_keeps_spaces_and_separators_inside_math() {
+        assert_eq!(
+            written_edges(&list("$a - b$ $x > y$ 3\n$u v$   $w$")),
+            [
+                edge("$a - b$", "$x > y$", false, Some("3")),
+                edge("$u v$", "$w$", false, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_reads_math_names_in_pairs() {
+        assert_eq!(
+            written_edges(&list("$a$-$b$ $b$>1\n$c$ > $d-1$")),
+            [
+                edge("$a$", "$b$", false, None),
+                edge("$b$", "1", true, None),
+                edge("$c$", "$d-1$", true, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_mixes_number_and_math_names() {
+        // Act
+        let list = list("1 $1$\n1 2");
+
+        // Assert: `1` and `$1$` are different nodes.
+        assert_eq!(
+            list.names(),
+            [
+                NodeName::Number(1),
+                NodeName::Math("$1$".to_owned()),
+                NodeName::Number(2),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_reads_math_weights() {
+        assert_eq!(
+            written_edges(&list("1 2 $\\infty$\n2 3 -4\n$a$ 3 $c_i + 1$")),
+            [
+                edge("1", "2", false, Some("$\\infty$")),
+                edge("2", "3", false, Some("-4")),
+                edge("$a$", "3", false, Some("$c_i + 1$")),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_refuses_bad_math() {
+        for text in [
+            "$a 1",
+            "1 $a",
+            "$$ 1",
+            "$ $ 1",
+            "$a$b 1",
+            "a b",
+            "1 2 $",
+            "1 2 w",
+            "$a$-",
+            "1 2 $x$y",
+            "1 2 $a$ 3",
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn shapes_write_math_names_inside_circles() {
+        // Act
+        let shapes = drawn("$s$ $t$");
+
+        // Assert
+        let texts: Vec<Option<&str>> = shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .map(|s| {
+                assert_eq!(s.label(), None);
+                s.slot_text(TextSlot::Shape).map(|t| t.text.as_str())
+            })
+            .collect();
+        assert_eq!(texts, [Some("$s$"), Some("$t$")]);
+    }
+
+    #[test]
+    fn circles_grow_to_fit_the_widest_math_name() -> Result<(), TestCaseError> {
+        // Arrange
+        let long = "$a_1 + a_2 + a_3 + a_4$";
+        let plain = drawn("1 2");
+        let Some(plain_circle) = plain.iter().find(|s| matches!(s, Shape::Ellipse { .. })) else {
+            panic!("no circle");
+        };
+        let base = plain_circle.bounds().width();
+
+        // Act
+        let shapes = drawn(&format!("{long} 2\n2 3\n$x$ 3"));
+
+        // Assert: one size for all, larger than the plain size.
+        let circles: Vec<&Shape> = shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .collect();
+        let width = circles[0].bounds().width();
+        assert!(width > base + 1.0, "{width} vs {base}");
+        for circle in &circles {
+            assert!(approx_eq(circle.bounds().width(), width, 1e-3));
+        }
+        // The long name fits its frame at full size.
+        let text = text_layout::bounds(Vec2::ZERO, long, SIZE);
+        let Some(frame) = circles[0].text_frame(TextSlot::Shape) else {
+            panic!("an ellipse has a frame");
+        };
+        assert!(frame.width() + 1e-3 >= text.width());
+        assert!(frame.height() + 1e-3 >= text.height());
+        // Plain numbers keep the T87 size.
+        let corner = plain_circle.text_frame(TextSlot::Shape).map(|f| f.width());
+        let t87 = 2.0 * NODE_RADIUS_EM * SIZE * FRAC_1_SQRT_2 * SHAPE_TEXT_FILL;
+        assert!(corner.is_some_and(|w| approx_eq(w, t87, 1e-3)));
+        assert_never_overlap(&shapes)
+    }
+
+    #[test]
+    fn parse_count_line_ignores_math_names() {
+        assert_eq!(graph("graph:\n2 2\n1 $a$\n$a$ 2"), graph("1 $a$\n$a$ 2"));
+    }
+
+    #[test]
+    fn parse_parents_refuses_math_entries() {
+        assert_eq!(
+            EdgeList::parse("parents:\n1 $a$"),
+            Err(GraphError::NotAnEdge { line: 2 })
+        );
+    }
+
     #[test]
     fn parse_skips_a_count_line_after_a_keyword() {
         assert_eq!(graph("tree:\n3\n1 2\n1 3"), graph("1 2\n1 3"));
@@ -1791,7 +2089,7 @@ mod tests {
         let list = graph("parents:\n3 1");
 
         // Assert
-        assert_eq!(list.names()[0], 1);
+        assert_eq!(list.names()[0], NodeName::Number(1));
         assert_eq!(list.names().len(), 3);
     }
 

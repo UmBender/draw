@@ -341,6 +341,11 @@ fn arb_edge_text() -> impl Strategy<Value = String> {
         "1 > 2",
         "2 - 3",
         "3> 1 1 -4",
+        // Math names and weights (T98).
+        "$a$ $b$",
+        "$b$ 1 $w_1$",
+        "$x y$ > 2",
+        "$a 1",
     ]);
     // A keyword, and sometimes a count line, on top (T96).
     let header = select(vec![

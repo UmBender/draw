@@ -1,7 +1,7 @@
 ---
 title: Numbered nodes
 task: "[[T19 Auto-numbering]]"
-adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]", "[[ADR-T87-1 Graph from an edge list key and layout rules]]", "[[ADR-T96-1 Keywords for graph input]]", "[[ADR-T97-1 Spaced edge pairs]]"]
+adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]", "[[ADR-T87-1 Graph from an edge list key and layout rules]]", "[[ADR-T96-1 Keywords for graph input]]", "[[ADR-T97-1 Spaced edge pairs]]", "[[ADR-T98-1 Math names and weights in graphs]]"]
 tutorial: "[[19 Auto-numbering and undoable counters]]"
 shortcuts: ["N", "Shift+N", "Ctrl+N", "Ctrl+L"]
 tags: [feature]
@@ -47,6 +47,7 @@ can be moved. They are ordinary shapes, so every tool can edit them.
 | `1 > 2` or `1 - 2` | The same pair; spaces around `-` or `>` are allowed |
 | `1 2` on a line | An edge |
 | `1 2 7` on a line | An edge with weight 7 written beside its middle |
+| `$s$ $v_1$ $\infty$` | Formulas as node names or weights, typeset; spaces, `-` and `>` inside `$…$` are part of them |
 
 If the edges form a tree it is drawn in layers from the first node named;
 anything else goes on a circle. Sizes follow the block's text size, and the
@@ -101,7 +102,10 @@ line picks an `InputFormat`; `skip_count_line` and `parent_edges` turn a
 pasted input into the same edges
 ([[ADR-T96-1 Keywords for graph input]]). `joined_pairs` joins tokens
 across a spaced `-` or `>` before a line is read
-([[ADR-T97-1 Spaced edge pairs]]).
+([[ADR-T97-1 Spaced edge pairs]]). `tokens` keeps each `$…$` formula one
+token, `NodeName` is a number or a formula, and a formula node is a circle
+holding it as text; `node_radius` grows every circle to fit the widest one
+([[ADR-T98-1 Math names and weights in graphs]]).
 
 ## Limits
 
@@ -117,7 +121,9 @@ across a spaced `-` or `>` before a line is read
   a paste, undoing a graph that holds the number just below the counter
   gives that number back, and redoing one that holds the counter's own
   number takes it.
-- Node names in an edge list must be numbers. Without a keyword, a leading
+- Node names in an edge list are numbers or `$…$` formulas, never plain
+  words, and parent lists take numbers only. One long formula enlarges
+  every circle of its graph. Without a keyword, a leading
   `n m` line is read as an edge. With one, a first edge `u v` is taken for
   a count line when `v` lines follow and no node after it is above `u`.
 - A parent list cannot mark its root with `0`, and a list without `-1`
