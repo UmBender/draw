@@ -1964,9 +1964,9 @@ mod tests {
         }
         // The long name fits its frame at full size.
         let text = text_layout::bounds(Vec2::ZERO, long, SIZE);
-        let frame = circles[0]
-            .text_frame(TextSlot::Shape)
-            .expect("an ellipse has a frame");
+        let Some(frame) = circles[0].text_frame(TextSlot::Shape) else {
+            panic!("an ellipse has a frame");
+        };
         assert!(frame.width() + 1e-3 >= text.width());
         assert!(frame.height() + 1e-3 >= text.height());
         // Plain numbers keep the T87 size.
