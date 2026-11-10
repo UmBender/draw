@@ -20,7 +20,8 @@ use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{
-    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
+    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_lock, tx_remove, tx_replace, tx_restack,
+    tx_unlock_all,
 };
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
@@ -421,7 +422,7 @@ impl Editor {
         }
 
         let doc = read_numbered_document(r)?;
-        snapshot::check_ids(&selection_tokens, &doc, &selection)?;
+        snapshot::check_unlocked_ids(&selection_tokens, &doc, &selection)?;
         if let Some((_, id)) = reedit {
             snapshot::check_ids(&reedit_tokens, &doc, &[id])?;
         }
@@ -1445,14 +1446,14 @@ impl Editor {
         })
     }
 
-    /// Removes every shape as one undo step, after cancelling the gesture.
-    /// Returns whether anything changed.
+    /// Removes every unlocked shape as one undo step, after cancelling the
+    /// gesture (ADR-T107-1). Returns whether anything changed.
     fn clear_all(&mut self) -> bool {
         let cancelled = self.cancel_gesture();
-        if self.doc.is_empty() {
+        let tx = tx_clear(&self.doc);
+        if tx.is_empty() {
             return cancelled;
         }
-        let tx = tx_clear(&self.doc);
         let changed = self.history.commit(&mut self.doc, tx).is_ok();
         self.selection.clear();
         changed || cancelled
@@ -1462,13 +1463,22 @@ impl Editor {
     /// after cancelling the gesture (ADR-T107-2). Returns whether anything
     /// changed.
     fn lock_selection(&mut self) -> bool {
-        todo!()
+        let cancelled = self.cancel_gesture();
+        self.prune_selection();
+        let tx = tx_lock(&self.doc, &self.selection);
+        let locked = !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok();
+        let deselected = !self.selection.is_empty();
+        self.selection.clear();
+        locked || deselected || cancelled
     }
 
     /// Unlocks every locked shape as one undo step, after cancelling the
     /// gesture (ADR-T107-2). Returns whether anything changed.
     fn unlock_all(&mut self) -> bool {
-        todo!()
+        let cancelled = self.cancel_gesture();
+        let tx = tx_unlock_all(&self.doc);
+        let unlocked = !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok();
+        unlocked || cancelled
     }
 
     /// The id and shape of the grid the arrow keys resize: the Select tool
@@ -1573,10 +1583,10 @@ impl Editor {
         self.run_edit(edit)
     }
 
-    /// Removes selected ids that are no longer in the document.
+    /// Removes selected ids that are no longer in the document or are
+    /// locked (ADR-T107-1).
     fn prune_selection(&mut self) {
-        let doc = &self.doc;
-        self.selection.retain(|id| doc.get(*id).is_some());
+        select::prune(&mut self.selection, &self.doc);
     }
 }
 

@@ -342,7 +342,7 @@ impl Document {
     /// (ADR-T107-1).
     #[must_use]
     pub fn is_locked(&self, id: ShapeId) -> bool {
-        todo!("{id:?}")
+        self.locked.contains(&id)
     }
 
     /// The locked ids, bottom to top (ADR-T107-1).
@@ -401,9 +401,15 @@ impl Document {
 
     /// The topmost unlocked shape satisfying `pred`, searching from the
     /// top down: what a click can select (ADR-T107-1).
-    pub fn topmost_unlocked_where(&self, pred: impl FnMut(&Shape) -> bool) -> Option<ShapeId> {
-        let _ = pred;
-        todo!()
+    pub fn topmost_unlocked_where(
+        &self,
+        mut pred: impl FnMut(&Shape) -> bool,
+    ) -> Option<ShapeId> {
+        self.shapes
+            .iter()
+            .rev()
+            .find(|(id, shape)| !self.is_locked(*id) && pred(shape))
+            .map(|(id, _)| *id)
     }
 
     /// Apply every edit of `tx` in order, or none of them.
@@ -473,6 +479,9 @@ impl Document {
             };
             if stored_id != id || stored != shape {
                 return Err(ApplyError::Mismatch(*id));
+            }
+            if self.is_locked(*id) {
+                return Err(ApplyError::Locked(*id));
             }
             doomed[*index] = true;
         }
@@ -579,6 +588,9 @@ impl Document {
                 if stored_id != id || stored != shape {
                     return Err(ApplyError::Mismatch(*id));
                 }
+                if self.is_locked(*id) {
+                    return Err(ApplyError::Locked(*id));
+                }
                 self.shapes.remove(index);
                 self.ids.remove(id);
                 self.positions.take();
@@ -595,8 +607,17 @@ impl Document {
                 slot.clone_from(after);
             }
             Edit::Lock { id, locked } => {
-                let _ = (id, locked);
-                todo!()
+                if !self.ids.contains(id) {
+                    return Err(ApplyError::UnknownId(*id));
+                }
+                if self.locked.contains(id) == *locked {
+                    return Err(ApplyError::Mismatch(*id));
+                }
+                if *locked {
+                    self.locked.insert(*id);
+                } else {
+                    self.locked.remove(id);
+                }
             }
         }
         Ok(())
@@ -608,16 +629,26 @@ impl Document {
 /// (ADR-T107-1).
 #[must_use]
 pub fn tx_lock(doc: &Document, ids: &[ShapeId]) -> Transaction {
-    let _ = (doc, ids);
-    todo!()
+    let wanted: IdSet = ids.iter().copied().collect();
+    doc.shapes
+        .iter()
+        .filter(|(id, _)| wanted.contains(id) && !doc.is_locked(*id))
+        .map(|(id, _)| Edit::Lock {
+            id: *id,
+            locked: true,
+        })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 /// Transaction unlocking every locked shape, in z-order. Empty when no
 /// shape is locked (ADR-T107-1).
 #[must_use]
 pub fn tx_unlock_all(doc: &Document) -> Transaction {
-    let _ = doc;
-    todo!()
+    doc.locked_ids()
+        .map(|id| Edit::Lock { id, locked: false })
+        .collect::<Vec<_>>()
+        .into()
 }
 
 /// Transaction inserting `shapes` on top, in order, with freshly allocated ids.
@@ -638,7 +669,8 @@ pub fn tx_insert(doc: &mut Document, shapes: impl IntoIterator<Item = Shape>) ->
         .into()
 }
 
-/// Transaction removing the shapes `ids`; unknown and repeated ids are skipped.
+/// Transaction removing the shapes `ids`; unknown, repeated and locked ids
+/// are skipped (ADR-T107-1).
 ///
 /// Edits are ordered by descending index so each index stays valid.
 #[must_use]
@@ -662,10 +694,10 @@ pub fn tx_replace(doc: &Document, id: ShapeId, new: Shape) -> Transaction {
         .into()
 }
 
-/// Transaction moving the shapes `ids` (unknown and repeated ids skipped)
-/// into one block, in their current relative order, with exactly `below`
-/// of the other shapes under it (clamped to their number); the other
-/// shapes keep their order (ADR-T100-1).
+/// Transaction moving the shapes `ids` (unknown, repeated and locked ids
+/// skipped, ADR-T107-1) into one block, in their current relative order,
+/// with exactly `below` of the other shapes under it (clamped to their
+/// number); the other shapes keep their order (ADR-T100-1).
 ///
 /// The moved shapes are removed top down, then inserted bottom up, so the
 /// inverse restores the order exactly. Empty when the order would not
@@ -677,7 +709,7 @@ pub fn tx_restack(doc: &Document, ids: &[ShapeId], below: usize) -> Transaction 
         .shapes
         .iter()
         .enumerate()
-        .filter(|(_, (id, _))| wanted.contains(id))
+        .filter(|(_, (id, _))| wanted.contains(id) && !doc.is_locked(*id))
         .map(|(index, (id, shape))| (index, *id, shape))
         .collect();
     let at = below.min(doc.len() - moved.len());
@@ -704,19 +736,20 @@ pub fn tx_restack(doc: &Document, ids: &[ShapeId], below: usize) -> Transaction 
     removes.chain(inserts).collect::<Vec<_>>().into()
 }
 
-/// Transaction removing every shape, top down.
+/// Transaction removing every unlocked shape, top down (ADR-T107-1).
 #[must_use]
 pub fn tx_clear(doc: &Document) -> Transaction {
     removals_top_down(doc, |_| true)
 }
 
-/// `Remove` edits for every shape whose id satisfies `keep`, top down.
+/// `Remove` edits for every unlocked shape whose id satisfies `keep`, top
+/// down.
 fn removals_top_down(doc: &Document, mut keep: impl FnMut(ShapeId) -> bool) -> Transaction {
     doc.shapes
         .iter()
         .enumerate()
         .rev()
-        .filter(|(_, (id, _))| keep(*id))
+        .filter(|(_, (id, _))| !doc.is_locked(*id) && keep(*id))
         .map(|(index, (id, shape))| Edit::Remove {
             index,
             id: *id,

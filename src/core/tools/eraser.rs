@@ -9,7 +9,8 @@
 //! preview hides the affected shapes (showing cleared ones without their
 //! fills) and the release applies everything as one undo step. Between two
 //! pointer events the path is sampled at most one tolerance apart, so fast
-//! drags do not skip thin shapes.
+//! drags do not skip thin shapes. Locked shapes are left alone in both
+//! modes and do not decide the mode (ADR-T107-1).
 
 use std::collections::{HashMap, HashSet};
 
@@ -17,7 +18,7 @@ use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{Document, ShapeId, Transaction, tx_remove, tx_replace};
 use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, TextSlot};
-use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_unlocked_ids};
 
 /// Hit tolerance of the eraser in screen pixels.
 pub const ERASER_TOLERANCE_PX: f32 = 6.0;
@@ -74,16 +75,18 @@ fn clear_at(shape: &Shape, p: Vec2) -> Option<Shape> {
     Some(cleared.with_slot_text(slot, None))
 }
 
+/// The unlocked shapes of `doc`, bottom first: the only ones the eraser
+/// touches (ADR-T107-1).
+fn erasable(doc: &Document) -> impl Iterator<Item = (ShapeId, &Shape)> {
+    doc.shapes().filter(|(id, _)| !doc.is_locked(*id))
+}
+
 /// The mode of a drag pressed at the world point `p`: [`Mode::Clear`] if
-/// no outline is within `tol` of `p` and some fill lies under it.
+/// no unlocked outline is within `tol` of `p` and some unlocked fill lies
+/// under it.
 fn mode_at(ctx: &ToolCtx<'_>, p: Vec2, tol: f32) -> Mode {
-    let on_outline = ctx.doc.shapes().any(|(_, shape)| shape.hit_outline(p, tol));
-    if !on_outline
-        && ctx
-            .doc
-            .shapes()
-            .any(|(_, shape)| clear_at(shape, p).is_some())
-    {
+    let on_outline = erasable(ctx.doc).any(|(_, shape)| shape.hit_outline(p, tol));
+    if !on_outline && erasable(ctx.doc).any(|(_, shape)| clear_at(shape, p).is_some()) {
         Mode::Clear
     } else {
         Mode::Remove
@@ -101,7 +104,7 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
         let world = ctx
             .camera
             .screen_to_world(from.lerp(to, step as f32 / steps as f32));
-        for (id, shape) in ctx.doc.shapes() {
+        for (id, shape) in erasable(ctx.doc) {
             match state.mode {
                 Mode::Remove => {
                     if !state.marked_ids.contains(&id) && shape.hit(world, tol) {
@@ -208,7 +211,7 @@ impl State {
     }
 
     /// Reads what [`State::write_snapshot`] wrote: ids in `doc`, each
-    /// once.
+    /// once, none locked.
     pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
         let mut t = r.record("eraser")?;
         let last = t.opt()?;
@@ -219,7 +222,7 @@ impl State {
         };
         let marked: Vec<ShapeId> = t.get()?;
         t.end()?;
-        check_ids(&t, doc, &marked)?;
+        check_unlocked_ids(&t, doc, &marked)?;
         let mut cleared = Vec::new();
         let mut cleared_at = HashMap::new();
         while r.peek_key() == Some("eraser-cleared") {
@@ -227,7 +230,7 @@ impl State {
             let id: ShapeId = t.get()?;
             let shape = t.get()?;
             t.end()?;
-            check_ids(&t, doc, &[id])?;
+            check_unlocked_ids(&t, doc, &[id])?;
             if cleared_at.insert(id, cleared.len()).is_some() {
                 return Err(t.error(format!("id {} cleared twice", id.get())));
             }

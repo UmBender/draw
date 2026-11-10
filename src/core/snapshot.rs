@@ -2,7 +2,7 @@
 //! small, canonical, line-based text, and back.
 //!
 //! ```text
-//! draw-snapshot 1
+//! draw-snapshot 2
 //! [editor]
 //! tool pen
 //! …
@@ -10,7 +10,12 @@
 //! next-id 3
 //! shape 1 line 0 3.0 10.0 10.0 50.0 40.0
 //! …
+//! locked 1
+//! …
 //! ```
+//!
+//! Version 2 added the optional `locked` record and the `lock` and
+//! `unlock` edits (ADR-T107-1).
 //!
 //! [`Editor::snapshot`] captures a state, [`Snapshot::to_text`] writes it,
 //! [`Snapshot::parse`] reads and validates text, and
@@ -35,7 +40,7 @@ pub const HEADER: &str = "draw-snapshot";
 
 /// Version of the format this build writes and reads. Bumped, with an ADR,
 /// whenever the text changes (ADR-T74-1).
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// Largest on-screen text size the editor sets, in pixels: the thickest
 /// width's rung, with 1 % for rounding.
@@ -1171,7 +1176,8 @@ fn read_grid(tokens: &mut Tokens<'_>, style: Style) -> Result<Shape, SnapshotErr
     })
 }
 
-/// Writes `edit` as an `insert`, `remove` or `replace` record.
+/// Writes `edit` as an `insert`, `remove`, `replace`, `lock` or `unlock`
+/// record.
 fn write_edit(w: &mut Writer, edit: &Edit) {
     match edit {
         Edit::Insert { index, id, shape } => w.record("insert", |l| {
@@ -1183,10 +1189,9 @@ fn write_edit(w: &mut Writer, edit: &Edit) {
         Edit::Replace { id, before, after } => w.record("replace", |l| {
             l.put(id).put(before).put(after);
         }),
-        Edit::Lock { id, locked } => {
-            let _ = (id, locked);
-            todo!()
-        }
+        Edit::Lock { id, locked } => w.record(if *locked { "lock" } else { "unlock" }, |l| {
+            l.put(id);
+        }),
     }
 }
 
@@ -1208,6 +1213,10 @@ fn read_edit(r: &mut Reader<'_>) -> Result<Edit, SnapshotError> {
             id: t.get()?,
             before: t.get()?,
             after: t.get()?,
+        },
+        "lock" | "unlock" => Edit::Lock {
+            id: t.get()?,
+            locked: key == "lock",
         },
         other => return Err(t.error(format!("unknown key `{other}` (expected an edit)"))),
     };
@@ -1265,9 +1274,18 @@ pub(crate) fn write_document(w: &mut Writer, doc: &Document) {
             l.put(&id).put(shape);
         });
     }
+    // Only when something is locked (ADR-T107-1).
+    if doc.locked_ids().next().is_some() {
+        w.record("locked", |l| {
+            for id in doc.locked_ids() {
+                l.put(&id);
+            }
+        });
+    }
 }
 
-/// Reads the `[document]` section: ids unique and below `next-id`.
+/// Reads the `[document]` section: ids unique and below `next-id`, locked
+/// ids in the document and each once.
 pub(crate) fn read_document(r: &mut Reader<'_>) -> Result<Document, SnapshotError> {
     r.section("document")?;
     let mut t = r.record("next-id")?;
@@ -1288,7 +1306,22 @@ pub(crate) fn read_document(r: &mut Reader<'_>) -> Result<Document, SnapshotErro
         }
         shapes.push((id, shape));
     }
-    let locked = IdSet::default();
+    let mut locked = IdSet::default();
+    if r.peek_key() == Some("locked") {
+        let mut t = r.record("locked")?;
+        while !t.at_end() {
+            let id: ShapeId = t.get()?;
+            if !seen.contains(&id) {
+                return Err(t.error(format!("locked id {} is not in the document", id.get())));
+            }
+            if !locked.insert(id) {
+                return Err(t.error(format!("locked id {} appears twice", id.get())));
+            }
+        }
+        if locked.is_empty() {
+            return Err(t.error("empty locked record"));
+        }
+    }
     Ok(Document::from_parts(shapes, locked, next_id))
 }
 
@@ -1334,6 +1367,24 @@ pub(crate) fn check_ids(
         }
     }
     Ok(())
+}
+
+/// [`check_ids`], and none of `ids` is locked: what the selection and the
+/// select and eraser gestures hold (ADR-T107-1).
+///
+/// # Errors
+///
+/// On the record's line, naming the first bad id.
+pub(crate) fn check_unlocked_ids(
+    tokens: &Tokens<'_>,
+    doc: &Document,
+    ids: &[ShapeId],
+) -> Result<(), SnapshotError> {
+    check_ids(tokens, doc, ids)?;
+    match ids.iter().find(|id| doc.is_locked(**id)) {
+        Some(id) => Err(tokens.error(format!("id {} is locked", id.get()))),
+        None => Ok(()),
+    }
 }
 
 /// Golden files: compare a state's text with a committed one (AC-5). The

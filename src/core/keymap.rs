@@ -262,6 +262,16 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Clear canvas",
     ),
     (
+        KeyChord::ctrl(Key::K),
+        Command::LockSelection,
+        "Lock selection",
+    ),
+    (
+        KeyChord::ctrl_shift(Key::K),
+        Command::UnlockAll,
+        "Unlock every shape",
+    ),
+    (
         KeyChord::bare(Key::Escape),
         Command::Cancel,
         "Cancel gesture / clear selection",
