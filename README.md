@@ -46,6 +46,9 @@ long. If it crashes, `draw --recover` brings your drawing back.
   all, delete, clear canvas, raise / lower with `Ctrl+]` / `Ctrl+[`
   (`Shift` for top / bottom), align edges with `Alt+←/→/↑/↓`, lay out
   as a row / column without overlap with `Alt+H` / `Alt+V`.
+- **Lock shapes** — `Ctrl+K` locks the selection so a background table or
+  diagram can no longer be selected, moved or erased; it still takes fills
+  and text. `Ctrl+Shift+K` unlocks everything.
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -212,6 +215,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+T` | Text block to grid | `Ctrl+Shift+V` | Grid from clipboard |
 | `Ctrl+L` | Text block to graph | `Ctrl+P` | Text block to plot |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
+| `Ctrl+K` | Lock selection | `Ctrl+Shift+K` | Unlock every shape |
 | `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 | `Ctrl+]` | Raise selection one step | `Ctrl+[` | Lower selection one step |
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |
