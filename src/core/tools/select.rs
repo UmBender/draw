@@ -1659,4 +1659,193 @@ mod tests {
         assert_box(&fx.shape(ids[0]), (0.0, 0.0), (150.0, 150.0));
         assert_eq!(fx.selection, vec![ids[0]]);
     }
+
+    // ---- T101 align and distribute -----------------------------------------
+
+    use crate::core::command::{Axis, Side};
+    use proptest::prelude::*;
+
+    /// Unfilled rectangle with corners `a` and `b` and outline `width`.
+    fn outlined(a: Vec2, b: Vec2, width: f32) -> Shape {
+        Shape::Rect {
+            a,
+            b,
+            style: Style {
+                color: ColorId::INK,
+                width,
+            },
+            fill: None,
+            label: None,
+            text: None,
+        }
+    }
+
+    #[test]
+    fn align_selection_moves_by_bounds() {
+        // Arrange: outlines 1 and 5 wide; bounds start at -0.5 and 37.5.
+        let (mut fx, ids) = Fixture::new(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            outlined(Vec2::new(40.0, 25.0), Vec2::new(60.0, 30.0), 5.0),
+        ]);
+        fx.selection = ids.clone();
+
+        // Act
+        let changed = align_selection(&mut fx.ctx(Tool::Select), Side::Left);
+
+        // Assert: the bounds meet, so the thick rectangle's corner is
+        // 2 further right than the thin one's.
+        assert!(changed);
+        assert!(approx_eq(fx.shape(ids[1]).bounds().min.x, -0.5, 1e-4));
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
+        assert_box(&fx.shape(ids[1]), (2.0, 25.0), (22.0, 30.0));
+        assert_eq!(fx.history.undo_len(), 1);
+        assert_eq!(fx.selection, ids);
+    }
+
+    #[test]
+    fn distribute_sorts_by_left_edge_not_selection_order() {
+        // Arrange: x = 0, 100, 30 bottom first; selection order mixed.
+        // gap = (99.5 - 10.5 - 11) / 2 = 39, so the middle one starts at 50.
+        let (mut fx, ids) = Fixture::new(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(100.0, 5.0, 10.0, 10.0),
+            rect(30.0, 70.0, 10.0, 10.0),
+        ]);
+        fx.selection = vec![ids[1], ids[2], ids[0]];
+
+        // Act
+        let changed = distribute_selection(&mut fx.ctx(Tool::Select), Axis::Horizontal);
+
+        // Assert
+        assert!(changed);
+        assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
+        assert_box(&fx.shape(ids[1]), (100.0, 5.0), (110.0, 15.0));
+        assert_box(&fx.shape(ids[2]), (50.0, 70.0), (60.0, 80.0));
+        assert_eq!(fx.history.undo_len(), 1);
+    }
+
+    #[test]
+    fn arrange_without_enough_shapes_records_nothing() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        fx.selection = vec![ids[0], ids[2]];
+
+        // Act / Assert: two shapes align but do not distribute.
+        assert!(!distribute_selection(
+            &mut fx.ctx(Tool::Select),
+            Axis::Horizontal
+        ));
+        assert!(!distribute_selection(
+            &mut fx.ctx(Tool::Select),
+            Axis::Vertical
+        ));
+        fx.selection = vec![ids[1]];
+        for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
+            assert!(
+                !align_selection(&mut fx.ctx(Tool::Select), side),
+                "{side:?}"
+            );
+        }
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    /// Rectangles from `(x, y, w, h)` tuples.
+    fn boxes(specs: &[(f32, f32, f32, f32)]) -> Vec<Shape> {
+        specs.iter().map(|&(x, y, w, h)| rect(x, y, w, h)).collect()
+    }
+
+    /// Any coordinate, huge ones included.
+    fn any_coord() -> impl Strategy<Value = f32> {
+        prop_oneof![
+            4 => -1_000.0f32..1_000.0,
+            1 => -f32::MAX..f32::MAX,
+            1 => prop_oneof![Just(f32::MAX), Just(-f32::MAX), Just(0.0f32)],
+        ]
+    }
+
+    proptest! {
+        #[test]
+        fn distribute_gaps_are_equal(
+            specs in prop::collection::vec(
+                (0.0f32..1_000.0, 0.0f32..1_000.0, 1.0f32..100.0, 1.0f32..100.0),
+                3..8,
+            ),
+            vertical: bool,
+        ) {
+            // Arrange
+            let (mut fx, ids) = Fixture::new(boxes(&specs));
+            fx.selection = ids.clone();
+            let axis = if vertical { Axis::Vertical } else { Axis::Horizontal };
+            let lo = |b: &Aabb| if vertical { b.min.y } else { b.min.x };
+            let hi = |b: &Aabb| if vertical { b.max.y } else { b.max.x };
+            let across = |b: &Aabb| if vertical { b.min.x } else { b.min.y };
+            let before: Vec<Aabb> = ids.iter().map(|&i| fx.shape(i).bounds()).collect();
+            let mut order: Vec<usize> = (0..ids.len()).collect();
+            order.sort_by(|&p, &q| {
+                lo(&before[p])
+                    .total_cmp(&lo(&before[q]))
+                    .then(hi(&before[p]).total_cmp(&hi(&before[q])))
+                    .then(p.cmp(&q))
+            });
+
+            // Act
+            distribute_selection(&mut fx.ctx(Tool::Select), axis);
+
+            // Assert: ends fixed, equal gaps, the other axis untouched.
+            let after: Vec<Aabb> = ids.iter().map(|&i| fx.shape(i).bounds()).collect();
+            let (first, last) = (order[0], order[order.len() - 1]);
+            prop_assert_eq!(after[first], before[first]);
+            prop_assert_eq!(after[last], before[last]);
+            let gaps: Vec<f32> = order
+                .windows(2)
+                .map(|w| lo(&after[w[1]]) - hi(&after[w[0]]))
+                .collect();
+            for gap in &gaps {
+                prop_assert!(approx_eq(*gap, gaps[0], 1e-2), "{:?}", gaps);
+            }
+            for k in 0..ids.len() {
+                prop_assert!(approx_eq(across(&after[k]), across(&before[k]), 1e-3));
+            }
+            prop_assert!(fx.history.undo_len() <= 1);
+        }
+
+        #[test]
+        fn align_and_distribute_stay_finite(
+            corners in prop::collection::vec((any_coord(), any_coord(), any_coord(), any_coord()), 1..6),
+        ) {
+            // Arrange
+            let shapes: Vec<Shape> = corners
+                .iter()
+                .map(|&(ax, ay, bx, by)| outlined(Vec2::new(ax, ay), Vec2::new(bx, by), 1.0))
+                .collect();
+            let (mut fx, ids) = Fixture::new(shapes);
+            fx.selection = ids.clone();
+
+            // Act
+            for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
+                align_selection(&mut fx.ctx(Tool::Select), side);
+            }
+            for axis in [Axis::Horizontal, Axis::Vertical] {
+                distribute_selection(&mut fx.ctx(Tool::Select), axis);
+            }
+
+            // Assert: every shape is still there and finite; undo restores.
+            prop_assert_eq!(fx.ids(), ids.clone());
+            for &i in &ids {
+                let shape = fx.shape(i);
+                prop_assert!(shape.is_finite(), "{:?}", shape);
+                prop_assert!(shape.bounds().min.is_finite(), "{:?}", shape);
+                prop_assert!(shape.bounds().max.is_finite(), "{:?}", shape);
+            }
+            prop_assert_eq!(&fx.selection, &ids);
+            prop_assert!(fx.history.undo_len() <= 6);
+            while fx.history.undo(&mut fx.doc) {}
+            for (&i, &(ax, ay, bx, by)) in ids.iter().zip(&corners) {
+                prop_assert_eq!(
+                    fx.shape(i),
+                    outlined(Vec2::new(ax, ay), Vec2::new(bx, by), 1.0)
+                );
+            }
+        }
+    }
 }

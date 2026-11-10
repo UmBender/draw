@@ -7351,4 +7351,363 @@ mod tests {
         }
         assert_eq!(ed, before);
     }
+
+    // ---- T101 align and distribute -----------------------------------------
+
+    use crate::core::command::{Axis, Side};
+
+    /// Every align and distribute command.
+    const ARRANGE_COMMANDS: [Command; 6] = [
+        Command::Align(Side::Left),
+        Command::Align(Side::Right),
+        Command::Align(Side::Top),
+        Command::Align(Side::Bottom),
+        Command::Distribute(Axis::Horizontal),
+        Command::Distribute(Axis::Vertical),
+    ];
+
+    /// Tolerance for world coordinates in the T101 tests.
+    const ARRANGE_EPS: f32 = 1e-3;
+
+    /// World bounds of the shape `id`; panics if it is missing.
+    fn bounds_of(ed: &Editor, id: ShapeId) -> Aabb {
+        match ed.document().get(id) {
+            Some(shape) => shape.bounds(),
+            None => panic!("shape {id:?} missing"),
+        }
+    }
+
+    /// Every shape of the document, bottom first.
+    fn shapes_of(ed: &Editor) -> Vec<Shape> {
+        ed.document().shapes().map(|(_, s)| s.clone()).collect()
+    }
+
+    /// Editor with the Select tool holding `shapes`, all selected, and
+    /// their ids bottom first.
+    fn arranged(shapes: Vec<Shape>) -> (Editor, Vec<ShapeId>) {
+        let (mut ed, id) = stacked(shapes);
+        ed.selection = id.clone();
+        (ed, id)
+    }
+
+    /// Three rectangles of widths 10, 20 and 40 spread unevenly. With the
+    /// outline width 1 their bounds are (-0.5, -0.5)–(10.5, 10.5),
+    /// (29.5, 49.5)–(50.5, 80.5) and (199.5, 19.5)–(240.5, 25.5).
+    fn uneven() -> Vec<Shape> {
+        vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(30.0, 50.0, 20.0, 30.0),
+            rect(200.0, 20.0, 40.0, 5.0),
+        ]
+    }
+
+    #[test]
+    fn alt_arrow_left_aligns_left_edges() {
+        // Arrange
+        let (mut ed, id) = arranged(uneven());
+        let before: Vec<Aabb> = id.iter().map(|&i| bounds_of(&ed, i)).collect();
+
+        // Act
+        let changed = key_with(&mut ed, Key::ArrowLeft, ALT);
+
+        // Assert: left edges meet the box's, sizes and `y` kept.
+        assert!(changed);
+        for (&i, old) in id.iter().zip(before) {
+            let b = bounds_of(&ed, i);
+            assert!(approx_eq(b.min.x, -0.5, ARRANGE_EPS), "{i:?}: {b:?}");
+            assert!(approx_eq(b.min.y, old.min.y, ARRANGE_EPS), "{i:?}");
+            assert!(approx_eq(b.width(), old.width(), ARRANGE_EPS), "{i:?}");
+            assert!(approx_eq(b.height(), old.height(), ARRANGE_EPS), "{i:?}");
+        }
+    }
+
+    #[test]
+    fn alt_arrows_align_each_side() {
+        type Edge = fn(&Aabb) -> f32;
+        let cases: [(Key, Edge, f32); 3] = [
+            (Key::ArrowRight, |b| b.max.x, 240.5),
+            (Key::ArrowUp, |b| b.min.y, -0.5),
+            (Key::ArrowDown, |b| b.max.y, 80.5),
+        ];
+        for (key, edge, expected) in cases {
+            // Arrange
+            let (mut ed, id) = arranged(uneven());
+
+            // Act
+            let changed = key_with(&mut ed, key, ALT);
+
+            // Assert
+            assert!(changed, "{key:?}");
+            for &i in &id {
+                let got = edge(&bounds_of(&ed, i));
+                assert!(
+                    approx_eq(got, expected, ARRANGE_EPS),
+                    "{key:?} {i:?}: {got}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn align_moves_grid_and_text_as_whole_shapes() {
+        // Arrange: a grid with index bands and a text block.
+        let mut banded = grid(100.0, 100.0, 40.0, 40.0, 2, 2);
+        if let Shape::Grid { axes, .. } = &mut banded {
+            *axes = true;
+        }
+        let text = Shape::Text {
+            origin: Vec2::new(0.0, 300.0),
+            text: "abc".to_owned(),
+            size: 20.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 1.0,
+            },
+        };
+        let (mut ed, id) = arranged(vec![banded, text]);
+        let before: Vec<Aabb> = id.iter().map(|&i| bounds_of(&ed, i)).collect();
+        let left = before[0].min.x.min(before[1].min.x);
+
+        // Act
+        assert!(ed.apply(Command::Align(Side::Left)));
+
+        // Assert: bands and text box line up, nothing else changes.
+        for (&i, old) in id.iter().zip(&before) {
+            let b = bounds_of(&ed, i);
+            assert!(approx_eq(b.min.x, left, ARRANGE_EPS), "{i:?}: {b:?}");
+            assert!(approx_eq(b.width(), old.width(), ARRANGE_EPS), "{i:?}");
+            assert!(approx_eq(b.min.y, old.min.y, ARRANGE_EPS), "{i:?}");
+        }
+        assert!(matches!(
+            ed.document().get(id[0]),
+            Some(Shape::Grid {
+                cols: 2,
+                rows: 2,
+                axes: true,
+                ..
+            })
+        ));
+        assert!(matches!(
+            ed.document().get(id[1]),
+            Some(Shape::Text { text, .. }) if text == "abc"
+        ));
+    }
+
+    #[test]
+    fn alt_h_spaces_shapes_with_equal_gaps() {
+        // Arrange: gap = (199.5 - 10.5 - 21) / 2 = 84.
+        let (mut ed, id) = arranged(uneven());
+        let first = bounds_of(&ed, id[0]);
+        let last = bounds_of(&ed, id[2]);
+
+        // Act
+        let changed = key_with(&mut ed, Key::H, ALT);
+
+        // Assert: the outer shapes stay, the middle one lands at 94.5.
+        assert!(changed);
+        assert_eq!(bounds_of(&ed, id[0]), first);
+        assert_eq!(bounds_of(&ed, id[2]), last);
+        let middle = bounds_of(&ed, id[1]);
+        assert!(approx_eq(middle.min.x, 94.5, ARRANGE_EPS), "{middle:?}");
+        assert!(approx_eq(middle.min.y, 49.5, ARRANGE_EPS), "{middle:?}");
+        assert!(approx_eq(middle.min.x - first.max.x, 84.0, ARRANGE_EPS));
+        assert!(approx_eq(last.min.x - middle.max.x, 84.0, ARRANGE_EPS));
+    }
+
+    #[test]
+    fn alt_v_spaces_shapes_with_equal_vertical_gaps() {
+        // Arrange: tops -0.5, 299.5 and 29.5; the middle one (by top) is
+        // 21 high, gap = (299.5 - 10.5 - 21) / 2 = 134.
+        let (mut ed, id) = arranged(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(50.0, 300.0, 10.0, 40.0),
+            rect(20.0, 30.0, 30.0, 20.0),
+        ]);
+        let first = bounds_of(&ed, id[0]);
+        let last = bounds_of(&ed, id[1]);
+
+        // Act
+        let changed = key_with(&mut ed, Key::V, ALT);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(bounds_of(&ed, id[0]), first);
+        assert_eq!(bounds_of(&ed, id[1]), last);
+        let middle = bounds_of(&ed, id[2]);
+        assert!(approx_eq(middle.min.y, 144.5, ARRANGE_EPS), "{middle:?}");
+        assert!(approx_eq(middle.min.x, 19.5, ARRANGE_EPS), "{middle:?}");
+    }
+
+    #[test]
+    fn distribute_overlapping_shapes_gives_negative_gap() {
+        // Arrange: three 101-wide bounds starting at -0.5, 9.5 and 49.5;
+        // gap = (49.5 - 100.5 - 101) / 2 = -76.
+        let (mut ed, id) = arranged(vec![
+            rect(0.0, 0.0, 100.0, 10.0),
+            rect(10.0, 20.0, 100.0, 10.0),
+            rect(50.0, 40.0, 100.0, 10.0),
+        ]);
+
+        // Act
+        assert!(ed.apply(Command::Distribute(Axis::Horizontal)));
+
+        // Assert
+        let [first, middle, last] = [0, 1, 2].map(|k| bounds_of(&ed, id[k]));
+        assert!(approx_eq(middle.min.x, 24.5, ARRANGE_EPS), "{middle:?}");
+        assert!(approx_eq(middle.min.x - first.max.x, -76.0, ARRANGE_EPS));
+        assert!(approx_eq(last.min.x - middle.max.x, -76.0, ARRANGE_EPS));
+    }
+
+    #[test]
+    fn align_with_one_shape_does_nothing() {
+        // Arrange
+        let (mut ed, _) = arranged(vec![rect(10.0, 20.0, 30.0, 40.0)]);
+        let before = ed.clone();
+
+        for command in ARRANGE_COMMANDS {
+            // Act
+            let changed = ed.apply(command);
+
+            // Assert
+            assert!(!changed, "{command:?}");
+        }
+        assert_eq!(ed, before);
+    }
+
+    #[test]
+    fn distribute_with_two_shapes_does_nothing() {
+        // Arrange
+        let (mut ed, _) = arranged(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(300.0, 200.0, 50.0, 10.0),
+        ]);
+        let before = ed.clone();
+
+        // Act
+        let horizontal = key_with(&mut ed, Key::H, ALT);
+        let vertical = key_with(&mut ed, Key::V, ALT);
+
+        // Assert
+        assert!(!horizontal);
+        assert!(!vertical);
+        assert_eq!(ed, before);
+    }
+
+    #[test]
+    fn align_when_already_aligned_adds_no_undo_step() {
+        // Arrange
+        let (mut ed, _) = arranged(vec![
+            rect(0.0, 0.0, 10.0, 10.0),
+            rect(0.0, 50.0, 30.0, 10.0),
+        ]);
+        let shapes = shapes_of(&ed);
+        let undo = ed.history.undo_len();
+
+        // Act
+        let changed = key_with(&mut ed, Key::ArrowLeft, ALT);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(shapes_of(&ed), shapes);
+        assert_eq!(ed.history.undo_len(), undo);
+    }
+
+    #[test]
+    fn distribute_twice_adds_one_undo_step() {
+        // Arrange
+        let (mut ed, _) = arranged(uneven());
+        let undo = ed.history.undo_len();
+
+        // Act
+        let first = key_with(&mut ed, Key::H, ALT);
+        let spaced = shapes_of(&ed);
+        let second = key_with(&mut ed, Key::H, ALT);
+
+        // Assert
+        assert!(first);
+        assert!(!second);
+        assert_eq!(shapes_of(&ed), spaced);
+        assert_eq!(ed.history.undo_len(), undo + 1);
+    }
+
+    #[test]
+    fn align_is_one_undo_step_and_keeps_selection() {
+        // Arrange
+        let (mut ed, id) = arranged(uneven());
+        ed.selection = vec![id[2], id[0], id[1]];
+        let before = shapes_of(&ed);
+        let undo = ed.history.undo_len();
+        let revision = ed.document_revision();
+
+        // Act
+        assert!(key_with(&mut ed, Key::ArrowDown, ALT));
+        let after = shapes_of(&ed);
+
+        // Assert
+        assert_ne!(after, before);
+        assert_eq!(ids(&ed), id);
+        assert_eq!(ed.history.undo_len(), undo + 1);
+        assert_eq!(ed.selection(), &[id[2], id[0], id[1]]);
+        assert!(ed.document_revision() > revision);
+        assert!(key_with(&mut ed, Key::Z, CTRL));
+        assert_eq!(shapes_of(&ed), before);
+        assert_eq!(ed.selection(), &[id[2], id[0], id[1]]);
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(shapes_of(&ed), after);
+    }
+
+    #[test]
+    fn align_during_gesture_does_nothing() {
+        // Arrange: a pen stroke in progress, three shapes selected.
+        let (mut ed, id) = arranged(uneven());
+        ed.apply(Command::SetTool(Tool::Pen));
+        ed.selection = id.clone();
+        down(&mut ed, PointerButton::Left, 700.0, 700.0);
+        move_to(&mut ed, 720.0, 730.0);
+        assert!(ed.gesture.is_some());
+        let shapes = shapes_of(&ed);
+        let undo = ed.history.undo_len();
+
+        for command in ARRANGE_COMMANDS {
+            // Act
+            let changed = ed.apply(command);
+
+            // Assert
+            assert!(!changed, "{command:?}");
+            assert!(ed.gesture.is_some(), "{command:?}");
+            assert_eq!(shapes_of(&ed), shapes, "{command:?}");
+            assert_eq!(ed.history.undo_len(), undo, "{command:?}");
+        }
+    }
+
+    #[test]
+    fn alt_arrow_in_text_edit_moves_caret_not_shapes() {
+        // Arrange: two rectangles selected and a text block open.
+        let mut ed = text_editor();
+        let tx = tx_insert(
+            &mut ed.doc,
+            [rect(0.0, 0.0, 10.0, 10.0), rect(40.0, 40.0, 30.0, 10.0)],
+        );
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+        let id = ids(&ed);
+        place(&mut ed, 600.0, 500.0, "ab");
+        ed.selection = id.clone();
+        let rects: Vec<Shape> = id
+            .iter()
+            .filter_map(|&i| ed.document().get(i).cloned())
+            .collect();
+        let caret = ed.text_edit().map(TextEdit::caret);
+
+        // Act
+        key_with(&mut ed, Key::ArrowLeft, ALT);
+
+        // Assert
+        assert!(ed.text_edit().is_some());
+        assert_eq!(ed.text_edit().map(TextEdit::caret), caret.map(|c| c - 1));
+        let now: Vec<Shape> = id
+            .iter()
+            .filter_map(|&i| ed.document().get(i).cloned())
+            .collect();
+        assert_eq!(now, rects);
+    }
 }
