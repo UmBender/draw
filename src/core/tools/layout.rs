@@ -66,6 +66,9 @@ const MAX_PLAIN_EXPONENT: i32 = 6;
 /// What joins two node names in a pair token.
 const SEPARATORS: [char; 2] = ['-', '>'];
 
+/// The entry of a parent list that marks the root (ADR-T96-1).
+const ROOT_ENTRY: &str = "-1";
+
 /// Why a text cannot become a graph (ADR-T87-1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphError {
@@ -137,37 +140,60 @@ impl EdgeList {
         if text.len() > PASTE_MAX_BYTES {
             return Err(GraphError::TooLong { bytes: text.len() });
         }
+        // Non-blank lines and their 1-based numbers.
+        let lines: Vec<(usize, &str)> = text
+            .lines()
+            .enumerate()
+            .map(|(index, line)| (index + 1, line))
+            .filter(|(_, line)| !line.trim().is_empty())
+            .collect();
+        // A keyword first line says how the rest is read (ADR-T96-1).
+        let format = lines
+            .first()
+            .and_then(|(_, line)| InputFormat::of_keyword(line));
+        let body = lines
+            .get(usize::from(format.is_some())..)
+            .unwrap_or_default();
+        let (root, raws) = match format {
+            None => (None, edge_lines(body, false)?),
+            Some(InputFormat::Edges { directed }) => {
+                (None, edge_lines(skip_count_line(body), directed)?)
+            }
+            Some(InputFormat::Parents { first }) => parent_edges(body, first)?,
+        };
+
         let mut names = Vec::new();
         let mut index_of = HashMap::new();
+        let mut node = |name| {
+            *index_of.entry(name).or_insert_with(|| {
+                names.push(name);
+                names.len() - 1
+            })
+        };
+        // A parent list's root is named first, so the tree hangs from it.
+        if let Some(root) = root {
+            node(root);
+        }
         let mut edges: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
-        for (number, line) in text.lines().enumerate() {
-            let parsed = line_edges(line).ok_or(GraphError::NotAnEdge { line: number + 1 })?;
-            for raw in parsed {
-                let mut node = |name| {
-                    *index_of.entry(name).or_insert_with(|| {
-                        names.push(name);
-                        names.len() - 1
-                    })
-                };
-                let (from, to) = (node(raw.u), node(raw.v));
-                if from == to {
-                    continue;
-                }
-                // An undirected edge is the same edge read either way.
-                let ends = if raw.directed {
-                    (from, to)
-                } else {
-                    (from.min(to), from.max(to))
-                };
-                if seen.insert((ends, raw.directed, raw.weight)) {
-                    edges.push(Edge {
-                        from,
-                        to,
-                        directed: raw.directed,
-                        weight: raw.weight.map(str::to_owned),
-                    });
-                }
+        for raw in raws {
+            let (from, to) = (node(raw.u), node(raw.v));
+            if from == to {
+                continue;
+            }
+            // An undirected edge is the same edge read either way.
+            let ends = if raw.directed {
+                (from, to)
+            } else {
+                (from.min(to), from.max(to))
+            };
+            if seen.insert((ends, raw.directed, raw.weight)) {
+                edges.push(Edge {
+                    from,
+                    to,
+                    directed: raw.directed,
+                    weight: raw.weight.map(str::to_owned),
+                });
             }
         }
         if names.len() > MAX_NODES {
@@ -363,15 +389,118 @@ struct RawEdge<'a> {
     weight: Option<&'a str>,
 }
 
+/// The edges of `lines`, numbered as in the block; plain `u v` lines are
+/// arrows when `directed` (ADR-T96-1).
+///
+/// # Errors
+///
+/// [`GraphError::NotAnEdge`] naming the first line that is not edges.
+fn edge_lines<'a>(
+    lines: &[(usize, &'a str)],
+    directed: bool,
+) -> Result<Vec<RawEdge<'a>>, GraphError> {
+    let mut raws = Vec::new();
+    for &(number, line) in lines {
+        raws.extend(line_edges(line, directed).ok_or(GraphError::NotAnEdge { line: number })?);
+    }
+    Ok(raws)
+}
+
+/// `lines` without a first line that counts nodes or edges: one number, or
+/// `n m` with `m` the number of lines after it and `n` at least every node
+/// name in them (ADR-T96-1).
+fn skip_count_line<'a, 'b>(lines: &'b [(usize, &'a str)]) -> &'b [(usize, &'a str)] {
+    let Some(((_, first), rest)) = lines.split_first() else {
+        return lines;
+    };
+    let tokens: Vec<&str> = first.split_whitespace().collect();
+    let count = match tokens.as_slice() {
+        [n] => n.parse::<u64>().is_ok(),
+        [n, m] => {
+            let largest = rest
+                .iter()
+                .filter_map(|(_, line)| line_edges(line, false))
+                .flatten()
+                .map(|raw| raw.u.max(raw.v))
+                .max()
+                .unwrap_or(0);
+            n.parse::<u32>().is_ok_and(|n| n >= largest)
+                && m.parse::<usize>().is_ok_and(|m| m > 0 && m == rest.len())
+        }
+        _ => false,
+    };
+    if count { rest } else { lines }
+}
+
+/// The root and edges of a parent list (ADR-T96-1): `None` and no edges
+/// when it has no entries.
+///
+/// # Errors
+///
+/// [`GraphError::NotAnEdge`] naming the line of an entry that is not a
+/// node name, or of a second `-1`.
+fn parent_edges<'a>(
+    lines: &[(usize, &str)],
+    first: u32,
+) -> Result<(Option<u32>, Vec<RawEdge<'a>>), GraphError> {
+    let mut entries: Vec<(usize, &str)> = lines
+        .iter()
+        .flat_map(|&(number, line)| line.split_whitespace().map(move |entry| (number, entry)))
+        .collect();
+    // A count line `n` is skipped when n − 1 or n entries follow it.
+    if let [(_, only), _, ..] = lines {
+        let after = entries.len() - 1;
+        let one_entry = only.split_whitespace().count() == 1;
+        let counts = |n: usize| n == after || n.checked_sub(1) == Some(after);
+        if one_entry && only.trim().parse::<usize>().is_ok_and(counts) {
+            entries.remove(0);
+        }
+    }
+    let Some(&(first_line, _)) = entries.first() else {
+        return Ok((None, Vec::new()));
+    };
+    let not_an_edge = |line| GraphError::NotAnEdge { line };
+    let name_at = |index: usize| u32::try_from(index).ok().and_then(|i| first.checked_add(i));
+    let roots: Vec<usize> = (0..entries.len())
+        .filter(|&index| entries[index].1 == ROOT_ENTRY)
+        .collect();
+    // Without `-1` the list starts at the node after the root.
+    let (root, offset) = match roots.as_slice() {
+        [] => (Some(first), 1),
+        [at] => (name_at(*at), 0),
+        [_, second, ..] => return Err(not_an_edge(entries[*second].0)),
+    };
+    let root = root.ok_or(not_an_edge(first_line))?;
+    let mut raws = Vec::new();
+    for (index, &(number, entry)) in entries.iter().enumerate() {
+        if entry == ROOT_ENTRY {
+            continue;
+        }
+        let child = index
+            .checked_add(offset)
+            .and_then(name_at)
+            .ok_or(not_an_edge(number))?;
+        let parent = node_name(entry).ok_or(not_an_edge(number))?;
+        raws.push(RawEdge {
+            u: parent,
+            v: child,
+            directed: false,
+            weight: None,
+        });
+    }
+    Ok((Some(root), raws))
+}
+
 /// The edges of one line, none for a blank line; `None` if it is not edges.
-fn line_edges(line: &str) -> Option<Vec<RawEdge<'_>>> {
+/// Plain `u v` lines are arrows when `directed`.
+fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
     match tokens.as_slice() {
         [first, ..] if first.contains(SEPARATORS) => {
             tokens.iter().map(|token| pair(token)).collect()
         }
-        [u, v] => Some(vec![plain_edge(u, v, None)?]),
-        [u, v, weight] => Some(vec![plain_edge(u, v, Some(weight))?]),
+        [u, v] => Some(vec![plain_edge(u, v, None, directed)?]),
+        [u, v, weight] => Some(vec![plain_edge(u, v, Some(weight), directed)?]),
         [] => Some(Vec::new()),
         _ => None,
     }
@@ -390,7 +519,12 @@ fn pair(token: &str) -> Option<RawEdge<'_>> {
 }
 
 /// The edge of a line `u v` or `u v w`.
-fn plain_edge<'a>(u: &str, v: &str, weight: Option<&'a str>) -> Option<RawEdge<'a>> {
+fn plain_edge<'a>(
+    u: &str,
+    v: &str,
+    weight: Option<&'a str>,
+    directed: bool,
+) -> Option<RawEdge<'a>> {
     let finite = |w: &str| w.parse::<f64>().is_ok_and(f64::is_finite);
     if weight.is_some_and(|w| !finite(w)) {
         return None;
@@ -398,7 +532,7 @@ fn plain_edge<'a>(u: &str, v: &str, weight: Option<&'a str>) -> Option<RawEdge<'
     Some(RawEdge {
         u: node_name(u)?,
         v: node_name(v)?,
-        directed: false,
+        directed,
         weight,
     })
 }
@@ -1498,6 +1632,8 @@ mod tests {
         assert_eq!(graph("graph:\n1 2"), graph("1 2"));
         assert_eq!(graph("graph:\n1 0"), graph("1 0"));
         assert_eq!(graph("graph:\n2 1 5\n1 3"), graph("2 1 5\n1 3"));
+        // Two lines follow `1 2`, but they name nodes above 1.
+        assert_eq!(graph("graph:\n1 2\n2 3\n3 4"), graph("1 2\n2 3\n3 4"));
     }
 
     #[test]

@@ -33,7 +33,7 @@ Rules: [[ADR-T96-1 Keywords for graph input]]. Tests live in `src/core/tools/lay
   Tests: `parse_graph_keyword_reads_edges`, `parse_tree_keyword_reads_edges`.
 - **AC-3** — `dgraph:` reads `u v` and `u v w` lines as directed edges from `u` to `v`, keeping the weight; `u-v` stays undirected.
   Tests: `parse_dgraph_keyword_makes_plain_edges_directed`, `parse_dgraph_keyword_keeps_written_pairs`.
-- **AC-4** — After an edge keyword, a first line that is one number, or `n m` with `m` the number of lines after it, is a count line and is skipped. Without a keyword nothing is skipped.
+- **AC-4** — After an edge keyword, a first line that is one number, or `n m` with `m` the number of lines after it and `n` at least every node name in them, is a count line and is skipped. Without a keyword nothing is skipped.
   Tests: `parse_skips_a_count_line_after_a_keyword`, `parse_keeps_a_first_edge_that_is_not_a_count_line`, `parse_never_skips_without_a_keyword`.
 - **AC-5** — `parents:` reads `p2 … pn` with root 1 and `parents0:` reads `p1 … p(n-1)` with root 0. A list holding one `-1` is one entry per node, from 1 or from 0, with `-1` at the root. Entries may span lines, and a count line `n` is skipped when `n − 1` or `n` entries follow.
   Tests: `parse_parents_reads_p2_to_pn_with_root_1`, `parse_parents0_reads_p1_onwards_with_root_0`, `parse_parents_reads_a_full_list_with_minus_one_at_the_root`, `parse_parents_skips_a_count_line`, `parse_parents_reads_entries_across_lines`.
