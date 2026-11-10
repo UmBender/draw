@@ -185,6 +185,18 @@ flowchart TD
   T96 --> T97[T97 Spaced edge pairs]
   T97 --> T98[T98 Math names and weights in graphs]
   T98 --> T53
+  T99[T99 Spacing commands]
+  T99 --> T103[T103 Labelled extensible arrows]
+  T100[T100 Z-order keys]
+  T100 --> T101[T101 Align and distribute]
+  T98 --> T102[T102 Graph input follow-ups]
+  T102 --> T104[T104 Segment tree drawing]
+  T99 --> T53
+  T100 --> T53
+  T101 --> T53
+  T102 --> T53
+  T103 --> T53
+  T104 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -249,8 +261,10 @@ flowchart TD
 | 54 | [[T93 Coordinate plane from points]] · [[T96 Keywords for graph input]] |
 | 55 | [[T95 Labels on plotted points]] · [[T97 Spaced edge pairs]] |
 | 56 | [[T98 Math names and weights in graphs]] |
-| 57 | [[T53 Release 1.5.0]] |
-| 58 | [[T50 Version 2.0.0 refactor]] |
+| 57 | [[T99 Spacing commands]] · [[T100 Z-order keys]] · [[T102 Graph input follow-ups]] |
+| 58 | [[T101 Align and distribute]] · [[T103 Labelled extensible arrows]] · [[T104 Segment tree drawing]] |
+| 59 | [[T53 Release 1.5.0]] |
+| 60 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -353,5 +367,11 @@ flowchart TD
 | [[T96 Keywords for graph input]] | done | T87 | `task/T96-graph-keywords` |
 | [[T97 Spaced edge pairs]] | done | T96 | `task/T97-spaced-edge-pairs` |
 | [[T98 Math names and weights in graphs]] | done | T97 | `task/T98-math-graph-labels` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T98 | `chore/release-1.5.0` |
+| [[T99 Spacing commands]] | todo | — | `task/T99-spacing-commands` |
+| [[T100 Z-order keys]] | todo | — | `task/T100-z-order-keys` |
+| [[T101 Align and distribute]] | todo | T100 | `task/T101-align-distribute` |
+| [[T102 Graph input follow-ups]] | todo | — | `task/T102-graph-input-follow-ups` |
+| [[T103 Labelled extensible arrows]] | todo | T99 | `task/T103-labelled-arrows` |
+| [[T104 Segment tree drawing]] | todo | T102 | `task/T104-segment-tree` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T104 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
