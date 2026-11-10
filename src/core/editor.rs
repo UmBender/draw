@@ -1490,16 +1490,18 @@ impl Editor {
         };
         let selected: IdSet = self.selection.iter().copied().collect();
         let is_selected = |(_, (id, _)): &(usize, (ShapeId, &Shape))| selected.contains(id);
-        let mut indices = self
-            .doc
-            .shapes()
-            .enumerate()
-            .filter(is_selected)
-            .map(|(index, _)| index);
-        let (Some(lowest), highest) = (indices.next(), indices.last()) else {
-            return false;
+        let (lowest, highest) = {
+            let mut indices = self
+                .doc
+                .shapes()
+                .enumerate()
+                .filter(is_selected)
+                .map(|(index, _)| index);
+            let Some(lowest) = indices.next() else {
+                return false;
+            };
+            (lowest, indices.next_back().unwrap_or(lowest))
         };
-        let highest = highest.unwrap_or(lowest);
         let count = selected.len();
         let overlaps = |entry: &(usize, (ShapeId, &Shape))| {
             !is_selected(entry) && entry.1.1.bounds().intersects(&bounds)
@@ -1509,7 +1511,12 @@ impl Editor {
             Restack::Top => usize::MAX,
             Restack::Bottom => 0,
             Restack::Up => {
-                let target = self.doc.shapes().enumerate().skip(highest + 1).find(overlaps);
+                let target = self
+                    .doc
+                    .shapes()
+                    .enumerate()
+                    .skip(highest + 1)
+                    .find(overlaps);
                 // Every selected shape lies under the target.
                 let Some((index, _)) = target else {
                     return false;
@@ -1517,7 +1524,13 @@ impl Editor {
                 index + 1 - count
             }
             Restack::Down => {
-                let target = self.doc.shapes().enumerate().take(lowest).rev().find(overlaps);
+                let target = self
+                    .doc
+                    .shapes()
+                    .enumerate()
+                    .take(lowest)
+                    .rev()
+                    .find(overlaps);
                 // No selected shape lies under the target.
                 let Some((index, _)) = target else {
                     return false;

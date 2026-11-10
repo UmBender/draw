@@ -1836,7 +1836,10 @@ fn z_order_session_click_selects_and_raises() {
             button: left,
             mods: none,
         });
-        editor.handle(InputEvent::PointerMove { pos: to, mods: none });
+        editor.handle(InputEvent::PointerMove {
+            pos: to,
+            mods: none,
+        });
         editor.handle(InputEvent::PointerUp {
             pos: to,
             button: left,
@@ -1849,7 +1852,11 @@ fn z_order_session_click_selects_and_raises() {
     });
     editor.apply(Command::SetTool(Tool::Rect));
     for (x, y) in [(10.0, 10.0), (100.0, 100.0), (150.0, 120.0)] {
-        drag(&mut editor, Vec2::new(x, y), Vec2::new(x + 300.0, y + 250.0));
+        drag(
+            &mut editor,
+            Vec2::new(x, y),
+            Vec2::new(x + 300.0, y + 250.0),
+        );
     }
     editor.apply(Command::SetTool(Tool::Select));
     let at = Vec2::new(12.0, 12.0);
