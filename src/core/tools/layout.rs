@@ -157,6 +157,8 @@ pub struct EdgeList {
     names: Vec<NodeName>,
     /// The edges, in the order they were written.
     edges: Vec<Edge>,
+    /// Whether it came from `segtree:`, drawn as boxes (ADR-T104-2).
+    boxes: bool,
 }
 
 impl EdgeList {
@@ -194,7 +196,11 @@ impl EdgeList {
             && let Some(size) = line.trim().strip_prefix(SEGTREE_KEYWORD)
         {
             let (root, raws) = segment_tree_edges((number, size), rest, first)?;
-            return Self::from_raws(root, raws);
+            let list = Self::from_raws(root, raws)?;
+            return Ok(list.map(|list| Self {
+                boxes: true,
+                ..list
+            }));
         }
         // A keyword first line says how the rest is read (ADR-T96-1).
         let format = lines
@@ -263,7 +269,11 @@ impl EdgeList {
         if names.len() > MAX_NODES {
             return Err(GraphError::TooManyNodes { nodes: names.len() });
         }
-        Ok((!names.is_empty()).then_some(Self { names, edges }))
+        Ok((!names.is_empty()).then_some(Self {
+            names,
+            edges,
+            boxes: false,
+        }))
     }
 
     /// Node names, in the order they were first named.
@@ -286,6 +296,9 @@ impl EdgeList {
         if !size.is_finite() || size <= 0.0 {
             return None;
         }
+        if self.boxes {
+            return self.box_shapes(origin, size, style);
+        }
         let radius = self.node_radius(size);
         let widest_weight = self
             .edges
@@ -294,7 +307,9 @@ impl EdgeList {
             .map(|weight| text_layout::bounds(Vec2::ZERO, weight, size).width())
             .fold(0.0, f32::max);
         let pitch = 2.0 * radius + (2.0 * radius).max(widest_weight + size) + 2.0 * style.width;
-        let centres = self.layers(pitch).unwrap_or_else(|| self.circle(pitch));
+        let centres = self
+            .layers(pitch, 0.0)
+            .unwrap_or_else(|| self.circle(pitch));
         let shift = origin + Vec2::new(radius, radius) - top_left(&centres);
 
         let mut lines = Vec::with_capacity(self.edges.len());
@@ -328,6 +343,66 @@ impl EdgeList {
         shapes.iter().all(Shape::is_finite).then_some(shapes)
     }
 
+    /// The drawing of a segment tree (ADR-T104-2): per node a square
+    /// holding its range with an empty square under it, edges from a
+    /// parent's value box to its children's range boxes. `None` as
+    /// [`Self::shapes`], or if the edges are not a tree.
+    fn box_shapes(&self, origin: Vec2, size: f32, style: Style) -> Option<Vec<Shape>> {
+        let half = self.box_half(size);
+        let box_width = 2.0 * half;
+        let pitch = 2.0 * box_width + 2.0 * style.width;
+        let centres = self.layers(pitch, box_width)?;
+        let shift = origin + Vec2::new(half, half) - top_left(&centres);
+        let corner = Vec2::new(half, half);
+        // Just off both strokes, as outline snapping leaves it.
+        let off = style.width;
+        let lines = self.edges.iter().map(|edge| {
+            let (from, to) = (centres[edge.from] + shift, centres[edge.to] + shift);
+            Shape::Line {
+                a: from + Vec2::new(0.0, half + box_width + off),
+                b: to - Vec2::new(0.0, half + off),
+                style,
+            }
+        });
+        let squares = self.names.iter().zip(&centres).flat_map(|(name, centre)| {
+            let centre = *centre + shift;
+            let square = |c: Vec2| Shape::Rect {
+                a: c - corner,
+                b: c + corner,
+                style,
+                fill: None,
+                label: None,
+                text: None,
+            };
+            let text = match name {
+                NodeName::Math(math) => math.clone(),
+                NodeName::Number(n) => n.to_string(),
+            };
+            [
+                square(centre).with_slot_text(TextSlot::Shape, ShapeText::new(text, size)),
+                square(centre + Vec2::new(0.0, box_width)),
+            ]
+        });
+        let shapes: Vec<Shape> = lines.chain(squares).collect();
+        shapes.iter().all(Shape::is_finite).then_some(shapes)
+    }
+
+    /// Half the edge of every segment tree square at text size `size`:
+    /// [`NODE_RADIUS_EM`], or more when the widest name needs it to be
+    /// typeset at full size in the square's text frame (ADR-T104-2).
+    fn box_half(&self, size: f32) -> f32 {
+        let widest = self
+            .names
+            .iter()
+            .map(|name| match name {
+                NodeName::Math(math) => text_layout::bounds(Vec2::ZERO, math, size),
+                NodeName::Number(n) => text_layout::bounds(Vec2::ZERO, &n.to_string(), size),
+            })
+            .map(|bounds| bounds.width().max(bounds.height()))
+            .fold(0.0, f32::max);
+        (NODE_RADIUS_EM * size).max(widest / (2.0 * SHAPE_TEXT_FILL))
+    }
+
     /// The radius of every circle at text size `size`: [`NODE_RADIUS_EM`],
     /// or more when the widest math name needs it to be typeset at full
     /// size in the circle's text frame (ADR-T98-1).
@@ -349,8 +424,8 @@ impl EdgeList {
     /// Node centres of the layered drawing, or `None` if the edges are not
     /// a tree. Arrow directions do not count. The root is the first node
     /// named; every leaf takes a column of its own and every parent sits
-    /// centred over its children.
-    fn layers(&self, pitch: f32) -> Option<Vec<Vec2>> {
+    /// centred over its children. Each layer is `extra` further down.
+    fn layers(&self, pitch: f32, extra: f32) -> Option<Vec<Vec2>> {
         let n = self.names.len();
         if self.edges.len() + 1 != n {
             return None;
@@ -405,7 +480,7 @@ impl EdgeList {
             }
         }
 
-        let layer_gap = pitch * (1.0 + (n as f32).sqrt() / 4.0);
+        let layer_gap = pitch * (1.0 + (n as f32).sqrt() / 4.0) + extra;
         Some(
             column
                 .iter()
@@ -2621,8 +2696,9 @@ mod tests {
             };
             for square in &ranges {
                 let b = square.bounds();
-                assert!(approx_eq(b.width(), side, 1e-3));
-                assert!(approx_eq(b.height(), side, 1e-3));
+                // Far from the origin, f32 keeps about 1e-3 of a unit.
+                assert!(approx_eq(b.width(), side, 1e-2), "{b:?}");
+                assert!(approx_eq(b.height(), side, 1e-2), "{b:?}");
                 let text = square.slot_text(TextSlot::Shape).map_or("", |t| &t.text);
                 let label = text_layout::bounds(Vec2::ZERO, text, SIZE);
                 assert!(frame.width() + 1e-3 >= label.width(), "{text}");
