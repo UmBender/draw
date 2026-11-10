@@ -1,7 +1,7 @@
 ---
 id: T101
 title: Align and distribute
-status: in-progress
+status: review
 wave: 58
 branch: task/T101-align-distribute
 depends_on: [T100]
@@ -69,12 +69,12 @@ Rules: [[ADR-T101-1 Align and distribute keys]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T101): specify align and distribute`
-- [ ] tests — `test(T101): add failing tests for align and distribute`
-- [ ] models — `feat(T101): …`
-- [ ] behaviour — `feat(T101): …`
-- [ ] quality — `chore(T101): pass clippy and rustfmt`
-- [ ] docs — `docs(T101): update the feature note`
+- [x] spec — `docs(T101): specify align and distribute`
+- [x] tests — `test(T101): add failing tests for align and distribute`
+- [x] models — `feat(T101): add align and distribute commands and bindings`
+- [x] behaviour — `feat(T101): implement aligning and distributing the selection`
+- [x] quality — skipped: `scripts/check.sh --fuzz` was green on the behaviour commit with nothing to change (see *Log*)
+- [x] docs — `docs(T101): update the feature note`
 
 ## Learning path
 
@@ -83,3 +83,10 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written in the batch plan with the owner; owner decisions are in *Spec* and in `.batch/plan.md`.
+- 2026-11-10 — implemented in a batch run. `Command::Align(Side)` on `Alt+←/→/↑/↓` and `Command::Distribute(Axis)` on `Alt+H` / `Alt+V` (`Side`, `Axis` in `core::command`); `select::align_selection` / `select::distribute_selection` build one `Replace` transaction; the editor's `arrange` ignores them during a gesture. The shell already passes `Alt` with every key (as for `Alt+]`), so `Alt+arrow` reaches the core; no alternative key was needed. `scripts/check.sh --fuzz` and `scripts/e2e.sh` green; no golden changed.
+- 2026-11-10 — quality step skipped: `cargo fmt` ran in every step and `scripts/check.sh --fuzz` (fmt, clippy `-D warnings`, tests, docs, 20 000 fuzz cases) passed on the behaviour commit with no change.
+- 2026-11-10 — UNATTENDED CHOICE: distribute sorts by near edge, then far edge, then stacking order, and keeps the first and last of that order fixed; the gap is `(last.min − first.max − Σ middle sizes) / (n − 1)` (ADR-T101-1). Alternative: equal centre spacing.
+- 2026-11-10 — UNATTENDED CHOICE: the logic lives in `tools/select.rs` (listed as owned when a move helper is shared): it reuses `selected_shapes`, `prune` and the `Replace` transaction of moves and scaling.
+- 2026-11-10 — UNATTENDED CHOICE: the no-op tolerance (`1e-5` of the box's magnitude, at least `1e-5` world units) applies to the command as a whole: when every offset is within it nothing is recorded, otherwise every shape with a non-zero offset moves by its exact offset, so the gaps come out equal. ADR-T101-1 words it per shape; the two only differ below that tolerance.
+- 2026-11-10 — found while fuzzing (no bug): a second click on the only selected rectangle opens its text (ADR-T31-1), so a following `Alt+←` moves the caret and `Undo` cancels the text. The fuzz property closes the text with `Esc` before its final undos, as the T100 one does.
+- 2026-11-10 — manual checks for the owner: align a few uneven graph nodes with `Alt+arrows`, space them with `Alt+H` / `Alt+V`, undo; `Alt+arrow` on X11 and Wayland (some desktops bind `Alt+arrow` themselves).
