@@ -7,7 +7,7 @@
 //! bound: the editor consumes it as the pan modifier. While a text block is
 //! being edited no binding fires (ADR-T29-2).
 
-use crate::core::command::{Command, Tool};
+use crate::core::command::{Axis, Command, Side, Tool};
 use crate::core::input::{Key, Modifiers};
 use crate::core::palette::ColorId;
 
@@ -215,6 +215,36 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         KeyChord::ctrl_shift(Key::BracketLeft),
         Command::SelectionToBottom,
         "Selection to the bottom",
+    ),
+    (
+        KeyChord::alt(Key::ArrowLeft),
+        Command::Align(Side::Left),
+        "Align left edges",
+    ),
+    (
+        KeyChord::alt(Key::ArrowRight),
+        Command::Align(Side::Right),
+        "Align right edges",
+    ),
+    (
+        KeyChord::alt(Key::ArrowUp),
+        Command::Align(Side::Top),
+        "Align top edges",
+    ),
+    (
+        KeyChord::alt(Key::ArrowDown),
+        Command::Align(Side::Bottom),
+        "Align bottom edges",
+    ),
+    (
+        KeyChord::alt(Key::H),
+        Command::Distribute(Axis::Horizontal),
+        "Space horizontally with equal gaps",
+    ),
+    (
+        KeyChord::alt(Key::V),
+        Command::Distribute(Axis::Vertical),
+        "Space vertically with equal gaps",
     ),
     (
         KeyChord::bare(Key::Delete),

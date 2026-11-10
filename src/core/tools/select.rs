@@ -14,6 +14,9 @@
 //!   about the opposite corner: the preview shows scaled copies, the release
 //!   commits one `Replace` transaction; `Shift` keeps the proportions
 //!   (ADR-T91-1).
+//! - [`align_selection`] and [`distribute_selection`] translate the
+//!   selected shapes by their bounds as one `Replace` transaction
+//!   (ADR-T101-1).
 //!
 //! Every entry point first drops selected ids missing from the document, so a
 //! stale selection is never acted on.
@@ -23,6 +26,7 @@ use std::collections::HashSet;
 use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::camera::Camera;
 use crate::core::clipboard;
+use crate::core::command::{Axis, Side};
 use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::{Aabb, Vec2, approx_eq};
 use crate::core::shape::Shape;
@@ -274,6 +278,25 @@ pub fn scale_selection_up(ctx: &mut ToolCtx<'_>) -> bool {
 /// its limits. Returns whether the document changed.
 pub fn scale_selection_down(ctx: &mut ToolCtx<'_>) -> bool {
     scale_selection(ctx, SCALE_DOWN_FACTOR)
+}
+
+/// Moves each selected shape so its bounds touch `side` of the selection's
+/// box, as one undo step (ADR-T101-1). Needs two or more selected shapes;
+/// records nothing when no shape would move or a moved shape would not be
+/// finite. Returns whether the document changed.
+pub fn align_selection(ctx: &mut ToolCtx<'_>, side: Side) -> bool {
+    let _ = (ctx, side);
+    todo!()
+}
+
+/// Spaces three or more selected shapes along `axis` with equal gaps
+/// between neighbours sorted by their near edge, the first and last fixed,
+/// as one undo step (ADR-T101-1). The gap may be negative. Records nothing
+/// when no shape would move or a moved shape would not be finite. Returns
+/// whether the document changed.
+pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
+    let _ = (ctx, axis);
+    todo!()
 }
 
 /// Drops selected ids that are not in the document.

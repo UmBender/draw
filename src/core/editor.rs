@@ -675,6 +675,10 @@ impl Editor {
             Command::LowerSelection => self.restack(Restack::Down),
             Command::SelectionToTop => self.restack(Restack::Top),
             Command::SelectionToBottom => self.restack(Restack::Bottom),
+            Command::Align(side) => self.arrange(|ctx| select::align_selection(ctx, side)),
+            Command::Distribute(axis) => {
+                self.arrange(|ctx| select::distribute_selection(ctx, axis))
+            }
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
             Command::Cancel => {
@@ -1542,6 +1546,14 @@ impl Editor {
         !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok()
     }
 
+    /// Runs an align or distribute `edit` on the selection (ADR-T101-1).
+    /// Unlike [`Self::run_edit`] it does nothing during a gesture rather
+    /// than cancelling it. Returns whether the document changed.
+    fn arrange(&mut self, edit: impl FnOnce(&mut ToolCtx<'_>) -> bool) -> bool {
+        let _ = edit;
+        todo!()
+    }
+
     /// Removes selected ids that are no longer in the document.
     fn prune_selection(&mut self) {
         let doc = &self.doc;
@@ -1579,6 +1591,8 @@ fn edits_document(command: Command) -> bool {
             | Command::LowerSelection
             | Command::SelectionToTop
             | Command::SelectionToBottom
+            | Command::Align(_)
+            | Command::Distribute(_)
     )
 }
 
