@@ -747,6 +747,15 @@ mod tests {
     }
 
     #[test]
+    fn q_is_not_bound() {
+        // Held, `Q` is the laser pointer (ADR-T106-2); the shell routes it
+        // before the keymap.
+        for mods in all_mods() {
+            assert_eq!(resolve(Key::Q, mods), None, "{mods:?}");
+        }
+    }
+
+    #[test]
     fn bindings_have_descriptions() {
         for (chord, command, description) in BINDINGS {
             assert!(

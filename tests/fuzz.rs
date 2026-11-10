@@ -15,6 +15,7 @@ use draw::core::geom::Vec2;
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
+use draw::core::laser::{EditorState, FADE_SECS, Laser, MAX_POINTS, Routed};
 use draw::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
@@ -1615,8 +1616,14 @@ fn pen_editor() -> Editor {
 /// Runs `session`, undoes everything (the document must be empty unless the
 /// history was capped) and redoes everything (the document must be back).
 fn check_undo_redo_symmetric(session: &[InputEvent], editor: Editor) -> Result<(), TestCaseError> {
+    let editor = run_session_on(editor, session)?;
+    check_undo_redo_from(editor, session.len())
+}
+
+/// The undo/redo half of [`check_undo_redo_symmetric`], on an editor that
+/// already ran `steps` events.
+fn check_undo_redo_from(mut editor: Editor, steps: usize) -> Result<(), TestCaseError> {
     // Arrange
-    let mut editor = run_session_on(editor, session)?;
     editor.apply(Command::Cancel);
     // Leftover redo entries would make "redo all" overshoot the snapshot.
     while editor.can_redo() {
@@ -1628,7 +1635,7 @@ fn check_undo_redo_symmetric(session: &[InputEvent], editor: Editor) -> Result<(
     let mut undos = 0usize;
     while editor.can_undo() {
         prop_assert!(editor.apply(Command::Undo), "undo reported no change");
-        check_invariants(&editor, session.len() + undos)?;
+        check_invariants(&editor, steps + undos)?;
         undos += 1;
         prop_assert!(undos <= HISTORY_LIMIT, "more undos than the history limit");
     }
@@ -1645,7 +1652,7 @@ fn check_undo_redo_symmetric(session: &[InputEvent], editor: Editor) -> Result<(
     // Act: redo everything.
     for _ in 0..undos {
         prop_assert!(editor.apply(Command::Redo), "redo reported no change");
-        check_invariants(&editor, session.len() + undos)?;
+        check_invariants(&editor, steps + undos)?;
     }
 
     // Assert
@@ -2253,5 +2260,185 @@ proptest! {
                 run_session_on(loaded, &more)?;
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T106: the laser pointer in front of the editor (ADR-T106-1)
+// ---------------------------------------------------------------------------
+
+/// Time between two events of a laser session, in seconds.
+const LASER_STEP_SECS: f64 = 0.016;
+
+/// `Q` pressed or released with `mods`.
+fn q_key(down: bool, mods: Modifiers) -> InputEvent {
+    let key = Key::Q;
+    if down {
+        InputEvent::KeyDown { key, mods }
+    } else {
+        InputEvent::KeyUp { key, mods }
+    }
+}
+
+/// `Q` held around a gesture or pressed in the middle of one, released or
+/// not, or a lone `Q` press or release with any modifiers.
+fn arb_laser_chunk() -> impl Strategy<Value = Vec<InputEvent>> {
+    prop_oneof![
+        3 => (arb_gesture(), any::<bool>()).prop_map(|(gesture, release)| {
+            let mut events = vec![q_key(true, Modifiers::NONE)];
+            events.extend(gesture);
+            if release {
+                events.push(q_key(false, Modifiers::NONE));
+            }
+            events
+        }),
+        2 => (arb_gesture(), any::<prop::sample::Index>(), any::<bool>()).prop_map(
+            |(gesture, at, release)| {
+                let at = at.index(gesture.len() + 1);
+                let mut events = gesture;
+                events.insert(at, q_key(true, Modifiers::NONE));
+                if release {
+                    events.push(q_key(false, Modifiers::NONE));
+                }
+                events
+            }
+        ),
+        1 => (any::<bool>(), arb_mods()).prop_map(|(down, mods)| vec![q_key(down, mods)]),
+    ]
+}
+
+/// Ordinary sessions with laser chunks mixed in.
+fn arb_laser_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    let chunk = prop_oneof![
+        1 => arb_session(),
+        2 => prop::collection::vec(arb_laser_chunk(), 1..8)
+            .prop_map(|chunks| chunks.into_iter().flatten().collect()),
+    ];
+    prop::collection::vec(chunk, 1..5).prop_map(|chunks| {
+        let mut events: Vec<InputEvent> = chunks.into_iter().flatten().collect();
+        events.truncate(MAX_SESSION_LEN);
+        events
+    })
+}
+
+/// Pointer events only: presses, moves and releases of any button.
+fn arb_pointer_events() -> impl Strategy<Value = Vec<InputEvent>> {
+    let event = prop_oneof![
+        1 => (arb_pos(), arb_button(), arb_mods())
+            .prop_map(|(pos, button, mods)| InputEvent::PointerDown { pos, button, mods }),
+        4 => (arb_pos(), arb_mods()).prop_map(|(pos, mods)| InputEvent::PointerMove { pos, mods }),
+        1 => (arb_pos(), arb_button(), arb_mods())
+            .prop_map(|(pos, button, mods)| InputEvent::PointerUp { pos, button, mods }),
+    ];
+    prop::collection::vec(event, 0..60)
+}
+
+/// Feeds `session` through a [`Laser`] in front of `editor`, as the shell
+/// does, one event every [`LASER_STEP_SECS`], and checks the editor's and
+/// the trail's invariants after every event.
+fn run_laser_session(
+    mut editor: Editor,
+    session: &[InputEvent],
+) -> Result<(Editor, Laser), TestCaseError> {
+    let mut laser = Laser::new();
+    check_invariants(&editor, 0)?;
+    for (i, event) in session.iter().enumerate() {
+        let now = i as f64 * LASER_STEP_SECS;
+        if laser.route(event, EditorState::of(&editor), now) == Routed::Forward {
+            editor.handle(event.clone());
+        }
+        laser.tick(now);
+        check_invariants(&editor, i + 1)?;
+        prop_assert!(laser.points().len() <= MAX_POINTS, "trail over its bound");
+        for point in laser.points() {
+            prop_assert!(
+                point.pos.is_finite() && point.at.is_finite(),
+                "non-finite trail point {:?} at {}",
+                point,
+                i
+            );
+            prop_assert!(now - point.at < FADE_SECS, "faded point kept at {}", i);
+        }
+    }
+    Ok((editor, laser))
+}
+
+#[test]
+fn laser_sessions_reach_the_trail_and_mid_gesture_presses() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_laser_session();
+    let (mut with_trail, mut mid_gesture, mut with_shapes) = (0, 0, 0);
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_laser_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        let mut laser = Laser::new();
+        let (mut trail, mut mid) = (false, false);
+        for (i, event) in tree.current().into_iter().enumerate() {
+            let state = EditorState::of(&editor);
+            mid |= state.gesture && matches!(event, InputEvent::KeyDown { key: Key::Q, .. });
+            if laser.route(&event, state, i as f64 * LASER_STEP_SECS) == Routed::Forward {
+                editor.handle(event);
+            }
+            trail |= laser.points().len() > 0;
+        }
+        with_trail += usize::from(trail);
+        mid_gesture += usize::from(mid);
+        with_shapes += usize::from(!editor.document().is_empty());
+    }
+
+    // Assert: a harness that never reaches these states proves nothing.
+    assert!(with_trail >= 60, "sessions with a trail: {with_trail}/200");
+    assert!(
+        mid_gesture >= 20,
+        "sessions pressing Q mid-gesture: {mid_gesture}/200"
+    );
+    assert!(
+        with_shapes >= 60,
+        "sessions with shapes: {with_shapes}/200"
+    );
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    #[test]
+    fn laser_sessions_keep_invariants_and_undo_symmetry(session in arb_laser_session()) {
+        // T106 AC-3, AC-5: invariants after every event, then undo/redo.
+        let (editor, _) = run_laser_session(Editor::new(), &session)?;
+        check_undo_redo_from(editor, session.len())?;
+    }
+
+    #[test]
+    fn laser_only_chunks_leave_the_snapshot_unchanged(
+        session in arb_session(),
+        pointer in arb_pointer_events(),
+    ) {
+        // Arrange: no gesture and no open block, so Q holds the laser.
+        let mut editor = run_session_on(Editor::new(), &session)?;
+        editor.apply(Command::Cancel);
+        prop_assume!(editor.active_gesture().is_none() && editor.text_edit().is_none());
+        let before = editor.snapshot().to_text();
+        let revision = editor.document_revision();
+        let mut laser = Laser::new();
+        let mut events = vec![q_key(true, Modifiers::NONE)];
+        events.extend(pointer);
+        events.push(q_key(false, Modifiers::NONE));
+
+        // Act
+        for (i, event) in events.into_iter().enumerate() {
+            let now = i as f64 * LASER_STEP_SECS;
+            let routed = laser.route(&event, EditorState::of(&editor), now);
+            prop_assert_eq!(routed, Routed::Consumed, "{:?} reached the editor", event);
+        }
+
+        // Assert
+        prop_assert_eq!(editor.snapshot().to_text(), before);
+        prop_assert_eq!(editor.document_revision(), revision);
+        prop_assert!(!laser.is_held());
     }
 }
