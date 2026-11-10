@@ -137,6 +137,29 @@ pub const BIN_SPACE: f32 = 2.0 / 9.0;
 /// after punctuation: TeX's thin space, 1/6 em.
 pub const OP_SPACE: f32 = 1.0 / 6.0;
 
+/// Interword space of `\ ` and `~`: Computer Modern's, 1/3 em
+/// (ADR-T99-1).
+pub const INTERWORD_SPACE: f32 = 1.0 / 3.0;
+
+/// The spacing commands as typed and their widths in em (ADR-T99-1);
+/// `\,` is a glyph of the symbol table instead (ADR-T36-1).
+pub const KERNS: &[(&str, f32)] = &[
+    ("\\:", 4.0 / 18.0),
+    ("\\;", 5.0 / 18.0),
+    ("\\!", -3.0 / 18.0),
+    ("\\quad", 1.0),
+    ("\\qquad", 2.0),
+    ("\\ ", INTERWORD_SPACE),
+    ("~", INTERWORD_SPACE),
+];
+
+/// The width in em of the spacing command typed as `source`; `None` when
+/// it is not one of [`KERNS`].
+#[must_use]
+pub fn kern(source: &str) -> Option<f32> {
+    KERNS.iter().find(|(s, _)| *s == source).map(|(_, w)| *w)
+}
+
 /// Room kept above and below a formula in its line.
 pub const MATH_PAD: f32 = 0.03;
 
@@ -254,6 +277,9 @@ pub enum Node {
         /// least one row of at least one cell.
         rows: Vec<Vec<Vec<Node>>>,
     },
+    /// A spacing command of [`KERNS`], as typed: space that is not an
+    /// atom, so it never changes its neighbours' classes (ADR-T99-1).
+    Kern(String),
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -2338,7 +2364,7 @@ fn print_nodes(nodes: &[Node], out: &mut String) {
 
 fn print_node(node: &Node, out: &mut String) {
     match node {
-        Node::Space(text) | Node::Literal(text) => out.push_str(text),
+        Node::Space(text) | Node::Kern(text) | Node::Literal(text) => out.push_str(text),
         Node::Char(ch) => out.push(*ch),
         Node::Symbol(name) => {
             out.push('\\');
@@ -2580,6 +2606,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
     }
     let atom = match node {
         Node::Space(_) => return None,
+        Node::Kern(_) => todo!("T99: a kern on its own"),
         Node::Char(ch) => {
             let shown = if *ch == '-' { MINUS } else { style.map(*ch) };
             (MathBox::math(shown, scale), char_class(*ch))
