@@ -1001,14 +1001,45 @@ mod tests {
         }
     }
 
+    /// The number of a node name; panics on a math name.
+    fn number(name: &NodeName) -> u32 {
+        match name {
+            NodeName::Number(n) => *n,
+            NodeName::Math(math) => panic!("{math} is not a number"),
+        }
+    }
+
+    /// A node name as written.
+    fn written(name: &NodeName) -> String {
+        match name {
+            NodeName::Number(n) => n.to_string(),
+            NodeName::Math(math) => math.clone(),
+        }
+    }
+
+    /// `(from, to, directed, weight)` of every edge, names as written.
+    fn written_edges(list: &EdgeList) -> Vec<(String, String, bool, Option<&str>)> {
+        list.edges()
+            .iter()
+            .map(|e| {
+                (
+                    written(&list.names()[e.from]),
+                    written(&list.names()[e.to]),
+                    e.directed,
+                    e.weight.as_deref(),
+                )
+            })
+            .collect()
+    }
+
     /// `(name of from, name of to, directed, weight)` of every edge.
     fn edges(list: &EdgeList) -> Vec<(u32, u32, bool, Option<&str>)> {
         list.edges()
             .iter()
             .map(|e| {
                 (
-                    list.names()[e.from],
-                    list.names()[e.to],
+                    number(&list.names()[e.from]),
+                    number(&list.names()[e.to]),
                     e.directed,
                     e.weight.as_deref(),
                 )
@@ -1219,7 +1250,8 @@ mod tests {
 
     #[test]
     fn parse_names_nodes_in_first_named_order() {
-        assert_eq!(list("5-3 3-9\n1 5").names(), [5, 3, 9, 1]);
+        let names: Vec<u32> = list("5-3 3-9\n1 5").names().iter().map(number).collect();
+        assert_eq!(names, [5, 3, 9, 1]);
     }
 
     #[test]
@@ -1688,6 +1720,165 @@ mod tests {
         assert_eq!(
             edges(&graph("dgraph:\n1 - 2\n2 > 3")),
             [(1, 2, false, None), (2, 3, true, None)]
+        );
+    }
+
+    // ---- T98: math names and weights ---------------------------------------
+
+    fn edge(
+        u: &str,
+        v: &str,
+        directed: bool,
+        weight: Option<&'static str>,
+    ) -> (String, String, bool, Option<&'static str>) {
+        (u.to_owned(), v.to_owned(), directed, weight)
+    }
+
+    #[test]
+    fn parse_reads_math_node_names() {
+        assert_eq!(
+            written_edges(&list("$s$ $a$\n$a$ $t$")),
+            [
+                edge("$s$", "$a$", false, None),
+                edge("$a$", "$t$", false, None)
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_keeps_spaces_and_separators_inside_math() {
+        assert_eq!(
+            written_edges(&list("$a - b$ $x > y$ 3\n$u v$   $w$")),
+            [
+                edge("$a - b$", "$x > y$", false, Some("3")),
+                edge("$u v$", "$w$", false, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_reads_math_names_in_pairs() {
+        assert_eq!(
+            written_edges(&list("$a$-$b$ $b$>1\n$c$ > $d-1$")),
+            [
+                edge("$a$", "$b$", false, None),
+                edge("$b$", "1", true, None),
+                edge("$c$", "$d-1$", true, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_mixes_number_and_math_names() {
+        // Act
+        let list = list("1 $1$\n1 2");
+
+        // Assert: `1` and `$1$` are different nodes.
+        assert_eq!(
+            list.names(),
+            [
+                NodeName::Number(1),
+                NodeName::Math("$1$".to_owned()),
+                NodeName::Number(2),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_reads_math_weights() {
+        assert_eq!(
+            written_edges(&list("1 2 $\\infty$\n2 3 -4\n$a$ 3 $c_i + 1$")),
+            [
+                edge("1", "2", false, Some("$\\infty$")),
+                edge("2", "3", false, Some("-4")),
+                edge("$a$", "3", false, Some("$c_i + 1$")),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_refuses_bad_math() {
+        for text in [
+            "$a 1",
+            "1 $a",
+            "$$ 1",
+            "$ $ 1",
+            "$a$b 1",
+            "a b",
+            "1 2 $",
+            "1 2 w",
+            "$a$-",
+            "1 2 $x$y",
+            "1 2 $a$ 3",
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn shapes_write_math_names_inside_circles() {
+        // Act
+        let shapes = drawn("$s$ $t$");
+
+        // Assert
+        let texts: Vec<Option<&str>> = shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .map(|s| {
+                assert_eq!(s.label(), None);
+                s.slot_text(TextSlot::Shape).map(|t| t.text.as_str())
+            })
+            .collect();
+        assert_eq!(texts, [Some("$s$"), Some("$t$")]);
+    }
+
+    #[test]
+    fn circles_grow_to_fit_the_widest_math_name() -> Result<(), TestCaseError> {
+        // Arrange
+        let long = "$a_1 + a_2 + a_3 + a_4$";
+        let base = 2.0 * NODE_RADIUS_EM * SIZE;
+
+        // Act
+        let shapes = drawn(&format!("{long} 2\n2 3\n$x$ 3"));
+
+        // Assert: one size for all, larger than the plain size.
+        let circles: Vec<&Shape> = shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .collect();
+        let width = circles[0].bounds().width();
+        assert!(width > base + 1.0, "{width} vs {base}");
+        for circle in &circles {
+            assert!(approx_eq(circle.bounds().width(), width, 1e-3));
+        }
+        // The long name fits its frame at full size.
+        let text = text_layout::bounds(Vec2::ZERO, long, SIZE);
+        let frame = circles[0]
+            .text_frame(TextSlot::Shape)
+            .expect("an ellipse has a frame");
+        assert!(frame.width() + 1e-3 >= text.width());
+        assert!(frame.height() + 1e-3 >= text.height());
+        // Plain numbers keep the plain size.
+        let plain = drawn("1 2");
+        let plain_circle = plain.iter().find(|s| matches!(s, Shape::Ellipse { .. }));
+        assert!(plain_circle.is_some_and(|c| approx_eq(c.bounds().width(), base, 1e-3)));
+        assert_never_overlap(&shapes)
+    }
+
+    #[test]
+    fn parse_count_line_ignores_math_names() {
+        assert_eq!(graph("graph:\n2 2\n1 $a$\n$a$ 2"), graph("1 $a$\n$a$ 2"));
+    }
+
+    #[test]
+    fn parse_parents_refuses_math_entries() {
+        assert_eq!(
+            EdgeList::parse("parents:\n1 $a$"),
+            Err(GraphError::NotAnEdge { line: 2 })
         );
     }
 

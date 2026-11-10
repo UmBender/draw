@@ -6229,6 +6229,33 @@ mod tests {
     }
 
     #[test]
+    fn graph_from_text_reads_math_names_and_weights() {
+        // Arrange
+        let mut ed = selected_block("$s$ $a$ $w$\n$a$ $t$");
+        let steps = ed.history.undo_len();
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert_eq!(count(&ed, is_ellipse), 3);
+        assert_eq!(count(&ed, is_line), 2);
+        let weights: Vec<&str> = ed
+            .document()
+            .shapes()
+            .filter_map(|(_, s)| match s {
+                Shape::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(weights, ["$w$"]);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+    }
+
+    #[test]
     fn graph_from_text_reads_a_parent_list() {
         // Arrange
         let mut ed = selected_block("parents:\n4\n1 1 2");
