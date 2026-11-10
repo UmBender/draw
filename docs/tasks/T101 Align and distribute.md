@@ -5,7 +5,7 @@ status: review
 wave: 58
 branch: task/T101-align-distribute
 depends_on: [T100]
-adrs: ["[[ADR-T101-1 Align and distribute keys]]"]
+adrs: ["[[ADR-T101-1 Align and distribute keys]]", "[[ADR-T101-2 Rows and columns without overlap]]"]
 feature: "[[Editing tools]]"
 tutorial: ""
 tags: [task]
@@ -15,7 +15,7 @@ tags: [task]
 
 ## Goal
 
-With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side of the selection's box, and with three or more `Alt+H` / `Alt+V` space them with equal gaps, each one undo step.
+With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side of the selection's box, and `Alt+H` / `Alt+V` lay them out as a row / column without overlap, each one undo step.
 
 ## Known facts (2026-11-10)
 
@@ -25,7 +25,7 @@ With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side 
 
 ## Spec
 
-Rules: [[ADR-T101-1 Align and distribute keys]].
+Rules: [[ADR-T101-1 Align and distribute keys]], amended by [[ADR-T101-2 Rows and columns without overlap]].
 
 - **AC-1** — `Alt+←` moves every selected shape so its left edge meets the selection box's left edge; `→`, `↑`, `↓` likewise for right, top and bottom. Each shape moves as a whole (by its bounds).
   - `keymap::tests::alt_arrows_align_and_alt_h_v_distribute`, `keymap::tests::every_documented_binding`
@@ -33,15 +33,16 @@ Rules: [[ADR-T101-1 Align and distribute keys]].
   - `editor::tests::alt_arrows_align_each_side`
   - `editor::tests::align_moves_grid_and_text_as_whole_shapes`
   - `select::tests::align_selection_moves_by_bounds`
-- **AC-2** (owner) — `Alt+H` keeps the leftmost and rightmost shapes in place and moves the others so the horizontal gaps between neighbours (sorted by left edge) are equal; `Alt+V` does the same vertically. Overlapping shapes may get a negative gap.
+- **AC-2** (owner, amended by ADR-T101-2) — `Alt+H` lays two or more shapes out as a row: sorted by left edge, the first one never moves, every shape's centre `y` meets the first one's, and neighbours get equal gaps of `max(natural, ¼ × largest width)`, `natural` being the equal gap with the first and last fixed. So with room enough the last one stays put; otherwise the row grows to the right and nothing overlaps. `Alt+V` does the same as a column.
   - `editor::tests::alt_h_spaces_shapes_with_equal_gaps`
   - `editor::tests::alt_v_spaces_shapes_with_equal_vertical_gaps`
-  - `editor::tests::distribute_overlapping_shapes_gives_negative_gap`
+  - `editor::tests::distribute_overlapping_shapes_grows_the_row`
+  - `editor::tests::distribute_two_overlapping_shapes_separates_them`
   - `select::tests::distribute_sorts_by_left_edge_not_selection_order`
-  - `select::tests::distribute_gaps_are_equal` (proptest)
-- **AC-3** — Fewer than two shapes (align) or three (distribute), or nothing that would move, changes nothing and adds no undo step.
+  - `select::tests::distribute_lays_out_a_row_without_overlap` (proptest)
+- **AC-3** — Fewer than two shapes, or nothing that would move, changes nothing and adds no undo step.
   - `editor::tests::align_with_one_shape_does_nothing`
-  - `editor::tests::distribute_with_two_shapes_does_nothing`
+  - `editor::tests::distribute_with_one_shape_does_nothing`
   - `editor::tests::align_when_already_aligned_adds_no_undo_step`
   - `editor::tests::distribute_twice_adds_one_undo_step`
 - **AC-4** — Each command is one undo step and keeps the selection; ignored during a gesture or text edit.
@@ -90,3 +91,4 @@ None: it extends an existing area.
 - 2026-11-10 — UNATTENDED CHOICE: the no-op tolerance (`1e-5` of the box's magnitude, at least `1e-5` world units) applies to the command as a whole: when every offset is within it nothing is recorded, otherwise every shape with a non-zero offset moves by its exact offset, so the gaps come out equal. ADR-T101-1 words it per shape; the two only differ below that tolerance.
 - 2026-11-10 — found while fuzzing (no bug): a second click on the only selected rectangle opens its text (ADR-T31-1), so a following `Alt+←` moves the caret and `Undo` cancels the text. The fuzz property closes the text with `Esc` before its final undos, as the T100 one does.
 - 2026-11-10 — manual checks for the owner: align a few uneven graph nodes with `Alt+arrows`, space them with `Alt+H` / `Alt+V`, undo; `Alt+arrow` on X11 and Wayland (some desktops bind `Alt+arrow` themselves).
+- 2026-11-10 — owner review: `Alt+H` / `Alt+V` left overlapping nodes overlapped and off the line. The owner chose a row / column without overlap: ADR-T101-2 amends the distribute rule (cross-axis centring on the first shape, minimum gap ¼ of the largest size, two shapes enough).
