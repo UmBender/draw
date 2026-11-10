@@ -1844,7 +1844,7 @@ mod tests {
 
     #[test]
     fn parse_refuses_a_dangling_separator() {
-        for text in ["1 >", "> 2", "1 -", "5 1 > 3", "1 > 3 7", "1 -3"] {
+        for text in ["1 >", "> 2", "1 -", "5 1 > 3", "1 -3"] {
             assert_eq!(
                 EdgeList::parse(text),
                 Err(GraphError::NotAnEdge { line: 1 }),
@@ -2140,6 +2140,112 @@ mod tests {
         ] {
             assert_eq!(EdgeList::parse(text), Ok(None), "{text:?}");
         }
+    }
+
+    // ---- T102 graph input follow-ups ---------------------------------------
+
+    #[test]
+    fn parse_reads_a_weight_after_a_pair() {
+        assert_eq!(edges(&list("1>3 7")), [(1, 3, true, Some("7"))]);
+        assert_eq!(edges(&list("1-3 1.5")), [(1, 3, false, Some("1.5"))]);
+    }
+
+    #[test]
+    fn parse_reads_a_weight_after_a_spaced_pair() {
+        assert_eq!(edges(&list("1 > 3 7")), [(1, 3, true, Some("7"))]);
+        assert_eq!(
+            written_edges(&list("1 > 3 $w$")),
+            [edge("1", "3", true, Some("$w$"))]
+        );
+    }
+
+    #[test]
+    fn parse_reads_weights_after_several_pairs() {
+        assert_eq!(
+            edges(&list("1-2 5 2-3 9")),
+            [(1, 2, false, Some("5")), (2, 3, false, Some("9"))]
+        );
+        assert_eq!(
+            edges(&list("1-2 2>3 4")),
+            [(1, 2, false, None), (2, 3, true, Some("4"))]
+        );
+    }
+
+    #[test]
+    fn parse_refuses_a_weight_without_its_pair() {
+        for text in [
+            "1>3 7 8",
+            "1-2 5 $w$ 2-3",
+            "7 1>3",
+            "$w$ 1 > 3",
+            "1>3 x",
+            "1>3 inf",
+            "1>3 NaN",
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_reads_a_negative_weight_after_a_pair() {
+        assert_eq!(edges(&list("1>3 -5")), [(1, 3, true, Some("-5"))]);
+        assert_eq!(edges(&list("1 - 3 -5")), [(1, 3, false, Some("-5"))]);
+        assert_eq!(edges(&list("1>3 1e-5")), [(1, 3, true, Some("1e-5"))]);
+    }
+
+    #[test]
+    fn parse_parents_reads_zero_as_the_root() {
+        assert_eq!(graph("parents:\n2 0 2"), graph("parents:\n2 -1 2"));
+        assert_eq!(graph("parents:\n0 1 1 2"), graph("1 2\n1 3\n2 4"));
+        assert_eq!(graph("parents:\n3\n2 00 2"), graph("parents:\n2 -1 2"));
+        assert_eq!(graph("parents:\n2 0 2").names()[0], NodeName::Number(2));
+    }
+
+    #[test]
+    fn parse_parents_refuses_a_second_root_marker() {
+        for (text, line) in [
+            ("parents:\n0 0", 2),
+            ("parents:\n0 1\n-1", 3),
+            ("parents:\n-1\n1 0", 3),
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line }),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_parents0_keeps_zero_as_a_node() {
+        assert_eq!(graph("parents0:\n0 0 1"), graph("0 1\n0 2\n1 3"));
+        assert_eq!(graph("parents0:\n-1 0 0"), graph("0 1\n0 2"));
+    }
+
+    #[test]
+    fn parse_weighted_keywords_read_as_their_plain_keywords() {
+        let body = "3 2\n1 2 5\n2 3 $w$";
+        for (weighted, plain) in [
+            ("wtree:", "tree:"),
+            ("wgraph:", "graph:"),
+            ("wdgraph:", "dgraph:"),
+        ] {
+            assert_eq!(
+                graph(&format!("{weighted}\n{body}")),
+                graph(&format!("{plain}\n{body}")),
+                "{weighted}"
+            );
+        }
+        assert!(
+            graph(&format!("wdgraph:\n{body}"))
+                .edges()
+                .iter()
+                .all(|e| e.directed)
+        );
     }
 
     fn points(text: &str) -> PointList {
