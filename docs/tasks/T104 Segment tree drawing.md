@@ -1,7 +1,7 @@
 ---
 id: T104
 title: Segment tree drawing
-status: review
+status: done
 wave: 58
 branch: task/T104-segment-tree
 depends_on: [T102]
@@ -74,3 +74,4 @@ None: it extends an existing area.
 - 2026-11-10 — `scripts/e2e.sh` not run: no key or existing drawing changed, `segtree:` is a new text only, and the command is not in this task's allowlist. Manual checks left for the owner: `segtree: 8` with first number 1 and after `Ctrl+N`; `segtree: 100` and judge the size of the drawing.
 - 2026-11-10 — docs: feature note *Numbered nodes* and the *Contest cheat sheet* recipe updated; status `review`.
 - 2026-11-10 — owner review: nodes should be squares with an empty box under each for the computed value. ADR-T104-2 amends the drawing; parsing is unchanged.
+- 2026-11-10 — integrated; the owner checked it by hand.

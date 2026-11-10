@@ -1,7 +1,7 @@
 ---
 id: T102
 title: Graph input follow-ups
-status: review
+status: done
 wave: 57
 branch: task/T102-graph-input-follow-ups
 depends_on: []
@@ -74,3 +74,4 @@ None: it extends an existing area.
 - 2026-11-10 — behaviour: `joined_pairs` now returns `Cow` tokens so a weight stays borrowed from the line. UNATTENDED CHOICE: the T87 case `1-2 3` in `parse_refuses_what_is_not_an_edge` is now a weighted pair by the owner's AC-1 (same form as `1-2 5`), so it became `1-2 3 4` (two weights in a row, still refused). UNATTENDED CHOICE: any entry worth 0 (`0`, `00`) is the root marker under `parents:`, not only the literal `0`, so `00` cannot name a node that list cannot have.
 - 2026-11-10 — quality: skipped, `scripts/check.sh --fuzz` green (fmt, clippy, tests, docs, fuzz) with no change. `scripts/e2e.sh` not run: no key or drawing change.
 - 2026-11-10 — manual check left for the owner: paste `1>3 7` and a `parents:` list with a `0` root, press `Ctrl+L`.
+- 2026-11-10 — integrated; the owner checked it by hand.

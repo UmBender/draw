@@ -64,6 +64,23 @@ All notable changes to draw are listed here. The format follows
 - Formulas in graphs: `$…$` node names and weights, such as
   `$s$ $t$ $\infty$`, are typeset inside the circles and beside the
   edges.
+- Spacing in formulas: `\:`, `\;`, `\!`, `\quad`, `\qquad`, `\ ` and `~`.
+- Labelled arrows in formulas: `\xrightarrow`, `\xleftarrow`,
+  `\xleftrightarrow`, `\xRightarrow`, `\xLeftarrow`, `\xLeftrightarrow`,
+  `\xmapsto` and `\xhookrightarrow` stretch to fit a label above and an
+  optional `[label]` below.
+- Stacking order: `Ctrl+]` / `Ctrl+[` raise or lower the selection past
+  the nearest overlapping shape, `Ctrl+Shift+]` / `Ctrl+Shift+[` send it to
+  the top or bottom.
+- Align and arrange: `Alt+←/→/↑/↓` align the selection's edges, and
+  `Alt+H` / `Alt+V` lay it out as a compact row or column without
+  overlap.
+- Weighted graph input: a weight after a pair (`1>3 7`, `1-2 $w$`), `0`
+  as the root in `parents:`, and the `wtree:`, `wgraph:` and `wdgraph:`
+  keywords.
+- Segment trees: `segtree: 8` and `Ctrl+L` draw the tree of ranges
+  `[1, 8]`, `[1, 4]`, … as squares, each with an empty box under it for
+  the node's value (from `[0, 7]` after `Ctrl+N`).
 - Dragging the bucket across a grid fills every cell it crosses, in one
   undo step; `Esc` cancels.
 - `\left` and `\right` in formulas draw brackets that grow to fit their

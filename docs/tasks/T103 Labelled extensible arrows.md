@@ -1,7 +1,7 @@
 ---
 id: T103
 title: Labelled extensible arrows
-status: review
+status: done
 wave: 58
 branch: task/T103-labelled-arrows
 depends_on: [T99]
@@ -75,3 +75,4 @@ None: it extends an existing area.
 - 2026-11-10 — FINDING (not T103): the first `scripts/check.sh --fuzz` run failed `snapshot_mutated_text_is_total` with "numbered shape holds text" — a graph from `Paste("1-2\n1-2 2-3\n$a$ $b$\n1-2\n1-2")`, `Ctrl+L`, a snapshot mutated with token `0`, then `Ctrl+Shift+Z`. Snapshot and editor code, outside this task's files; random seed `cc b900c994181812be68ac3e9325f0843a37d0a578f56661327f33479782fd6906`. The seed line was left out of `tests/fuzz.proptest-regressions` (not owned); the rerun was green. Worth a `fix/` task.
 - 2026-11-10 — `scripts/check.sh --fuzz` green; `scripts/e2e.sh` green, no golden changed. `Contest cheat sheet.md` has no formula table, so it is unchanged.
 - 2026-11-10 — manual check left for the owner: type `$A \xrightarrow[n\to\infty]{f_n} B \xleftarrow{g} C$` and judge, and look at a stretched `\xhookrightarrow` and `\xRightarrow` (shaft rules meeting the head glyphs).
+- 2026-11-10 — integrated; the owner checked it by hand.

@@ -367,11 +367,11 @@ flowchart TD
 | [[T96 Keywords for graph input]] | done | T87 | `task/T96-graph-keywords` |
 | [[T97 Spaced edge pairs]] | done | T96 | `task/T97-spaced-edge-pairs` |
 | [[T98 Math names and weights in graphs]] | done | T97 | `task/T98-math-graph-labels` |
-| [[T99 Spacing commands]] | todo | — | `task/T99-spacing-commands` |
-| [[T100 Z-order keys]] | todo | — | `task/T100-z-order-keys` |
-| [[T101 Align and distribute]] | todo | T100 | `task/T101-align-distribute` |
-| [[T102 Graph input follow-ups]] | todo | — | `task/T102-graph-input-follow-ups` |
-| [[T103 Labelled extensible arrows]] | todo | T99 | `task/T103-labelled-arrows` |
-| [[T104 Segment tree drawing]] | todo | T102 | `task/T104-segment-tree` |
+| [[T99 Spacing commands]] | done | — | `task/T99-spacing-commands` |
+| [[T100 Z-order keys]] | done | — | `task/T100-z-order-keys` |
+| [[T101 Align and distribute]] | done | T100 | `task/T101-align-distribute` |
+| [[T102 Graph input follow-ups]] | done | — | `task/T102-graph-input-follow-ups` |
+| [[T103 Labelled extensible arrows]] | done | T99 | `task/T103-labelled-arrows` |
+| [[T104 Segment tree drawing]] | done | T102 | `task/T104-segment-tree` |
 | [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T104 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

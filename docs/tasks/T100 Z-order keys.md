@@ -1,7 +1,7 @@
 ---
 id: T100
 title: Z-order keys
-status: review
+status: done
 wave: 57
 branch: task/T100-z-order-keys
 depends_on: []
@@ -91,3 +91,4 @@ None: it extends an existing area.
 - 2026-11-10 — UNATTENDED CHOICE: macroquad has no brace key code, so the core binds `BracketRight` / `BracketLeft` with `Ctrl+Shift`. Whether every backend (X11, Wayland) reports the bracket key code while `Shift` is held cannot be checked headless — owner manual check: `Ctrl+Shift+]` on a selected shape in the running app.
 - 2026-11-10 — the coverage test `z_order_session_click_selects_and_raises` was added in the behaviour commit (it passes by construction once the code exists); it confirms the fuzz session's clicks select a shape that `Ctrl+]` raises.
 - 2026-11-10 — manual checks for the owner: fill a cell under a shape, raise and lower it, undo; `Ctrl+Shift+]` / `Ctrl+Shift+[` on X11 and Wayland.
+- 2026-11-10 — integrated; the owner checked it by hand.

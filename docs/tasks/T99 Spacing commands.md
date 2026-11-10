@@ -1,7 +1,7 @@
 ---
 id: T99
 title: Spacing commands
-status: review
+status: done
 wave: 57
 branch: task/T99-spacing-commands
 depends_on: []
@@ -70,3 +70,4 @@ None: it extends an existing area.
 - 2026-11-10 — UNATTENDED CHOICE: a `~` (and a spacing command) is also read as a script argument (`x^\;`, `x^~`), a kern then, instead of leaving the `^` literal.
 - 2026-11-10 — Done: `Node::Kern` with the `KERNS` table; the layout keeps kerns beside the atom list and cuts a negative kern at the row start. `scripts/check.sh --fuzz` green. `docs/features/Contest cheat sheet.md` has no formula section, so it is unchanged. `scripts/e2e.sh` was not run: it is not in this task's allowed commands, and no golden holds a spacing command (they printed as red literals before).
 - Manual check for the owner: type `$a\quad b\!c\;d$` and judge the spacing.
+- 2026-11-10 — integrated; the owner checked it by hand.

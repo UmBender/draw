@@ -1,7 +1,7 @@
 ---
 id: T101
 title: Align and distribute
-status: review
+status: done
 wave: 58
 branch: task/T101-align-distribute
 depends_on: [T100]
@@ -93,3 +93,4 @@ None: it extends an existing area.
 - 2026-11-10 — manual checks for the owner: align a few uneven graph nodes with `Alt+arrows`, space them with `Alt+H` / `Alt+V`, undo; `Alt+arrow` on X11 and Wayland (some desktops bind `Alt+arrow` themselves).
 - 2026-11-10 — owner review: `Alt+H` / `Alt+V` left overlapping nodes overlapped and off the line. The owner chose a row / column without overlap: ADR-T101-2 amends the distribute rule (cross-axis centring on the first shape, minimum gap ¼ of the largest size, two shapes enough).
 - 2026-11-10 — owner review: rows should always be compact. ADR-T101-3 makes the gap always ¼ of the largest size; the last shape moves too.
+- 2026-11-10 — integrated; the owner checked it by hand.
