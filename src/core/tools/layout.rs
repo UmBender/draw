@@ -167,6 +167,18 @@ impl EdgeList {
     /// [`GraphError`] if a line is not an edge, there are too many nodes
     /// or the text is over [`PASTE_MAX_BYTES`].
     pub fn parse(text: &str) -> Result<Option<Self>, GraphError> {
+        Self::parse_numbered(text, FIRST_NUMBER)
+    }
+
+    /// The graph `text` holds when positions start at `first`, the
+    /// editor's first number (ADR-T104-1); `Ok(None)` when it is blank.
+    /// Only a `segtree:` block reads `first`.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError`] as [`Self::parse`], and
+    /// [`GraphError::NotATreeSize`] for a bad `segtree:` size.
+    pub fn parse_numbered(text: &str, first: u32) -> Result<Option<Self>, GraphError> {
         if text.len() > PASTE_MAX_BYTES {
             return Err(GraphError::TooLong { bytes: text.len() });
         }
@@ -177,6 +189,13 @@ impl EdgeList {
             .map(|(index, line)| (index + 1, line))
             .filter(|(_, line)| !line.trim().is_empty())
             .collect();
+        // A segment tree block names its own nodes (ADR-T104-1).
+        if let Some((&(number, line), rest)) = lines.split_first()
+            && let Some(size) = line.trim().strip_prefix(SEGTREE_KEYWORD)
+        {
+            let (root, raws) = segment_tree_edges((number, size), rest, first)?;
+            return Self::from_raws(root, raws);
+        }
         // A keyword first line says how the rest is read (ADR-T96-1).
         let format = lines
             .first()
@@ -189,9 +208,21 @@ impl EdgeList {
             Some(InputFormat::Edges { directed }) => {
                 (None, edge_lines(skip_count_line(body), directed)?)
             }
-            Some(InputFormat::Parents { first }) => parent_edges(body, first)?,
+            Some(InputFormat::Parents { first }) => {
+                let (root, raws) = parent_edges(body, first)?;
+                (root.map(NodeName::Number), raws)
+            }
         };
+        Self::from_raws(root, raws)
+    }
 
+    /// The graph of `raws`, `root` named first so a tree hangs from it;
+    /// `None` when nothing is named.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError::TooManyNodes`] over [`MAX_NODES`].
+    fn from_raws(root: Option<NodeName>, raws: Vec<RawEdge<'_>>) -> Result<Option<Self>, GraphError> {
         let mut names = Vec::new();
         let mut index_of = HashMap::new();
         let mut node = |name: NodeName| {
@@ -202,7 +233,7 @@ impl EdgeList {
         };
         // A parent list's root is named first, so the tree hangs from it.
         if let Some(root) = root {
-            node(NodeName::Number(root));
+            node(root);
         }
         let mut edges: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
@@ -230,19 +261,6 @@ impl EdgeList {
             return Err(GraphError::TooManyNodes { nodes: names.len() });
         }
         Ok((!names.is_empty()).then_some(Self { names, edges }))
-    }
-
-    /// The graph `text` holds when positions start at `first`, the
-    /// editor's first number (ADR-T104-1); `Ok(None)` when it is blank.
-    /// Only a `segtree:` block reads `first`.
-    ///
-    /// # Errors
-    ///
-    /// [`GraphError`] as [`Self::parse`], and
-    /// [`GraphError::NotATreeSize`] for a bad `segtree:` size.
-    pub fn parse_numbered(text: &str, first: u32) -> Result<Option<Self>, GraphError> {
-        let _ = (text, first);
-        todo!("T104: read segtree: blocks")
     }
 
     /// Node names, in the order they were first named.
@@ -496,6 +514,63 @@ fn skip_count_line<'a, 'b>(lines: &'b [(usize, &'a str)]) -> &'b [(usize, &'a st
         _ => false,
     };
     if count { rest } else { lines }
+}
+
+/// The root and edges of a segment tree block (ADR-T104-1): `size` is the
+/// keyword line after `segtree:`, with its number, and `rest` the lines
+/// after it. Positions start at `first`. `None` and no edges when no size
+/// is written.
+///
+/// The edges run from each node to its left child, then that child's
+/// subtree, then to its right child: the nodes are named in preorder.
+///
+/// # Errors
+///
+/// [`GraphError::NotATreeSize`] naming the line of a second entry, or of
+/// an entry that is not a number from 1 to [`MAX_SEGMENT_TREE_SIZE`].
+fn segment_tree_edges(
+    size: (usize, &str),
+    rest: &[(usize, &str)],
+    first: u32,
+) -> Result<(Option<NodeName>, Vec<RawEdge<'static>>), GraphError> {
+    let mut entries = std::iter::once(size)
+        .chain(rest.iter().copied())
+        .flat_map(|(number, line)| line.split_whitespace().map(move |entry| (number, entry)));
+    let Some((line, entry)) = entries.next() else {
+        return Ok((None, Vec::new()));
+    };
+    if let Some((line, _)) = entries.next() {
+        return Err(GraphError::NotATreeSize { line });
+    }
+    let bad = GraphError::NotATreeSize { line };
+    let n = number_name(entry)
+        .filter(|n| (1..=MAX_SEGMENT_TREE_SIZE).contains(n))
+        .ok_or(bad)?;
+    let root = (first, first.checked_add(n - 1).ok_or(bad)?);
+
+    let name = |(l, r): (u32, u32)| NodeName::Math(format!("$[{l}, {r}]$"));
+    // Pushes the edges to both children of `node`, the left one on top.
+    let push_children = |stack: &mut Vec<_>, node: (u32, u32)| {
+        let (l, r) = node;
+        if l < r {
+            let m = l + (r - l) / 2;
+            stack.push((node, (m + 1, r)));
+            stack.push((node, (l, m)));
+        }
+    };
+    let mut raws = Vec::with_capacity(2 * n as usize);
+    let mut stack = Vec::new();
+    push_children(&mut stack, root);
+    while let Some((parent, child)) = stack.pop() {
+        raws.push(RawEdge {
+            u: name(parent),
+            v: name(child),
+            directed: false,
+            weight: None,
+        });
+        push_children(&mut stack, child);
+    }
+    Ok((Some(name(root)), raws))
 }
 
 /// The root and edges of a parent list (ADR-T96-1): `None` and no edges

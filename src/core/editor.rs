@@ -1135,8 +1135,10 @@ impl Editor {
     /// Replaces the only selected text block by the graph of its edges, as
     /// one undo step (ADR-T87-1). Returns whether a redraw is needed.
     fn graph_from_selection(&mut self) -> bool {
+        // A `segtree:` block counts from the first number (ADR-T104-1).
+        let first = self.style.helpers.first_number();
         self.block_to_shapes("graph", |text, origin, size, style| {
-            let list = EdgeList::parse(text)?;
+            let list = EdgeList::parse_numbered(text, first)?;
             Ok::<_, GraphError>(list.and_then(|list| list.shapes(origin, size, style)))
         })
     }
