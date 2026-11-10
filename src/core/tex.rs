@@ -280,6 +280,15 @@ pub enum Node {
     /// A spacing command of [`KERNS`], as typed: space that is not an
     /// atom, so it never changes its neighbours' classes (ADR-T99-1).
     Kern(String),
+    /// An extensible arrow of [`XARROWS`] with its labels (ADR-T103-1).
+    XArrow {
+        /// Name without the backslash.
+        name: String,
+        /// The optional `[…]` label set under the arrow.
+        below: Option<Bracket>,
+        /// The required label set above the arrow.
+        above: Arg,
+    },
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -408,6 +417,107 @@ pub struct Arg {
     /// The argument's nodes.
     pub nodes: Vec<Node>,
 }
+
+/// An optional `[…]` argument (ADR-T103-1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bracket {
+    /// Whitespace skipped before the `[`.
+    pub lead: String,
+    /// The nodes between the brackets.
+    pub nodes: Vec<Node>,
+}
+
+/// What a stretched extensible arrow draws at the end its head does not
+/// point to (ADR-T103-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tail {
+    /// Nothing: the shaft just ends.
+    Plain,
+    /// A vertical bar, as `↦`'s.
+    Bar,
+    /// A hook above the shaft, as `↪`'s.
+    Hook,
+}
+
+/// One extensible arrow of the subset (ADR-T103-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XArrowDef {
+    /// Name without the backslash.
+    pub name: &'static str,
+    /// The plain arrow glyph it draws at its natural length.
+    pub glyph: char,
+    /// The head glyph at the left end of a stretched arrow, if any.
+    pub left: Option<char>,
+    /// The head glyph at the right end of a stretched arrow, if any.
+    pub right: Option<char>,
+    /// Whether the shaft is two rules (`⇒`) instead of one (`→`).
+    pub double: bool,
+    /// What the end without a head draws.
+    pub tail: Tail,
+}
+
+/// The extensible arrows of the subset (ADR-T103-1).
+pub const XARROWS: &[XArrowDef] = &[
+    xarrow_def("xrightarrow", '→', None, Some('→'), false, Tail::Plain),
+    xarrow_def("xleftarrow", '←', Some('←'), None, false, Tail::Plain),
+    xarrow_def(
+        "xleftrightarrow",
+        '↔',
+        Some('←'),
+        Some('→'),
+        false,
+        Tail::Plain,
+    ),
+    xarrow_def("xRightarrow", '⇒', None, Some('⇒'), true, Tail::Plain),
+    xarrow_def("xLeftarrow", '⇐', Some('⇐'), None, true, Tail::Plain),
+    xarrow_def(
+        "xLeftrightarrow",
+        '⇔',
+        Some('⇐'),
+        Some('⇒'),
+        true,
+        Tail::Plain,
+    ),
+    xarrow_def("xmapsto", '↦', None, Some('→'), false, Tail::Bar),
+    xarrow_def("xhookrightarrow", '↪', None, Some('→'), false, Tail::Hook),
+];
+
+/// Shorthand for a row of [`XARROWS`].
+const fn xarrow_def(
+    name: &'static str,
+    glyph: char,
+    left: Option<char>,
+    right: Option<char>,
+    double: bool,
+    tail: Tail,
+) -> XArrowDef {
+    XArrowDef {
+        name,
+        glyph,
+        left,
+        right,
+        double,
+        tail,
+    }
+}
+
+/// The row of [`XARROWS`] called `name`.
+#[must_use]
+pub fn xarrow(name: &str) -> Option<&'static XArrowDef> {
+    XARROWS.iter().find(|def| def.name == name)
+}
+
+/// Space on each side of the wider label of an extensible arrow, in em
+/// of the arrow's size (ADR-T103-1).
+pub const XARROW_PAD: f32 = 0.5;
+
+/// Gap between an extensible arrow's ink and its labels: TeX's
+/// `\bigopspacing1` (ADR-T103-1).
+pub const XARROW_GAP: f32 = 0.111;
+
+/// Number of rules of the hook of a stretched `\xhookrightarrow`
+/// (ADR-T103-1).
+pub const XARROW_HOOK_SEGMENTS: usize = 8;
 
 /// TeX atom class, which sets the space between neighbours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1990,6 +2100,7 @@ impl<'a> Parser<'a> {
             }
             "text" => self.text_body(end),
             "operatorname" => return self.operator_name(end),
+            n if xarrow(n).is_some() => self.xarrow(&name, end),
             n if expansion(n).is_some() => self.shortcut(&name, end),
             _ => None,
         };
@@ -2149,6 +2260,57 @@ impl<'a> Parser<'a> {
             name: name.to_owned(),
             args,
         })
+    }
+
+    /// The labels of extensible arrow `name`, its name read: an optional
+    /// `[…]`, then a required argument; `None` when either is broken
+    /// (ADR-T103-1).
+    fn xarrow(&mut self, name: &str, end: usize) -> Option<Node> {
+        let below = if self.bracket_follows(end) {
+            Some(self.bracket(end)?)
+        } else {
+            None
+        };
+        let above = self.arg(end)?;
+        Some(Node::XArrow {
+            name: name.to_owned(),
+            below,
+            above,
+        })
+    }
+
+    /// Whether a `[` follows the cursor after whitespace before `end`;
+    /// the cursor does not move.
+    fn bracket_follows(&self, end: usize) -> bool {
+        self.chars[self.pos.min(end)..end]
+            .iter()
+            .find(|ch| !ch.is_whitespace())
+            == Some(&'[')
+    }
+
+    /// An optional `[…]` argument at the cursor: whitespace, `[`, nodes
+    /// up to the first `]` outside braces before `end`; `None` (the
+    /// cursor may then have moved) when there is no `[` or it has no `]`
+    /// (ADR-T103-1).
+    fn bracket(&mut self, end: usize) -> Option<Bracket> {
+        let lead = self.whitespace(end);
+        if self.pos >= end || self.peek() != Some('[') {
+            return None;
+        }
+        let open = self.pos;
+        let mut i = open + 1;
+        let close = loop {
+            match self.chars.get(i).filter(|_| i < end)? {
+                ']' => break i,
+                '{' => i = self.closes[i].filter(|&close| close < end).unwrap_or(i) + 1,
+                '\\' => i = name_end(self.chars, i + 1, end),
+                _ => i += 1,
+            }
+        };
+        self.pos = open + 1;
+        let nodes = self.list(close);
+        self.pos = close + 1;
+        Some(Bracket { lead, nodes })
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -2450,6 +2612,17 @@ fn print_node(node: &Node, out: &mut String) {
             end_lead,
             rows,
         } => print_environment(name, lead, end_lead, rows, out),
+        Node::XArrow { name, below, above } => {
+            out.push('\\');
+            out.push_str(name);
+            if let Some(below) = below {
+                out.push_str(&below.lead);
+                out.push('[');
+                print_nodes(&below.nodes, out);
+                out.push(']');
+            }
+            print_arg(above, out);
+        }
     }
 }
 
@@ -2758,9 +2931,154 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
         Node::Environment { name, rows, .. } => {
             (environment_box(name, rows, scale, style), Class::Ord)
         }
+        Node::XArrow { name, below, above } => {
+            let below = below.as_ref().map_or(&[][..], |b| &b.nodes[..]);
+            let b = match xarrow(name) {
+                Some(def) => extensible_arrow(def, &above.nodes, below, scale, style),
+                None => MathBox::word(&format!("\\{name}"), scale, true),
+            };
+            (b, Class::Rel)
+        }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
     };
     Some(atom)
+}
+
+/// Extensible arrow `def` with label `above` over it and `below` under
+/// it, at `scale` (ADR-T103-1).
+fn extensible_arrow(
+    def: &XArrowDef,
+    above: &[Node],
+    below: &[Node],
+    scale: f32,
+    style: Style,
+) -> MathBox {
+    let plain = MathBox::math(def.glyph, scale);
+    let ss = script_scale(scale);
+    let (up, down) = (
+        layout_styled(above, ss, style),
+        layout_styled(below, ss, style),
+    );
+    if up.ink.is_empty() && down.ink.is_empty() && up.width <= 0.0 && down.width <= 0.0 {
+        return plain;
+    }
+    let label = up.width.max(down.width);
+    let width = plain.width.max(label + 2.0 * XARROW_PAD * scale);
+    let mut out = if width > plain.width {
+        stretched_arrow(def, width, scale)
+    } else {
+        plain
+    };
+    let gap = XARROW_GAP * scale;
+    let (top, bottom) = (out.ascent, out.descent);
+    if !up.ink.is_empty() {
+        let y = -top - gap - up.descent;
+        out.put(&up, Vec2::new((width - up.width) / 2.0, y));
+        out.ascent = out.ascent.max(up.ascent - y);
+    }
+    if !down.ink.is_empty() {
+        let y = bottom + gap + down.ascent;
+        out.put(&down, Vec2::new((width - down.width) / 2.0, y));
+        out.descent = out.descent.max(y + down.descent);
+    }
+    out.italic = 0.0;
+    out
+}
+
+/// Extensible arrow `def` stretched to `width` at `scale`: its head
+/// glyphs at their natural size, a shaft of rules overlapping them and
+/// its tail (ADR-T103-1).
+fn stretched_arrow(def: &XArrowDef, width: f32, scale: f32) -> MathBox {
+    let plain = MathBox::math(def.glyph, scale);
+    let (x_min, right_bearing) =
+        math_metrics::get(def.glyph).map_or((0.0, 0.0), |m| (m.x_min, m.advance - m.x_max));
+    let t = RULE * scale;
+    let mut out = MathBox {
+        width,
+        ascent: plain.ascent,
+        descent: plain.descent,
+        italic: 0.0,
+        ink: Vec::new(),
+    };
+    // The shaft runs from `start` to `end`, through the middle of each
+    // head so it overlaps the glyph's own shaft.
+    let start = if let Some(ch) = def.left {
+        let head = MathBox::math(ch, scale);
+        out.put(&head, Vec2::ZERO);
+        head.width / 2.0
+    } else {
+        let edge = x_min * scale;
+        match def.tail {
+            Tail::Plain => edge,
+            Tail::Bar => {
+                let x = edge + t / 2.0;
+                out.ink.push(Ink::Rule {
+                    a: Vec2::new(x, plain.descent),
+                    b: Vec2::new(x, -plain.ascent),
+                    width: t,
+                });
+                x
+            }
+            Tail::Hook => hook(&mut out, edge + t / 2.0, plain.ascent - t / 2.0, scale),
+        }
+    };
+    let end = if let Some(ch) = def.right {
+        let head = MathBox::math(ch, scale);
+        out.put(&head, Vec2::new(width - head.width, 0.0));
+        width - head.width / 2.0
+    } else {
+        width - right_bearing * scale
+    };
+    let bars = if def.double {
+        let (lo, hi) = math_metrics::get('=').map_or((AXIS - 0.097, AXIS + 0.097), |eq| {
+            (eq.y_min + RULE / 2.0, eq.y_max - RULE / 2.0)
+        });
+        vec![lo, hi]
+    } else {
+        vec![AXIS]
+    };
+    for bar in bars {
+        let y = -bar * scale;
+        out.ink.push(Ink::Rule {
+            a: Vec2::new(start, y),
+            b: Vec2::new(end, y),
+            width: t,
+        });
+    }
+    // Rules are counted with half their width all round, as their bounds.
+    let (mut ascent, mut descent) = (out.ascent, out.descent);
+    for ink in &out.ink {
+        let b = ink.bounds();
+        ascent = ascent.max(-b.min.y);
+        descent = descent.max(b.max.y);
+    }
+    out.ascent = ascent;
+    out.descent = descent;
+    out
+}
+
+/// Pushes onto `out` the hook of a stretched `\xhookrightarrow`: a half
+/// circle of [`XARROW_HOOK_SEGMENTS`] rules above the shaft, its leftmost
+/// point at `left` and its top at `top` above the baseline. Returns the x
+/// where the shaft starts, under the hook's end (ADR-T103-1).
+fn hook(out: &mut MathBox, left: f32, top: f32, scale: f32) -> f32 {
+    let axis = AXIS * scale;
+    let r = ((top - axis) / 2.0).max(0.0);
+    let (cx, cy) = (left + r, axis + r);
+    // y up from the bottom of the circle (on the shaft) round its left
+    // side to its top.
+    let point = |k: usize| {
+        let phi = std::f32::consts::PI * (1.5 - k as f32 / XARROW_HOOK_SEGMENTS as f32);
+        Vec2::new(cx + r * phi.cos(), -(cy + r * phi.sin()))
+    };
+    for k in 0..XARROW_HOOK_SEGMENTS {
+        out.ink.push(Ink::Rule {
+            a: point(k),
+            b: point(k + 1),
+            width: RULE * scale,
+        });
+    }
+    cx
 }
 
 /// The box of a table symbol: a glyph (a letter in `style`), an enlarged
@@ -4051,6 +4369,8 @@ mod tests {
                 "\\end{pmatrix}", "\\begin{cases}", "\\end{cases}", "\\begin{foo}", "\\end{foo}",
                 "&", "\\\\",
                 "\\:", "\\;", "\\!", "\\!\\!\\!", "\\quad", "\\qquad", "\\ ", "~",
+                "\\xrightarrow", "\\xLeftrightarrow", "\\xmapsto", "\\xhookrightarrow",
+                "[", "]", "\\xrightarrow[n]{f}",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -8998,5 +9318,445 @@ mod tests {
         assert_eq!(glyph_chars(&b), ['(', ')']);
         assert!(g.iter().all(|g| approx_eq(g.2, 1.0, EPS)), "{g:?}");
         assert_eq!(plain.ink.len(), 0);
+    }
+
+    // ---- T103 labelled extensible arrows (ADR-T103-1) ---------------------
+
+    /// Each extensible arrow, the plain arrow command it grows from and
+    /// that arrow's glyph.
+    const XARROW_CASES: &[(&str, &str, char)] = &[
+        ("xrightarrow", "rightarrow", '→'),
+        ("xleftarrow", "leftarrow", '←'),
+        ("xleftrightarrow", "leftrightarrow", '↔'),
+        ("xRightarrow", "Rightarrow", '⇒'),
+        ("xLeftarrow", "Leftarrow", '⇐'),
+        ("xLeftrightarrow", "Leftrightarrow", '⇔'),
+        ("xmapsto", "mapsto", '↦'),
+        ("xhookrightarrow", "hookrightarrow", '↪'),
+    ];
+
+    /// A label wide enough to stretch every arrow.
+    const LONG: &str = "{1111111}";
+
+    fn xarrow(name: &str, below: Option<Vec<Node>>, above: Arg) -> Node {
+        Node::XArrow {
+            name: name.to_owned(),
+            below: below.map(|nodes| Bracket {
+                lead: String::new(),
+                nodes,
+            }),
+            above,
+        }
+    }
+
+    fn lit(text: &str) -> Node {
+        Node::Literal(text.to_owned())
+    }
+
+    /// The x range of a rule's ends.
+    fn x_span(a: Vec2, b: Vec2) -> (f32, f32) {
+        (a.x.min(b.x), a.x.max(b.x))
+    }
+
+    #[test]
+    fn tex_parse_xarrows_take_a_label_and_an_optional_below_label() {
+        for &(name, _, _) in XARROW_CASES {
+            // Act
+            let above = math(&format!("\\{name}{{f}}"));
+            let both = math(&format!("\\{name}[n]{{f}}"));
+
+            // Assert
+            let f = || braced(vec![Node::Char('f')]);
+            assert_eq!(above, vec![xarrow(name, None, f())], "{name}");
+            let below = Some(vec![Node::Char('n')]);
+            assert_eq!(both, vec![xarrow(name, below, f())], "{name}");
+        }
+        assert_eq!(
+            math("\\xrightarrow[n\\to\\infty]f"),
+            vec![xarrow(
+                "xrightarrow",
+                Some(vec![Node::Char('n'), sym("to"), sym("infty")]),
+                tok(Node::Char('f')),
+            )]
+        );
+        assert_eq!(
+            math("\\xleftarrow [a] {b}"),
+            vec![Node::XArrow {
+                name: "xleftarrow".to_owned(),
+                below: Some(Bracket {
+                    lead: " ".to_owned(),
+                    nodes: vec![Node::Char('a')],
+                }),
+                above: Arg {
+                    lead: " ".to_owned(),
+                    braced: true,
+                    nodes: vec![Node::Char('b')],
+                },
+            }]
+        );
+    }
+
+    #[test]
+    fn tex_parse_xarrow_below_label_ends_at_the_first_bracket_outside_braces() {
+        // A `]` in braces belongs to the label.
+        assert_eq!(
+            math("\\xrightarrow[{]}]{f}"),
+            vec![xarrow(
+                "xrightarrow",
+                Some(vec![Node::Group(vec![Node::Char(']')])]),
+                braced(vec![Node::Char('f')]),
+            )]
+        );
+        // Brackets do not nest: the first `]` ends the label, the second
+        // is the required one.
+        assert_eq!(
+            math("\\xrightarrow[[a]]{f}"),
+            vec![
+                xarrow(
+                    "xrightarrow",
+                    Some(vec![Node::Char('['), Node::Char('a')]),
+                    tok(Node::Char(']')),
+                ),
+                Node::Group(vec![Node::Char('f')]),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_xarrows_print_back() {
+        for src in [
+            "\\xrightarrow{f}",
+            "\\xrightarrow[n\\to\\infty]{f_n}",
+            "\\xleftarrow g",
+            "\\xmapsto [ a ] { b }",
+            "\\xRightarrow[]{}",
+            "\\xrightarrow[{]}]{f}",
+            "\\xrightarrow[a",
+            "\\xrightarrow[a]",
+            "\\xrightarrow{\\xrightarrow{a}}",
+            "\\xhookrightarrow",
+            "A \\xrightarrow[n\\to\\infty]{f_n} B \\xleftarrow{g} C",
+        ] {
+            // Arrange
+            let text = format!("${src}$");
+
+            // Act + Assert
+            assert_eq!(print(&parse(&text)), text);
+        }
+    }
+
+    #[test]
+    fn tex_layout_xarrow_labels_are_script_size_and_centred() {
+        // Act: digits are upright, so they draw themselves.
+        let b = boxed("\\xrightarrow[2]{1}");
+
+        // Assert
+        let (ss, arrow, one_m, two_m) = (SCRIPT_SCALE, mm('→'), mm('1'), mm('2'));
+        let (one, s1) = glyph(&b.ink, '1');
+        let (two, s2) = glyph(&b.ink, '2');
+        assert!(approx_eq(s1, ss, EPS) && approx_eq(s2, ss, EPS));
+        assert!(approx_eq(one.x, (b.width - one_m.advance * ss) / 2.0, EPS));
+        assert!(approx_eq(two.x, (b.width - two_m.advance * ss) / 2.0, EPS));
+        // The label's box ends XARROW_GAP above the arrow's ink.
+        let one_bottom = one.y - one_m.y_min.min(0.0) * ss;
+        assert!(approx_eq(one_bottom, -arrow.y_max - XARROW_GAP, EPS));
+        let two_top = two.y - two_m.y_max * ss;
+        assert!(approx_eq(two_top, -arrow.y_min + XARROW_GAP, EPS));
+        assert!(approx_eq(b.ascent, one_m.y_max * ss - one.y, EPS));
+        assert!(approx_eq(b.descent, two.y - two_m.y_min.min(0.0) * ss, EPS));
+    }
+
+    #[test]
+    fn tex_layout_xarrow_grows_to_the_wider_label_plus_padding() {
+        // Act
+        let above = boxed("\\xrightarrow{1111111}");
+        let below = boxed("\\xrightarrow[111111]{1}");
+        let small = layout_math(&math("\\xrightarrow{1111111}"), MIN_SCALE);
+
+        // Assert
+        let one = mm('1').advance;
+        let ss = SCRIPT_SCALE;
+        assert!(approx_eq(XARROW_PAD, 0.5, EPS));
+        assert!(approx_eq(
+            above.width,
+            7.0 * one * ss + 2.0 * XARROW_PAD,
+            EPS
+        ));
+        assert!(approx_eq(
+            below.width,
+            6.0 * one * ss + 2.0 * XARROW_PAD,
+            EPS
+        ));
+        // At the smallest size, labels stay at it and padding scales.
+        let want = MIN_SCALE * (7.0 * one + 2.0 * XARROW_PAD);
+        assert!(approx_eq(small.width, want, EPS), "{}", small.width);
+    }
+
+    #[test]
+    fn tex_layout_xarrow_is_never_shorter_than_its_arrow() {
+        for &(name, _, ch) in XARROW_CASES {
+            // Act
+            let b = boxed(&format!("\\{name}{{1}}"));
+
+            // Assert
+            let label = mm('1').advance * SCRIPT_SCALE + 2.0 * XARROW_PAD;
+            let want = label.max(mm(ch).advance);
+            assert!(b.width >= mm(ch).advance - EPS, "{name}");
+            assert!(
+                approx_eq(b.width, want, EPS),
+                "{name}: {} vs {want}",
+                b.width
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_stretched_xarrow_draws_its_heads_and_a_shaft() {
+        let (right, left) = (mm('→'), mm('←'));
+
+        // → : head at the right end, shaft from the left end of the ink.
+        let b = boxed(&format!("\\xrightarrow{LONG}"));
+        let w = b.width;
+        let (pos, scale) = glyph(&b.ink, '→');
+        assert!(approx_eq(scale, 1.0, EPS));
+        assert!(approx_eq(pos.x, w - right.advance, EPS) && approx_eq(pos.y, 0.0, EPS));
+        let r = rules(&b.ink);
+        assert_eq!(r.len(), 1, "{r:?}");
+        let (lo, hi) = x_span(r[0].0, r[0].1);
+        assert!(approx_eq(lo, right.x_min, EPS), "{lo}");
+        assert!(approx_eq(hi, w - right.advance / 2.0, EPS), "{hi}");
+        assert!(approx_eq(r[0].2, RULE, EPS));
+
+        // ← : head at the left end, shaft to the right end of the ink.
+        let b = boxed(&format!("\\xleftarrow{LONG}"));
+        let w = b.width;
+        let (pos, _) = glyph(&b.ink, '←');
+        assert!(approx_eq(pos.x, 0.0, EPS));
+        let r = rules(&b.ink);
+        assert_eq!(r.len(), 1, "{r:?}");
+        let (lo, hi) = x_span(r[0].0, r[0].1);
+        assert!(approx_eq(lo, left.advance / 2.0, EPS), "{lo}");
+        assert!(approx_eq(hi, w - (left.advance - left.x_max), EPS), "{hi}");
+
+        // ↔ : both heads, the shaft between their middles.
+        let b = boxed(&format!("\\xleftrightarrow{LONG}"));
+        let w = b.width;
+        assert!(approx_eq(glyph(&b.ink, '←').0.x, 0.0, EPS));
+        assert!(approx_eq(glyph(&b.ink, '→').0.x, w - right.advance, EPS));
+        assert!(glyphs(&b.ink).iter().all(|g| g.0 != '↔'));
+        let r = rules(&b.ink);
+        assert_eq!(r.len(), 1, "{r:?}");
+        let (lo, hi) = x_span(r[0].0, r[0].1);
+        assert!(approx_eq(lo, left.advance / 2.0, EPS), "{lo}");
+        assert!(approx_eq(hi, w - right.advance / 2.0, EPS), "{hi}");
+    }
+
+    #[test]
+    fn tex_layout_stretched_double_xarrow_has_two_shaft_rules() {
+        // The bars of `=`, y down.
+        let eq = mm('=');
+        let (low, high) = (-(eq.y_min + RULE / 2.0), -(eq.y_max - RULE / 2.0));
+        for (name, heads) in [
+            ("xRightarrow", "⇒"),
+            ("xLeftarrow", "⇐"),
+            ("xLeftrightarrow", "⇐⇒"),
+        ] {
+            // Act
+            let b = boxed(&format!("\\{name}{LONG}"));
+
+            // Assert
+            for ch in heads.chars() {
+                glyph(&b.ink, ch);
+            }
+            let r = rules(&b.ink);
+            assert_eq!(r.len(), 2, "{name}: {r:?}");
+            let mut ys: Vec<f32> = r.iter().map(|(a, _, _)| a.y).collect();
+            ys.sort_by(f32::total_cmp);
+            assert!(
+                approx_eq(ys[0], high, EPS) && approx_eq(ys[1], low, EPS),
+                "{ys:?}"
+            );
+            for (a, e, t) in r {
+                assert!(approx_eq(a.y, e.y, EPS) && approx_eq(t, RULE, EPS));
+            }
+        }
+    }
+
+    #[test]
+    fn tex_layout_stretched_xmapsto_and_xhookrightarrow_draw_their_tails() {
+        let (to, maps, hook) = (mm('→'), mm('↦'), mm('↪'));
+
+        // ↦ : a → head and a bar as tall as the ↦ glyph's ink.
+        let mapsto = boxed(&format!("\\xmapsto{LONG}"));
+        let width = mapsto.width;
+        assert!(approx_eq(
+            glyph(&mapsto.ink, '→').0.x,
+            width - to.advance,
+            EPS
+        ));
+        assert!(glyphs(&mapsto.ink).iter().all(|g| g.0 != '↦'));
+        let drawn = rules(&mapsto.ink);
+        assert_eq!(drawn.len(), 2, "{drawn:?}");
+        let bar_x = maps.x_min + RULE / 2.0;
+        let bar = drawn.iter().find(|(a, e, _)| approx_eq(a.x, e.x, EPS));
+        let Some(&(a, e, _)) = bar else {
+            panic!("no bar in {drawn:?}");
+        };
+        assert!(approx_eq(a.x, bar_x, EPS));
+        let (top, bottom) = (a.y.min(e.y), a.y.max(e.y));
+        assert!(approx_eq(top, -maps.y_max, EPS) && approx_eq(bottom, -maps.y_min, EPS));
+        let shaft = drawn.iter().find(|(a, e, _)| approx_eq(a.y, e.y, EPS));
+        let Some(&(a, e, _)) = shaft else {
+            panic!("no shaft in {drawn:?}");
+        };
+        let (lo, hi) = x_span(a, e);
+        assert!(approx_eq(lo, bar_x, EPS) && approx_eq(hi, width - to.advance / 2.0, EPS));
+
+        // ↪ : a → head and a hook of rules as high as the ↪ glyph's ink.
+        let hooked = boxed(&format!("\\xhookrightarrow{LONG}"));
+        let width = hooked.width;
+        assert!(approx_eq(
+            glyph(&hooked.ink, '→').0.x,
+            width - to.advance,
+            EPS
+        ));
+        assert!(glyphs(&hooked.ink).iter().all(|g| g.0 != '↪'));
+        let drawn = rules(&hooked.ink);
+        assert_eq!(drawn.len(), 1 + XARROW_HOOK_SEGMENTS, "{drawn:?}");
+        let ends = drawn.iter().flat_map(|&(a, e, _)| [a, e]);
+        let left = ends.clone().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let top = ends.map(|p| p.y).fold(f32::INFINITY, f32::min);
+        assert!(approx_eq(left, hook.x_min + RULE / 2.0, 1e-3), "{left}");
+        assert!(approx_eq(top, -(hook.y_max - RULE / 2.0), 1e-3), "{top}");
+        assert!(drawn.iter().all(|&(_, _, t)| approx_eq(t, RULE, EPS)));
+    }
+
+    #[test]
+    fn tex_layout_xarrow_is_spaced_as_a_relation() {
+        // Act
+        let plain = boxed("a\\rightarrow b");
+        let empty = boxed("a\\xrightarrow{}b");
+        let long = boxed(&format!("a\\xrightarrow{LONG}b"));
+        let arrow = boxed(&format!("\\xrightarrow{LONG}"));
+
+        // Assert
+        assert_eq!(empty, plain);
+        let a = mm(A).advance;
+        let want = a + REL_SPACE + arrow.width + REL_SPACE + mm(B).advance;
+        assert!(approx_eq(long.width, want, EPS), "{} vs {want}", long.width);
+        let (pb, _) = glyph(&long.ink, B);
+        assert!(approx_eq(pb.x, a + 2.0 * REL_SPACE + arrow.width, EPS));
+    }
+
+    #[test]
+    fn tex_layout_xarrow_shaft_sits_on_the_axis() {
+        for name in [
+            "xrightarrow",
+            "xleftarrow",
+            "xleftrightarrow",
+            "xmapsto",
+            "xhookrightarrow",
+        ] {
+            // Act
+            let b = boxed(&format!("\\{name}{LONG}"));
+
+            // Assert
+            let flat: Vec<_> = rules(&b.ink)
+                .into_iter()
+                .filter(|(a, e, _)| approx_eq(a.y, e.y, EPS))
+                .collect();
+            assert!(!flat.is_empty(), "{name}");
+            assert!(
+                flat.iter().all(|(a, _, _)| approx_eq(a.y, -AXIS, EPS)),
+                "{name}"
+            );
+            for (ch, pos, _, _) in glyphs(&b.ink) {
+                if "→←".contains(ch) {
+                    assert!(approx_eq(pos.y, 0.0, EPS), "{name}");
+                }
+            }
+        }
+        // The axis scales with the arrow.
+        let small = layout_math(&math(&format!("\\xrightarrow{LONG}")), MIN_SCALE);
+        let r = rules(&small.ink);
+        assert!(approx_eq(r[0].0.y, -AXIS * MIN_SCALE, EPS));
+        assert!(approx_eq(r[0].2, RULE * MIN_SCALE, EPS));
+    }
+
+    #[test]
+    fn tex_layout_xarrow_with_empty_labels_is_the_plain_arrow() {
+        for &(name, plain, _) in XARROW_CASES {
+            // Arrange
+            let want = boxed(&format!("\\{plain}"));
+
+            for src in [
+                format!("\\{name}{{}}"),
+                format!("\\{name}[]{{}}"),
+                format!("\\{name}[ ]{{ }}"),
+            ] {
+                // Act + Assert
+                assert_eq!(boxed(&src), want, "{src}");
+            }
+        }
+    }
+
+    #[test]
+    fn tex_parse_xarrow_without_label_is_literal() {
+        let xr = || lit("\\xrightarrow");
+        assert_eq!(math("\\xrightarrow"), vec![xr()]);
+        assert_eq!(
+            math("\\xrightarrow[a]"),
+            vec![xr(), Node::Char('['), Node::Char('a'), Node::Char(']')]
+        );
+        assert_eq!(
+            math("\\xrightarrow[a"),
+            vec![xr(), Node::Char('['), Node::Char('a')]
+        );
+        assert_eq!(
+            math("{\\xrightarrow}x"),
+            vec![Node::Group(vec![xr()]), Node::Char('x')]
+        );
+        // The optional label never leaves its group.
+        assert_eq!(
+            math("{\\xrightarrow[a}]{f}"),
+            vec![
+                Node::Group(vec![xr(), Node::Char('['), Node::Char('a')]),
+                Node::Char(']'),
+                Node::Group(vec![Node::Char('f')]),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_layout_xarrow_without_label_is_drawn_in_the_warning_colour() {
+        // Act
+        let b = boxed("\\xrightarrow");
+
+        // Assert
+        let g = glyphs(&b.ink);
+        assert!(!g.is_empty() && g.iter().all(|g| g.3), "{g:?}");
+        assert!(g.iter().all(|g| g.0 != '→'));
+    }
+
+    #[test]
+    fn tex_layout_nested_xarrows_stay_finite_and_grow() {
+        // Act
+        let inner = layout_math(&math(&format!("\\xrightarrow{LONG}")), SCRIPT_SCALE);
+        let b = boxed(&format!("\\xrightarrow{{\\xrightarrow{LONG}}}"));
+        let deep = format!("${}a{}$", "\\xrightarrow{".repeat(40), "}".repeat(40));
+        let l = layout(&parse(&deep));
+
+        // Assert
+        assert!(b.width.is_finite() && b.ascent.is_finite() && b.descent.is_finite());
+        assert!(approx_eq(b.width, inner.width + 2.0 * XARROW_PAD, EPS));
+        let heads: Vec<_> = glyphs(&b.ink).into_iter().filter(|g| g.0 == '→').collect();
+        assert_eq!(heads.len(), 2, "{heads:?}");
+        assert!(heads.iter().any(|g| approx_eq(g.2, 1.0, EPS)));
+        assert!(
+            heads
+                .iter()
+                .any(|g| approx_eq(g.2, SCRIPT_SCALE, EPS) && g.1.y < 0.0)
+        );
+        assert!(l.width.is_finite() && l.height.is_finite());
     }
 }
