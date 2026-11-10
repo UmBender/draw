@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]", "[[ADR-T99-1 Spacing commands as kerns outside the atom list]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -266,6 +266,18 @@ missing or misspelt `\end`, or more than 64 rows or columns shows
 usual. (Since [[T90 Matrices and cases]],
 [[ADR-T90-1 Environments as one table node]].)
 
+Spacing commands space a formula as in LaTeX: `\,` a thin space (1/6
+em), `\:` a medium space (4/18 em), `\;` a thick space (5/18 em),
+`\quad` one em, `\qquad` two, and `\ ` and `~` one interword space
+(1/3 em). `\!` is a negative thin space (−3/18 em) that pulls its
+neighbours together: `$a\quad b\!c\;d$`. They shrink in scripts like
+the other spaces, and they are not atoms, so `$a\;+\;b$` keeps the
+space of the binary `+` and adds the explicit spaces to it, as TeX
+does. A run of `\!` stops at the start of its formula or group: a
+formula never gets narrower than nothing, and `\!` at the very start
+does nothing. (Since [[T99 Spacing commands]],
+[[ADR-T99-1 Spacing commands as kerns outside the atom list]].)
+
 ## How to use
 
 | Action | Shortcut / gesture |
@@ -386,8 +398,9 @@ of the same batch.
   the inline size.
 - No `\DeclareMathOperator`, `\varliminf`, `\varlimsup`, `\injlim` or
   `\projlim`; write `\operatorname{…}` instead.
-- Of the spacing commands only `\,` exists (`\;`, `\quad`, `\!` are
-  literals).
+- No `\hspace`, `\kern`, `\mkern`, `\enspace` or `\thinspace`: the
+  spacing commands are `\, \: \; \! \quad \qquad`, `\ ` and `~`. A `\!`
+  cannot hang left of its formula.
 - Of the `physics` package only the shortcuts listed exist: no
   `\laplacian`, no divergence `\div` (it stays `÷`), no `[n]` order
   (`\dv[2]{f}{x}`; write `\frac{\mathrm{d}^2 f}{\mathrm{d}x^2}`), no

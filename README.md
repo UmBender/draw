@@ -298,6 +298,7 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` | Big operators with limits |
 | `\bigcup_{i=1}^{n} A_i`, `\bigcap \bigwedge \bigvee \bigoplus \bigotimes \bigodot \biguplus \bigsqcup \coprod` | Big set and logic operators, limits above and below like `\sum` |
 | `\int_0^1 f(x)\,dx`, `\iint`, `\iiint`, `\oint`, `\oiint` | Integrals, limits beside the sign; `\,` is a thin space |
+| `a\,b \: c \; d \quad e \qquad f`, `a\!b`, `a\ b`, `a~b` | Spaces: thin, medium, thick, 1 em, 2 em; `\!` is negative; `\ ` and `~` one word space |
 | `\inf \sup \liminf \limsup \det \Pr \gcd` | Named operators with limits below (`\limsup_{n\to\infty} a_n`) |
 | `\log \ln \lcm \exp \lg \deg \dim \ker \hom \arg`, `a \bmod m`, `\pmod{m}` | Upright functions |
 | `\operatorname{rank}`, `\operatorname*{argmin}_x` | Any other operator name; with `*` it takes limits |

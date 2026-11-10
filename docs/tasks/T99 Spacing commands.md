@@ -1,7 +1,7 @@
 ---
 id: T99
 title: Spacing commands
-status: in-progress
+status: review
 wave: 57
 branch: task/T99-spacing-commands
 depends_on: []
@@ -51,12 +51,12 @@ Design: [[ADR-T99-1 Spacing commands as kerns outside the atom list]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T99): specify spacing commands`
-- [ ] tests — `test(T99): add failing tests for spacing commands`
-- [ ] models — `feat(T99): …`
-- [ ] behaviour — `feat(T99): …`
-- [ ] quality — `chore(T99): pass clippy and rustfmt`
-- [ ] docs — `docs(T99): update the feature note`
+- [x] spec — `docs(T99): specify spacing commands`
+- [x] tests — `test(T99): add failing tests for spacing commands`
+- [x] models — `feat(T99): add the kern node and the spacing command table`
+- [x] behaviour — `feat(T99): lay out spacing commands as kerns`
+- [x] quality — `chore(T99): pass clippy and rustfmt`
+- [x] docs — `docs(T99): update the feature note`
 
 ## Learning path
 
@@ -67,3 +67,6 @@ None: it extends an existing area.
 - 2026-11-10 — note written in the batch plan with the owner; owner decisions are in *Spec* and in `.batch/plan.md`.
 - 2026-11-10 — UNATTENDED CHOICE: the interword space of `\ ` and `~` is 1/3 em (Computer Modern's), and `\,` stays the U+2006 glyph; see ADR-T99-1.
 - 2026-11-10 — UNATTENDED CHOICE: the existing test `tex_parse_unknown_command_is_literal` used `\;` as its unknown control symbol; it now uses `\@`, which stays outside the subset.
+- 2026-11-10 — UNATTENDED CHOICE: a `~` (and a spacing command) is also read as a script argument (`x^\;`, `x^~`), a kern then, instead of leaving the `^` literal.
+- 2026-11-10 — Done: `Node::Kern` with the `KERNS` table; the layout keeps kerns beside the atom list and cuts a negative kern at the row start. `scripts/check.sh --fuzz` green. `docs/features/Contest cheat sheet.md` has no formula section, so it is unchanged. `scripts/e2e.sh` was not run: it is not in this task's allowed commands, and no golden holds a spacing command (they printed as red literals before).
+- Manual check for the owner: type `$a\quad b\!c\;d$` and judge the spacing.
