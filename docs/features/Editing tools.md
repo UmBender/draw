@@ -85,7 +85,8 @@ what the tools do with them.
   press that would not change the order, an empty selection or a
   gesture in progress records nothing.
 - Align and distribute ([[ADR-T101-1 Align and distribute keys]],
-  [[ADR-T101-2 Rows and columns without overlap]]):
+  [[ADR-T101-2 Rows and columns without overlap]],
+  [[ADR-T101-3 Compact rows and columns]]):
   `select::align_selection` and `select::distribute_selection` measure
   each selected shape by its `Shape::bounds()` (a grid with its index
   bands, a text block by its layout box) and translate it whole. Align
@@ -93,9 +94,9 @@ what the tools do with them.
   Distribute sorts by the near edge (then far edge, then stacking
   order), keeps the first shape still, centres the others on its line
   across the axis and places each one equal gap after the previous one.
-  The gap is the one that keeps the last shape still, but never less
-  than a quarter of the largest size along the axis, so overlapping or
-  crowded shapes are pushed apart and the row grows. The moves are one
+  The gap is always a quarter of the largest size along the axis, so
+  every press gives a compact row: overlapping shapes are pushed apart
+  and spread-out ones pulled together. The moves are one
   transaction of `Replace` edits, so ids, stacking and the selection
   stay. Nothing is recorded with too few shapes, when every offset is
   within `1e-5` of the box's magnitude, when a moved shape would not be
