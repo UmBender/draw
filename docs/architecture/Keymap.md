@@ -48,6 +48,8 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `Ctrl+L` | Replace the only selected text block by the graph or tree of its edges ([[ADR-T87-1 Graph from an edge list key and layout rules]]) |
 | `Alt+]` / `Alt+[` | Grow / shrink the selection by 10 % about its centre ([[ADR-T91-1 Resize handles and scale rules]]) |
 | `Ctrl+P` | Replace the only selected text block by a coordinate plane of its `x y` points ([[ADR-T93-1 Coordinate plane key and plotting rules]]) |
+| `Ctrl+]` / `Ctrl+[` | Raise / lower the selection one step, past the nearest shape that overlaps it ([[ADR-T100-1 Z-order keys and restack transactions]]); in text edit mode they resize text instead |
+| `Ctrl+Shift+]` / `Ctrl+Shift+[` | Selection to the top / bottom of the stacking order |
 | `Delete`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) |
 | `Esc` | Cancel current gesture / clear selection |

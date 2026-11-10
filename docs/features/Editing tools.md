@@ -1,9 +1,9 @@
 ---
 title: Editing tools
 task: "[[T10 Editing tools]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]", "[[ADR-T100-1 Z-order keys and restack transactions]]"]
 tutorial: "[[10 Selection, clipboard and fill]]"
-shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]"]
+shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]", "Ctrl+[", "Ctrl+]", "Ctrl+Shift+[", "Ctrl+Shift+]"]
 tags: [feature]
 ---
 
@@ -36,6 +36,8 @@ what the tools do with them.
 | Duplicate while moving | `Alt` + drag |
 | Resize about the opposite corner | drag a corner handle (`Shift` keeps the proportions) |
 | Grow / shrink by 10 % about the centre | `Alt+]` / `Alt+[` |
+| Raise / lower one step, past the nearest overlapping shape | `Ctrl+]` / `Ctrl+[` |
+| Bring to the top / send to the bottom | `Ctrl+Shift+]` / `Ctrl+Shift+[` |
 | Select all | `Ctrl+A` |
 | Delete selection | `Delete`, `Backspace` |
 | Copy / cut / paste at cursor | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
@@ -72,6 +74,14 @@ what the tools do with them.
   centres the copies' joint bounds on the cursor; `duplicate` copies the
   selection without touching the clipboard. `insert_copies` (also used by the
   `Alt` move) inserts with fresh ids in one step and selects them.
+- Z-order ([[ADR-T100-1 Z-order keys and restack transactions]]): the
+  selected shapes move as one block and keep their order. One step up
+  lands the block right above the lowest unselected shape that is above
+  the topmost selected one and whose bounds meet the selection's box;
+  one step down mirrors it. `document::tx_restack` removes the block top
+  down and inserts it bottom up, so undo restores the order exactly. A
+  press that would not change the order, an empty selection or a
+  gesture in progress records nothing.
 - Selection hygiene: the editor prunes the selection after undo, redo and every
   gesture (T08); every select and clipboard entry point also drops stale ids
   first, so a stale id can never be moved, copied or deleted.
@@ -83,6 +93,11 @@ what the tools do with them.
 - A resize stops at 4 world units per shape, and the smallest selected shape
   stops the whole selection; a shape cannot be flipped.
 - Handles show and work only in the Select tool.
+- A one-step raise or lower only counts shapes that overlap the
+  selection's whole box; with a spread-out selection a shape in a gap
+  of the box counts too. Grid cells and text inside shapes have no
+  order of their own.
+- In text edit mode `Ctrl+]` / `Ctrl+[` resize the text, not the order.
 - The eraser removes whole shapes, never parts of a stroke.
 - The bucket fills only rectangles and ellipses, not regions enclosed by
   strokes or lines.

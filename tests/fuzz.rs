@@ -1827,6 +1827,57 @@ fn mutate(text: &str, mutations: &[Mutation]) -> String {
     out
 }
 
+/// T100: the z-order session's clicks select a rectangle that `Ctrl+]`
+/// then raises, so the property below really restacks.
+#[test]
+fn z_order_session_click_selects_and_raises() {
+    // Arrange: the drags and click of `z_order_sessions_keep_a_permutation`.
+    let (left, none) = (PointerButton::Left, Modifiers::NONE);
+    let drag = |editor: &mut Editor, from: Vec2, to: Vec2| {
+        editor.handle(InputEvent::PointerDown {
+            pos: from,
+            button: left,
+            mods: none,
+        });
+        editor.handle(InputEvent::PointerMove {
+            pos: to,
+            mods: none,
+        });
+        editor.handle(InputEvent::PointerUp {
+            pos: to,
+            button: left,
+            mods: none,
+        });
+    };
+    let mut editor = Editor::new();
+    editor.handle(InputEvent::Resize {
+        size: Vec2::new(1_200.0, 800.0),
+    });
+    editor.apply(Command::SetTool(Tool::Rect));
+    for (x, y) in [(10.0, 10.0), (100.0, 100.0), (150.0, 120.0)] {
+        drag(
+            &mut editor,
+            Vec2::new(x, y),
+            Vec2::new(x + 300.0, y + 250.0),
+        );
+    }
+    editor.apply(Command::SetTool(Tool::Select));
+    let at = Vec2::new(12.0, 12.0);
+    drag(&mut editor, at, at);
+    let before: Vec<ShapeId> = editor.document().shapes().map(|(id, _)| id).collect();
+
+    // Act
+    editor.handle(InputEvent::KeyDown {
+        key: Key::BracketRight,
+        mods: Modifiers { ctrl: true, ..none },
+    });
+
+    // Assert
+    let after: Vec<ShapeId> = editor.document().shapes().map(|(id, _)| id).collect();
+    assert_eq!(editor.selection(), &[before[0]]);
+    assert_eq!(after, vec![before[1], before[0], before[2]]);
+}
+
 proptest! {
     #![proptest_config(config())]
 
@@ -1874,6 +1925,82 @@ proptest! {
             prop_assert!(editor.apply(Command::Undo));
         }
         prop_assert!(editor.document().is_empty());
+    }
+
+    /// T100 AC-5: z-order keys on random selections of overlapping shapes
+    /// keep the invariants and the document a permutation of its shapes;
+    /// undoing every step gives the drawn order back.
+    #[test]
+    fn z_order_sessions_keep_a_permutation(
+        corners in prop::collection::vec((0.0f32..600.0, 0.0f32..400.0), 2..7),
+        steps in prop::collection::vec(
+            (
+                select(vec![Key::BracketRight, Key::BracketLeft]),
+                any::<bool>(),
+                prop::option::of(any::<prop::sample::Index>()),
+                any::<bool>(),
+            ),
+            0..60,
+        ),
+    ) {
+        // Arrange: overlapping rectangles drawn one per drag.
+        let left = PointerButton::Left;
+        let none = Modifiers::NONE;
+        let drag = |editor: &mut Editor, from: Vec2, to: Vec2| {
+            editor.handle(InputEvent::PointerDown { pos: from, button: left, mods: none });
+            editor.handle(InputEvent::PointerMove { pos: to, mods: none });
+            editor.handle(InputEvent::PointerUp { pos: to, button: left, mods: none });
+        };
+        let mut editor = Editor::new();
+        editor.handle(InputEvent::Resize { size: Vec2::new(1_200.0, 800.0) });
+        editor.apply(Command::SetTool(Tool::Rect));
+        for &(x, y) in &corners {
+            drag(&mut editor, Vec2::new(x, y), Vec2::new(x + 300.0, y + 250.0));
+        }
+        let drawn: Vec<ShapeId> = editor.document().shapes().map(|(id, _)| id).collect();
+        prop_assert_eq!(drawn.len(), corners.len());
+        let mut sorted_drawn = drawn.clone();
+        sorted_drawn.sort();
+        editor.apply(Command::SetTool(Tool::Select));
+        let order = |editor: &Editor| -> Vec<ShapeId> {
+            editor.document().shapes().map(|(id, _)| id).collect()
+        };
+        let mut restacks = 0usize;
+
+        // Act
+        for (step, (key, shift, click, undo_redo)) in steps.into_iter().enumerate() {
+            // A click on a corner selects the shape there (or clears).
+            if let Some(index) = click {
+                let (x, y) = corners[index.index(corners.len())];
+                drag(&mut editor, Vec2::new(x + 2.0, y + 2.0), Vec2::new(x + 2.0, y + 2.0));
+            }
+            let before = order(&editor);
+            let mods = Modifiers { ctrl: true, shift, alt: false };
+            editor.handle(InputEvent::KeyDown { key, mods });
+            let after = order(&editor);
+            if after != before {
+                restacks += 1;
+                if undo_redo {
+                    // Undo gives the order back, redo the new one.
+                    editor.handle(InputEvent::KeyDown { key: Key::Escape, mods: none });
+                    prop_assert!(editor.apply(Command::Undo));
+                    prop_assert_eq!(order(&editor), before.clone(), "step {}: undo", step);
+                    prop_assert!(editor.apply(Command::Redo));
+                    prop_assert_eq!(order(&editor), after.clone(), "step {}: redo", step);
+                }
+            }
+
+            // Assert
+            check_invariants(&editor, step)?;
+            let mut now = order(&editor);
+            now.sort();
+            prop_assert_eq!(&now, &sorted_drawn, "step {}: not a permutation", step);
+        }
+        editor.handle(InputEvent::KeyDown { key: Key::Escape, mods: none });
+        for _ in 0..restacks {
+            prop_assert!(editor.apply(Command::Undo));
+        }
+        prop_assert_eq!(order(&editor), drawn);
     }
 
     /// T74 AC-1.

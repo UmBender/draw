@@ -43,7 +43,8 @@ long. If it crashes, `draw --recover` brings your drawing back.
   meet circles at their edge), plus an optional snap grid.
 - **Editing** — select, move, resize by the corner handles or with
   `Alt+[` / `Alt+]`, `Alt`-drag to duplicate, copy / cut / paste, select
-  all, delete, clear canvas.
+  all, delete, clear canvas, raise / lower with `Ctrl+]` / `Ctrl+[`
+  (`Shift` for top / bottom).
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -211,6 +212,8 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+L` | Text block to graph | `Ctrl+P` | Text block to plot |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
 | `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
+| `Ctrl+]` | Raise selection one step | `Ctrl+[` | Lower selection one step |
+| `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |
 
 ### View
 

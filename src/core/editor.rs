@@ -19,7 +19,9 @@ use crate::core::camera::Camera;
 use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
-use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
+use crate::core::document::{
+    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
+};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -669,6 +671,10 @@ impl Editor {
             Command::ScaleUp => self.run_edit(select::scale_selection_up),
             Command::ScaleDown => self.run_edit(select::scale_selection_down),
             Command::PlotFromText => self.plot_from_selection(),
+            Command::RaiseSelection => self.restack(Restack::Up),
+            Command::LowerSelection => self.restack(Restack::Down),
+            Command::SelectionToTop => self.restack(Restack::Top),
+            Command::SelectionToBottom => self.restack(Restack::Bottom),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
             Command::Cancel => {
@@ -1470,6 +1476,72 @@ impl Editor {
         self.history.commit(&mut self.doc, tx).is_ok()
     }
 
+    /// Moves the selection up or down the stacking order as one undo step
+    /// (ADR-T100-1). Does nothing during a gesture, with an empty
+    /// selection, or when the order would not change. Returns whether the
+    /// document changed.
+    fn restack(&mut self, to: Restack) -> bool {
+        if self.gesture.is_some() {
+            return false;
+        }
+        self.prune_selection();
+        let Some(bounds) = self.selection_bounds() else {
+            return false;
+        };
+        let selected: IdSet = self.selection.iter().copied().collect();
+        let is_selected = |(_, (id, _)): &(usize, (ShapeId, &Shape))| selected.contains(id);
+        let (lowest, highest) = {
+            let mut indices = self
+                .doc
+                .shapes()
+                .enumerate()
+                .filter(is_selected)
+                .map(|(index, _)| index);
+            let Some(lowest) = indices.next() else {
+                return false;
+            };
+            (lowest, indices.next_back().unwrap_or(lowest))
+        };
+        let count = selected.len();
+        let overlaps = |entry: &(usize, (ShapeId, &Shape))| {
+            !is_selected(entry) && entry.1.1.bounds().intersects(&bounds)
+        };
+        // `below` counts the unselected shapes left under the block.
+        let below = match to {
+            Restack::Top => usize::MAX,
+            Restack::Bottom => 0,
+            Restack::Up => {
+                let target = self
+                    .doc
+                    .shapes()
+                    .enumerate()
+                    .skip(highest + 1)
+                    .find(overlaps);
+                // Every selected shape lies under the target.
+                let Some((index, _)) = target else {
+                    return false;
+                };
+                index + 1 - count
+            }
+            Restack::Down => {
+                let target = self
+                    .doc
+                    .shapes()
+                    .enumerate()
+                    .take(lowest)
+                    .rev()
+                    .find(overlaps);
+                // No selected shape lies under the target.
+                let Some((index, _)) = target else {
+                    return false;
+                };
+                index
+            }
+        };
+        let tx = tx_restack(&self.doc, &self.selection, below);
+        !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok()
+    }
+
     /// Removes selected ids that are no longer in the document.
     fn prune_selection(&mut self) {
         let doc = &self.doc;
@@ -1503,7 +1575,24 @@ fn edits_document(command: Command) -> bool {
             | Command::GridRows(_)
             | Command::ScaleUp
             | Command::ScaleDown
+            | Command::RaiseSelection
+            | Command::LowerSelection
+            | Command::SelectionToTop
+            | Command::SelectionToBottom
     )
+}
+
+/// Where a restack command moves the selection (ADR-T100-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Restack {
+    /// Past the nearest overlapping unselected shape above it.
+    Up,
+    /// Past the nearest overlapping unselected shape below it.
+    Down,
+    /// Above every unselected shape.
+    Top,
+    /// Below every unselected shape.
+    Bottom,
 }
 
 /// Executes a helper command on `helpers`. Returns whether anything changed;
@@ -7005,5 +7094,261 @@ mod tests {
             assert_eq!(ed, before);
             assert_eq!(ed.take_notice(), None);
         }
+    }
+
+    // ---- T100 z-order keys -------------------------------------------------
+
+    const CTRL_SHIFT: Modifiers = Modifiers {
+        shift: true,
+        ctrl: true,
+        alt: false,
+    };
+
+    /// Editor holding `shapes` with the Select tool, and their ids bottom
+    /// first.
+    fn stacked(shapes: Vec<Shape>) -> (Editor, Vec<ShapeId>) {
+        let mut ed = editor_with(shapes);
+        ed.apply(Command::SetTool(Tool::Select));
+        let ids = ids(&ed);
+        (ed, ids)
+    }
+
+    /// Square of side 100 at `(x, x)`.
+    fn square(x: f32) -> Shape {
+        rect(x, x, 100.0, 100.0)
+    }
+
+    /// A small square far from every [`square`] near the origin.
+    fn far() -> Shape {
+        rect(5_000.0, 5_000.0, 10.0, 10.0)
+    }
+
+    #[test]
+    fn ctrl_bracket_right_raises_selection_one_step() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(80.0)]);
+        ed.selection = vec![id[0]];
+
+        // Act
+        let changed = key_with(&mut ed, Key::BracketRight, CTRL);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ids(&ed), vec![id[1], id[0], id[2]]);
+    }
+
+    #[test]
+    fn ctrl_bracket_left_lowers_selection_one_step() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(80.0)]);
+        ed.selection = vec![id[2]];
+
+        // Act
+        let changed = key_with(&mut ed, Key::BracketLeft, CTRL);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ids(&ed), vec![id[0], id[2], id[1]]);
+    }
+
+    #[test]
+    fn ctrl_bracket_in_text_edit_resizes_text_not_order() {
+        // Arrange: two overlapping squares, the bottom one selected, and a
+        // text block open.
+        let mut ed = text_editor();
+        let tx = tx_insert(&mut ed.doc, [square(0.0), square(50.0)]);
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+        let id = ids(&ed);
+        place(&mut ed, 600.0, 500.0, "a");
+        ed.selection = vec![id[0]];
+        let size = open_size(&ed);
+
+        // Act
+        assert!(key_with(&mut ed, Key::BracketRight, CTRL));
+
+        // Assert
+        assert!(open_size(&ed) > size);
+        assert!(ed.text_edit().is_some());
+        assert_eq!(ids(&ed), id);
+    }
+
+    #[test]
+    fn raise_passes_only_the_nearest_overlapping_shape() {
+        // Arrange: a far shape, then two overlapping ones above the
+        // selection.
+        let (mut ed, id) = stacked(vec![square(0.0), far(), square(50.0), square(60.0)]);
+        ed.selection = vec![id[0]];
+
+        // Act
+        assert!(ed.apply(Command::RaiseSelection));
+
+        // Assert
+        assert_eq!(ids(&ed), vec![id[1], id[2], id[0], id[3]]);
+    }
+
+    #[test]
+    fn lower_passes_only_the_nearest_overlapping_shape() {
+        // Arrange: mirror of the raise case.
+        let (mut ed, id) = stacked(vec![square(60.0), square(50.0), far(), square(0.0)]);
+        ed.selection = vec![id[3]];
+
+        // Act
+        assert!(ed.apply(Command::LowerSelection));
+
+        // Assert
+        assert_eq!(ids(&ed), vec![id[0], id[3], id[1], id[2]]);
+    }
+
+    #[test]
+    fn raise_with_no_overlapping_shape_above_adds_no_undo_step() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(60.0), square(0.0), far()]);
+        ed.selection = vec![id[1]];
+        let undo = ed.history.undo_len();
+
+        // Act
+        let changed = key_with(&mut ed, Key::BracketRight, CTRL);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ids(&ed), id);
+        assert_eq!(ed.history.undo_len(), undo);
+    }
+
+    #[test]
+    fn lower_with_no_overlapping_shape_below_adds_no_undo_step() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![far(), square(0.0), square(60.0)]);
+        ed.selection = vec![id[1]];
+        let undo = ed.history.undo_len();
+
+        // Act
+        let changed = key_with(&mut ed, Key::BracketLeft, CTRL);
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ids(&ed), id);
+        assert_eq!(ed.history.undo_len(), undo);
+    }
+
+    #[test]
+    fn ctrl_shift_bracket_right_moves_selection_to_top_keeping_order() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), far(), square(20.0), square(30.0)]);
+        ed.selection = vec![id[2], id[0]];
+
+        // Act
+        let changed = key_with(&mut ed, Key::BracketRight, CTRL_SHIFT);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ids(&ed), vec![id[1], id[3], id[0], id[2]]);
+    }
+
+    #[test]
+    fn ctrl_shift_bracket_left_moves_selection_to_bottom_keeping_order() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), far(), square(20.0), square(30.0)]);
+        ed.selection = vec![id[3], id[1]];
+
+        // Act
+        let changed = key_with(&mut ed, Key::BracketLeft, CTRL_SHIFT);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(ids(&ed), vec![id[1], id[3], id[0], id[2]]);
+    }
+
+    #[test]
+    fn to_top_when_already_on_top_adds_no_undo_step() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), square(20.0), square(30.0)]);
+        ed.selection = vec![id[2], id[1]];
+        let undo = ed.history.undo_len();
+
+        // Act
+        let top = ed.apply(Command::SelectionToTop);
+        ed.selection = vec![id[0]];
+        let bottom = ed.apply(Command::SelectionToBottom);
+
+        // Assert
+        assert!(!top);
+        assert!(!bottom);
+        assert_eq!(ids(&ed), id);
+        assert_eq!(ed.history.undo_len(), undo);
+    }
+
+    #[test]
+    fn restack_is_one_undo_step_and_keeps_selection() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(70.0)]);
+        ed.selection = vec![id[1], id[0]];
+        let undo = ed.history.undo_len();
+        let revision = ed.document_revision();
+
+        // Act
+        assert!(ed.apply(Command::SelectionToTop));
+
+        // Assert
+        assert_eq!(ids(&ed), vec![id[2], id[0], id[1]]);
+        assert_eq!(ed.history.undo_len(), undo + 1);
+        assert_eq!(ed.selection(), &[id[1], id[0]]);
+        assert!(ed.document_revision() > revision);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+        assert!(key_with(&mut ed, Key::Z, CTRL));
+        assert_eq!(ids(&ed), id);
+        assert_eq!(ed.selection(), &[id[1], id[0]]);
+        assert!(ed.apply(Command::Redo));
+        assert_eq!(ids(&ed), vec![id[2], id[0], id[1]]);
+    }
+
+    #[test]
+    fn restack_during_gesture_does_nothing() {
+        // Arrange: a pen stroke in progress, a square selected.
+        let (mut ed, id) = stacked(vec![square(0.0), square(50.0)]);
+        ed.apply(Command::SetTool(Tool::Pen));
+        ed.selection = vec![id[0]];
+        down(&mut ed, PointerButton::Left, 700.0, 700.0);
+        move_to(&mut ed, 720.0, 730.0);
+        assert!(ed.gesture.is_some());
+        let undo = ed.history.undo_len();
+
+        for command in [
+            Command::RaiseSelection,
+            Command::LowerSelection,
+            Command::SelectionToTop,
+            Command::SelectionToBottom,
+        ] {
+            // Act
+            let changed = ed.apply(command);
+
+            // Assert
+            assert!(!changed, "{command:?}");
+            assert!(ed.gesture.is_some(), "{command:?}");
+            assert_eq!(ids(&ed), id, "{command:?}");
+            assert_eq!(ed.history.undo_len(), undo, "{command:?}");
+        }
+    }
+
+    #[test]
+    fn restack_with_empty_selection_does_nothing() {
+        // Arrange
+        let (mut ed, id) = stacked(vec![square(0.0), square(50.0)]);
+        let before = ed.clone();
+
+        for command in [
+            Command::RaiseSelection,
+            Command::LowerSelection,
+            Command::SelectionToTop,
+            Command::SelectionToBottom,
+        ] {
+            // Act
+            let changed = ed.apply(command);
+
+            // Assert
+            assert!(!changed, "{command:?}");
+            assert_eq!(ids(&ed), id, "{command:?}");
+        }
+        assert_eq!(ed, before);
     }
 }

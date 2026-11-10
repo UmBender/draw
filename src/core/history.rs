@@ -222,6 +222,7 @@ mod tests {
     use super::*;
     use crate::core::document::{
         Document, Edit, ShapeId, Transaction, tx_clear, tx_insert, tx_remove, tx_replace,
+        tx_restack,
     };
     use crate::core::geom::Vec2;
     use crate::core::palette::ColorId;
@@ -290,6 +291,29 @@ mod tests {
         assert!(!history.undo(&mut doc));
         assert_eq!(history.undo_len(), 1);
         assert!(doc.is_empty());
+    }
+
+    #[test]
+    fn undo_redo_restack_restores_order() {
+        // Arrange: three lines, the bottom one moved to the top.
+        let mut doc = Document::new();
+        let mut history = History::new();
+        for x in [1.0, 2.0, 3.0] {
+            commit_insert(&mut history, &mut doc, x);
+        }
+        let before = snapshot(&doc);
+        let bottom = before[0].0;
+        let tx = tx_restack(&doc, &[bottom], 2);
+        assert!(history.commit(&mut doc, tx).is_ok());
+        let after = snapshot(&doc);
+        assert_eq!(after.last().map(|(id, _)| *id), Some(bottom));
+
+        // Act / Assert
+        assert!(history.undo(&mut doc));
+        assert_eq!(snapshot(&doc), before);
+        assert!(history.redo(&mut doc));
+        assert_eq!(snapshot(&doc), after);
+        assert_eq!(history.undo_len(), 4);
     }
 
     #[test]
