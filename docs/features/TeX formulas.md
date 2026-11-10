@@ -1,7 +1,7 @@
 ---
 title: TeX formulas
 task: "[[T30 Basic TeX formulas]]"
-adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]", "[[ADR-T99-1 Spacing commands as kerns outside the atom list]]", "[[ADR-T103-1 Extensible arrows from the arrow glyph and a ruled shaft]]"]
+adrs: ["[[ADR-T30-1 TeX subset, box layout and metrics]]", "[[ADR-T33-1 Latin Modern Math for formulas with a metrics table in core]]", "[[ADR-T36-1 Integral class with scripts beside the sign]]", "[[ADR-T39-1 Accents from spacing glyphs with a slant skew]]", "[[ADR-T41-1 Integral superscript at the advance]]", "[[ADR-T64-1 Operatorname with a star parsed as one command]]", "[[ADR-T54-1 Math alphabets as a table of per-kind mappings]]", "[[ADR-T55-1 Math font subset with the alphanumeric block and extra symbols]]", "[[ADR-T56-1 Accent skew follows a slant flag per math alphabet]]", "[[ADR-T59-1 One script alphabet for mathscr and mathcal]]", "[[ADR-T60-1 Bold sans-serif inside a bold alphabet]]", "[[ADR-T65-1 Wide relations padded with a thick space]]", "[[ADR-T71-1 Infix fraction commands split their group]]", "[[ADR-T69-1 Physics shortcuts expand to their long forms]]", "[[ADR-T89-1 Left and right brackets centred on the axis]]", "[[ADR-T90-1 Environments as one table node]]", "[[ADR-T99-1 Spacing commands as kerns outside the atom list]]", "[[ADR-T103-1 Extensible arrows from the arrow glyph and a ruled shaft]]", "[[ADR-T105-1 Display style as a style field and display segments]]"]
 tutorial: "[[30 Parsing and laying out a small TeX subset]]"
 shortcuts: ["$"]
 tags: [feature]
@@ -155,12 +155,28 @@ opening and closing bars, so a minus right after `\lvert` is a sign.
 Big set and logic operators take limits above and below like `\sum`:
 `$\bigcup_{i=1}^{n} A_i$`, `$\bigcap_{k} B_k$`, `$\bigoplus_{i} V_i$`,
 `$\bigwedge_{i} p_i$`, and also `\bigvee \bigotimes \bigodot \biguplus
-\bigsqcup \coprod`. They are drawn at the same enlarged size as `\sum`,
-centred on the axis. (Since [[T66 Big set and logic operators]].)
+\bigsqcup \coprod`. They are drawn at the same enlarged size as `\sum`
+(larger again in display style), centred on the axis. (Since
+[[T66 Big set and logic operators]].)
 
-Combinatorics reads as in LaTeX. Besides `\binom{n}{k}` (and its
-`\tbinom` / `\dbinom` forms, drawn the same since there is no display
-mode), TeX's infix forms work: `${n \choose k}$`, the Stirling numbers
+`$$…$$` is a **display formula**, as in LaTeX: it takes a line of its
+own, centred on the block's width, with the text before and after it on
+the lines above and below. In display style big operators and integrals
+are drawn larger (1.8× against 1.3× inline, the same glyph scaled) with
+their limits placed as inline, and the parts of a fraction or binomial
+are full size — `$$\sum_{i=1}^n \frac{a_i}{b_i}$$` looks as in a problem
+statement. `\dfrac` and `\dbinom` give full-size parts and `\tfrac` and
+`\tbinom` inline-size parts in any formula, and `\displaystyle` /
+`\textstyle` switch the style for the rest of their group:
+`$\displaystyle\sum_{i=1}^n a_i$`. Scripts, arrow labels and matrix
+cells are always inline style. A `$$` with no closing `$$` on the same
+line — or with a lone `$` inside — reads as before, its first `$` as
+plain text. (Since [[T105 Display mode]],
+[[ADR-T105-1 Display style as a style field and display segments]].)
+
+Combinatorics reads as in LaTeX. Besides `\binom{n}{k}` (with
+`\tbinom` / `\dbinom` forcing inline or display parts), TeX's infix
+forms work: `${n \choose k}$`, the Stirling numbers
 `${n \brack k}$` and `${n \brace k}$`, and the older `{a \over b}` (a
 fraction, like `\frac{a}{b}`) and `{a \atop b}` (the same without the
 bar). Each splits its `{group}` — or the whole formula — in two at the
@@ -300,11 +316,13 @@ is drawn in red. (Since [[T103 Labelled extensible arrows]],
 | Action | Shortcut / gesture |
 |--------|--------------------|
 | Start / end a formula | `$` … `$` on one line |
+| Display formula (own line, centred, larger operators) | `$$` … `$$` on one line |
+| Switch style | `\dfrac{a}{b}`, `\tfrac{a}{b}`, `\displaystyle`, `\textstyle` (rest of the group) |
 | Literal dollar sign | `\$` (a lone `$`, as in `costs $5`, also stays plain) |
 | Superscript / subscript | `x^2`, `x_i`, `x_{i,j}^{2k}` |
 | Fraction, binomial, root | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` (`\frac12` works too) |
 | Infix fractions | `{n \choose k}`, `{n \brack k}`, `{n \brace k}`, `{a \over b}`, `{a \atop b}` (split their group) |
-| More binomials | `\tbinom{n}{k}`, `\dbinom{n}{k}` (as `\binom`), `\multiset{n}{k}` (double parentheses) |
+| More binomials | `\tbinom{n}{k}`, `\dbinom{n}{k}` (inline / display parts), `\multiset{n}{k}` (double parentheses) |
 | Combinatorics | `x^{\underline{k}}`, `x^{\overline{k}}`, `a \nmid b`, `\#A`, `\lvert A \rvert` |
 | Big operators with limits | `\sum_{i=1}^{n}`, `\prod`, `\min_i`, `\max`, `\lim` |
 | Big set and logic operators | `\bigcup_{i=1}^{n} A_i`, `\bigcap \bigwedge \bigvee \bigoplus \bigotimes \bigodot \biguplus \bigsqcup \coprod` (limits above and below) |
@@ -386,6 +404,11 @@ command as typed; at layout `expand` parses the template, fills its
 `#n` slots with the argument nodes and splices the result among the
 neighbours, so a shortcut draws its long form's ink
 ([[ADR-T69-1 Physics shortcuts expand to their long forms]]).
+`$$…$$` parses to a `Segment::Display`; the layout carries a `display`
+flag down with the alphabets, `\displaystyle` / `\textstyle` are
+`Node::MathStyle` switches read while walking a list, and `layout`
+centres each display line once the block's width is known
+([[ADR-T105-1 Display style as a style field and display segments]]).
 `core::text_layout::typeset` caches the layout per text, and
 `text_layout::bounds` gives every shape query (hit-test, culling,
 snapping, selection) the typeset box; the edit session keeps the source
@@ -396,7 +419,12 @@ of the same batch.
 
 ## Limits
 
-- No display mode (`$$…$$`) or macros. The only environments are
+- No macros. Display mode is `$$…$$` on one line only: no `\[ … \]`,
+  `equation`, `align`, numbered equations, `\limits` / `\nolimits`,
+  `\scriptstyle` or `\scriptscriptstyle`; display operators are the
+  inline glyph scaled, not the font's display variants, and superscripts
+  sit at the inline height. Text after a display formula keeps the
+  spaces typed before it. The only environments are
   `matrix`, `pmatrix`, `bmatrix`, `vmatrix` and `cases`, up to 64 rows
   and columns: no `array` with a column spec, `smallmatrix` or `dcases`.
   A matrix of more than about a dozen rows is taller than its brackets,

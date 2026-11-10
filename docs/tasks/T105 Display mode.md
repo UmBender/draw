@@ -1,7 +1,7 @@
 ---
 id: T105
 title: Display mode
-status: in-progress
+status: review
 wave: 59
 branch: task/T105-display-mode
 depends_on: []
@@ -57,12 +57,12 @@ Owner decisions are marked (owner); the rest is settled in [[ADR-T105-1 Display 
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T105): specify display mode`
-- [ ] tests — `test(T105): add failing tests for display mode`
-- [ ] models — `feat(T105): add display style to formula nodes`
-- [ ] behaviour — `feat(T105): lay out display formulas`
-- [ ] quality — `chore(T105): pass clippy and rustfmt`
-- [ ] docs — `docs(T105): update the feature note`
+- [x] spec — `docs(T105): specify display mode`
+- [x] tests — `test(T105): add failing tests for display mode`
+- [x] models — `feat(T105): add display style to formula nodes`
+- [x] behaviour — `feat(T105): lay out display formulas`
+- [x] quality — `chore(T105): pass clippy and rustfmt`
+- [x] docs — `docs(T105): update the feature note`
 
 ## Learning path
 
@@ -72,3 +72,5 @@ None: it extends an existing area.
 
 - 2026-11-10 — note written with the owner, from F3 of the [[Feature proposal]].
 - 2026-11-10 — spec: ADR-T105-1. UNATTENDED CHOICE: display operator scale 1.8; `Segment::Display` and `Node::MathStyle(bool)` with a `display` field on the layout style; a display formula does not cross a line break and falls back to the old reading when unclosed; text after it keeps its spaces; it is centred on the widest line. UNATTENDED CHOICE: the existing test `tex_layout_choose_and_tbinom_dbinom_match_binom` loses its `\dbinom` check (AC-4 makes inline `\dbinom` display-style) and is renamed `tex_layout_choose_and_tbinom_match_binom`.
+- 2026-11-10 — tests: the new tests failed to compile (no `Segment::Display`, `Node::MathStyle`, `DISPLAY_OP_SCALE`, `layout_display`). Behaviour: `tex_parse_escaped_dollar_inside_display_stays_literal` expected `Node::Literal("\\$")`, but a formula already parses `\$` to the `$` symbol (a drawn dollar); the expectation was corrected in the behaviour commit. Scripts, extensible-arrow labels and environment cells are laid out in text style; root, accent, `\left…\right` and alphabet bodies keep the outside style (ADR-T105-1). `src/core/text_layout.rs` needed no change: it caches `tex::layout`, which handles display lines.
+- 2026-11-10 — gates: `scripts/check.sh --fuzz` green, `scripts/e2e.sh` green (no golden changed). Manual checks left for the owner: `$$\sum_{i=1}^n \frac{a_i}{b_i}$$` and `$\dfrac{1}{2} + \tfrac{1}{2}$` in a block with text around; judge sizes and centring.

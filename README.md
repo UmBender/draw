@@ -296,6 +296,8 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 |-------|-----|
 | `x^2`, `x_i`, `x_{i,j}^{2k}` | Superscript, subscript (one character or `{group}`) |
 | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` | Fraction, binomial, root |
+| `$$\sum_{i=1}^n \frac{a_i}{b_i}$$` | Display formula: own line, centred, larger operators, full-size fraction parts |
+| `\dfrac{a}{b}`, `\tfrac{a}{b}`, `\displaystyle`, `\textstyle` | Force display or inline style (the switches last to the end of their group) |
 | `\left( \frac{a}{b} \right)^2`, `\left. x \right|` | Brackets that grow to fit (`.` draws nothing) |
 | `\begin{pmatrix} a & b \\ c & d \end{pmatrix}`, `matrix`, `bmatrix`, `vmatrix` | Matrices, on one line |
 | `\begin{cases} 1 & n = 0 \\ 2 & n > 0 \end{cases}` | Piecewise definitions |
@@ -351,7 +353,8 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `\text{…}` | Upright text inside a formula |
 | `\$` | A literal dollar sign (a lone `$` also stays plain) |
 
-A formula stays on one line. Anything outside the subset is drawn as
+A formula stays on one line of source; a `$$…$$` one gets a line of its
+own when typeset. Anything outside the subset is drawn as
 typed in red, so a typo shows.
 
 A printable one-page version lives in
