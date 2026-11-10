@@ -3673,9 +3673,174 @@ mod tests {
         // A control symbol outside the table; a `\` before the closing
         // `$` would escape it instead.
         assert_eq!(
-            math("\\;x"),
-            vec![Node::Literal("\\;".to_owned()), Node::Char('x')]
+            math("\\@x"),
+            vec![Node::Literal("\\@".to_owned()), Node::Char('x')]
         );
+    }
+
+    // ---- T99 spacing commands (ADR-T99-1) ------------------------------------
+
+    /// The sources of the spacing commands and their widths in em.
+    const SPACINGS: [(&str, f32); 7] = [
+        ("\\:", 4.0 / 18.0),
+        ("\\;", 5.0 / 18.0),
+        ("\\!", -3.0 / 18.0),
+        ("\\quad", 1.0),
+        ("\\qquad", 2.0),
+        ("\\ ", INTERWORD_SPACE),
+        ("~", INTERWORD_SPACE),
+    ];
+
+    #[test]
+    fn tex_parse_spacing_commands_are_kerns() {
+        for (src, _) in SPACINGS {
+            assert_eq!(math(src), vec![Node::Kern(src.to_owned())], "{src:?}");
+        }
+        assert_eq!(
+            math("a\\;b"),
+            vec![Node::Char('a'), Node::Kern("\\;".to_owned()), Node::Char('b')]
+        );
+        assert_eq!(
+            math("\\quad x"),
+            vec![
+                Node::Kern("\\quad".to_owned()),
+                Node::Space(" ".to_owned()),
+                Node::Char('x'),
+            ]
+        );
+        // A longer word is not a spacing command.
+        assert_eq!(
+            math("\\quadx"),
+            vec![Node::Literal("\\quadx".to_owned())]
+        );
+    }
+
+    #[test]
+    fn tex_parse_spacing_commands_print_back() {
+        for src in [
+            "$a\\:b\\;c\\!d\\quad e\\qquad f\\ g~h$",
+            "$x^\\; y_{\\!}$",
+            "a~b $\\,\\!\\,$ c\\ d",
+        ] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_layout_spacing_commands_have_their_widths() {
+        let ab = mm(A).advance + mm(B).advance;
+        for (src, em) in SPACINGS {
+            // Act
+            let w = boxed(&format!("a{src} b")).width;
+
+            // Assert
+            assert!(approx_eq(w - ab, em, EPS), "{src:?}: {}", w - ab);
+        }
+        assert!(approx_eq(INTERWORD_SPACE, 1.0 / 3.0, EPS));
+    }
+
+    #[test]
+    fn tex_layout_spacing_commands_scale_in_scripts() {
+        let plain = boxed("a^{xy}").width;
+        for (src, em) in SPACINGS {
+            // Act
+            let w = boxed(&format!("a^{{x{src} y}}")).width;
+
+            // Assert
+            assert!(
+                approx_eq(w - plain, em * SCRIPT_SCALE, EPS),
+                "{src:?}: {}",
+                w - plain
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_negative_space_pulls_neighbours_together() {
+        // Act
+        let b = boxed("a\\!b");
+
+        // Assert
+        let pulled = mm(A).advance - 3.0 / 18.0;
+        assert!(approx_eq(b.width, pulled + mm(B).advance, EPS), "{}", b.width);
+        let (pos, _) = glyph(&b.ink, B);
+        assert!(approx_eq(pos.x, pulled, EPS), "{pos:?}");
+    }
+
+    #[test]
+    fn tex_layout_negative_space_never_makes_width_negative() {
+        // Arrange
+        let many = "\\!".repeat(8);
+
+        // Act
+        let alone = boxed(&many);
+        let leading = boxed(&format!("{many}a"));
+        let between = boxed(&format!("a{many}b"));
+        let block = layout(&parse(&format!("${many}$")));
+
+        // Assert
+        assert!(approx_eq(alone.width, 0.0, EPS), "{}", alone.width);
+        assert!(approx_eq(leading.width, mm(A).advance, EPS), "{}", leading.width);
+        assert!(approx_eq(between.width, mm(B).advance, EPS), "{}", between.width);
+        for b in [&alone, &leading, &between] {
+            for (_, pos, _, _) in glyphs(&b.ink) {
+                assert!(pos.x >= -EPS, "{pos:?}");
+            }
+        }
+        assert!(block.width >= 0.0, "{}", block.width);
+    }
+
+    #[test]
+    fn tex_layout_spacing_commands_keep_atom_classes() {
+        let width = |src| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
+        let thick = 5.0 / 18.0;
+
+        // A binary operator keeps its space beside explicit spaces.
+        assert!(approx_eq(
+            width("a\\;+\\;b"),
+            ab + adv("+") + 2.0 * BIN_SPACE + 2.0 * thick,
+            EPS
+        ));
+        // A leading minus stays unary after a space.
+        assert!(approx_eq(
+            width("\\;-a"),
+            thick + adv("\u{2212}") + mm(A).advance,
+            EPS
+        ));
+        // A relation keeps its space too.
+        assert!(approx_eq(
+            width("a=\\quad b"),
+            ab + adv("=") + 2.0 * REL_SPACE + 1.0,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_layout_only_spacing_commands_is_finite() {
+        for src in [
+            "$\\quad$",
+            "$\\!$",
+            "$\\!\\!\\!\\!$",
+            "$~~~$",
+            "$\\ \\;\\:\\qquad$",
+            "$x^{\\!\\!}$",
+            "$\\;^2$",
+            "$\\frac{\\!}{\\quad}$",
+            "$\\sqrt{\\!\\!\\!}$",
+            "$\\left(\\!\\!\\right)$",
+        ] {
+            // Act
+            let l = layout(&parse(src));
+
+            // Assert
+            assert!(l.width.is_finite() && l.width >= 0.0, "{src:?}");
+            assert!(l.height.is_finite() && l.height > 0.0, "{src:?}");
+            for ink in &l.ink {
+                let ib = ink.bounds();
+                assert!(ib.min.is_finite() && ib.max.is_finite(), "{src:?} {ink:?}");
+            }
+        }
     }
 
     #[test]
@@ -3773,6 +3938,7 @@ mod tests {
                 "\\begin", "\\end", "\\begin{matrix}", "\\end{matrix}", "\\begin{pmatrix}",
                 "\\end{pmatrix}", "\\begin{cases}", "\\end{cases}", "\\begin{foo}", "\\end{foo}",
                 "&", "\\\\",
+                "\\:", "\\;", "\\!", "\\!\\!\\!", "\\quad", "\\qquad", "\\ ", "~",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
