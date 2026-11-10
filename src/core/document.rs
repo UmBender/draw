@@ -607,8 +607,36 @@ pub fn tx_replace(doc: &Document, id: ShapeId, new: Shape) -> Transaction {
 /// change.
 #[must_use]
 pub fn tx_restack(doc: &Document, ids: &[ShapeId], below: usize) -> Transaction {
-    let _ = (doc, ids, below);
-    todo!()
+    let wanted: IdSet = ids.iter().copied().collect();
+    let moved: Vec<(usize, ShapeId, &Shape)> = doc
+        .shapes
+        .iter()
+        .enumerate()
+        .filter(|(_, (id, _))| wanted.contains(id))
+        .map(|(index, (id, shape))| (index, *id, shape))
+        .collect();
+    let at = below.min(doc.len() - moved.len());
+    let in_place = moved
+        .iter()
+        .enumerate()
+        .all(|(offset, (index, _, _))| *index == at + offset);
+    if in_place {
+        return Transaction::default();
+    }
+    let removes = moved.iter().rev().map(|&(index, id, shape)| Edit::Remove {
+        index,
+        id,
+        shape: shape.clone(),
+    });
+    let inserts = moved
+        .iter()
+        .enumerate()
+        .map(|(offset, &(_, id, shape))| Edit::Insert {
+            index: at + offset,
+            id,
+            shape: shape.clone(),
+        });
+    removes.chain(inserts).collect::<Vec<_>>().into()
 }
 
 /// Transaction removing every shape, top down.

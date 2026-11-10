@@ -1824,6 +1824,50 @@ fn mutate(text: &str, mutations: &[Mutation]) -> String {
     out
 }
 
+/// T100: the z-order session's clicks select a rectangle that `Ctrl+]`
+/// then raises, so the property below really restacks.
+#[test]
+fn z_order_session_click_selects_and_raises() {
+    // Arrange: the drags and click of `z_order_sessions_keep_a_permutation`.
+    let (left, none) = (PointerButton::Left, Modifiers::NONE);
+    let drag = |editor: &mut Editor, from: Vec2, to: Vec2| {
+        editor.handle(InputEvent::PointerDown {
+            pos: from,
+            button: left,
+            mods: none,
+        });
+        editor.handle(InputEvent::PointerMove { pos: to, mods: none });
+        editor.handle(InputEvent::PointerUp {
+            pos: to,
+            button: left,
+            mods: none,
+        });
+    };
+    let mut editor = Editor::new();
+    editor.handle(InputEvent::Resize {
+        size: Vec2::new(1_200.0, 800.0),
+    });
+    editor.apply(Command::SetTool(Tool::Rect));
+    for (x, y) in [(10.0, 10.0), (100.0, 100.0), (150.0, 120.0)] {
+        drag(&mut editor, Vec2::new(x, y), Vec2::new(x + 300.0, y + 250.0));
+    }
+    editor.apply(Command::SetTool(Tool::Select));
+    let at = Vec2::new(12.0, 12.0);
+    drag(&mut editor, at, at);
+    let before: Vec<ShapeId> = editor.document().shapes().map(|(id, _)| id).collect();
+
+    // Act
+    editor.handle(InputEvent::KeyDown {
+        key: Key::BracketRight,
+        mods: Modifiers { ctrl: true, ..none },
+    });
+
+    // Assert
+    let after: Vec<ShapeId> = editor.document().shapes().map(|(id, _)| id).collect();
+    assert_eq!(editor.selection(), &[before[0]]);
+    assert_eq!(after, vec![before[1], before[0], before[2]]);
+}
+
 proptest! {
     #![proptest_config(config())]
 

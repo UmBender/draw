@@ -19,7 +19,9 @@ use crate::core::camera::Camera;
 use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
-use crate::core::document::{Document, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace};
+use crate::core::document::{
+    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
+};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -1479,8 +1481,52 @@ impl Editor {
     /// selection, or when the order would not change. Returns whether the
     /// document changed.
     fn restack(&mut self, to: Restack) -> bool {
-        let _ = to;
-        todo!()
+        if self.gesture.is_some() {
+            return false;
+        }
+        self.prune_selection();
+        let Some(bounds) = self.selection_bounds() else {
+            return false;
+        };
+        let selected: IdSet = self.selection.iter().copied().collect();
+        let is_selected = |(_, (id, _)): &(usize, (ShapeId, &Shape))| selected.contains(id);
+        let mut indices = self
+            .doc
+            .shapes()
+            .enumerate()
+            .filter(is_selected)
+            .map(|(index, _)| index);
+        let (Some(lowest), highest) = (indices.next(), indices.last()) else {
+            return false;
+        };
+        let highest = highest.unwrap_or(lowest);
+        let count = selected.len();
+        let overlaps = |entry: &(usize, (ShapeId, &Shape))| {
+            !is_selected(entry) && entry.1.1.bounds().intersects(&bounds)
+        };
+        // `below` counts the unselected shapes left under the block.
+        let below = match to {
+            Restack::Top => usize::MAX,
+            Restack::Bottom => 0,
+            Restack::Up => {
+                let target = self.doc.shapes().enumerate().skip(highest + 1).find(overlaps);
+                // Every selected shape lies under the target.
+                let Some((index, _)) = target else {
+                    return false;
+                };
+                index + 1 - count
+            }
+            Restack::Down => {
+                let target = self.doc.shapes().enumerate().take(lowest).rev().find(overlaps);
+                // No selected shape lies under the target.
+                let Some((index, _)) = target else {
+                    return false;
+                };
+                index
+            }
+        };
+        let tx = tx_restack(&self.doc, &self.selection, below);
+        !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok()
     }
 
     /// Removes selected ids that are no longer in the document.
