@@ -65,8 +65,10 @@ impl EditorState {
     /// The state of `editor`.
     #[must_use]
     pub fn of(editor: &Editor) -> Self {
-        let _ = editor;
-        todo!()
+        Self {
+            editing: editor.text_edit().is_some(),
+            gesture: editor.active_gesture().is_some(),
+        }
     }
 }
 
@@ -74,8 +76,13 @@ impl EditorState {
 /// [`FADE_SECS`]; 0 for a non-finite age.
 #[must_use]
 pub fn alpha(age: f64) -> f32 {
-    let _ = age;
-    todo!()
+    if !age.is_finite() {
+        return 0.0;
+    }
+    // In [0, 1], so the narrowing cast is exact enough.
+    #[allow(clippy::cast_possible_truncation)]
+    let left = (1.0 - age / FADE_SECS).clamp(0.0, 1.0) as f32;
+    left
 }
 
 /// The laser: whether `Q` is held and the fading trail.
@@ -110,15 +117,78 @@ impl Laser {
     /// Looks at `event` before the editor does, at time `now`, and says
     /// whether it goes on (ADR-T106-1).
     pub fn route(&mut self, event: &InputEvent, state: EditorState, now: f64) -> Routed {
-        let _ = (event, state, now, Key::Q, Modifiers::NONE);
-        todo!()
+        match event {
+            InputEvent::KeyDown { key: Key::Q, mods } if !state.editing && holds(*mods) => {
+                if !self.held {
+                    self.held = true;
+                    self.fresh = true;
+                }
+                Routed::Consumed
+            }
+            InputEvent::KeyUp { key: Key::Q, .. } if self.held => {
+                self.held = false;
+                Routed::Consumed
+            }
+            InputEvent::PointerDown { .. }
+            | InputEvent::PointerMove { .. }
+            | InputEvent::PointerUp { .. }
+                if self.held =>
+            {
+                if state.editing || state.gesture {
+                    // The gesture keeps its events; the trail restarts
+                    // after it (AC-5).
+                    self.fresh = true;
+                    return Routed::Forward;
+                }
+                if let InputEvent::PointerMove { pos, .. } = event {
+                    self.push(*pos, now);
+                }
+                Routed::Consumed
+            }
+            _ => Routed::Forward,
+        }
+    }
+
+    /// Adds a point at `pos` and time `now`, unless either is non-finite.
+    fn push(&mut self, pos: Vec2, now: f64) {
+        if !pos.is_finite() || !now.is_finite() {
+            return;
+        }
+        self.drop_faded(now);
+        while self.trail.len() >= MAX_POINTS {
+            self.trail.pop_front();
+        }
+        let joined = !std::mem::take(&mut self.fresh);
+        self.trail.push_back(TrailPoint {
+            pos,
+            at: now,
+            joined,
+        });
+    }
+
+    /// Drops the points that have faded completely by `now` (finite).
+    fn drop_faded(&mut self, now: f64) {
+        while self
+            .trail
+            .front()
+            .is_some_and(|p| now - p.at >= FADE_SECS)
+        {
+            self.trail.pop_front();
+        }
     }
 
     /// Drops the points that faded by `now`. Returns whether the overlay
     /// must be redrawn: the trail had points. A non-finite `now` clears it.
     pub fn tick(&mut self, now: f64) -> bool {
-        let _ = now;
-        todo!()
+        let had = !self.trail.is_empty();
+        if now.is_finite() {
+            // Points are pushed in time order, but a clock may step back:
+            // keep only the live ones wherever they are.
+            self.trail.retain(|p| now - p.at < FADE_SECS);
+        } else {
+            self.trail.clear();
+        }
+        had
     }
 
     /// Whether points are still fading, so the shell must ask for another
@@ -131,9 +201,21 @@ impl Laser {
     /// The pieces to draw at `now`, oldest first. A piece takes the
     /// opacity of its older point, so the tail fades first.
     pub fn segments(&self, now: f64) -> impl Iterator<Item = Segment> + '_ {
-        let _ = now;
-        std::iter::empty::<Segment>()
+        let prev = std::iter::once(None).chain(self.trail.iter().map(Some));
+        self.trail.iter().zip(prev).map(move |(point, prev)| {
+            let older = prev.filter(|_| point.joined).unwrap_or(point);
+            Segment {
+                from: older.pos,
+                to: point.pos,
+                alpha: alpha(now - older.at),
+            }
+        })
     }
+}
+
+/// Whether `Q` with `mods` holds the laser: not with `Ctrl` or `Alt`.
+fn holds(mods: Modifiers) -> bool {
+    !mods.ctrl && !mods.alt
 }
 
 #[cfg(test)]
