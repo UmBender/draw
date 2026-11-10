@@ -377,7 +377,19 @@ fn arb_edge_text() -> impl Strategy<Value = String> {
         prop::collection::vec(entry, 1..12),
     )
         .prop_map(|(keyword, entries)| format!("{keyword}\n{}", entries.join(" ")));
-    prop_oneof![3 => edges, 1 => parents]
+    // Segment trees at and past the size bounds, and bad sizes (T104).
+    let segtree = select(vec![
+        "segtree: 1",
+        "segtree: 8",
+        "segtree:\n100",
+        "segtree: 0",
+        "segtree: 101",
+        "segtree: x",
+        "segtree: 4 4",
+        "segtree:",
+    ])
+    .prop_map(str::to_owned);
+    prop_oneof![6 => edges, 2 => parents, 1 => segtree]
 }
 
 /// A text block turned into a graph (T87), as [`arb_table_session`].

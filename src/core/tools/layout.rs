@@ -2283,6 +2283,323 @@ mod tests {
         );
     }
 
+    // ---- T104 segment tree ------------------------------------------------
+
+    fn segtree(text: &str, first: u32) -> EdgeList {
+        match EdgeList::parse_numbered(text, first) {
+            Ok(Some(list)) => list,
+            other => panic!("{text:?} gave {other:?}"),
+        }
+    }
+
+    /// The name of the node over `[l, r]`.
+    fn range(l: u32, r: u32) -> String {
+        format!("$[{l}, {r}]$")
+    }
+
+    /// `(l, r)` of a node named `$[l, r]$`; panics on any other name.
+    fn range_of(name: &NodeName) -> (u32, u32) {
+        let NodeName::Math(math) = name else {
+            panic!("{name:?} is not a range");
+        };
+        let inner = math
+            .strip_prefix("$[")
+            .and_then(|rest| rest.strip_suffix("]$"))
+            .and_then(|inner| inner.split_once(", "));
+        match inner.map(|(l, r)| (l.parse(), r.parse())) {
+            Some((Ok(l), Ok(r))) => (l, r),
+            _ => panic!("{math:?} is not a range"),
+        }
+    }
+
+    /// Every segment tree rule over `n` positions from `first` (AC-2).
+    fn assert_segment_tree(list: &EdgeList, n: u32, first: u32) {
+        let names = list.names();
+        assert_eq!(names.len(), 2 * n as usize - 1);
+        assert_eq!(list.edges().len(), 2 * n as usize - 2);
+        assert_eq!(range_of(&names[0]), (first, first + n - 1));
+        let mut children = vec![Vec::new(); names.len()];
+        for edge in list.edges() {
+            assert!(!edge.directed && edge.weight.is_none());
+            children[edge.from].push(range_of(&names[edge.to]));
+        }
+        let mut leaves = Vec::new();
+        for (name, below) in names.iter().zip(&children) {
+            let (l, r) = range_of(name);
+            if l == r {
+                assert!(below.is_empty(), "leaf [{l}, {r}] has children");
+                leaves.push(l);
+            } else {
+                let m = (l + r) / 2;
+                assert_eq!(below, &[(l, m), (m + 1, r)], "[{l}, {r}]");
+            }
+        }
+        leaves.sort_unstable();
+        assert_eq!(leaves, (first..first + n).collect::<Vec<_>>());
+    }
+
+    /// The centre of the circle holding `text`.
+    fn circle_holding(shapes: &[Shape], text: &str) -> Vec2 {
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Ellipse { .. }))
+            .find(|s| s.slot_text(TextSlot::Shape).is_some_and(|t| t.text == text))
+            .map_or_else(|| panic!("no circle holds {text}"), |s| s.bounds().center())
+    }
+
+    #[test]
+    fn parse_segtree_reads_the_size_on_the_keyword_line() {
+        // Act
+        let list = segtree("segtree: 8", 1);
+
+        // Assert
+        assert_eq!(list.names().len(), 15);
+        assert_eq!(written(&list.names()[0]), range(1, 8));
+    }
+
+    #[test]
+    fn parse_segtree_reads_the_size_on_the_next_line() {
+        // Arrange
+        let wanted = segtree("segtree: 8", 1);
+
+        // Act, Assert
+        for text in ["segtree:\n8", "  segtree:8  ", "segtree:\n\n 8 \n", "\nsegtree: \n8"] {
+            assert_eq!(segtree(text, 1), wanted, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn parse_segtree_starts_at_the_first_number() {
+        // Act
+        let one = segtree("segtree: 8", 1);
+        let zero = segtree("segtree: 8", 0);
+
+        // Assert
+        assert_segment_tree(&one, 8, 1);
+        assert_segment_tree(&zero, 8, 0);
+        assert_eq!(written(&zero.names()[0]), range(0, 7));
+    }
+
+    #[test]
+    fn parse_segtree_accepts_the_bounds() {
+        // Act
+        let single = segtree("segtree: 1", 1);
+        let largest = segtree("segtree: 100", 0);
+
+        // Assert
+        assert_eq!(single.names(), [NodeName::Math(range(1, 1))]);
+        assert!(single.edges().is_empty());
+        assert_segment_tree(&largest, 100, 0);
+    }
+
+    #[test]
+    fn parse_segtree_alone_is_no_graph() {
+        for text in ["segtree:", "segtree:\n \n", "  segtree:  "] {
+            assert_eq!(EdgeList::parse_numbered(text, 1), Ok(None), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn parse_without_segtree_ignores_the_first_number() {
+        for text in ["1-2 2-3", "0 1 5", "parents:\n1 1", "parents0:\n0 0", "$a$ 1"] {
+            assert_eq!(
+                EdgeList::parse_numbered(text, 0),
+                EdgeList::parse(text),
+                "{text:?}"
+            );
+            assert_eq!(EdgeList::parse_numbered(text, 1), EdgeList::parse(text));
+        }
+    }
+
+    #[test]
+    fn parse_segtree_splits_at_the_floor_of_the_middle() {
+        // Act
+        let list = segtree("segtree: 5", 1);
+
+        // Assert: preorder, left child first.
+        let names: Vec<String> = list.names().iter().map(written).collect();
+        let wanted = [
+            (1, 5),
+            (1, 3),
+            (1, 2),
+            (1, 1),
+            (2, 2),
+            (3, 3),
+            (4, 5),
+            (4, 4),
+            (5, 5),
+        ]
+        .map(|(l, r)| range(l, r));
+        assert_eq!(names, wanted);
+        let pairs: Vec<(String, String)> = written_edges(&list)
+            .into_iter()
+            .map(|(from, to, _, _)| (from, to))
+            .collect();
+        let wanted_pairs = [
+            ((1, 5), (1, 3)),
+            ((1, 3), (1, 2)),
+            ((1, 2), (1, 1)),
+            ((1, 2), (2, 2)),
+            ((1, 3), (3, 3)),
+            ((1, 5), (4, 5)),
+            ((4, 5), (4, 4)),
+            ((4, 5), (5, 5)),
+        ]
+        .map(|((a, b), (c, d))| (range(a, b), range(c, d)));
+        assert_eq!(pairs, wanted_pairs);
+    }
+
+    #[test]
+    fn parse_segtree_has_2n_minus_1_nodes() {
+        for n in 1..=100 {
+            for first in [0, 1] {
+                assert_segment_tree(&segtree(&format!("segtree: {n}"), first), n, first);
+            }
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_circles_hold_their_ranges_at_one_size() {
+        for n in [8, 100] {
+            // Arrange
+            let list = segtree(&format!("segtree: {n}"), 1);
+
+            // Act
+            let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+            // Assert: one circle per node, typeset text, no number label.
+            let circles: Vec<&Shape> = shapes
+                .iter()
+                .filter(|s| matches!(s, Shape::Ellipse { .. }))
+                .collect();
+            assert_eq!(circles.len(), list.names().len());
+            let mut held: Vec<String> = circles
+                .iter()
+                .map(|s| {
+                    assert_eq!(s.label(), None);
+                    s.slot_text(TextSlot::Shape)
+                        .map_or_else(String::new, |t| t.text.clone())
+                })
+                .collect();
+            let mut wanted: Vec<String> = list.names().iter().map(written).collect();
+            held.sort();
+            wanted.sort();
+            assert_eq!(held, wanted);
+            // One size, fitting the widest label at full size.
+            let width = circles[0].bounds().width();
+            let Some(frame) = circles[0].text_frame(TextSlot::Shape) else {
+                panic!("an ellipse has a frame");
+            };
+            for circle in &circles {
+                assert!(approx_eq(circle.bounds().width(), width, 1e-3));
+                let text = circle.slot_text(TextSlot::Shape).map_or("", |t| &t.text);
+                let label = text_layout::bounds(Vec2::ZERO, text, SIZE);
+                assert!(frame.width() + 1e-3 >= label.width(), "{text}");
+                assert!(frame.height() + 1e-3 >= label.height(), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_is_layered_from_the_root_children_left_to_right() {
+        for n in [5, 8] {
+            // Arrange
+            let list = segtree(&format!("segtree: {n}"), 1);
+
+            // Act
+            let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+            // Assert: the root on top, each child one layer down, left
+            // child left of the right one, the parent between them.
+            let root = circle_holding(&shapes, &range(1, n));
+            for name in list.names() {
+                let (l, r) = range_of(name);
+                let at = circle_holding(&shapes, &range(l, r));
+                assert!(root.y <= at.y + 1e-3);
+                if l == r {
+                    continue;
+                }
+                let m = (l + r) / 2;
+                let left = circle_holding(&shapes, &range(l, m));
+                let right = circle_holding(&shapes, &range(m + 1, r));
+                assert!(approx_eq(left.y, right.y, 1e-3));
+                assert!(left.y > at.y + 1.0);
+                assert!(left.x < at.x && at.x < right.x, "[{l}, {r}]");
+            }
+            // Leaves read left to right in position order.
+            let xs: Vec<f32> = (1..=n).map(|i| circle_holding(&shapes, &range(i, i)).x).collect();
+            assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
+        }
+    }
+
+    #[test]
+    fn parse_segtree_refuses_a_bad_size_naming_its_line() {
+        for (text, line) in [
+            ("segtree: 0", 1),
+            ("segtree: 101", 1),
+            ("segtree: -3", 1),
+            ("segtree: x", 1),
+            ("segtree: 8.5", 1),
+            ("segtree: +8", 1),
+            ("segtree: 99999999999999999999", 1),
+            ("segtree: 8 9", 1),
+            ("segtree: $8$", 1),
+            ("segtree:\n8\n9", 3),
+            ("segtree:\n\n8 x", 3),
+            ("\nsegtree:\n0", 3),
+        ] {
+            assert_eq!(
+                EdgeList::parse_numbered(text, 1),
+                Err(GraphError::NotATreeSize { line }),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tree_size_error_names_the_line_not_its_text() {
+        // Act
+        let reason = GraphError::NotATreeSize { line: 3 }.to_string();
+
+        // Assert
+        assert!(reason.contains("line 3"), "{reason}");
+        assert!(reason.contains("100"), "{reason}");
+        assert!(!reason.contains("segtree"), "{reason}");
+    }
+
+    proptest! {
+        #[test]
+        fn segtree_parse_and_shapes_hold_for_any_size(
+            n in prop_oneof![Just(0_u32), Just(1), Just(100), Just(101), 0_u32..=120],
+            first in 0_u32..=1,
+            next_line in any::<bool>(),
+        ) {
+            // Arrange
+            let text = if next_line {
+                format!("segtree:\n{n}")
+            } else {
+                format!("segtree: {n}")
+            };
+
+            // Act
+            let parsed = EdgeList::parse_numbered(&text, first);
+
+            // Assert
+            if (1..=100).contains(&n) {
+                let Ok(Some(list)) = parsed else {
+                    return Err(TestCaseError::fail(format!("{text:?} gave {parsed:?}")));
+                };
+                prop_assert_eq!(list.names().len(), 2 * n as usize - 1);
+                prop_assert_eq!(list.edges().len(), 2 * n as usize - 2);
+                let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE);
+                prop_assert!(shapes.is_some_and(|s| s.iter().all(Shape::is_finite)));
+            } else {
+                let line = 1 + usize::from(next_line);
+                prop_assert_eq!(parsed, Err(GraphError::NotATreeSize { line }));
+            }
+        }
+    }
+
     fn points(text: &str) -> PointList {
         match PointList::parse(text) {
             Ok(Some(list)) => list,

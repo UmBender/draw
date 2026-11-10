@@ -6499,6 +6499,95 @@ mod tests {
         assert_eq!(ed.document().len(), 2);
     }
 
+    // ---- T104 segment tree -------------------------------------------------
+
+    /// The texts inside every circle, in document order.
+    fn circle_texts(ed: &Editor) -> Vec<String> {
+        ed.document()
+            .shapes()
+            .filter(|(_, s)| is_ellipse(s))
+            .filter_map(|(_, s)| s.slot_text(TextSlot::Shape).map(|t| t.text.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn segtree_from_text_starts_at_one() {
+        // Arrange
+        let mut ed = selected_block("segtree: 8");
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(count(&ed, is_ellipse), 15);
+        assert_eq!(count(&ed, is_line), 14);
+        let texts = circle_texts(&ed);
+        assert_eq!(texts.len(), 15);
+        assert_eq!(texts[0], "$[1, 8]$");
+        assert!(texts.iter().any(|t| t == "$[8, 8]$"));
+    }
+
+    #[test]
+    fn segtree_from_text_starts_at_zero_after_ctrl_n() {
+        // Arrange
+        let mut ed = selected_block("segtree:\n8");
+        ed.apply(Command::ToggleZeroBased);
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(changed);
+        let texts = circle_texts(&ed);
+        assert_eq!(texts.len(), 15);
+        assert_eq!(texts[0], "$[0, 7]$");
+        assert!(texts.iter().any(|t| t == "$[0, 0]$"));
+        assert!(!texts.iter().any(|t| t.contains('8')));
+    }
+
+    #[test]
+    fn segtree_from_text_is_one_undo_step_and_selected() {
+        // Arrange
+        let mut ed = selected_block("segtree: 4");
+        let original = shape_at(&ed, 0).clone();
+        let steps = ed.history.undo_len();
+
+        // Act
+        ctrl_l(&mut ed);
+
+        // Assert
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert_eq!(ed.document().len(), 7 + 6);
+        assert_eq!(ed.selection(), ids(&ed));
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(ed.document().len(), 1);
+        assert_eq!(shape_at(&ed, 0), &original);
+    }
+
+    #[test]
+    fn segtree_from_text_bad_size_changes_nothing_and_leaves_a_notice() {
+        for (text, line) in [
+            ("segtree: 101", "line 1"),
+            ("segtree: 0", "line 1"),
+            ("segtree:\n4\nx", "line 3"),
+        ] {
+            // Arrange
+            let mut ed = selected_block(text);
+            let before = ed.clone();
+
+            // Act
+            let changed = ctrl_l(&mut ed);
+
+            // Assert
+            assert!(!changed);
+            assert_eq!(ed, before);
+            let notice = ed.take_notice().unwrap_or_default();
+            assert!(notice.contains(line), "{notice}");
+            assert!(!notice.contains("segtree"), "{notice}");
+        }
+    }
+
     // ---- T88 bucket drag across cells --------------------------------------
 
     /// Editor on the Bucket holding one 4 × 4 grid of 25 px cells, and its id.
