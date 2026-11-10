@@ -597,6 +597,20 @@ pub fn tx_replace(doc: &Document, id: ShapeId, new: Shape) -> Transaction {
         .into()
 }
 
+/// Transaction moving the shapes `ids` (unknown and repeated ids skipped)
+/// into one block, in their current relative order, with exactly `below`
+/// of the other shapes under it (clamped to their number); the other
+/// shapes keep their order (ADR-T100-1).
+///
+/// The moved shapes are removed top down, then inserted bottom up, so the
+/// inverse restores the order exactly. Empty when the order would not
+/// change.
+#[must_use]
+pub fn tx_restack(doc: &Document, ids: &[ShapeId], below: usize) -> Transaction {
+    let _ = (doc, ids, below);
+    todo!()
+}
+
 /// Transaction removing every shape, top down.
 #[must_use]
 pub fn tx_clear(doc: &Document) -> Transaction {

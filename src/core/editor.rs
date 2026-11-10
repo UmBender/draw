@@ -669,6 +669,10 @@ impl Editor {
             Command::ScaleUp => self.run_edit(select::scale_selection_up),
             Command::ScaleDown => self.run_edit(select::scale_selection_down),
             Command::PlotFromText => self.plot_from_selection(),
+            Command::RaiseSelection => self.restack(Restack::Up),
+            Command::LowerSelection => self.restack(Restack::Down),
+            Command::SelectionToTop => self.restack(Restack::Top),
+            Command::SelectionToBottom => self.restack(Restack::Bottom),
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
             Command::Cancel => {
@@ -1470,6 +1474,15 @@ impl Editor {
         self.history.commit(&mut self.doc, tx).is_ok()
     }
 
+    /// Moves the selection up or down the stacking order as one undo step
+    /// (ADR-T100-1). Does nothing during a gesture, with an empty
+    /// selection, or when the order would not change. Returns whether the
+    /// document changed.
+    fn restack(&mut self, to: Restack) -> bool {
+        let _ = to;
+        todo!()
+    }
+
     /// Removes selected ids that are no longer in the document.
     fn prune_selection(&mut self) {
         let doc = &self.doc;
@@ -1503,7 +1516,24 @@ fn edits_document(command: Command) -> bool {
             | Command::GridRows(_)
             | Command::ScaleUp
             | Command::ScaleDown
+            | Command::RaiseSelection
+            | Command::LowerSelection
+            | Command::SelectionToTop
+            | Command::SelectionToBottom
     )
+}
+
+/// Where a restack command moves the selection (ADR-T100-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Restack {
+    /// Past the nearest overlapping unselected shape above it.
+    Up,
+    /// Past the nearest overlapping unselected shape below it.
+    Down,
+    /// Above every unselected shape.
+    Top,
+    /// Below every unselected shape.
+    Bottom,
 }
 
 /// Executes a helper command on `helpers`. Returns whether anything changed;

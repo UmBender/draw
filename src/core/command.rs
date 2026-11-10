@@ -91,6 +91,18 @@ pub enum Command {
     /// Replace the only selected text block by a coordinate plane of the
     /// points it lists (ADR-T93-1).
     PlotFromText,
+    /// Move the selection one step up the stacking order, past the nearest
+    /// unselected shape above it that overlaps its bounds (ADR-T100-1).
+    RaiseSelection,
+    /// Move the selection one step down the stacking order, past the
+    /// nearest unselected shape below it that overlaps its bounds
+    /// (ADR-T100-1).
+    LowerSelection,
+    /// Move the selection to the top of the stacking order (ADR-T100-1).
+    SelectionToTop,
+    /// Move the selection to the bottom of the stacking order
+    /// (ADR-T100-1).
+    SelectionToBottom,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every shape (undoable).

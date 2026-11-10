@@ -197,6 +197,26 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Text block to plot",
     ),
     (
+        KeyChord::ctrl(Key::BracketRight),
+        Command::RaiseSelection,
+        "Raise selection one step",
+    ),
+    (
+        KeyChord::ctrl(Key::BracketLeft),
+        Command::LowerSelection,
+        "Lower selection one step",
+    ),
+    (
+        KeyChord::ctrl_shift(Key::BracketRight),
+        Command::SelectionToTop,
+        "Selection to the top",
+    ),
+    (
+        KeyChord::ctrl_shift(Key::BracketLeft),
+        Command::SelectionToBottom,
+        "Selection to the bottom",
+    ),
+    (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
         "Delete selection",
