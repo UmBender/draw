@@ -325,30 +325,29 @@ fn arb_table_session() -> impl Strategy<Value = Vec<InputEvent>> {
 /// An edge list: mostly whole lines the parser reads, sometimes not.
 fn arb_edge_text() -> impl Strategy<Value = String> {
     let line = select(vec![
-        "1-2",
-        "1-2 2-3",
-        "2>3",
-        "3-1",
-        "0-4",
-        "2-2",
-        "2-1",
-        "1 2",
-        "2 3 7",
-        "3 4 -1.5",
-        "5 6",
+        "1-2", "1-2 2-3", "2>3", "3-1", "0-4", "2-2", "2-1", "1 2", "2 3 7", "3 4 -1.5", "5 6",
         "1 2 x",
-        "graph:",
-        "tree:",
-        "dgraph:",
-        "parents:",
-        "parents0:",
-        "3",
-        "4 2",
-        "1 1 2",
-        "2 -1 2",
-        "-1 -1",
     ]);
-    prop::collection::vec(line, 1..12).prop_map(|lines| lines.join("\n"))
+    // A keyword, and sometimes a count line, on top (T96).
+    let header = select(vec![
+        "",
+        "",
+        "",
+        "graph:\n",
+        "tree:\n",
+        "dgraph:\n",
+        "tree:\n3\n",
+        "dgraph:\n9 2\n",
+    ]);
+    let edges = (header, prop::collection::vec(line, 1..12))
+        .prop_map(|(header, lines)| format!("{header}{}", lines.join("\n")));
+    let entry = select(vec!["1", "1", "2", "3", "0", "-1", "x"]);
+    let parents = (
+        select(vec!["parents:", "parents0:", "parents:\n4"]),
+        prop::collection::vec(entry, 1..12),
+    )
+        .prop_map(|(keyword, entries)| format!("{keyword}\n{}", entries.join(" ")));
+    prop_oneof![3 => edges, 1 => parents]
 }
 
 /// A text block turned into a graph (T87), as [`arb_table_session`].
