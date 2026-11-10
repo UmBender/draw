@@ -233,6 +233,9 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\end{pmatrix}", "\\begin{bmatrix}", "\\end{bmatrix}", "\\begin{vmatrix}",
             "\\end{vmatrix}", "\\begin{cases}", "\\end{cases}", "\\begin{foo}", "\\end{foo}",
             "&", "\\\\", "\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}",
+            // T99: spacing commands, a negative run, a spaced operator.
+            "\\:", "\\;", "\\!", "\\!\\!\\!\\!", "\\quad", "\\qquad", "\\ ", "~",
+            "a\\;+\\;b", "x^{\\!}",
             "\\begin{cases}1&x\\\\2\\end{cases}",
             // T71: infix fractions split their group, combinatorics.
             "\\choose", "\\brack", "\\brace", "\\over", "\\atop", "{n \\choose k}",

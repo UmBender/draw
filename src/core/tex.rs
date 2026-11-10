@@ -137,6 +137,29 @@ pub const BIN_SPACE: f32 = 2.0 / 9.0;
 /// after punctuation: TeX's thin space, 1/6 em.
 pub const OP_SPACE: f32 = 1.0 / 6.0;
 
+/// Interword space of `\ ` and `~`: Computer Modern's, 1/3 em
+/// (ADR-T99-1).
+pub const INTERWORD_SPACE: f32 = 1.0 / 3.0;
+
+/// The spacing commands as typed and their widths in em (ADR-T99-1);
+/// `\,` is a glyph of the symbol table instead (ADR-T36-1).
+pub const KERNS: &[(&str, f32)] = &[
+    ("\\:", 4.0 / 18.0),
+    ("\\;", 5.0 / 18.0),
+    ("\\!", -3.0 / 18.0),
+    ("\\quad", 1.0),
+    ("\\qquad", 2.0),
+    ("\\ ", INTERWORD_SPACE),
+    ("~", INTERWORD_SPACE),
+];
+
+/// The width in em of the spacing command typed as `source`; `None` when
+/// it is not one of [`KERNS`].
+#[must_use]
+pub fn kern(source: &str) -> Option<f32> {
+    KERNS.iter().find(|(s, _)| *s == source).map(|(_, w)| *w)
+}
+
 /// Room kept above and below a formula in its line.
 pub const MATH_PAD: f32 = 0.03;
 
@@ -254,6 +277,9 @@ pub enum Node {
         /// least one row of at least one cell.
         rows: Vec<Vec<Vec<Node>>>,
     },
+    /// A spacing command of [`KERNS`], as typed: space that is not an
+    /// atom, so it never changes its neighbours' classes (ADR-T99-1).
+    Kern(String),
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -1822,6 +1848,7 @@ impl<'a> Parser<'a> {
         self.pos += 1;
         match ch {
             '{' | '}' => Node::Literal(ch.to_string()),
+            '~' => Node::Kern(ch.to_string()),
             _ => Node::Char(ch),
         }
     }
@@ -1895,7 +1922,16 @@ impl<'a> Parser<'a> {
             }),
             Some('\\') => {
                 let name = self.name(end);
-                symbol(&name).map(|_| (false, vec![Node::Symbol(name)]))
+                let source = format!("\\{name}");
+                if symbol(&name).is_some() {
+                    Some((false, vec![Node::Symbol(name)]))
+                } else {
+                    kern(&source).map(|_| (false, vec![Node::Kern(source)]))
+                }
+            }
+            Some('~') => {
+                self.pos += 1;
+                Some((false, vec![Node::Kern("~".to_owned())]))
             }
             Some('}' | '^' | '_') | None => None,
             Some(ch) => {
@@ -1927,6 +1963,10 @@ impl<'a> Parser<'a> {
         let name = self.name(end);
         if symbol(&name).is_some() {
             return Node::Symbol(name);
+        }
+        let source = format!("\\{name}");
+        if kern(&source).is_some() {
+            return Node::Kern(source);
         }
         let after = self.pos;
         let node = match name.as_str() {
@@ -2338,7 +2378,7 @@ fn print_nodes(nodes: &[Node], out: &mut String) {
 
 fn print_node(node: &Node, out: &mut String) {
     match node {
-        Node::Space(text) | Node::Literal(text) => out.push_str(text),
+        Node::Space(text) | Node::Kern(text) | Node::Literal(text) => out.push_str(text),
         Node::Char(ch) => out.push(*ch),
         Node::Symbol(name) => {
             out.push('\\');
@@ -2476,7 +2516,10 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
         1.0
     };
     let mut atoms: Vec<(MathBox, Class)> = Vec::with_capacity(nodes.len());
-    push_atoms(nodes, scale, style, &mut atoms);
+    // The kerns typed before each atom, then those after the last one
+    // (ADR-T99-1): one more entry than atoms.
+    let mut kerns: Vec<f32> = vec![0.0];
+    push_atoms(nodes, scale, style, &mut atoms, &mut kerns);
     // A binary operator without an operand on both sides is ordinary.
     for i in 0..atoms.len() {
         if atoms[i].1 != Class::Bin {
@@ -2501,29 +2544,79 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
             atoms[i].1 = Class::Ord;
         }
     }
-    let mut boxes = Vec::with_capacity(atoms.len() * 2);
+    let mut boxes = Vec::with_capacity(atoms.len() * 3 + 1);
+    // Width laid out so far: a negative kern never takes the cursor left
+    // of the row's start (ADR-T99-1).
+    let mut cursor = 0.0_f32;
     let mut prev: Option<Class> = None;
-    for (b, class) in atoms {
+    for ((b, class), kern) in atoms.into_iter().zip(kerns.iter().copied()) {
         if let Some(prev) = prev {
             let space = spacing(prev, class, scale);
             if space > 0.0 {
-                boxes.push(MathBox::gap(space));
+                push_box(&mut boxes, &mut cursor, MathBox::gap(space));
             }
         }
+        push_kern(&mut boxes, &mut cursor, kern);
         prev = Some(class);
-        boxes.push(b);
+        push_box(&mut boxes, &mut cursor, b);
     }
+    push_kern(
+        &mut boxes,
+        &mut cursor,
+        kerns.last().copied().unwrap_or(0.0),
+    );
     MathBox::row(boxes)
 }
 
+/// Pushes `b` onto a row being built and moves its `cursor` past it.
+fn push_box(boxes: &mut Vec<MathBox>, cursor: &mut f32, b: MathBox) {
+    *cursor += b.width;
+    boxes.push(b);
+}
+
+/// Pushes a kern `width` wide onto a row being built, cut so the cursor
+/// never goes left of the row's start (ADR-T99-1).
+fn push_kern(boxes: &mut Vec<MathBox>, cursor: &mut f32, width: f32) {
+    let width = width.max(-*cursor);
+    if width.is_finite() && width != 0.0 {
+        push_box(boxes, cursor, MathBox::gap(width));
+    }
+}
+
 /// The atoms of `nodes` onto `out`, with each shortcut's long form
-/// spliced in among its neighbours (ADR-T69-1).
-fn push_atoms(nodes: &[Node], scale: f32, style: Style, out: &mut Vec<(MathBox, Class)>) {
+/// spliced in among its neighbours (ADR-T69-1). Kerns add to the last
+/// entry of `kerns`, and each atom opens a new one (ADR-T99-1).
+fn push_atoms(
+    nodes: &[Node],
+    scale: f32,
+    style: Style,
+    out: &mut Vec<(MathBox, Class)>,
+    kerns: &mut Vec<f32>,
+) {
     for node in nodes {
-        match expand(node) {
-            Some(long) => push_atoms(&long, scale, style, out),
-            None => out.extend(atom(node, scale, style)),
+        if let Some(width) = kern_width(node, scale) {
+            if let Some(last) = kerns.last_mut() {
+                *last += width;
+            }
+            continue;
         }
+        match expand(node) {
+            Some(long) => push_atoms(&long, scale, style, out, kerns),
+            None => {
+                if let Some(a) = atom(node, scale, style) {
+                    out.push(a);
+                    kerns.push(0.0);
+                }
+            }
+        }
+    }
+}
+
+/// The width of a [`Node::Kern`] at `scale`; `None` for other nodes.
+fn kern_width(node: &Node, scale: f32) -> Option<f32> {
+    match node {
+        Node::Kern(source) => Some(kern(source).unwrap_or(0.0) * scale),
+        _ => None,
     }
 }
 
@@ -2580,6 +2673,12 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
     }
     let atom = match node {
         Node::Space(_) => return None,
+        // A kern on its own (a script's base) is an empty box; never
+        // negative, so nothing hangs left of it (ADR-T99-1).
+        Node::Kern(_) => (
+            MathBox::gap(kern_width(node, scale).unwrap_or(0.0).max(0.0)),
+            Class::Ord,
+        ),
         Node::Char(ch) => {
             let shown = if *ch == '-' { MINUS } else { style.map(*ch) };
             (MathBox::math(shown, scale), char_class(*ch))
@@ -3673,9 +3772,187 @@ mod tests {
         // A control symbol outside the table; a `\` before the closing
         // `$` would escape it instead.
         assert_eq!(
-            math("\\;x"),
-            vec![Node::Literal("\\;".to_owned()), Node::Char('x')]
+            math("\\@x"),
+            vec![Node::Literal("\\@".to_owned()), Node::Char('x')]
         );
+    }
+
+    // ---- T99 spacing commands (ADR-T99-1) ------------------------------------
+
+    /// The sources of the spacing commands and their widths in em.
+    const SPACINGS: [(&str, f32); 7] = [
+        ("\\:", 4.0 / 18.0),
+        ("\\;", 5.0 / 18.0),
+        ("\\!", -3.0 / 18.0),
+        ("\\quad", 1.0),
+        ("\\qquad", 2.0),
+        ("\\ ", INTERWORD_SPACE),
+        ("~", INTERWORD_SPACE),
+    ];
+
+    #[test]
+    fn tex_parse_spacing_commands_are_kerns() {
+        for (src, _) in SPACINGS {
+            assert_eq!(math(src), vec![Node::Kern(src.to_owned())], "{src:?}");
+        }
+        assert_eq!(
+            math("a\\;b"),
+            vec![
+                Node::Char('a'),
+                Node::Kern("\\;".to_owned()),
+                Node::Char('b')
+            ]
+        );
+        assert_eq!(
+            math("\\quad x"),
+            vec![
+                Node::Kern("\\quad".to_owned()),
+                Node::Space(" ".to_owned()),
+                Node::Char('x'),
+            ]
+        );
+        // A longer word is not a spacing command.
+        assert_eq!(math("\\quadx"), vec![Node::Literal("\\quadx".to_owned())]);
+    }
+
+    #[test]
+    fn tex_parse_spacing_commands_print_back() {
+        for src in [
+            "$a\\:b\\;c\\!d\\quad e\\qquad f\\ g~h$",
+            "$x^\\; y_{\\!}$",
+            "a~b $\\,\\!\\,$ c\\ d",
+        ] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_layout_spacing_commands_have_their_widths() {
+        let ab = mm(A).advance + mm(B).advance;
+        for (src, em) in SPACINGS {
+            // Act
+            let w = boxed(&format!("a{src} b")).width;
+
+            // Assert
+            assert!(approx_eq(w - ab, em, EPS), "{src:?}: {}", w - ab);
+        }
+        assert!(approx_eq(INTERWORD_SPACE, 1.0 / 3.0, EPS));
+    }
+
+    #[test]
+    fn tex_layout_spacing_commands_scale_in_scripts() {
+        let plain = boxed("a^{xy}").width;
+        for (src, em) in SPACINGS {
+            // Act
+            let w = boxed(&format!("a^{{x{src} y}}")).width;
+
+            // Assert
+            assert!(
+                approx_eq(w - plain, em * SCRIPT_SCALE, EPS),
+                "{src:?}: {}",
+                w - plain
+            );
+        }
+    }
+
+    #[test]
+    fn tex_layout_negative_space_pulls_neighbours_together() {
+        // Act
+        let b = boxed("a\\!b");
+
+        // Assert
+        let pulled = mm(A).advance - 3.0 / 18.0;
+        assert!(
+            approx_eq(b.width, pulled + mm(B).advance, EPS),
+            "{}",
+            b.width
+        );
+        let (pos, _) = glyph(&b.ink, B);
+        assert!(approx_eq(pos.x, pulled, EPS), "{pos:?}");
+    }
+
+    #[test]
+    fn tex_layout_negative_space_never_makes_width_negative() {
+        // Arrange
+        let many = "\\!".repeat(8);
+
+        // Act
+        let alone = boxed(&many);
+        let leading = boxed(&format!("{many}a"));
+        let between = boxed(&format!("a{many}b"));
+        let block = layout(&parse(&format!("${many}$")));
+
+        // Assert
+        assert!(approx_eq(alone.width, 0.0, EPS), "{}", alone.width);
+        assert!(
+            approx_eq(leading.width, mm(A).advance, EPS),
+            "{}",
+            leading.width
+        );
+        assert!(
+            approx_eq(between.width, mm(B).advance, EPS),
+            "{}",
+            between.width
+        );
+        for b in [&alone, &leading, &between] {
+            for (_, pos, _, _) in glyphs(&b.ink) {
+                assert!(pos.x >= -EPS, "{pos:?}");
+            }
+        }
+        assert!(block.width >= 0.0, "{}", block.width);
+    }
+
+    #[test]
+    fn tex_layout_spacing_commands_keep_atom_classes() {
+        let width = |src| boxed(src).width;
+        let ab = mm(A).advance + mm(B).advance;
+        let thick = 5.0 / 18.0;
+
+        // A binary operator keeps its space beside explicit spaces.
+        assert!(approx_eq(
+            width("a\\;+\\;b"),
+            ab + adv("+") + 2.0 * BIN_SPACE + 2.0 * thick,
+            EPS
+        ));
+        // A leading minus stays unary after a space.
+        assert!(approx_eq(
+            width("\\;-a"),
+            thick + adv("\u{2212}") + mm(A).advance,
+            EPS
+        ));
+        // A relation keeps its space too.
+        assert!(approx_eq(
+            width("a=\\quad b"),
+            ab + adv("=") + 2.0 * REL_SPACE + 1.0,
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_layout_only_spacing_commands_is_finite() {
+        for src in [
+            "$\\quad$",
+            "$\\!$",
+            "$\\!\\!\\!\\!$",
+            "$~~~$",
+            "$\\ \\;\\:\\qquad$",
+            "$x^{\\!\\!}$",
+            "$\\;^2$",
+            "$\\frac{\\!}{\\quad}$",
+            "$\\sqrt{\\!\\!\\!}$",
+            "$\\left(\\!\\!\\right)$",
+        ] {
+            // Act
+            let l = layout(&parse(src));
+
+            // Assert
+            assert!(l.width.is_finite() && l.width >= 0.0, "{src:?}");
+            assert!(l.height.is_finite() && l.height > 0.0, "{src:?}");
+            for ink in &l.ink {
+                let ib = ink.bounds();
+                assert!(ib.min.is_finite() && ib.max.is_finite(), "{src:?} {ink:?}");
+            }
+        }
     }
 
     #[test]
@@ -3773,6 +4050,7 @@ mod tests {
                 "\\begin", "\\end", "\\begin{matrix}", "\\end{matrix}", "\\begin{pmatrix}",
                 "\\end{pmatrix}", "\\begin{cases}", "\\end{cases}", "\\begin{foo}", "\\end{foo}",
                 "&", "\\\\",
+                "\\:", "\\;", "\\!", "\\!\\!\\!", "\\quad", "\\qquad", "\\ ", "~",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
