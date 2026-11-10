@@ -106,6 +106,15 @@ impl fmt::Display for GraphError {
 
 impl std::error::Error for GraphError {}
 
+/// The name of a node of an [`EdgeList`] (ADR-T98-1).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NodeName {
+    /// ASCII digits that fit a `u32`, drawn as a numbered circle.
+    Number(u32),
+    /// A `$…$` formula as written, drawn as text inside its circle.
+    Math(String),
+}
+
 /// One edge of an [`EdgeList`]; never a self-loop.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Edge {
@@ -124,7 +133,7 @@ pub struct Edge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeList {
     /// Node names, in the order they were first named.
-    names: Vec<u32>,
+    names: Vec<NodeName>,
     /// The edges, in the order they were written.
     edges: Vec<Edge>,
 }
@@ -164,15 +173,15 @@ impl EdgeList {
 
         let mut names = Vec::new();
         let mut index_of = HashMap::new();
-        let mut node = |name| {
-            *index_of.entry(name).or_insert_with(|| {
+        let mut node = |name: NodeName| {
+            *index_of.entry(name.clone()).or_insert_with(|| {
                 names.push(name);
                 names.len() - 1
             })
         };
         // A parent list's root is named first, so the tree hangs from it.
         if let Some(root) = root {
-            node(root);
+            node(NodeName::Number(root));
         }
         let mut edges: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
@@ -204,7 +213,7 @@ impl EdgeList {
 
     /// Node names, in the order they were first named.
     #[must_use]
-    pub fn names(&self) -> &[u32] {
+    pub fn names(&self) -> &[NodeName] {
         &self.names
     }
 
@@ -259,7 +268,7 @@ impl EdgeList {
             .names
             .iter()
             .zip(&centres)
-            .map(|(name, centre)| node_circle(*name, *centre + shift, radius, size, style));
+            .map(|(name, centre)| node_circle(name, *centre + shift, radius, size, style));
         let shapes: Vec<Shape> = lines.into_iter().chain(circles).chain(weights).collect();
         shapes.iter().all(Shape::is_finite).then_some(shapes)
     }
@@ -380,9 +389,9 @@ impl InputFormat {
 /// One edge as written, before its nodes get indices.
 struct RawEdge<'a> {
     /// First node's name.
-    u: u32,
+    u: NodeName,
     /// Second node's name.
-    v: u32,
+    v: NodeName,
     /// Whether it was written `u>v`.
     directed: bool,
     /// Its weight as written.
@@ -421,7 +430,11 @@ fn skip_count_line<'a, 'b>(lines: &'b [(usize, &'a str)]) -> &'b [(usize, &'a st
                 .iter()
                 .filter_map(|(_, line)| line_edges(line, false))
                 .flatten()
-                .map(|raw| raw.u.max(raw.v))
+                .flat_map(|raw| [raw.u, raw.v])
+                .filter_map(|name| match name {
+                    NodeName::Number(n) => Some(n),
+                    NodeName::Math(_) => None,
+                })
                 .max()
                 .unwrap_or(0);
             n.parse::<u32>().is_ok_and(|n| n >= largest)
@@ -480,10 +493,10 @@ fn parent_edges<'a>(
             .checked_add(offset)
             .and_then(name_at)
             .ok_or(not_an_edge(number))?;
-        let parent = node_name(entry).ok_or(not_an_edge(number))?;
+        let parent = number_name(entry).ok_or(not_an_edge(number))?;
         raws.push(RawEdge {
-            u: parent,
-            v: child,
+            u: NodeName::Number(parent),
+            v: NodeName::Number(child),
             directed: false,
             weight: None,
         });
@@ -560,12 +573,40 @@ fn plain_edge<'a>(
     })
 }
 
-/// A node name: ASCII digits that fit a `u32`.
-fn node_name(token: &str) -> Option<u32> {
+/// A node name: a number name or a math token (ADR-T98-1).
+fn node_name(token: &str) -> Option<NodeName> {
+    number_name(token).map(NodeName::Number)
+}
+
+/// A number name: ASCII digits that fit a `u32`.
+fn number_name(token: &str) -> Option<u32> {
     if token.starts_with('+') {
         return None;
     }
     token.parse().ok()
+}
+
+/// Whether `token` is one formula: `$`, then text with no `$` that is not
+/// blank, then `$` (ADR-T98-1).
+#[expect(dead_code, reason = "used once implemented")]
+fn is_math(token: &str) -> bool {
+    let _ = token;
+    todo!()
+}
+
+/// The tokens of `line`, split on whitespace outside `$…$`; `None` when a
+/// `$` is not closed (ADR-T98-1).
+#[expect(dead_code, reason = "used once implemented")]
+fn tokens(line: &str) -> Option<Vec<&str>> {
+    let _ = line;
+    todo!()
+}
+
+/// The byte index of the first `-` or `>` of `token` outside `$…$`.
+#[expect(dead_code, reason = "used once implemented")]
+fn separator_at(token: &str) -> Option<usize> {
+    let _ = token;
+    todo!()
 }
 
 /// The smallest `x` and the smallest `y` of `points`.
@@ -578,7 +619,7 @@ fn top_left(points: &[Vec2]) -> Vec2 {
 
 /// The circle of node `name`: labelled, or holding the text `0`, a number
 /// below every label (ADR-T87-1).
-fn node_circle(name: u32, centre: Vec2, radius: f32, size: f32, style: Style) -> Shape {
+fn node_circle(name: &NodeName, centre: Vec2, radius: f32, size: f32, style: Style) -> Shape {
     let corner = Vec2::new(radius, radius);
     let circle = Shape::Ellipse {
         a: centre - corner,
@@ -588,10 +629,14 @@ fn node_circle(name: u32, centre: Vec2, radius: f32, size: f32, style: Style) ->
         label: None,
         text: None,
     };
-    if name >= FIRST_NUMBER {
-        circle.with_label(Some(name))
-    } else {
-        circle.with_slot_text(TextSlot::Shape, ShapeText::new(name.to_string(), size))
+    match name {
+        NodeName::Number(n) if *n >= FIRST_NUMBER => circle.with_label(Some(*n)),
+        NodeName::Number(n) => {
+            circle.with_slot_text(TextSlot::Shape, ShapeText::new(n.to_string(), size))
+        }
+        NodeName::Math(math) => {
+            circle.with_slot_text(TextSlot::Shape, ShapeText::new(math.clone(), size))
+        }
     }
 }
 
