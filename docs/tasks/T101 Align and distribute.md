@@ -5,7 +5,7 @@ status: review
 wave: 58
 branch: task/T101-align-distribute
 depends_on: [T100]
-adrs: ["[[ADR-T101-1 Align and distribute keys]]", "[[ADR-T101-2 Rows and columns without overlap]]"]
+adrs: ["[[ADR-T101-1 Align and distribute keys]]", "[[ADR-T101-2 Rows and columns without overlap]]", "[[ADR-T101-3 Compact rows and columns]]"]
 feature: "[[Editing tools]]"
 tutorial: ""
 tags: [task]
@@ -25,7 +25,7 @@ With two or more shapes selected, `Alt+←/→/↑/↓` align them to that side 
 
 ## Spec
 
-Rules: [[ADR-T101-1 Align and distribute keys]], amended by [[ADR-T101-2 Rows and columns without overlap]].
+Rules: [[ADR-T101-1 Align and distribute keys]], amended by [[ADR-T101-2 Rows and columns without overlap]] and [[ADR-T101-3 Compact rows and columns]].
 
 - **AC-1** — `Alt+←` moves every selected shape so its left edge meets the selection box's left edge; `→`, `↑`, `↓` likewise for right, top and bottom. Each shape moves as a whole (by its bounds).
   - `keymap::tests::alt_arrows_align_and_alt_h_v_distribute`, `keymap::tests::every_documented_binding`
@@ -33,13 +33,13 @@ Rules: [[ADR-T101-1 Align and distribute keys]], amended by [[ADR-T101-2 Rows an
   - `editor::tests::alt_arrows_align_each_side`
   - `editor::tests::align_moves_grid_and_text_as_whole_shapes`
   - `select::tests::align_selection_moves_by_bounds`
-- **AC-2** (owner, amended by ADR-T101-2) — `Alt+H` lays two or more shapes out as a row: sorted by left edge, the first one never moves, every shape's centre `y` meets the first one's, and neighbours get equal gaps of `max(natural, ¼ × largest width)`, `natural` being the equal gap with the first and last fixed. So with room enough the last one stays put; otherwise the row grows to the right and nothing overlaps. `Alt+V` does the same as a column.
+- **AC-2** (owner, amended by ADR-T101-2 and ADR-T101-3) — `Alt+H` lays two or more shapes out as a compact row: sorted by left edge, the first one never moves, every shape's centre `y` meets the first one's, and neighbours get equal gaps of `¼ ×` the largest width, whatever the starting spacing, so nothing overlaps. `Alt+V` does the same as a column.
   - `editor::tests::alt_h_spaces_shapes_with_equal_gaps`
   - `editor::tests::alt_v_spaces_shapes_with_equal_vertical_gaps`
   - `editor::tests::distribute_overlapping_shapes_grows_the_row`
   - `editor::tests::distribute_two_overlapping_shapes_separates_them`
   - `select::tests::distribute_sorts_by_left_edge_not_selection_order`
-  - `select::tests::distribute_lays_out_a_row_without_overlap` (proptest)
+  - `select::tests::distribute_lays_out_a_compact_row` (proptest)
 - **AC-3** — Fewer than two shapes, or nothing that would move, changes nothing and adds no undo step.
   - `editor::tests::align_with_one_shape_does_nothing`
   - `editor::tests::distribute_with_one_shape_does_nothing`
@@ -92,3 +92,4 @@ None: it extends an existing area.
 - 2026-11-10 — found while fuzzing (no bug): a second click on the only selected rectangle opens its text (ADR-T31-1), so a following `Alt+←` moves the caret and `Undo` cancels the text. The fuzz property closes the text with `Esc` before its final undos, as the T100 one does.
 - 2026-11-10 — manual checks for the owner: align a few uneven graph nodes with `Alt+arrows`, space them with `Alt+H` / `Alt+V`, undo; `Alt+arrow` on X11 and Wayland (some desktops bind `Alt+arrow` themselves).
 - 2026-11-10 — owner review: `Alt+H` / `Alt+V` left overlapping nodes overlapped and off the line. The owner chose a row / column without overlap: ADR-T101-2 amends the distribute rule (cross-axis centring on the first shape, minimum gap ¼ of the largest size, two shapes enough).
+- 2026-11-10 — owner review: rows should always be compact. ADR-T101-3 makes the gap always ¼ of the largest size; the last shape moves too.
