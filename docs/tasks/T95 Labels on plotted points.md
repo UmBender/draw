@@ -1,7 +1,7 @@
 ---
 id: T95
 title: Labels on plotted points
-status: in-progress
+status: review
 wave: 54
 branch: task/T95-point-labels
 depends_on: [T93]
@@ -53,12 +53,12 @@ The fuzzer's point lists include labels (`arb_point_text` in `tests/fuzz.rs`).
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T95): specify labels on plotted points`
-- [ ] tests — `test(T95): add failing tests`
-- [ ] models — `feat(T95): add types`
-- [ ] behaviour — `feat(T95): implement`
-- [ ] quality — `chore(T95): pass clippy and rustfmt`
-- [ ] docs — `docs(T95): update the feature note`
+- [x] spec — `docs(T95): specify labels on plotted points`
+- [x] tests — `test(T95): add failing tests`
+- [x] models — `feat(T95): add types`
+- [x] behaviour — `feat(T95): implement`
+- [x] quality — `chore(T95): pass clippy and rustfmt`
+- [x] docs — `docs(T95): update the feature note`
 
 ## Learning path
 
@@ -67,3 +67,4 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's request: labels go on the coordinate plane's points, as a third column.
+- 2026-11-09 — implemented on `task/T95-point-labels`. `check.sh --fuzz` green (1 687 library tests, 20 000 fuzz cases). The quality step changed nothing, so it has no commit. One T93 test changed: `1 2 3` is now a point labelled `3`, so it left `parse_refuses_what_is_not_a_point`. Left for the owner: plot a labelled sample, for example `0 0 A`, `4 0 B`, `2 3 $C$`, and judge where the labels sit.
