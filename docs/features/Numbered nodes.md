@@ -87,12 +87,14 @@ lines. If it holds one `-1`, it has one entry per node, counted from 1
 
 `segtree: 8`, or `segtree:` with `8` on the next line, draws the segment
 tree over positions 1 to 8 ([[T104 Segment tree drawing]]). After `Ctrl+N`
-the positions are 0 to 7. Every node is a circle holding its closed range,
-typeset as `$[l, r]$`; a node `[l, r]` splits into `[l, m]` and
-`[m+1, r]` with `m = ⌊(l+r)/2⌋`, down to the leaves `[i, i]`, so `n`
-positions give `2n − 1` circles. The tree is drawn in layers from
-`[1, 8]`, left child on the left, and all circles share the size of the
-widest range. The size goes from 1 to 100; any other size, a word, or
+the positions are 0 to 7. Every node is a square holding its closed
+range, typeset as `$[l, r]$`, with an empty square under it to write
+the node's value (click it with `T`). A node `[l, r]` splits into
+`[l, m]` and `[m+1, r]` with `m = ⌊(l+r)/2⌋`, down to the leaves
+`[i, i]`, so `n` positions give `2n − 1` nodes. The tree is drawn in
+layers from `[1, 8]`, left child on the left, each edge from a value box
+down to a child; all squares share the size of the widest range
+([[ADR-T104-2 Segment tree nodes as boxes]]). The size goes from 1 to 100; any other size, a word, or
 anything after the size leaves the block as it is and names the line in
 the diagnostics log. `segtree:` alone does nothing.
 
@@ -126,8 +128,10 @@ line of pairs, giving a weight token to the pair before it, and
 ([[ADR-T102-1 Weights after pairs, root 0 and weighted keywords]]).
 `EdgeList::parse_numbered` takes the editor's first number;
 `segment_tree_edges` reads a `segtree:` size and writes the ranges as
-math names in preorder, so the layered layout and `node_radius` draw them
-like any tree ([[ADR-T104-1 Segment tree keyword]]).
+math names in preorder ([[ADR-T104-1 Segment tree keyword]]); the list
+remembers it is a segment tree, and `box_shapes` draws it with the
+layered layout, squares sized by `box_half` and one value square per
+node ([[ADR-T104-2 Segment tree nodes as boxes]]).
 
 ## Limits
 
@@ -152,5 +156,5 @@ like any tree ([[ADR-T104-1 Segment tree keyword]]).
   root marker always has root 1 (`parents:`) or 0 (`parents0:`). Parent
   lists carry no weights.
 - Parallel edges of different weights overlap.
-- A segment tree holds closed ranges only: no values, lazy tags or
-  half-open ranges, and at most 100 positions.
+- A segment tree holds closed ranges only: the value boxes start empty,
+  there are no lazy tags or half-open ranges, and at most 100 positions.

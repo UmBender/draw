@@ -92,7 +92,8 @@ inside one starts a free text block.
 - **Graph**: `N` on, `C` for nodes (numbered 1, 2, …), `A` for directed
   edges; `X` makes edges meet the circles' outlines.
 - **Segment tree**: type `segtree: 8` in a text block, `Esc`, select it,
-  `Ctrl+L`: circles `[1, 8]`, `[1, 4]`, … (`[0, 7]` after `Ctrl+N`).
+  `Ctrl+L`: squares `[1, 8]`, `[1, 4]`, … (`[0, 7]` after `Ctrl+N`), each
+  with an empty value box under it.
 - **DP table**: `G`, `→`/`↓` to size it while dragging, `N` for indices,
   `B` to fill cells, `E` on a fill to clear it.
 - **Start over**: `Ctrl+Backspace`, then `Shift+N`; `Ctrl+Z` brings it back.
