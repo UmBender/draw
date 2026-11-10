@@ -85,6 +85,14 @@ pub enum Edit {
         /// Shape after the edit; must be finite.
         after: Shape,
     },
+    /// Set the lock flag of the shape `id` to `locked`; the flag must
+    /// currently be `!locked` (ADR-T107-1).
+    Lock {
+        /// Id of the shape; must be present.
+        id: ShapeId,
+        /// The flag after the edit.
+        locked: bool,
+    },
 }
 
 impl Edit {
@@ -106,6 +114,10 @@ impl Edit {
                 id: *id,
                 before: after.clone(),
                 after: before.clone(),
+            },
+            Self::Lock { id, locked } => Self::Lock {
+                id: *id,
+                locked: !*locked,
             },
         }
     }
@@ -144,6 +156,7 @@ impl Transaction {
             .map(|edit| match edit {
                 Edit::Insert { shape, .. } | Edit::Remove { shape, .. } => shape.heap_bytes(),
                 Edit::Replace { before, after, .. } => before.heap_bytes() + after.heap_bytes(),
+                Edit::Lock { .. } => 0,
             })
             .sum();
         self.0.capacity() * std::mem::size_of::<Edit>() + shapes
@@ -180,6 +193,8 @@ pub enum ApplyError {
     Mismatch(ShapeId),
     /// An inserted or replacing shape has a non-finite coordinate or width.
     NonFiniteShape(ShapeId),
+    /// A `Remove` names a locked shape; unlock it first (ADR-T107-1).
+    Locked(ShapeId),
 }
 
 impl fmt::Display for ApplyError {
@@ -192,6 +207,7 @@ impl fmt::Display for ApplyError {
             Self::DuplicateId(id) => write!(f, "shape {} is already in the document", id.0),
             Self::Mismatch(id) => write!(f, "shape {} does not match the edit", id.0),
             Self::NonFiniteShape(id) => write!(f, "shape {} has non-finite geometry", id.0),
+            Self::Locked(id) => write!(f, "shape {} is locked", id.0),
         }
     }
 }
@@ -207,6 +223,8 @@ pub struct Document {
     ids: IdSet,
     /// Next id to hand out; only ever grows.
     next_id: u64,
+    /// Ids of the locked shapes, all in `ids` (ADR-T107-1).
+    locked: IdSet,
     /// Id → z-order position, built on the first lookup after an insert or
     /// remove (ADR-T25-1).
     positions: OnceCell<HashMap<ShapeId, usize, IdBuildHasher>>,
@@ -278,11 +296,11 @@ fn run_length(
     len
 }
 
-/// Same shapes in the same order with the same ids, and the same next id;
-/// the lookup cache does not count.
+/// Same shapes in the same order with the same ids, the same locked ids
+/// and the same next id; the lookup cache does not count.
 impl PartialEq for Document {
     fn eq(&self, other: &Self) -> bool {
-        self.next_id == other.next_id && self.shapes == other.shapes
+        self.next_id == other.next_id && self.shapes == other.shapes && self.locked == other.locked
     }
 }
 
@@ -300,17 +318,36 @@ impl Document {
         self.next_id
     }
 
-    /// A document holding `shapes` in z-order. The caller checks that the
-    /// ids are unique and below `next_id` (snapshots, ADR-T74-1).
+    /// A document holding `shapes` in z-order with the shapes `locked`
+    /// locked. The caller checks that the ids are unique and below
+    /// `next_id`, and that every locked id is one of them (snapshots,
+    /// ADR-T74-1, ADR-T107-1).
     #[must_use]
-    pub(crate) fn from_parts(shapes: Vec<(ShapeId, Shape)>, next_id: u64) -> Self {
+    pub(crate) fn from_parts(
+        shapes: Vec<(ShapeId, Shape)>,
+        locked: IdSet,
+        next_id: u64,
+    ) -> Self {
         let ids = shapes.iter().map(|(id, _)| *id).collect();
         Self {
             shapes,
             ids,
             next_id,
+            locked,
             positions: OnceCell::new(),
         }
+    }
+
+    /// Whether the shape `id` is locked; `false` for an unknown id
+    /// (ADR-T107-1).
+    #[must_use]
+    pub fn is_locked(&self, id: ShapeId) -> bool {
+        todo!("{id:?}")
+    }
+
+    /// The locked ids, bottom to top (ADR-T107-1).
+    pub fn locked_ids(&self) -> impl Iterator<Item = ShapeId> + '_ {
+        self.shapes().map(|(id, _)| id).filter(|id| self.is_locked(*id))
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.
@@ -360,6 +397,13 @@ impl Document {
             .rev()
             .find(|(_, shape)| pred(shape))
             .map(|(id, _)| *id)
+    }
+
+    /// The topmost unlocked shape satisfying `pred`, searching from the
+    /// top down: what a click can select (ADR-T107-1).
+    pub fn topmost_unlocked_where(&self, pred: impl FnMut(&Shape) -> bool) -> Option<ShapeId> {
+        let _ = pred;
+        todo!()
     }
 
     /// Apply every edit of `tx` in order, or none of them.
@@ -550,9 +594,30 @@ impl Document {
                 }
                 slot.clone_from(after);
             }
+            Edit::Lock { id, locked } => {
+                let _ = (id, locked);
+                todo!()
+            }
         }
         Ok(())
     }
+}
+
+/// Transaction locking the unlocked shapes among `ids`, each once, in
+/// z-order; unknown ids are skipped. Empty when there is nothing to lock
+/// (ADR-T107-1).
+#[must_use]
+pub fn tx_lock(doc: &Document, ids: &[ShapeId]) -> Transaction {
+    let _ = (doc, ids);
+    todo!()
+}
+
+/// Transaction unlocking every locked shape, in z-order. Empty when no
+/// shape is locked (ADR-T107-1).
+#[must_use]
+pub fn tx_unlock_all(doc: &Document) -> Transaction {
+    let _ = doc;
+    todo!()
 }
 
 /// Transaction inserting `shapes` on top, in order, with freshly allocated ids.
@@ -1286,6 +1351,9 @@ mod tests {
                     }
                     shapes[pos].1 = after.clone();
                 }
+                // The model keeps no locks: the edit strategy never makes
+                // lock edits, which have their own tests (T107).
+                Edit::Lock { id, .. } => return Err(ApplyError::Mismatch(*id)),
             }
         }
         Ok(shapes)

@@ -681,6 +681,8 @@ impl Editor {
             }
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
+            Command::LockSelection => self.lock_selection(),
+            Command::UnlockAll => self.unlock_all(),
             Command::Cancel => {
                 if self.cancel_gesture() {
                     true
@@ -1456,6 +1458,19 @@ impl Editor {
         changed || cancelled
     }
 
+    /// Locks the selected shapes as one undo step and clears the selection,
+    /// after cancelling the gesture (ADR-T107-2). Returns whether anything
+    /// changed.
+    fn lock_selection(&mut self) -> bool {
+        todo!()
+    }
+
+    /// Unlocks every locked shape as one undo step, after cancelling the
+    /// gesture (ADR-T107-2). Returns whether anything changed.
+    fn unlock_all(&mut self) -> bool {
+        todo!()
+    }
+
     /// The id and shape of the grid the arrow keys resize: the Select tool
     /// is active and that grid is the whole selection (ADR-T85-1).
     fn resizable_grid(&self) -> Option<(ShapeId, &Shape)> {
@@ -1587,6 +1602,8 @@ fn edits_document(command: Command) -> bool {
             | Command::PlotFromText
             | Command::DeleteSelection
             | Command::ClearAll
+            | Command::LockSelection
+            | Command::UnlockAll
             | Command::GridCols(_)
             | Command::GridRows(_)
             | Command::ScaleUp

@@ -22,7 +22,7 @@ use std::fmt::{self, Write as _};
 use std::str::FromStr;
 
 use crate::core::command::Tool;
-use crate::core::document::{Document, Edit, ShapeId, Transaction};
+use crate::core::document::{Document, Edit, IdSet, ShapeId, Transaction};
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{Modifiers, PointerButton};
@@ -1183,6 +1183,10 @@ fn write_edit(w: &mut Writer, edit: &Edit) {
         Edit::Replace { id, before, after } => w.record("replace", |l| {
             l.put(id).put(before).put(after);
         }),
+        Edit::Lock { id, locked } => {
+            let _ = (id, locked);
+            todo!()
+        }
     }
 }
 
@@ -1284,7 +1288,8 @@ pub(crate) fn read_document(r: &mut Reader<'_>) -> Result<Document, SnapshotErro
         }
         shapes.push((id, shape));
     }
-    Ok(Document::from_parts(shapes, next_id))
+    let locked = IdSet::default();
+    Ok(Document::from_parts(shapes, locked, next_id))
 }
 
 /// Writes the `[clipboard]` section.

@@ -101,7 +101,7 @@ pub(crate) fn insert_copies(ctx: &mut ToolCtx<'_>, shapes: Vec<Shape>, delta: Ve
         .iter()
         .filter_map(|edit| match edit {
             Edit::Insert { id, .. } => Some(*id),
-            Edit::Remove { .. } | Edit::Replace { .. } => None,
+            Edit::Remove { .. } | Edit::Replace { .. } | Edit::Lock { .. } => None,
         })
         .collect();
     if !ctx.commit(tx) {
