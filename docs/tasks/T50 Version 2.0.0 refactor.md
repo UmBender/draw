@@ -2,7 +2,7 @@
 id: T50
 title: Version 2.0.0 refactor
 status: todo
-wave: 60
+wave: 62
 branch: task/T50-v2-refactor
 depends_on: [T46, T47, T48, T49, T51, T52, T53]
 adrs: []

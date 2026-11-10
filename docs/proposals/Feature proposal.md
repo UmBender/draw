@@ -68,33 +68,33 @@ Fill *Verdict* with `accepted`, `later` or `rejected`.
 | 6   | E3 Bucket drag across cells        | 3     | S    | low    | 1    | 3.00  | accepted |
 | 7   | C2 Graph or tree from an edge list | 5     | M    | low    | 2    | 2.50  | accepted |
 | 8   | E4 Resize handles                  | 4     | M    | low    | 2    | 2.00  | accepted |
-| 9   | F4 Labelled extensible arrows      | 2     | S    | low    | 1    | 2.00  | later    |
-| 10  | F5 Spacing commands                | 2     | S    | low    | 1    | 2.00  | later    |
-| 11  | E5 Align and distribute            | 2     | S    | low    | 1    | 2.00  | later    |
-| 12  | E6 Z-order keys                    | 2     | S    | low    | 1    | 2.00  | later    |
+| 9   | F4 Labelled extensible arrows      | 2     | S    | low    | 1    | 2.00  | accepted |
+| 10  | F5 Spacing commands                | 2     | S    | low    | 1    | 2.00  | accepted |
+| 11  | E5 Align and distribute            | 2     | S    | low    | 1    | 2.00  | accepted |
+| 12  | E6 Z-order keys                    | 2     | S    | low    | 1    | 2.00  | accepted |
 | 13  | K4 Export the view to PNG          | 3     | S    | medium | 2    | 1.50  | accepted |
 | 14  | C4 Coordinate plane from points    | 3     | M    | low    | 2    | 1.50  | accepted |
 | 15  | F2 Matrices and cases              | 3     | M    | low    | 2    | 1.50  | accepted |
 | 16  | K2 Autosave and crash recovery     | 4     | M    | medium | 3    | 1.33  | accepted |
-| 17  | C3 Segment tree drawing            | 3     | M    | medium | 3    | 1.00  | later    |
-| 18  | F3 Display mode                    | 2     | M    | low    | 2    | 1.00  | later    |
-| 19  | V3 Fading laser pointer            | 2     | S    | medium | 2    | 1.00  | later    |
-| 20  | E8 Lock                            | 1     | S    | low    | 1    | 1.00  | later    |
-| 21  | K3 Save and load                   | 3     | M    | high   | 4    | 0.75  | later    |
-| 22  | V5 Ruler and protractor            | 2     | M    | medium | 3    | 0.67  | later    |
-| 23  | E7 Group and ungroup               | 2     | M    | medium | 3    | 0.67  | later    |
-| 24  | I2 Shape recognition               | 2     | M    | medium | 3    | 0.67  | later    |
-| 25  | V4 Presenter mode                  | 1     | S    | medium | 2    | 0.50  | later    |
-| 26  | E9 Find text                       | 1     | M    | low    | 2    | 0.50  | later    |
-| 27  | K5 Export to SVG                   | 2     | L    | medium | 5    | 0.40  | later    |
-| 28  | K6 Copy the selection as an image  | 2     | L    | medium | 5    | 0.40  | later    |
-| 29  | V1 Pages                           | 2     | L    | medium | 5    | 0.40  | later    |
-| 30  | V2 Minimap                         | 1     | M    | medium | 3    | 0.33  | later    |
-| 31  | E10 Command palette                | 1     | M    | medium | 3    | 0.33  | later    |
-| 32  | F6 User macros                     | 1     | M    | medium | 3    | 0.33  | later    |
-| 33  | I1 Pressure highlighter            | 1     | M    | medium | 3    | 0.33  | later    |
-| 34  | F7 Commutative diagrams            | 1     | L    | high   | 6    | 0.17  | later    |
-| 35  | I3 Handwriting to TeX              | 1     | L    | high   | 6    | 0.17  | later    |
+| 17  | C3 Segment tree drawing            | 3     | M    | medium | 3    | 1.00  | accepted |
+| 18  | F3 Display mode                    | 2     | M    | low    | 2    | 1.00  | accepted |
+| 19  | V3 Fading laser pointer            | 2     | S    | medium | 2    | 1.00  | accepted |
+| 20  | E8 Lock                            | 1     | S    | low    | 1    | 1.00  | accepted |
+| 21  | K3 Save and load                   | 3     | M    | high   | 4    | 0.75  | accepted |
+| 22  | V5 Ruler and protractor            | 2     | M    | medium | 3    | 0.67  | rejected |
+| 23  | E7 Group and ungroup               | 2     | M    | medium | 3    | 0.67  | rejected |
+| 24  | I2 Shape recognition               | 2     | M    | medium | 3    | 0.67  | accepted |
+| 25  | V4 Presenter mode                  | 1     | S    | medium | 2    | 0.50  | rejected |
+| 26  | E9 Find text                       | 1     | M    | low    | 2    | 0.50  | rejected |
+| 27  | K5 Export to SVG                   | 2     | L    | medium | 5    | 0.40  | accepted |
+| 28  | K6 Copy the selection as an image  | 2     | L    | medium | 5    | 0.40  | accepted |
+| 29  | V1 Pages                           | 2     | L    | medium | 5    | 0.40  | accepted |
+| 30  | V2 Minimap                         | 1     | M    | medium | 3    | 0.33  | accepted |
+| 31  | E10 Command palette                | 1     | M    | medium | 3    | 0.33  | accepted |
+| 32  | F6 User macros                     | 1     | M    | medium | 3    | 0.33  | accepted |
+| 33  | I1 Pressure highlighter            | 1     | M    | medium | 3    | 0.33  | rejected |
+| 34  | F7 Commutative diagrams            | 1     | L    | high   | 6    | 0.17  | rejected |
+| 35  | I3 Handwriting to TeX              | 1     | L    | high   | 6    | 0.17  | rejected |
 
 ## Recommended short list
 
@@ -131,6 +131,16 @@ take F1 or E3, in either order.
 - The other ideas are marked `later` by default. Nothing is rejected.
 - The binary limit goes from 2 MiB to 20 MiB ([[T82 Raise the binary size limit]]),
   so the binary figures above no longer constrain any idea.
+
+## Owner's decisions (2026-11-10)
+
+- F5, F4, E6, E5 and C3 are accepted and built: tasks T99–T104.
+- F3, V3, E8, K3, I2, V2, E10, F6, K5, K6 and V1 are accepted: tasks
+  T105–T112 and T114–T116. V3 uses `Q` and I2 uses `Z` (left hand); V2
+  shows while panning instead of on `M`. K3 reverses "nothing is
+  saved". T113 (a paged shortcut sheet on `?`) was added beside E10.
+- V5, E7, V4, E9, I1, F7 and I3 are rejected: not useful enough or out
+  of the project's scope (I3 needs a large offline recognition model).
 
 ## Ideas
 
