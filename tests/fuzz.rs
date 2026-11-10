@@ -236,6 +236,10 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             // T99: spacing commands, a negative run, a spaced operator.
             "\\:", "\\;", "\\!", "\\!\\!\\!\\!", "\\quad", "\\qquad", "\\ ", "~",
             "a\\;+\\;b", "x^{\\!}",
+            // T103: extensible arrows, labels below in brackets, nested.
+            "\\xrightarrow", "\\xleftarrow", "\\xleftrightarrow", "\\xRightarrow",
+            "\\xLeftarrow", "\\xLeftrightarrow", "\\xmapsto", "\\xhookrightarrow", "[", "]",
+            "\\xrightarrow[n\\to\\infty]{f_n}", "\\xrightarrow{\\xrightarrow{a}}",
             "\\begin{cases}1&x\\\\2\\end{cases}",
             // T71: infix fractions split their group, combinatorics.
             "\\choose", "\\brack", "\\brace", "\\over", "\\atop", "{n \\choose k}",
