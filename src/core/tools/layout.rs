@@ -498,6 +498,9 @@ fn parent_edges<'a>(
 /// Plain `u v` lines are arrows when `directed`.
 fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
+    if let Some(joined) = joined_pairs(&tokens) {
+        return joined.iter().map(|token| pair(token)).collect();
+    }
     match tokens.as_slice() {
         [first, ..] if first.contains(SEPARATORS) => {
             tokens.iter().map(|token| pair(token)).collect()
@@ -509,8 +512,28 @@ fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
     }
 }
 
+/// `tokens` joined across separators (ADR-T97-1), so `1 > 3` gives `1>3`;
+/// `None` when nothing is joined. A token ending in `-` or `>` takes the
+/// next one, and a token starting with `>`, or a lone `-`, joins the one
+/// before. `-5` never joins, so it stays a weight.
+fn joined_pairs(tokens: &[&str]) -> Option<Vec<String>> {
+    let opens = |token: &str| token.ends_with(SEPARATORS);
+    let closes = |token: &str| token.starts_with('>') || token == "-";
+    if !tokens.iter().any(|token| opens(token) || closes(token)) {
+        return None;
+    }
+    let mut joined: Vec<String> = Vec::with_capacity(tokens.len());
+    for &token in tokens {
+        match joined.last_mut() {
+            Some(last) if opens(last) || closes(token) => last.push_str(token),
+            _ => joined.push(token.to_owned()),
+        }
+    }
+    Some(joined)
+}
+
 /// The edge a token `u-v` or `u>v` writes.
-fn pair(token: &str) -> Option<RawEdge<'_>> {
+fn pair<'a>(token: &str) -> Option<RawEdge<'a>> {
     let at = token.find(SEPARATORS)?;
     let (u, rest) = token.split_at(at);
     Some(RawEdge {
@@ -1647,6 +1670,60 @@ mod tests {
         // Assert
         let directed: Vec<bool> = list.edges().iter().map(|edge| edge.directed).collect();
         assert_eq!(directed, [false, true]);
+    }
+
+    #[test]
+    fn parse_reads_a_spaced_directed_pair() {
+        assert_eq!(edges(&list("1 > 3")), [(1, 3, true, None)]);
+    }
+
+    #[test]
+    fn parse_reads_a_spaced_undirected_pair() {
+        assert_eq!(edges(&list("1 - 3")), [(1, 3, false, None)]);
+    }
+
+    #[test]
+    fn parse_reads_separators_touching_one_node() {
+        // Act
+        let list = list("1> 2\n2 >3\n3- 4");
+
+        // Assert
+        assert_eq!(
+            edges(&list),
+            [(1, 2, true, None), (2, 3, true, None), (3, 4, false, None)]
+        );
+    }
+
+    #[test]
+    fn parse_reads_several_spaced_pairs_on_a_line() {
+        assert_eq!(
+            edges(&list("1 - 2 2 > 3  3-4")),
+            [(1, 2, false, None), (2, 3, true, None), (3, 4, false, None)]
+        );
+    }
+
+    #[test]
+    fn parse_keeps_a_negative_weight_apart_from_separators() {
+        assert_eq!(edges(&list("1 2 -5")), [(1, 2, false, Some("-5"))]);
+    }
+
+    #[test]
+    fn parse_refuses_a_dangling_separator() {
+        for text in ["1 >", "> 2", "1 -", "5 1 > 3", "1 > 3 7", "1 -3"] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_dgraph_keyword_keeps_spaced_pairs() {
+        assert_eq!(
+            edges(&graph("dgraph:\n1 - 2\n2 > 3")),
+            [(1, 2, false, None), (2, 3, true, None)]
+        );
     }
 
     #[test]
