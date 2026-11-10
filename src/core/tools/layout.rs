@@ -33,6 +33,9 @@ pub const MAX_POINTS: usize = 1000;
 /// Largest size of a coordinate; keeps every span finite (ADR-T93-1).
 pub const MAX_COORDINATE: f64 = 1e300;
 
+/// Space between a plotted point's dot and its label, in ems (ADR-T95-1).
+const LABEL_GAP_EM: f32 = 0.15;
+
 /// Length of a tick across its axis, in ems of the block's text.
 pub const TICK_LENGTH_EM: f32 = 0.5;
 
@@ -571,16 +574,19 @@ impl PointList {
             return Err(PlotError::TooLong { bytes: text.len() });
         }
         let mut points = Vec::new();
+        let mut labels = Vec::new();
         for (number, line) in text.lines().enumerate() {
-            let tokens: Vec<&str> = line.split_whitespace().collect();
-            match tokens.as_slice() {
-                [] => {}
-                [x, y] => points.push(
-                    coordinate(x)
-                        .zip(coordinate(y))
-                        .ok_or(PlotError::NotAPoint { line: number + 1 })?,
-                ),
-                _ => return Err(PlotError::NotAPoint { line: number + 1 }),
+            let Some((x, rest)) = next_token(line) else {
+                continue;
+            };
+            let not_a_point = PlotError::NotAPoint { line: number + 1 };
+            let (y, rest) = next_token(rest).ok_or(not_a_point)?;
+            let point = coordinate(x).zip(coordinate(y)).ok_or(not_a_point)?;
+            points.push(point);
+            // Everything after the two numbers names the point (ADR-T95-1).
+            let label = rest.trim();
+            if !label.is_empty() {
+                labels.push((points.len() - 1, label.to_owned()));
             }
         }
         if points.len() > MAX_POINTS {
@@ -588,10 +594,7 @@ impl PointList {
                 points: points.len(),
             });
         }
-        Ok((!points.is_empty()).then_some(Self {
-            points,
-            labels: Vec::new(),
-        }))
+        Ok((!points.is_empty()).then_some(Self { points, labels }))
     }
 
     /// The points, in the order they were written.
@@ -608,8 +611,9 @@ impl PointList {
     }
 
     /// The plot of these points at text size `size`, the top-left of all
-    /// it draws at `origin`: axes, ticks, numbers, then points. `None` if
-    /// the size is not finite and positive or a shape would not be finite.
+    /// it draws at `origin`: axes, ticks, numbers, points, then labels.
+    /// `None` if the size is not finite and positive or a shape would not
+    /// be finite.
     #[must_use]
     pub fn shapes(&self, origin: Vec2, size: f32, style: Style) -> Option<Vec<Shape>> {
         if !size.is_finite() || size <= 0.0 {
@@ -669,6 +673,15 @@ impl PointList {
                 .iter()
                 .map(|(x, y)| point_dot(at(x / unit, y / unit), POINT_RADIUS_EM * size, style)),
         );
+        // Each label's box starts just up and to the right of its dot.
+        let clear = (POINT_RADIUS_EM + LABEL_GAP_EM) * size;
+        shapes.extend(self.labels.iter().filter_map(|(index, label)| {
+            let (x, y) = self.points.get(*index)?;
+            let corner = at(x / unit, y / unit) + Vec2::new(clear, -clear);
+            let bounds = text_layout::bounds(Vec2::ZERO, label, size);
+            let origin = corner - Vec2::new(bounds.min.x, bounds.max.y);
+            Some(number_text(label.clone(), origin, size, style))
+        }));
 
         if !shapes.iter().all(Shape::is_finite) {
             return None;
@@ -747,7 +760,8 @@ fn ticks_over(low: f64, high: f64, step: f64) -> (i64, i64) {
     }
 }
 
-/// The text block of a tick's `number`, its top-left at `origin`.
+/// The text block of a tick's number or a point's label, its top-left at
+/// `origin`.
 fn number_text(number: String, origin: Vec2, size: f32, style: Style) -> Shape {
     Shape::Text {
         origin,
@@ -758,6 +772,14 @@ fn number_text(number: String, origin: Vec2, size: f32, style: Style) -> Shape {
             width: 0.0,
         },
     }
+}
+
+/// The first whitespace-separated token of `text` and what follows it;
+/// `None` if `text` is blank.
+fn next_token(text: &str) -> Option<(&str, &str)> {
+    let text = text.trim_start();
+    let end = text.find(char::is_whitespace).unwrap_or(text.len());
+    (end > 0).then(|| text.split_at(end))
 }
 
 /// The filled circle of a plotted point.
