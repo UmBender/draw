@@ -554,6 +554,9 @@ struct Frame {
 pub struct PointList {
     /// The points, in the order they were written.
     points: Vec<(f64, f64)>,
+    /// The labelled points' indices in `points` and their labels, in
+    /// order (ADR-T95-1).
+    labels: Vec<(usize, String)>,
 }
 
 impl PointList {
@@ -585,13 +588,23 @@ impl PointList {
                 points: points.len(),
             });
         }
-        Ok((!points.is_empty()).then_some(Self { points }))
+        Ok((!points.is_empty()).then_some(Self {
+            points,
+            labels: Vec::new(),
+        }))
     }
 
     /// The points, in the order they were written.
     #[must_use]
     pub fn points(&self) -> &[(f64, f64)] {
         &self.points
+    }
+
+    /// The labelled points' indices in [`Self::points`] and their labels,
+    /// in order (ADR-T95-1).
+    #[must_use]
+    pub fn labels(&self) -> &[(usize, String)] {
+        &self.labels
     }
 
     /// The plot of these points at text size `size`, the top-left of all
