@@ -425,6 +425,10 @@ mod tests {
             (Key::BracketRight, ALT, Command::ScaleUp),
             (Key::BracketLeft, ALT, Command::ScaleDown),
             (Key::P, CTRL, Command::PlotFromText),
+            (Key::BracketRight, CTRL, Command::RaiseSelection),
+            (Key::BracketLeft, CTRL, Command::LowerSelection),
+            (Key::BracketRight, CTRL_SHIFT, Command::SelectionToTop),
+            (Key::BracketLeft, CTRL_SHIFT, Command::SelectionToBottom),
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
@@ -557,6 +561,30 @@ mod tests {
         assert_eq!(resolve(Key::P, CTRL), Some(Command::PlotFromText));
         assert_eq!(resolve(Key::P, CTRL_SHIFT), None);
         assert_eq!(resolve(Key::P, NONE), None);
+    }
+
+    #[test]
+    fn ctrl_brackets_restack_the_selection() {
+        assert_eq!(
+            resolve(Key::BracketRight, CTRL),
+            Some(Command::RaiseSelection)
+        );
+        assert_eq!(
+            resolve(Key::BracketLeft, CTRL),
+            Some(Command::LowerSelection)
+        );
+        assert_eq!(
+            resolve(Key::BracketRight, CTRL_SHIFT),
+            Some(Command::SelectionToTop)
+        );
+        assert_eq!(
+            resolve(Key::BracketLeft, CTRL_SHIFT),
+            Some(Command::SelectionToBottom)
+        );
+        // The other bracket chords keep their meaning.
+        assert_eq!(resolve(Key::BracketRight, NONE), Some(Command::WidthUp));
+        assert_eq!(resolve(Key::BracketRight, ALT), Some(Command::ScaleUp));
+        assert_eq!(resolve(Key::BracketLeft, SHIFT), None);
     }
 
     #[test]

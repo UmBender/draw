@@ -1400,6 +1400,107 @@ mod tests {
         }
     }
 
+    // ---- T100 restack ------------------------------------------------------
+
+    fn order(doc: &Document) -> Vec<ShapeId> {
+        doc.shapes().map(|(id, _)| id).collect()
+    }
+
+    #[test]
+    fn tx_restack_moves_block_keeping_its_order() {
+        // Arrange: 0 1 2 3 4, move {3, 1} above one other shape.
+        let (mut doc, ids) = doc_with(5);
+
+        // Act
+        let tx = tx_restack(&doc, &[ids[3], ids[1]], 1);
+        assert!(doc.apply(&tx).is_ok());
+
+        // Assert: others 0 2 4, block 1 3 after the first of them.
+        assert_eq!(order(&doc), vec![ids[0], ids[1], ids[3], ids[2], ids[4]]);
+        assert_eq!(doc.get(ids[3]), Some(&line(3.0)));
+        assert_lookups_match_scan(&doc, 8);
+    }
+
+    #[test]
+    fn tx_restack_same_order_is_empty() {
+        // Arrange
+        let (doc, ids) = doc_with(4);
+
+        // Act / Assert: already on top, already at the bottom, already there.
+        assert!(tx_restack(&doc, &[ids[2], ids[3]], 2).is_empty());
+        assert!(tx_restack(&doc, &[ids[0]], 0).is_empty());
+        assert!(tx_restack(&doc, &[ids[1], ids[2]], 1).is_empty());
+        assert!(tx_restack(&doc, &[], 0).is_empty());
+    }
+
+    #[test]
+    fn tx_restack_clamps_below_and_skips_unknown_ids() {
+        // Arrange
+        let (mut doc, ids) = doc_with(4);
+
+        // Act: `below` past the others means the top.
+        let tx = tx_restack(&doc, &[ids[0], ShapeId(999), ids[0]], 50);
+        assert!(doc.apply(&tx).is_ok());
+
+        // Assert
+        assert_eq!(order(&doc), vec![ids[1], ids[2], ids[3], ids[0]]);
+        assert_eq!(doc.len(), 4);
+    }
+
+    #[test]
+    fn tx_restack_inverse_restores_order_exactly() {
+        // Arrange
+        let (mut doc, ids) = doc_with(6);
+        let before = snapshot(&doc);
+        let tx = tx_restack(&doc, &[ids[4], ids[0], ids[2]], 2);
+        assert!(doc.apply(&tx).is_ok());
+        assert_ne!(snapshot(&doc), before);
+
+        // Act
+        assert!(doc.apply(&tx.inverse()).is_ok());
+
+        // Assert
+        assert_eq!(snapshot(&doc), before);
+        assert_lookups_match_scan(&doc, 8);
+    }
+
+    proptest! {
+        #[test]
+        fn tx_restack_keeps_a_permutation_and_undoes_exactly(
+            n in 0usize..10,
+            mask in prop::collection::vec(any::<bool>(), 10),
+            below in 0usize..12,
+        ) {
+            // Arrange
+            let (mut doc, ids) = doc_with(n);
+            let before = snapshot(&doc);
+            let chosen: Vec<ShapeId> = ids
+                .iter()
+                .zip(&mask)
+                .filter(|(_, keep)| **keep)
+                .map(|(id, _)| *id)
+                .collect();
+
+            // Act
+            let tx = tx_restack(&doc, &chosen, below);
+            prop_assert_eq!(doc.apply(&tx), Ok(()));
+
+            // Assert: a permutation, the block in order at its place.
+            let mut sorted = order(&doc);
+            sorted.sort();
+            prop_assert_eq!(sorted, ids.clone());
+            let rest: Vec<ShapeId> = ids.iter().copied().filter(|id| !chosen.contains(id)).collect();
+            let at = below.min(rest.len());
+            let mut expected = rest[..at].to_vec();
+            expected.extend(&chosen);
+            expected.extend(&rest[at..]);
+            prop_assert_eq!(order(&doc), expected);
+            assert_lookups_match_scan(&doc, 12);
+            prop_assert_eq!(doc.apply(&tx.inverse()), Ok(()));
+            prop_assert_eq!(snapshot(&doc), before);
+        }
+    }
+
     // ---- T49 AC-1 heap estimate --------------------------------------------
 
     #[test]
