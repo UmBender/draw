@@ -643,4 +643,69 @@ mod tests {
         assert!(send(&mut state, &mut fx, Phase::Up, 50.0, 50.0));
         assert_eq!(fx.ids(), ids, "the ellipse stays");
     }
+
+    // ---- T107 locks ---------------------------------------------------------
+
+    /// Locks `ids` in the fixture's document (not in the history).
+    fn lock(fx: &mut Fixture, ids: &[ShapeId]) {
+        let tx = crate::core::document::tx_lock(&fx.doc, ids);
+        assert!(fx.doc.apply(&tx).is_ok());
+    }
+
+    #[test]
+    fn remove_drag_skips_locked_shapes() {
+        // Arrange: three lines, the middle one locked.
+        let (mut fx, ids) = three_lines();
+        lock(&mut fx, &[ids[1]]);
+        let mut state = State::default();
+
+        // Act: a vertical drag across the first two lines.
+        send(&mut state, &mut fx, Phase::Down, 50.0, -10.0);
+        send(&mut state, &mut fx, Phase::Move, 50.0, 30.0);
+        let hidden = preview(&state, &fx.view(Tool::Eraser)).hidden;
+        send(&mut state, &mut fx, Phase::Move, 50.0, 60.0);
+        send(&mut state, &mut fx, Phase::Up, 50.0, 60.0);
+
+        // Assert
+        assert_eq!(hidden, vec![ids[0]]);
+        assert_eq!(fx.ids(), vec![ids[1], ids[2]]);
+        assert!(fx.doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn clear_drag_skips_locked_fills() {
+        // Arrange: a locked filled rectangle with a free filled one beside.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 100.0, 100.0),
+            filled_rect(200.0, 0.0, 100.0, 100.0),
+        ]);
+        lock(&mut fx, &[ids[0]]);
+        let before = fx.shape(ids[0]);
+
+        // Act: rub inside each.
+        rub(&mut fx, &[(50.0, 50.0)]);
+        rub(&mut fx, &[(250.0, 50.0)]);
+
+        // Assert
+        assert_eq!(fx.shape(ids[0]), before);
+        assert_eq!(fx.shape(ids[1]).fill(), None);
+    }
+
+    #[test]
+    fn press_inside_locked_fill_removes_free_ink_on_top() {
+        // Arrange: a free line across a locked filled rectangle.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 100.0, 100.0),
+            line(0.0, 50.0, 100.0, 50.0),
+        ]);
+        lock(&mut fx, &[ids[0]]);
+        let before = fx.shape(ids[0]);
+
+        // Act: the locked fill does not make this a clear drag.
+        rub(&mut fx, &[(50.0, 20.0), (50.0, 80.0)]);
+
+        // Assert
+        assert_eq!(fx.ids(), vec![ids[0]]);
+        assert_eq!(fx.shape(ids[0]), before);
+    }
 }

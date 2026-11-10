@@ -489,6 +489,8 @@ mod tests {
             (Key::Delete, NONE, Command::DeleteSelection),
             (Key::Backspace, NONE, Command::DeleteSelection),
             (Key::Backspace, CTRL, Command::ClearAll),
+            (Key::K, CTRL, Command::LockSelection),
+            (Key::K, CTRL_SHIFT, Command::UnlockAll),
             (Key::Escape, NONE, Command::Cancel),
             // View
             (Key::Digit0, NONE, Command::ResetView),
@@ -574,6 +576,15 @@ mod tests {
         assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
         assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
         assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn resolve_ctrl_k_locks_and_ctrl_shift_k_unlocks() {
+        assert_eq!(resolve(Key::K, CTRL), Some(Command::LockSelection));
+        assert_eq!(resolve(Key::K, CTRL_SHIFT), Some(Command::UnlockAll));
+        assert_eq!(resolve(Key::K, NONE), None);
+        assert_eq!(resolve(Key::K, SHIFT), None);
+        assert_eq!(resolve(Key::K, ALT), None);
     }
 
     #[test]

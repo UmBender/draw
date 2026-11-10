@@ -1194,6 +1194,94 @@ mod tests {
         drag(&mut state, &mut fx, (100.0, 100.0), (110.0, 110.0), SHIFT);
         assert!(fx.selection.iter().all(|id| fx.doc.get(*id).is_some()));
     }
+
+    // ---- T107 locks ---------------------------------------------------------
+
+    /// Locks `ids` in the fixture's document (not in the history).
+    fn lock(fx: &mut Fixture, ids: &[ShapeId]) {
+        let tx = crate::core::document::tx_lock(&fx.doc, ids);
+        assert!(fx.doc.apply(&tx).is_ok());
+    }
+
+    #[test]
+    fn click_skips_locked_shape_and_picks_the_one_below() {
+        // Arrange: two overlapping filled squares, the top one locked.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 10.0, 10.0),
+            filled_rect(5.0, 5.0, 10.0, 10.0),
+        ]);
+        lock(&mut fx, &[ids[1]]);
+        let mut state = State::default();
+
+        // Act
+        click(&mut state, &mut fx, 7.0, 7.0, NONE);
+        let below = fx.selection.clone();
+        click(&mut state, &mut fx, 13.0, 13.0, NONE);
+
+        // Assert
+        assert_eq!(below, vec![ids[0]]);
+        assert_eq!(fx.selection, []);
+    }
+
+    #[test]
+    fn drag_on_locked_shape_moves_nothing() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[1]]);
+        let before = fx.shape(ids[1]);
+        let mut state = State::default();
+
+        // Act: a drag starting on the locked square is a marquee.
+        drag(&mut state, &mut fx, (55.0, 5.0), (95.0, 45.0), NONE);
+
+        // Assert
+        assert_eq!(fx.shape(ids[1]), before);
+        assert_eq!(fx.selection, []);
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn marquee_skips_locked_shapes() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[0]]);
+        let mut state = State::default();
+
+        // Act
+        drag(&mut state, &mut fx, (-5.0, -5.0), (205.0, 3.0), NONE);
+
+        // Assert
+        assert_eq!(fx.selection, vec![ids[1], ids[2]]);
+    }
+
+    #[test]
+    fn select_all_skips_locked_shapes() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[1]]);
+
+        // Act
+        let changed = select_all(&mut fx.ctx(Tool::Select));
+
+        // Assert
+        assert!(changed);
+        assert_eq!(fx.selection, vec![ids[0], ids[2]]);
+    }
+
+    #[test]
+    fn prune_drops_locked_ids() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[2]]);
+        let mut selection = ids.clone();
+
+        // Act
+        prune(&mut selection, &fx.doc);
+
+        // Assert
+        assert_eq!(selection, vec![ids[0], ids[1]]);
+    }
+
     // ---- T31 shape text ---------------------------------------------------
 
     #[test]

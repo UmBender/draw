@@ -1579,4 +1579,266 @@ mod tests {
         assert_eq!(bytes, buffer + shapes);
         assert!(shapes > 0);
     }
+
+    // ---- T107 locks ----------------------------------------------------------
+
+    /// `doc_with(n)` with the shapes at `locked` (positions) locked.
+    fn locked_doc(n: usize, locked: &[usize]) -> (Document, Vec<ShapeId>) {
+        let (mut doc, ids) = doc_with(n);
+        let wanted: Vec<ShapeId> = locked.iter().map(|&i| ids[i]).collect();
+        let tx = tx_lock(&doc, &wanted);
+        assert_eq!(doc.apply(&tx), Ok(()));
+        (doc, ids)
+    }
+
+    #[test]
+    fn lock_edit_sets_the_flag_and_its_inverse_clears_it() {
+        // Arrange
+        let (mut doc, ids) = doc_with(2);
+        let tx = Transaction(vec![Edit::Lock {
+            id: ids[1],
+            locked: true,
+        }]);
+
+        // Act
+        let locked = doc.apply(&tx);
+        let was_locked = doc.is_locked(ids[1]);
+        let unlocked = doc.apply(&tx.inverse());
+
+        // Assert
+        assert_eq!(locked, Ok(()));
+        assert!(was_locked);
+        assert!(!doc.is_locked(ids[0]));
+        assert_eq!(unlocked, Ok(()));
+        assert!(!doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn lock_edit_that_changes_nothing_is_a_mismatch() {
+        // Arrange
+        let (mut doc, ids) = locked_doc(2, &[0]);
+        let relock = Transaction(vec![Edit::Lock {
+            id: ids[0],
+            locked: true,
+        }]);
+        let unlock_free = Transaction(vec![Edit::Lock {
+            id: ids[1],
+            locked: false,
+        }]);
+
+        // Act / Assert
+        assert_eq!(doc.apply(&relock), Err(ApplyError::Mismatch(ids[0])));
+        assert_eq!(doc.apply(&unlock_free), Err(ApplyError::Mismatch(ids[1])));
+        assert!(doc.is_locked(ids[0]));
+        assert!(!doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn lock_edit_on_unknown_id_is_rejected() {
+        // Arrange
+        let (mut doc, _) = doc_with(1);
+        let tx = Transaction(vec![Edit::Lock {
+            id: ShapeId(99),
+            locked: true,
+        }]);
+
+        // Act / Assert
+        assert_eq!(doc.apply(&tx), Err(ApplyError::UnknownId(ShapeId(99))));
+        assert!(!doc.is_locked(ShapeId(99)));
+    }
+
+    #[test]
+    fn remove_of_locked_shape_is_rejected() {
+        // Arrange
+        let (mut doc, ids) = locked_doc(2, &[1]);
+        let before = doc.clone();
+        let tx = Transaction(vec![Edit::Remove {
+            index: 1,
+            id: ids[1],
+            shape: line(1.0),
+        }]);
+
+        // Act
+        let result = doc.apply(&tx);
+
+        // Assert
+        assert_eq!(result, Err(ApplyError::Locked(ids[1])));
+        assert_eq!(doc, before);
+    }
+
+    #[test]
+    fn remove_after_unlock_in_one_transaction_succeeds_and_undoes() {
+        // Arrange
+        let (mut doc, ids) = locked_doc(2, &[1]);
+        let before = doc.clone();
+        let tx = Transaction(vec![
+            Edit::Lock {
+                id: ids[1],
+                locked: false,
+            },
+            Edit::Remove {
+                index: 1,
+                id: ids[1],
+                shape: line(1.0),
+            },
+        ]);
+
+        // Act
+        let removed = doc.apply(&tx);
+        let len = doc.len();
+        let undone = doc.apply(&tx.inverse());
+
+        // Assert
+        assert_eq!(removed, Ok(()));
+        assert_eq!(len, 1);
+        assert_eq!(undone, Ok(()));
+        assert_eq!(doc, before);
+        assert!(doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn tx_lock_skips_locked_unknown_and_repeated_ids() {
+        // Arrange
+        let (doc, ids) = locked_doc(3, &[0]);
+
+        // Act
+        let tx = tx_lock(&doc, &[ids[2], ids[0], ShapeId(77), ids[2], ids[1]]);
+
+        // Assert
+        assert_eq!(
+            tx.edits(),
+            &[
+                Edit::Lock {
+                    id: ids[1],
+                    locked: true
+                },
+                Edit::Lock {
+                    id: ids[2],
+                    locked: true
+                },
+            ]
+        );
+        assert!(tx_lock(&doc, &[ids[0]]).is_empty());
+    }
+
+    #[test]
+    fn tx_unlock_all_unlocks_every_locked_shape() {
+        // Arrange
+        let (mut doc, ids) = locked_doc(3, &[0, 2]);
+
+        // Act
+        let tx = tx_unlock_all(&doc);
+        let applied = doc.apply(&tx);
+
+        // Assert
+        assert_eq!(
+            tx.edits(),
+            &[
+                Edit::Lock {
+                    id: ids[0],
+                    locked: false
+                },
+                Edit::Lock {
+                    id: ids[2],
+                    locked: false
+                },
+            ]
+        );
+        assert_eq!(applied, Ok(()));
+        assert!(ids.iter().all(|id| !doc.is_locked(*id)));
+        assert!(tx_unlock_all(&doc).is_empty());
+    }
+
+    #[test]
+    fn equality_counts_the_lock_flag() {
+        // Arrange
+        let (plain, _) = doc_with(2);
+        let (locked, _) = locked_doc(2, &[1]);
+
+        // Act / Assert
+        assert_ne!(plain, locked);
+        assert_eq!(locked.clone(), locked);
+    }
+
+    #[test]
+    fn lock_edit_heap_bytes_is_the_edit_only() {
+        // Arrange
+        let tx = Transaction(vec![Edit::Lock {
+            id: ShapeId(1),
+            locked: true,
+        }]);
+
+        // Act / Assert
+        assert_eq!(
+            tx.heap_bytes(),
+            tx.0.capacity() * std::mem::size_of::<Edit>()
+        );
+    }
+
+    #[test]
+    fn topmost_unlocked_where_skips_locked_shapes() {
+        // Arrange
+        let (doc, ids) = locked_doc(3, &[2]);
+
+        // Act
+        let hit = doc.topmost_unlocked_where(|_| true);
+        let none = doc.topmost_unlocked_where(|s| matches!(s, Shape::Line { a, .. } if a.x > 1.5));
+
+        // Assert
+        assert_eq!(hit, Some(ids[1]));
+        assert_eq!(none, None);
+        assert_eq!(doc.topmost_where(|_| true), Some(ids[2]));
+    }
+
+    #[test]
+    fn tx_remove_and_tx_clear_skip_locked_shapes() {
+        // Arrange
+        let (mut doc, ids) = locked_doc(3, &[1]);
+
+        // Act
+        let remove = tx_remove(&doc, &[ids[1], ids[2]]);
+        let clear = tx_clear(&doc);
+        let cleared = doc.apply(&clear);
+
+        // Assert
+        assert_eq!(remove.len(), 1);
+        assert!(matches!(remove.edits()[0], Edit::Remove { id, .. } if id == ids[2]));
+        assert_eq!(clear.len(), 2);
+        assert_eq!(cleared, Ok(()));
+        assert_eq!(snapshot(&doc), vec![(ids[1], line(1.0))]);
+        assert!(doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn tx_restack_leaves_locked_shapes_in_place() {
+        // Arrange
+        let (mut doc, ids) = locked_doc(3, &[1]);
+
+        // Act
+        let locked_only = tx_restack(&doc, &[ids[1]], usize::MAX);
+        let mixed = tx_restack(&doc, &[ids[0], ids[1]], usize::MAX);
+        let applied = doc.apply(&mixed);
+
+        // Assert
+        assert!(locked_only.is_empty());
+        assert_eq!(applied, Ok(()));
+        let order: Vec<ShapeId> = doc.shapes().map(|(id, _)| id).collect();
+        assert_eq!(order, vec![ids[1], ids[2], ids[0]]);
+        assert!(doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn snap_targets_include_locked_shapes() {
+        // Arrange
+        let (plain, _) = doc_with(3);
+        let (locked, _) = locked_doc(3, &[0, 1, 2]);
+
+        // Act
+        let free = crate::core::snap::Targets::from_document(&plain);
+        let held = crate::core::snap::Targets::from_document(&locked);
+
+        // Assert
+        assert_eq!(held, free);
+        assert_ne!(held, crate::core::snap::Targets::default());
+    }
 }

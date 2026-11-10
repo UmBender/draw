@@ -2128,6 +2128,111 @@ mod tests {
         // Assert
         assert_eq!(result.err().map(|e| e.line), Some(line + 1));
     }
+
+    // T107 locks
+
+    /// [`busy_editor`] with every shape locked, a `lock` step in the undo
+    /// history and an `unlock` step in the redo history.
+    fn locked_editor() -> Editor {
+        let mut ed = busy_editor();
+        ed.apply(Command::SelectAll);
+        assert!(ed.apply(Command::LockSelection));
+        assert!(ed.apply(Command::UnlockAll));
+        assert!(ed.apply(Command::Undo));
+        ed
+    }
+
+    #[test]
+    fn version_is_two() {
+        assert_eq!(VERSION, 2);
+    }
+
+    #[test]
+    fn snapshot_round_trip_keeps_locks_and_lock_edits() {
+        // Arrange
+        let mut ed = locked_editor();
+        let text = ed.snapshot().to_text();
+
+        // Act
+        let mut loaded = round_trip(&ed);
+
+        // Assert
+        assert_eq!(loaded, ed);
+        assert!(text.lines().any(|l| l.starts_with("locked ")), "{text}");
+        assert!(text.lines().any(|l| l.starts_with("lock ")), "{text}");
+        assert!(text.lines().any(|l| l.starts_with("unlock ")), "{text}");
+        for command in [Command::Redo, Command::Undo, Command::Undo, Command::Redo] {
+            ed.apply(command);
+            loaded.apply(command);
+            assert_eq!(loaded, ed, "after {command:?}");
+        }
+    }
+
+    #[test]
+    fn snapshot_writes_locked_record_only_when_needed() {
+        // Arrange
+        let ed = busy_editor();
+
+        // Act
+        let text = ed.snapshot().to_text();
+
+        // Assert
+        assert!(!text.lines().any(|l| l.starts_with("locked")), "{text}");
+    }
+
+    #[test]
+    fn snapshot_rejects_unknown_locked_id() {
+        // Arrange
+        let ed = locked_editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "locked ");
+
+        // Act
+        let result = Snapshot::parse(&edited(&ed, line, "locked 999"));
+
+        // Assert
+        assert_eq!(result.err().map(|e| e.line), Some(line + 1));
+    }
+
+    #[test]
+    fn snapshot_rejects_repeated_locked_id() {
+        // Arrange
+        let ed = locked_editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "locked ");
+        let id = ed
+            .document()
+            .shapes()
+            .map(|(id, _)| id.get())
+            .next()
+            .unwrap_or_default();
+
+        // Act
+        let result = Snapshot::parse(&edited(&ed, line, &format!("locked {id} {id}")));
+
+        // Assert
+        assert_eq!(result.err().map(|e| e.line), Some(line + 1));
+    }
+
+    #[test]
+    fn snapshot_rejects_locked_selection() {
+        // Arrange
+        let ed = locked_editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "selection");
+        let id = ed
+            .document()
+            .shapes()
+            .map(|(id, _)| id.get())
+            .next()
+            .unwrap_or_default();
+
+        // Act
+        let result = Snapshot::parse(&edited(&ed, line, &format!("selection {id}")));
+
+        // Assert
+        assert_eq!(result.err().map(|e| e.line), Some(line + 1));
+    }
 }
 
 #[cfg(test)]

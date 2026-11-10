@@ -863,6 +863,90 @@ fn arb_resize_session() -> impl Strategy<Value = Vec<InputEvent>> {
         })
 }
 
+/// `key` pressed with `Ctrl` (and `Shift` if `shift`).
+fn ctrl_key(key: Key, shift: bool) -> InputEvent {
+    InputEvent::KeyDown {
+        key,
+        mods: Modifiers {
+            shift,
+            ctrl: true,
+            alt: false,
+        },
+    }
+}
+
+/// T107 lock chords: select all then lock, lock the selection, or unlock
+/// every shape.
+fn arb_lock_chords() -> impl Strategy<Value = Vec<InputEvent>> {
+    select(vec![
+        vec![ctrl_key(Key::A, false), ctrl_key(Key::K, false)],
+        vec![ctrl_key(Key::K, false)],
+        vec![ctrl_key(Key::K, true)],
+    ])
+}
+
+/// A rectangle and a grid drawn at known places, then both selected and
+/// locked with `Ctrl+K` (T107).
+fn lock_prefix() -> Vec<InputEvent> {
+    let none = Modifiers::NONE;
+    let left = PointerButton::Left;
+    let mut events = Vec::new();
+    for (tool, from, to) in [
+        (Key::R, Vec2::new(300.0, 300.0), Vec2::new(500.0, 420.0)),
+        (Key::G, Vec2::new(600.0, 300.0), Vec2::new(800.0, 500.0)),
+    ] {
+        events.extend([
+            InputEvent::KeyDown {
+                key: tool,
+                mods: none,
+            },
+            InputEvent::PointerDown {
+                pos: from,
+                button: left,
+                mods: none,
+            },
+            InputEvent::PointerMove {
+                pos: to,
+                mods: none,
+            },
+            InputEvent::PointerUp {
+                pos: to,
+                button: left,
+                mods: none,
+            },
+        ]);
+    }
+    events.extend([
+        InputEvent::KeyDown {
+            key: Key::V,
+            mods: none,
+        },
+        ctrl_key(Key::A, false),
+        ctrl_key(Key::K, false),
+    ]);
+    events
+}
+
+/// A lock session (T107 AC-5): [`lock_prefix`], then ordinary chunks
+/// mixed with lock and unlock chords.
+fn arb_lock_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    let chunk = prop_oneof![
+        6 => arb_gesture(),
+        3 => arb_command_burst(),
+        2 => arb_lock_chords(),
+        1 => arb_text_session(),
+        1 => arb_host_session(),
+        1 => arb_resize_session(),
+        2 => arb_event().prop_map(|event| vec![event]),
+    ];
+    prop::collection::vec(chunk, 1..30).prop_map(|chunks| {
+        let mut events = lock_prefix();
+        events.extend(chunks.into_iter().flatten());
+        events.truncate(MAX_SESSION_LEN);
+        events
+    })
+}
+
 /// A session of 1..=500 events, biased towards realistic gestures.
 fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
     let chunk = prop_oneof![
@@ -870,6 +954,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         1 => arb_grid_drag(),
         1 => arb_resize_session(),
         3 => arb_command_burst(),
+        1 => arb_lock_chords(),
         1 => arb_space_drag(),
         2 => arb_text_session(),
         1 => arb_host_session(),
@@ -1066,8 +1151,51 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
             "step {step}: selected {id:?} not in document"
         );
         prop_assert!(seen.insert(id), "step {step}: {id:?} selected twice");
+        // T107: a locked shape is never selected.
+        prop_assert!(
+            !editor.document().is_locked(id),
+            "step {step}: locked {id:?} is selected"
+        );
     }
     Ok(())
+}
+
+/// Where a shape sits, as bits: what a move or resize changes and a fill
+/// or a text edit does not (T107).
+fn anchor_of(shape: &Shape) -> Vec<u32> {
+    let points: Vec<Vec2> = match shape {
+        Shape::Stroke { points, .. } => points.first().into_iter().chain(points.last()).copied().collect(),
+        Shape::Line { a, b, .. }
+        | Shape::Arrow { a, b, .. }
+        | Shape::Rect { a, b, .. }
+        | Shape::Ellipse { a, b, .. } => vec![*a, *b],
+        Shape::Grid {
+            a, b, cols, rows, ..
+        } => vec![*a, *b, Vec2::new(*cols as f32, *rows as f32)],
+        Shape::Text { origin, .. } => vec![*origin],
+    };
+    points
+        .iter()
+        .flat_map(|p| [p.x.to_bits(), p.y.to_bits()])
+        .collect()
+}
+
+/// The locked shapes of `editor` with their anchors.
+fn locked_anchors(editor: &Editor) -> Vec<(ShapeId, Vec<u32>)> {
+    editor
+        .document()
+        .shapes()
+        .filter(|(id, _)| editor.document().is_locked(*id))
+        .map(|(id, shape)| (id, anchor_of(shape)))
+        .collect()
+}
+
+/// Whether `event` is an undo or redo chord.
+fn is_undo_redo(event: &InputEvent) -> bool {
+    matches!(
+        event,
+        InputEvent::KeyDown { key: Key::Z | Key::Y, mods } if mods.ctrl && !mods.alt
+    )
 }
 
 /// Runs `session`, checking invariants after every event.
@@ -1397,6 +1525,37 @@ fn sessions_reach_deep_editor_states() {
     );
     assert!(zoomed >= 20, "sessions that zoomed: {zoomed}/200");
     assert!(with_redo >= 20, "sessions that could redo: {with_redo}/200");
+}
+
+#[test]
+fn lock_sessions_lock_shapes() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_lock_session();
+    let (mut with_locks, mut unlocked) = (0, 0);
+
+    // Act
+    for _ in 0..50 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_lock_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        let (mut locks, mut unlocks) = (false, false);
+        for event in tree.current() {
+            let before = locked_anchors(&editor).len();
+            let undo_redo = is_undo_redo(&event);
+            editor.handle(event);
+            let after = locked_anchors(&editor).len();
+            locks |= after >= 2;
+            unlocks |= !undo_redo && after < before;
+        }
+        with_locks += usize::from(locks);
+        unlocked += usize::from(unlocks);
+    }
+
+    // Assert: the prefix locks two shapes; some sessions unlock them.
+    assert!(with_locks >= 45, "sessions with locks: {with_locks}/50");
+    assert!(unlocked >= 5, "sessions that unlocked: {unlocked}/50");
 }
 
 #[test]
@@ -2196,6 +2355,31 @@ proptest! {
             prop_assert!(editor.apply(Command::Undo));
         }
         prop_assert_eq!(order(&editor), drawn);
+    }
+
+    /// T107 AC-5: lock and unlock mixed into editing sessions never let a
+    /// locked shape move or vanish, except through undo or redo.
+    #[test]
+    fn lock_sessions_never_move_or_remove_locked_shapes(session in arb_lock_session()) {
+        let mut editor = Editor::new();
+        for (step, event) in session.into_iter().enumerate() {
+            // Arrange
+            let held = locked_anchors(&editor);
+            let undo_redo = is_undo_redo(&event);
+
+            // Act
+            editor.handle(event);
+
+            // Assert
+            check_invariants(&editor, step + 1)?;
+            if undo_redo {
+                continue;
+            }
+            for (id, anchor) in held {
+                let now = editor.document().get(id).map(anchor_of);
+                prop_assert_eq!(now, Some(anchor), "step {}: locked {:?} moved or vanished", step, id);
+            }
+        }
     }
 
     /// T74 AC-1.
