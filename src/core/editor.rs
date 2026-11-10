@@ -6229,6 +6229,39 @@ mod tests {
     }
 
     #[test]
+    fn graph_from_text_reads_a_parent_list() {
+        // Arrange
+        let mut ed = selected_block("parents:\n4\n1 1 2");
+        let original = shape_at(&ed, 0).clone();
+        let steps = ed.history.undo_len();
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert: four nodes, three edges, one undo step.
+        assert!(changed);
+        assert_eq!(count(&ed, is_ellipse), 4);
+        assert_eq!(count(&ed, is_line), 3);
+        assert_eq!(ed.history.undo_len(), steps + 1);
+        assert!(ed.apply(Command::Undo));
+        assert_eq!(shape_at(&ed, 0), &original);
+    }
+
+    #[test]
+    fn graph_from_text_reads_a_directed_list() {
+        // Arrange
+        let mut ed = selected_block("dgraph:\n3 2\n1 2\n2 3");
+
+        // Act
+        let changed = ctrl_l(&mut ed);
+
+        // Assert
+        assert!(changed);
+        assert_eq!(count(&ed, is_ellipse), 3);
+        assert_eq!(count(&ed, |s| matches!(s, Shape::Arrow { .. })), 2);
+        assert_eq!(count(&ed, is_line), 0);
+    }
+    #[test]
     fn graph_from_text_selects_the_result() {
         // Arrange
         let mut ed = selected_block("1-2");

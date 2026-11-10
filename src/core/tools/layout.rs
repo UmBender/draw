@@ -1384,6 +1384,189 @@ mod tests {
 
     const TICK: f32 = TICK_LENGTH_EM * SIZE;
 
+    // ---- T96 keywords for graph input ---------------------------------------
+
+    fn graph(text: &str) -> EdgeList {
+        match EdgeList::parse(text) {
+            Ok(Some(list)) => list,
+            other => panic!("{text:?} gave {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_without_a_keyword_keeps_the_t87_rules() {
+        // Act, Assert: a count line is still an edge, `u v` undirected.
+        let list = graph("3 2\n1 2\n2 3");
+        assert_eq!(list.names(), [3, 2, 1]);
+        assert!(list.edges().iter().all(|edge| !edge.directed));
+    }
+
+    #[test]
+    fn parse_refuses_an_unknown_keyword() {
+        for text in ["digraph:\n1 2", "Tree:\n1 2", "graph\n1 2", "graph: 1 2"] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_graph_keyword_reads_edges() {
+        assert_eq!(
+            graph("graph:\n1 2\n2>3 3-4\n4 5 7"),
+            graph("1 2\n2>3 3-4\n4 5 7")
+        );
+    }
+
+    #[test]
+    fn parse_tree_keyword_reads_edges() {
+        assert_eq!(graph("  tree:  \n\n1 2\n1 3"), graph("1 2\n1 3"));
+    }
+
+    #[test]
+    fn parse_dgraph_keyword_makes_plain_edges_directed() {
+        // Act
+        let list = graph("dgraph:\n1 2\n2 3 5");
+
+        // Assert
+        let edges = list.edges();
+        assert_eq!(edges.len(), 2);
+        assert!(edges.iter().all(|edge| edge.directed));
+        assert_eq!(edges[1].weight.as_deref(), Some("5"));
+        assert_eq!(
+            (list.names()[edges[1].from], list.names()[edges[1].to]),
+            (2, 3)
+        );
+    }
+
+    #[test]
+    fn parse_dgraph_keyword_keeps_written_pairs() {
+        // Act
+        let list = graph("dgraph:\n1-2 2>3");
+
+        // Assert
+        let directed: Vec<bool> = list.edges().iter().map(|edge| edge.directed).collect();
+        assert_eq!(directed, [false, true]);
+    }
+
+    #[test]
+    fn parse_skips_a_count_line_after_a_keyword() {
+        assert_eq!(graph("tree:\n3\n1 2\n1 3"), graph("1 2\n1 3"));
+        assert_eq!(graph("graph:\n3 2\n1 2\n2 3"), graph("1 2\n2 3"));
+        assert_eq!(
+            graph("dgraph:\n4 3\n1 2\n2 3 9\n3 4"),
+            graph("dgraph:\n1 2\n2 3 9\n3 4")
+        );
+        // `3 1` fits a count line before one edge, so it is one.
+        assert_eq!(graph("graph:\n3 1\n1 2"), graph("1 2"));
+    }
+
+    #[test]
+    fn parse_keeps_a_first_edge_that_is_not_a_count_line() {
+        assert_eq!(graph("graph:\n1 2\n2 3"), graph("1 2\n2 3"));
+        assert_eq!(graph("graph:\n1 2"), graph("1 2"));
+        assert_eq!(graph("graph:\n1 0"), graph("1 0"));
+        assert_eq!(graph("graph:\n2 1 5\n1 3"), graph("2 1 5\n1 3"));
+    }
+
+    #[test]
+    fn parse_never_skips_without_a_keyword() {
+        assert_eq!(
+            EdgeList::parse("3\n1 2"),
+            Err(GraphError::NotAnEdge { line: 1 })
+        );
+    }
+
+    #[test]
+    fn parse_parents_reads_p2_to_pn_with_root_1() {
+        assert_eq!(graph("parents:\n1 1 2 2"), graph("1 2\n1 3\n2 4\n2 5"));
+    }
+
+    #[test]
+    fn parse_parents0_reads_p1_onwards_with_root_0() {
+        assert_eq!(graph("parents0:\n0 0 1"), graph("0 1\n0 2\n1 3"));
+    }
+
+    #[test]
+    fn parse_parents_reads_a_full_list_with_minus_one_at_the_root() {
+        assert_eq!(graph("parents:\n2 -1 2"), graph("2 1\n2 3"));
+        assert_eq!(graph("parents0:\n-1 0 0 1"), graph("0 1\n0 2\n1 3"));
+    }
+
+    #[test]
+    fn parse_parents_skips_a_count_line() {
+        assert_eq!(graph("parents:\n5\n1 1 2 2"), graph("parents:\n1 1 2 2"));
+        assert_eq!(graph("parents:\n3\n2 -1 2"), graph("parents:\n2 -1 2"));
+        assert_eq!(graph("parents0:\n4\n0 0 1"), graph("parents0:\n0 0 1"));
+    }
+
+    #[test]
+    fn parse_parents_reads_entries_across_lines() {
+        // `1` is no count line: two entries follow, not 0 or 1.
+        assert_eq!(graph("parents:\n1\n1\n2"), graph("parents:\n1 1 2"));
+    }
+
+    #[test]
+    fn parse_parents_names_the_root_first() {
+        // Act: node 2's parent is 3, node 3's is 1.
+        let list = graph("parents:\n3 1");
+
+        // Assert
+        assert_eq!(list.names()[0], 1);
+        assert_eq!(list.names().len(), 3);
+    }
+
+    #[test]
+    fn parents_tree_is_drawn_from_its_root() {
+        // Act
+        let shapes = graph("parents:\n3 1")
+            .shapes(Vec2::ZERO, SIZE, STYLE)
+            .unwrap_or_default();
+
+        // Assert: the root's circle is above the others.
+        let top_of = |name| {
+            shapes
+                .iter()
+                .find(|s| s.label() == Some(name))
+                .map_or(f32::MAX, |s| s.bounds().min.y)
+        };
+        assert!(top_of(1) < top_of(3), "{shapes:?}");
+        assert!(top_of(3) < top_of(2), "{shapes:?}");
+    }
+
+    #[test]
+    fn parse_parents_refuses_bad_entries() {
+        for (text, line) in [
+            ("parents:\n1 x", 2),
+            ("parents:\n-1 -1", 2),
+            ("parents:\n1 -2", 2),
+            ("parents:\n1 +1", 2),
+            ("parents:\n1\n2 x", 3),
+            ("parents0:\n0 1.5", 2),
+        ] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line }),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_keyword_alone_is_no_graph() {
+        for text in [
+            "graph:",
+            "tree:\n\n",
+            "dgraph:\n  ",
+            "parents:",
+            "parents0:\n",
+        ] {
+            assert_eq!(EdgeList::parse(text), Ok(None), "{text:?}");
+        }
+    }
+
     fn points(text: &str) -> PointList {
         match PointList::parse(text) {
             Ok(Some(list)) => list,

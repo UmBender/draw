@@ -325,8 +325,28 @@ fn arb_table_session() -> impl Strategy<Value = Vec<InputEvent>> {
 /// An edge list: mostly whole lines the parser reads, sometimes not.
 fn arb_edge_text() -> impl Strategy<Value = String> {
     let line = select(vec![
-        "1-2", "1-2 2-3", "2>3", "3-1", "0-4", "2-2", "2-1", "1 2", "2 3 7", "3 4 -1.5", "5 6",
+        "1-2",
+        "1-2 2-3",
+        "2>3",
+        "3-1",
+        "0-4",
+        "2-2",
+        "2-1",
+        "1 2",
+        "2 3 7",
+        "3 4 -1.5",
+        "5 6",
         "1 2 x",
+        "graph:",
+        "tree:",
+        "dgraph:",
+        "parents:",
+        "parents0:",
+        "3",
+        "4 2",
+        "1 1 2",
+        "2 -1 2",
+        "-1 -1",
     ]);
     prop::collection::vec(line, 1..12).prop_map(|lines| lines.join("\n"))
 }
