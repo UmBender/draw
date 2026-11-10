@@ -73,6 +73,10 @@ pub const LIMIT_GAP: f32 = 0.167;
 /// Scale of the big operators `∑` and `∏`.
 pub const BIG_OP_SCALE: f32 = 1.3;
 
+/// Scale of big operators and integrals in display style: the same glyph
+/// as [`BIG_OP_SCALE`], larger (ADR-T105-1).
+pub const DISPLAY_OP_SCALE: f32 = 1.8;
+
 /// Smallest gap between a fraction bar and its numerator or denominator:
 /// `FractionNumeratorGapMin`.
 pub const FRAC_GAP: f32 = 0.04;
@@ -196,6 +200,9 @@ pub enum Segment {
     Dollar,
     /// A `$…$` formula, without its dollars.
     Math(Vec<Node>),
+    /// A `$$…$$` formula, without its dollars: laid out in display style
+    /// on a line of its own (ADR-T105-1).
+    Display(Vec<Node>),
 }
 
 /// One node of a formula; every node keeps its source (ADR-T30-1).
@@ -289,6 +296,9 @@ pub enum Node {
         /// The required label set above the arrow.
         above: Arg,
     },
+    /// `\displaystyle` (`true`) or `\textstyle` (`false`): switches the
+    /// style of the rest of its list; not an atom (ADR-T105-1).
+    MathStyle(bool),
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -1524,13 +1534,23 @@ pub fn calligraphic(ch: char) -> char {
 struct Style {
     /// One alphabet per slot of [`Kind::ALL`].
     rows: [&'static AlphabetDef; Kind::ALL.len()],
+    /// Display style rather than text style (ADR-T105-1).
+    display: bool,
 }
 
 impl Style {
-    /// The style a formula starts in.
+    /// The style a `$…$` formula starts in.
     const ITALIC: Self = Self {
         rows: [&MATH_ITALIC; Kind::ALL.len()],
+        display: false,
     };
+
+    /// This style in display (`true`) or text (`false`) style, the
+    /// alphabets kept.
+    const fn displayed(mut self, display: bool) -> Self {
+        self.display = display;
+        self
+    }
 
     /// This style inside `alphabet`: the kinds it maps are its own, the
     /// others stay as they are. Sans-serif and a bold weight, nested
@@ -2527,9 +2547,23 @@ pub fn print(segments: &[Segment]) -> String {
                 print_nodes(nodes, &mut out);
                 out.push('$');
             }
+            Segment::Display(nodes) => {
+                out.push_str("$$");
+                print_nodes(nodes, &mut out);
+                out.push_str("$$");
+            }
         }
     }
     out
+}
+
+/// The source of a [`Node::MathStyle`]: `\displaystyle` or `\textstyle`.
+const fn style_command(display: bool) -> &'static str {
+    if display {
+        "\\displaystyle"
+    } else {
+        "\\textstyle"
+    }
 }
 
 fn print_nodes(nodes: &[Node], out: &mut String) {
@@ -2541,6 +2575,7 @@ fn print_nodes(nodes: &[Node], out: &mut String) {
 fn print_node(node: &Node, out: &mut String) {
     match node {
         Node::Space(text) | Node::Kern(text) | Node::Literal(text) => out.push_str(text),
+        Node::MathStyle(display) => out.push_str(style_command(*display)),
         Node::Char(ch) => out.push(*ch),
         Node::Symbol(name) => {
             out.push('\\');
@@ -2679,6 +2714,14 @@ fn script_scale(scale: f32) -> f32 {
 #[must_use]
 pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
     layout_styled(nodes, scale, Style::ITALIC)
+}
+
+/// Lays out the nodes of one `$$…$$` formula at `scale` in display style
+/// (ADR-T105-1).
+#[must_use]
+pub fn layout_display(nodes: &[Node], scale: f32) -> MathBox {
+    let _ = (nodes, scale);
+    todo!()
 }
 
 /// [`layout_math`] with letters drawn in `style`.
@@ -2940,6 +2983,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (b, Class::Rel)
         }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
+        Node::MathStyle(_) => todo!(),
     };
     Some(atom)
 }
@@ -3607,6 +3651,7 @@ pub fn layout(segments: &[Segment]) -> Layout {
                 line.ascent = line.ascent.max(b.ascent + MATH_PAD);
                 line.descent = line.descent.max(b.descent + MATH_PAD);
             }
+            Segment::Display(_) => todo!(),
         }
     }
     lines.push(line);
