@@ -1,7 +1,7 @@
 ---
 id: T104
 title: Segment tree drawing
-status: in-progress
+status: review
 wave: 58
 branch: task/T104-segment-tree
 depends_on: [T102]
@@ -54,11 +54,11 @@ Rules: [[ADR-T104-1 Segment tree keyword]]. Unit tests in `src/core/tools/layout
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T104): specify segment tree drawing`
-- [ ] tests — `test(T104): add failing tests for segment tree drawing`
-- [ ] models — `feat(T104): …`
-- [ ] behaviour — `feat(T104): …`
-- [ ] quality — `chore(T104): pass clippy and rustfmt`
-- [ ] docs — `docs(T104): update the feature note`
+- [x] tests — `test(T104): add failing tests for segment tree drawing`
+- [x] models — `feat(T104): add the tree size error and parse_numbered`
+- [x] behaviour — `feat(T104): draw segment trees from segtree: blocks`
+- [x] quality — `chore(T104): pass clippy and rustfmt`
+- [x] docs — `docs(T104): update the feature note`
 
 ## Learning path
 
@@ -68,3 +68,8 @@ None: it extends an existing area.
 
 - 2026-11-10 — note written in the batch plan with the owner; owner decisions are in *Spec* and in `.batch/plan.md`.
 - 2026-11-10 — spec: tests named per AC, rules in ADR-T104-1. UNATTENDED CHOICE: `segtree:` with no size is no graph (as any keyword alone, ADR-T96-1), not a refusal; bad sizes use a new `GraphError::NotATreeSize` so the log does not say "not an edge"; `EdgeList::parse_numbered(text, first)` carries the first number, `parse` keeps its meaning.
+- 2026-11-10 — tests: red only for the missing `parse_numbered` and `NotATreeSize` (9 compile errors); the fuzzed graph session check stayed green with the new `segtree:` texts.
+- 2026-11-10 — behaviour: `parse` now calls `parse_numbered(text, 1)`; the edge building moved into `EdgeList::from_raws`, whose root is a `NodeName`. `segment_tree_edges` writes the edges in preorder (left subtree before the right child), so the existing layered layout draws children left to right with no layout change.
+- 2026-11-10 — quality: clippy asked for `u32::midpoint` (also used for the split in the code) and `assert_eq!` on an empty slice. `scripts/check.sh --fuzz` then failed `sessions_reach_deep_editor_states` at 19/200 sessions that could redo (threshold 20): the new `segtree:` choice shifted the deterministic stream. UNATTENDED CHOICE: fixed the generator, not the threshold — `arb_session` now uses `arb_graph_session_maybe_undone`, which presses `Ctrl+Z` after half of the fuzzed graph sessions; redo reaches 68/200. `arb_graph_session` itself is unchanged, so its own check still counts graphs left at the end.
+- 2026-11-10 — `scripts/e2e.sh` not run: no key or existing drawing changed, `segtree:` is a new text only, and the command is not in this task's allowlist. Manual checks left for the owner: `segtree: 8` with first number 1 and after `Ctrl+N`; `segtree: 100` and judge the size of the drawing.
+- 2026-11-10 — docs: feature note *Numbered nodes* and the *Contest cheat sheet* recipe updated; status `review`.
