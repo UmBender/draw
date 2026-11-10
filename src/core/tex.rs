@@ -460,10 +460,24 @@ pub struct XArrowDef {
 pub const XARROWS: &[XArrowDef] = &[
     xarrow_def("xrightarrow", '→', None, Some('→'), false, Tail::Plain),
     xarrow_def("xleftarrow", '←', Some('←'), None, false, Tail::Plain),
-    xarrow_def("xleftrightarrow", '↔', Some('←'), Some('→'), false, Tail::Plain),
+    xarrow_def(
+        "xleftrightarrow",
+        '↔',
+        Some('←'),
+        Some('→'),
+        false,
+        Tail::Plain,
+    ),
     xarrow_def("xRightarrow", '⇒', None, Some('⇒'), true, Tail::Plain),
     xarrow_def("xLeftarrow", '⇐', Some('⇐'), None, true, Tail::Plain),
-    xarrow_def("xLeftrightarrow", '⇔', Some('⇐'), Some('⇒'), true, Tail::Plain),
+    xarrow_def(
+        "xLeftrightarrow",
+        '⇔',
+        Some('⇐'),
+        Some('⇒'),
+        true,
+        Tail::Plain,
+    ),
     xarrow_def("xmapsto", '↦', None, Some('→'), false, Tail::Bar),
     xarrow_def("xhookrightarrow", '↪', None, Some('→'), false, Tail::Hook),
 ];
@@ -2252,7 +2266,11 @@ impl<'a> Parser<'a> {
     /// `[…]`, then a required argument; `None` when either is broken
     /// (ADR-T103-1).
     fn xarrow(&mut self, name: &str, end: usize) -> Option<Node> {
-        let below = self.bracket(end)?;
+        let below = if self.bracket_follows(end) {
+            Some(self.bracket(end)?)
+        } else {
+            None
+        };
         let above = self.arg(end)?;
         Some(Node::XArrow {
             name: name.to_owned(),
@@ -2261,16 +2279,23 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Whether a `[` follows the cursor after whitespace before `end`;
+    /// the cursor does not move.
+    fn bracket_follows(&self, end: usize) -> bool {
+        self.chars[self.pos.min(end)..end]
+            .iter()
+            .find(|ch| !ch.is_whitespace())
+            == Some(&'[')
+    }
+
     /// An optional `[…]` argument at the cursor: whitespace, `[`, nodes
-    /// up to the first `]` outside braces before `end`. `Some(None)`
-    /// (cursor unchanged) when no `[` follows, `None` (the cursor may
-    /// then have moved) when the `[` has no `]` (ADR-T103-1).
-    fn bracket(&mut self, end: usize) -> Option<Option<Bracket>> {
-        let start = self.pos;
+    /// up to the first `]` outside braces before `end`; `None` (the
+    /// cursor may then have moved) when there is no `[` or it has no `]`
+    /// (ADR-T103-1).
+    fn bracket(&mut self, end: usize) -> Option<Bracket> {
         let lead = self.whitespace(end);
         if self.pos >= end || self.peek() != Some('[') {
-            self.pos = start;
-            return Some(None);
+            return None;
         }
         let open = self.pos;
         let mut i = open + 1;
@@ -2285,7 +2310,7 @@ impl<'a> Parser<'a> {
         self.pos = open + 1;
         let nodes = self.list(close);
         self.pos = close + 1;
-        Some(Some(Bracket { lead, nodes }))
+        Some(Bracket { lead, nodes })
     }
 
     /// `n` arguments, or `None` if one is missing.
@@ -9452,8 +9477,16 @@ mod tests {
         let one = mm('1').advance;
         let ss = SCRIPT_SCALE;
         assert!(approx_eq(XARROW_PAD, 0.5, EPS));
-        assert!(approx_eq(above.width, 7.0 * one * ss + 2.0 * XARROW_PAD, EPS));
-        assert!(approx_eq(below.width, 6.0 * one * ss + 2.0 * XARROW_PAD, EPS));
+        assert!(approx_eq(
+            above.width,
+            7.0 * one * ss + 2.0 * XARROW_PAD,
+            EPS
+        ));
+        assert!(approx_eq(
+            below.width,
+            6.0 * one * ss + 2.0 * XARROW_PAD,
+            EPS
+        ));
         // At the smallest size, labels stay at it and padding scales.
         let want = MIN_SCALE * (7.0 * one + 2.0 * XARROW_PAD);
         assert!(approx_eq(small.width, want, EPS), "{}", small.width);
@@ -9469,7 +9502,11 @@ mod tests {
             let label = mm('1').advance * SCRIPT_SCALE + 2.0 * XARROW_PAD;
             let want = label.max(mm(ch).advance);
             assert!(b.width >= mm(ch).advance - EPS, "{name}");
-            assert!(approx_eq(b.width, want, EPS), "{name}: {} vs {want}", b.width);
+            assert!(
+                approx_eq(b.width, want, EPS),
+                "{name}: {} vs {want}",
+                b.width
+            );
         }
     }
 
@@ -9535,7 +9572,10 @@ mod tests {
             assert_eq!(r.len(), 2, "{name}: {r:?}");
             let mut ys: Vec<f32> = r.iter().map(|(a, _, _)| a.y).collect();
             ys.sort_by(f32::total_cmp);
-            assert!(approx_eq(ys[0], high, EPS) && approx_eq(ys[1], low, EPS), "{ys:?}");
+            assert!(
+                approx_eq(ys[0], high, EPS) && approx_eq(ys[1], low, EPS),
+                "{ys:?}"
+            );
             for (a, e, t) in r {
                 assert!(approx_eq(a.y, e.y, EPS) && approx_eq(t, RULE, EPS));
             }
@@ -9547,40 +9587,48 @@ mod tests {
         let (to, maps, hook) = (mm('→'), mm('↦'), mm('↪'));
 
         // ↦ : a → head and a bar as tall as the ↦ glyph's ink.
-        let b = boxed(&format!("\\xmapsto{LONG}"));
-        let w = b.width;
-        assert!(approx_eq(glyph(&b.ink, '→').0.x, w - to.advance, EPS));
-        assert!(glyphs(&b.ink).iter().all(|g| g.0 != '↦'));
-        let r = rules(&b.ink);
-        assert_eq!(r.len(), 2, "{r:?}");
+        let mapsto = boxed(&format!("\\xmapsto{LONG}"));
+        let width = mapsto.width;
+        assert!(approx_eq(
+            glyph(&mapsto.ink, '→').0.x,
+            width - to.advance,
+            EPS
+        ));
+        assert!(glyphs(&mapsto.ink).iter().all(|g| g.0 != '↦'));
+        let drawn = rules(&mapsto.ink);
+        assert_eq!(drawn.len(), 2, "{drawn:?}");
         let bar_x = maps.x_min + RULE / 2.0;
-        let bar = r.iter().find(|(a, e, _)| approx_eq(a.x, e.x, EPS));
+        let bar = drawn.iter().find(|(a, e, _)| approx_eq(a.x, e.x, EPS));
         let Some(&(a, e, _)) = bar else {
-            panic!("no bar in {r:?}");
+            panic!("no bar in {drawn:?}");
         };
         assert!(approx_eq(a.x, bar_x, EPS));
         let (top, bottom) = (a.y.min(e.y), a.y.max(e.y));
         assert!(approx_eq(top, -maps.y_max, EPS) && approx_eq(bottom, -maps.y_min, EPS));
-        let shaft = r.iter().find(|(a, e, _)| approx_eq(a.y, e.y, EPS));
+        let shaft = drawn.iter().find(|(a, e, _)| approx_eq(a.y, e.y, EPS));
         let Some(&(a, e, _)) = shaft else {
-            panic!("no shaft in {r:?}");
+            panic!("no shaft in {drawn:?}");
         };
         let (lo, hi) = x_span(a, e);
-        assert!(approx_eq(lo, bar_x, EPS) && approx_eq(hi, w - to.advance / 2.0, EPS));
+        assert!(approx_eq(lo, bar_x, EPS) && approx_eq(hi, width - to.advance / 2.0, EPS));
 
         // ↪ : a → head and a hook of rules as high as the ↪ glyph's ink.
-        let b = boxed(&format!("\\xhookrightarrow{LONG}"));
-        let w = b.width;
-        assert!(approx_eq(glyph(&b.ink, '→').0.x, w - to.advance, EPS));
-        assert!(glyphs(&b.ink).iter().all(|g| g.0 != '↪'));
-        let r = rules(&b.ink);
-        assert_eq!(r.len(), 1 + XARROW_HOOK_SEGMENTS, "{r:?}");
-        let ends = r.iter().flat_map(|&(a, e, _)| [a, e]);
+        let hooked = boxed(&format!("\\xhookrightarrow{LONG}"));
+        let width = hooked.width;
+        assert!(approx_eq(
+            glyph(&hooked.ink, '→').0.x,
+            width - to.advance,
+            EPS
+        ));
+        assert!(glyphs(&hooked.ink).iter().all(|g| g.0 != '↪'));
+        let drawn = rules(&hooked.ink);
+        assert_eq!(drawn.len(), 1 + XARROW_HOOK_SEGMENTS, "{drawn:?}");
+        let ends = drawn.iter().flat_map(|&(a, e, _)| [a, e]);
         let left = ends.clone().map(|p| p.x).fold(f32::INFINITY, f32::min);
         let top = ends.map(|p| p.y).fold(f32::INFINITY, f32::min);
         assert!(approx_eq(left, hook.x_min + RULE / 2.0, 1e-3), "{left}");
         assert!(approx_eq(top, -(hook.y_max - RULE / 2.0), 1e-3), "{top}");
-        assert!(r.iter().all(|&(_, _, t)| approx_eq(t, RULE, EPS)));
+        assert!(drawn.iter().all(|&(_, _, t)| approx_eq(t, RULE, EPS)));
     }
 
     #[test]
@@ -9618,7 +9666,10 @@ mod tests {
                 .filter(|(a, e, _)| approx_eq(a.y, e.y, EPS))
                 .collect();
             assert!(!flat.is_empty(), "{name}");
-            assert!(flat.iter().all(|(a, _, _)| approx_eq(a.y, -AXIS, EPS)), "{name}");
+            assert!(
+                flat.iter().all(|(a, _, _)| approx_eq(a.y, -AXIS, EPS)),
+                "{name}"
+            );
             for (ch, pos, _, _) in glyphs(&b.ink) {
                 if "→←".contains(ch) {
                     assert!(approx_eq(pos.y, 0.0, EPS), "{name}");
@@ -9698,10 +9749,7 @@ mod tests {
         // Assert
         assert!(b.width.is_finite() && b.ascent.is_finite() && b.descent.is_finite());
         assert!(approx_eq(b.width, inner.width + 2.0 * XARROW_PAD, EPS));
-        let heads: Vec<_> = glyphs(&b.ink)
-            .into_iter()
-            .filter(|g| g.0 == '→')
-            .collect();
+        let heads: Vec<_> = glyphs(&b.ink).into_iter().filter(|g| g.0 == '→').collect();
         assert_eq!(heads.len(), 2, "{heads:?}");
         assert!(heads.iter().any(|g| approx_eq(g.2, 1.0, EPS)));
         assert!(
