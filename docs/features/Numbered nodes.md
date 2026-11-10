@@ -1,7 +1,7 @@
 ---
 title: Numbered nodes
 task: "[[T19 Auto-numbering]]"
-adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]", "[[ADR-T87-1 Graph from an edge list key and layout rules]]", "[[ADR-T96-1 Keywords for graph input]]"]
+adrs: ["[[ADR-T19-1 Numbering counter and undo]]", "[[ADR-T16-1 Grid shape and shape labels]]", "[[ADR-T16-3 Helper settings and hooks]]", "[[ADR-T22-1 Numbering toggle drives grid indices]]", "[[ADR-T86-1 Zero-based numbering switch]]", "[[ADR-T87-1 Graph from an edge list key and layout rules]]", "[[ADR-T96-1 Keywords for graph input]]", "[[ADR-T97-1 Spaced edge pairs]]"]
 tutorial: "[[19 Auto-numbering and undoable counters]]"
 shortcuts: ["N", "Shift+N", "Ctrl+N", "Ctrl+L"]
 tags: [feature]
@@ -44,6 +44,7 @@ can be moved. They are ordinary shapes, so every tool can edit them.
 |-----------|---------|
 | `1-2 2-3` | Edges, any number per line |
 | `1>2` | An arrow from 1 to 2 |
+| `1 > 2` or `1 - 2` | The same pair; spaces around `-` or `>` are allowed |
 | `1 2` on a line | An edge |
 | `1 2 7` on a line | An edge with weight 7 written beside its middle |
 
@@ -98,7 +99,9 @@ block (`replace_block`). See
 [[ADR-T87-1 Graph from an edge list key and layout rules]]. A keyword first
 line picks an `InputFormat`; `skip_count_line` and `parent_edges` turn a
 pasted input into the same edges
-([[ADR-T96-1 Keywords for graph input]]).
+([[ADR-T96-1 Keywords for graph input]]). `joined_pairs` joins tokens
+across a spaced `-` or `>` before a line is read
+([[ADR-T97-1 Spaced edge pairs]]).
 
 ## Limits
 

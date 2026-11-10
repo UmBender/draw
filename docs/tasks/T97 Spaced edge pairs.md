@@ -1,7 +1,7 @@
 ---
 id: T97
 title: Spaced edge pairs
-status: in-progress
+status: review
 wave: 55
 branch: task/T97-spaced-edge-pairs
 depends_on: [T96]
@@ -55,11 +55,11 @@ The fuzzer's edge lines include spaced pairs (`arb_edge_text` in `tests/fuzz.rs`
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T97): specify spaced edge pairs`
-- [ ] tests — `test(T97): add failing tests for spaced edge pairs`
-- [ ] models — `feat(T97): …`
-- [ ] behaviour — `feat(T97): join spaced separators into pairs`
-- [ ] quality — `chore(T97): pass clippy and rustfmt`
-- [ ] docs — `docs(T97): update the feature note`
+- [x] tests — `test(T97): add failing tests for spaced edge pairs`
+- [x] models — `feat(T97): add the joining of spaced separators`
+- [x] behaviour — `feat(T97): join spaced separators into pairs`
+- [x] quality — `chore(T97): pass clippy and rustfmt`
+- [x] docs — `docs(T97): update the feature note`
 
 ## Learning path
 
@@ -68,3 +68,6 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written from the owner's request that `1 > 3` with spaces draw an arrow, as `1>3` does.
+- 2026-11-10 — implemented on `task/T97-spaced-edge-pairs`. `check.sh --fuzz` green (20 000 fuzz cases). The quality step changed nothing, so it has no commit.
+- 2026-11-10 — `parse_keeps_a_negative_weight_apart_from_separators` and `parse_refuses_a_dangling_separator` passed before the change: they guard what must not change.
+- 2026-11-10 — left for the owner: type `1 > 3`, `1> 3` and `1 - 2 2 > 3` in a block and press `Ctrl+L`.
