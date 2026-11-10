@@ -1,4 +1,140 @@
 //! The fading laser pointer (T106, ADR-T106-1, ADR-T106-2).
+//!
+//! Holding `Q` turns pointer moves into a trail that fades away. The
+//! [`Laser`] sits in front of the toolbar and the editor: the shell hands
+//! it every event first with [`Laser::route`], and only events it
+//! forwards reach the editor, so the trail never touches the document, the
+//! selection or the history. Positions are screen pixels; times are
+//! seconds from a clock the caller owns (`core` has none).
+
+use std::collections::VecDeque;
+
+use crate::core::editor::Editor;
+use crate::core::geom::Vec2;
+use crate::core::input::{InputEvent, Key, Modifiers};
+
+/// Seconds a trail point takes to fade out completely.
+pub const FADE_SECS: f64 = 1.0;
+/// Width of the trail in screen pixels, the same at every zoom.
+pub const WIDTH_PX: f32 = 6.0;
+/// Most points the trail keeps; the oldest go first.
+pub const MAX_POINTS: usize = 1024;
+
+/// One point of the trail.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrailPoint {
+    /// Position in screen pixels (finite).
+    pub pos: Vec2,
+    /// When it was added, in the caller's seconds (finite).
+    pub at: f64,
+    /// Whether the trail runs to it from the point before.
+    pub joined: bool,
+}
+
+/// A piece of the trail to draw: a line from `from` to `to`, or a dot
+/// where they are equal.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Segment {
+    /// Start, in screen pixels.
+    pub from: Vec2,
+    /// End, in screen pixels.
+    pub to: Vec2,
+    /// Opacity in `[0, 1]`.
+    pub alpha: f32,
+}
+
+/// Where an event goes after the laser saw it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Routed {
+    /// On to the toolbar and the editor.
+    Forward,
+    /// Used by the laser; nothing else sees it.
+    Consumed,
+}
+
+/// What the laser needs to know about the editor behind it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EditorState {
+    /// A text block is open: `Q` types a `q`.
+    pub editing: bool,
+    /// A gesture (stroke, drag, pan) is in progress: it keeps its events.
+    pub gesture: bool,
+}
+
+impl EditorState {
+    /// The state of `editor`.
+    #[must_use]
+    pub fn of(editor: &Editor) -> Self {
+        let _ = editor;
+        todo!()
+    }
+}
+
+/// Opacity of a trail point `age` seconds old: linear from 1 to 0 over
+/// [`FADE_SECS`]; 0 for a non-finite age.
+#[must_use]
+pub fn alpha(age: f64) -> f32 {
+    let _ = age;
+    todo!()
+}
+
+/// The laser: whether `Q` is held and the fading trail.
+#[derive(Debug, Clone, Default)]
+pub struct Laser {
+    /// `Q` is held.
+    held: bool,
+    /// The next point starts a new piece.
+    fresh: bool,
+    /// Oldest first, at most [`MAX_POINTS`].
+    trail: VecDeque<TrailPoint>,
+}
+
+impl Laser {
+    /// Not held, no trail.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Whether `Q` is held.
+    #[must_use]
+    pub fn is_held(&self) -> bool {
+        self.held
+    }
+
+    /// The trail, oldest first.
+    pub fn points(&self) -> impl ExactSizeIterator<Item = &TrailPoint> + '_ {
+        self.trail.iter()
+    }
+
+    /// Looks at `event` before the editor does, at time `now`, and says
+    /// whether it goes on (ADR-T106-1).
+    pub fn route(&mut self, event: &InputEvent, state: EditorState, now: f64) -> Routed {
+        let _ = (event, state, now, Key::Q, Modifiers::NONE);
+        todo!()
+    }
+
+    /// Drops the points that faded by `now`. Returns whether the overlay
+    /// must be redrawn: the trail had points. A non-finite `now` clears it.
+    pub fn tick(&mut self, now: f64) -> bool {
+        let _ = now;
+        todo!()
+    }
+
+    /// Whether points are still fading, so the shell must ask for another
+    /// frame.
+    #[must_use]
+    pub fn is_fading(&self) -> bool {
+        !self.trail.is_empty()
+    }
+
+    /// The pieces to draw at `now`, oldest first. A piece takes the
+    /// opacity of its older point, so the tail fades first.
+    pub fn segments(&self, now: f64) -> impl Iterator<Item = Segment> + '_ {
+        let _ = now;
+        std::iter::empty::<Segment>()
+    }
+}
 
 #[cfg(test)]
 mod tests {
