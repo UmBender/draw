@@ -1,7 +1,7 @@
 ---
 id: T96
 title: Keywords for graph input
-status: in-progress
+status: review
 wave: 54
 branch: task/T96-graph-keywords
 depends_on: [T87]
@@ -60,12 +60,12 @@ The fuzzer's edge texts include keyword lines (`arb_edge_text` in `tests/fuzz.rs
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T96): specify keywords for graph input`
-- [ ] tests — `test(T96): add failing tests`
-- [ ] models — `feat(T96): add types`
-- [ ] behaviour — `feat(T96): implement`
-- [ ] quality — `chore(T96): pass clippy and rustfmt`
-- [ ] docs — `docs(T96): update the feature note`
+- [x] spec — `docs(T96): specify keywords for graph input`
+- [x] tests — `test(T96): add failing tests`
+- [x] models — `feat(T96): add types`
+- [x] behaviour — `feat(T96): implement`
+- [x] quality — `chore(T96): pass clippy and rustfmt`
+- [x] docs — `docs(T96): update the feature note`
 
 ## Learning path
 
@@ -74,3 +74,7 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-09 — note written from the owner's request: a first line such as `dgraph:` says how to read the input below it, so it can be pasted without adding `>`. Parent lists accept all the common forms. The count line is skipped automatically, the owner's goal being to paste input unchanged.
+- 2026-11-09 — implemented on `task/T96-graph-keywords`. `check.sh --fuzz` green (1 697 library tests, 20 000 fuzz cases). The quality step changed nothing, so it has no commit.
+- 2026-11-09 — the first count-line rule (`n m` with `m` lines after it) took real first edges such as `1 2` for counts in the tests' own examples, so `n` must also be at least every node name after it. Recorded in ADR-T96-1 and AC-4, in the behaviour commit.
+- 2026-11-09 — keyword lines mixed into the fuzzer's edge lines dropped `graph_sessions_turn_text_blocks_into_graphs` to 32 of 200 sessions, under its 50. Keywords now go on the first line only and parent lists are generated on their own; the threshold is unchanged.
+- 2026-11-09 — left for the owner: paste a tree as `n` plus edges under `tree:`, a directed problem's input under `dgraph:`, and a parent list under `parents:`, and judge the drawings.
