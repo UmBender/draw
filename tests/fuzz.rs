@@ -2019,6 +2019,9 @@ proptest! {
             check_invariants(&editor, step)?;
             prop_assert_eq!(editor.document().len(), corners.len(), "step {}", step);
         }
+        // A second click on the only selected rectangle opens its text
+        // (ADR-T31-1), which `Undo` would cancel instead: close it first.
+        editor.handle(InputEvent::KeyDown { key: Key::Escape, mods: none });
         for _ in 0..arranged {
             prop_assert!(editor.apply(Command::Undo));
         }

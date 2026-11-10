@@ -285,8 +285,27 @@ pub fn scale_selection_down(ctx: &mut ToolCtx<'_>) -> bool {
 /// records nothing when no shape would move or a moved shape would not be
 /// finite. Returns whether the document changed.
 pub fn align_selection(ctx: &mut ToolCtx<'_>, side: Side) -> bool {
-    let _ = (ctx, side);
-    todo!()
+    prune(ctx.selection, ctx.doc);
+    let boxes = selected_bounds(ctx.doc, ctx.selection);
+    if boxes.len() < 2 {
+        return false;
+    }
+    let Some(frame) = boxes.iter().map(|(_, b)| *b).reduce(|a, b| a.union(&b)) else {
+        return false;
+    };
+    let moves: Vec<(ShapeId, Vec2)> = boxes
+        .iter()
+        .map(|&(id, b)| {
+            let offset = match side {
+                Side::Left => Vec2::new(frame.min.x - b.min.x, 0.0),
+                Side::Right => Vec2::new(frame.max.x - b.max.x, 0.0),
+                Side::Top => Vec2::new(0.0, frame.min.y - b.min.y),
+                Side::Bottom => Vec2::new(0.0, frame.max.y - b.max.y),
+            };
+            (id, offset)
+        })
+        .collect();
+    commit_moves(ctx, &moves, frame)
 }
 
 /// Spaces three or more selected shapes along `axis` with equal gaps
@@ -295,8 +314,102 @@ pub fn align_selection(ctx: &mut ToolCtx<'_>, side: Side) -> bool {
 /// when no shape would move or a moved shape would not be finite. Returns
 /// whether the document changed.
 pub fn distribute_selection(ctx: &mut ToolCtx<'_>, axis: Axis) -> bool {
-    let _ = (ctx, axis);
-    todo!()
+    prune(ctx.selection, ctx.doc);
+    let mut order = selected_bounds(ctx.doc, ctx.selection);
+    if order.len() < 3 {
+        return false;
+    }
+    let Some(frame) = order.iter().map(|(_, b)| *b).reduce(|a, b| a.union(&b)) else {
+        return false;
+    };
+    let near = |b: &Aabb| match axis {
+        Axis::Horizontal => b.min.x,
+        Axis::Vertical => b.min.y,
+    };
+    let far = |b: &Aabb| match axis {
+        Axis::Horizontal => b.max.x,
+        Axis::Vertical => b.max.y,
+    };
+    let along = |d: f32| match axis {
+        Axis::Horizontal => Vec2::new(d, 0.0),
+        Axis::Vertical => Vec2::new(0.0, d),
+    };
+    // Near edge, then far edge, then stacking order (the sort is stable).
+    order.sort_by(|(_, p), (_, q)| near(p).total_cmp(&near(q)).then(far(p).total_cmp(&far(q))));
+    let (Some(&(_, first_box)), Some(&(_, last_box))) = (order.first(), order.last()) else {
+        return false;
+    };
+    let middle = order.get(1..order.len() - 1).unwrap_or_default();
+    let sizes: f32 = middle.iter().map(|(_, b)| far(b) - near(b)).sum();
+    #[allow(clippy::cast_precision_loss)] // A selection is far below 2^24 shapes.
+    let gaps = (order.len() - 1) as f32;
+    let gap = (near(&last_box) - far(&first_box) - sizes) / gaps;
+    let mut cursor = far(&first_box) + gap;
+    let moves: Vec<(ShapeId, Vec2)> = middle
+        .iter()
+        .map(|(id, b)| {
+            let offset = along(cursor - near(b));
+            cursor += far(b) - near(b) + gap;
+            (*id, offset)
+        })
+        .collect();
+    commit_moves(ctx, &moves, frame)
+}
+
+/// Relative tolerance under which a whole align or distribute is a no-op
+/// (ADR-T101-1).
+const ARRANGE_EPS: f32 = 1e-5;
+
+/// The selected shapes' ids and bounds, in stacking order.
+fn selected_bounds(doc: &Document, selection: &[ShapeId]) -> Vec<(ShapeId, Aabb)> {
+    selected_shapes(doc, selection)
+        .into_iter()
+        .map(|(id, shape)| (id, shape.bounds()))
+        .collect()
+}
+
+/// Translates each shape of `moves` by its offset as one undo step
+/// (ADR-T101-1). Records nothing when every offset is within
+/// [`ARRANGE_EPS`] of `frame`'s magnitude, or when an offset or a moved
+/// shape is not finite. Returns whether the document changed.
+fn commit_moves(ctx: &mut ToolCtx<'_>, moves: &[(ShapeId, Vec2)], frame: Aabb) -> bool {
+    let magnitude = [frame.min.x, frame.min.y, frame.max.x, frame.max.y]
+        .into_iter()
+        .fold(1.0f32, |m, c| m.max(c.abs()));
+    let tolerance = ARRANGE_EPS * magnitude;
+    if !tolerance.is_finite() {
+        return false;
+    }
+    let negligible = |d: Vec2| d.x.abs() <= tolerance && d.y.abs() <= tolerance;
+    if moves.iter().all(|&(_, offset)| negligible(offset)) {
+        return false;
+    }
+    let mut edits = Vec::with_capacity(moves.len());
+    for &(id, offset) in moves {
+        if !offset.is_finite() {
+            return false;
+        }
+        if offset == Vec2::ZERO {
+            continue;
+        }
+        let Some(before) = ctx.doc.get(id) else {
+            continue;
+        };
+        let mut after = before.clone();
+        after.translate(offset);
+        let bounds = after.bounds();
+        if !after.is_finite() || !bounds.min.is_finite() || !bounds.max.is_finite() {
+            return false;
+        }
+        if after != *before {
+            edits.push(Edit::Replace {
+                id,
+                before: before.clone(),
+                after,
+            });
+        }
+    }
+    ctx.commit(Transaction::from(edits))
 }
 
 /// Drops selected ids that are not in the document.

@@ -1550,8 +1550,10 @@ impl Editor {
     /// Unlike [`Self::run_edit`] it does nothing during a gesture rather
     /// than cancelling it. Returns whether the document changed.
     fn arrange(&mut self, edit: impl FnOnce(&mut ToolCtx<'_>) -> bool) -> bool {
-        let _ = edit;
-        todo!()
+        if self.gesture.is_some() {
+            return false;
+        }
+        self.run_edit(edit)
     }
 
     /// Removes selected ids that are no longer in the document.
