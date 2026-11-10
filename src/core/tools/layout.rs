@@ -22,6 +22,12 @@ use std::fmt;
 /// Most nodes a graph can have.
 pub const MAX_NODES: usize = 200;
 
+/// Most positions a `segtree:` block can cover (ADR-T104-1).
+pub const MAX_SEGMENT_TREE_SIZE: u32 = 100;
+
+/// The first line of a segment tree block, before its size (ADR-T104-1).
+const SEGTREE_KEYWORD: &str = "segtree:";
+
 /// Radius of a node's circle, in ems of the block's text.
 pub const NODE_RADIUS_EM: f32 = 1.25;
 
@@ -92,12 +98,23 @@ pub enum GraphError {
         /// Bytes of the text.
         bytes: usize,
     },
+    /// The size of a `segtree:` block is not one number from 1 to
+    /// [`MAX_SEGMENT_TREE_SIZE`] (ADR-T104-1). Names the line, never its
+    /// text.
+    NotATreeSize {
+        /// 1-based line number.
+        line: usize,
+    },
 }
 
 impl fmt::Display for GraphError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotAnEdge { line } => write!(f, "line {line} is not an edge"),
+            Self::NotATreeSize { line } => write!(
+                f,
+                "line {line} is not one size from 1 to {MAX_SEGMENT_TREE_SIZE}"
+            ),
             Self::TooManyNodes { nodes } => {
                 write!(f, "{nodes} nodes, a graph holds at most {MAX_NODES}")
             }
@@ -140,6 +157,8 @@ pub struct EdgeList {
     names: Vec<NodeName>,
     /// The edges, in the order they were written.
     edges: Vec<Edge>,
+    /// Whether it came from `segtree:`, drawn as boxes (ADR-T104-2).
+    boxes: bool,
 }
 
 impl EdgeList {
@@ -150,6 +169,18 @@ impl EdgeList {
     /// [`GraphError`] if a line is not an edge, there are too many nodes
     /// or the text is over [`PASTE_MAX_BYTES`].
     pub fn parse(text: &str) -> Result<Option<Self>, GraphError> {
+        Self::parse_numbered(text, FIRST_NUMBER)
+    }
+
+    /// The graph `text` holds when positions start at `first`, the
+    /// editor's first number (ADR-T104-1); `Ok(None)` when it is blank.
+    /// Only a `segtree:` block reads `first`.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError`] as [`Self::parse`], and
+    /// [`GraphError::NotATreeSize`] for a bad `segtree:` size.
+    pub fn parse_numbered(text: &str, first: u32) -> Result<Option<Self>, GraphError> {
         if text.len() > PASTE_MAX_BYTES {
             return Err(GraphError::TooLong { bytes: text.len() });
         }
@@ -160,6 +191,17 @@ impl EdgeList {
             .map(|(index, line)| (index + 1, line))
             .filter(|(_, line)| !line.trim().is_empty())
             .collect();
+        // A segment tree block names its own nodes (ADR-T104-1).
+        if let Some((&(number, line), rest)) = lines.split_first()
+            && let Some(size) = line.trim().strip_prefix(SEGTREE_KEYWORD)
+        {
+            let (root, raws) = segment_tree_edges((number, size), rest, first)?;
+            let list = Self::from_raws(root, raws)?;
+            return Ok(list.map(|list| Self {
+                boxes: true,
+                ..list
+            }));
+        }
         // A keyword first line says how the rest is read (ADR-T96-1).
         let format = lines
             .first()
@@ -172,9 +214,24 @@ impl EdgeList {
             Some(InputFormat::Edges { directed }) => {
                 (None, edge_lines(skip_count_line(body), directed)?)
             }
-            Some(InputFormat::Parents { first }) => parent_edges(body, first)?,
+            Some(InputFormat::Parents { first }) => {
+                let (root, raws) = parent_edges(body, first)?;
+                (root.map(NodeName::Number), raws)
+            }
         };
+        Self::from_raws(root, raws)
+    }
 
+    /// The graph of `raws`, `root` named first so a tree hangs from it;
+    /// `None` when nothing is named.
+    ///
+    /// # Errors
+    ///
+    /// [`GraphError::TooManyNodes`] over [`MAX_NODES`].
+    fn from_raws(
+        root: Option<NodeName>,
+        raws: Vec<RawEdge<'_>>,
+    ) -> Result<Option<Self>, GraphError> {
         let mut names = Vec::new();
         let mut index_of = HashMap::new();
         let mut node = |name: NodeName| {
@@ -185,7 +242,7 @@ impl EdgeList {
         };
         // A parent list's root is named first, so the tree hangs from it.
         if let Some(root) = root {
-            node(NodeName::Number(root));
+            node(root);
         }
         let mut edges: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
@@ -212,7 +269,11 @@ impl EdgeList {
         if names.len() > MAX_NODES {
             return Err(GraphError::TooManyNodes { nodes: names.len() });
         }
-        Ok((!names.is_empty()).then_some(Self { names, edges }))
+        Ok((!names.is_empty()).then_some(Self {
+            names,
+            edges,
+            boxes: false,
+        }))
     }
 
     /// Node names, in the order they were first named.
@@ -235,6 +296,9 @@ impl EdgeList {
         if !size.is_finite() || size <= 0.0 {
             return None;
         }
+        if self.boxes {
+            return self.box_shapes(origin, size, style);
+        }
         let radius = self.node_radius(size);
         let widest_weight = self
             .edges
@@ -243,7 +307,9 @@ impl EdgeList {
             .map(|weight| text_layout::bounds(Vec2::ZERO, weight, size).width())
             .fold(0.0, f32::max);
         let pitch = 2.0 * radius + (2.0 * radius).max(widest_weight + size) + 2.0 * style.width;
-        let centres = self.layers(pitch).unwrap_or_else(|| self.circle(pitch));
+        let centres = self
+            .layers(pitch, 0.0)
+            .unwrap_or_else(|| self.circle(pitch));
         let shift = origin + Vec2::new(radius, radius) - top_left(&centres);
 
         let mut lines = Vec::with_capacity(self.edges.len());
@@ -277,6 +343,66 @@ impl EdgeList {
         shapes.iter().all(Shape::is_finite).then_some(shapes)
     }
 
+    /// The drawing of a segment tree (ADR-T104-2): per node a square
+    /// holding its range with an empty square under it, edges from a
+    /// parent's value box to its children's range boxes. `None` as
+    /// [`Self::shapes`], or if the edges are not a tree.
+    fn box_shapes(&self, origin: Vec2, size: f32, style: Style) -> Option<Vec<Shape>> {
+        let half = self.box_half(size);
+        let box_width = 2.0 * half;
+        let pitch = 2.0 * box_width + 2.0 * style.width;
+        let centres = self.layers(pitch, box_width)?;
+        let shift = origin + Vec2::new(half, half) - top_left(&centres);
+        let corner = Vec2::new(half, half);
+        // Just off both strokes, as outline snapping leaves it.
+        let off = style.width;
+        let lines = self.edges.iter().map(|edge| {
+            let (from, to) = (centres[edge.from] + shift, centres[edge.to] + shift);
+            Shape::Line {
+                a: from + Vec2::new(0.0, half + box_width + off),
+                b: to - Vec2::new(0.0, half + off),
+                style,
+            }
+        });
+        let squares = self.names.iter().zip(&centres).flat_map(|(name, centre)| {
+            let centre = *centre + shift;
+            let square = |c: Vec2| Shape::Rect {
+                a: c - corner,
+                b: c + corner,
+                style,
+                fill: None,
+                label: None,
+                text: None,
+            };
+            let text = match name {
+                NodeName::Math(math) => math.clone(),
+                NodeName::Number(n) => n.to_string(),
+            };
+            [
+                square(centre).with_slot_text(TextSlot::Shape, ShapeText::new(text, size)),
+                square(centre + Vec2::new(0.0, box_width)),
+            ]
+        });
+        let shapes: Vec<Shape> = lines.chain(squares).collect();
+        shapes.iter().all(Shape::is_finite).then_some(shapes)
+    }
+
+    /// Half the edge of every segment tree square at text size `size`:
+    /// [`NODE_RADIUS_EM`], or more when the widest name needs it to be
+    /// typeset at full size in the square's text frame (ADR-T104-2).
+    fn box_half(&self, size: f32) -> f32 {
+        let widest = self
+            .names
+            .iter()
+            .map(|name| match name {
+                NodeName::Math(math) => text_layout::bounds(Vec2::ZERO, math, size),
+                NodeName::Number(n) => text_layout::bounds(Vec2::ZERO, &n.to_string(), size),
+            })
+            .map(|bounds| bounds.width().max(bounds.height()))
+            .fold(0.0, f32::max);
+        (NODE_RADIUS_EM * size).max(widest / (2.0 * SHAPE_TEXT_FILL))
+    }
+
     /// The radius of every circle at text size `size`: [`NODE_RADIUS_EM`],
     /// or more when the widest math name needs it to be typeset at full
     /// size in the circle's text frame (ADR-T98-1).
@@ -298,8 +424,8 @@ impl EdgeList {
     /// Node centres of the layered drawing, or `None` if the edges are not
     /// a tree. Arrow directions do not count. The root is the first node
     /// named; every leaf takes a column of its own and every parent sits
-    /// centred over its children.
-    fn layers(&self, pitch: f32) -> Option<Vec<Vec2>> {
+    /// centred over its children. Each layer is `extra` further down.
+    fn layers(&self, pitch: f32, extra: f32) -> Option<Vec<Vec2>> {
         let n = self.names.len();
         if self.edges.len() + 1 != n {
             return None;
@@ -354,7 +480,7 @@ impl EdgeList {
             }
         }
 
-        let layer_gap = pitch * (1.0 + (n as f32).sqrt() / 4.0);
+        let layer_gap = pitch * (1.0 + (n as f32).sqrt() / 4.0) + extra;
         Some(
             column
                 .iter()
@@ -466,6 +592,64 @@ fn skip_count_line<'a, 'b>(lines: &'b [(usize, &'a str)]) -> &'b [(usize, &'a st
         _ => false,
     };
     if count { rest } else { lines }
+}
+
+/// The root and edges of a segment tree block (ADR-T104-1): `size` is the
+/// keyword line after `segtree:`, with its number, and `rest` the lines
+/// after it. Positions start at `first`. `None` and no edges when no size
+/// is written.
+///
+/// The edges run from each node to its left child, then that child's
+/// subtree, then to its right child: the nodes are named in preorder.
+///
+/// # Errors
+///
+/// [`GraphError::NotATreeSize`] naming the line of a second entry, or of
+/// an entry that is not a number from 1 to [`MAX_SEGMENT_TREE_SIZE`].
+fn segment_tree_edges(
+    size: (usize, &str),
+    rest: &[(usize, &str)],
+    first: u32,
+) -> Result<(Option<NodeName>, Vec<RawEdge<'static>>), GraphError> {
+    let mut entries = std::iter::once(size)
+        .chain(rest.iter().copied())
+        .flat_map(|(number, line)| line.split_whitespace().map(move |entry| (number, entry)));
+    let Some((line, entry)) = entries.next() else {
+        return Ok((None, Vec::new()));
+    };
+    if let Some((line, _)) = entries.next() {
+        return Err(GraphError::NotATreeSize { line });
+    }
+    let bad = GraphError::NotATreeSize { line };
+    let n = number_name(entry)
+        .filter(|n| (1..=MAX_SEGMENT_TREE_SIZE).contains(n))
+        .ok_or(bad)?;
+    let root = (first, first.checked_add(n - 1).ok_or(bad)?);
+
+    let name = |(l, r): (u32, u32)| NodeName::Math(format!("$[{l}, {r}]$"));
+    // Pushes the edges to both children of `node`, the left one on top.
+    let push_children = |stack: &mut Vec<_>, node: (u32, u32)| {
+        let (l, r) = node;
+        if l < r {
+            // ⌊(l + r) / 2⌋, without overflow.
+            let m = u32::midpoint(l, r);
+            stack.push((node, (m + 1, r)));
+            stack.push((node, (l, m)));
+        }
+    };
+    let mut raws = Vec::with_capacity(2 * n as usize);
+    let mut stack = Vec::new();
+    push_children(&mut stack, root);
+    while let Some((parent, child)) = stack.pop() {
+        raws.push(RawEdge {
+            u: name(parent),
+            v: name(child),
+            directed: false,
+            weight: None,
+        });
+        push_children(&mut stack, child);
+    }
+    Ok((Some(name(root)), raws))
 }
 
 /// The root and edges of a parent list (ADR-T96-1): `None` and no edges
@@ -2281,6 +2465,416 @@ mod tests {
                 .iter()
                 .all(|e| e.directed)
         );
+    }
+
+    // ---- T104 segment tree ------------------------------------------------
+
+    fn segtree(text: &str, first: u32) -> EdgeList {
+        match EdgeList::parse_numbered(text, first) {
+            Ok(Some(list)) => list,
+            other => panic!("{text:?} gave {other:?}"),
+        }
+    }
+
+    /// The name of the node over `[l, r]`.
+    fn range(l: u32, r: u32) -> String {
+        format!("$[{l}, {r}]$")
+    }
+
+    /// `(l, r)` of a node named `$[l, r]$`; panics on any other name.
+    fn range_of(name: &NodeName) -> (u32, u32) {
+        let NodeName::Math(math) = name else {
+            panic!("{name:?} is not a range");
+        };
+        let inner = math
+            .strip_prefix("$[")
+            .and_then(|rest| rest.strip_suffix("]$"))
+            .and_then(|inner| inner.split_once(", "));
+        match inner.map(|(l, r)| (l.parse(), r.parse())) {
+            Some((Ok(l), Ok(r))) => (l, r),
+            _ => panic!("{math:?} is not a range"),
+        }
+    }
+
+    /// Every segment tree rule over `n` positions from `first` (AC-2).
+    fn assert_segment_tree(list: &EdgeList, n: u32, first: u32) {
+        let names = list.names();
+        assert_eq!(names.len(), 2 * n as usize - 1);
+        assert_eq!(list.edges().len(), 2 * n as usize - 2);
+        assert_eq!(range_of(&names[0]), (first, first + n - 1));
+        let mut children = vec![Vec::new(); names.len()];
+        for edge in list.edges() {
+            assert!(!edge.directed && edge.weight.is_none());
+            children[edge.from].push(range_of(&names[edge.to]));
+        }
+        let mut leaves = Vec::new();
+        for (name, below) in names.iter().zip(&children) {
+            let (l, r) = range_of(name);
+            if l == r {
+                assert!(below.is_empty(), "leaf [{l}, {r}] has children");
+                leaves.push(l);
+            } else {
+                // ⌊(l + r) / 2⌋.
+                let m = u32::midpoint(l, r);
+                assert_eq!(below, &[(l, m), (m + 1, r)], "[{l}, {r}]");
+            }
+        }
+        leaves.sort_unstable();
+        assert_eq!(leaves, (first..first + n).collect::<Vec<_>>());
+    }
+
+    /// The rectangles of `shapes` holding a text (the range boxes) and
+    /// those holding none (the value boxes).
+    fn segtree_boxes(shapes: &[Shape]) -> (Vec<&Shape>, Vec<&Shape>) {
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Rect { .. }))
+            .partition(|s| s.slot_text(TextSlot::Shape).is_some())
+    }
+
+    /// The centre of the square holding `text`.
+    fn square_holding(shapes: &[Shape], text: &str) -> Vec2 {
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Rect { .. }))
+            .find(|s| s.slot_text(TextSlot::Shape).is_some_and(|t| t.text == text))
+            .map_or_else(|| panic!("no square holds {text}"), |s| s.bounds().center())
+    }
+
+    #[test]
+    fn parse_segtree_reads_the_size_on_the_keyword_line() {
+        // Act
+        let list = segtree("segtree: 8", 1);
+
+        // Assert
+        assert_eq!(list.names().len(), 15);
+        assert_eq!(written(&list.names()[0]), range(1, 8));
+    }
+
+    #[test]
+    fn parse_segtree_reads_the_size_on_the_next_line() {
+        // Arrange
+        let wanted = segtree("segtree: 8", 1);
+
+        // Act, Assert
+        for text in [
+            "segtree:\n8",
+            "  segtree:8  ",
+            "segtree:\n\n 8 \n",
+            "\nsegtree: \n8",
+        ] {
+            assert_eq!(segtree(text, 1), wanted, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn parse_segtree_starts_at_the_first_number() {
+        // Act
+        let one = segtree("segtree: 8", 1);
+        let zero = segtree("segtree: 8", 0);
+
+        // Assert
+        assert_segment_tree(&one, 8, 1);
+        assert_segment_tree(&zero, 8, 0);
+        assert_eq!(written(&zero.names()[0]), range(0, 7));
+    }
+
+    #[test]
+    fn parse_segtree_accepts_the_bounds() {
+        // Act
+        let single = segtree("segtree: 1", 1);
+        let largest = segtree("segtree: 100", 0);
+
+        // Assert
+        assert_eq!(single.names(), [NodeName::Math(range(1, 1))]);
+        assert_eq!(single.edges(), []);
+        assert_segment_tree(&largest, 100, 0);
+    }
+
+    #[test]
+    fn parse_segtree_alone_is_no_graph() {
+        for text in ["segtree:", "segtree:\n \n", "  segtree:  "] {
+            assert_eq!(EdgeList::parse_numbered(text, 1), Ok(None), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn parse_without_segtree_ignores_the_first_number() {
+        for text in [
+            "1-2 2-3",
+            "0 1 5",
+            "parents:\n1 1",
+            "parents0:\n0 0",
+            "$a$ 1",
+        ] {
+            assert_eq!(
+                EdgeList::parse_numbered(text, 0),
+                EdgeList::parse(text),
+                "{text:?}"
+            );
+            assert_eq!(EdgeList::parse_numbered(text, 1), EdgeList::parse(text));
+        }
+    }
+
+    #[test]
+    fn parse_segtree_splits_at_the_floor_of_the_middle() {
+        // Act
+        let list = segtree("segtree: 5", 1);
+
+        // Assert: preorder, left child first.
+        let names: Vec<String> = list.names().iter().map(written).collect();
+        let wanted = [
+            (1, 5),
+            (1, 3),
+            (1, 2),
+            (1, 1),
+            (2, 2),
+            (3, 3),
+            (4, 5),
+            (4, 4),
+            (5, 5),
+        ]
+        .map(|(l, r)| range(l, r));
+        assert_eq!(names, wanted);
+        let pairs: Vec<(String, String)> = written_edges(&list)
+            .into_iter()
+            .map(|(from, to, _, _)| (from, to))
+            .collect();
+        let wanted_pairs = [
+            ((1, 5), (1, 3)),
+            ((1, 3), (1, 2)),
+            ((1, 2), (1, 1)),
+            ((1, 2), (2, 2)),
+            ((1, 3), (3, 3)),
+            ((1, 5), (4, 5)),
+            ((4, 5), (4, 4)),
+            ((4, 5), (5, 5)),
+        ]
+        .map(|((a, b), (c, d))| (range(a, b), range(c, d)));
+        assert_eq!(pairs, wanted_pairs);
+    }
+
+    #[test]
+    fn parse_segtree_has_2n_minus_1_nodes() {
+        for n in 1..=100 {
+            for first in [0, 1] {
+                assert_segment_tree(&segtree(&format!("segtree: {n}"), first), n, first);
+            }
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_squares_hold_their_ranges_at_one_size() {
+        for n in [8, 100] {
+            // Arrange
+            let list = segtree(&format!("segtree: {n}"), 1);
+
+            // Act
+            let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+            // Assert: no circle; one range square per node, typeset text,
+            // no number label.
+            assert!(!shapes.iter().any(|s| matches!(s, Shape::Ellipse { .. })));
+            let (ranges, _) = segtree_boxes(&shapes);
+            assert_eq!(ranges.len(), list.names().len());
+            let mut held: Vec<String> = ranges
+                .iter()
+                .map(|s| {
+                    assert_eq!(s.label(), None);
+                    s.slot_text(TextSlot::Shape)
+                        .map_or_else(String::new, |t| t.text.clone())
+                })
+                .collect();
+            let mut wanted: Vec<String> = list.names().iter().map(written).collect();
+            held.sort();
+            wanted.sort();
+            assert_eq!(held, wanted);
+            // One square size, fitting the widest label at full size.
+            let side = ranges[0].bounds().width();
+            let Some(frame) = ranges[0].text_frame(TextSlot::Shape) else {
+                panic!("a rectangle has a frame");
+            };
+            for square in &ranges {
+                let b = square.bounds();
+                // Far from the origin, f32 keeps about 1e-3 of a unit.
+                assert!(approx_eq(b.width(), side, 1e-2), "{b:?}");
+                assert!(approx_eq(b.height(), side, 1e-2), "{b:?}");
+                let text = square.slot_text(TextSlot::Shape).map_or("", |t| &t.text);
+                let label = text_layout::bounds(Vec2::ZERO, text, SIZE);
+                assert!(frame.width() + 1e-3 >= label.width(), "{text}");
+                assert!(frame.height() + 1e-3 >= label.height(), "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_has_an_empty_value_box_under_each_node() {
+        // Arrange
+        let list = segtree("segtree: 5", 1);
+
+        // Act
+        let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+        // Assert: as many empty squares as nodes, each the size of the
+        // range square above it and touching it.
+        let (ranges, values) = segtree_boxes(&shapes);
+        assert_eq!(ranges.len(), 9);
+        assert_eq!(values.len(), 9);
+        for range in &ranges {
+            let above = range.bounds();
+            let below = values.iter().map(|s| s.bounds()).find(|b| {
+                approx_eq(b.min.x, above.min.x, 1e-3)
+                    && approx_eq(b.min.y, above.max.y - STYLE.width, 1e-3)
+            });
+            let Some(below) = below else {
+                panic!("no value box under {above:?}");
+            };
+            assert!(approx_eq(below.width(), above.width(), 1e-3));
+            assert!(approx_eq(below.height(), above.height(), 1e-3));
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_edges_join_value_box_to_child() {
+        // Arrange
+        let list = segtree("segtree: 4", 1);
+
+        // Act
+        let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+        // Assert: every line starts just under a value box's bottom edge,
+        // at its middle, and ends just over a range box's top edge.
+        let (ranges, values) = segtree_boxes(&shapes);
+        let lines: Vec<(Vec2, Vec2)> = shapes
+            .iter()
+            .filter_map(|s| match s {
+                Shape::Line { a, b, .. } => Some((*a, *b)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(lines.len(), 6);
+        let near = |p: Vec2, x: f32, y: f32| {
+            approx_eq(p.x, x, 1e-3) && (p.y - y).abs() <= 2.0 * STYLE.width
+        };
+        for (a, b) in lines {
+            assert!(
+                values
+                    .iter()
+                    .map(|s| s.bounds())
+                    .any(|v| near(a, v.center().x, v.max.y)),
+                "{a:?}"
+            );
+            assert!(
+                ranges
+                    .iter()
+                    .map(|s| s.bounds())
+                    .any(|r| near(b, r.center().x, r.min.y)),
+                "{b:?}"
+            );
+            assert!(b.y > a.y);
+        }
+    }
+
+    #[test]
+    fn shapes_segtree_is_layered_from_the_root_children_left_to_right() {
+        for n in [5, 8] {
+            // Arrange
+            let list = segtree(&format!("segtree: {n}"), 1);
+
+            // Act
+            let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE).unwrap_or_default();
+
+            // Assert: the root on top, each child one layer down, left
+            // child left of the right one, the parent between them.
+            let root = square_holding(&shapes, &range(1, n));
+            for name in list.names() {
+                let (l, r) = range_of(name);
+                let at = square_holding(&shapes, &range(l, r));
+                assert!(root.y <= at.y + 1e-3);
+                if l == r {
+                    continue;
+                }
+                let m = u32::midpoint(l, r);
+                let left = square_holding(&shapes, &range(l, m));
+                let right = square_holding(&shapes, &range(m + 1, r));
+                assert!(approx_eq(left.y, right.y, 1e-3));
+                assert!(left.y > at.y + 1.0);
+                assert!(left.x < at.x && at.x < right.x, "[{l}, {r}]");
+            }
+            // Leaves read left to right in position order.
+            let xs: Vec<f32> = (1..=n)
+                .map(|i| square_holding(&shapes, &range(i, i)).x)
+                .collect();
+            assert!(xs.windows(2).all(|w| w[0] < w[1]), "{xs:?}");
+        }
+    }
+
+    #[test]
+    fn parse_segtree_refuses_a_bad_size_naming_its_line() {
+        for (text, line) in [
+            ("segtree: 0", 1),
+            ("segtree: 101", 1),
+            ("segtree: -3", 1),
+            ("segtree: x", 1),
+            ("segtree: 8.5", 1),
+            ("segtree: +8", 1),
+            ("segtree: 99999999999999999999", 1),
+            ("segtree: 8 9", 1),
+            ("segtree: $8$", 1),
+            ("segtree:\n8\n9", 3),
+            ("segtree:\n\n8 x", 3),
+            ("\nsegtree:\n0", 3),
+        ] {
+            assert_eq!(
+                EdgeList::parse_numbered(text, 1),
+                Err(GraphError::NotATreeSize { line }),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tree_size_error_names_the_line_not_its_text() {
+        // Act
+        let reason = GraphError::NotATreeSize { line: 3 }.to_string();
+
+        // Assert
+        assert!(reason.contains("line 3"), "{reason}");
+        assert!(reason.contains("100"), "{reason}");
+        assert!(!reason.contains("segtree"), "{reason}");
+    }
+
+    proptest! {
+        #[test]
+        fn segtree_parse_and_shapes_hold_for_any_size(
+            n in prop_oneof![Just(0_u32), Just(1), Just(100), Just(101), 0_u32..=120],
+            first in 0_u32..=1,
+            next_line in any::<bool>(),
+        ) {
+            // Arrange
+            let text = if next_line {
+                format!("segtree:\n{n}")
+            } else {
+                format!("segtree: {n}")
+            };
+
+            // Act
+            let parsed = EdgeList::parse_numbered(&text, first);
+
+            // Assert
+            if (1..=100).contains(&n) {
+                let Ok(Some(list)) = parsed else {
+                    return Err(TestCaseError::fail(format!("{text:?} gave {parsed:?}")));
+                };
+                prop_assert_eq!(list.names().len(), 2 * n as usize - 1);
+                prop_assert_eq!(list.edges().len(), 2 * n as usize - 2);
+                let shapes = list.shapes(Vec2::ZERO, SIZE, STYLE);
+                prop_assert!(shapes.is_some_and(|s| s.iter().all(Shape::is_finite)));
+            } else {
+                let line = 1 + usize::from(next_line);
+                prop_assert_eq!(parsed, Err(GraphError::NotATreeSize { line }));
+            }
+        }
     }
 
     fn points(text: &str) -> PointList {

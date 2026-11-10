@@ -384,12 +384,42 @@ fn arb_edge_text() -> impl Strategy<Value = String> {
         prop::collection::vec(entry, 1..12),
     )
         .prop_map(|(keyword, entries)| format!("{keyword}\n{}", entries.join(" ")));
-    prop_oneof![3 => edges, 1 => parents]
+    // Segment trees at and past the size bounds, and bad sizes (T104).
+    let segtree = select(vec![
+        "segtree: 1",
+        "segtree: 8",
+        "segtree:\n100",
+        "segtree: 0",
+        "segtree: 101",
+        "segtree: x",
+        "segtree: 4 4",
+        "segtree:",
+    ])
+    .prop_map(str::to_owned);
+    prop_oneof![6 => edges, 2 => parents, 1 => segtree]
 }
 
 /// A text block turned into a graph (T87), as [`arb_table_session`].
 fn arb_graph_session() -> impl Strategy<Value = Vec<InputEvent>> {
     arb_block_key_session(arb_edge_text(), Key::L)
+}
+
+/// [`arb_graph_session`], sometimes undone with `Ctrl+Z`, as when a
+/// drawing is not the one wanted. The undo keeps redo states reachable in
+/// [`arb_session`] (T104).
+fn arb_graph_session_maybe_undone() -> impl Strategy<Value = Vec<InputEvent>> {
+    (arb_graph_session(), any::<bool>()).prop_map(|(mut events, undo)| {
+        if undo {
+            events.push(InputEvent::KeyDown {
+                key: Key::Z,
+                mods: Modifiers {
+                    ctrl: true,
+                    ..Modifiers::NONE
+                },
+            });
+        }
+        events
+    })
 }
 
 /// A list of points: mostly whole lines the parser reads, sometimes not.
@@ -844,7 +874,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         2 => arb_text_session(),
         1 => arb_host_session(),
         1 => arb_table_session(),
-        1 => arb_graph_session(),
+        1 => arb_graph_session_maybe_undone(),
         1 => arb_plot_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
