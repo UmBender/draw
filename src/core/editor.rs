@@ -7511,8 +7511,7 @@ mod tests {
 
     #[test]
     fn alt_h_spaces_shapes_with_equal_gaps() {
-        // Arrange: gap = max((199.5 - 10.5 - 21) / 2, 41 / 4) = 84; the
-        // first shape's centre y is 5.
+        // Arrange: gap = 41 / 4 = 10.25; the first shape's centre y is 5.
         let (mut ed, id) = arranged(uneven());
         let first = bounds_of(&ed, id[0]);
         let last = bounds_of(&ed, id[2]);
@@ -7520,22 +7519,26 @@ mod tests {
         // Act
         let changed = key_with(&mut ed, Key::H, ALT);
 
-        // Assert: the first stays, the last keeps its x, all share y 5.
+        // Assert: the first stays, the row is compact, all share y 5.
         assert!(changed);
         assert_eq!(bounds_of(&ed, id[0]), first);
         let middle = bounds_of(&ed, id[1]);
         let moved_last = bounds_of(&ed, id[2]);
-        assert!(approx_eq(middle.min.x, 94.5, ARRANGE_EPS), "{middle:?}");
+        assert!(approx_eq(middle.min.x, 20.75, ARRANGE_EPS), "{middle:?}");
         assert!(approx_eq(middle.min.y, -10.5, ARRANGE_EPS), "{middle:?}");
-        assert!(approx_eq(moved_last.min.x, last.min.x, ARRANGE_EPS));
+        assert!(
+            approx_eq(moved_last.min.x, 52.0, ARRANGE_EPS),
+            "{moved_last:?}"
+        );
+        assert!(approx_eq(moved_last.width(), last.width(), ARRANGE_EPS));
         assert!(
             approx_eq(moved_last.min.y, 2.0, ARRANGE_EPS),
             "{moved_last:?}"
         );
-        assert!(approx_eq(middle.min.x - first.max.x, 84.0, ARRANGE_EPS));
+        assert!(approx_eq(middle.min.x - first.max.x, 10.25, ARRANGE_EPS));
         assert!(approx_eq(
             moved_last.min.x - middle.max.x,
-            84.0,
+            10.25,
             ARRANGE_EPS
         ));
     }
@@ -7543,8 +7546,8 @@ mod tests {
     #[test]
     fn alt_v_spaces_shapes_with_equal_vertical_gaps() {
         // Arrange: tops -0.5, 299.5 and 29.5; the middle one (by top) is
-        // 21 high, gap = max((299.5 - 10.5 - 21) / 2, 41 / 4) = 134; the
-        // first shape's centre x is 5.
+        // 21 high, the largest is 41 high, so gap = 10.25; the first
+        // shape's centre x is 5.
         let (mut ed, id) = arranged(vec![
             rect(0.0, 0.0, 10.0, 10.0),
             rect(50.0, 300.0, 10.0, 40.0),
@@ -7560,20 +7563,24 @@ mod tests {
         assert!(changed);
         assert_eq!(bounds_of(&ed, id[0]), first);
         let moved_last = bounds_of(&ed, id[1]);
-        assert!(approx_eq(moved_last.min.y, last.min.y, ARRANGE_EPS));
+        assert!(
+            approx_eq(moved_last.min.y, 52.0, ARRANGE_EPS),
+            "{moved_last:?}"
+        );
+        assert!(approx_eq(moved_last.height(), last.height(), ARRANGE_EPS));
         assert!(
             approx_eq(moved_last.min.x, -0.5, ARRANGE_EPS),
             "{moved_last:?}"
         );
         let middle = bounds_of(&ed, id[2]);
-        assert!(approx_eq(middle.min.y, 144.5, ARRANGE_EPS), "{middle:?}");
+        assert!(approx_eq(middle.min.y, 20.75, ARRANGE_EPS), "{middle:?}");
         assert!(approx_eq(middle.min.x, -10.5, ARRANGE_EPS), "{middle:?}");
     }
 
     #[test]
     fn distribute_overlapping_shapes_grows_the_row() {
         // Arrange: three 101-wide bounds starting at -0.5, 9.5 and 49.5;
-        // the natural gap -76 is below 101 / 4 = 25.25, so the row grows.
+        // the gap is 101 / 4 = 25.25, so the row grows.
         let (mut ed, id) = arranged(vec![
             rect(0.0, 0.0, 100.0, 10.0),
             rect(10.0, 20.0, 100.0, 10.0),

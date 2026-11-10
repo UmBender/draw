@@ -1856,8 +1856,8 @@ mod tests {
     #[test]
     fn distribute_sorts_by_left_edge_not_selection_order() {
         // Arrange: x = 0, 100, 30 bottom first; selection order mixed.
-        // gap = max((99.5 - 10.5 - 11) / 2, 11 / 4) = 39, so the middle one
-        // starts at 50; all centres meet the first one's y 5.
+        // gap = 11 / 4 = 2.75, so the bounds start at 13.25 and 27 (corners
+        // 13.75 and 27.5); all centres meet the first one's y 5.
         let (mut fx, ids) = Fixture::new(vec![
             rect(0.0, 0.0, 10.0, 10.0),
             rect(100.0, 5.0, 10.0, 10.0),
@@ -1871,8 +1871,8 @@ mod tests {
         // Assert
         assert!(changed);
         assert_box(&fx.shape(ids[0]), (0.0, 0.0), (10.0, 10.0));
-        assert_box(&fx.shape(ids[1]), (100.0, 0.0), (110.0, 10.0));
-        assert_box(&fx.shape(ids[2]), (50.0, 0.0), (60.0, 10.0));
+        assert_box(&fx.shape(ids[1]), (27.5, 0.0), (37.5, 10.0));
+        assert_box(&fx.shape(ids[2]), (13.75, 0.0), (23.75, 10.0));
         assert_eq!(fx.history.undo_len(), 1);
     }
 
@@ -1914,7 +1914,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn distribute_lays_out_a_row_without_overlap(
+        fn distribute_lays_out_a_compact_row(
             specs in prop::collection::vec(
                 (0.0f32..1_000.0, 0.0f32..1_000.0, 1.0f32..100.0, 1.0f32..100.0),
                 2..8,
@@ -1940,18 +1940,15 @@ mod tests {
                     .then(hi(&before[p]).total_cmp(&hi(&before[q])))
                     .then(p.cmp(&q))
             });
-            let (first, last) = (order[0], order[order.len() - 1]);
+            let first = order[0];
             let size = |b: &Aabb| hi(b) - lo(b);
-            let middle: f32 = order[1..order.len() - 1].iter().map(|&k| size(&before[k])).sum();
-            #[allow(clippy::cast_precision_loss)]
-            let natural = (lo(&before[last]) - hi(&before[first]) - middle) / (ids.len() - 1) as f32;
             let min_gap = before.iter().map(size).fold(0.0f32, f32::max) / 4.0;
 
             // Act
             distribute_selection(&mut fx.ctx(Tool::Select), axis);
 
-            // Assert: first fixed, one line, equal gaps never below the
-            // minimum, the last fixed when there was room, sizes kept.
+            // Assert: first fixed, one line, every gap a quarter of the
+            // largest size, sizes kept.
             let after: Vec<Aabb> = ids.iter().map(|&i| fx.shape(i).bounds()).collect();
             prop_assert_eq!(after[first], before[first]);
             let gaps: Vec<f32> = order
@@ -1959,15 +1956,11 @@ mod tests {
                 .map(|w| lo(&after[w[1]]) - hi(&after[w[0]]))
                 .collect();
             for gap in &gaps {
-                prop_assert!(approx_eq(*gap, gaps[0], 1e-2), "{:?}", gaps);
-                prop_assert!(*gap >= min_gap - 1e-2, "{:?} < {}", gaps, min_gap);
+                prop_assert!(approx_eq(*gap, min_gap, 1e-2), "{:?} != {}", gaps, min_gap);
             }
             for k in 0..ids.len() {
                 prop_assert!(approx_eq(mid(&after[k]), mid(&before[first]), 1e-2));
                 prop_assert!(approx_eq(size(&after[k]), size(&before[k]), 1e-2));
-            }
-            if natural >= min_gap {
-                prop_assert!(approx_eq(lo(&after[last]), lo(&before[last]), 1e-2));
             }
             prop_assert!(fx.history.undo_len() <= 1);
         }
