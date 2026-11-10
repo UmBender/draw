@@ -1834,6 +1834,15 @@ pub fn parse(text: &str) -> Vec<Segment> {
             flush(&mut plain, &mut segments);
             segments.push(Segment::Dollar);
             i += 2;
+        } else if let Some(close) = (ch == '$')
+            .then(|| closing_double_dollar(&chars, i))
+            .flatten()
+        {
+            flush(&mut plain, &mut segments);
+            segments.push(Segment::Display(
+                Parser::new(&chars[i + 2..close]).parse(),
+            ));
+            i = close + 2;
         } else if let Some(close) = (ch == '$').then(|| closing_dollar(&chars, i)).flatten() {
             flush(&mut plain, &mut segments);
             segments.push(Segment::Math(Parser::new(&chars[i + 1..close]).parse()));
@@ -1862,6 +1871,26 @@ fn closing_dollar(chars: &[char], open: usize) -> Option<usize> {
         match ch {
             '\n' => return None,
             '$' => return (j > open + 1).then_some(j),
+            '\\' if chars.get(j + 1).is_some_and(|&next| next != '\n') => j += 2,
+            _ => j += 1,
+        }
+    }
+    None
+}
+
+/// The index of the first `$` of the `$$` closing the display formula
+/// opened by a `$$` at `open`: the next unescaped `$` on the same line,
+/// if another `$` follows it and something lies between. `None` when
+/// `open` starts no `$$` or nothing closes it (ADR-T105-1).
+fn closing_double_dollar(chars: &[char], open: usize) -> Option<usize> {
+    if chars.get(open + 1) != Some(&'$') {
+        return None;
+    }
+    let mut j = open + 2;
+    while let Some(&ch) = chars.get(j) {
+        match ch {
+            '\n' => return None,
+            '$' => return (j > open + 2 && chars.get(j + 1) == Some(&'$')).then_some(j),
             '\\' if chars.get(j + 1).is_some_and(|&next| next != '\n') => j += 2,
             _ => j += 1,
         }
@@ -2103,7 +2132,9 @@ impl<'a> Parser<'a> {
             "left" => self.left_right(start, end),
             "begin" => return self.environment(start, end),
             "end" => return self.stray_end(start, end),
-            "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
+            "displaystyle" => return Node::MathStyle(true),
+            "textstyle" => return Node::MathStyle(false),
+            "frac" | "dfrac" | "tfrac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
                 self.args(2, end).map(|args| Node::Command {
                     name: name.clone(),
                     args,
@@ -2720,8 +2751,7 @@ pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
 /// (ADR-T105-1).
 #[must_use]
 pub fn layout_display(nodes: &[Node], scale: f32) -> MathBox {
-    let _ = (nodes, scale);
-    todo!()
+    layout_styled(nodes, scale, Style::ITALIC.displayed(true))
 }
 
 /// [`layout_math`] with letters drawn in `style`.
@@ -2801,15 +2831,21 @@ fn push_kern(boxes: &mut Vec<MathBox>, cursor: &mut f32, width: f32) {
 
 /// The atoms of `nodes` onto `out`, with each shortcut's long form
 /// spliced in among its neighbours (ADR-T69-1). Kerns add to the last
-/// entry of `kerns`, and each atom opens a new one (ADR-T99-1).
+/// entry of `kerns`, and each atom opens a new one (ADR-T99-1). A style
+/// switch is no atom: it changes the style of the nodes after it
+/// (ADR-T105-1).
 fn push_atoms(
     nodes: &[Node],
     scale: f32,
-    style: Style,
+    mut style: Style,
     out: &mut Vec<(MathBox, Class)>,
     kerns: &mut Vec<f32>,
 ) {
     for node in nodes {
+        if let Node::MathStyle(display) = node {
+            style = style.displayed(*display);
+            continue;
+        }
         if let Some(width) = kern_width(node, scale) {
             if let Some(last) = kerns.last_mut() {
                 *last += width;
@@ -2916,7 +2952,8 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let ss = script_scale(scale);
             let (mut sup, mut sub) = (None, None);
             for script in std::iter::once(first).chain(second) {
-                let b = layout_styled(&script.arg.nodes, ss, style);
+                // Scripts are never in display style (ADR-T105-1).
+                let b = layout_styled(&script.arg.nodes, ss, style.displayed(false));
                 match script.kind {
                     ScriptKind::Sup => sup = Some(b),
                     ScriptKind::Sub => sub = Some(b),
@@ -2942,7 +2979,12 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
             let b = match name.as_str() {
                 "frac" => fraction(arg(0), arg(1), scale, true, style),
-                "binom" | "tbinom" | "dbinom" => binomial(arg(0), arg(1), scale, style),
+                // `d` forces display parts, `t` text parts (ADR-T105-1).
+                "dfrac" => fraction(arg(0), arg(1), scale, true, style.displayed(true)),
+                "tfrac" => fraction(arg(0), arg(1), scale, true, style.displayed(false)),
+                "binom" => binomial(arg(0), arg(1), scale, style),
+                "dbinom" => binomial(arg(0), arg(1), scale, style.displayed(true)),
+                "tbinom" => binomial(arg(0), arg(1), scale, style.displayed(false)),
                 "multiset" => delimited(arg(0), arg(1), "((", "))", scale, style),
                 "sqrt" => root(arg(0), scale, style),
                 "underline" => underlined(arg(0), scale, style),
@@ -2983,7 +3025,8 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (b, Class::Rel)
         }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
-        Node::MathStyle(_) => todo!(),
+        // A style switch on its own (a script's base) is an empty box.
+        Node::MathStyle(_) => (MathBox::default(), Class::Ord),
     };
     Some(atom)
 }
@@ -2999,6 +3042,7 @@ fn extensible_arrow(
 ) -> MathBox {
     let plain = MathBox::math(def.glyph, scale);
     let ss = script_scale(scale);
+    let style = style.displayed(false);
     let (up, down) = (
         layout_styled(above, ss, style),
         layout_styled(below, ss, style),
@@ -3129,7 +3173,7 @@ fn hook(out: &mut MathBox, left: f32, top: f32, scale: f32) -> f32 {
 /// big operator or integral, or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32, style: Style) -> MathBox {
     let b = match (letter(def), def.class) {
-        (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale),
+        (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale, style.display),
         (Some(ch), Class::Ord) => MathBox::math(style.map(ch), scale),
         (Some(ch), _) => MathBox::math(ch, scale),
         (None, _) => MathBox::upright(def.text, scale),
@@ -3152,10 +3196,15 @@ fn letter(def: &SymbolDef) -> Option<char> {
     }
 }
 
-/// A big operator (`∑`, `⋃`, …) or integral, enlarged and centred on the axis, with the enlarged
-/// glyph's italic correction.
-fn big_operator(ch: char, scale: f32) -> MathBox {
-    let k = BIG_OP_SCALE * scale;
+/// A big operator (`∑`, `⋃`, …) or integral, enlarged and centred on the
+/// axis, with the enlarged glyph's italic correction; larger in
+/// `display` style (ADR-T105-1).
+fn big_operator(ch: char, scale: f32, display: bool) -> MathBox {
+    let k = if display {
+        DISPLAY_OP_SCALE
+    } else {
+        BIG_OP_SCALE
+    } * scale;
     let glyph = MathBox::math(ch, k);
     // The glyph's middle sits on the axis.
     let y = -AXIS * scale - (glyph.descent - glyph.ascent) / 2.0;
@@ -3251,10 +3300,16 @@ fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) 
     out
 }
 
-/// A fraction of `num` over `den`, with a bar on the axis when `bar`.
+/// A fraction of `num` over `den`, with a bar on the axis when `bar`. Its
+/// parts are at script scale, or at full size in text style when `style`
+/// is display style (ADR-T105-1).
 fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool, style: Style) -> MathBox {
-    let ss = script_scale(scale);
-    let (n, d) = (layout_styled(num, ss, style), layout_styled(den, ss, style));
+    let (ps, style) = if style.display {
+        (scale, style.displayed(false))
+    } else {
+        (script_scale(scale), style)
+    };
+    let (n, d) = (layout_styled(num, ps, style), layout_styled(den, ps, style));
     let pad = FRAC_PAD * scale;
     let width = n.width.max(d.width) + 2.0 * pad;
     let axis = -AXIS * scale;
@@ -3404,8 +3459,10 @@ fn shown_rows(rows: &[Vec<Vec<Node>>]) -> &[Vec<Vec<Node>>] {
     &rows[..rows.len() - usize::from(blank)]
 }
 
-/// The cells of `rows` in columns, centred on the axis (ADR-T90-1).
+/// The cells of `rows` in columns, centred on the axis (ADR-T90-1), in
+/// text style (ADR-T105-1).
 fn table(rows: &[Vec<Vec<Node>>], def: &EnvironmentDef, scale: f32, style: Style) -> MathBox {
+    let style = style.displayed(false);
     let boxes: Vec<Vec<MathBox>> = rows
         .iter()
         .map(|row| {
@@ -3596,6 +3653,10 @@ struct Line {
     width: f32,
     ascent: f32,
     descent: f32,
+    /// For the line of a display formula: the formula's width and the
+    /// left and right x of its ink, laid out from x = 0 and centred once
+    /// the block's width is known (ADR-T105-1).
+    display: Option<(f32, f32, f32)>,
 }
 
 impl Line {
@@ -3605,6 +3666,35 @@ impl Line {
             width: 0.0,
             ascent: BASELINE,
             descent: LINE_HEIGHT - BASELINE,
+            display: None,
+        }
+    }
+
+    /// Whether nothing has been put on the line.
+    fn is_empty(&self) -> bool {
+        self.ink.is_empty() && self.width <= 0.0 && self.display.is_none()
+    }
+
+    /// Formula `b` after what the line holds, its italic overhangs
+    /// inside the line (ADR-T33-1).
+    fn formula(&mut self, b: &MathBox) {
+        let (left, right) = b.ink_span();
+        let x = self.width + (-(self.width + left)).max(0.0);
+        self.ink
+            .extend(b.ink.iter().map(|ink| ink.shifted(Vec2::new(x, 0.0))));
+        self.width = (x + b.width).max(x + right);
+        self.ascent = self.ascent.max(b.ascent + MATH_PAD);
+        self.descent = self.descent.max(b.descent + MATH_PAD);
+    }
+
+    /// How far right to move the line's ink in a block `width` wide: a
+    /// display formula is centred, its ink kept inside the block.
+    fn indent(&self, width: f32) -> f32 {
+        match self.display {
+            Some((own, left, right)) => ((width - own) / 2.0)
+                .max((-left).max(0.0))
+                .min(width - right),
+            None => 0.0,
         }
     }
 
@@ -3623,11 +3713,18 @@ impl Line {
 
 /// Lays out a parsed block: lines split on `\n`, plain characters in
 /// their monospaced cells, formulas typeset; a line grows to fit its
-/// formulas.
+/// formulas. A display formula takes a line of its own, centred on the
+/// block's width (ADR-T105-1).
 #[must_use]
 pub fn layout(segments: &[Segment]) -> Layout {
     let mut lines = Vec::new();
     let mut line = Line::new();
+    // What follows a display formula starts a line of its own.
+    let after_display = |lines: &mut Vec<Line>, line: &mut Line| {
+        if line.display.is_some() {
+            lines.push(std::mem::replace(line, Line::new()));
+        }
+    };
     for segment in segments {
         match segment {
             Segment::Text(text) => {
@@ -3635,29 +3732,39 @@ pub fn layout(segments: &[Segment]) -> Layout {
                     if ch == '\n' {
                         lines.push(std::mem::replace(&mut line, Line::new()));
                     } else {
+                        after_display(&mut lines, &mut line);
                         line.cell(ch);
                     }
                 }
             }
-            Segment::Dollar => line.cell('$'),
+            Segment::Dollar => {
+                after_display(&mut lines, &mut line);
+                line.cell('$');
+            }
             Segment::Math(nodes) => {
-                let b = layout_math(nodes, 1.0);
-                // Italic overhangs stay inside the line (ADR-T33-1).
+                after_display(&mut lines, &mut line);
+                line.formula(&layout_math(nodes, 1.0));
+            }
+            Segment::Display(nodes) => {
+                if !line.is_empty() {
+                    lines.push(std::mem::replace(&mut line, Line::new()));
+                }
+                // Laid out from x = 0; `Line::indent` places it.
+                let b = layout_display(nodes, 1.0);
                 let (left, right) = b.ink_span();
-                let x = line.width + (-(line.width + left)).max(0.0);
-                line.ink
-                    .extend(b.ink.iter().map(|ink| ink.shifted(Vec2::new(x, 0.0))));
-                line.width = (x + b.width).max(x + right);
+                line.width = b.width.max(right) - left.min(0.0);
                 line.ascent = line.ascent.max(b.ascent + MATH_PAD);
                 line.descent = line.descent.max(b.descent + MATH_PAD);
+                line.display = Some((b.width, left, right));
+                line.ink = b.ink;
             }
-            Segment::Display(_) => todo!(),
         }
     }
     lines.push(line);
+    let width = lines.iter().fold(0.0_f32, |w, line| w.max(line.width));
     let mut out = Layout::default();
     for line in lines {
-        let baseline = Vec2::new(0.0, out.height + line.ascent);
+        let baseline = Vec2::new(line.indent(width), out.height + line.ascent);
         out.ink
             .extend(line.ink.into_iter().map(|ink| ink.shifted(baseline)));
         out.width = out.width.max(line.width);
@@ -9892,7 +9999,8 @@ mod tests {
         // Assert
         match segments.as_slice() {
             [Segment::Display(nodes)] => {
-                assert_eq!(nodes[0], Node::Literal("\\$".to_owned()));
+                // The symbol `\$` draws a dollar, as in `$…$`.
+                assert_eq!(nodes[0], sym("$"));
                 assert_eq!(nodes[1], Node::Char('5'));
             }
             other => panic!("one display formula expected: {other:?}"),
