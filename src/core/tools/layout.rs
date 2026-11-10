@@ -1615,6 +1615,60 @@ mod tests {
     }
 
     #[test]
+    fn parse_reads_a_spaced_directed_pair() {
+        assert_eq!(edges(&list("1 > 3")), [(1, 3, true, None)]);
+    }
+
+    #[test]
+    fn parse_reads_a_spaced_undirected_pair() {
+        assert_eq!(edges(&list("1 - 3")), [(1, 3, false, None)]);
+    }
+
+    #[test]
+    fn parse_reads_separators_touching_one_node() {
+        // Act
+        let list = list("1> 2\n2 >3\n3- 4");
+
+        // Assert
+        assert_eq!(
+            edges(&list),
+            [(1, 2, true, None), (2, 3, true, None), (3, 4, false, None)]
+        );
+    }
+
+    #[test]
+    fn parse_reads_several_spaced_pairs_on_a_line() {
+        assert_eq!(
+            edges(&list("1 - 2 2 > 3  3-4")),
+            [(1, 2, false, None), (2, 3, true, None), (3, 4, false, None)]
+        );
+    }
+
+    #[test]
+    fn parse_keeps_a_negative_weight_apart_from_separators() {
+        assert_eq!(edges(&list("1 2 -5")), [(1, 2, false, Some("-5"))]);
+    }
+
+    #[test]
+    fn parse_refuses_a_dangling_separator() {
+        for text in ["1 >", "> 2", "1 -", "5 1 > 3", "1 > 3 7", "1 -3"] {
+            assert_eq!(
+                EdgeList::parse(text),
+                Err(GraphError::NotAnEdge { line: 1 }),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_dgraph_keyword_keeps_spaced_pairs() {
+        assert_eq!(
+            edges(&graph("dgraph:\n1 - 2\n2 > 3")),
+            [(1, 2, false, None), (2, 3, true, None)]
+        );
+    }
+
+    #[test]
     fn parse_skips_a_count_line_after_a_keyword() {
         assert_eq!(graph("tree:\n3\n1 2\n1 3"), graph("1 2\n1 3"));
         assert_eq!(graph("graph:\n3 2\n1 2\n2 3"), graph("1 2\n2 3"));
