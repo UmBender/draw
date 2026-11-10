@@ -1,7 +1,7 @@
 ---
 id: T106
 title: Fading laser pointer
-status: in-progress
+status: review
 wave: 59
 branch: task/T106-laser-pointer
 depends_on: []
@@ -84,11 +84,11 @@ editor; times are seconds passed in by the shell.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T106): specify the fading laser pointer`
-- [ ] tests — `test(T106): add failing tests for the laser pointer`
-- [ ] models — `feat(T106): add the laser trail model`
-- [ ] behaviour — `feat(T106): draw the fading trail while Q is held`
-- [ ] quality — `chore(T106): pass clippy and rustfmt`
-- [ ] docs — `docs(T106): update the feature note`
+- [x] tests — `test(T106): add failing tests for the laser pointer`
+- [x] models — `feat(T106): add the laser trail model`
+- [x] behaviour — `feat(T106): draw the fading trail while Q is held`
+- [x] quality — `refactor(T106): pass clippy and rustfmt`
+- [x] docs — `docs(T106): update the feature note`
 
 ## Learning path
 
@@ -99,3 +99,7 @@ None: it extends an existing area.
 - 2026-11-10 — note written with the owner, from V3 of the [[Feature proposal]]; key changed from `L` to `Q` for the left hand.
 - 2026-11-10 — spec: the laser is `core::laser`, routed by the shell in front of the editor (ADR-T106-1); 1 s linear fade, 6 px, `theme::RED`, 1024 points (ADR-T106-2). UNATTENDED CHOICE: routing outside the editor instead of a held flag in it, because an editor flag is saved state and would need a snapshot version bump (every fixture, e2e golden and autosave) for a transient key.
 - 2026-11-10 — UNATTENDED CHOICE: added `src/core/mod.rs` to *Files owned* to declare the new `laser` module.
+- 2026-11-10 — tests: `tests/fuzz.rs` gains `arb_laser_session` (ordinary sessions mixed with `Q` held around gestures, pressed mid-gesture, and lone `Q` presses/releases with any modifiers), a coverage check and two properties; `check_undo_redo_symmetric` was split so laser sessions reuse its undo/redo half (no check weakened). No snapshot or regression fixture changed: the snapshot format stays at version 1.
+- 2026-11-10 — behaviour: the shell sets `had_input` (autosave) only for events the laser forwards, so laser use never wakes the autosave. The routing, clock and frame requests live in a `LaserLayer` in `shell/app.rs`. `editor.rs` and `input.rs` were not touched: `Key::Q` and `KeyUp` already reached the core, the same path as `Space`.
+- 2026-11-10 — quality: `scripts/check.sh --fuzz` green; `scripts/e2e.sh` green (all cases, no golden changed). No e2e case for the laser: the harness's `hold` directive cannot move the pointer while a key is down, and `tests/e2e.rs` is not owned.
+- 2026-11-10 — manual checks left for the owner: hold `Q` and wave the pen and the mouse; the trail fades in about 1 s and CPU returns to idle (`top`); release `Q` mid-stroke and press `Q` mid-stroke (the stroke finishes, the trail starts after it); `q` in an open text block; redraw budget (ADR-T24-5) with `DRAW_FRAME_TIMES=1` while waving: frames should log `overlay`, never `full`.
