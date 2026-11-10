@@ -1,7 +1,7 @@
 ---
 id: T98
 title: Math names and weights in graphs
-status: in-progress
+status: review
 wave: 56
 branch: task/T98-math-graph-labels
 depends_on: [T97]
@@ -60,11 +60,11 @@ The fuzzer's edge lines include math names and weights (`arb_edge_text` in `test
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T98): specify math names and weights in graphs`
-- [ ] tests — `test(T98): add failing tests for math names and weights`
-- [ ] models — `feat(T98): add math node names`
-- [ ] behaviour — `feat(T98): read and draw math names and weights`
-- [ ] quality — `chore(T98): pass clippy and rustfmt`
-- [ ] docs — `docs(T98): update the feature note`
+- [x] tests — `test(T98): add failing tests for math names and weights`
+- [x] models — `feat(T98): add math node names`
+- [x] behaviour — `feat(T98): read and draw math names and weights`
+- [x] quality — `chore(T98): pass clippy and rustfmt`
+- [x] docs — `docs(T98): update the feature note`
 
 ## Learning path
 
@@ -73,3 +73,7 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written from the owner's question why graphs refuse LaTeX nodes and edges. The limit was a T87 scope choice, not a rendering one. Scope agreed: math names and weights in edge lines and pairs; parent lists and count lines stay numeric.
+- 2026-11-10 — implemented on `task/T98-math-graph-labels`. `check.sh --fuzz` green (1 715 library tests, 20 000 fuzz cases).
+- 2026-11-10 — the behaviour commit adapted older tests that compared `names()` with numbers, since `NodeName` changes its type, and dropped `$x$ 2` from `parse_refuses_what_is_not_an_edge`, now a valid edge (ADR-T98-1).
+- 2026-11-10 — `circles_grow_to_fit_the_widest_math_name` first compared a circle's bounds, which include the stroke, with the bare diameter; it now compares two drawn circles and the text frame. Fixed in the behaviour commit.
+- 2026-11-10 — left for the owner: draw `$s$ $a$ $3$`, `$a$ > $v_{10}$` and a long formula name with `Ctrl+L`, and judge the circles and the typeset text.
