@@ -239,12 +239,12 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     (
         KeyChord::alt(Key::H),
         Command::Distribute(Axis::Horizontal),
-        "Space horizontally with equal gaps",
+        "Lay out as a row, no overlap",
     ),
     (
         KeyChord::alt(Key::V),
         Command::Distribute(Axis::Vertical),
-        "Space vertically with equal gaps",
+        "Lay out as a column, no overlap",
     ),
     (
         KeyChord::bare(Key::Delete),

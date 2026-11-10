@@ -48,7 +48,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |
 | `Alt+←` | Align left edges | `Alt+→` | Align right edges |
 | `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
-| `Alt+H` | Space horizontally, equal gaps | `Alt+V` | Space vertically, equal gaps |
+| `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
 
 ## View
 

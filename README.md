@@ -44,8 +44,8 @@ long. If it crashes, `draw --recover` brings your drawing back.
 - **Editing** — select, move, resize by the corner handles or with
   `Alt+[` / `Alt+]`, `Alt`-drag to duplicate, copy / cut / paste, select
   all, delete, clear canvas, raise / lower with `Ctrl+]` / `Ctrl+[`
-  (`Shift` for top / bottom), align edges with `Alt+←/→/↑/↓`, space
-  evenly with `Alt+H` / `Alt+V`.
+  (`Shift` for top / bottom), align edges with `Alt+←/→/↑/↓`, lay out
+  as a row / column without overlap with `Alt+H` / `Alt+V`.
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -217,7 +217,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |
 | `Alt+←` | Align left edges | `Alt+→` | Align right edges |
 | `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
-| `Alt+H` | Space horizontally, equal gaps | `Alt+V` | Space vertically, equal gaps |
+| `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
 
 ### View
 
