@@ -117,3 +117,7 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 106 | [[ADR-T92-1 The png crate as a direct dependency]] | accepted | decision | 0014, T32-1 | amends 0014 |
 | 107 | [[ADR-T92-2 Ctrl+E reads back the document layer]] | accepted | decision | 0003, T11-1, T15-1, T24-1, T24-2, T26-1, T29-2, T32-1, T92-1 | — |
 | 108 | [[ADR-T93-1 Coordinate plane key and plotting rules]] | accepted | decision | T87-1, T84-1, T11-1, T47-1 | — |
+| 109 | [[ADR-T95-1 Plotted point labels]] | accepted | decision | T93-1 | amends T93-1 |
+| 110 | [[ADR-T96-1 Keywords for graph input]] | accepted | decision | T87-1 | amends T87-1 |
+| 111 | [[ADR-T97-1 Spaced edge pairs]] | accepted | decision | T87-1, T96-1 | amends T87-1 |
+| 112 | [[ADR-T98-1 Math names and weights in graphs]] | accepted | decision | T87-1, T96-1, T97-1, T52-1 | amends T87-1 |

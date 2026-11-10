@@ -1,8 +1,8 @@
 ---
 id: T95
 title: Labels on plotted points
-status: review
-wave: 54
+status: done
+wave: 55
 branch: task/T95-point-labels
 depends_on: [T93]
 adrs: [ADR-T95-1]
@@ -68,3 +68,4 @@ None: it extends an existing area.
 
 - 2026-11-09 — note written from the owner's request: labels go on the coordinate plane's points, as a third column.
 - 2026-11-09 — implemented on `task/T95-point-labels`. `check.sh --fuzz` green (1 687 library tests, 20 000 fuzz cases). The quality step changed nothing, so it has no commit. One T93 test changed: `1 2 3` is now a point labelled `3`, so it left `parse_refuses_what_is_not_a_point`. Left for the owner: plot a labelled sample, for example `0 0 A`, `4 0 B`, `2 3 $C$`, and judge where the labels sit.
+- 2026-11-10 — integrated. Left for the owner: plot a labelled sample with `Ctrl+P`.

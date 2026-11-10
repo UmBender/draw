@@ -1,7 +1,7 @@
 ---
 id: T98
 title: Math names and weights in graphs
-status: review
+status: done
 wave: 56
 branch: task/T98-math-graph-labels
 depends_on: [T97]
@@ -77,3 +77,4 @@ None: it extends an existing area.
 - 2026-11-10 — the behaviour commit adapted older tests that compared `names()` with numbers, since `NodeName` changes its type, and dropped `$x$ 2` from `parse_refuses_what_is_not_an_edge`, now a valid edge (ADR-T98-1).
 - 2026-11-10 — `circles_grow_to_fit_the_widest_math_name` first compared a circle's bounds, which include the stroke, with the bare diameter; it now compares two drawn circles and the text frame. Fixed in the behaviour commit.
 - 2026-11-10 — left for the owner: draw `$s$ $a$ $3$`, `$a$ > $v_{10}$` and a long formula name with `Ctrl+L`, and judge the circles and the typeset text.
+- 2026-11-10 — integrated. Left for the owner: draw formula names and weights, and a long formula name.

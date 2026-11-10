@@ -1,7 +1,7 @@
 ---
 id: T97
 title: Spaced edge pairs
-status: review
+status: done
 wave: 55
 branch: task/T97-spaced-edge-pairs
 depends_on: [T96]
@@ -71,3 +71,4 @@ None: it extends an existing area.
 - 2026-11-10 — implemented on `task/T97-spaced-edge-pairs`. `check.sh --fuzz` green (20 000 fuzz cases). The quality step changed nothing, so it has no commit.
 - 2026-11-10 — `parse_keeps_a_negative_weight_apart_from_separators` and `parse_refuses_a_dangling_separator` passed before the change: they guard what must not change.
 - 2026-11-10 — left for the owner: type `1 > 3`, `1> 3` and `1 - 2 2 > 3` in a block and press `Ctrl+L`.
+- 2026-11-10 — integrated. Left for the owner: draw `1 > 3`, `1> 3` and `1 - 2 2 > 3`.

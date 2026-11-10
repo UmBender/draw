@@ -54,6 +54,16 @@ All notable changes to draw are listed here. The format follows
   into a layered tree or a circle graph, in one undo step.
 - Coordinate planes from text: `Ctrl+P` turns the one selected text block
   of `x y` lines into axes, numbered ticks and filled points.
+- Labels on plotted points: anything after a point's two numbers, such as
+  `2 3 $C$`, is written just up and to the right of it.
+- Graph input as pasted: a first line `graph:`, `tree:`, `dgraph:`,
+  `parents:` or `parents0:` says how `Ctrl+L` reads the lines below it,
+  so a problem's input needs no `>` and its count line is skipped.
+- Spaces around edge separators: `1 > 3` and `1 - 3` read as `1>3` and
+  `1-3`.
+- Formulas in graphs: `$…$` node names and weights, such as
+  `$s$ $t$ $\infty$`, are typeset inside the circles and beside the
+  edges.
 - Dragging the bucket across a grid fills every cell it crosses, in one
   undo step; `Esc` cancels.
 - `\left` and `\right` in formulas draw brackets that grow to fit their

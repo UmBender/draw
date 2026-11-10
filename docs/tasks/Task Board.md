@@ -179,6 +179,12 @@ flowchart TD
   T93 --> T53
   T94[T94 Autosave and crash recovery]
   T94 --> T53
+  T93 --> T95[T95 Labels on plotted points]
+  T95 --> T53
+  T87 --> T96[T96 Keywords for graph input]
+  T96 --> T97[T97 Spaced edge pairs]
+  T97 --> T98[T98 Math names and weights in graphs]
+  T98 --> T53
   T53 --> T50[T50 Version 2.0.0 refactor]
 ```
 
@@ -240,9 +246,11 @@ flowchart TD
 | 51 | [[T82 Raise the binary size limit]] · [[T83 Paste text from the clipboard]] · [[T85 Resize a committed grid]] · [[T86 Zero-based numbering]] · [[T88 Bucket drag across cells]] · [[T89 Growing brackets]] · [[T91 Resize handles]] · [[T92 Export the view to PNG]] · [[T94 Autosave and crash recovery]] |
 | 52 | [[T84 Grid from text]] · [[T90 Matrices and cases]] |
 | 53 | [[T87 Graph or tree from an edge list]] |
-| 54 | [[T93 Coordinate plane from points]] |
-| 55 | [[T53 Release 1.5.0]] |
-| 56 | [[T50 Version 2.0.0 refactor]] |
+| 54 | [[T93 Coordinate plane from points]] · [[T96 Keywords for graph input]] |
+| 55 | [[T95 Labels on plotted points]] · [[T97 Spaced edge pairs]] |
+| 56 | [[T98 Math names and weights in graphs]] |
+| 57 | [[T53 Release 1.5.0]] |
+| 58 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -341,5 +349,9 @@ flowchart TD
 | [[T92 Export the view to PNG]] | done | — | `task/T92-png-export` |
 | [[T93 Coordinate plane from points]] | done | T87 | `task/T93-coordinate-plane` |
 | [[T94 Autosave and crash recovery]] | done | — | `task/T94-autosave` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T94 | `chore/release-1.5.0` |
+| [[T95 Labels on plotted points]] | done | T93 | `task/T95-point-labels` |
+| [[T96 Keywords for graph input]] | done | T87 | `task/T96-graph-keywords` |
+| [[T97 Spaced edge pairs]] | done | T96 | `task/T97-spaced-edge-pairs` |
+| [[T98 Math names and weights in graphs]] | done | T97 | `task/T98-math-graph-labels` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T98 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

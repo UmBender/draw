@@ -1,7 +1,7 @@
 ---
 id: T96
 title: Keywords for graph input
-status: review
+status: done
 wave: 54
 branch: task/T96-graph-keywords
 depends_on: [T87]
@@ -78,3 +78,4 @@ None: it extends an existing area.
 - 2026-11-09 — the first count-line rule (`n m` with `m` lines after it) took real first edges such as `1 2` for counts in the tests' own examples, so `n` must also be at least every node name after it. Recorded in ADR-T96-1 and AC-4, in the behaviour commit.
 - 2026-11-09 — keyword lines mixed into the fuzzer's edge lines dropped `graph_sessions_turn_text_blocks_into_graphs` to 32 of 200 sessions, under its 50. Keywords now go on the first line only and parent lists are generated on their own; the threshold is unchanged.
 - 2026-11-09 — left for the owner: paste a tree as `n` plus edges under `tree:`, a directed problem's input under `dgraph:`, and a parent list under `parents:`, and judge the drawings.
+- 2026-11-10 — integrated. Left for the owner: paste real inputs under `tree:`, `dgraph:` and `parents:`.
