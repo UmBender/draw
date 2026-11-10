@@ -30,12 +30,12 @@ are named at the top of the script.
 |-------|-------|--------------|
 | Build jobs | 2 in `check.sh`, 3 in `e2e.sh` | `CARGO_BUILD_JOBS` |
 | Test threads | 3 | `RUST_TEST_THREADS` |
-| Memory | 1 GB, no swap | `MemoryMax`, `MemorySwapMax` on a `systemd-run --user --scope` |
+| Memory | 1.5 GB (`1536M`) in `check.sh`, 1 GB in `e2e.sh`, no swap | `MemoryMax`, `MemorySwapMax` on a `systemd-run --user --scope` |
 | CPU | 3 CPUs | `CPUQuota` on the scope |
 | Priority | lowest | `nice`, `ionice` idle class, `CPUWeight=1`, `IOWeight=1` |
 
 - A step that goes over the memory limit is stopped and `check.sh` fails
-  with `<step> went over the 1G memory limit`. Raise `MEMORY_MAX` only if
+  with `<step> went over the 1536M memory limit`. Raise `MEMORY_MAX` only if
   the step really needs it.
 - Without a usable `systemd-run --user` (CI runners), `check.sh` prints
   that the memory cap is not enforced and keeps the rest.

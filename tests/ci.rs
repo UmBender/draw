@@ -412,7 +412,7 @@ fn gates_run_under_a_memory_cap() {
         for option in [
             "--user",
             "--scope",
-            "MemoryMax=1G",
+            "MemoryMax=1536M",
             "MemorySwapMax=0",
             "CPUQuota=300%",
         ] {
@@ -480,7 +480,7 @@ fn gates_name_step_and_limit_when_out_of_memory() {
     assert!(
         run.output
             .lines()
-            .any(|l| l.contains("clippy") && l.contains("1G") && l.contains("memory limit")),
+            .any(|l| l.contains("clippy") && l.contains("1536M") && l.contains("memory limit")),
         "{}",
         run.output
     );
