@@ -2397,10 +2397,7 @@ fn laser_sessions_reach_the_trail_and_mid_gesture_presses() {
         mid_gesture >= 20,
         "sessions pressing Q mid-gesture: {mid_gesture}/200"
     );
-    assert!(
-        with_shapes >= 60,
-        "sessions with shapes: {with_shapes}/200"
-    );
+    assert!(with_shapes >= 60, "sessions with shapes: {with_shapes}/200");
 }
 
 proptest! {

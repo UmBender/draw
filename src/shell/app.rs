@@ -614,10 +614,7 @@ pub async fn run(launch: Launch) {
     // Inert unless the end-to-end suite sets its variables (ADR-T75-1).
     let mut hooks = e2e::Hooks::from_env();
     let mut export_pending = false;
-    // The laser's clock and its trail, reused every frame (ADR-T106-1).
-    let clock = Instant::now();
-    let mut laser = Laser::new();
-    let mut trail: Vec<Segment> = Vec::new();
+    let mut laser = LaserLayer::new();
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -644,10 +641,7 @@ pub async fn run(launch: Launch) {
             if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
                 continue;
             }
-            // The laser sees every event first; what it uses never reaches
-            // the toolbar, the editor or the autosave (ADR-T106-1).
-            let now = clock.elapsed().as_secs_f64();
-            if laser.route(&event, EditorState::of(&editor), now) == Routed::Consumed {
+            if laser.consumes(&event, &editor) {
                 continue;
             }
             had_input = true;
@@ -669,16 +663,8 @@ pub async fn run(launch: Launch) {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
-        // A fading trail redraws the overlay only (ADR-T106-1).
-        let now = clock.elapsed().as_secs_f64();
-        dirty |= laser.tick(now);
-        trail.clear();
-        trail.extend(laser.segments(now));
-        let presented = frame.present(&editor, viewport, dpi, dirty, &trail);
-        if laser.is_fading() {
-            // Wake again until the last point has faded; then idle.
-            schedule_update();
-        }
+        dirty |= laser.tick();
+        let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
             export_pending = false;
@@ -1142,6 +1128,55 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     }
     if editor.toolbar_visible() {
         toolbar::draw(editor, viewport);
+    }
+}
+
+/// The laser pointer with its clock and the trail to draw this frame
+/// (ADR-T106-1).
+struct LaserLayer {
+    /// Start of the laser's time line.
+    clock: Instant,
+    /// Held key and trail.
+    laser: Laser,
+    /// This frame's pieces, reused every frame.
+    trail: Vec<Segment>,
+}
+
+impl LaserLayer {
+    /// Not held, no trail, time starting now.
+    fn new() -> Self {
+        Self {
+            clock: Instant::now(),
+            laser: Laser::new(),
+            trail: Vec::new(),
+        }
+    }
+
+    /// Seconds since [`Self::new`].
+    fn now(&self) -> f64 {
+        self.clock.elapsed().as_secs_f64()
+    }
+
+    /// Hands `event` to the laser before anything else sees it. Returns
+    /// whether the laser used it, so the toolbar, the editor and the
+    /// autosave must not see it.
+    fn consumes(&mut self, event: &InputEvent, editor: &Editor) -> bool {
+        let now = self.now();
+        self.laser.route(event, EditorState::of(editor), now) == Routed::Consumed
+    }
+
+    /// Drops faded points and collects the pieces to draw. Asks for
+    /// another frame while points are fading, so idle returns to 0 % once
+    /// they are gone. Returns whether the overlay must be redrawn.
+    fn tick(&mut self) -> bool {
+        let now = self.now();
+        let redraw = self.laser.tick(now);
+        self.trail.clear();
+        self.trail.extend(self.laser.segments(now));
+        if self.laser.is_fading() {
+            schedule_update();
+        }
+        redraw
     }
 }
 

@@ -168,11 +168,7 @@ impl Laser {
 
     /// Drops the points that have faded completely by `now` (finite).
     fn drop_faded(&mut self, now: f64) {
-        while self
-            .trail
-            .front()
-            .is_some_and(|p| now - p.at >= FADE_SECS)
-        {
+        while self.trail.front().is_some_and(|p| now - p.at >= FADE_SECS) {
             self.trail.pop_front();
         }
     }
@@ -225,6 +221,7 @@ mod tests {
     use crate::core::editor::Editor;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+    use crate::core::tools::text::TextEdit;
 
     const EPS: f32 = 1e-5;
     const IDLE: EditorState = EditorState {
@@ -520,8 +517,7 @@ mod tests {
         feed(&mut laser, &mut ed, q_up(), 0.2);
 
         // Assert
-        let edit = ed.text_edit().expect("block still open");
-        assert_eq!(edit.text(), "q");
+        assert_eq!(ed.text_edit().map(TextEdit::text), Some("q"));
         assert!(!laser.is_held());
         assert_eq!(laser.points().len(), 0);
     }
@@ -601,10 +597,13 @@ mod tests {
         let segments: Vec<_> = laser.segments(0.3).collect();
 
         // Assert: the new point is a dot, not joined to (20, 0).
-        let last = segments.last().expect("segments");
-        assert!(last.from.approx_eq(v(500.0, 500.0), EPS));
-        assert!(last.to.approx_eq(v(500.0, 500.0), EPS));
-        assert!(!laser.points().last().expect("points").joined);
+        let dot = Segment {
+            from: v(500.0, 500.0),
+            to: v(500.0, 500.0),
+            alpha: 1.0,
+        };
+        assert_eq!(segments.last(), Some(&dot));
+        assert_eq!(laser.points().last().map(|p| p.joined), Some(false));
     }
 
     #[test]
@@ -649,8 +648,8 @@ mod tests {
 
         // Assert: the oldest went first.
         assert_eq!(laser.points().len(), MAX_POINTS);
-        let first = laser.points().next().expect("points");
-        assert!(first.pos.approx_eq(v(10.0, 0.0), EPS));
+        let first = laser.points().next().map(|p| p.pos);
+        assert!(first.is_some_and(|pos| pos.approx_eq(v(10.0, 0.0), EPS)));
     }
 
     #[test]
@@ -670,8 +669,8 @@ mod tests {
 
         // Assert: the editor zoomed, the point did not move.
         assert!(ed.camera().zoom() > 1.0);
-        let point = laser.points().next().expect("point");
-        assert!(point.pos.approx_eq(v(100.0, 100.0), EPS));
+        let point = laser.points().next().map(|p| p.pos);
+        assert!(point.is_some_and(|pos| pos.approx_eq(v(100.0, 100.0), EPS)));
     }
 
     #[test]
@@ -709,7 +708,12 @@ mod tests {
         feed(&mut laser, &mut ed, down(150.0, 125.0), 0.05);
         for i in 0..20 {
             let x = 150.0 + 5.0 * i as f32;
-            feed(&mut laser, &mut ed, mv(x, 125.0), 0.05 + 0.01 * f64::from(i));
+            feed(
+                &mut laser,
+                &mut ed,
+                mv(x, 125.0),
+                0.05 + 0.01 * f64::from(i),
+            );
         }
         feed(&mut laser, &mut ed, up(250.0, 125.0), 0.3);
         let right = |down: bool| {
@@ -822,9 +826,8 @@ mod tests {
         laser.route(&mv(310.0, 0.0), IDLE, 0.3);
 
         // Assert
-        let last = laser.points().last().expect("points");
-        assert!(last.pos.approx_eq(v(310.0, 0.0), EPS));
-        assert!(!last.joined);
+        let last = laser.points().last().copied();
+        assert!(last.is_some_and(|p| p.pos.approx_eq(v(310.0, 0.0), EPS) && !p.joined));
     }
 
     #[test]
@@ -840,7 +843,12 @@ mod tests {
         feed(&mut laser, &mut ed, q_down(), 0.02);
         for i in 0..10 {
             let x = 130.0 + 10.0 * i as f32;
-            feed(&mut laser, &mut ed, mv(x, 115.0), 0.03 + 0.01 * f64::from(i));
+            feed(
+                &mut laser,
+                &mut ed,
+                mv(x, 115.0),
+                0.03 + 0.01 * f64::from(i),
+            );
         }
         assert!(ed.active_gesture().is_some(), "the stroke keeps going");
         feed(&mut laser, &mut ed, up(220.0, 115.0), 0.2);
