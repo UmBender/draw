@@ -2560,7 +2560,11 @@ fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
         prev = Some(class);
         push_box(&mut boxes, &mut cursor, b);
     }
-    push_kern(&mut boxes, &mut cursor, kerns.last().copied().unwrap_or(0.0));
+    push_kern(
+        &mut boxes,
+        &mut cursor,
+        kerns.last().copied().unwrap_or(0.0),
+    );
     MathBox::row(boxes)
 }
 
@@ -3793,7 +3797,11 @@ mod tests {
         }
         assert_eq!(
             math("a\\;b"),
-            vec![Node::Char('a'), Node::Kern("\\;".to_owned()), Node::Char('b')]
+            vec![
+                Node::Char('a'),
+                Node::Kern("\\;".to_owned()),
+                Node::Char('b')
+            ]
         );
         assert_eq!(
             math("\\quad x"),
@@ -3804,10 +3812,7 @@ mod tests {
             ]
         );
         // A longer word is not a spacing command.
-        assert_eq!(
-            math("\\quadx"),
-            vec![Node::Literal("\\quadx".to_owned())]
-        );
+        assert_eq!(math("\\quadx"), vec![Node::Literal("\\quadx".to_owned())]);
     }
 
     #[test]
@@ -3857,7 +3862,11 @@ mod tests {
 
         // Assert
         let pulled = mm(A).advance - 3.0 / 18.0;
-        assert!(approx_eq(b.width, pulled + mm(B).advance, EPS), "{}", b.width);
+        assert!(
+            approx_eq(b.width, pulled + mm(B).advance, EPS),
+            "{}",
+            b.width
+        );
         let (pos, _) = glyph(&b.ink, B);
         assert!(approx_eq(pos.x, pulled, EPS), "{pos:?}");
     }
@@ -3875,8 +3884,16 @@ mod tests {
 
         // Assert
         assert!(approx_eq(alone.width, 0.0, EPS), "{}", alone.width);
-        assert!(approx_eq(leading.width, mm(A).advance, EPS), "{}", leading.width);
-        assert!(approx_eq(between.width, mm(B).advance, EPS), "{}", between.width);
+        assert!(
+            approx_eq(leading.width, mm(A).advance, EPS),
+            "{}",
+            leading.width
+        );
+        assert!(
+            approx_eq(between.width, mm(B).advance, EPS),
+            "{}",
+            between.width
+        );
         for b in [&alone, &leading, &between] {
             for (_, pos, _, _) in glyphs(&b.ink) {
                 assert!(pos.x >= -EPS, "{pos:?}");
