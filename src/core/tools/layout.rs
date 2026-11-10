@@ -506,6 +506,16 @@ fn line_edges(line: &str, directed: bool) -> Option<Vec<RawEdge<'_>>> {
     }
 }
 
+/// `tokens` joined across separators (ADR-T97-1), so `1 > 3` gives `1>3`;
+/// `None` when nothing is joined. A token ending in `-` or `>` takes the
+/// next one, and a token starting with `>`, or a lone `-`, joins the one
+/// before. `-5` never joins, so it stays a weight.
+#[expect(dead_code, reason = "used once implemented")]
+fn joined_pairs(tokens: &[&str]) -> Option<Vec<String>> {
+    let _ = tokens;
+    todo!()
+}
+
 /// The edge a token `u-v` or `u>v` writes.
 fn pair(token: &str) -> Option<RawEdge<'_>> {
     let at = token.find(SEPARATORS)?;
