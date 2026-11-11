@@ -1,7 +1,7 @@
 ---
 id: T107
 title: Lock shapes
-status: review
+status: done
 wave: 59
 branch: task/T107-lock
 depends_on: []

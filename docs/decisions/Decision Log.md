@@ -130,3 +130,11 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 119 | [[ADR-T103-1 Extensible arrows from the arrow glyph and a ruled shaft]] | accepted | decision | T30-1, T33-1 | — |
 | 120 | [[ADR-T104-1 Segment tree keyword]] | accepted | decision | T87-1, T96-1, T98-1, T86-1 | amends T96-1 |
 | 121 | [[ADR-T104-2 Segment tree nodes as boxes]] | accepted | decision | T104-1, T87-1 | amends T104-1 |
+| 122 | [[ADR-T105-1 Display style as a style field and display segments]] | accepted | decision | T30-1, T54-1, T71-1 | — |
+| 123 | [[ADR-T106-1 Laser pointer in front of the editor]] | accepted | decision | 0006, T24-2, T24-5, T74-1 | — |
+| 124 | [[ADR-T106-2 Laser key, fade and look]] | accepted | decision | T106-1, T11-1 | — |
+| 125 | [[ADR-T107-1 Lock flag kept by the document]] | accepted | decision | T06-1, T74-1 | — |
+| 126 | [[ADR-T107-2 Ctrl+K locks and Ctrl+Shift+K unlocks]] | accepted | decision | T107-1 | — |
+| 127 | [[ADR-T109-1 Shape recognition on Z]] | accepted | decision | 0005, T11-1, T29-2, T74-1 | — |
+| 128 | [[ADR-T110-1 Minimap geometry, routing and overview cache]] | accepted | decision | 0003, 0006, T08-1, T24-1, T24-2, T74-1 | — |
+| 129 | [[ADR-T111-1 Command palette as a modal editor state]] | accepted | decision | T11-1, 0006 | — |

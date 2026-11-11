@@ -1,7 +1,7 @@
 ---
 id: T105
 title: Display mode
-status: review
+status: done
 wave: 59
 branch: task/T105-display-mode
 depends_on: []

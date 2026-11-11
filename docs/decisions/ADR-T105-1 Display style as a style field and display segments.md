@@ -1,7 +1,7 @@
 ---
 id: ADR-T105-1
 title: Display style as a style field and display segments
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-10
 task: T105

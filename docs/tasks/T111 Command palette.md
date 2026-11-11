@@ -1,7 +1,7 @@
 ---
 id: T111
 title: Command palette
-status: review
+status: done
 wave: 59
 branch: task/T111-command-palette
 depends_on: []

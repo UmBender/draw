@@ -400,17 +400,17 @@ flowchart TD
 | [[T102 Graph input follow-ups]] | done | — | `task/T102-graph-input-follow-ups` |
 | [[T103 Labelled extensible arrows]] | done | T99 | `task/T103-labelled-arrows` |
 | [[T104 Segment tree drawing]] | done | T102 | `task/T104-segment-tree` |
-| [[T105 Display mode]] | todo | — | `task/T105-display-mode` |
-| [[T106 Fading laser pointer]] | todo | — | `task/T106-laser-pointer` |
-| [[T107 Lock shapes]] | todo | — | `task/T107-lock` |
+| [[T105 Display mode]] | done | — | `task/T105-display-mode` |
+| [[T106 Fading laser pointer]] | done | — | `task/T106-laser-pointer` |
+| [[T107 Lock shapes]] | done | — | `task/T107-lock` |
 | [[T108 Save and load]] | todo | T107, T116 | `task/T108-save-and-load` |
-| [[T109 Shape recognition]] | todo | — | `task/T109-shape-recognition` |
-| [[T110 Minimap]] | todo | — | `task/T110-minimap` |
-| [[T111 Command palette]] | todo | — | `task/T111-command-palette` |
+| [[T109 Shape recognition]] | done | — | `task/T109-shape-recognition` |
+| [[T110 Minimap]] | done | — | `task/T110-minimap` |
+| [[T111 Command palette]] | done | — | `task/T111-command-palette` |
 | [[T112 User macros]] | todo | T105 | `task/T112-user-macros` |
 | [[T113 Shortcut sheet]] | todo | T111 | `task/T113-shortcut-sheet` |
 | [[T114 Export to SVG]] | todo | — | `task/T114-svg-export` |
 | [[T115 Copy the selection as an image]] | todo | — | `task/T115-copy-as-image` |
 | [[T116 Pages]] | todo | — | `task/T116-pages` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T116 | `chore/release-1.5.0` |
+| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T107, T109–T111 | `chore/release-1.5.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

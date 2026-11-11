@@ -92,6 +92,21 @@ All notable changes to draw are listed here. The format follows
 - `Ctrl+E` exports the view to `~/draw-<date>-<time>.png`.
 - Autosave for crashes: `draw --recover` brings back the last autosave and
   `draw --recover prev` the one before.
+- Display formulas: `$$…$$` is a formula on its own centred line, with
+  operator limits above and below and full-size fraction parts;
+  `\dfrac` and `\tfrac` pick the size by hand.
+- Laser pointer: hold `Q` and move the pen or mouse; a red trail follows
+  it and fades within a second. Nothing is drawn.
+- Lock shapes: `Ctrl+K` locks the selection so a background table or
+  diagram can no longer be selected, moved or erased (it still takes
+  fills and text); `Ctrl+Shift+K` unlocks everything.
+- Shape recognition: `Z` right after a pen stroke turns a shaky line,
+  box or circle into a line, rectangle or ellipse; `Ctrl+Z` gives the
+  stroke back.
+- Minimap: while you pan, a corner map shows the whole drawing and where
+  you are; hold `Space` and click or drag in it to jump.
+- Command palette: `Ctrl+Shift+P` lists the commands with their keys;
+  type to filter, `Enter` runs one, `Esc` closes it.
 
 ### Changed
 

@@ -1,7 +1,7 @@
 ---
 id: T110
 title: Minimap
-status: review
+status: done
 wave: 59
 branch: task/T110-minimap
 depends_on: []

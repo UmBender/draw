@@ -1,7 +1,7 @@
 ---
 id: T109
 title: Shape recognition
-status: review
+status: done
 wave: 59
 branch: task/T109-shape-recognition
 depends_on: []

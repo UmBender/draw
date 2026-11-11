@@ -1,7 +1,7 @@
 ---
 id: T106
 title: Fading laser pointer
-status: review
+status: done
 wave: 59
 branch: task/T106-laser-pointer
 depends_on: []
