@@ -1,11 +1,11 @@
 ---
 id: T112
 title: User macros
-status: todo
+status: in-progress
 wave: 60
 branch: task/T112-user-macros
 depends_on: [T105]
-adrs: []
+adrs: [ADR-T112-1]
 feature: "[[TeX formulas]]"
 tutorial: ""
 tags: [task]
@@ -32,6 +32,14 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 - **AC-3** — Editing, deleting or undoing a definition re-lays out every formula that uses it, and only those.
 - **AC-4** — A built-in command cannot be redefined (the definition is ignored and the log says so). Expansion stops at a fixed depth and size, so `\newcommand{\a}{\a\a}` draws the literal source instead of hanging (fuzzed).
 - **AC-5** — Sources round-trip unchanged; snapshots and files keep definitions because they are block text.
+
+### Tests per criterion (ADR-T112-1)
+
+- AC-1 — `tex::tests`: `newcommand_without_args_expands_in_formula`, `newcommand_with_args_fills_slots`, `definition_draws_nothing`.
+- AC-2 — `tex::tests`: `table_higher_block_wins`, `renewcommand_defines_like_newcommand`; `document::tests`: `macros_follow_stacking_order`.
+- AC-3 — `text_layout::tests`: `typeset_relayouts_only_users_of_changed_macro`, `typeset_notices_macro_defined_later`; `document::tests`: `macros_change_with_undo`.
+- AC-4 — `tex::tests`: `builtin_cannot_be_redefined`, `self_recursive_macro_draws_literal_source`, `exponential_macro_is_bounded`; `tests/fuzz.rs`: macro sources never hang or panic.
+- AC-5 — `tex::tests`: `print_parse_unchanged_by_macros`; `document::tests`: `snapshot_keeps_definitions`.
 
 ## Out of scope
 
