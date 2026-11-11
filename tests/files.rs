@@ -84,8 +84,10 @@ fn file_holds_no_history_or_settings() {
 #[test]
 fn newer_version_is_refused() {
     let text = V1.replacen("draw-file 1", "draw-file 2", 1);
-    let err = DocFile::parse(&text).expect_err("a newer file");
-    assert!(err.to_string().contains("version"), "{err}");
+    match DocFile::parse(&text) {
+        Err(err) => assert!(err.to_string().contains("version"), "{err}"),
+        Ok(_) => panic!("a newer file must be refused"),
+    }
 }
 
 #[test]

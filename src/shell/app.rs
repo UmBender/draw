@@ -606,7 +606,7 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
         std::env::var_os("HOME").as_deref(),
     );
     editor = restored_editor(editor, &launch, state_dir.as_deref());
-    let mut save_path = file_arg.and_then(|path| open_file_argument(&mut editor, path));
+    let mut save_path = file_arg.and_then(|path| open_file_argument(&mut editor, &path));
     let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
@@ -687,12 +687,12 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
 /// Opens the file named on the command line into `editor` and returns the
 /// file `Ctrl+S` should write: the argument, unless it was refused, which
 /// leaves the canvas empty and the file untouched (ADR-T108-1).
-fn open_file_argument(editor: &mut Editor, path: PathBuf) -> Option<PathBuf> {
-    let opened = file::open(&path);
-    let target = file::save_target(&opened, Some(path.clone()));
+fn open_file_argument(editor: &mut Editor, path: &Path) -> Option<PathBuf> {
+    let opened = file::open(path);
+    let target = file::save_target(&opened, Some(path.to_path_buf()));
     match opened {
         Opened::Loaded(loaded) => {
-            editor.apply_file(loaded);
+            editor.apply_file(*loaded);
             diag::log(Level::Info, &format!("opened {}", path.display()));
         }
         Opened::Missing => {

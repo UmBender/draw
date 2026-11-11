@@ -9,11 +9,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::core::file::DocFile;
 use crate::shell::diag::{self, Level};
 
+/// Numbers the temporary files, so two quick saves never share one.
+static CALLS: AtomicU64 = AtomicU64::new(0);
+
 /// What opening the command-line file gave.
 #[derive(Debug)]
 pub enum Opened {
     /// The file loaded.
-    Loaded(DocFile),
+    Loaded(Box<DocFile>),
     /// There is no such file: start empty, the first save creates it.
     Missing,
     /// The file exists but cannot be read or is damaged or newer; the
@@ -61,8 +64,6 @@ pub fn default_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
 /// removed.
 pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     let mut name = path.file_name().map(OsString::from).unwrap_or_default();
-    // Unique per call, so two quick saves never share a temporary file.
-    static CALLS: AtomicU64 = AtomicU64::new(0);
     let call = CALLS.fetch_add(1, Ordering::Relaxed);
     name.push(format!(".{}.{call}.tmp", std::process::id()));
     let temporary = path.with_file_name(name);
@@ -89,7 +90,7 @@ pub fn open(path: &Path) -> Opened {
         .map_err(|_| "not text".to_owned())
         .and_then(|text| DocFile::parse(&text).map_err(|err| err.to_string()));
     match parsed {
-        Ok(file) => Opened::Loaded(file),
+        Ok(file) => Opened::Loaded(Box::new(file)),
         Err(reason) => Opened::Refused(format!("{} not opened: {reason}", path.display())),
     }
 }

@@ -202,6 +202,7 @@ impl Page {
 
 /// All editor state: document, history, view, tools and settings.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Editor {
     /// The current page's document, history, camera and selection live in
     /// the fields below; the other pages wait in `pages` (ADR-T116-1).
@@ -388,6 +389,7 @@ impl Editor {
 
     /// Reads every section after the header and checks the editor's
     /// invariants (ADR-T74-1).
+    #[allow(clippy::too_many_lines)]
     pub(crate) fn read_snapshot(r: &mut Reader<'_>, version: u32) -> Result<Self, SnapshotError> {
         r.section("editor")?;
         let mut t = r.record("tool")?;
