@@ -40,6 +40,10 @@ pub const MAX_POINTS: usize = 1000;
 /// Largest size of a coordinate; keeps every span finite (ADR-T93-1).
 pub const MAX_COORDINATE: f64 = 1e300;
 
+/// How close to zero `normal.x - normal.y` must be for a weight's two sides
+/// to count as tied (T120).
+const WEIGHT_SIDE_TIE: f32 = 1e-4;
+
 /// Space between a plotted point's dot and its label, in ems (ADR-T95-1).
 const LABEL_GAP_EM: f32 = 0.15;
 
@@ -915,7 +919,10 @@ fn weight_text(weight: &str, middle: Vec2, along: Vec2, size: f32, style: Style)
     let bounds = text_layout::bounds(Vec2::ZERO, weight, size);
     let half = Vec2::new(bounds.width(), bounds.height()) * 0.5;
     let normal = Vec2::new(along.y, -along.x);
-    let normal = if normal.x - normal.y < 0.0 {
+    // Upper right. On a `/` diagonal both normals score the same, up to
+    // float noise: take the upper one, whatever the noise says (T120).
+    let score = normal.x - normal.y;
+    let normal = if score < -WEIGHT_SIDE_TIE || (score.abs() <= WEIGHT_SIDE_TIE && normal.y > 0.0) {
         -normal
     } else {
         normal
@@ -1719,6 +1726,51 @@ mod tests {
         for c in &centres {
             assert!(approx_eq(c.distance(middle), radius, 1e-2), "{c:?}");
         }
+    }
+
+    // ---- T120: the side of a weight ------------------------------------------
+
+    /// Where the weight's box centre lies relative to the edge's middle.
+    fn weight_offset(along: Vec2) -> Vec2 {
+        let middle = Vec2::new(300.0, 200.0);
+        match weight_text("1", middle, along, SIZE, STYLE) {
+            Shape::Text { origin, .. } => {
+                let bounds = text_layout::bounds(Vec2::ZERO, "1", SIZE);
+                origin + Vec2::new(bounds.width(), bounds.height()) * 0.5 - middle
+            }
+            other => panic!("{other:?} is not text"),
+        }
+    }
+
+    #[test]
+    fn weight_on_a_slash_diagonal_is_always_above() {
+        // Arrange: from the upper right to the lower left, both ways.
+        let along = Vec2::new(-FRAC_1_SQRT_2, FRAC_1_SQRT_2);
+
+        // Act / Assert
+        assert!(weight_offset(along).y < 0.0);
+        assert!(weight_offset(-along).y < 0.0);
+    }
+
+    #[test]
+    fn weight_side_is_stable_under_float_noise() {
+        // Arrange: the same diagonal, nudged by a few ulps either way.
+        for noise in [-3e-6_f32, -1e-7, 0.0, 1e-7, 3e-6] {
+            let along = Vec2::new(-FRAC_1_SQRT_2 + noise, FRAC_1_SQRT_2 - noise);
+
+            // Act / Assert
+            assert!(weight_offset(along).y < 0.0, "noise {noise}");
+        }
+    }
+
+    #[test]
+    fn weight_side_of_other_edges_is_unchanged() {
+        // Act / Assert: horizontal above, vertical to the right, the back
+        // diagonal to the upper right.
+        assert!(weight_offset(Vec2::new(1.0, 0.0)).y < 0.0);
+        assert!(weight_offset(Vec2::new(0.0, 1.0)).x > 0.0);
+        let offset = weight_offset(Vec2::new(FRAC_1_SQRT_2, FRAC_1_SQRT_2));
+        assert!(offset.x > 0.0 && offset.y < 0.0);
     }
 
     #[test]

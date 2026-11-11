@@ -1,7 +1,7 @@
 ---
 id: T120
 title: Weight label on diagonal edges
-status: in-progress
+status: review
 wave: 60
 branch: fix/weight-label-tie
 depends_on: []
@@ -43,11 +43,12 @@ The weight written beside an edge never lands on a node, including on an edge th
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T120): specify the weight label fix`
-- [ ] regression — `test(T120): add regression test for the weight label on a diagonal`
-- [ ] behaviour — `fix(T120): put the weight above a slash diagonal`
-- [ ] quality — skipped if the fix commit passes clippy and rustfmt
-- [ ] docs — none: no user-visible rule changes beyond the fix
+- [x] regression — `test(T120): add regression test for the weight label on a diagonal`
+- [x] behaviour — `fix(T120): put the weight above a slash diagonal`
+- [x] quality — skipped: the fix commit passes clippy and rustfmt
+- [x] docs — none: no user-visible rule changes beyond the fix
 
 ## Log
 
 - 2026-11-11 — written from the owner's bug report.
+- 2026-11-11 — fixed; `scripts/check.sh` green. The bug needs the width ladder two steps up (text size 24) to show with the owner's input; the regression scene sets it. A tie within `1e-4` now takes the upper side.

@@ -158,6 +158,7 @@ fn weight_label_scene() -> Editor {
 }
 
 #[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
 fn regression_fixture_T120_is_the_built_scene() {
     assert_snapshot_with(
         &weight_label_scene(),
@@ -167,6 +168,7 @@ fn regression_fixture_T120_is_the_built_scene() {
 }
 
 #[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
 fn regression_T120_weight_label_diagonal() {
     use draw::core::input::{InputEvent, Key, Modifiers};
     use draw::core::shape::Shape;
