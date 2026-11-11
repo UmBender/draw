@@ -40,6 +40,9 @@ pub const MAX_POINTS: usize = 1000;
 /// Largest size of a coordinate; keeps every span finite (ADR-T93-1).
 pub const MAX_COORDINATE: f64 = 1e300;
 
+/// Extra columns between two trees of a forest (ADR-T119-1).
+const COMPONENT_GAP_COLUMNS: f32 = 0.5;
+
 /// Space between a plotted point's dot and its label, in ems (ADR-T95-1).
 const LABEL_GAP_EM: f32 = 0.15;
 
@@ -421,39 +424,46 @@ impl EdgeList {
         (NODE_RADIUS_EM * size).max(widest / (SQRT_2 * SHAPE_TEXT_FILL))
     }
 
-    /// Node centres of the layered drawing, or `None` if the edges are not
-    /// a tree. Arrow directions do not count. The root is the first node
-    /// named; every leaf takes a column of its own and every parent sits
-    /// centred over its children. Each layer is `extra` further down.
+    /// Node centres of the layered drawing, or `None` if the edges hold a
+    /// cycle (ADR-T119-1). Arrow directions do not count. Every component
+    /// is a tree drawn from the first node named in it, the components left
+    /// to right in the order first named; every leaf takes a column of its
+    /// own and every parent sits centred over its children. Each layer is
+    /// `extra` further down.
     fn layers(&self, pitch: f32, extra: f32) -> Option<Vec<Vec2>> {
         let n = self.names.len();
-        if self.edges.len() + 1 != n {
-            return None;
-        }
         let mut neighbours = vec![Vec::new(); n];
         for edge in &self.edges {
             neighbours[edge.from].push(edge.to);
             neighbours[edge.to].push(edge.from);
         }
-        // Preorder, children in the order they were named.
+        // Preorder per component, children in the order they were named.
         let mut parent = vec![None; n];
         let mut depth = vec![0_u32; n];
         let mut seen = vec![false; n];
-        seen[0] = true;
         let mut order = Vec::with_capacity(n);
-        let mut stack = vec![0];
-        while let Some(node) = stack.pop() {
-            order.push(node);
-            for &next in neighbours[node].iter().rev() {
-                if !seen[next] {
-                    seen[next] = true;
-                    parent[next] = Some(node);
-                    depth[next] = depth[node] + 1;
-                    stack.push(next);
+        let mut roots = 0_usize;
+        for root in 0..n {
+            if seen[root] {
+                continue;
+            }
+            roots += 1;
+            seen[root] = true;
+            let mut stack = vec![root];
+            while let Some(node) = stack.pop() {
+                order.push(node);
+                for &next in neighbours[node].iter().rev() {
+                    if !seen[next] {
+                        seen[next] = true;
+                        parent[next] = Some(node);
+                        depth[next] = depth[node] + 1;
+                        stack.push(next);
+                    }
                 }
             }
         }
-        if order.len() != n {
+        // A forest has one edge fewer than nodes per component.
+        if self.edges.len() + roots != n {
             return None;
         }
 
@@ -466,7 +476,11 @@ impl EdgeList {
         };
         let mut column = vec![0.0_f32; n];
         let mut next_leaf = 0.0;
-        for &node in &order {
+        for (i, &node) in order.iter().enumerate() {
+            // Half a column between one tree and the next.
+            if i > 0 && parent[node].is_none() {
+                next_leaf += COMPONENT_GAP_COLUMNS;
+            }
             if children(node).next().is_none() {
                 column[node] = next_leaf;
                 next_leaf += 1.0;
@@ -1779,7 +1793,7 @@ mod tests {
         let shapes = drawn("1-2 3-4 5-6 5-7 8-9");
 
         // Assert
-        assert_never_overlap(&shapes).unwrap();
+        assert!(assert_never_overlap(&shapes).is_ok());
     }
 
     #[test]
@@ -1789,7 +1803,7 @@ mod tests {
         let arrows = drawn("2>1 3>4 5>3");
 
         // Assert: same positions for the nodes named in the same order.
-        for (name, at) in nodes(&plain) {
+        for (name, _) in nodes(&plain) {
             let other = nodes(&arrows)
                 .into_iter()
                 .find(|(n, _)| *n == name)
@@ -1806,9 +1820,12 @@ mod tests {
         // components (`\u{2135}`-`2`, and a six-node tree).
         let shapes = drawn("$\\aleph$ 2 $\\pi$\n1 3 4\n5 7 2\n3 4 1\n6 3 2\n1 5 1");
 
-        // Assert: layered, never a circle, and the two roots share a row.
+        // Assert: layered, never a circle; `1` roots the six-node tree and
+        // `6` hangs under `3`.
         assert!(is_layered(&shapes));
-        assert!(approx_eq(centre(&shapes, 1).y, centre(&shapes, 6).y, 1e-3));
+        let top = centre(&shapes, 1).y;
+        assert!(nodes(&shapes).iter().all(|(_, c)| c.y >= top - 1e-3));
+        assert!(centre(&shapes, 3).y > top && centre(&shapes, 6).y > centre(&shapes, 3).y);
     }
 
     #[test]
