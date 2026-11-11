@@ -21,7 +21,8 @@ use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
 use draw::core::snapshot::Snapshot;
 use draw::core::tap::PEN_TAP_SLOP_PX;
 use draw::core::tex;
-use draw::core::text_layout::typeset;
+use draw::core::tex::{MACRO_SIZE, MacroTable, expand_macros};
+use draw::core::text_layout::{set_macros, typeset};
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
@@ -2260,5 +2261,48 @@ proptest! {
                 run_session_on(loaded, &more)?;
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// T112: user macros
+// ---------------------------------------------------------------------------
+
+/// Block text made of macro definitions, uses and stray braces: every
+/// piece that can send the expander into a loop or a blow-up.
+fn arb_macro_text() -> impl Strategy<Value = String> {
+    let piece = prop_oneof![
+        Just("$\\newcommand{\\a}{\\a\\a}$".to_owned()),
+        Just("$\\newcommand{\\b}[2]{\\c#2\\c#1}$".to_owned()),
+        Just("$\\newcommand{\\c}[1]{\\b{#1}{#1}}$".to_owned()),
+        Just("$\\renewcommand{\\d}[9]{#9#8#1}$".to_owned()),
+        Just("$\\newcommand{\\frac}{x}$".to_owned()),
+        Just("$\\a\\b{x}{y}\\c{z}\\d$".to_owned()),
+        Just("$$\\newcommand{\\e}[1]{\\e{\\e{#1}}}\\e{1}$$".to_owned()),
+        "[\\\\$a-e#0-9{}\\[\\] ]{0,12}",
+    ];
+    prop::collection::vec(piece, 1..6).prop_map(|pieces| pieces.concat())
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    #[test]
+    fn user_macros_never_hang_or_panic(
+        blocks in prop::collection::vec(arb_macro_text(), 1..5),
+        text in arb_macro_text(),
+    ) {
+        // Arrange
+        let table = MacroTable::from_texts(blocks.iter().map(String::as_str));
+
+        // Act
+        let expanded = expand_macros(&text, &table);
+        set_macros(table);
+        let layout = typeset(&text);
+        set_macros(MacroTable::default());
+
+        // Assert
+        prop_assert!(expanded.source.chars().count() <= text.chars().count() + MACRO_SIZE);
+        prop_assert!(layout.width.is_finite() && layout.height.is_finite());
     }
 }

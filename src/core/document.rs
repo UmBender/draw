@@ -693,6 +693,71 @@ mod tests {
         (doc, ids)
     }
 
+    fn text_block(content: &str) -> Shape {
+        Shape::Text {
+            origin: Vec2::new(0.0, 0.0),
+            text: content.to_owned(),
+            size: 20.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        }
+    }
+
+    fn macro_body(doc: &Document, name: &str) -> Option<String> {
+        doc.macros().get(name).map(|m| m.body.clone())
+    }
+
+    #[test]
+    fn macros_follow_stacking_order() {
+        let mut doc = Document::new();
+        let tx = tx_insert(
+            &mut doc,
+            [
+                text_block("$\\newcommand{\\a}{1}$"),
+                text_block("$\\newcommand{\\a}{2}$"),
+            ],
+        );
+        assert!(doc.apply(&tx).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn macros_change_with_undo() {
+        let mut doc = Document::new();
+        let tx = tx_insert(&mut doc, [text_block("$\\newcommand{\\a}{1}$")]);
+        assert!(doc.apply(&tx).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
+        let id = doc.shapes().next().map(|(id, _)| id).unwrap();
+        let edit = tx_replace(&doc, id, text_block("$\\newcommand{\\a}{7}$"));
+        assert!(doc.apply(&edit).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("7"));
+        assert!(doc.apply(&edit.inverse()).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
+        assert!(doc.apply(&tx.inverse()).is_ok());
+        assert!(doc.macros().is_empty());
+    }
+
+    #[test]
+    fn failed_transaction_leaves_macros_unchanged() {
+        let mut doc = Document::new();
+        let tx = tx_insert(&mut doc, [text_block("$\\newcommand{\\a}{1}$")]);
+        assert!(doc.apply(&tx).is_ok());
+        assert!(doc.apply(&tx).is_err());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn from_parts_builds_macros_from_block_text() {
+        let doc = Document::from_parts(
+            vec![(ShapeId(0), text_block("$\\newcommand{\\a}[2]{#2#1}$"))],
+            1,
+        );
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("#2#1"));
+        assert_eq!(doc.macros().get("a").map(|m| m.params), Some(2));
+    }
+
     fn snapshot(doc: &Document) -> Vec<(ShapeId, Shape)> {
         doc.shapes().map(|(id, s)| (id, s.clone())).collect()
     }

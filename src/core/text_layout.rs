@@ -661,6 +661,63 @@ mod tests {
         assert!(approx_eq(b.width(), 80.0, 1e-3) || approx_eq(b.height(), 40.0, 1e-3));
     }
 
+    // ---- T112: user macros (ADR-T112-1) ----
+
+    fn macros(blocks: &[&str]) {
+        set_macros(tex::MacroTable::from_texts(blocks.iter().copied()));
+    }
+
+    #[test]
+    fn typeset_expands_user_macros() {
+        macros(&["$\\newcommand{\\R}{\\mathbb{R}}$"]);
+        assert_eq!(
+            *typeset("$\\R$"),
+            tex::layout(&tex::parse("$\\mathbb{R}$"))
+        );
+        macros(&[]);
+    }
+
+    #[test]
+    fn typeset_relayouts_only_users_of_changed_macro() {
+        macros(&["$\\newcommand{\\a}{x}\\newcommand{\\b}{y}$"]);
+        let a1 = typeset("$\\a$");
+        let b1 = typeset("$\\b$");
+        let plain1 = typeset("$z$");
+        macros(&["$\\newcommand{\\a}{xxx}\\newcommand{\\b}{y}$"]);
+        let a2 = typeset("$\\a$");
+        assert!(a2.width > a1.width);
+        assert!(Rc::ptr_eq(&b1, &typeset("$\\b$")));
+        assert!(Rc::ptr_eq(&plain1, &typeset("$z$")));
+        macros(&[]);
+    }
+
+    #[test]
+    fn typeset_notices_macro_defined_later() {
+        macros(&[]);
+        let before = typeset("$\\q$");
+        macros(&["$\\newcommand{\\q}{x}$"]);
+        let after = typeset("$\\q$");
+        assert_eq!(*after, tex::layout(&tex::parse("$x$")));
+        assert_ne!(*before, *after);
+        macros(&[]);
+    }
+
+    #[test]
+    fn typeset_follows_macros_used_through_other_macros() {
+        macros(&["$\\newcommand{\\a}{\\b}\\newcommand{\\b}{x}$"]);
+        let first = typeset("$\\a$");
+        macros(&["$\\newcommand{\\a}{\\b}\\newcommand{\\b}{xx}$"]);
+        assert!(typeset("$\\a$").width > first.width);
+        macros(&[]);
+    }
+
+    #[test]
+    fn typeset_of_a_definition_block_is_empty() {
+        macros(&["$\\newcommand{\\a}{x}$"]);
+        assert!(typeset("$\\newcommand{\\a}{x}$").ink.is_empty());
+        macros(&[]);
+    }
+
     proptest! {
         #[test]
         fn fit_always_inside_frame(
