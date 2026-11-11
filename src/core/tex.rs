@@ -73,6 +73,10 @@ pub const LIMIT_GAP: f32 = 0.167;
 /// Scale of the big operators `∑` and `∏`.
 pub const BIG_OP_SCALE: f32 = 1.3;
 
+/// Scale of big operators and integrals in display style: the same glyph
+/// as [`BIG_OP_SCALE`], larger (ADR-T105-1).
+pub const DISPLAY_OP_SCALE: f32 = 1.8;
+
 /// Smallest gap between a fraction bar and its numerator or denominator:
 /// `FractionNumeratorGapMin`.
 pub const FRAC_GAP: f32 = 0.04;
@@ -196,6 +200,9 @@ pub enum Segment {
     Dollar,
     /// A `$…$` formula, without its dollars.
     Math(Vec<Node>),
+    /// A `$$…$$` formula, without its dollars: laid out in display style
+    /// on a line of its own (ADR-T105-1).
+    Display(Vec<Node>),
 }
 
 /// One node of a formula; every node keeps its source (ADR-T30-1).
@@ -289,6 +296,9 @@ pub enum Node {
         /// The required label set above the arrow.
         above: Arg,
     },
+    /// `\displaystyle` (`true`) or `\textstyle` (`false`): switches the
+    /// style of the rest of its list; not an atom (ADR-T105-1).
+    MathStyle(bool),
     /// Source outside the subset, drawn as typed in the warning colour.
     Literal(String),
 }
@@ -1524,13 +1534,23 @@ pub fn calligraphic(ch: char) -> char {
 struct Style {
     /// One alphabet per slot of [`Kind::ALL`].
     rows: [&'static AlphabetDef; Kind::ALL.len()],
+    /// Display style rather than text style (ADR-T105-1).
+    display: bool,
 }
 
 impl Style {
-    /// The style a formula starts in.
+    /// The style a `$…$` formula starts in.
     const ITALIC: Self = Self {
         rows: [&MATH_ITALIC; Kind::ALL.len()],
+        display: false,
     };
+
+    /// This style in display (`true`) or text (`false`) style, the
+    /// alphabets kept.
+    const fn displayed(mut self, display: bool) -> Self {
+        self.display = display;
+        self
+    }
 
     /// This style inside `alphabet`: the kinds it maps are its own, the
     /// others stay as they are. Sans-serif and a bold weight, nested
@@ -1814,6 +1834,13 @@ pub fn parse(text: &str) -> Vec<Segment> {
             flush(&mut plain, &mut segments);
             segments.push(Segment::Dollar);
             i += 2;
+        } else if let Some(close) = (ch == '$')
+            .then(|| closing_double_dollar(&chars, i))
+            .flatten()
+        {
+            flush(&mut plain, &mut segments);
+            segments.push(Segment::Display(Parser::new(&chars[i + 2..close]).parse()));
+            i = close + 2;
         } else if let Some(close) = (ch == '$').then(|| closing_dollar(&chars, i)).flatten() {
             flush(&mut plain, &mut segments);
             segments.push(Segment::Math(Parser::new(&chars[i + 1..close]).parse()));
@@ -1842,6 +1869,26 @@ fn closing_dollar(chars: &[char], open: usize) -> Option<usize> {
         match ch {
             '\n' => return None,
             '$' => return (j > open + 1).then_some(j),
+            '\\' if chars.get(j + 1).is_some_and(|&next| next != '\n') => j += 2,
+            _ => j += 1,
+        }
+    }
+    None
+}
+
+/// The index of the first `$` of the `$$` closing the display formula
+/// opened by a `$$` at `open`: the next unescaped `$` on the same line,
+/// if another `$` follows it and something lies between. `None` when
+/// `open` starts no `$$` or nothing closes it (ADR-T105-1).
+fn closing_double_dollar(chars: &[char], open: usize) -> Option<usize> {
+    if chars.get(open + 1) != Some(&'$') {
+        return None;
+    }
+    let mut j = open + 2;
+    while let Some(&ch) = chars.get(j) {
+        match ch {
+            '\n' => return None,
+            '$' => return (j > open + 2 && chars.get(j + 1) == Some(&'$')).then_some(j),
             '\\' if chars.get(j + 1).is_some_and(|&next| next != '\n') => j += 2,
             _ => j += 1,
         }
@@ -2083,7 +2130,9 @@ impl<'a> Parser<'a> {
             "left" => self.left_right(start, end),
             "begin" => return self.environment(start, end),
             "end" => return self.stray_end(start, end),
-            "frac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
+            "displaystyle" => return Node::MathStyle(true),
+            "textstyle" => return Node::MathStyle(false),
+            "frac" | "dfrac" | "tfrac" | "binom" | "tbinom" | "dbinom" | "multiset" => {
                 self.args(2, end).map(|args| Node::Command {
                     name: name.clone(),
                     args,
@@ -2527,9 +2576,23 @@ pub fn print(segments: &[Segment]) -> String {
                 print_nodes(nodes, &mut out);
                 out.push('$');
             }
+            Segment::Display(nodes) => {
+                out.push_str("$$");
+                print_nodes(nodes, &mut out);
+                out.push_str("$$");
+            }
         }
     }
     out
+}
+
+/// The source of a [`Node::MathStyle`]: `\displaystyle` or `\textstyle`.
+const fn style_command(display: bool) -> &'static str {
+    if display {
+        "\\displaystyle"
+    } else {
+        "\\textstyle"
+    }
 }
 
 fn print_nodes(nodes: &[Node], out: &mut String) {
@@ -2541,6 +2604,7 @@ fn print_nodes(nodes: &[Node], out: &mut String) {
 fn print_node(node: &Node, out: &mut String) {
     match node {
         Node::Space(text) | Node::Kern(text) | Node::Literal(text) => out.push_str(text),
+        Node::MathStyle(display) => out.push_str(style_command(*display)),
         Node::Char(ch) => out.push(*ch),
         Node::Symbol(name) => {
             out.push('\\');
@@ -2681,6 +2745,13 @@ pub fn layout_math(nodes: &[Node], scale: f32) -> MathBox {
     layout_styled(nodes, scale, Style::ITALIC)
 }
 
+/// Lays out the nodes of one `$$…$$` formula at `scale` in display style
+/// (ADR-T105-1).
+#[must_use]
+pub fn layout_display(nodes: &[Node], scale: f32) -> MathBox {
+    layout_styled(nodes, scale, Style::ITALIC.displayed(true))
+}
+
 /// [`layout_math`] with letters drawn in `style`.
 fn layout_styled(nodes: &[Node], scale: f32, style: Style) -> MathBox {
     let scale = if scale.is_finite() && scale > 0.0 {
@@ -2758,15 +2829,21 @@ fn push_kern(boxes: &mut Vec<MathBox>, cursor: &mut f32, width: f32) {
 
 /// The atoms of `nodes` onto `out`, with each shortcut's long form
 /// spliced in among its neighbours (ADR-T69-1). Kerns add to the last
-/// entry of `kerns`, and each atom opens a new one (ADR-T99-1).
+/// entry of `kerns`, and each atom opens a new one (ADR-T99-1). A style
+/// switch is no atom: it changes the style of the nodes after it
+/// (ADR-T105-1).
 fn push_atoms(
     nodes: &[Node],
     scale: f32,
-    style: Style,
+    mut style: Style,
     out: &mut Vec<(MathBox, Class)>,
     kerns: &mut Vec<f32>,
 ) {
     for node in nodes {
+        if let Node::MathStyle(display) = node {
+            style = style.displayed(*display);
+            continue;
+        }
         if let Some(width) = kern_width(node, scale) {
             if let Some(last) = kerns.last_mut() {
                 *last += width;
@@ -2873,7 +2950,8 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let ss = script_scale(scale);
             let (mut sup, mut sub) = (None, None);
             for script in std::iter::once(first).chain(second) {
-                let b = layout_styled(&script.arg.nodes, ss, style);
+                // Scripts are never in display style (ADR-T105-1).
+                let b = layout_styled(&script.arg.nodes, ss, style.displayed(false));
                 match script.kind {
                     ScriptKind::Sup => sup = Some(b),
                     ScriptKind::Sub => sub = Some(b),
@@ -2899,7 +2977,12 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
             let b = match name.as_str() {
                 "frac" => fraction(arg(0), arg(1), scale, true, style),
-                "binom" | "tbinom" | "dbinom" => binomial(arg(0), arg(1), scale, style),
+                // `d` forces display parts, `t` text parts (ADR-T105-1).
+                "dfrac" => fraction(arg(0), arg(1), scale, true, style.displayed(true)),
+                "tfrac" => fraction(arg(0), arg(1), scale, true, style.displayed(false)),
+                "binom" => binomial(arg(0), arg(1), scale, style),
+                "dbinom" => binomial(arg(0), arg(1), scale, style.displayed(true)),
+                "tbinom" => binomial(arg(0), arg(1), scale, style.displayed(false)),
                 "multiset" => delimited(arg(0), arg(1), "((", "))", scale, style),
                 "sqrt" => root(arg(0), scale, style),
                 "underline" => underlined(arg(0), scale, style),
@@ -2940,6 +3023,8 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
             (b, Class::Rel)
         }
         Node::Literal(text) => (MathBox::word(text, scale, true), Class::Ord),
+        // A style switch on its own (a script's base) is an empty box.
+        Node::MathStyle(_) => (MathBox::default(), Class::Ord),
     };
     Some(atom)
 }
@@ -2955,6 +3040,7 @@ fn extensible_arrow(
 ) -> MathBox {
     let plain = MathBox::math(def.glyph, scale);
     let ss = script_scale(scale);
+    let style = style.displayed(false);
     let (up, down) = (
         layout_styled(above, ss, style),
         layout_styled(below, ss, style),
@@ -3085,7 +3171,7 @@ fn hook(out: &mut MathBox, left: f32, top: f32, scale: f32) -> f32 {
 /// big operator or integral, or an upright word.
 fn symbol_box(def: &SymbolDef, scale: f32, style: Style) -> MathBox {
     let b = match (letter(def), def.class) {
-        (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale),
+        (Some(ch), Class::BigOp | Class::Integral) => big_operator(ch, scale, style.display),
         (Some(ch), Class::Ord) => MathBox::math(style.map(ch), scale),
         (Some(ch), _) => MathBox::math(ch, scale),
         (None, _) => MathBox::upright(def.text, scale),
@@ -3108,10 +3194,15 @@ fn letter(def: &SymbolDef) -> Option<char> {
     }
 }
 
-/// A big operator (`∑`, `⋃`, …) or integral, enlarged and centred on the axis, with the enlarged
-/// glyph's italic correction.
-fn big_operator(ch: char, scale: f32) -> MathBox {
-    let k = BIG_OP_SCALE * scale;
+/// A big operator (`∑`, `⋃`, …) or integral, enlarged and centred on the
+/// axis, with the enlarged glyph's italic correction; larger in
+/// `display` style (ADR-T105-1).
+fn big_operator(ch: char, scale: f32, display: bool) -> MathBox {
+    let k = if display {
+        DISPLAY_OP_SCALE
+    } else {
+        BIG_OP_SCALE
+    } * scale;
     let glyph = MathBox::math(ch, k);
     // The glyph's middle sits on the axis.
     let y = -AXIS * scale - (glyph.descent - glyph.ascent) / 2.0;
@@ -3207,10 +3298,16 @@ fn limits(op: &MathBox, sup: Option<MathBox>, sub: Option<MathBox>, scale: f32) 
     out
 }
 
-/// A fraction of `num` over `den`, with a bar on the axis when `bar`.
+/// A fraction of `num` over `den`, with a bar on the axis when `bar`. Its
+/// parts are at script scale, or at full size in text style when `style`
+/// is display style (ADR-T105-1).
 fn fraction(num: &[Node], den: &[Node], scale: f32, bar: bool, style: Style) -> MathBox {
-    let ss = script_scale(scale);
-    let (n, d) = (layout_styled(num, ss, style), layout_styled(den, ss, style));
+    let (ps, style) = if style.display {
+        (scale, style.displayed(false))
+    } else {
+        (script_scale(scale), style)
+    };
+    let (n, d) = (layout_styled(num, ps, style), layout_styled(den, ps, style));
     let pad = FRAC_PAD * scale;
     let width = n.width.max(d.width) + 2.0 * pad;
     let axis = -AXIS * scale;
@@ -3360,8 +3457,10 @@ fn shown_rows(rows: &[Vec<Vec<Node>>]) -> &[Vec<Vec<Node>>] {
     &rows[..rows.len() - usize::from(blank)]
 }
 
-/// The cells of `rows` in columns, centred on the axis (ADR-T90-1).
+/// The cells of `rows` in columns, centred on the axis (ADR-T90-1), in
+/// text style (ADR-T105-1).
 fn table(rows: &[Vec<Vec<Node>>], def: &EnvironmentDef, scale: f32, style: Style) -> MathBox {
+    let style = style.displayed(false);
     let boxes: Vec<Vec<MathBox>> = rows
         .iter()
         .map(|row| {
@@ -3552,6 +3651,10 @@ struct Line {
     width: f32,
     ascent: f32,
     descent: f32,
+    /// For the line of a display formula: the formula's width and the
+    /// left and right x of its ink, laid out from x = 0 and centred once
+    /// the block's width is known (ADR-T105-1).
+    display: Option<(f32, f32, f32)>,
 }
 
 impl Line {
@@ -3561,6 +3664,35 @@ impl Line {
             width: 0.0,
             ascent: BASELINE,
             descent: LINE_HEIGHT - BASELINE,
+            display: None,
+        }
+    }
+
+    /// Whether nothing has been put on the line.
+    fn is_empty(&self) -> bool {
+        self.ink.is_empty() && self.width <= 0.0 && self.display.is_none()
+    }
+
+    /// Formula `b` after what the line holds, its italic overhangs
+    /// inside the line (ADR-T33-1).
+    fn formula(&mut self, b: &MathBox) {
+        let (left, right) = b.ink_span();
+        let x = self.width + (-(self.width + left)).max(0.0);
+        self.ink
+            .extend(b.ink.iter().map(|ink| ink.shifted(Vec2::new(x, 0.0))));
+        self.width = (x + b.width).max(x + right);
+        self.ascent = self.ascent.max(b.ascent + MATH_PAD);
+        self.descent = self.descent.max(b.descent + MATH_PAD);
+    }
+
+    /// How far right to move the line's ink in a block `width` wide: a
+    /// display formula is centred, its ink kept inside the block.
+    fn indent(&self, width: f32) -> f32 {
+        match self.display {
+            Some((own, left, right)) => ((width - own) / 2.0)
+                .max((-left).max(0.0))
+                .min(width - right),
+            None => 0.0,
         }
     }
 
@@ -3579,11 +3711,18 @@ impl Line {
 
 /// Lays out a parsed block: lines split on `\n`, plain characters in
 /// their monospaced cells, formulas typeset; a line grows to fit its
-/// formulas.
+/// formulas. A display formula takes a line of its own, centred on the
+/// block's width (ADR-T105-1).
 #[must_use]
 pub fn layout(segments: &[Segment]) -> Layout {
     let mut lines = Vec::new();
     let mut line = Line::new();
+    // What follows a display formula starts a line of its own.
+    let after_display = |lines: &mut Vec<Line>, line: &mut Line| {
+        if line.display.is_some() {
+            lines.push(std::mem::replace(line, Line::new()));
+        }
+    };
     for segment in segments {
         match segment {
             Segment::Text(text) => {
@@ -3591,28 +3730,39 @@ pub fn layout(segments: &[Segment]) -> Layout {
                     if ch == '\n' {
                         lines.push(std::mem::replace(&mut line, Line::new()));
                     } else {
+                        after_display(&mut lines, &mut line);
                         line.cell(ch);
                     }
                 }
             }
-            Segment::Dollar => line.cell('$'),
+            Segment::Dollar => {
+                after_display(&mut lines, &mut line);
+                line.cell('$');
+            }
             Segment::Math(nodes) => {
-                let b = layout_math(nodes, 1.0);
-                // Italic overhangs stay inside the line (ADR-T33-1).
+                after_display(&mut lines, &mut line);
+                line.formula(&layout_math(nodes, 1.0));
+            }
+            Segment::Display(nodes) => {
+                if !line.is_empty() {
+                    lines.push(std::mem::replace(&mut line, Line::new()));
+                }
+                // Laid out from x = 0; `Line::indent` places it.
+                let b = layout_display(nodes, 1.0);
                 let (left, right) = b.ink_span();
-                let x = line.width + (-(line.width + left)).max(0.0);
-                line.ink
-                    .extend(b.ink.iter().map(|ink| ink.shifted(Vec2::new(x, 0.0))));
-                line.width = (x + b.width).max(x + right);
+                line.width = b.width.max(right) - left.min(0.0);
                 line.ascent = line.ascent.max(b.ascent + MATH_PAD);
                 line.descent = line.descent.max(b.descent + MATH_PAD);
+                line.display = Some((b.width, left, right));
+                line.ink = b.ink;
             }
         }
     }
     lines.push(line);
+    let width = lines.iter().fold(0.0_f32, |w, line| w.max(line.width));
     let mut out = Layout::default();
     for line in lines {
-        let baseline = Vec2::new(0.0, out.height + line.ascent);
+        let baseline = Vec2::new(line.indent(width), out.height + line.ascent);
         out.ink
             .extend(line.ink.into_iter().map(|ink| ink.shifted(baseline)));
         out.width = out.width.max(line.width);
@@ -4371,6 +4521,8 @@ mod tests {
                 "\\:", "\\;", "\\!", "\\!\\!\\!", "\\quad", "\\qquad", "\\ ", "~",
                 "\\xrightarrow", "\\xLeftrightarrow", "\\xmapsto", "\\xhookrightarrow",
                 "[", "]", "\\xrightarrow[n]{f}",
+                "$$", "$$", "\\dfrac", "\\tfrac", "\\dbinom", "\\tbinom", "\\displaystyle",
+                "\\textstyle", "\\over",
             ])
             .prop_map(str::to_owned),
             1 => any::<char>().prop_map(String::from),
@@ -7353,19 +7505,17 @@ mod tests {
     }
 
     #[test]
-    fn tex_layout_choose_and_tbinom_dbinom_match_binom() {
+    fn tex_layout_choose_and_tbinom_match_binom() {
         // Arrange
         let binom = boxed("\\binom{n}{k}");
 
         // Act
         let choose = boxed("n \\choose k");
         let tbinom = boxed("\\tbinom{n}{k}");
-        let dbinom = boxed("\\dbinom{n}{k}");
 
-        // Assert
+        // Assert: `\dbinom` forces display parts (T105 AC-4).
         assert_eq!(choose, binom);
         assert_eq!(tbinom, binom);
-        assert_eq!(dbinom, binom);
         for src in ["\\tbinom{n}{k}", "\\dbinom n k"] {
             let dollars = format!("${src}$");
             assert_eq!(print(&parse(&dollars)), dollars);
@@ -9758,5 +9908,473 @@ mod tests {
                 .any(|g| approx_eq(g.2, SCRIPT_SCALE, EPS) && g.1.y < 0.0)
         );
         assert!(l.width.is_finite() && l.height.is_finite());
+    }
+
+    // ---- T105 display mode (ADR-T105-1) -------------------------------------
+
+    /// Math italic `c`.
+    const C: char = '\u{1D450}';
+
+    /// Formula `src` (written without dollars) laid out in display style.
+    fn shown(src: &str) -> MathBox {
+        layout_display(&math(src), 1.0)
+    }
+
+    /// The scale of the first glyph `ch` of `b`.
+    fn scale_of(b: &MathBox, ch: char) -> f32 {
+        glyph(&b.ink, ch).1
+    }
+
+    #[test]
+    fn tex_parse_double_dollar_is_a_display_formula() {
+        // Act
+        let alone = parse("$$x$$");
+        let in_text = parse("a $$ x+1 $$ b");
+        let after_inline = parse("$y$$$x$$");
+
+        // Assert
+        assert_eq!(alone, vec![Segment::Display(vec![Node::Char('x')])]);
+        assert_eq!(
+            in_text,
+            vec![
+                Segment::Text("a ".to_owned()),
+                Segment::Display(vec![
+                    Node::Space(" ".to_owned()),
+                    Node::Char('x'),
+                    Node::Char('+'),
+                    Node::Char('1'),
+                    Node::Space(" ".to_owned()),
+                ]),
+                Segment::Text(" b".to_owned()),
+            ]
+        );
+        assert_eq!(
+            after_inline,
+            vec![
+                Segment::Math(vec![Node::Char('y')]),
+                Segment::Display(vec![Node::Char('x')]),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_unclosed_double_dollar_reads_as_before() {
+        // Act + Assert: the first `$` is text, the rest reads as before.
+        assert_eq!(
+            parse("$$x$"),
+            vec![
+                Segment::Text("$".to_owned()),
+                Segment::Math(vec![Node::Char('x')]),
+            ]
+        );
+        assert_eq!(parse("$$x"), vec![Segment::Text("$$x".to_owned())]);
+        assert_eq!(parse("$$$$"), vec![Segment::Text("$$$$".to_owned())]);
+        // A single `$` inside closes an inline formula instead.
+        assert_eq!(
+            parse("$$a$b$$"),
+            vec![
+                Segment::Text("$".to_owned()),
+                Segment::Math(vec![Node::Char('a')]),
+                Segment::Text("b$$".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_parse_display_formula_does_not_cross_a_line_break() {
+        // Act
+        let segments = parse("$$a\nb$$");
+
+        // Assert
+        assert_eq!(segments, vec![Segment::Text("$$a\nb$$".to_owned())]);
+    }
+
+    #[test]
+    fn tex_parse_escaped_dollar_inside_display_stays_literal() {
+        // Act
+        let segments = parse("$$\\$5$$");
+
+        // Assert
+        match segments.as_slice() {
+            [Segment::Display(nodes)] => {
+                // The symbol `\$` draws a dollar, as in `$…$`.
+                assert_eq!(nodes[0], sym("$"));
+                assert_eq!(nodes[1], Node::Char('5'));
+            }
+            other => panic!("one display formula expected: {other:?}"),
+        }
+        assert_eq!(print(&segments), "$$\\$5$$");
+    }
+
+    #[test]
+    fn tex_print_display_formula_round_trips() {
+        for src in [
+            "$$x$$",
+            "a $$\\sum_{i=1}^n \\frac{a_i}{b_i}$$ b",
+            "$$x$$$$y$$",
+            "$x$ and $$\\displaystyle y \\textstyle z$$\n$$1$$",
+            "$\\dfrac12 + \\tfrac{1}{2}$",
+        ] {
+            // Act
+            let segments = parse(src);
+
+            // Assert
+            assert_eq!(print(&segments), src);
+        }
+    }
+
+    #[test]
+    fn tex_layout_display_big_operators_use_the_display_scale() {
+        for (name, ch) in [("sum", '∑'), ("prod", '∏'), ("int", '∫'), ("bigcup", '⋃')] {
+            // Act
+            let display = shown(&format!("\\{name}"));
+            let inline = boxed(&format!("\\{name}"));
+
+            // Assert
+            let (pos, k) = glyph(&display.ink, ch);
+            assert!(approx_eq(k, DISPLAY_OP_SCALE, EPS), "{name}: {k}");
+            assert!(
+                approx_eq(scale_of(&inline, ch), BIG_OP_SCALE, EPS),
+                "{name}"
+            );
+            // Its middle on the axis (y down).
+            let middle = pos.y - (mm(ch).y_max + mm(ch).y_min) * k / 2.0;
+            assert!(approx_eq(middle, -AXIS, EPS), "{name}: {middle}");
+            assert!(approx_eq(display.width, mm(ch).advance * k, EPS), "{name}");
+        }
+        assert!(approx_eq(DISPLAY_OP_SCALE, 1.8, EPS));
+    }
+
+    #[test]
+    fn tex_layout_display_sum_limits_are_centred_above_and_below() {
+        // Act
+        let b = shown("\\sum_{k=1}^{n}");
+
+        // Assert
+        let (sum, big) = glyph(&b.ink, '∑');
+        assert!(approx_eq(big, DISPLAY_OP_SCALE, EPS));
+        let centre = sum.x + adv("∑") * big / 2.0;
+        let (n, ns) = glyph(&b.ink, N);
+        let (k, ks) = glyph(&b.ink, K);
+        assert!(approx_eq(ns, SCRIPT_SCALE, EPS) && approx_eq(ks, SCRIPT_SCALE, EPS));
+        assert!(approx_eq(n.x + mm(N).advance * ns / 2.0, centre, EPS));
+        let below = (mm(K).advance + adv("=1")) * ks;
+        assert!(approx_eq(k.x + below / 2.0, centre, EPS), "{k:?} {centre}");
+        let sum_top = sum.y - mm('∑').y_max * big;
+        let sum_bottom = sum.y - mm('∑').y_min * big;
+        assert!(n.y - mm(N).y_min * ns <= sum_top - LIMIT_GAP + EPS);
+        assert!(k.y - mm(K).y_max * ks >= sum_bottom + LIMIT_GAP - EPS);
+    }
+
+    #[test]
+    fn tex_layout_display_integral_scripts_sit_beside_the_sign() {
+        // Act
+        let b = shown("\\int_a^b");
+
+        // Assert
+        let (sign, k) = glyph(&b.ink, '∫');
+        assert!(approx_eq(k, DISPLAY_OP_SCALE, EPS));
+        let (lo, _) = glyph(&b.ink, A);
+        let (hi, _) = glyph(&b.ink, B);
+        let advance = mm('∫').advance * k;
+        let italic = mm('∫').italic * k;
+        assert!(approx_eq(hi.x, sign.x + advance, EPS), "{hi:?}");
+        assert!(approx_eq(lo.x, sign.x + advance - italic, EPS), "{lo:?}");
+        let top = sign.y - mm('∫').y_max * k;
+        let bottom = sign.y - mm('∫').y_min * k;
+        assert!(hi.y > top && lo.y < bottom, "{hi:?} {lo:?} {top} {bottom}");
+    }
+
+    #[test]
+    fn tex_layout_display_scripts_are_text_style() {
+        // Act
+        let op = shown("x^{\\sum}");
+        let frac = shown("x^{\\frac{a}{b}}");
+
+        // Assert: a script is laid out as in an inline formula.
+        assert!(approx_eq(
+            scale_of(&op, '∑'),
+            SCRIPT_SCALE * BIG_OP_SCALE,
+            EPS
+        ));
+        assert_eq!(op, boxed("x^{\\sum}"));
+        assert!(approx_eq(
+            scale_of(&frac, A),
+            script_scale(SCRIPT_SCALE),
+            EPS
+        ));
+    }
+
+    #[test]
+    fn tex_layout_display_fraction_parts_are_full_size() {
+        // Act
+        let b = shown("\\frac{a}{b}");
+
+        // Assert
+        let bars = rules(&b.ink);
+        assert_eq!(bars.len(), 1);
+        let (p, q, width) = bars[0];
+        assert!(approx_eq(p.y, -AXIS, EPS) && approx_eq(q.y, -AXIS, EPS));
+        assert!(approx_eq(width, RULE, EPS));
+        let (num, ns) = glyph(&b.ink, A);
+        let (den, ds) = glyph(&b.ink, B);
+        assert!(approx_eq(ns, 1.0, EPS) && approx_eq(ds, 1.0, EPS));
+        assert!(num.y - mm(A).y_min <= -AXIS - RULE / 2.0 - FRAC_GAP + EPS);
+        assert!(den.y - mm(B).y_max >= -AXIS + RULE / 2.0 + FRAC_GAP - EPS);
+        let middle = b.width / 2.0;
+        assert!(approx_eq(num.x + mm(A).advance / 2.0, middle, EPS));
+        assert!(approx_eq(den.x + mm(B).advance / 2.0, middle, EPS));
+        assert!(b.width > boxed("\\frac{a}{b}").width);
+    }
+
+    #[test]
+    fn tex_layout_display_nested_fraction_shrinks() {
+        // Act
+        let b = shown("\\frac{\\frac{a}{b}}{c}");
+
+        // Assert: the outer parts are text style, the inner ones script.
+        assert!(approx_eq(scale_of(&b, A), SCRIPT_SCALE, EPS));
+        assert!(approx_eq(scale_of(&b, B), SCRIPT_SCALE, EPS));
+        assert!(approx_eq(scale_of(&b, C), 1.0, EPS));
+    }
+
+    #[test]
+    fn tex_layout_display_binomial_and_infix_parts_are_full_size() {
+        // Act
+        let binom = shown("\\binom{n}{k}");
+        let choose = shown("n \\choose k");
+        let over = shown("a \\over b");
+
+        // Assert
+        assert!(approx_eq(scale_of(&binom, N), 1.0, EPS));
+        assert!(approx_eq(scale_of(&binom, K), 1.0, EPS));
+        assert!(scale_of(&binom, '(') > scale_of(&boxed("\\binom{n}{k}"), '('));
+        assert_eq!(choose, binom);
+        assert_eq!(over, shown("\\frac{a}{b}"));
+    }
+
+    #[test]
+    fn tex_parse_dfrac_and_tfrac_take_two_arguments() {
+        // Act + Assert
+        assert_eq!(
+            math("\\dfrac{a}{b}"),
+            vec![Node::Command {
+                name: "dfrac".to_owned(),
+                args: vec![braced(vec![Node::Char('a')]), braced(vec![Node::Char('b')]),],
+            }]
+        );
+        assert_eq!(
+            math("\\tfrac12"),
+            vec![Node::Command {
+                name: "tfrac".to_owned(),
+                args: vec![tok(Node::Char('1')), tok(Node::Char('2'))],
+            }]
+        );
+        assert_eq!(
+            math("\\dfrac a"),
+            vec![
+                Node::Literal("\\dfrac".to_owned()),
+                Node::Space(" ".to_owned()),
+                Node::Char('a'),
+            ]
+        );
+    }
+
+    #[test]
+    fn tex_layout_dfrac_and_dbinom_have_full_size_parts_inline() {
+        // Act
+        let dfrac = boxed("\\dfrac{a}{b}");
+        let dbinom = boxed("\\dbinom{n}{k}");
+
+        // Assert
+        assert_eq!(dfrac, shown("\\frac{a}{b}"));
+        assert_eq!(dbinom, shown("\\binom{n}{k}"));
+        assert!(approx_eq(scale_of(&dfrac, A), 1.0, EPS));
+        // Its parts are text style: an operator in them is inline-sized.
+        let part = boxed("\\dfrac{\\sum}{2}");
+        assert!(approx_eq(scale_of(&part, '∑'), BIG_OP_SCALE, EPS));
+    }
+
+    #[test]
+    fn tex_layout_tfrac_and_tbinom_have_script_parts_in_display() {
+        // Act
+        let tfrac = shown("\\tfrac{a}{b}");
+        let tbinom = shown("\\tbinom{n}{k}");
+
+        // Assert
+        assert_eq!(tfrac, boxed("\\frac{a}{b}"));
+        assert_eq!(tbinom, boxed("\\binom{n}{k}"));
+        assert_eq!(boxed("\\tfrac{a}{b}"), boxed("\\frac{a}{b}"));
+    }
+
+    #[test]
+    fn tex_parse_style_switches_are_nodes() {
+        // Act + Assert
+        assert_eq!(
+            math("\\displaystyle x"),
+            vec![
+                Node::MathStyle(true),
+                Node::Space(" ".to_owned()),
+                Node::Char('x'),
+            ]
+        );
+        assert_eq!(math("\\textstyle"), vec![Node::MathStyle(false)]);
+        assert_eq!(
+            math("\\displaystylex"),
+            vec![Node::Literal("\\displaystylex".to_owned())]
+        );
+        for src in [
+            "$\\displaystyle\\sum$",
+            "${\\textstyle x}^2$",
+            "$\\displaystyle^2$",
+        ] {
+            assert_eq!(print(&parse(src)), src);
+        }
+    }
+
+    #[test]
+    fn tex_layout_displaystyle_switches_the_rest_of_its_group() {
+        // Act
+        let after = boxed("\\sum\\displaystyle\\sum");
+        let grouped = boxed("{\\displaystyle\\int}\\int");
+        let part = boxed("\\frac{\\displaystyle\\sum}{b}");
+
+        // Assert
+        let sums: Vec<f32> = glyphs(&after.ink)
+            .iter()
+            .filter(|g| g.0 == '∑')
+            .map(|g| g.2)
+            .collect();
+        assert_eq!(sums.len(), 2);
+        assert!(approx_eq(sums[0], BIG_OP_SCALE, EPS), "{sums:?}");
+        assert!(approx_eq(sums[1], DISPLAY_OP_SCALE, EPS), "{sums:?}");
+        let ints: Vec<f32> = glyphs(&grouped.ink)
+            .iter()
+            .filter(|g| g.0 == '∫')
+            .map(|g| g.2)
+            .collect();
+        assert_eq!(ints.len(), 2);
+        assert!(approx_eq(ints[0], DISPLAY_OP_SCALE, EPS), "{ints:?}");
+        assert!(approx_eq(ints[1], BIG_OP_SCALE, EPS), "{ints:?}");
+        assert!(approx_eq(
+            scale_of(&part, '∑'),
+            SCRIPT_SCALE * DISPLAY_OP_SCALE,
+            EPS
+        ));
+        // A display fraction after the switch has full-size parts.
+        assert_eq!(boxed("\\displaystyle\\frac{a}{b}"), shown("\\frac{a}{b}"));
+    }
+
+    #[test]
+    fn tex_layout_textstyle_switches_back_in_display() {
+        // Act
+        let op = shown("\\textstyle\\sum");
+        let frac = shown("\\textstyle\\frac{a}{b}");
+
+        // Assert
+        assert!(approx_eq(scale_of(&op, '∑'), BIG_OP_SCALE, EPS));
+        assert_eq!(frac, boxed("\\frac{a}{b}"));
+    }
+
+    #[test]
+    fn tex_layout_style_switch_is_not_an_atom() {
+        // Act
+        let spaced = boxed("a\\displaystyle+b");
+        let base = boxed("\\displaystyle^2");
+
+        // Assert: `+` keeps its binary spacing.
+        assert_eq!(spaced, boxed("a+b"));
+        assert!(base.width.is_finite() && base.width > 0.0);
+        assert!(approx_eq(scale_of(&base, '2'), SCRIPT_SCALE, EPS));
+    }
+
+    #[test]
+    fn tex_layout_display_formula_sits_on_its_own_line() {
+        // Act
+        let l = layout(&parse("ab $$x$$ cd"));
+
+        // Assert: "ab " on the first line, the formula on the second, " cd"
+        // on the third with its space kept.
+        let line = text_layout::LINE_HEIGHT;
+        let (a, _) = glyph(&l.ink, 'a');
+        let (x, _) = glyph(&l.ink, X);
+        let (c, _) = glyph(&l.ink, 'c');
+        assert!(a.approx_eq(v(0.0, text_layout::BASELINE), EPS), "{a:?}");
+        assert!(approx_eq(x.y, line + text_layout::BASELINE, EPS), "{x:?}");
+        assert!(
+            c.approx_eq(
+                v(text_layout::ADVANCE, 2.0 * line + text_layout::BASELINE),
+                EPS
+            ),
+            "{c:?}"
+        );
+        assert!(approx_eq(l.height, 3.0 * line, EPS));
+    }
+
+    #[test]
+    fn tex_layout_display_formula_is_centred_on_the_block_width() {
+        // Arrange
+        let two = shown("2");
+
+        // Act
+        let l = layout(&parse("abcdefghij\n$$2$$"));
+
+        // Assert
+        let width = 10.0 * text_layout::ADVANCE;
+        assert!(approx_eq(l.width, width, EPS));
+        let (pos, _) = glyph(&l.ink, '2');
+        assert!(
+            approx_eq(pos.x, (width - two.width) / 2.0, EPS),
+            "{pos:?} {}",
+            two.width
+        );
+        // A display formula before the text is centred as well.
+        let first = layout(&parse("$$2$$abcdefghij"));
+        let (pos, _) = glyph(&first.ink, '2');
+        assert!(approx_eq(pos.x, (width - two.width) / 2.0, EPS), "{pos:?}");
+    }
+
+    #[test]
+    fn tex_layout_line_break_around_display_adds_no_empty_line() {
+        // Act
+        let around = layout(&parse("a\n$$2$$\nb"));
+        let alone = layout(&parse("$$2$$"));
+        let pair = layout(&parse("$$2$$$$3$$"));
+        let trailing = layout(&parse("$$2$$\n"));
+
+        // Assert
+        let line = text_layout::LINE_HEIGHT;
+        assert!(
+            approx_eq(around.height, 3.0 * line, EPS),
+            "{}",
+            around.height
+        );
+        assert!(approx_eq(alone.height, line, EPS), "{}", alone.height);
+        assert!(approx_eq(pair.height, 2.0 * line, EPS), "{}", pair.height);
+        assert!(approx_eq(trailing.height, 2.0 * line, EPS));
+        let (b, _) = glyph(&around.ink, 'b');
+        assert!(b.approx_eq(v(0.0, 2.0 * line + text_layout::BASELINE), EPS));
+    }
+
+    #[test]
+    fn tex_layout_wide_display_formula_sets_the_block_width() {
+        // Arrange
+        let src = "\\sum_{i=1}^{n} \\frac{a_i}{b_i} + \\sum_{i=1}^{n} \\frac{a_i}{b_i}";
+        let b = shown(src);
+
+        // Act
+        let l = layout(&parse(&format!("ab\n$${src}$$")));
+
+        // Assert
+        assert!(b.width > 2.0 * text_layout::ADVANCE);
+        assert!(l.width >= b.width - EPS, "{} {}", l.width, b.width);
+        assert!(l.height > 2.0 * text_layout::LINE_HEIGHT);
+        let (a, _) = glyph(&l.ink, 'a');
+        assert!(approx_eq(a.x, 0.0, EPS));
+        let room = l.bounds().expand(1e-4);
+        assert!(l.ink.iter().all(|ink| {
+            let ib = ink.bounds();
+            room.contains(ib.min) && room.contains(ib.max)
+        }));
     }
 }

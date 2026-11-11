@@ -83,7 +83,8 @@ Every key types; only these act: `Esc` / `Ctrl+Enter` finish · `Ctrl+Z`
 cancel · `Enter` new line · `Tab` 4 spaces · arrows, `Home`, `End` move ·
 `Backspace`, `Delete` delete · `Ctrl+]` / `Ctrl+[` bigger / smaller ·
 `Ctrl+V` paste text from the system clipboard.
-Edit again: Text click, or Select double-click.
+Edit again: Text click, or Select double-click. Formulas: `$…$` inline,
+`$$…$$` display (own line, centred; `\dfrac`, `\displaystyle` too).
 
 ## Typing in a shape
 

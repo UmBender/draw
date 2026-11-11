@@ -270,6 +270,9 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
             "\\bra", "\\ket", "\\braket", "\\ketbra", "\\expval", "\\mel", "\\comm",
             "\\acomm", "\\dag", "\\Tr", "\\braket{\\phi}{\\psi}", "\\mel{n}{H}{m}",
             "\\comm{A}{B}", "\\ket{0}\\otimes\\ket{1}", "A^\\dag", "\\expval{H}{\\psi}",
+            // T105: display formulas and style switches.
+            "$$", "\\dfrac", "\\tfrac", "\\displaystyle", "\\textstyle", "\\dfrac{a}{b}",
+            "\\displaystyle\\sum_{i=1}^n", "{\\textstyle\\int_0^1}", "\\tfrac12",
         ])
         .prop_map(str::to_owned),
         1 => arb_char().prop_map(String::from),
@@ -277,11 +280,15 @@ fn arb_formula_text() -> impl Strategy<Value = String> {
     prop::collection::vec(token, 0..24).prop_map(|tokens| tokens.concat())
 }
 
-/// A formula typed into a block: `$…$` around formula-ish source, or
-/// the source alone.
+/// A formula typed into a block: `$…$` or `$$…$$` around formula-ish
+/// source, or the source alone.
 fn arb_formula() -> impl Strategy<Value = String> {
     prop_oneof![
         3 => arb_formula_text().prop_map(|src| format!("${src}$")),
+        // T105: display formulas, alone and with text around.
+        1 => arb_formula_text().prop_map(|src| format!("$${src}$$")),
+        1 => (arb_formula_text(), arb_formula_text())
+            .prop_map(|(src, around)| format!("{around}$${src}$${around}")),
         1 => arb_formula_text(),
     ]
 }
