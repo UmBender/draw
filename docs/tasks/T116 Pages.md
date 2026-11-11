@@ -1,11 +1,11 @@
 ---
 id: T116
 title: Pages
-status: todo
+status: in-progress
 wave: 59
 branch: task/T116-pages
 depends_on: []
-adrs: []
+adrs: [ADR-T116-1]
 feature: "[[Infinite canvas, pan and zoom]]"
 tutorial: ""
 tags: [task]
@@ -27,11 +27,11 @@ tags: [task]
 
 Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 
-- **AC-1** (owner) — `Alt+1`…`Alt+9` show page 1…9; draw starts on page 1. Each page has its own shapes, selection and view (pan and zoom). The page number shows in a corner when it is not page 1 (or always; set in the spec).
-- **AC-2** (owner) — Undo and redo act on the current page only: each page keeps its own history, and switching pages is never an undo step.
-- **AC-3** — Switching pages cancels a gesture in progress and closes an open text edit as `Esc` would; it costs one document re-render, then idle as usual.
-- **AC-4** — Numbering, snapping, export (`Ctrl+E`, and T114 when present), the minimap (T110) and clearing the canvas act on the current page; copy and paste work across pages (copy on one, paste on another).
-- **AC-5** — Snapshots and the autosave store all pages, their views and histories (format version bumped); recovery restores the page that was open. Fuzzed with page switches mixed into editing sessions.
+- **AC-1** (owner) — `Alt+1`…`Alt+9` show page 1…9; draw starts on page 1. Each page has its own shapes, selection and view (pan and zoom). The page number shows top-right when it is not page 1 (ADR-T116-1). Tests: `keymap::alt_digits_go_to_pages`, `editor::pages_keep_their_own_shapes_selection_and_view`, `editor::new_editor_is_on_page_one`, `editor::going_to_the_current_page_changes_nothing`, `render::page_label_*`.
+- **AC-2** (owner) — Undo and redo act on the current page only: each page keeps its own history, and switching pages is never an undo step. Tests: `editor::undo_acts_on_the_current_page_only`, `editor::switching_pages_is_not_an_undo_step`.
+- **AC-3** — Switching pages cancels a gesture in progress and closes an open text edit as `Esc` would; it costs one document re-render, then idle as usual. Tests: `editor::switching_pages_cancels_the_gesture`, `editor::switching_pages_commits_the_open_text`, `editor::switching_pages_bumps_the_document_revision`.
+- **AC-4** — Numbering, snapping, export (`Ctrl+E`, and T114 when present), the minimap (T110) and clearing the canvas act on the current page; copy and paste work across pages (copy on one, paste on another). Tests: `editor::clear_all_clears_only_the_current_page`, `editor::copy_on_one_page_pastes_on_another`, `editor::numbering_counts_per_page`.
+- **AC-5** — Snapshots and the autosave store all pages, their views and histories (format version bumped); recovery restores the page that was open. Fuzzed with page switches mixed into editing sessions. Version 2 still loads as one page. Tests: `snapshot::round_trip_keeps_every_page`, `snapshot::version_two_still_loads`, `snapshot::version_is_three`, `snapshot::rejects_bad_page_index`, fuzz `snapshot_round_trip_with_page_switches`.
 
 ## Out of scope
 
