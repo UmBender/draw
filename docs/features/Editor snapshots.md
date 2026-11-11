@@ -1,7 +1,7 @@
 ---
 title: Editor snapshots
 task: "[[T74 Editor snapshots for tests]]"
-adrs: ["[[ADR-T74-1 Line-based editor snapshot format]]"]
+adrs: ["[[ADR-T74-1 Line-based editor snapshot format]]", "[[ADR-T107-1 Lock flag kept by the document]]"]
 tutorial: ""
 shortcuts: ["Ctrl+Shift+S"]
 tags: [feature, testing]
@@ -55,6 +55,11 @@ Bug snapshots go in `tests/snapshots/regressions/` (see its README and
   Floats use `{:?}` and come back bit for bit; strings are quoted and
   escaped. `Writer`/`Line` write tokens, `Reader`/`Tokens` read them,
   and the `Snap` trait gives each value its token form.
+- Version 2 ([[ADR-T107-1 Lock flag kept by the document]]): the
+  `[document]` section ends with `locked <id>…` (locked ids in z-order)
+  when any shape is locked, and the history has `lock <id>` and
+  `unlock <id>` edits. A locked id must be in the document, once; the
+  selection and the select and eraser gesture ids must not be locked.
 - Every state type writes and reads its own records in its module
   (`tools/*`, `tap.rs`, `smoothing.rs`), so no private field becomes
   public. Reading checks the editor invariants: finite shapes, ids in

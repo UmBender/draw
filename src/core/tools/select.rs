@@ -30,7 +30,7 @@ use crate::core::command::{Axis, Side};
 use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::{Aabb, Vec2, approx_eq};
 use crate::core::shape::Shape;
-use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_unlocked_ids};
 
 /// Pointer travel (screen pixels) below which a press-release is a click.
 pub const CLICK_SLOP_PX: f32 = 3.0;
@@ -421,9 +421,10 @@ fn commit_moves(ctx: &mut ToolCtx<'_>, moves: &[(ShapeId, Vec2)], frame: Aabb) -
     ctx.commit(Transaction::from(edits))
 }
 
-/// Drops selected ids that are not in the document.
+/// Drops selected ids that are not in the document or are locked
+/// (ADR-T107-1).
 pub(crate) fn prune(selection: &mut Vec<ShapeId>, doc: &Document) {
-    selection.retain(|id| doc.get(*id).is_some());
+    selection.retain(|id| doc.get(*id).is_some() && !doc.is_locked(*id));
 }
 
 /// The shapes of `selection` with their ids, in z-order (bottom first);
@@ -490,10 +491,10 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
     let tol = ctx.camera.world_len(HIT_TOLERANCE_PX);
     // The inside of the only selected shape grabs it when it can host
     // text, so a second click there can open its text (ADR-T31-1,
-    // ADR-T52-1).
+    // ADR-T52-1). Locked shapes are never picked (ADR-T107-1).
     let hit = ctx
         .doc
-        .topmost_where(|shape| shape.hit(world, tol))
+        .topmost_unlocked_where(|shape| shape.hit(world, tol))
         .or_else(|| match ctx.selection.as_slice() {
             &[id] => ctx
                 .doc
@@ -580,7 +581,7 @@ fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
             let hits: Vec<ShapeId> = ctx
                 .doc
                 .shapes()
-                .filter(|(_, shape)| shape.bounds().intersects(&rect))
+                .filter(|(id, shape)| !ctx.doc.is_locked(*id) && shape.bounds().intersects(&rect))
                 .map(|(id, _)| id)
                 .collect();
             for id in hits {
@@ -700,9 +701,15 @@ pub fn cancel(state: &mut State) -> bool {
     state.gesture.take().is_some()
 }
 
-/// Selects every shape. Returns whether the selection changed.
+/// Selects every unlocked shape (ADR-T107-1). Returns whether the
+/// selection changed.
 pub fn select_all(ctx: &mut ToolCtx<'_>) -> bool {
-    let all: Vec<ShapeId> = ctx.doc.shapes().map(|(id, _)| id).collect();
+    let all: Vec<ShapeId> = ctx
+        .doc
+        .shapes()
+        .map(|(id, _)| id)
+        .filter(|id| !ctx.doc.is_locked(*id))
+        .collect();
     let changed = *ctx.selection != all;
     *ctx.selection = all;
     changed
@@ -789,8 +796,8 @@ impl State {
                     let clicked: ShapeId = t.get()?;
                     let duplicate = t.bool("duplicate")?;
                     let ids: Vec<ShapeId> = t.get()?;
-                    check_ids(&t, doc, &[clicked])?;
-                    check_ids(&t, doc, &ids)?;
+                    check_unlocked_ids(&t, doc, &[clicked])?;
+                    check_unlocked_ids(&t, doc, &ids)?;
                     Some(Gesture::Move {
                         start,
                         current,
@@ -809,7 +816,7 @@ impl State {
                         floor: t.get()?,
                     };
                     let ids: Vec<ShapeId> = t.get()?;
-                    check_ids(&t, doc, &ids)?;
+                    check_unlocked_ids(&t, doc, &ids)?;
                     Some(Gesture::Resize {
                         start,
                         current,
@@ -1194,6 +1201,94 @@ mod tests {
         drag(&mut state, &mut fx, (100.0, 100.0), (110.0, 110.0), SHIFT);
         assert!(fx.selection.iter().all(|id| fx.doc.get(*id).is_some()));
     }
+
+    // ---- T107 locks ---------------------------------------------------------
+
+    /// Locks `ids` in the fixture's document (not in the history).
+    fn lock(fx: &mut Fixture, ids: &[ShapeId]) {
+        let tx = crate::core::document::tx_lock(&fx.doc, ids);
+        assert!(fx.doc.apply(&tx).is_ok());
+    }
+
+    #[test]
+    fn click_skips_locked_shape_and_picks_the_one_below() {
+        // Arrange: two overlapping filled squares, the top one locked.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 10.0, 10.0),
+            filled_rect(5.0, 5.0, 30.0, 30.0),
+        ]);
+        lock(&mut fx, &[ids[1]]);
+        let mut state = State::default();
+
+        // Act: on both, then on the locked one only.
+        click(&mut state, &mut fx, 7.0, 7.0, NONE);
+        let below = fx.selection.clone();
+        click(&mut state, &mut fx, 25.0, 25.0, NONE);
+
+        // Assert
+        assert_eq!(below, vec![ids[0]]);
+        assert_eq!(fx.selection, []);
+    }
+
+    #[test]
+    fn drag_on_locked_shape_moves_nothing() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[1]]);
+        let before = fx.shape(ids[1]);
+        let mut state = State::default();
+
+        // Act: a drag starting on the locked square is a marquee.
+        drag(&mut state, &mut fx, (55.0, 5.0), (95.0, 45.0), NONE);
+
+        // Assert
+        assert_eq!(fx.shape(ids[1]), before);
+        assert_eq!(fx.selection, []);
+        assert_eq!(fx.history.undo_len(), 0);
+    }
+
+    #[test]
+    fn marquee_skips_locked_shapes() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[0]]);
+        let mut state = State::default();
+
+        // Act
+        drag(&mut state, &mut fx, (-5.0, -5.0), (205.0, 3.0), NONE);
+
+        // Assert
+        assert_eq!(fx.selection, vec![ids[1], ids[2]]);
+    }
+
+    #[test]
+    fn select_all_skips_locked_shapes() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[1]]);
+
+        // Act
+        let changed = select_all(&mut fx.ctx(Tool::Select));
+
+        // Assert
+        assert!(changed);
+        assert_eq!(fx.selection, vec![ids[0], ids[2]]);
+    }
+
+    #[test]
+    fn prune_drops_locked_ids() {
+        // Arrange
+        let (mut fx, ids) = squares();
+        lock(&mut fx, &[ids[2]]);
+        let mut selection = ids.clone();
+
+        // Act
+        prune(&mut selection, &fx.doc);
+
+        // Assert
+        assert_eq!(selection, vec![ids[0], ids[1]]);
+    }
+
     // ---- T31 shape text ---------------------------------------------------
 
     #[test]

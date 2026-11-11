@@ -20,7 +20,8 @@ use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{
-    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
+    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_lock, tx_remove, tx_replace, tx_restack,
+    tx_unlock_all,
 };
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
@@ -421,7 +422,7 @@ impl Editor {
         }
 
         let doc = read_numbered_document(r)?;
-        snapshot::check_ids(&selection_tokens, &doc, &selection)?;
+        snapshot::check_unlocked_ids(&selection_tokens, &doc, &selection)?;
         if let Some((_, id)) = reedit {
             snapshot::check_ids(&reedit_tokens, &doc, &[id])?;
         }
@@ -681,6 +682,8 @@ impl Editor {
             }
             Command::DeleteSelection => self.run_edit(select::delete_selection),
             Command::ClearAll => self.clear_all(),
+            Command::LockSelection => self.lock_selection(),
+            Command::UnlockAll => self.unlock_all(),
             Command::Cancel => {
                 if self.cancel_gesture() {
                     true
@@ -1443,17 +1446,39 @@ impl Editor {
         })
     }
 
-    /// Removes every shape as one undo step, after cancelling the gesture.
-    /// Returns whether anything changed.
+    /// Removes every unlocked shape as one undo step, after cancelling the
+    /// gesture (ADR-T107-1). Returns whether anything changed.
     fn clear_all(&mut self) -> bool {
         let cancelled = self.cancel_gesture();
-        if self.doc.is_empty() {
+        let tx = tx_clear(&self.doc);
+        if tx.is_empty() {
             return cancelled;
         }
-        let tx = tx_clear(&self.doc);
         let changed = self.history.commit(&mut self.doc, tx).is_ok();
         self.selection.clear();
         changed || cancelled
+    }
+
+    /// Locks the selected shapes as one undo step and clears the selection,
+    /// after cancelling the gesture (ADR-T107-2). Returns whether anything
+    /// changed.
+    fn lock_selection(&mut self) -> bool {
+        let cancelled = self.cancel_gesture();
+        self.prune_selection();
+        let tx = tx_lock(&self.doc, &self.selection);
+        let locked = !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok();
+        let deselected = !self.selection.is_empty();
+        self.selection.clear();
+        locked || deselected || cancelled
+    }
+
+    /// Unlocks every locked shape as one undo step, after cancelling the
+    /// gesture (ADR-T107-2). Returns whether anything changed.
+    fn unlock_all(&mut self) -> bool {
+        let cancelled = self.cancel_gesture();
+        let tx = tx_unlock_all(&self.doc);
+        let unlocked = !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok();
+        unlocked || cancelled
     }
 
     /// The id and shape of the grid the arrow keys resize: the Select tool
@@ -1558,10 +1583,10 @@ impl Editor {
         self.run_edit(edit)
     }
 
-    /// Removes selected ids that are no longer in the document.
+    /// Removes selected ids that are no longer in the document or are
+    /// locked (ADR-T107-1).
     fn prune_selection(&mut self) {
-        let doc = &self.doc;
-        self.selection.retain(|id| doc.get(*id).is_some());
+        select::prune(&mut self.selection, &self.doc);
     }
 }
 
@@ -1587,6 +1612,8 @@ fn edits_document(command: Command) -> bool {
             | Command::PlotFromText
             | Command::DeleteSelection
             | Command::ClearAll
+            | Command::LockSelection
+            | Command::UnlockAll
             | Command::GridCols(_)
             | Command::GridRows(_)
             | Command::ScaleUp
@@ -7886,5 +7913,281 @@ mod tests {
             .filter_map(|&i| ed.document().get(i).cloned())
             .collect();
         assert_eq!(now, rects);
+    }
+
+    // ---- T107 locks -----------------------------------------------------------
+
+    /// The locked ids, bottom first.
+    fn locked(ed: &Editor) -> Vec<ShapeId> {
+        ids(ed)
+            .into_iter()
+            .filter(|id| ed.document().is_locked(*id))
+            .collect()
+    }
+
+    /// Editor with an 800 × 600 viewport holding `shapes`, those at the
+    /// positions `lock` locked with `Command::LockSelection`, and `tool`
+    /// active.
+    fn locked_editor(shapes: Vec<Shape>, lock: &[usize], tool: Tool) -> Editor {
+        let mut ed = shape_text_editor(shapes, Tool::Select);
+        let all = ids(&ed);
+        ed.selection = lock.iter().map(|&i| all[i]).collect();
+        assert!(ed.apply(Command::LockSelection));
+        ed.apply(Command::SetTool(tool));
+        ed
+    }
+
+    fn three_rects() -> Vec<Shape> {
+        vec![
+            rect(0.0, 0.0, 50.0, 50.0),
+            rect(100.0, 0.0, 50.0, 50.0),
+            rect(200.0, 0.0, 50.0, 50.0),
+        ]
+    }
+
+    #[test]
+    fn lock_locks_selection_and_clears_it() {
+        // Arrange
+        let mut ed = shape_text_editor(three_rects(), Tool::Select);
+        let all = ids(&ed);
+        ed.selection = vec![all[2], all[0]];
+
+        // Act
+        let redraw = key_with(&mut ed, Key::K, CTRL);
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(locked(&ed), vec![all[0], all[2]]);
+        assert_eq!(ed.selection(), []);
+        assert_eq!(ids(&ed), all);
+    }
+
+    #[test]
+    fn lock_is_one_undo_step() {
+        // Arrange
+        let mut ed = locked_editor(three_rects(), &[0, 2], Tool::Select);
+        let all = ids(&ed);
+
+        // Act
+        let undone = ed.apply(Command::Undo);
+        let after_undo = locked(&ed);
+        let redone = ed.apply(Command::Redo);
+
+        // Assert
+        assert!(undone && redone);
+        assert_eq!(after_undo, vec![]);
+        assert_eq!(ids(&ed), all);
+        assert_eq!(locked(&ed), vec![all[0], all[2]]);
+    }
+
+    #[test]
+    fn lock_with_empty_selection_records_nothing() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+
+        // Act
+        let redraw = ed.apply(Command::LockSelection);
+        ed.apply(Command::Undo);
+
+        // Assert: the undo took back the insert, not a lock.
+        assert!(!redraw);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn unlock_all_is_one_undo_step() {
+        // Arrange
+        let mut ed = locked_editor(three_rects(), &[0, 1], Tool::Select);
+        let all = ids(&ed);
+
+        // Act
+        let redraw = key_with(&mut ed, Key::K, CTRL_SHIFT);
+        let after = locked(&ed);
+        ed.apply(Command::Undo);
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(after, vec![]);
+        assert_eq!(locked(&ed), vec![all[0], all[1]]);
+    }
+
+    #[test]
+    fn unlock_all_without_locked_shapes_records_nothing() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+
+        // Act
+        let redraw = ed.apply(Command::UnlockAll);
+        ed.apply(Command::Undo);
+
+        // Assert
+        assert!(!redraw);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn selection_commands_never_touch_locked_shapes() {
+        let commands = [
+            Command::DeleteSelection,
+            Command::Cut,
+            Command::Duplicate,
+            Command::ScaleUp,
+            Command::ScaleDown,
+            Command::Align(Side::Left),
+            Command::Align(Side::Bottom),
+            Command::Distribute(Axis::Horizontal),
+            Command::RaiseSelection,
+            Command::LowerSelection,
+            Command::SelectionToTop,
+            Command::SelectionToBottom,
+            Command::GridCols(1),
+            Command::GridRows(-1),
+        ];
+        for command in commands {
+            // Arrange: a locked grid under two free rectangles.
+            let shapes = vec![
+                grid(0.0, 0.0, 400.0, 400.0, 4, 4),
+                rect(30.0, 30.0, 40.0, 40.0),
+                rect(250.0, 120.0, 60.0, 20.0),
+            ];
+            let mut ed = locked_editor(shapes, &[0], Tool::Select);
+            let all = ids(&ed);
+            let before = ed.document().get(all[0]).cloned();
+
+            // Act
+            ed.apply(Command::SelectAll);
+            let selected = ed.selection().to_vec();
+            ed.apply(command);
+
+            // Assert
+            assert_eq!(selected, vec![all[1], all[2]], "{command:?}");
+            assert_eq!(ed.document().get(all[0]).cloned(), before, "{command:?}");
+            assert!(ed.document().is_locked(all[0]), "{command:?}");
+        }
+    }
+
+    #[test]
+    fn clear_all_keeps_locked_shapes() {
+        // Arrange
+        let mut ed = locked_editor(three_rects(), &[1], Tool::Select);
+        let all = ids(&ed);
+
+        // Act
+        let redraw = ed.apply(Command::ClearAll);
+        let left = ids(&ed);
+        ed.apply(Command::Undo);
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(left, vec![all[1]]);
+        assert_eq!(ids(&ed), all);
+        assert_eq!(locked(&ed), vec![all[1]]);
+    }
+
+    #[test]
+    fn clear_all_with_only_locked_shapes_records_nothing() {
+        // Arrange
+        let mut ed = locked_editor(vec![rect(0.0, 0.0, 10.0, 10.0)], &[0], Tool::Select);
+        let all = ids(&ed);
+
+        // Act
+        let redraw = ed.apply(Command::ClearAll);
+        ed.apply(Command::Undo);
+
+        // Assert: the undo took back the lock.
+        assert!(!redraw);
+        assert_eq!(ids(&ed), all);
+        assert_eq!(locked(&ed), vec![]);
+    }
+
+    #[test]
+    fn redo_of_lock_drops_it_from_selection() {
+        // Arrange
+        let mut ed = locked_editor(three_rects(), &[0], Tool::Select);
+        let all = ids(&ed);
+        ed.apply(Command::Undo);
+        ed.selection = all.clone();
+
+        // Act
+        ed.apply(Command::Redo);
+
+        // Assert
+        assert_eq!(ed.selection(), [all[1], all[2]]);
+    }
+
+    #[test]
+    fn bucket_fills_locked_grid_cell() {
+        // Arrange: 4 × 4 cells of 50.
+        let mut ed = locked_editor(vec![grid(0.0, 0.0, 200.0, 200.0, 4, 4)], &[0], Tool::Bucket);
+        let id = ids(&ed)[0];
+        let color = ed.style().color;
+
+        // Act
+        click(&mut ed, 60.0, 110.0);
+
+        // Assert
+        let fill = ed.document().get(id).and_then(|s| s.cell_fill(1, 2));
+        assert_eq!(fill, Some(color));
+        assert!(ed.document().is_locked(id));
+    }
+
+    #[test]
+    fn bucket_fills_locked_rect() {
+        // Arrange
+        let mut ed = locked_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], &[0], Tool::Bucket);
+        let id = ids(&ed)[0];
+        let color = ed.style().color;
+
+        // Act
+        click(&mut ed, 100.0, 50.0);
+
+        // Assert
+        assert_eq!(ed.document().get(id).and_then(Shape::fill), Some(color));
+        assert!(ed.document().is_locked(id));
+    }
+
+    #[test]
+    fn text_tool_types_into_locked_grid_cell() {
+        // Arrange: 4 × 4 cells of 50.
+        let mut ed = locked_editor(vec![grid(0.0, 0.0, 200.0, 200.0, 4, 4)], &[0], Tool::Text);
+        let id = ids(&ed)[0];
+
+        // Act
+        place(&mut ed, 60.0, 110.0, "7");
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(slot_text(&ed, 0, cell(1, 2)).as_deref(), Some("7"));
+        assert!(ed.document().is_locked(id));
+    }
+
+    #[test]
+    fn emptying_locked_text_block_keeps_it() {
+        // Arrange
+        let block = Shape::Text {
+            origin: Vec2::new(50.0, 40.0),
+            text: "abc".to_owned(),
+            size: 18.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        };
+        let mut ed = locked_editor(vec![block], &[0], Tool::Text);
+        let id = ids(&ed)[0];
+
+        // Act
+        click(&mut ed, 55.0, 45.0);
+        let opened = ed.text_edit().and_then(TextEdit::target);
+        for _ in 0..4 {
+            key(&mut ed, Key::Delete);
+            key(&mut ed, Key::Backspace);
+        }
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert_eq!(opened, Some(id));
+        assert_eq!(texts(&ed), vec!["abc".to_owned()]);
+        assert!(ed.document().is_locked(id));
     }
 }

@@ -9,7 +9,8 @@
 //! preview hides the affected shapes (showing cleared ones without their
 //! fills) and the release applies everything as one undo step. Between two
 //! pointer events the path is sampled at most one tolerance apart, so fast
-//! drags do not skip thin shapes.
+//! drags do not skip thin shapes. Locked shapes are left alone in both
+//! modes and do not decide the mode (ADR-T107-1).
 
 use std::collections::{HashMap, HashSet};
 
@@ -17,7 +18,7 @@ use super::{Overlay, Phase, Pointer, ToolCtx, ToolView};
 use crate::core::document::{Document, ShapeId, Transaction, tx_remove, tx_replace};
 use crate::core::geom::Vec2;
 use crate::core::shape::{Shape, TextSlot};
-use crate::core::snapshot::{Reader, SnapshotError, Writer, check_ids};
+use crate::core::snapshot::{Reader, SnapshotError, Writer, check_unlocked_ids};
 
 /// Hit tolerance of the eraser in screen pixels.
 pub const ERASER_TOLERANCE_PX: f32 = 6.0;
@@ -74,16 +75,18 @@ fn clear_at(shape: &Shape, p: Vec2) -> Option<Shape> {
     Some(cleared.with_slot_text(slot, None))
 }
 
+/// The unlocked shapes of `doc`, bottom first: the only ones the eraser
+/// touches (ADR-T107-1).
+fn erasable(doc: &Document) -> impl Iterator<Item = (ShapeId, &Shape)> {
+    doc.shapes().filter(|(id, _)| !doc.is_locked(*id))
+}
+
 /// The mode of a drag pressed at the world point `p`: [`Mode::Clear`] if
-/// no outline is within `tol` of `p` and some fill lies under it.
+/// no unlocked outline is within `tol` of `p` and some unlocked fill lies
+/// under it.
 fn mode_at(ctx: &ToolCtx<'_>, p: Vec2, tol: f32) -> Mode {
-    let on_outline = ctx.doc.shapes().any(|(_, shape)| shape.hit_outline(p, tol));
-    if !on_outline
-        && ctx
-            .doc
-            .shapes()
-            .any(|(_, shape)| clear_at(shape, p).is_some())
-    {
+    let on_outline = erasable(ctx.doc).any(|(_, shape)| shape.hit_outline(p, tol));
+    if !on_outline && erasable(ctx.doc).any(|(_, shape)| clear_at(shape, p).is_some()) {
         Mode::Clear
     } else {
         Mode::Remove
@@ -101,7 +104,7 @@ fn mark_along(state: &mut State, ctx: &ToolCtx<'_>, from: Vec2, to: Vec2) -> boo
         let world = ctx
             .camera
             .screen_to_world(from.lerp(to, step as f32 / steps as f32));
-        for (id, shape) in ctx.doc.shapes() {
+        for (id, shape) in erasable(ctx.doc) {
             match state.mode {
                 Mode::Remove => {
                     if !state.marked_ids.contains(&id) && shape.hit(world, tol) {
@@ -208,7 +211,7 @@ impl State {
     }
 
     /// Reads what [`State::write_snapshot`] wrote: ids in `doc`, each
-    /// once.
+    /// once, none locked.
     pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
         let mut t = r.record("eraser")?;
         let last = t.opt()?;
@@ -219,7 +222,7 @@ impl State {
         };
         let marked: Vec<ShapeId> = t.get()?;
         t.end()?;
-        check_ids(&t, doc, &marked)?;
+        check_unlocked_ids(&t, doc, &marked)?;
         let mut cleared = Vec::new();
         let mut cleared_at = HashMap::new();
         while r.peek_key() == Some("eraser-cleared") {
@@ -227,7 +230,7 @@ impl State {
             let id: ShapeId = t.get()?;
             let shape = t.get()?;
             t.end()?;
-            check_ids(&t, doc, &[id])?;
+            check_unlocked_ids(&t, doc, &[id])?;
             if cleared_at.insert(id, cleared.len()).is_some() {
                 return Err(t.error(format!("id {} cleared twice", id.get())));
             }
@@ -642,5 +645,70 @@ mod tests {
         assert_eq!(overlay.shapes[0].slot_text(TextSlot::Shape), None);
         assert!(send(&mut state, &mut fx, Phase::Up, 50.0, 50.0));
         assert_eq!(fx.ids(), ids, "the ellipse stays");
+    }
+
+    // ---- T107 locks ---------------------------------------------------------
+
+    /// Locks `ids` in the fixture's document (not in the history).
+    fn lock(fx: &mut Fixture, ids: &[ShapeId]) {
+        let tx = crate::core::document::tx_lock(&fx.doc, ids);
+        assert!(fx.doc.apply(&tx).is_ok());
+    }
+
+    #[test]
+    fn remove_drag_skips_locked_shapes() {
+        // Arrange: three lines, the middle one locked.
+        let (mut fx, ids) = three_lines();
+        lock(&mut fx, &[ids[1]]);
+        let mut state = State::default();
+
+        // Act: a vertical drag across the first two lines.
+        send(&mut state, &mut fx, Phase::Down, 50.0, -10.0);
+        send(&mut state, &mut fx, Phase::Move, 50.0, 30.0);
+        let hidden = preview(&state, &fx.view(Tool::Eraser)).hidden;
+        send(&mut state, &mut fx, Phase::Move, 50.0, 60.0);
+        send(&mut state, &mut fx, Phase::Up, 50.0, 60.0);
+
+        // Assert
+        assert_eq!(hidden, vec![ids[0]]);
+        assert_eq!(fx.ids(), vec![ids[1], ids[2]]);
+        assert!(fx.doc.is_locked(ids[1]));
+    }
+
+    #[test]
+    fn clear_drag_skips_locked_fills() {
+        // Arrange: a locked filled rectangle with a free filled one beside.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 100.0, 100.0),
+            filled_rect(200.0, 0.0, 100.0, 100.0),
+        ]);
+        lock(&mut fx, &[ids[0]]);
+        let before = fx.shape(ids[0]);
+
+        // Act: rub inside each.
+        rub(&mut fx, &[(50.0, 50.0)]);
+        rub(&mut fx, &[(250.0, 50.0)]);
+
+        // Assert
+        assert_eq!(fx.shape(ids[0]), before);
+        assert_eq!(fx.shape(ids[1]).fill(), None);
+    }
+
+    #[test]
+    fn press_inside_locked_fill_removes_free_ink_on_top() {
+        // Arrange: a free line across a locked filled rectangle.
+        let (mut fx, ids) = Fixture::new(vec![
+            filled_rect(0.0, 0.0, 100.0, 100.0),
+            line(0.0, 50.0, 100.0, 50.0),
+        ]);
+        lock(&mut fx, &[ids[0]]);
+        let before = fx.shape(ids[0]);
+
+        // Act: the locked fill does not make this a clear drag.
+        rub(&mut fx, &[(50.0, 20.0), (50.0, 80.0)]);
+
+        // Assert
+        assert_eq!(fx.ids(), vec![ids[0]]);
+        assert_eq!(fx.shape(ids[0]), before);
     }
 }

@@ -848,7 +848,13 @@ mod tests {
     fn recover_corrupt_file_gives_the_line() -> io::Result<()> {
         // Arrange
         let dir = temp_dir("corrupt")?;
-        fs::write(dir.join(PREV_FILE), "draw-snapshot 1\n[nonsense]\n")?;
+        fs::write(
+            dir.join(PREV_FILE),
+            format!(
+                "draw-snapshot {}\n[nonsense]\n",
+                crate::core::snapshot::VERSION
+            ),
+        )?;
 
         // Act
         let error = failed_recovery(Some(&dir), &Launch::Recover(Which::Previous));

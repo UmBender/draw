@@ -2187,7 +2187,10 @@ mod tests {
     fn startup_snapshot_bad_file_reports_line() {
         // Arrange
         let read = |_: &std::path::Path| -> std::io::Result<String> {
-            Ok("draw-snapshot 1\n[nonsense]\n".to_owned())
+            Ok(format!(
+                "draw-snapshot {}\n[nonsense]\n",
+                crate::core::snapshot::VERSION
+            ))
         };
 
         // Act

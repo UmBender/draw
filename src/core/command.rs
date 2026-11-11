@@ -134,8 +134,12 @@ pub enum Command {
     Distribute(Axis),
     /// Delete the selected shapes.
     DeleteSelection,
-    /// Remove every shape (undoable).
+    /// Remove every unlocked shape (undoable, ADR-T107-1).
     ClearAll,
+    /// Lock the selected shapes and clear the selection (ADR-T107-2).
+    LockSelection,
+    /// Unlock every locked shape (ADR-T107-2).
+    UnlockAll,
     /// Cancel the gesture, or clear the selection when idle.
     Cancel,
     /// Back to the origin at zoom 1.

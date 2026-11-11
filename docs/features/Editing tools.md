@@ -1,9 +1,9 @@
 ---
 title: Editing tools
 task: "[[T10 Editing tools]]"
-adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]", "[[ADR-T100-1 Z-order keys and restack transactions]]", "[[ADR-T101-1 Align and distribute keys]]"]
+adrs: ["[[ADR-0004 Vector object model]]", "[[ADR-0005 Undo via transaction log]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T91-1 Resize handles and scale rules]]", "[[ADR-T91-2 Scaled text stays within the largest text size]]", "[[ADR-T100-1 Z-order keys and restack transactions]]", "[[ADR-T101-1 Align and distribute keys]]", "[[ADR-T107-1 Lock flag kept by the document]]", "[[ADR-T107-2 Ctrl+K locks and Ctrl+Shift+K unlocks]]"]
 tutorial: "[[10 Selection, clipboard and fill]]"
-shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]", "Ctrl+[", "Ctrl+]", "Ctrl+Shift+[", "Ctrl+Shift+]", "Alt+←", "Alt+→", "Alt+↑", "Alt+↓", "Alt+H", "Alt+V"]
+shortcuts: ["E", "B", "V", "Ctrl+C", "Ctrl+X", "Ctrl+V", "Ctrl+D", "Ctrl+A", "Delete", "Backspace", "Alt+[", "Alt+]", "Ctrl+[", "Ctrl+]", "Ctrl+Shift+[", "Ctrl+Shift+]", "Alt+←", "Alt+→", "Alt+↑", "Alt+↓", "Alt+H", "Alt+V", "Ctrl+K", "Ctrl+Shift+K"]
 tags: [feature]
 ---
 
@@ -15,6 +15,8 @@ Changes what is already on the canvas. The eraser removes whole shapes it
 touches, the bucket fills a rectangle or ellipse with the current colour, and
 the select tool picks, rubber-bands, moves, resizes and duplicates shapes. An internal
 clipboard copies, cuts, pastes (at the cursor) and duplicates the selection.
+Locking a shape keeps a background grid or diagram from being selected,
+moved, resized or erased by accident, while it still takes fills and text.
 Every change is a single undo step.
 
 ## How to use
@@ -44,6 +46,8 @@ what the tools do with them.
 | Delete selection | `Delete`, `Backspace` |
 | Copy / cut / paste at cursor | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` |
 | Duplicate selection (16 px right and down) | `Ctrl+D` |
+| Lock the selection (and deselect it) | `Ctrl+K` |
+| Unlock every shape | `Ctrl+Shift+K` |
 
 ## How it works
 
@@ -104,6 +108,20 @@ what the tools do with them.
 - Selection hygiene: the editor prunes the selection after undo, redo and every
   gesture (T08); every select and clipboard entry point also drops stale ids
   first, so a stale id can never be moved, copied or deleted.
+- Locks ([[ADR-T107-1 Lock flag kept by the document]]): the `Document`
+  keeps a set of locked ids, changed only by the reversible
+  `Edit::Lock { id, locked }`, so `Ctrl+K` (`tx_lock` on the selection)
+  and `Ctrl+Shift+K` (`tx_unlock_all`) are one undo step each and record
+  nothing when there is nothing to do. `Document::apply` refuses to
+  remove a locked shape, and `tx_remove`, `tx_clear` and `tx_restack`
+  skip locked shapes. Click (`Document::topmost_unlocked_where`), marquee
+  and `Ctrl+A` never pick a locked shape and `select::prune` drops locked
+  ids, so every selection command (delete, cut, copy, move, resize,
+  scale, align, distribute, restack, grid arrows) leaves it alone. The
+  eraser ignores locked shapes in both modes. The bucket and the text
+  tool still use `topmost_where`, so a locked grid keeps taking fills
+  and cell text; snapping still uses every shape. Locked shapes look the
+  same as the others.
 
 ## Limits
 
@@ -128,3 +146,8 @@ what the tools do with them.
   strokes or lines.
 - A press-release under 3 px is a click, so moves smaller than that are not
   possible with the mouse.
+- Locked shapes have no visible mark, and unlocking is all at once:
+  there is no way to unlock one shape. `Ctrl+Backspace` clears only the
+  unlocked shapes, and emptying a locked text block keeps its old text.
+  The eraser cannot clear the fill of a locked shape; repaint it with the
+  bucket instead.

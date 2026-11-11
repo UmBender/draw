@@ -43,6 +43,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Ctrl+T` | Text block to grid | `Ctrl+Shift+V` | Grid from clipboard |
 | `Ctrl+L` | Text block to graph | `Ctrl+P` | Text block to plot |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
+| `Ctrl+K` | Lock selection | `Ctrl+Shift+K` | Unlock every shape |
 | `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 | `Ctrl+]` | Raise selection one step | `Ctrl+[` | Lower selection one step |
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |
