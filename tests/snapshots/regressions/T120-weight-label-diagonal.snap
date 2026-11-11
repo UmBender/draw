@@ -1,0 +1,32 @@
+draw-snapshot 2
+[editor]
+tool select
+style 0 6.0
+helpers 0 0 0 1 4 4 0
+smoothing low
+toolbar 1
+viewport 1920.0 1080.0
+cursor 100.0 100.0
+space 0
+pressure -
+tap 0.0 idle
+gesture -
+reedit -
+camera 0.0 0.0 1.0
+selection 0
+[document]
+next-id 1
+shape 0 text 0 0.0 100.0 100.0 24.0 "8>2 $\\pi$ 1>3 4 5>7 2 3>4 1 6>3 2 1>5 1 4>5 3"
+[history]
+limits 500 67108864
+undo 1
+insert 0 0 text 0 0.0 100.0 100.0 24.0 "8>2 $\\pi$ 1>3 4 5>7 2 3>4 1 6>3 2 1>5 1 4>5 3"
+[clipboard]
+[tools]
+pen -
+shape -
+grid -
+text-size -
+text -
+eraser - remove 0
+select -

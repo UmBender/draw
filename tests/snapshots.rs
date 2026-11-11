@@ -135,3 +135,71 @@ fn assert_snapshot_panics_on_missing_fixture() {
     // Assert
     assert!(result.is_err());
 }
+
+// ---- T120: weight label on diagonal edges -----------------------------------
+
+/// The editor just before `Ctrl+L`: a text block holding the owner's edge
+/// list, plus `4 5` so that a cycle keeps the circle layout.
+fn weight_label_scene() -> Editor {
+    use draw::core::command::Tool;
+    let mut ed = scenes::editor();
+    // Two steps up the width ladder: the text size grows with the width, and
+    // at this size the `1` of `1>5 1` lands on a node.
+    for _ in 0..2 {
+        scenes::key(&mut ed, draw::core::input::Key::BracketRight);
+    }
+    ed.apply(Command::SetTool(Tool::Text));
+    scenes::click(&mut ed, scenes::v(100.0, 100.0));
+    scenes::type_text(&mut ed, "8>2 $\\pi$ 1>3 4 5>7 2 3>4 1 6>3 2 1>5 1 4>5 3");
+    scenes::key(&mut ed, draw::core::input::Key::Escape);
+    ed.apply(Command::SetTool(Tool::Select));
+    ed.apply(Command::SelectAll);
+    ed
+}
+
+#[test]
+fn regression_fixture_T120_is_the_built_scene() {
+    assert_snapshot_with(
+        &weight_label_scene(),
+        "regressions/T120-weight-label-diagonal",
+        common::snapshots::update_requested(),
+    );
+}
+
+#[test]
+fn regression_T120_weight_label_diagonal() {
+    use draw::core::input::{InputEvent, Key, Modifiers};
+    use draw::core::shape::Shape;
+
+    // Arrange: the state just before `Ctrl+L`.
+    let mut ed = load_fixture("regressions/T120-weight-label-diagonal");
+
+    // Act
+    ed.handle(InputEvent::KeyDown {
+        key: Key::L,
+        mods: Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        },
+    });
+
+    // Assert: no weight sits on top of a node, whatever the edge's angle.
+    let shapes: Vec<&Shape> = ed.document().shapes().map(|(_, s)| s).collect();
+    let circles: Vec<_> = shapes
+        .iter()
+        .filter(|s| matches!(s, Shape::Ellipse { .. }))
+        .map(|s| s.bounds())
+        .collect();
+    let weights: Vec<_> = shapes
+        .iter()
+        .filter(|s| matches!(s, Shape::Text { .. }))
+        .map(|s| s.bounds())
+        .collect();
+    assert_eq!(circles.len(), 8, "the graph was drawn");
+    assert_eq!(weights.len(), 7, "one weight per edge");
+    for weight in &weights {
+        for circle in &circles {
+            assert!(!weight.intersects(circle), "{weight:?} overlaps {circle:?}");
+        }
+    }
+}
