@@ -49,10 +49,7 @@ impl Page {
     pub fn rows(&self) -> Vec<SheetRow> {
         let all = topic_rows(self.topic);
         let per = all.len().div_ceil(self.parts.max(1)).max(1);
-        all.into_iter()
-            .skip(self.part * per)
-            .take(per)
-            .collect()
+        all.into_iter().skip(self.part * per).take(per).collect()
     }
 }
 
@@ -88,16 +85,8 @@ const EXTRA_ROWS: &[(Topic, &str, &str)] = &[
     (Topic::TypingText, "Ctrl+Z", "Cancel the block"),
     (Topic::TypingText, "Enter", "New line"),
     (Topic::TypingText, "Tab", "Four spaces"),
-    (
-        Topic::TypingText,
-        "Arrows, Home, End",
-        "Move the cursor",
-    ),
-    (
-        Topic::TypingText,
-        "Backspace, Delete",
-        "Delete a character",
-    ),
+    (Topic::TypingText, "Arrows, Home, End", "Move the cursor"),
+    (Topic::TypingText, "Backspace, Delete", "Delete a character"),
     (
         Topic::TypingText,
         "Ctrl+] / Ctrl+[",
@@ -266,8 +255,14 @@ mod tests {
     #[test]
     fn long_topic_is_split_into_numbered_parts() {
         // Arrange
-        let edit: Vec<Page> = pages().into_iter().filter(|p| p.topic == Topic::Edit).collect();
-        let tools: Vec<Page> = pages().into_iter().filter(|p| p.topic == Topic::Tools).collect();
+        let edit: Vec<Page> = pages()
+            .into_iter()
+            .filter(|p| p.topic == Topic::Edit)
+            .collect();
+        let tools: Vec<Page> = pages()
+            .into_iter()
+            .filter(|p| p.topic == Topic::Tools)
+            .collect();
 
         // Assert
         assert!(edit.len() >= 2, "Edit needs more than one page");
@@ -303,7 +298,7 @@ mod tests {
         // Arrange
         let rows: Vec<(String, &str)> = pages()
             .iter()
-            .flat_map(|p| p.rows())
+            .flat_map(Page::rows)
             .map(|r| (r.keys, r.text))
             .collect();
 
@@ -322,8 +317,9 @@ mod tests {
                 page.topic,
                 Topic::Gestures | Topic::TypingText | Topic::TypingShape
             ) {
-                assert!(!page.rows().is_empty());
-                for row in page.rows() {
+                let rows = page.rows();
+                assert!(rows.len() > 1, "{}", page.title());
+                for row in rows {
                     assert!(!row.keys.trim().is_empty(), "{}", page.title());
                     assert!(!row.text.trim().is_empty(), "{}", page.title());
                 }

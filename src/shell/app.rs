@@ -47,7 +47,6 @@ use crate::core::tools::text::TextEdit;
 use crate::shell::autosave::{self, Autosaver, Launch};
 use crate::shell::backend::{self, Backend};
 use crate::shell::command_palette;
-use crate::shell::sheet;
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
@@ -57,6 +56,7 @@ use crate::shell::input_map::{
     wants_grid_clipboard,
 };
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::sheet;
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
 use crate::theme;

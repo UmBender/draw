@@ -29,8 +29,8 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
-use crate::core::sheet::Sheet;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
+use crate::core::sheet::Sheet;
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
@@ -1917,9 +1917,9 @@ mod tests {
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
-    use crate::core::sheet;
     use crate::core::shape::GRID_MAX_CELLS;
     use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
+    use crate::core::sheet;
     use crate::core::smoothing::SmoothingLevel;
     use crate::core::tap::PEN_TAP_SLOP_PX;
 
@@ -8347,7 +8347,10 @@ mod tests {
 
         // Assert
         assert!(ed.sheet().is_none());
-        assert_eq!(ed.text_edit().map(|e| e.text().to_owned()), Some("a?".to_owned()));
+        assert_eq!(
+            ed.text_edit().map(|e| e.text().to_owned()),
+            Some("a?".to_owned())
+        );
     }
 
     #[test]

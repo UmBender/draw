@@ -1,7 +1,7 @@
 //! The shortcut sheet overlay: layout and drawing (ADR-T113-1).
 //!
 //! A centred panel with the topic names on top (the current one
-//! highlighted), the page title, up to [`ROWS_PER_PAGE`] rows of key and
+//! highlighted), the page title, up to [`crate::core::sheet::ROWS_PER_PAGE`] rows of key and
 //! description, and a footer with the sheet's own keys. It is drawn on top of
 //! everything, only while the editor holds an open sheet, and never asks for
 //! a frame of its own.
@@ -88,7 +88,8 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
         .iter()
         .map(|l| measure_text(l, None, TEXT_PX, 1.0).width)
         .collect();
-    let inner = (PANEL_WIDTH_PX.min((viewport.x - 2.0 * MARGIN_PX).max(0.0)) - 2.0 * PAD_PX).max(0.0);
+    let inner =
+        (PANEL_WIDTH_PX.min((viewport.x - 2.0 * MARGIN_PX).max(0.0)) - 2.0 * PAD_PX).max(0.0);
     let tabs = tab_layout(&labels, &widths, inner);
     let tab_lines = tabs.last().map_or(1, |&(_, line)| line + 1);
     // Tabs, title, rows, footer.
