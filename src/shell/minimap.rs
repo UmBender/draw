@@ -1,5 +1,101 @@
 //! The minimap: a cached schematic overview of the document and the panel
 //! drawn over the window while panning (ADR-T110-1).
+//!
+//! [`core::minimap`](crate::core::minimap) owns the geometry and the
+//! editor decides when the minimap shows. This module draws it: the
+//! overview of the shapes goes into a render target owned by
+//! `shell::app`, keyed by [`OverviewKey`], and [`draw_panel`] puts the
+//! panel, that texture and the view frame on the window. The camera is
+//! not part of the key, so panning never re-renders the overview.
+
+use macroquad::texture::Texture2D;
+
+use crate::core::editor::Editor;
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::minimap::{Fit, Minimap};
+
+/// Content drawn smaller than this, in pixels on its longer side, gets a
+/// marker: the scaled-down overview can lose its lines.
+pub const MARKER_BELOW_PX: f32 = 12.0;
+
+/// Side of the content marker, in pixels.
+pub const MARKER_PX: f32 = 4.0;
+
+/// Width of the overview's lines and of the view frame, in pixels.
+pub const LINE_PX: f32 = 1.0;
+
+/// A shape drawn smaller than this, in pixels on its longer side, is a
+/// dot.
+pub const DOT_BELOW_PX: f32 = 2.0;
+
+/// Opacity of the panel background, of 255.
+pub const PANEL_ALPHA: u8 = 217;
+
+/// What the cached overview shows: it is rendered again only when this
+/// changes. The camera is not part of it (ADR-T110-1).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OverviewKey {
+    /// [`Editor::document_revision`] of the shapes drawn.
+    revision: u64,
+    /// Number of shapes drawn.
+    len: usize,
+    /// Bounds of the shapes drawn.
+    content: Aabb,
+    /// Size of the render target in physical pixels.
+    pub size: (u32, u32),
+}
+
+impl OverviewKey {
+    /// The key of the overview `map` needs for `editor`'s document at
+    /// scale factor `dpi`; `None` when there is nothing to draw.
+    #[must_use]
+    pub fn of(editor: &Editor, map: &Minimap, dpi: f32) -> Option<Self> {
+        todo!("T110 behaviour: {} {map:?} {dpi}", editor.document().len())
+    }
+
+    /// The map the overview is rendered through: the content fitted into
+    /// a target of the drawing area's size, in logical pixels.
+    #[must_use]
+    pub fn image(&self, area: Aabb) -> Fit {
+        todo!("T110 behaviour: {:?} {area:?}", self.content)
+    }
+}
+
+/// Whether the overview must be rendered: nothing is cached, or the cache
+/// shows something else than `next`.
+#[must_use]
+pub fn needs_render(cached: Option<&OverviewKey>, next: &OverviewKey) -> bool {
+    todo!("T110 behaviour: {cached:?} {next:?}")
+}
+
+/// The marker drawn over content that takes less than
+/// [`MARKER_BELOW_PX`] of the minimap: a square of [`MARKER_PX`] around
+/// the content's place, kept inside the drawing area.
+#[must_use]
+pub fn marker_rect(map: &Minimap) -> Option<Aabb> {
+    todo!("T110 behaviour: {map:?}")
+}
+
+/// Draws every shape of `editor`'s document as a schematic through
+/// `image`, into the current render target: lines [`LINE_PX`] wide, fills
+/// as areas, text blocks as bars, shapes below [`DOT_BELOW_PX`] as dots.
+pub fn draw_overview(editor: &Editor, image: &Fit) {
+    todo!("T110 behaviour: {} {image:?}", editor.document().len())
+}
+
+/// Draws the minimap on the window: the panel, the cached `overview`
+/// (its texture and the map it was rendered through), the content marker
+/// and the frame of the visible world rectangle `view`.
+pub fn draw_panel(map: &Minimap, view: Aabb, overview: Option<(&Texture2D, &Fit)>) {
+    todo!("T110 behaviour: {map:?} {view:?} {} {LINE_PX}", overview.is_some())
+}
+
+/// Size in physical pixels of a target covering `size` logical pixels at
+/// scale factor `dpi`, at least 1 × 1; a bad `dpi` counts as 1.
+#[must_use]
+pub fn target_size(size: Vec2, dpi: f32) -> (u32, u32) {
+    todo!("T110 behaviour: {size:?} {dpi}")
+}
 
 #[cfg(test)]
 mod tests {

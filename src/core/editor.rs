@@ -26,6 +26,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
+use crate::core::minimap::{self, Minimap};
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
@@ -126,7 +127,8 @@ impl Default for DrawStyle {
 /// The gesture in progress, as seen from outside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActiveGesture {
-    /// Panning the view.
+    /// Panning the view, by a drag on the canvas or in the minimap
+    /// (ADR-T110-1).
     Pan,
     /// A tool gesture (`Eraser` for a right drag).
     Tool(Tool),
@@ -141,6 +143,13 @@ enum Gesture {
         button: PointerButton,
         /// Pan state.
         pan: Pan,
+    },
+    /// Moving the view by a press or drag in the minimap (ADR-T110-1).
+    Minimap {
+        /// Button whose release ends the gesture.
+        button: PointerButton,
+        /// The minimap's world box at the press, kept until the release.
+        world: Aabb,
     },
     /// A tool gesture.
     Tool {
@@ -209,6 +218,10 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// The content bounds the minimap shows and the document revision they
+    /// were computed for; refreshed only while it shows (ADR-T110-1). Not
+    /// saved state.
+    minimap_content: Option<(u64, Option<Aabb>)>,
 }
 
 impl Default for Editor {
@@ -257,6 +270,7 @@ impl Editor {
             keymap: keymap::resolve,
             doc_revision: 0,
             doc_base_revision: 0,
+            minimap_content: None,
             ..snapshot.0
         }
     }
@@ -307,6 +321,9 @@ impl Editor {
             }
             Some(Gesture::Pan { button, pan }) => {
                 l.word("pan").put(&button).put(&pan.last());
+            }
+            Some(Gesture::Minimap { button, world }) => {
+                l.word("minimap").put(&button).put(&world);
             }
             Some(Gesture::Tool {
                 button,
@@ -457,6 +474,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            minimap_content: None,
         })
     }
 
@@ -486,6 +504,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            minimap_content: None,
         }
     }
 
@@ -871,9 +890,18 @@ impl Editor {
     #[must_use]
     pub fn active_gesture(&self) -> Option<ActiveGesture> {
         self.gesture.map(|gesture| match gesture {
-            Gesture::Pan { .. } => ActiveGesture::Pan,
+            Gesture::Pan { .. } | Gesture::Minimap { .. } => ActiveGesture::Pan,
             Gesture::Tool { tool, .. } => ActiveGesture::Tool(tool),
         })
+    }
+
+    /// The minimap, while it shows: while `Space` is held with no text
+    /// block open, during a pan with the middle button and during a drag
+    /// in the minimap, in a viewport that can hold its panel. A drag in it
+    /// keeps the world box of its press (ADR-T110-1).
+    #[must_use]
+    pub fn minimap(&self) -> Option<Minimap> {
+        todo!("T110 behaviour: {:?}", self.minimap_content)
     }
 
     /// The text block being edited, if any (ADR-T29-2).
@@ -1002,6 +1030,7 @@ impl Editor {
     fn pointer_move(&mut self, pos: Vec2, mods: Modifiers) -> bool {
         match &mut self.gesture {
             Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.camera, pos),
+            Some(Gesture::Minimap { .. }) => false,
             Some(Gesture::Tool { tool, fresh, .. }) => {
                 *fresh = false;
                 let tool = *tool;
@@ -1427,7 +1456,7 @@ impl Editor {
                 self.tools.cancel(tool);
                 true
             }
-            Some(Gesture::Pan { .. }) => true,
+            Some(Gesture::Pan { .. } | Gesture::Minimap { .. }) => true,
             None => false,
         }
     }
@@ -1706,6 +1735,10 @@ fn read_gesture(r: &mut Reader<'_>) -> Result<Option<Gesture>, SnapshotError> {
             "pan" => Some(Gesture::Pan {
                 button: t.get()?,
                 pan: Pan::new(t.get()?),
+            }),
+            "minimap" => Some(Gesture::Minimap {
+                button: t.get()?,
+                world: t.get()?,
             }),
             "tool" => Some(Gesture::Tool {
                 button: t.get()?,
