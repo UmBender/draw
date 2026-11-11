@@ -75,16 +75,317 @@ pub enum Fit {
 /// point, no length).
 #[must_use]
 pub fn fit(points: &[Vec2]) -> Option<Fit> {
-    let _ = points;
-    todo!()
+    let (&first, &last) = (points.first()?, points.last()?);
+    if points.len() < 2 || points.iter().any(|p| !p.is_finite()) {
+        return None;
+    }
+    let path: Vec<P> = points.iter().map(|&p| P::from(p)).collect();
+    let length: f64 = path.windows(2).map(|w| w[0].distance(w[1])).sum();
+    if !(length > 0.0 && length.is_finite()) {
+        return None;
+    }
+    let samples = resample(&path, length, SAMPLES);
+    let (start, end) = (P::from(first), P::from(last));
+    let chord = start.distance(end);
+
+    let straight = chord >= f64::from(LINE_MIN_STRAIGHTNESS) * length;
+    let max_off = f64::from(LINE_MAX_DEVIATION) * chord;
+    if straight
+        && samples
+            .iter()
+            .all(|&p| p.distance_to_segment(start, end) <= max_off)
+    {
+        return Some(Fit::Line { a: first, b: last });
+    }
+    if chord > f64::from(CLOSED_MAX_GAP) * length {
+        return None;
+    }
+    let kind = closed_kind(&samples)?;
+    let bounds = crate::core::geom::Aabb::from_points(points)?;
+    let (a, b) = (bounds.min, bounds.max);
+    Some(match kind {
+        Closed::Rect => Fit::Rect { a, b },
+        Closed::Ellipse => Fit::Ellipse { a, b },
+    })
 }
 
 /// The line, rectangle or ellipse replacing `shape`, with its colour and
 /// width; `None` for anything but a [`Shape::Stroke`] that fits.
 #[must_use]
 pub fn recognize(shape: &Shape) -> Option<Shape> {
-    let _ = shape;
-    todo!()
+    let Shape::Stroke { points, style, .. } = shape else {
+        return None;
+    };
+    let style = *style;
+    Some(match fit(points)? {
+        Fit::Line { a, b } => Shape::Line { a, b, style },
+        Fit::Rect { a, b } => Shape::Rect {
+            a,
+            b,
+            style,
+            fill: None,
+            label: None,
+            text: None,
+        },
+        Fit::Ellipse { a, b } => Shape::Ellipse {
+            a,
+            b,
+            style,
+            fill: None,
+            label: None,
+            text: None,
+        },
+    })
+}
+
+/// A point in `f64`, so squares of huge `f32` coordinates stay finite.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct P {
+    x: f64,
+    y: f64,
+}
+
+impl From<Vec2> for P {
+    fn from(p: Vec2) -> Self {
+        Self {
+            x: f64::from(p.x),
+            y: f64::from(p.y),
+        }
+    }
+}
+
+impl P {
+    fn distance(self, other: Self) -> f64 {
+        (self.x - other.x).hypot(self.y - other.y)
+    }
+
+    fn lerp(self, other: Self, t: f64) -> Self {
+        Self {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t,
+        }
+    }
+
+    /// Distance to the segment `a`–`b` (to `a` when it has no length).
+    fn distance_to_segment(self, a: Self, b: Self) -> f64 {
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let len_sq = dx * dx + dy * dy;
+        if len_sq <= 0.0 {
+            return self.distance(a);
+        }
+        let t = (((self.x - a.x) * dx + (self.y - a.y) * dy) / len_sq).clamp(0.0, 1.0);
+        self.distance(a.lerp(b, t))
+    }
+}
+
+/// `n` (at least 2) points evenly spaced along `path`, whose length is
+/// `length` (positive), from its first to its last point.
+fn resample(path: &[P], length: f64, n: usize) -> Vec<P> {
+    let n = n.max(2);
+    let mut out = Vec::with_capacity(n);
+    let mut seg = 0;
+    // Path length up to `path[seg]`.
+    let mut walked = 0.0;
+    for k in 0..n {
+        let at = length * k as f64 / (n - 1) as f64;
+        while seg + 2 < path.len() && walked + path[seg].distance(path[seg + 1]) < at {
+            walked += path[seg].distance(path[seg + 1]);
+            seg += 1;
+        }
+        let (a, b) = (path[seg], path[seg + 1]);
+        let d = a.distance(b);
+        let t = if d > 0.0 {
+            ((at - walked) / d).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        out.push(a.lerp(b, t));
+    }
+    out
+}
+
+/// What a closed loop looks like.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Closed {
+    Rect,
+    Ellipse,
+}
+
+/// The rotation (in radians, in `[0, π/2)`) of the smallest-area box
+/// around `points`, ties to the smallest angle.
+fn min_area_rotation(points: &[P]) -> f64 {
+    let mut best: Option<(f64, f64)> = None;
+    for step in 0..ROTATION_STEPS {
+        let angle = std::f64::consts::FRAC_PI_2 * f64::from(step) / f64::from(ROTATION_STEPS);
+        let (u, v) = extents(points, angle);
+        let area = u * v;
+        if best.is_none_or(|(least, _)| area < least * (1.0 - 1e-9)) {
+            best = Some((area, angle));
+        }
+    }
+    best.map_or(0.0, |(_, angle)| angle)
+}
+
+/// `p` in the frame turned by `angle`.
+fn turn(p: P, angle: f64) -> P {
+    let (s, c) = angle.sin_cos();
+    P {
+        x: p.x * c + p.y * s,
+        y: -p.x * s + p.y * c,
+    }
+}
+
+/// Width and height of the box around `points` in the frame turned by
+/// `angle`.
+fn extents(points: &[P], angle: f64) -> (f64, f64) {
+    let (lo, hi) = bounds(points.iter().map(|&p| turn(p, angle)));
+    (hi.x - lo.x, hi.y - lo.y)
+}
+
+/// Smallest and largest coordinates of `points` (zero for none).
+fn bounds(points: impl Iterator<Item = P>) -> (P, P) {
+    let mut lo = P {
+        x: f64::INFINITY,
+        y: f64::INFINITY,
+    };
+    let mut hi = P {
+        x: f64::NEG_INFINITY,
+        y: f64::NEG_INFINITY,
+    };
+    for p in points {
+        lo = P {
+            x: lo.x.min(p.x),
+            y: lo.y.min(p.y),
+        };
+        hi = P {
+            x: hi.x.max(p.x),
+            y: hi.y.max(p.y),
+        };
+    }
+    if lo.x > hi.x {
+        let zero = P { x: 0.0, y: 0.0 };
+        return (zero, zero);
+    }
+    (lo, hi)
+}
+
+/// Whether the residuals of `samples` are small for a box of diagonal
+/// `diagonal`.
+fn hugs(residuals: impl Iterator<Item = f64>, count: usize, diagonal: f64) -> bool {
+    let (mut sum, mut max) = (0.0, 0.0f64);
+    for r in residuals {
+        sum += r;
+        max = max.max(r);
+    }
+    let mean = sum / count.max(1) as f64;
+    mean <= f64::from(MEAN_RESIDUAL) * diagonal && max <= f64::from(MAX_RESIDUAL) * diagonal
+}
+
+/// The rectangle or ellipse a closed loop of evenly spaced `samples`
+/// looks like, measured in its smallest-area box (ADR-T109-1).
+fn closed_kind(samples: &[P]) -> Option<Closed> {
+    // Centre first: precision for far-away strokes.
+    let count = samples.len().max(1) as f64;
+    let mean = samples.iter().fold(P { x: 0.0, y: 0.0 }, |acc, p| P {
+        x: acc.x + p.x / count,
+        y: acc.y + p.y / count,
+    });
+    let centred: Vec<P> = samples
+        .iter()
+        .map(|p| P {
+            x: p.x - mean.x,
+            y: p.y - mean.y,
+        })
+        .collect();
+    let angle = min_area_rotation(&centred);
+    let turned: Vec<P> = centred.iter().map(|&p| turn(p, angle)).collect();
+    let (lo, hi) = bounds(turned.iter().copied());
+    let (hu, hv) = ((hi.x - lo.x) / 2.0, (hi.y - lo.y) / 2.0);
+    let long = hu.max(hv);
+    if !(long > 0.0 && long.is_finite()) || hu.min(hv) < f64::from(MIN_ASPECT) * long {
+        return None;
+    }
+    let centre = P {
+        x: (lo.x + hi.x) / 2.0,
+        y: (lo.y + hi.y) / 2.0,
+    };
+    let local: Vec<P> = turned
+        .iter()
+        .map(|p| P {
+            x: p.x - centre.x,
+            y: p.y - centre.y,
+        })
+        .collect();
+    let diagonal = 2.0 * hu.hypot(hv);
+
+    if winding(&local, hu, hv) < f64::from(MIN_TURN) * std::f64::consts::TAU {
+        return None;
+    }
+    let reach = f64::from(CORNER_TOLERANCE) * diagonal;
+    let corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+        .into_iter()
+        .filter(|&(sx, sy)| {
+            let corner = P {
+                x: sx * hu,
+                y: sy * hv,
+            };
+            local.iter().any(|p| p.distance(corner) <= reach)
+        })
+        .count();
+    let n = local.len();
+    match corners {
+        4 if hugs(
+            local
+                .iter()
+                .map(|p| (hu - p.x.abs()).min(hv - p.y.abs()).max(0.0)),
+            n,
+            diagonal,
+        ) =>
+        {
+            Some(Closed::Rect)
+        }
+        0 if hugs(
+            local.iter().map(|p| {
+                let r = (p.x / hu).hypot(p.y / hv);
+                if r > 0.0 {
+                    p.x.hypot(p.y) * (1.0 - 1.0 / r).abs()
+                } else {
+                    hu.min(hv)
+                }
+            }),
+            n,
+            diagonal,
+        ) =>
+        {
+            Some(Closed::Ellipse)
+        }
+        _ => None,
+    }
+}
+
+/// The absolute angle, in radians, that `points` sweep around the origin,
+/// measured on the box of half sides `hu`, `hv` scaled to a square.
+fn winding(points: &[P], hu: f64, hv: f64) -> f64 {
+    let mut total = 0.0;
+    let mut previous: Option<f64> = None;
+    for p in points {
+        let (x, y) = (p.x / hu, p.y / hv);
+        if x == 0.0 && y == 0.0 {
+            continue;
+        }
+        let angle = y.atan2(x);
+        if let Some(before) = previous {
+            let mut delta = angle - before;
+            if delta > std::f64::consts::PI {
+                delta -= std::f64::consts::TAU;
+            } else if delta < -std::f64::consts::PI {
+                delta += std::f64::consts::TAU;
+            }
+            total += delta;
+        }
+        previous = Some(angle);
+    }
+    total.abs()
 }
 
 #[cfg(test)]

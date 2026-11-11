@@ -20,7 +20,7 @@ use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
 use crate::core::document::{
-    Document, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
+    Document, Edit, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
 };
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
@@ -28,6 +28,7 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
+use crate::core::recognize;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
@@ -1564,7 +1565,32 @@ impl Editor {
     /// undo step is not the insertion of one stroke, after an undo, or when
     /// the stroke fits nothing. Returns whether the document changed.
     fn recognize_last_stroke(&mut self) -> bool {
-        todo!()
+        if self.gesture.is_some() {
+            return false;
+        }
+        let (undo, redo, _, _) = self.history.parts();
+        let Some(last) = undo.back() else {
+            return false;
+        };
+        let [
+            Edit::Insert {
+                id,
+                shape: Shape::Stroke { .. },
+                ..
+            },
+        ] = last.edits()
+        else {
+            return false;
+        };
+        let id = *id;
+        if !redo.is_empty() {
+            return false;
+        }
+        let Some(shape) = self.doc.get(id).and_then(recognize::recognize) else {
+            return false;
+        };
+        let tx = tx_replace(&self.doc, id, shape);
+        self.history.commit(&mut self.doc, tx).is_ok()
     }
 
     /// Removes selected ids that are no longer in the document.
