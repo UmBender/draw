@@ -1,7 +1,7 @@
 ---
 id: T108
 title: Save and load
-status: in-progress
+status: review
 wave: 60
 branch: task/T108-save-and-load
 depends_on: [T107, T116]
@@ -51,11 +51,11 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T108): specify save and load`
-- [ ] tests — `test(T108): add failing tests for save and load`
-- [ ] models — `feat(T108): add the versioned document file format`
-- [ ] behaviour — `feat(T108): save with Ctrl+S and open a file from the command line`
-- [ ] quality — `chore(T108): pass clippy and rustfmt`
-- [ ] docs — `docs(T108): update the feature note`
+- [x] tests — `test(T108): add failing tests for save and load`
+- [x] models — `feat(T108): add the versioned document file format`
+- [x] behaviour — `feat(T108): save with Ctrl+S and open a file from the command line`
+- [x] quality — `chore(T108): pass clippy and rustfmt`
+- [x] docs — `docs(T108): update the feature note`
 
 ## Learning path
 
@@ -67,3 +67,5 @@ None: it extends an existing area.
 - Depends on T107 so the first file version already stores the lock flag.
 - 2026-11-10 — also depends on T116 so the first file version stores every page.
 - 2026-11-11 — spec: ADR-T108-1. UNATTENDED CHOICE: files owned gain `src/shell/file.rs`, `src/shell/mod.rs`, `src/core/mod.rs` and `tests/files.rs`.
+- 2026-11-11 — implemented. Deviations: `Ctrl+S` does nothing while a text block is open (the existing rule "every key types in a text edit" is tested for every binding); `Command::SaveFile` still commits the block. The writer records numbers as at least 1, so the text does not depend on the zero-based setting; a loaded page's counter is clamped to the loader's first number. The quality step needed a commit (clippy). The crash autosave is unchanged. `scripts/check.sh` green.
+- Manual checks for the owner: draw, `Ctrl+S`, quit, `draw ~/draw-….draw`; open a missing path and save; open a truncated file.
