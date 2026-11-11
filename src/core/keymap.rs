@@ -563,7 +563,7 @@ mod tests {
 
         // Extra modifiers on bare keys resolve to nothing.
         assert_eq!(resolve(Key::R, SHIFT), None);
-        assert_eq!(resolve(Key::Digit1, ALT), None);
+        assert_eq!(resolve(Key::Digit1, SHIFT), None);
         assert_eq!(resolve(Key::Z, NONE), None);
         assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
     }
@@ -586,6 +586,28 @@ mod tests {
         assert_eq!(resolve(Key::ArrowLeft, NONE), Some(Command::GridCols(-1)));
         assert_eq!(resolve(Key::ArrowDown, NONE), Some(Command::GridRows(1)));
         assert_eq!(resolve(Key::ArrowUp, NONE), Some(Command::GridRows(-1)));
+    }
+
+    #[test]
+    fn alt_digits_go_to_pages() {
+        let digits = [
+            Key::Digit1,
+            Key::Digit2,
+            Key::Digit3,
+            Key::Digit4,
+            Key::Digit5,
+            Key::Digit6,
+            Key::Digit7,
+            Key::Digit8,
+            Key::Digit9,
+        ];
+        for (page, key) in digits.into_iter().enumerate() {
+            assert_eq!(resolve(key, ALT), Some(Command::GoToPage(page)), "{key:?}");
+        }
+        // Alt+0 and the bare digits keep their meaning.
+        assert_eq!(resolve(Key::Digit0, ALT), None);
+        assert_eq!(resolve(Key::Digit0, NONE), Some(Command::ResetView));
+        assert_eq!(resolve(Key::Digit1, NONE), Some(color(1)));
     }
 
     #[test]

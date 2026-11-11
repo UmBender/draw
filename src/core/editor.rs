@@ -8190,4 +8190,210 @@ mod tests {
         assert_eq!(texts(&ed), vec!["abc".to_owned()]);
         assert!(ed.document().is_locked(id));
     }
+
+    // ---- T116 pages ------------------------------------------------------
+
+    fn go(ed: &mut Editor, page: usize) -> bool {
+        ed.apply(Command::GoToPage(page))
+    }
+
+    #[test]
+    fn new_editor_is_on_page_one() {
+        assert_eq!(Editor::new().page(), 0);
+    }
+
+    #[test]
+    fn going_to_the_current_page_changes_nothing() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = go(&mut ed, 0);
+
+        // Assert
+        assert!(!redraw);
+        assert_eq!(ed, before);
+        assert_eq!(ed.document_revision(), before.document_revision());
+    }
+
+    #[test]
+    fn going_to_a_page_out_of_range_changes_nothing() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        let before = ed.clone();
+
+        assert!(!go(&mut ed, PAGE_COUNT));
+        assert_eq!(ed, before);
+    }
+
+    #[test]
+    fn pages_keep_their_own_shapes_selection_and_view() {
+        // Arrange: page 1 has a selected rectangle and a panned, zoomed view.
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        ed.selection = ids(&ed);
+        ed.camera = Camera::new(Vec2::new(40.0, 30.0), 2.0);
+        let first = ids(&ed);
+
+        // Act: a new page is empty with the default view and no selection.
+        assert!(go(&mut ed, 4));
+        let fresh = (ed.document().len(), ed.selection().len(), ed.camera);
+        let tx = tx_insert(&mut ed.doc, vec![rect(9.0, 9.0, 1.0, 1.0), rect(5.0, 5.0, 1.0, 1.0)]);
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+        ed.camera = Camera::new(Vec2::new(-7.0, 8.0), 0.5);
+        go(&mut ed, 0);
+
+        // Assert
+        assert_eq!(ed.page(), 0);
+        assert_eq!(fresh, (0, 0, Camera::default()));
+        assert_eq!(ids(&ed), first);
+        assert_eq!(ed.selection(), first.as_slice());
+        assert_eq!(ed.camera, Camera::new(Vec2::new(40.0, 30.0), 2.0));
+        go(&mut ed, 4);
+        assert_eq!(ed.document().len(), 2);
+        assert_eq!(ed.camera, Camera::new(Vec2::new(-7.0, 8.0), 0.5));
+    }
+
+    #[test]
+    fn undo_acts_on_the_current_page_only() {
+        // Arrange: one rectangle on each of pages 1 and 2.
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        go(&mut ed, 1);
+        let tx = tx_insert(&mut ed.doc, vec![rect(5.0, 5.0, 1.0, 1.0)]);
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+
+        // Act: undo on page 2, then on page 1.
+        assert!(ed.apply(Command::Undo));
+        let second_empty = ed.document().is_empty();
+        assert!(!ed.can_undo());
+        go(&mut ed, 0);
+        let first_kept = ed.document().len();
+        assert!(ed.apply(Command::Undo));
+
+        // Assert
+        assert!(second_empty);
+        assert_eq!(first_kept, 1);
+        assert!(ed.document().is_empty());
+        go(&mut ed, 1);
+        assert!(ed.can_redo());
+    }
+
+    #[test]
+    fn switching_pages_is_not_an_undo_step() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+
+        // Act
+        go(&mut ed, 2);
+        go(&mut ed, 0);
+        ed.apply(Command::Undo);
+
+        // Assert: the one undo took back the rectangle, not a switch.
+        assert!(ed.document().is_empty());
+        assert!(!ed.can_undo());
+        assert_eq!(ed.page(), 0);
+    }
+
+    #[test]
+    fn switching_pages_cancels_the_gesture() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 60.0, 50.0);
+
+        // Act
+        go(&mut ed, 1);
+        up(&mut ed, PointerButton::Left, 60.0, 50.0);
+
+        // Assert
+        assert_eq!(ed.active_gesture(), None);
+        assert!(ed.document().is_empty());
+        go(&mut ed, 0);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn switching_pages_commits_the_open_text() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+
+        // Act
+        go(&mut ed, 1);
+
+        // Assert
+        assert!(ed.text_edit().is_none());
+        assert!(texts(&ed).is_empty());
+        go(&mut ed, 0);
+        assert_eq!(texts(&ed), vec!["abc".to_owned()]);
+    }
+
+    #[test]
+    fn switching_pages_bumps_the_document_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        let before = ed.document_revision();
+
+        // Act
+        go(&mut ed, 3);
+
+        // Assert: a full re-render, not an append on the cached layer.
+        assert!(ed.document_revision() > before);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+    }
+
+    #[test]
+    fn clear_all_clears_only_the_current_page() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        go(&mut ed, 1);
+        let tx = tx_insert(&mut ed.doc, vec![rect(5.0, 5.0, 1.0, 1.0)]);
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+
+        // Act
+        ed.apply(Command::ClearAll);
+        go(&mut ed, 0);
+
+        // Assert
+        assert_eq!(ed.document().len(), 1);
+        go(&mut ed, 1);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn copy_on_one_page_pastes_on_another() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+
+        // Act
+        go(&mut ed, 2);
+        ed.apply(Command::Paste);
+
+        // Assert
+        assert_eq!(ed.document().len(), 1);
+        go(&mut ed, 0);
+        assert_eq!(ed.document().len(), 1);
+    }
+
+    #[test]
+    fn numbering_counts_per_page() {
+        // Arrange: two nodes on page 1.
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+
+        // Act: a node on page 2, then back to page 1.
+        go(&mut ed, 1);
+        let fresh_counter = ed.helpers().next_number;
+        draw_node(&mut ed, 0.0);
+        let on_second = labels(&ed);
+        go(&mut ed, 0);
+
+        // Assert
+        assert_eq!(fresh_counter, FIRST_NUMBER);
+        assert_eq!(on_second, vec![Some(FIRST_NUMBER)]);
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER + 2);
+    }
 }

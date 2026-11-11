@@ -2804,4 +2804,15 @@ mod tests {
         assert!(centers[1].approx_eq(Vec2::new(rect.max.x, rect.min.y), EPS));
         assert!(centers[3].approx_eq(Vec2::new(rect.min.x, rect.max.y), EPS));
     }
+
+    #[test]
+    fn page_label_is_absent_on_page_one() {
+        assert_eq!(page_label(0), None);
+    }
+
+    #[test]
+    fn page_label_shows_the_number_off_page_one() {
+        assert_eq!(page_label(1).as_deref(), Some("2"));
+        assert_eq!(page_label(8).as_deref(), Some("9"));
+    }
 }

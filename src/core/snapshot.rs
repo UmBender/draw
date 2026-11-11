@@ -2199,8 +2199,106 @@ mod tests {
     }
 
     #[test]
-    fn version_is_two() {
-        assert_eq!(VERSION, 2);
+    fn version_is_three() {
+        assert_eq!(VERSION, 3);
+    }
+
+    /// [`busy_editor`] with a rectangle on page 2 and another on page 5,
+    /// left on page 3 with its own view.
+    fn paged_editor() -> Editor {
+        let mut ed = busy_editor();
+        ed.apply(Command::GoToPage(1));
+        drag(&mut ed, v(30.0, 30.0), v(90.0, 80.0));
+        ed.apply(Command::GoToPage(4));
+        drag(&mut ed, v(40.0, 40.0), v(120.0, 90.0));
+        ed.apply(Command::Undo);
+        drag(&mut ed, v(50.0, 50.0), v(130.0, 95.0));
+        ed.apply(Command::GoToPage(2));
+        ed
+    }
+
+    #[test]
+    fn round_trip_keeps_every_page() {
+        // Arrange
+        let ed = paged_editor();
+
+        // Act
+        let loaded = round_trip(&ed);
+
+        // Assert
+        assert_eq!(loaded.page(), 2);
+        assert_eq!(loaded, ed);
+        let again = loaded.snapshot().to_text();
+        assert_eq!(again, ed.snapshot().to_text());
+    }
+
+    #[test]
+    fn recovery_restores_each_pages_history() {
+        // Arrange
+        let mut loaded = round_trip(&paged_editor());
+
+        // Act
+        loaded.apply(Command::GoToPage(4));
+        let shapes = loaded.document().len();
+        loaded.apply(Command::Undo);
+        loaded.apply(Command::Redo);
+        loaded.apply(Command::GoToPage(0));
+
+        // Assert
+        assert_eq!(shapes, 1);
+        assert!(loaded.can_undo());
+        assert_eq!(loaded.document().len(), busy_editor().document().len());
+    }
+
+    #[test]
+    fn version_two_still_loads() {
+        // Arrange: a version 2 text has no `[pages]` section.
+        let ed = busy_editor();
+        let text = ed.snapshot().to_text();
+        let cut = line_of(&text, "[pages]");
+        let old: String = text
+            .lines()
+            .take(cut)
+            .enumerate()
+            .map(|(i, l)| if i == 0 { "draw-snapshot 2\n".to_owned() } else { format!("{l}\n") })
+            .collect();
+
+        // Act
+        let loaded = Snapshot::parse(&old).map(Editor::from_snapshot);
+
+        // Assert
+        assert_eq!(loaded.as_ref().ok().map(Editor::page), Some(0));
+        assert_eq!(loaded.ok(), Some(ed));
+    }
+
+    #[test]
+    fn rejects_bad_page_index() {
+        // Arrange: the stored page claims to be the current one.
+        let ed = paged_editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "index ");
+
+        // Act
+        let result = Snapshot::parse(&edited(&ed, line, "index 2"));
+
+        // Assert
+        let err = result.err().unwrap_or_else(|| panic!("accepted"));
+        assert_eq!(err.line, line + 1);
+        assert!(err.message.contains("page"), "{err}");
+    }
+
+    #[test]
+    fn rejects_a_current_page_out_of_range() {
+        // Arrange
+        let ed = paged_editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "current ");
+
+        // Act
+        let result = Snapshot::parse(&edited(&ed, line, "current 9"));
+
+        // Assert
+        assert!(result.is_err());
     }
 
     #[test]
