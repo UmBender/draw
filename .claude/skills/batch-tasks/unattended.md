@@ -37,6 +37,22 @@ anything:
    with `git stash push -m "batch-<ID>-<date>"` (never discard work) and
    note the stash in the task *Log*.
 
+## Spend few tokens
+
+Every tool call re-sends the whole context, so keep it small.
+
+- Filter command output: pipe `cargo test`, `cargo clippy` and
+  `scripts/check.sh` through `tail -n 40` (or `grep` for `error|FAILED|
+  panicked`), and re-run unfiltered only on a failure you cannot read.
+- Read files by range (`offset`/`limit`) or search them; do not read a
+  whole large file (`editor.rs`, `app.rs`) for one function.
+- Read only the process notes the step needs, once; do not re-read files
+  you just wrote or edited.
+- Do not explore beyond *Files owned* and the code the task touches; do
+  not spawn subagents.
+- After an interruption, continue from the git state: do not re-derive
+  what the last commit and the task note already say.
+
 ## Stay inside the lines
 
 - Follow `implement-task` and `docs/process/Workflow.md` exactly: one

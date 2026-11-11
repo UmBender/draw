@@ -31,7 +31,7 @@ list), `plan.template.md`. State lives in `.batch/` (git-ignored).
 | Laptop going to sleep | The runner holds a `systemd-inhibit` lock (sleep, idle, lid switch) while it runs. |
 | Command not pre-approved | Refused automatically (`--permission-mode dontAsk --permission-prompts none`), never a prompt. The session uses an allowed alternative or blocks the task, naming the command to allow. |
 | A question for the owner | `AskUserQuestion` is disabled. The session follows the plan's answers and its *Open choices* policy, or blocks. |
-| Session hangs or loops | Each attempt is killed after `BATCH_TASK_TIMEOUT` (4 h) and resumed; after 3 failed attempts the task is `failed`. |
+| Session hangs or loops | Each attempt is killed after `BATCH_TASK_TIMEOUT` (4 h) and resumed; after 2 failed attempts the task is `failed`. |
 | Session claims success wrongly | Runner re-runs `scripts/check.sh` on the task branch; red → `blocked`. |
 | Blocked or failed task | Recorded with the reason; the batch moves on. Queued tasks that depend on it become `skipped`. |
 | Two runners | `flock` on `.batch/lock`: the second one exits. |

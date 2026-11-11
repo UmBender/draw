@@ -12,7 +12,9 @@
 #
 # Environment (all optional):
 #   BATCH_TASK_TIMEOUT   seconds per session attempt        (default 14400)
-#   BATCH_MAX_ATTEMPTS   failed attempts before giving up   (default 3)
+#   BATCH_MAX_ATTEMPTS   failed attempts before giving up   (default 2)
+#   BATCH_MODEL          model of every session             (default sonnet)
+#   BATCH_EFFORT         effort level of every session      (default medium)
 #   BATCH_LIMIT_WAIT     seconds between checks while a usage limit
 #                        lasts (no cap: waits until it is restored)
 #                                                           (default 900)
@@ -28,7 +30,9 @@ SKILL_DIR=$(cd "$(dirname "$0")" && pwd)
 B="$ROOT/.batch"
 CLAUDE_BIN=${CLAUDE_BIN:-claude}
 TASK_TIMEOUT=${BATCH_TASK_TIMEOUT:-14400}
-MAX_ATTEMPTS=${BATCH_MAX_ATTEMPTS:-3}
+MAX_ATTEMPTS=${BATCH_MAX_ATTEMPTS:-2}
+MODEL=${BATCH_MODEL:-sonnet}
+EFFORT=${BATCH_EFFORT:-medium}
 LIMIT_WAIT=${BATCH_LIMIT_WAIT:-900}
 NET_WAIT=${BATCH_NET_WAIT:-120}
 STOP_AT=${BATCH_STOP_AT:-}
@@ -229,6 +233,7 @@ session() { # session ID BASE MODE(start|resume) REASON → exit code; output in
     mkdir -p "$B/logs" "$B/out"
     local -a common=(
         -p --output-format json
+        --model "$MODEL" --effort "$EFFORT"
         --permission-mode dontAsk --permission-prompts none
         --settings "$B/settings.json"
         --disallowedTools AskUserQuestion
