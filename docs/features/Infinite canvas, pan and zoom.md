@@ -1,9 +1,9 @@
 ---
 title: Infinite canvas, pan and zoom
 task: "[[T03 Camera]]"
-adrs: ["[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-0004 Vector object model]]", "[[ADR-T08-1 Tool context and gesture overlay]]"]
+adrs: ["[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-0004 Vector object model]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T106-1 Laser pointer in front of the editor]]", "[[ADR-T106-2 Laser key, fade and look]]"]
 tutorial: "[[03 Cameras - world space vs screen space]]"
-shortcuts: ["Mouse wheel", "Middle drag", "Space + drag", "H", "0", "F"]
+shortcuts: ["Mouse wheel", "Middle drag", "Space + drag", "H", "0", "F", "Hold Q"]
 tags: [feature]
 ---
 
@@ -17,7 +17,8 @@ under the mouse. One key resets the view, another frames all content.
 
 > Camera model by [[T03 Camera]]; input wiring (wheel, drags, `0`, `F`) by
 > [[T08 Editor core and input model]]. The keys themselves are bound by
-> [[T11 Keymap and macros]].
+> [[T11 Keymap and macros]]. The laser pointer is by
+> [[T106 Fading laser pointer]].
 
 ## How to use
 
@@ -27,6 +28,7 @@ under the mouse. One key resets the view, another frames all content.
 | Pan | Middle drag, `Space` + drag, or `H` (hand tool) + drag |
 | Reset view (origin, zoom 1) | `0` |
 | Fit view to all content | `F` |
+| Laser pointer (fading trail, draws nothing) | Hold `Q` and move the pen or mouse |
 
 Bindings are defined in [[Keymap]]. Panning works from **any tool** and
 never switches it: release the middle button or `Space` and you are back to
@@ -76,6 +78,23 @@ screen = (world − offset) · zoom        world = screen / zoom + offset
   (`FIT_MARGIN_PX`), or resets on an empty document.
 - Every handler returns whether the camera actually changed, so the shell can
   skip redraws ([[ADR-0006 Redraw on demand]]).
+
+### Laser pointer (`src/core/laser.rs`, `src/shell/app.rs`)
+
+- The shell hands every event to `core::laser::Laser::route` before the
+  toolbar and the editor ([[ADR-T106-1 Laser pointer in front of the editor]]).
+  `Q` without `Ctrl`/`Alt` holds it; while held and no gesture is in
+  progress, pointer moves add screen-space points and presses/releases
+  are swallowed. A gesture already running keeps its events; the trail
+  starts after it. In text edit mode `Q` goes on and types `q`.
+- Points carry the time the shell passes in (a monotonic clock started at
+  launch); each fades linearly over 1 s and is then dropped; at most 1024
+  are kept ([[ADR-T106-2 Laser key, fade and look]]).
+- The trail is drawn last, 6 px wide in `theme::RED`, over the cached
+  document layer (an overlay-only redraw). The loop asks for frames only
+  while a point is fading, then sleeps again.
+- The editor never sees the laser: no document revision, no undo step, no
+  snapshot field, no autosave trigger.
 
 ## Limits
 

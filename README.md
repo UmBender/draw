@@ -22,6 +22,8 @@ long. If it crashes, `draw --recover` brings your drawing back.
 
 - **Infinite canvas** — pan with middle drag or `Space`+drag, zoom at the
   cursor with the wheel (0.05× – 20×), fit everything with `F`.
+- **Laser pointer** — hold `Q` and move the pen or mouse: a red trail
+  follows it and fades within a second, and nothing is drawn.
 - **Drawing tools** — smoothed pen, line, arrow, rectangle, ellipse; `Shift`
   constrains to squares, circles and 45° angles.
 - **Grid tool** — drag out a table, size it live with the arrow keys
@@ -226,6 +228,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | Wheel | Zoom at cursor | `0` | Reset view |
 | Middle drag, `Space`+drag | Pan | `F` | Fit to content |
 | `Tab` | Toolbar on / off | `Ctrl+E` | Export the view to PNG in `~` |
+| Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | | |
 
 ### Helpers
 

@@ -18,7 +18,7 @@ use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::pen;
 use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
 use macroquad::miniquad::window::{clipboard_get, clipboard_set, schedule_update};
-use macroquad::shapes::{draw_line, draw_rectangle, draw_rectangle_lines};
+use macroquad::shapes::{draw_circle, draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
     render_target_ex,
@@ -40,6 +40,7 @@ use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
+use crate::core::laser::{self, EditorState, Laser, Routed, Segment};
 use crate::core::palette::{Rgba, palette};
 use crate::core::snapshot::Snapshot;
 use crate::core::tools::Overlay;
@@ -613,6 +614,7 @@ pub async fn run(launch: Launch) {
     // Inert unless the end-to-end suite sets its variables (ADR-T75-1).
     let mut hooks = e2e::Hooks::from_env();
     let mut export_pending = false;
+    let mut laser = LaserLayer::new();
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
         let dpi = screen_dpi_scale();
@@ -636,10 +638,13 @@ pub async fn run(launch: Launch) {
         let mut dump_asked = false;
         let mut had_input = false;
         for event in collector.drain() {
-            had_input = true;
             if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
                 continue;
             }
+            if laser.consumes(&event, &editor) {
+                continue;
+            }
+            had_input = true;
             let editing = editor.text_edit().is_some();
             if wants_clipboard(&event, editing) {
                 dirty |= paste_clipboard(&mut editor, paste_event);
@@ -658,7 +663,8 @@ pub async fn run(launch: Launch) {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
-        let presented = frame.present(&editor, viewport, dpi, dirty);
+        dirty |= laser.tick();
+        let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
             export_pending = false;
@@ -876,14 +882,16 @@ impl CachedFrame {
     /// Updates the document layer as [`plan_redraw`], [`reuse_if_slow`] and
     /// [`settle`] say,
     /// then blits it to the window and draws the overlay on top. `dirty`
-    /// says whether input changed editor state. Returns what the frame
-    /// re-rendered and its CPU time, for the flight recorder (ADR-T47-1).
+    /// says whether input changed editor state; `trail` is the laser,
+    /// drawn last. Returns what the frame re-rendered and its CPU time,
+    /// for the flight recorder (ADR-T47-1).
     fn present(
         &mut self,
         editor: &Editor,
         viewport: Vec2,
         dpi: f32,
         dirty: bool,
+        trail: &[Segment],
     ) -> Option<(Redraw, Duration)> {
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
@@ -960,6 +968,7 @@ impl CachedFrame {
             blit(&document.texture, dest);
         }
         draw_overlay(editor, &overlay, viewport);
+        draw_laser(trail);
         if rerender_after_overflow(render::text_overflowed(), cleared) {
             // Glyphs were dropped from the layer; draw it again next frame
             // with the atlas cleared.
@@ -1122,6 +1131,76 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     }
 }
 
+/// The laser pointer with its clock and the trail to draw this frame
+/// (ADR-T106-1).
+struct LaserLayer {
+    /// Start of the laser's time line.
+    clock: Instant,
+    /// Held key and trail.
+    laser: Laser,
+    /// This frame's pieces, reused every frame.
+    trail: Vec<Segment>,
+}
+
+impl LaserLayer {
+    /// Not held, no trail, time starting now.
+    fn new() -> Self {
+        Self {
+            clock: Instant::now(),
+            laser: Laser::new(),
+            trail: Vec::new(),
+        }
+    }
+
+    /// Seconds since [`Self::new`].
+    fn now(&self) -> f64 {
+        self.clock.elapsed().as_secs_f64()
+    }
+
+    /// Hands `event` to the laser before anything else sees it. Returns
+    /// whether the laser used it, so the toolbar, the editor and the
+    /// autosave must not see it.
+    fn consumes(&mut self, event: &InputEvent, editor: &Editor) -> bool {
+        let now = self.now();
+        self.laser.route(event, EditorState::of(editor), now) == Routed::Consumed
+    }
+
+    /// Drops faded points and collects the pieces to draw. Asks for
+    /// another frame while points are fading, so idle returns to 0 % once
+    /// they are gone. Returns whether the overlay must be redrawn.
+    fn tick(&mut self) -> bool {
+        let now = self.now();
+        let redraw = self.laser.tick(now);
+        self.trail.clear();
+        self.trail.extend(self.laser.segments(now));
+        if self.laser.is_fading() {
+            schedule_update();
+        }
+        redraw
+    }
+}
+
+/// Draws the laser trail in window pixels, over everything: each piece a
+/// line [`laser::WIDTH_PX`] wide with a round end, in [`theme::RED`] at
+/// its opacity (ADR-T106-2).
+fn draw_laser(trail: &[Segment]) {
+    let radius = laser::WIDTH_PX / 2.0;
+    for segment in trail.iter().filter(|s| s.alpha > 0.0) {
+        let color = hex_color_alpha(theme::RED, alpha_byte(segment.alpha));
+        let (from, to) = (segment.from, segment.to);
+        if from != to {
+            draw_line(from.x, from.y, to.x, to.y, laser::WIDTH_PX, color);
+        }
+        draw_circle(to.x, to.y, radius, color);
+    }
+}
+
+/// An opacity in `[0, 1]` as a byte; out-of-range or NaN values clamp.
+fn alpha_byte(alpha: f32) -> u8 {
+    // Saturating cast after the clamp; NaN becomes 0.
+    (alpha.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1130,6 +1209,16 @@ mod tests {
     use macroquad::miniquad::conf::LinuxBackend;
     use macroquad::miniquad::signal;
     use proptest::prelude::*;
+
+    #[test]
+    fn alpha_byte_scales_and_clamps() {
+        assert_eq!(alpha_byte(0.0), 0);
+        assert_eq!(alpha_byte(0.5), 128);
+        assert_eq!(alpha_byte(1.0), 255);
+        assert_eq!(alpha_byte(-1.0), 0);
+        assert_eq!(alpha_byte(2.0), 255);
+        assert_eq!(alpha_byte(f32::NAN), 0);
+    }
 
     #[test]
     fn pen_samples_are_empty_without_a_window() {

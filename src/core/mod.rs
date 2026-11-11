@@ -9,6 +9,7 @@ pub mod geom;
 pub mod history;
 pub mod input;
 pub mod keymap;
+pub mod laser;
 pub mod math_metrics;
 pub mod numbering;
 pub mod palette;
