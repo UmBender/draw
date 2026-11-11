@@ -949,10 +949,12 @@ fn arb_sheet_inner() -> impl Strategy<Value = Vec<InputEvent>> {
         Key::Digit9,
     ]);
     let other = prop_oneof![
-        arb_char().prop_map(|ch| InputEvent::Char {
-            ch,
-            mods: Modifiers::NONE
-        }),
+        arb_char()
+            .prop_filter("`?` closes the sheet", |ch| *ch != '?')
+            .prop_map(|ch| InputEvent::Char {
+                ch,
+                mods: Modifiers::NONE
+            }),
         (
             arb_key().prop_filter("Esc closes the sheet", |key| !matches!(key, Key::Escape)),
             arb_mods()
