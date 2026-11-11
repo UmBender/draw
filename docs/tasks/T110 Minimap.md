@@ -1,11 +1,11 @@
 ---
 id: T110
 title: Minimap
-status: todo
+status: review
 wave: 59
 branch: task/T110-minimap
 depends_on: []
-adrs: []
+adrs: ["[[ADR-T110-1 Minimap geometry, routing and overview cache]]"]
 feature: "[[Infinite canvas, pan and zoom]]"
 tutorial: ""
 tags: [task]
@@ -26,12 +26,53 @@ While panning — `Space` held, or the middle button dragging — a small overvi
 
 ## Spec
 
-Owner decisions are marked (owner); the spec step settles the rest in an ADR.
+Owner decisions are marked (owner); the rest is settled in
+[[ADR-T110-1 Minimap geometry, routing and overview cache]]. The geometry
+is `core::minimap` (`Fit`, `Minimap`), the routing a `Gesture::Minimap`
+in `core::editor`, the cached overview and the drawing `shell::minimap`.
 
 - **AC-1** (owner) — The minimap shows in the bottom-right corner while `Space` is held and while a middle-button pan is in progress, and hides as soon as both end. It shows every shape scaled to fit, and a frame for the visible area that moves with the pan. In text edit mode `Space` types a space and shows nothing.
+  Tests (`core::minimap::tests`): `panel_rect_sits_in_the_bottom_right_corner`,
+  `panel_rect_small_viewport_is_none`, `new_world_is_content_union_view`,
+  `content_rect_lies_inside_the_drawing_area`, `frame_follows_the_view`,
+  `frame_tiny_view_keeps_a_minimum_size`;
+  (`core::editor::tests`): `minimap_shows_while_space_is_held`,
+  `minimap_shows_during_a_middle_pan`, `minimap_hidden_for_a_hand_tool_pan`,
+  `minimap_space_in_text_edit_shows_nothing`,
+  `minimap_show_and_hide_ask_for_a_redraw`,
+  `minimap_space_repeat_asks_for_no_redraw`,
+  `minimap_frame_moves_with_the_pan`. The look is a manual check.
 - **AC-2** (owner) — While `Space` is held, a click in the minimap centres the view on that point and dragging there moves the view continuously; those clicks never reach the canvas tools. Outside the minimap, `Space` + drag pans as before.
+  Tests (`core::minimap::tests`): `world_at_inverts_point`,
+  `world_at_outside_the_drawing_area_clamps`;
+  (`core::editor::tests`): `minimap_click_centres_the_view`,
+  `minimap_drag_moves_the_view_continuously`,
+  `minimap_drag_keeps_the_world_box_of_its_press`,
+  `minimap_click_never_reaches_the_tool`,
+  `minimap_press_without_space_goes_to_the_tool`,
+  `space_drag_outside_the_minimap_pans`,
+  `minimap_drag_ends_after_space_is_released`,
+  `minimap_drag_survives_a_snapshot_round_trip`,
+  `minimap_drag_is_cancelled_by_undo`.
 - **AC-3** — While hidden it costs nothing. While shown, it is drawn from its own cache, re-rendered only when the document changed since the last time it was shown; the view frame is an overlay, so panning does not re-render it.
+  Tests (`core::editor::tests`): `minimap_hidden_computes_no_content_bounds`,
+  `minimap_content_bounds_follow_the_document_revision`;
+  (`core::minimap::tests`): `place_same_world_is_the_drawing_area`,
+  `place_shrinks_when_the_view_leaves_the_content`,
+  `place_degenerate_image_is_none`;
+  (`shell::minimap::tests`): `overview_key_ignores_the_camera`,
+  `overview_key_changes_with_the_document`,
+  `overview_key_changes_with_the_target_size`,
+  `needs_render_only_for_a_new_key`, `marker_only_for_small_content`.
+  Idle CPU and `DRAW_FRAME_TIMES` are a manual check.
 - **AC-4** — An empty document shows an empty minimap; huge or far-apart content keeps every coordinate finite (fuzzed).
+  Tests (`core::minimap::tests`): `content_bounds_empty_document_is_none`,
+  `new_empty_document_shows_the_view_only`,
+  `fit_zero_extent_world_is_finite`, `fit_huge_world_is_finite`,
+  proptest `minimap_coordinates_stay_finite`;
+  (`core::editor::tests`): `minimap_empty_document_has_no_content`;
+  fuzz (`tests/fuzz.rs`): the minimap part of `check_invariants`,
+  `arb_minimap_drag` in `arb_session`, `sessions_reach_the_minimap`.
 
 ## Out of scope
 
@@ -39,20 +80,21 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 
 ## Files owned
 
-- a new `src/core/minimap.rs` (geometry), `src/core/editor.rs`, `src/core/input.rs`
+- a new `src/core/minimap.rs` (geometry), `src/core/mod.rs` (its `pub mod` line), `src/core/editor.rs`, `src/core/input.rs`
 - `src/shell/` (overview cache, input routing, drawing)
+- `docs/architecture/Architecture.md` (module map, frame flow, invariants)
 - `docs/features/Infinite canvas, pan and zoom.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`
 - this note, and new `ADR-T110-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T110): specify the minimap`
-- [ ] tests — `test(T110): add failing tests for the minimap`
-- [ ] models — `feat(T110): add the minimap geometry`
-- [ ] behaviour — `feat(T110): show the minimap while panning`
-- [ ] quality — `chore(T110): pass clippy and rustfmt`
-- [ ] docs — `docs(T110): update the feature note`
+- [x] spec — `docs(T110): specify the minimap`
+- [x] tests — `test(T110): add failing tests for the minimap`
+- [x] models — `feat(T110): add the minimap geometry`
+- [x] behaviour — `feat(T110): show the minimap while panning`
+- [x] quality — `chore(T110): pass clippy and rustfmt`
+- [x] docs — `docs(T110): update the feature note`
 
 ## Learning path
 
@@ -62,3 +104,14 @@ None: it extends an existing area.
 
 - 2026-11-10 — note written with the owner, from V2 of the [[Feature proposal]].
 - 2026-11-10 — owner: show it while `Space` is held (panning) instead of an `M` toggle.
+- 2026-11-10 — spec: test names per AC; [[ADR-T110-1 Minimap geometry, routing and overview cache]] settles size, world box, routing, snapshot record and cache.
+- 2026-11-10 — UNATTENDED CHOICE: `src/core/mod.rs` added to *Files owned* for the `pub mod minimap;` line.
+- 2026-11-10 — UNATTENDED CHOICE: the new `gesture minimap` snapshot record is additive, so `snapshot::VERSION` is not bumped (as ADR-T91-1 did).
+- 2026-11-10 — UNATTENDED CHOICE: a hand-tool drag does not show the minimap (the owner listed `Space` and the middle button only).
+- 2026-11-11 — behaviour: the first full test run failed `theme::tests::guard_finds_no_colour_literal_outside_theme` for a colour struct literal in `shell::minimap`; the text bar now uses `Rgba::faded`. No new theme token: the panel reuses the toolbar and selection colours.
+- 2026-11-11 — UNATTENDED CHOICE: the thresholds of the new fuzz check `sessions_reach_the_minimap` (50, 40, 25 of 200) are set at about half the measured counts (98, 89, 56). No existing threshold changed.
+- 2026-11-11 — quality: clippy asked for `Editor::read_snapshot` to stay under 100 lines, so the one-flag records (`toolbar`, `space`) are read through a small `read_flag` helper; same format.
+- 2026-11-11 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` added to *Files owned* (module map row, frame flow and the fuzzed invariant), as the workflow's docs step asks when a task adds modules.
+- 2026-11-11 — gates: `scripts/check.sh --fuzz` green (20 000 cases); `scripts/e2e.sh` green, 14 cases, no golden changed. There is no e2e case for the minimap itself.
+- 2026-11-11 — not verified by a run of the app: how the minimap looks (panel, schematic shapes, marker, frame), the alpha of the overview texture over the panel, and idle CPU after `Space` is released. Manual checks for the owner: hold `Space` on a large drawing, click and drag in the minimap; middle-button pan; pan far from the content (marker); `DRAW_FRAME_TIMES=1` shows no document re-render when the minimap appears; idle CPU.
+- 2026-11-11 — no tutorial: the task extends an existing area (*Learning path*). Feature note, README and cheat sheet updated. Status → `review`.

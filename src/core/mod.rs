@@ -11,6 +11,7 @@ pub mod input;
 pub mod keymap;
 pub mod laser;
 pub mod math_metrics;
+pub mod minimap;
 pub mod numbering;
 pub mod palette;
 pub mod pressure;

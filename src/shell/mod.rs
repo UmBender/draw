@@ -10,6 +10,7 @@ pub mod diag;
 pub mod export;
 pub mod glyphs;
 pub mod input_map;
+pub mod minimap;
 pub mod preflight;
 pub mod render;
 pub mod tablet;

@@ -27,6 +27,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
+use crate::core::minimap::{self, Minimap};
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::recognize;
@@ -128,7 +129,8 @@ impl Default for DrawStyle {
 /// The gesture in progress, as seen from outside.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActiveGesture {
-    /// Panning the view.
+    /// Panning the view, by a drag on the canvas or in the minimap
+    /// (ADR-T110-1).
     Pan,
     /// A tool gesture (`Eraser` for a right drag).
     Tool(Tool),
@@ -143,6 +145,13 @@ enum Gesture {
         button: PointerButton,
         /// Pan state.
         pan: Pan,
+    },
+    /// Moving the view by a press or drag in the minimap (ADR-T110-1).
+    Minimap {
+        /// Button whose release ends the gesture.
+        button: PointerButton,
+        /// The minimap's world box at the press, kept until the release.
+        world: Aabb,
     },
     /// A tool gesture.
     Tool {
@@ -211,6 +220,10 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// The content bounds the minimap shows and the document revision they
+    /// were computed for; refreshed only while it shows (ADR-T110-1). Not
+    /// saved state.
+    minimap_content: Option<(u64, Option<Aabb>)>,
 }
 
 impl Default for Editor {
@@ -259,6 +272,7 @@ impl Editor {
             keymap: keymap::resolve,
             doc_revision: 0,
             doc_base_revision: 0,
+            minimap_content: None,
             ..snapshot.0
         }
     }
@@ -309,6 +323,9 @@ impl Editor {
             }
             Some(Gesture::Pan { button, pan }) => {
                 l.word("pan").put(&button).put(&pan.last());
+            }
+            Some(Gesture::Minimap { button, world }) => {
+                l.word("minimap").put(&button).put(&world);
             }
             Some(Gesture::Tool {
                 button,
@@ -372,9 +389,7 @@ impl Editor {
         let mut t = r.record("smoothing")?;
         let smoothing = t.get()?;
         t.end()?;
-        let mut t = r.record("toolbar")?;
-        let toolbar_visible = t.bool("toolbar")?;
-        t.end()?;
+        let toolbar_visible = read_flag(r, "toolbar")?;
         let mut t = r.record("viewport")?;
         let viewport: Vec2 = t.get()?;
         t.end()?;
@@ -384,9 +399,7 @@ impl Editor {
         let mut t = r.record("cursor")?;
         let cursor = t.get()?;
         t.end()?;
-        let mut t = r.record("space")?;
-        let space_held = t.bool("space")?;
-        t.end()?;
+        let space_held = read_flag(r, "space")?;
         let mut t = r.record("pressure")?;
         let pressure: Option<f32> = t.opt()?;
         t.end()?;
@@ -459,6 +472,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            minimap_content: None,
         })
     }
 
@@ -488,6 +502,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            minimap_content: None,
         }
     }
 
@@ -528,11 +543,14 @@ impl Editor {
     ///
     /// Events go through the tap filter first (ADR-T34-1).
     pub fn handle(&mut self, event: InputEvent) -> bool {
+        let shown = self.minimap_shown();
         let mut redraw = false;
         for event in self.tap.filter(event).into_iter().flatten() {
             redraw |= self.handle_filtered(event);
         }
-        redraw
+        self.refresh_minimap_content();
+        // The minimap appearing or going is a change on screen (ADR-T110-1).
+        redraw || self.minimap_shown() != shown
     }
 
     /// [`Editor::handle`] for one event that left the tap filter.
@@ -876,9 +894,76 @@ impl Editor {
     #[must_use]
     pub fn active_gesture(&self) -> Option<ActiveGesture> {
         self.gesture.map(|gesture| match gesture {
-            Gesture::Pan { .. } => ActiveGesture::Pan,
+            Gesture::Pan { .. } | Gesture::Minimap { .. } => ActiveGesture::Pan,
             Gesture::Tool { tool, .. } => ActiveGesture::Tool(tool),
         })
+    }
+
+    /// The minimap, while it shows: while `Space` is held with no text
+    /// block open, during a pan with the middle button and during a drag
+    /// in the minimap, in a viewport that can hold its panel. A drag in it
+    /// keeps the world box of its press (ADR-T110-1).
+    #[must_use]
+    pub fn minimap(&self) -> Option<Minimap> {
+        if !self.minimap_shown() {
+            return None;
+        }
+        let content = self.content_bounds();
+        if let Some(Gesture::Minimap { world, .. }) = self.gesture {
+            return Minimap::with_world(self.viewport, content, world);
+        }
+        let view = self.camera.visible_world_rect(self.viewport);
+        Minimap::new(self.viewport, content, view)
+    }
+
+    /// Whether the minimap is asked for and the viewport can hold it.
+    fn minimap_shown(&self) -> bool {
+        let asked = match self.gesture {
+            Some(
+                Gesture::Minimap { .. }
+                | Gesture::Pan {
+                    button: PointerButton::Middle,
+                    ..
+                },
+            ) => true,
+            _ => self.space_held && self.tools.text.edit.is_none(),
+        };
+        asked && minimap::panel_rect(self.viewport).is_some()
+    }
+
+    /// The bounds of every shape: the cached ones if they are of this
+    /// document revision, else computed now.
+    fn content_bounds(&self) -> Option<Aabb> {
+        match self.minimap_content {
+            Some((revision, bounds)) if revision == self.doc_revision => bounds,
+            _ => minimap::content_bounds(&self.doc),
+        }
+    }
+
+    /// Computes the content bounds for the minimap if it shows and the
+    /// document changed since they were computed (ADR-T110-1).
+    fn refresh_minimap_content(&mut self) {
+        let fresh = matches!(self.minimap_content, Some((r, _)) if r == self.doc_revision);
+        if !fresh && self.minimap_shown() {
+            self.minimap_content = Some((self.doc_revision, minimap::content_bounds(&self.doc)));
+        }
+    }
+
+    /// Pans so that `world` is at the centre of the viewport. Returns
+    /// whether the camera changed.
+    fn center_view(&mut self, world: Vec2) -> bool {
+        let before = self.camera;
+        let delta = self.viewport * 0.5 - self.camera.world_to_screen(world);
+        self.camera.pan_by_screen(delta);
+        self.camera != before
+    }
+
+    /// Centres the view on the point of the minimap under `pos`, with the
+    /// world box `world` the drag started with. Returns whether the camera
+    /// changed.
+    fn minimap_drag(&mut self, world: Aabb, pos: Vec2) -> bool {
+        Minimap::with_world(self.viewport, None, world)
+            .is_some_and(|map| self.center_view(map.world_at(pos)))
     }
 
     /// The text block being edited, if any (ADR-T29-2).
@@ -962,6 +1047,19 @@ impl Editor {
             }
             cancelled = self.cancel_gesture();
         }
+        // A press in the minimap moves the view there and never reaches a
+        // tool (ADR-T110-1).
+        if button == PointerButton::Left
+            && self.space_held
+            && let Some(map) = self.minimap().filter(|map| map.contains(pos))
+        {
+            self.gesture = Some(Gesture::Minimap {
+                button,
+                world: map.world(),
+            });
+            self.center_view(map.world_at(pos));
+            return true;
+        }
         let pans = match button {
             PointerButton::Middle => true,
             PointerButton::Left => self.tool == Tool::Hand || self.space_held,
@@ -1007,6 +1105,10 @@ impl Editor {
     fn pointer_move(&mut self, pos: Vec2, mods: Modifiers) -> bool {
         match &mut self.gesture {
             Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.camera, pos),
+            Some(Gesture::Minimap { world, .. }) => {
+                let world = *world;
+                self.minimap_drag(world, pos)
+            }
             Some(Gesture::Tool { tool, fresh, .. }) => {
                 *fresh = false;
                 let tool = *tool;
@@ -1022,6 +1124,10 @@ impl Editor {
             Some(Gesture::Pan { button: b, mut pan }) if b == button => {
                 self.gesture = None;
                 pan.drag(&mut self.camera, pos)
+            }
+            Some(Gesture::Minimap { button: b, world }) if b == button => {
+                self.gesture = None;
+                self.minimap_drag(world, pos)
             }
             Some(Gesture::Tool {
                 button: b, tool, ..
@@ -1432,7 +1538,7 @@ impl Editor {
                 self.tools.cancel(tool);
                 true
             }
-            Some(Gesture::Pan { .. }) => true,
+            Some(Gesture::Pan { .. } | Gesture::Minimap { .. }) => true,
             None => false,
         }
     }
@@ -1759,6 +1865,15 @@ fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
     Ok(helpers)
 }
 
+/// Reads a record holding one flag, such as `toolbar` or `space`
+/// (snapshots, ADR-T74-1).
+fn read_flag(r: &mut Reader<'_>, key: &str) -> Result<bool, SnapshotError> {
+    let mut t = r.record(key)?;
+    let flag = t.bool(key)?;
+    t.end()?;
+    Ok(flag)
+}
+
 /// Reads the `gesture` record (snapshots, ADR-T74-1).
 fn read_gesture(r: &mut Reader<'_>) -> Result<Option<Gesture>, SnapshotError> {
     let mut t = r.record("gesture")?;
@@ -1769,6 +1884,10 @@ fn read_gesture(r: &mut Reader<'_>) -> Result<Option<Gesture>, SnapshotError> {
             "pan" => Some(Gesture::Pan {
                 button: t.get()?,
                 pan: Pan::new(t.get()?),
+            }),
+            "minimap" => Some(Gesture::Minimap {
+                button: t.get()?,
+                world: t.get()?,
             }),
             "tool" => Some(Gesture::Tool {
                 button: t.get()?,
@@ -8448,5 +8567,439 @@ mod tests {
             assert_eq!(shapes_of(&ed), once);
             assert_eq!(ed.history.undo_len(), undo);
         }
+    }
+
+    // ---- T110: minimap ----------------------------------------------------
+
+    /// Editor with an 800 × 600 viewport and two rectangles far apart, so
+    /// the view at the origin lies inside the content.
+    fn minimap_editor() -> Editor {
+        let mut ed = editor_with(vec![
+            rect(0.0, 0.0, 100.0, 100.0),
+            rect(3660.0, 2660.0, 100.0, 100.0),
+        ]);
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        ed
+    }
+
+    fn release_space(ed: &mut Editor) -> bool {
+        ed.handle(InputEvent::KeyUp {
+            key: Key::Space,
+            mods: NONE,
+        })
+    }
+
+    /// The minimap, which must be showing.
+    fn shown(ed: &Editor) -> Minimap {
+        let Some(map) = ed.minimap() else {
+            panic!("the minimap shows");
+        };
+        map
+    }
+
+    fn view_rect(ed: &Editor) -> Aabb {
+        ed.camera().visible_world_rect(ed.viewport())
+    }
+
+    fn assert_view_centred(ed: &Editor, world: Vec2) {
+        let center = view_rect(ed).center();
+        assert!(center.approx_eq(world, 0.05), "{center:?} is not {world:?}");
+    }
+
+    #[test]
+    fn minimap_shows_while_space_is_held() {
+        // Arrange
+        let mut ed = minimap_editor();
+        let hidden = ed.minimap();
+
+        // Act
+        key(&mut ed, Key::Space);
+        let held = ed.minimap();
+        release_space(&mut ed);
+
+        // Assert
+        assert!(hidden.is_none());
+        let Some(map) = held else {
+            panic!("the minimap shows while Space is held");
+        };
+        assert_eq!(Some(map.panel()), minimap::panel_rect(ed.viewport()));
+        assert!(map.world().min.approx_eq(Vec2::new(-0.5, -0.5), 1e-3));
+        assert!(map.world().max.approx_eq(Vec2::new(3760.5, 2760.5), 1e-3));
+        assert!(ed.minimap().is_none());
+    }
+
+    #[test]
+    fn minimap_shows_during_a_middle_pan() {
+        // Arrange
+        let mut ed = minimap_editor();
+
+        // Act
+        down(&mut ed, PointerButton::Middle, 100.0, 100.0);
+        let pressed = ed.minimap().is_some();
+        move_to(&mut ed, 90.0, 80.0);
+        let dragging = ed.minimap().is_some();
+        up(&mut ed, PointerButton::Middle, 90.0, 80.0);
+
+        // Assert
+        assert!(pressed && dragging);
+        assert!(ed.minimap().is_none());
+    }
+
+    #[test]
+    fn minimap_hidden_for_a_hand_tool_pan() {
+        // Arrange
+        let mut ed = minimap_editor();
+        ed.apply(Command::SetTool(Tool::Hand));
+
+        // Act
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+
+        // Assert
+        assert_eq!(ed.active_gesture(), Some(ActiveGesture::Pan));
+        assert!(ed.minimap().is_none());
+    }
+
+    #[test]
+    fn minimap_space_in_text_edit_shows_nothing() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+
+        // Act
+        ed.handle(InputEvent::Char {
+            ch: ' ',
+            mods: NONE,
+        });
+        key(&mut ed, Key::Space);
+
+        // Assert
+        assert!(ed.minimap().is_none());
+        assert_eq!(editing(&ed).as_deref(), Some("a "));
+    }
+
+    #[test]
+    fn minimap_show_and_hide_ask_for_a_redraw() {
+        let mut ed = minimap_editor();
+
+        assert!(key(&mut ed, Key::Space), "Space shows it");
+        assert!(release_space(&mut ed), "releasing Space hides it");
+        assert!(
+            down(&mut ed, PointerButton::Middle, 100.0, 100.0),
+            "a middle press shows it"
+        );
+        assert!(
+            up(&mut ed, PointerButton::Middle, 100.0, 100.0),
+            "its release hides it"
+        );
+    }
+
+    #[test]
+    fn minimap_space_repeat_asks_for_no_redraw() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+
+        // Act / Assert: key repeat while held.
+        assert!(!key(&mut ed, Key::Space));
+        assert!(!key(&mut ed, Key::Space));
+        // Without room for the panel nothing shows, so nothing redraws.
+        let mut small = Editor::new();
+        assert!(!key(&mut small, Key::Space));
+        assert!(!release_space(&mut small));
+    }
+
+    #[test]
+    fn minimap_frame_moves_with_the_pan() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        let before = shown(&ed).frame(view_rect(&ed));
+
+        // Act: drag the content 400 px left and 200 px up.
+        down(&mut ed, PointerButton::Left, 500.0, 300.0);
+        move_to(&mut ed, 100.0, 100.0);
+        let map = shown(&ed);
+        let after = map.frame(view_rect(&ed));
+
+        // Assert: the frame moved by the pan, at the minimap's scale; the
+        // view stayed inside the content, so the world box did not change.
+        let step = Vec2::new(400.0, 200.0) * (138.0 / 2761.0);
+        assert!(after.min.approx_eq(before.min + step, 0.01), "{after:?}");
+        assert!(after.max.approx_eq(before.max + step, 0.01), "{after:?}");
+        assert!(map.world().max.approx_eq(Vec2::new(3760.5, 2760.5), 1e-3));
+    }
+
+    #[test]
+    fn minimap_click_centres_the_view() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        let target = shown(&ed).world_at(Vec2::new(700.0, 520.0));
+
+        // Act
+        let pressed = down(&mut ed, PointerButton::Left, 700.0, 520.0);
+        let gesture = ed.active_gesture();
+        up(&mut ed, PointerButton::Left, 700.0, 520.0);
+
+        // Assert
+        assert!(pressed);
+        assert_eq!(gesture, Some(ActiveGesture::Pan));
+        assert_eq!(ed.active_gesture(), None);
+        assert_view_centred(&ed, target);
+        assert!(approx_eq(ed.camera().zoom(), 1.0, 1e-6));
+    }
+
+    #[test]
+    fn minimap_drag_moves_the_view_continuously() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        let map = shown(&ed);
+
+        // Act / Assert: every step centres the view under the pointer.
+        down(&mut ed, PointerButton::Left, 650.0, 500.0);
+        assert_view_centred(&ed, map.world_at(Vec2::new(650.0, 500.0)));
+        for (x, y) in [(660.0, 505.0), (700.0, 530.0), (720.0, 470.0)] {
+            assert!(move_to(&mut ed, x, y));
+            assert_view_centred(&ed, map.world_at(Vec2::new(x, y)));
+        }
+        // Outside the panel the pointer is clamped to the drawing area.
+        move_to(&mut ed, 10.0, 10.0);
+        assert_view_centred(&ed, map.world_at(map.area().min));
+        up(&mut ed, PointerButton::Left, 700.0, 500.0);
+        assert_view_centred(&ed, map.world_at(Vec2::new(700.0, 500.0)));
+    }
+
+    #[test]
+    fn minimap_drag_keeps_the_world_box_of_its_press() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        let map = shown(&ed);
+        let corner = map.area().max;
+
+        // Act: centring on the content's corner puts the view outside it.
+        down(&mut ed, PointerButton::Left, corner.x, corner.y);
+        move_to(&mut ed, corner.x, corner.y);
+        let during = shown(&ed).world();
+        up(&mut ed, PointerButton::Left, corner.x, corner.y);
+        let after = shown(&ed).world();
+
+        // Assert: frozen during the drag, live again after it.
+        assert_eq!(during, map.world());
+        assert!(after.max.x > during.max.x + 100.0, "{after:?}");
+        assert_view_centred(&ed, map.world().max);
+    }
+
+    #[test]
+    fn minimap_click_never_reaches_the_tool() {
+        for tool in [
+            Tool::Pen,
+            Tool::Rect,
+            Tool::Select,
+            Tool::Eraser,
+            Tool::Text,
+        ] {
+            // Arrange
+            let mut ed = minimap_editor();
+            ed.apply(Command::SetTool(tool));
+            let before = ed.document().clone();
+            key(&mut ed, Key::Space);
+
+            // Act
+            down(&mut ed, PointerButton::Left, 620.0, 460.0);
+            move_to(&mut ed, 700.0, 520.0);
+            up(&mut ed, PointerButton::Left, 700.0, 520.0);
+            release_space(&mut ed);
+
+            // Assert
+            assert_eq!(*ed.document(), before, "{tool:?}");
+            assert!(ed.selection().is_empty(), "{tool:?}");
+            assert!(ed.text_edit().is_none(), "{tool:?}");
+            assert_eq!(ed.document_revision(), 0, "{tool:?}");
+            assert_eq!(ed.tool(), tool);
+        }
+    }
+
+    #[test]
+    fn minimap_press_without_space_goes_to_the_tool() {
+        // Arrange
+        let mut ed = minimap_editor();
+        let camera = *ed.camera();
+
+        // Act: a pen drag where the panel would be.
+        down(&mut ed, PointerButton::Left, 620.0, 460.0);
+        let gesture = ed.active_gesture();
+        move_to(&mut ed, 700.0, 520.0);
+        up(&mut ed, PointerButton::Left, 700.0, 520.0);
+
+        // Assert
+        assert_eq!(gesture, Some(ActiveGesture::Tool(Tool::Pen)));
+        assert_eq!(ed.document().len(), 3);
+        assert_eq!(*ed.camera(), camera);
+    }
+
+    #[test]
+    fn space_drag_outside_the_minimap_pans() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+
+        // Act: the drag starts outside and ends over the panel.
+        down(&mut ed, PointerButton::Left, 100.0, 100.0);
+        move_to(&mut ed, 150.0, 130.0);
+        move_to(&mut ed, 700.0, 500.0);
+        up(&mut ed, PointerButton::Left, 700.0, 500.0);
+
+        // Assert: content moved by the pointer delta.
+        assert!(origin_on_screen(&ed).approx_eq(Vec2::new(600.0, 400.0), 1e-3));
+        assert_eq!(ed.document().len(), 2);
+    }
+
+    #[test]
+    fn minimap_drag_ends_after_space_is_released() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        let map = shown(&ed);
+        down(&mut ed, PointerButton::Left, 650.0, 500.0);
+
+        // Act: Space goes up before the button.
+        let released = release_space(&mut ed);
+        let still_shown = ed.minimap().is_some();
+        move_to(&mut ed, 700.0, 520.0);
+        let ended = up(&mut ed, PointerButton::Left, 700.0, 520.0);
+
+        // Assert
+        assert!(!released, "nothing changed on screen");
+        assert!(still_shown);
+        assert!(ended, "the minimap hides with the release");
+        assert_view_centred(&ed, map.world_at(Vec2::new(700.0, 520.0)));
+        assert!(ed.minimap().is_none());
+        assert_eq!(ed.active_gesture(), None);
+    }
+
+    #[test]
+    fn minimap_drag_survives_a_snapshot_round_trip() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        down(&mut ed, PointerButton::Left, 650.0, 500.0);
+
+        // Act
+        let text = ed.snapshot().to_text();
+        let mut loaded = match Snapshot::parse(&text) {
+            Ok(snapshot) => Editor::from_snapshot(snapshot),
+            Err(err) => panic!("own snapshot rejected: {err}\n{text}"),
+        };
+
+        // Assert: the same state, and the drag goes on the same way.
+        assert!(text.contains("gesture minimap left "), "{text}");
+        assert_eq!(loaded, ed);
+        assert_eq!(loaded.minimap(), ed.minimap());
+        move_to(&mut ed, 720.0, 470.0);
+        move_to(&mut loaded, 720.0, 470.0);
+        assert_eq!(loaded, ed);
+        assert_eq!(loaded.camera(), ed.camera());
+    }
+
+    #[test]
+    fn minimap_drag_is_cancelled_by_undo() {
+        // Arrange
+        let mut ed = minimap_editor();
+        key(&mut ed, Key::Space);
+        down(&mut ed, PointerButton::Left, 650.0, 500.0);
+
+        // Act
+        key_with(&mut ed, Key::Z, CTRL);
+        let camera = *ed.camera();
+        move_to(&mut ed, 720.0, 470.0);
+
+        // Assert: the gesture is gone, Space still shows the minimap.
+        assert_eq!(ed.active_gesture(), None);
+        assert_eq!(*ed.camera(), camera);
+        assert!(ed.document().is_empty());
+        assert!(shown(&ed).content().is_none());
+    }
+
+    #[test]
+    fn minimap_hidden_computes_no_content_bounds() {
+        // Arrange
+        let mut ed = minimap_editor();
+
+        // Act: draw, pan with the hand tool, zoom, undo.
+        drag(&mut ed, 100.0, 100.0);
+        ed.apply(Command::SetTool(Tool::Hand));
+        drag(&mut ed, 200.0, 200.0);
+        ed.handle(InputEvent::Scroll {
+            pos: Vec2::new(10.0, 10.0),
+            delta: 1.0,
+        });
+        key_with(&mut ed, Key::Z, CTRL);
+
+        // Assert
+        assert!(ed.minimap().is_none());
+        assert!(ed.minimap_content.is_none());
+    }
+
+    #[test]
+    fn minimap_content_bounds_follow_the_document_revision() {
+        // Arrange: one pen stroke.
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        drag(&mut ed, 100.0, 100.0);
+        let drawn = ed.document_revision();
+
+        // Act: show, pan, then undo with Space held.
+        key(&mut ed, Key::Space);
+        let first = ed.minimap_content;
+        drag(&mut ed, 300.0, 300.0);
+        let panned = ed.minimap_content;
+        key_with(&mut ed, Key::Z, CTRL);
+        let undone = ed.minimap_content;
+
+        // Assert
+        let Some((revision, Some(bounds))) = first else {
+            panic!("bounds are computed when the minimap shows: {first:?}");
+        };
+        assert_eq!(revision, drawn);
+        assert_eq!(
+            Some(bounds),
+            minimap::content_bounds(ed_redone(&ed).document())
+        );
+        assert_eq!(panned, first, "panning computes nothing");
+        assert_eq!(undone, Some((ed.document_revision(), None)));
+        assert!(ed.document_revision() > drawn);
+        assert!(shown(&ed).content().is_none());
+    }
+
+    /// A copy of `ed` with its last undone step redone.
+    fn ed_redone(ed: &Editor) -> Editor {
+        let mut copy = ed.clone();
+        copy.apply(Command::Redo);
+        copy
+    }
+
+    #[test]
+    fn minimap_empty_document_has_no_content() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+
+        // Act
+        key(&mut ed, Key::Space);
+        let map = shown(&ed);
+
+        // Assert: only the view, which fills the drawing area's height.
+        assert!(map.content().is_none() && map.content_rect().is_none());
+        assert_eq!(map.world(), view_rect(&ed));
+        let frame = map.frame(view_rect(&ed));
+        assert!(approx_eq(frame.height(), map.area().height(), 1e-3));
     }
 }
