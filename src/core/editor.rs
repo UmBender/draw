@@ -7927,220 +7927,223 @@ mod tests {
     // ---- T109 shape recognition --------------------------------------------
 
     mod recognize_shape {
-    use super::*;
+        use super::*;
 
-    /// An editor with a viewport, on the pen tool.
-    fn pen_editor() -> Editor {
-        let mut ed = Editor::new();
-        ed.handle(InputEvent::Resize {
-            size: Vec2::new(1_200.0, 900.0),
-        });
-        ed.apply(Command::SetTool(Tool::Pen));
-        ed
-    }
-
-    /// Drags the left button through `points` (screen pixels).
-    fn drag_through(ed: &mut Editor, points: &[Vec2]) {
-        let (Some(first), Some(last)) = (points.first(), points.last()) else {
-            return;
-        };
-        down(ed, PointerButton::Left, first.x, first.y);
-        for p in &points[1..] {
-            move_to(ed, p.x, p.y);
+        /// An editor with a viewport, on the pen tool.
+        fn pen_editor() -> Editor {
+            let mut ed = Editor::new();
+            ed.handle(InputEvent::Resize {
+                size: Vec2::new(1_200.0, 900.0),
+            });
+            ed.apply(Command::SetTool(Tool::Pen));
+            ed
         }
-        up(ed, PointerButton::Left, last.x, last.y);
-    }
 
-    /// A slightly wobbly circle of radius 150 around `(cx, cy)`.
-    fn circle_path(cx: f32, cy: f32) -> Vec<Vec2> {
-        (0..=72)
-            .map(|i| {
-                let a = i as f32 * std::f32::consts::TAU / 72.0;
-                let r = 150.0 + 3.0 * (5.0 * a).sin();
-                Vec2::new(cx + r * a.cos(), cy + r * a.sin())
-            })
-            .collect()
-    }
+        /// Drags the left button through `points` (screen pixels).
+        fn drag_through(ed: &mut Editor, points: &[Vec2]) {
+            let (Some(first), Some(last)) = (points.first(), points.last()) else {
+                return;
+            };
+            down(ed, PointerButton::Left, first.x, first.y);
+            for p in &points[1..] {
+                move_to(ed, p.x, p.y);
+            }
+            up(ed, PointerButton::Left, last.x, last.y);
+        }
 
-    /// A zigzag scribble starting at `(x, y)`.
-    fn scribble_path(x: f32, y: f32) -> Vec<Vec2> {
-        (0..=12)
-            .map(|i| {
-                let dx = if i % 2 == 0 { 0.0 } else { 180.0 };
-                Vec2::new(x + dx, y + i as f32 * 15.0)
-            })
-            .collect()
-    }
+        /// A slightly wobbly circle of radius 150 around `(cx, cy)`.
+        fn circle_path(cx: f32, cy: f32) -> Vec<Vec2> {
+            (0..=72)
+                .map(|i| {
+                    let a = i as f32 * std::f32::consts::TAU / 72.0;
+                    let r = 150.0 + 3.0 * (5.0 * a).sin();
+                    Vec2::new(cx + r * a.cos(), cy + r * a.sin())
+                })
+                .collect()
+        }
 
-    fn shapes_of(ed: &Editor) -> Vec<(ShapeId, Shape)> {
-        ed.document()
-            .shapes()
-            .map(|(id, shape)| (id, shape.clone()))
-            .collect()
-    }
+        /// A zigzag scribble starting at `(x, y)`.
+        fn scribble_path(x: f32, y: f32) -> Vec<Vec2> {
+            (0..=12)
+                .map(|i| {
+                    let dx = if i % 2 == 0 { 0.0 } else { 180.0 };
+                    Vec2::new(x + dx, y + i as f32 * 15.0)
+                })
+                .collect()
+        }
 
-    #[test]
-    fn z_after_a_pen_stroke_replaces_it_with_its_shape() {
-        // Arrange
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &circle_path(400.0, 400.0));
-        let drawn = shapes_of(&ed);
-        assert!(matches!(drawn.as_slice(), [(_, Shape::Stroke { .. })]));
-        let revision = ed.document_revision();
+        fn shapes_of(ed: &Editor) -> Vec<(ShapeId, Shape)> {
+            ed.document()
+                .shapes()
+                .map(|(id, shape)| (id, shape.clone()))
+                .collect()
+        }
 
-        // Act
-        let changed = key(&mut ed, Key::Z);
-
-        // Assert
-        assert!(changed);
-        let now = shapes_of(&ed);
-        assert_eq!(now.len(), 1);
-        assert_eq!(now[0].0, drawn[0].0, "same id, same place");
-        assert!(matches!(now[0].1, Shape::Ellipse { .. }), "{:?}", now[0].1);
-        assert_eq!(now[0].1.style(), drawn[0].1.style());
-        assert!(ed.document_revision() > revision);
-    }
-
-    #[test]
-    fn z_after_another_edit_does_nothing() {
-        // A circle, then a rectangle drawn with the tool; a circle, then
-        // the selection grown.
-        let edits: [fn(&mut Editor); 2] = [
-            |ed| {
-                ed.apply(Command::SetTool(Tool::Rect));
-                drag_through(ed, &[Vec2::new(700.0, 100.0), Vec2::new(800.0, 200.0)]);
-            },
-            |ed| {
-                ed.apply(Command::SelectAll);
-                assert!(ed.apply(Command::ScaleUp));
-            },
-        ];
-        for (case, edit) in edits.into_iter().enumerate() {
+        #[test]
+        fn z_after_a_pen_stroke_replaces_it_with_its_shape() {
             // Arrange
             let mut ed = pen_editor();
             drag_through(&mut ed, &circle_path(400.0, 400.0));
-            edit(&mut ed);
-            let before = shapes_of(&ed);
-            let undo = ed.history.undo_len();
+            let drawn = shapes_of(&ed);
+            assert!(matches!(drawn.as_slice(), [(_, Shape::Stroke { .. })]));
+            let revision = ed.document_revision();
 
             // Act
             let changed = key(&mut ed, Key::Z);
 
             // Assert
-            assert!(!changed, "case {case}");
-            assert_eq!(shapes_of(&ed), before, "case {case}");
-            assert_eq!(ed.history.undo_len(), undo, "case {case}");
+            assert!(changed);
+            let now = shapes_of(&ed);
+            assert_eq!(now.len(), 1);
+            assert_eq!(now[0].0, drawn[0].0, "same id, same place");
+            assert!(matches!(now[0].1, Shape::Ellipse { .. }), "{:?}", now[0].1);
+            assert_eq!(now[0].1.style(), drawn[0].1.style());
+            assert!(ed.document_revision() > revision);
         }
-    }
 
-    #[test]
-    fn z_after_undo_does_nothing() {
-        // Arrange: two circles, the second undone.
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &circle_path(300.0, 300.0));
-        drag_through(&mut ed, &circle_path(700.0, 500.0));
-        assert!(ed.apply(Command::Undo));
-        let before = shapes_of(&ed);
+        #[test]
+        fn z_after_another_edit_does_nothing() {
+            // A circle, then a rectangle drawn with the tool; a circle, then
+            // the selection grown.
+            let edits: [fn(&mut Editor); 2] = [
+                |ed| {
+                    ed.apply(Command::SetTool(Tool::Rect));
+                    drag_through(ed, &[Vec2::new(700.0, 100.0), Vec2::new(800.0, 200.0)]);
+                },
+                |ed| {
+                    ed.apply(Command::SelectAll);
+                    assert!(ed.apply(Command::ScaleUp));
+                },
+            ];
+            for (case, edit) in edits.into_iter().enumerate() {
+                // Arrange
+                let mut ed = pen_editor();
+                drag_through(&mut ed, &circle_path(400.0, 400.0));
+                edit(&mut ed);
+                let before = shapes_of(&ed);
+                let undo = ed.history.undo_len();
 
-        // Act
-        let changed = key(&mut ed, Key::Z);
+                // Act
+                let changed = key(&mut ed, Key::Z);
 
-        // Assert
-        assert!(!changed);
-        assert_eq!(shapes_of(&ed), before);
-        assert!(ed.can_redo());
-    }
+                // Assert
+                assert!(!changed, "case {case}");
+                assert_eq!(shapes_of(&ed), before, "case {case}");
+                assert_eq!(ed.history.undo_len(), undo, "case {case}");
+            }
+        }
 
-    #[test]
-    fn z_during_a_gesture_does_nothing() {
-        // Arrange: a circle, then a second stroke still being drawn.
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &circle_path(300.0, 300.0));
-        let before = shapes_of(&ed);
-        down(&mut ed, PointerButton::Left, 800.0, 100.0);
-        move_to(&mut ed, 850.0, 160.0);
-        assert!(ed.gesture.is_some());
+        #[test]
+        fn z_after_undo_does_nothing() {
+            // Arrange: two circles, the second undone.
+            let mut ed = pen_editor();
+            drag_through(&mut ed, &circle_path(300.0, 300.0));
+            drag_through(&mut ed, &circle_path(700.0, 500.0));
+            assert!(ed.apply(Command::Undo));
+            let before = shapes_of(&ed);
 
-        // Act
-        let changed = key(&mut ed, Key::Z);
+            // Act
+            let changed = key(&mut ed, Key::Z);
 
-        // Assert
-        assert!(!changed);
-        assert!(ed.gesture.is_some());
-        assert_eq!(shapes_of(&ed), before);
-    }
+            // Assert
+            assert!(!changed);
+            assert_eq!(shapes_of(&ed), before);
+            assert!(ed.can_redo());
+        }
 
-    #[test]
-    fn z_in_text_edit_types_z() {
-        // Arrange: a circle, then a text block open.
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &circle_path(300.0, 300.0));
-        let circle = shapes_of(&ed);
-        ed.apply(Command::SetTool(Tool::Text));
-        place(&mut ed, 700.0, 600.0, "a");
+        #[test]
+        fn z_during_a_gesture_does_nothing() {
+            // Arrange: a circle, then a second stroke still being drawn.
+            let mut ed = pen_editor();
+            drag_through(&mut ed, &circle_path(300.0, 300.0));
+            let before = shapes_of(&ed);
+            down(&mut ed, PointerButton::Left, 800.0, 100.0);
+            move_to(&mut ed, 850.0, 160.0);
+            assert!(ed.gesture.is_some());
 
-        // Act
-        ed.handle(InputEvent::Char { ch: 'z', mods: NONE });
-        key(&mut ed, Key::Z);
+            // Act
+            let changed = key(&mut ed, Key::Z);
 
-        // Assert
-        assert_eq!(ed.text_edit().map(TextEdit::text), Some("az"));
-        assert_eq!(shapes_of(&ed), circle);
-    }
+            // Assert
+            assert!(!changed);
+            assert!(ed.gesture.is_some());
+            assert_eq!(shapes_of(&ed), before);
+        }
 
-    #[test]
-    fn z_is_one_undo_step_and_undo_restores_the_stroke() {
-        // Arrange
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &circle_path(400.0, 400.0));
-        let drawn = shapes_of(&ed);
-        let undo = ed.history.undo_len();
+        #[test]
+        fn z_in_text_edit_types_z() {
+            // Arrange: a circle, then a text block open.
+            let mut ed = pen_editor();
+            drag_through(&mut ed, &circle_path(300.0, 300.0));
+            let circle = shapes_of(&ed);
+            ed.apply(Command::SetTool(Tool::Text));
+            place(&mut ed, 700.0, 600.0, "a");
 
-        // Act
-        assert!(key(&mut ed, Key::Z));
+            // Act
+            ed.handle(InputEvent::Char {
+                ch: 'z',
+                mods: NONE,
+            });
+            key(&mut ed, Key::Z);
 
-        // Assert
-        assert_eq!(ed.history.undo_len(), undo + 1);
-        let shape = shapes_of(&ed);
-        assert!(key_with(&mut ed, Key::Z, CTRL));
-        assert_eq!(shapes_of(&ed), drawn);
-        assert!(ed.apply(Command::Redo));
-        assert_eq!(shapes_of(&ed), shape);
-    }
+            // Assert
+            assert_eq!(ed.text_edit().map(TextEdit::text), Some("az"));
+            assert_eq!(shapes_of(&ed), circle);
+        }
 
-    #[test]
-    fn z_on_a_scribble_changes_nothing_and_records_no_step() {
-        // Arrange
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &scribble_path(300.0, 300.0));
-        let before = ed.clone();
-        let revision = ed.document_revision();
+        #[test]
+        fn z_is_one_undo_step_and_undo_restores_the_stroke() {
+            // Arrange
+            let mut ed = pen_editor();
+            drag_through(&mut ed, &circle_path(400.0, 400.0));
+            let drawn = shapes_of(&ed);
+            let undo = ed.history.undo_len();
 
-        // Act
-        let changed = key(&mut ed, Key::Z);
+            // Act
+            assert!(key(&mut ed, Key::Z));
 
-        // Assert
-        assert!(!changed);
-        assert_eq!(ed, before);
-        assert_eq!(ed.document_revision(), revision);
-    }
+            // Assert
+            assert_eq!(ed.history.undo_len(), undo + 1);
+            let shape = shapes_of(&ed);
+            assert!(key_with(&mut ed, Key::Z, CTRL));
+            assert_eq!(shapes_of(&ed), drawn);
+            assert!(ed.apply(Command::Redo));
+            assert_eq!(shapes_of(&ed), shape);
+        }
 
-    #[test]
-    fn z_twice_acts_once() {
-        // Arrange
-        let mut ed = pen_editor();
-        drag_through(&mut ed, &circle_path(400.0, 400.0));
-        assert!(key(&mut ed, Key::Z));
-        let once = shapes_of(&ed);
-        let undo = ed.history.undo_len();
+        #[test]
+        fn z_on_a_scribble_changes_nothing_and_records_no_step() {
+            // Arrange
+            let mut ed = pen_editor();
+            drag_through(&mut ed, &scribble_path(300.0, 300.0));
+            let before = ed.clone();
+            let revision = ed.document_revision();
 
-        // Act
-        let again = key(&mut ed, Key::Z);
+            // Act
+            let changed = key(&mut ed, Key::Z);
 
-        // Assert
-        assert!(!again);
-        assert_eq!(shapes_of(&ed), once);
-        assert_eq!(ed.history.undo_len(), undo);
-    }
+            // Assert
+            assert!(!changed);
+            assert_eq!(ed, before);
+            assert_eq!(ed.document_revision(), revision);
+        }
+
+        #[test]
+        fn z_twice_acts_once() {
+            // Arrange
+            let mut ed = pen_editor();
+            drag_through(&mut ed, &circle_path(400.0, 400.0));
+            assert!(key(&mut ed, Key::Z));
+            let once = shapes_of(&ed);
+            let undo = ed.history.undo_len();
+
+            // Act
+            let again = key(&mut ed, Key::Z);
+
+            // Assert
+            assert!(!again);
+            assert_eq!(shapes_of(&ed), once);
+            assert_eq!(ed.history.undo_len(), undo);
+        }
     }
 }

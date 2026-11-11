@@ -192,14 +192,14 @@ fn resample(path: &[P], length: f64, n: usize) -> Vec<P> {
             walked += path[seg].distance(path[seg + 1]);
             seg += 1;
         }
-        let (a, b) = (path[seg], path[seg + 1]);
-        let d = a.distance(b);
-        let t = if d > 0.0 {
-            ((at - walked) / d).clamp(0.0, 1.0)
+        let (from, to) = (path[seg], path[seg + 1]);
+        let step = from.distance(to);
+        let along = if step > 0.0 {
+            ((at - walked) / step).clamp(0.0, 1.0)
         } else {
             0.0
         };
-        out.push(a.lerp(b, t));
+        out.push(from.lerp(to, along));
     }
     out
 }
@@ -306,8 +306,8 @@ fn closed_kind(samples: &[P]) -> Option<Closed> {
         return None;
     }
     let centre = P {
-        x: (lo.x + hi.x) / 2.0,
-        y: (lo.y + hi.y) / 2.0,
+        x: f64::midpoint(lo.x, hi.x),
+        y: f64::midpoint(lo.y, hi.y),
     };
     let local: Vec<P> = turned
         .iter()
@@ -422,16 +422,16 @@ mod tests {
     /// `jitter` pixels of noise.
     fn shaky_line(a: Vec2, b: Vec2, wave: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
         let mut noise = Noise(seed);
-        let d = b - a;
-        let len = d.length();
-        let normal = Vec2::new(-d.y, d.x) / len;
-        let n = 60;
-        (0..=n)
+        let span = b - a;
+        let len = span.length();
+        let normal = Vec2::new(-span.y, span.x) / len;
+        let count = 60;
+        (0..=count)
             .map(|i| {
-                let t = i as f32 / n as f32;
+                let t = i as f32 / count as f32;
                 let off = wave * len * (PI * t).sin() * (2.0 * PI * t + 0.3).cos()
                     + jitter * noise.next();
-                a + d * t + normal * off
+                a + span * t + normal * off
             })
             .collect()
     }
@@ -451,14 +451,14 @@ mod tests {
         seed: u64,
     ) -> Vec<Vec2> {
         let mut noise = Noise(seed);
-        let n = 90;
-        (0..=n)
+        let count = 90;
+        (0..=count)
             .map(|i| {
-                let a = start + TAU * turns * i as f32 / n as f32;
-                let k = 1.0 + wobble * (3.0 * a + 0.7).sin();
-                let p = c + Vec2::new(rx * k * a.cos(), ry * k * a.sin());
-                let p = p + Vec2::new(noise.next(), noise.next()) * jitter;
-                rotate(p, c, tilt)
+                let angle = start + TAU * turns * i as f32 / count as f32;
+                let scale = 1.0 + wobble * (3.0 * angle + 0.7).sin();
+                let on = c + Vec2::new(rx * scale * angle.cos(), ry * scale * angle.sin());
+                let shaken = on + Vec2::new(noise.next(), noise.next()) * jitter;
+                rotate(shaken, c, tilt)
             })
             .collect()
     }
@@ -515,8 +515,14 @@ mod tests {
             panic!("no points");
         };
         let got = Aabb::from_corners(a, b);
-        assert!(got.min.approx_eq(expected.min, 1e-3), "{got:?} vs {expected:?}");
-        assert!(got.max.approx_eq(expected.max, 1e-3), "{got:?} vs {expected:?}");
+        assert!(
+            got.min.approx_eq(expected.min, 1e-3),
+            "{got:?} vs {expected:?}"
+        );
+        assert!(
+            got.max.approx_eq(expected.max, 1e-3),
+            "{got:?} vs {expected:?}"
+        );
     }
 
     fn style() -> Style {
@@ -554,7 +560,10 @@ mod tests {
             let fit = fit(&points);
 
             // Assert
-            assert!(matches!(fit, Some(Fit::Line { .. })), "case {seed}: {fit:?}");
+            assert!(
+                matches!(fit, Some(Fit::Line { .. })),
+                "case {seed}: {fit:?}"
+            );
             let Some((fa, fb)) = corners(fit) else {
                 continue;
             };
@@ -569,9 +578,21 @@ mod tests {
             // min, max, start (sides), turns, jitter
             (Vec2::new(0.0, 0.0), Vec2::new(200.0, 200.0), 0.0, 1.0, 3.0),
             (Vec2::new(0.0, 0.0), Vec2::new(40.0, 40.0), 0.5, 0.97, 0.6),
-            (Vec2::new(100.0, 50.0), Vec2::new(700.0, 650.0), 2.3, 1.03, 8.0),
+            (
+                Vec2::new(100.0, 50.0),
+                Vec2::new(700.0, 650.0),
+                2.3,
+                1.03,
+                8.0,
+            ),
             (Vec2::new(0.0, 0.0), Vec2::new(300.0, 120.0), 1.0, 1.0, 2.5),
-            (Vec2::new(-80.0, -400.0), Vec2::new(0.0, 0.0), 3.6, 0.98, 1.5),
+            (
+                Vec2::new(-80.0, -400.0),
+                Vec2::new(0.0, 0.0),
+                3.6,
+                0.98,
+                1.5,
+            ),
         ];
         for (seed, &(min, max, start, turns, jitter)) in cases.iter().enumerate() {
             // Arrange
@@ -581,7 +602,10 @@ mod tests {
             let fit = fit(&points);
 
             // Assert
-            assert!(matches!(fit, Some(Fit::Rect { .. })), "case {seed}: {fit:?}");
+            assert!(
+                matches!(fit, Some(Fit::Rect { .. })),
+                "case {seed}: {fit:?}"
+            );
             if let Some((a, b)) = corners(fit) {
                 assert_box(a, b, &points);
             }
@@ -706,13 +730,7 @@ mod tests {
             0.0,
             4,
         ));
-        let line = stroke(shaky_line(
-            Vec2::ZERO,
-            Vec2::new(100.0, 40.0),
-            0.01,
-            0.5,
-            5,
-        ));
+        let line = stroke(shaky_line(Vec2::ZERO, Vec2::new(100.0, 40.0), 0.01, 0.5, 5));
 
         // Act
         let shapes = [recognize(&circle), recognize(&square), recognize(&line)];
@@ -787,7 +805,10 @@ mod tests {
             let fit = fit(&points);
 
             // Assert
-            assert!(matches!(fit, Some(Fit::Rect { .. })), "tilt {tilt}: {fit:?}");
+            assert!(
+                matches!(fit, Some(Fit::Rect { .. })),
+                "tilt {tilt}: {fit:?}"
+            );
             if let Some((a, b)) = corners(fit) {
                 assert_box(a, b, &points);
             }
@@ -828,15 +849,7 @@ mod tests {
     fn fit_open_curves_never_close() {
         let c_arc = shaky_ellipse(Vec2::ZERO, 100.0, 100.0, 0.5, 0.75, 0.01, 0.5, 0.0, 1);
         let half = shaky_ellipse(Vec2::ZERO, 100.0, 100.0, 0.0, 0.5, 0.0, 0.0, 0.0, 2);
-        let u = shaky_rect(
-            Vec2::ZERO,
-            Vec2::new(200.0, 200.0),
-            0.0,
-            0.75,
-            1.0,
-            0.0,
-            3,
-        );
+        let u = shaky_rect(Vec2::ZERO, Vec2::new(200.0, 200.0), 0.0, 0.75, 1.0, 0.0, 3);
         let l = vec![
             Vec2::new(0.0, 0.0),
             Vec2::new(0.0, 200.0),
@@ -860,7 +873,10 @@ mod tests {
             ("empty", vec![]),
             ("one point", vec![p]),
             ("all equal", vec![p; 50]),
-            ("NaN", vec![p, Vec2::new(f32::NAN, 0.0), Vec2::new(10.0, 4.0)]),
+            (
+                "NaN",
+                vec![p, Vec2::new(f32::NAN, 0.0), Vec2::new(10.0, 4.0)],
+            ),
             ("infinite", vec![p, Vec2::new(f32::INFINITY, 4.0)]),
         ];
         for (name, points) in cases {
@@ -902,7 +918,11 @@ mod tests {
         let fits = [fit(&circle), fit(&extremes), fit(&corners_max)];
 
         // Assert
-        assert!(matches!(fits[0], Some(Fit::Ellipse { .. })), "{:?}", fits[0]);
+        assert!(
+            matches!(fits[0], Some(Fit::Ellipse { .. })),
+            "{:?}",
+            fits[0]
+        );
         assert!(matches!(fits[1], Some(Fit::Line { .. })), "{:?}", fits[1]);
         for fit in fits {
             assert!(fit_is_finite(fit), "{fit:?}");
