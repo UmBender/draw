@@ -6,6 +6,18 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A graph typed with `Ctrl+L` that has no cycle is drawn in layers even
+  when it is a forest: each tree from its first node, side by side. Only
+  a cycle sends it to the circle.
+
+### Fixed
+
+- On a circle layout, the weight of an edge running exactly from the
+  upper right to the lower left could land on a node; it now always sits
+  above the edge.
+
 ## [1.5.0] - 2026-11-11
 
 ### Added

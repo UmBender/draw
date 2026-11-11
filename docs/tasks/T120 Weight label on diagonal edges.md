@@ -1,7 +1,7 @@
 ---
 id: T120
 title: Weight label on diagonal edges
-status: review
+status: done
 wave: 60
 branch: fix/weight-label-tie
 depends_on: []

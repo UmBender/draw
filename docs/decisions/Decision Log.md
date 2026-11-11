@@ -138,3 +138,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 127 | [[ADR-T109-1 Shape recognition on Z]] | accepted | decision | 0005, T11-1, T29-2, T74-1 | — |
 | 128 | [[ADR-T110-1 Minimap geometry, routing and overview cache]] | accepted | decision | 0003, 0006, T08-1, T24-1, T24-2, T74-1 | — |
 | 129 | [[ADR-T111-1 Command palette as a modal editor state]] | accepted | decision | T11-1, 0006 | — |
+| 130 | [[ADR-T119-1 Forests drawn in layers]] | accepted | decision | T87-1, T104-2 | amends T87-1 |
