@@ -675,6 +675,7 @@ impl Editor {
             Command::LowerSelection => self.restack(Restack::Down),
             Command::SelectionToTop => self.restack(Restack::Top),
             Command::SelectionToBottom => self.restack(Restack::Bottom),
+            Command::RecognizeShape => self.recognize_last_stroke(),
             Command::Align(side) => self.arrange(|ctx| select::align_selection(ctx, side)),
             Command::Distribute(axis) => {
                 self.arrange(|ctx| select::distribute_selection(ctx, axis))
@@ -1558,6 +1559,14 @@ impl Editor {
         self.run_edit(edit)
     }
 
+    /// Replaces the last pen stroke by the shape it looks like, as one undo
+    /// step (ADR-T109-1). Does nothing during a gesture, when the newest
+    /// undo step is not the insertion of one stroke, after an undo, or when
+    /// the stroke fits nothing. Returns whether the document changed.
+    fn recognize_last_stroke(&mut self) -> bool {
+        todo!()
+    }
+
     /// Removes selected ids that are no longer in the document.
     fn prune_selection(&mut self) {
         let doc = &self.doc;
@@ -1597,6 +1606,7 @@ fn edits_document(command: Command) -> bool {
             | Command::SelectionToBottom
             | Command::Align(_)
             | Command::Distribute(_)
+            | Command::RecognizeShape
     )
 }
 

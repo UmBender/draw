@@ -217,6 +217,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Selection to the bottom",
     ),
     (
+        KeyChord::bare(Key::Z),
+        Command::RecognizeShape,
+        "Last stroke to line / rectangle / ellipse",
+    ),
+    (
         KeyChord::alt(Key::ArrowLeft),
         Command::Align(Side::Left),
         "Align left edges",

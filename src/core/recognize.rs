@@ -1,5 +1,91 @@
 //! Shape recognition: the line, rectangle or ellipse a pen stroke looks
 //! like, or nothing (ADR-T109-1).
+//!
+//! [`fit`] resamples the stroke evenly along its length, then tries, in
+//! order: a straight line (open, nearly straight); a closed loop measured
+//! in its minimum-area box, which is a rectangle when it passes near all
+//! four box corners and hugs the box, or an ellipse when it passes near no
+//! corner and hugs the inscribed ellipse. Anything else is no fit: a wrong
+//! guess costs more than redrawing. Every length limit is a fraction of
+//! the stroke's own size, so the result does not depend on zoom. The maths
+//! runs in `f64`, so huge coordinates cannot overflow, and the returned
+//! points come from the stroke's own `f32` points, so they are finite.
+
+use crate::core::geom::Vec2;
+use crate::core::shape::Shape;
+
+/// Samples taken evenly along the stroke before measuring.
+pub const SAMPLES: usize = 128;
+/// A line's chord is at least this fraction of the path length.
+pub const LINE_MIN_STRAIGHTNESS: f32 = 0.8;
+/// No sample of a line lies farther than this fraction of the chord from
+/// it.
+pub const LINE_MAX_DEVIATION: f32 = 0.05;
+/// A loop is closed when its ends are at most this fraction of the path
+/// length apart.
+pub const CLOSED_MAX_GAP: f32 = 0.15;
+/// Rotations of the measuring box tried over a quarter turn.
+pub const ROTATION_STEPS: u32 = 90;
+/// The short side of a closed shape's box is at least this fraction of its
+/// long side.
+pub const MIN_ASPECT: f32 = 0.1;
+/// A closed shape winds around its box centre at least this fraction of a
+/// full turn.
+pub const MIN_TURN: f32 = 0.8;
+/// A box corner counts when a sample lies within this fraction of the box
+/// diagonal.
+pub const CORNER_TOLERANCE: f32 = 0.08;
+/// Mean distance of the samples to the outline, as a fraction of the box
+/// diagonal.
+pub const MEAN_RESIDUAL: f32 = 0.035;
+/// Largest distance of a sample to the outline, as a fraction of the box
+/// diagonal.
+pub const MAX_RESIDUAL: f32 = 0.1;
+
+/// The shape a stroke looks like. For [`Fit::Rect`] and [`Fit::Ellipse`],
+/// `a` and `b` are opposite corners of the stroke's axis-aligned bounding
+/// box.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Fit {
+    /// A straight segment from the stroke's first to its last point.
+    Line {
+        /// Start point.
+        a: Vec2,
+        /// End point.
+        b: Vec2,
+    },
+    /// A rectangle.
+    Rect {
+        /// Smallest corner.
+        a: Vec2,
+        /// Largest corner.
+        b: Vec2,
+    },
+    /// An ellipse inscribed in the box.
+    Ellipse {
+        /// Smallest corner of the box.
+        a: Vec2,
+        /// Largest corner of the box.
+        b: Vec2,
+    },
+}
+
+/// The shape the polyline `points` looks like, or `None` when it fits none
+/// well enough or is degenerate (fewer than two points, a non-finite
+/// point, no length).
+#[must_use]
+pub fn fit(points: &[Vec2]) -> Option<Fit> {
+    let _ = points;
+    todo!()
+}
+
+/// The line, rectangle or ellipse replacing `shape`, with its colour and
+/// width; `None` for anything but a [`Shape::Stroke`] that fits.
+#[must_use]
+pub fn recognize(shape: &Shape) -> Option<Shape> {
+    let _ = shape;
+    todo!()
+}
 
 #[cfg(test)]
 mod tests {
