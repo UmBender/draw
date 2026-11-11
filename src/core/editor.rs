@@ -23,6 +23,7 @@ use crate::core::document::{
     Document, IdSet, ShapeId, tx_clear, tx_insert, tx_lock, tx_remove, tx_replace, tx_restack,
     tx_unlock_all,
 };
+use crate::core::file::DocFile;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -31,7 +32,6 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
 use crate::core::smoothing::SmoothingLevel;
-use crate::core::file::DocFile;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
 use crate::core::tools::grid::{TableError, TextTable};
@@ -539,14 +539,54 @@ impl Editor {
     /// This document as a [`DocFile`] (ADR-T108-1).
     #[must_use]
     pub fn file(&self) -> DocFile {
-        DocFile(self.clone())
+        // Only the document parts are copied: no history, clipboard or
+        // tool state, so a save costs one document clone.
+        let mut kept = Self::new();
+        kept.page = self.page;
+        kept.doc = self.doc.clone();
+        kept.camera = Camera::new(self.camera.offset(), self.camera.zoom());
+        kept.style.helpers.next_number = self.style.helpers.next_number;
+        kept.pages = self
+            .pages
+            .iter()
+            .map(|slot| {
+                slot.as_ref().map(|p| {
+                    Box::new(Page {
+                        doc: p.doc.clone(),
+                        history: History::new(),
+                        camera: Camera::new(p.camera.offset(), p.camera.zoom()),
+                        selection: Vec::new(),
+                        next_number: p.next_number,
+                    })
+                })
+            })
+            .collect();
+        DocFile(kept)
     }
 
     /// Replaces the document (every page and the current one) with the one
     /// in `file`; settings, tools and clipboard stay. The history starts
     /// empty and the shell redraws everything (ADR-T108-1).
     pub fn apply_file(&mut self, file: DocFile) {
-        todo!("apply {file:?}")
+        if self.tools.text.edit.is_some() {
+            self.cancel_text();
+        }
+        self.cancel_gesture();
+        let first = self.style.helpers.first_number();
+        let loaded = file.0;
+        self.page = loaded.page;
+        self.pages = loaded.pages;
+        for page in self.pages.iter_mut().flatten() {
+            page.next_number = page.next_number.max(first);
+        }
+        self.doc = loaded.doc;
+        self.camera = loaded.camera;
+        self.history = History::new();
+        self.selection.clear();
+        self.reedit = None;
+        self.style.helpers.next_number = loaded.style.helpers.next_number.max(first);
+        self.doc_revision = self.doc_revision.wrapping_add(1);
+        self.doc_base_revision = self.doc_revision;
     }
 
     /// Whether `Ctrl+S` was pressed since the last call (ADR-T108-1).
@@ -555,13 +595,106 @@ impl Editor {
     }
 
     /// Writes the pages for a document file (ADR-T108-1).
+    ///
+    /// A page that is still empty at the default view is left out; the
+    /// numbers are at least 1 so the text does not depend on the
+    /// zero-based setting of the writer.
     pub(crate) fn write_file(&self, w: &mut Writer) {
-        todo!("write {w:?}")
+        let current = Page {
+            doc: self.doc.clone(),
+            history: History::new(),
+            camera: Camera::new(self.camera.offset(), self.camera.zoom()),
+            selection: Vec::new(),
+            next_number: self.style.helpers.next_number,
+        };
+        let blank = Page::fresh(FIRST_NUMBER);
+        let written: Vec<(usize, &Page)> = (0..PAGE_COUNT)
+            .filter_map(|index| {
+                let page = if index == self.page {
+                    &current
+                } else {
+                    self.pages.get(index)?.as_deref()?
+                };
+                let empty = page.doc == blank.doc
+                    && page.camera == blank.camera
+                    && page.next_number <= FIRST_NUMBER;
+                (!empty).then_some((index, page))
+            })
+            .collect();
+        w.section("pages");
+        w.record("current", |l| {
+            l.word(self.page);
+        });
+        w.record("count", |l| {
+            l.word(written.len());
+        });
+        for (index, page) in written {
+            w.section("page");
+            w.record("index", |l| {
+                l.word(index);
+            });
+            w.record("camera", |l| {
+                l.put(&page.camera.offset()).f32(page.camera.zoom());
+            });
+            w.record("number", |l| {
+                l.word(page.next_number.max(FIRST_NUMBER));
+            });
+            snapshot::write_document(w, &page.doc);
+        }
     }
 
     /// Reads the pages of a document file of `version` (ADR-T108-1).
+    ///
+    /// Version 1 is the only one so far; a later version keeps a branch
+    /// here for every older one.
     pub(crate) fn read_file(r: &mut Reader<'_>, version: u32) -> Result<Self, SnapshotError> {
-        todo!("read {r:?} {version}")
+        debug_assert!(version >= 1);
+        r.set_shape_text(true);
+        r.section("pages")?;
+        let mut t = r.record("current")?;
+        let current: usize = t.number("current page")?;
+        t.end()?;
+        if current >= PAGE_COUNT {
+            return Err(t.error(format!("page {current} out of range")));
+        }
+        let mut t = r.record("count")?;
+        let count: usize = t.number("page count")?;
+        t.end()?;
+        if count > PAGE_COUNT {
+            return Err(t.error(format!("{count} pages")));
+        }
+        let mut ed = Self::new();
+        ed.page = current;
+        let mut last: Option<usize> = None;
+        for _ in 0..count {
+            r.section("page")?;
+            let mut t = r.record("index")?;
+            let index: usize = t.number("page index")?;
+            t.end()?;
+            if index >= PAGE_COUNT || last.is_some_and(|l| index <= l) {
+                return Err(t.error(format!("page {index} out of place")));
+            }
+            last = Some(index);
+            let camera = read_camera(r)?;
+            let mut t = r.record("number")?;
+            let next_number: u32 = t.number("next number")?;
+            t.end()?;
+            let doc = read_numbered_document(r)?;
+            if index == current {
+                ed.doc = doc;
+                ed.camera = camera;
+                ed.style.helpers.next_number = next_number;
+            } else {
+                ed.pages[index] = Some(Box::new(Page {
+                    doc,
+                    history: History::new(),
+                    camera,
+                    selection: Vec::new(),
+                    next_number,
+                }));
+            }
+        }
+        Ok(ed)
     }
 
     /// The current page, `0` for page 1 (ADR-T116-1).
@@ -5329,13 +5462,25 @@ mod tests {
     }
 
     #[test]
-    fn save_file_during_text_edit_commits_the_text_and_asks() {
+    fn save_file_during_text_edit_is_ignored_like_every_binding() {
         let mut ed = Editor::new();
         ed.apply(Command::SetTool(Tool::Text));
         place(&mut ed, 5.0, 5.0, "a");
         assert!(ed.text_edit().is_some());
 
         key_with(&mut ed, Key::S, CTRL);
+
+        assert!(ed.text_edit().is_some(), "the block stays open");
+        assert!(!ed.take_save_request());
+    }
+
+    #[test]
+    fn save_file_command_during_text_edit_commits_the_text_and_asks() {
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Text));
+        place(&mut ed, 5.0, 5.0, "a");
+
+        ed.apply(Command::SaveFile);
 
         assert!(ed.text_edit().is_none(), "the block was committed");
         assert_eq!(ed.document().shapes().count(), 1);

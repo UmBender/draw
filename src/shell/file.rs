@@ -2,10 +2,12 @@
 //! log lines (T108, ADR-T108-1). Pure of the window: tested on its own.
 
 use std::ffi::OsString;
+use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::core::file::DocFile;
-use crate::shell::diag::Level;
+use crate::shell::diag::{self, Level};
 
 /// What opening the command-line file gave.
 #[derive(Debug)]
@@ -23,14 +25,31 @@ pub enum Opened {
 /// not an option and not the value of `--recover`.
 #[must_use]
 pub fn path_from_args(args: impl IntoIterator<Item = OsString>) -> Option<PathBuf> {
-    todo!("{:?}", args.into_iter().count())
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        if arg == "--recover" {
+            // Its value, `prev` or an unknown word, is not a file.
+            args.next();
+        } else if !arg.to_string_lossy().starts_with("--") {
+            return Some(PathBuf::from(arg));
+        }
+    }
+    None
 }
 
 /// `draw-<UTC date>-<time>.draw` in `home`, with `-<attempt>` before the
 /// extension unless `attempt` is 0.
 #[must_use]
 pub fn default_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
-    todo!("{home:?} {unix_secs} {attempt}")
+    // `20261109T143005Z` to `20261109-143005`.
+    let stamp = diag::file::utc_stamp(unix_secs)
+        .trim_end_matches('Z')
+        .replacen('T', "-", 1);
+    if attempt == 0 {
+        home.join(format!("draw-{stamp}.draw"))
+    } else {
+        home.join(format!("draw-{stamp}-{attempt}.draw"))
+    }
 }
 
 /// Writes `text` to a temporary file next to `path` and renames it over
@@ -41,26 +60,57 @@ pub fn default_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
 /// The I/O error of the first step that failed; the temporary file is
 /// removed.
 pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    todo!("{path:?} {}", text.len())
+    let mut name = path.file_name().map(OsString::from).unwrap_or_default();
+    // Unique per call, so two quick saves never share a temporary file.
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+    let call = CALLS.fetch_add(1, Ordering::Relaxed);
+    name.push(format!(".{}.{call}.tmp", std::process::id()));
+    let temporary = path.with_file_name(name);
+    let written = std::fs::File::create(&temporary).and_then(|mut file| {
+        file.write_all(text.as_bytes())?;
+        file.sync_all()
+    });
+    let done = written.and_then(|()| std::fs::rename(&temporary, path));
+    if done.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    done
 }
 
 /// Reads and parses `path`.
 #[must_use]
 pub fn open(path: &Path) -> Opened {
-    todo!("{path:?}")
+    let text = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Opened::Missing,
+        Err(err) => return Opened::Refused(format!("{} not opened: {err}", path.display())),
+    };
+    let parsed = String::from_utf8(text)
+        .map_err(|_| "not text".to_owned())
+        .and_then(|text| DocFile::parse(&text).map_err(|err| err.to_string()));
+    match parsed {
+        Ok(file) => Opened::Loaded(file),
+        Err(reason) => Opened::Refused(format!("{} not opened: {reason}", path.display())),
+    }
 }
 
 /// The file `Ctrl+S` writes to after opening `arg` gave `opened`: the
 /// argument, unless it was refused (a damaged file is never overwritten).
 #[must_use]
 pub fn save_target(opened: &Opened, arg: Option<PathBuf>) -> Option<PathBuf> {
-    todo!("{opened:?} {arg:?}")
+    match opened {
+        Opened::Refused(_) => None,
+        Opened::Loaded(_) | Opened::Missing => arg,
+    }
 }
 
 /// The log level and line for the outcome of a save.
 #[must_use]
 pub fn save_log_line(result: &Result<PathBuf, String>) -> (Level, String) {
-    todo!("{result:?}")
+    match result {
+        Ok(path) => (Level::Info, format!("drawing saved to {}", path.display())),
+        Err(err) => (Level::Error, format!("drawing not saved: {err}")),
+    }
 }
 
 #[cfg(test)]
@@ -93,7 +143,10 @@ mod tests {
             path_from_args(args(&["--recover", "prev", "a.draw"])),
             Some("a.draw".into())
         );
-        assert_eq!(path_from_args(args(&["--other", "a.draw"])), Some("a.draw".into()));
+        assert_eq!(
+            path_from_args(args(&["--other", "a.draw"])),
+            Some("a.draw".into())
+        );
         assert_eq!(path_from_args(args(&[])), None);
         assert_eq!(path_from_args(args(&["--recover"])), None);
     }

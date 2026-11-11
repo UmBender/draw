@@ -49,6 +49,7 @@ use crate::shell::backend::{self, Backend};
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
+use crate::shell::file::{self, Opened};
 use crate::shell::glyphs::GlyphAtlas;
 use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
@@ -582,7 +583,7 @@ fn restored_editor(editor: Editor, launch: &Launch, state_dir: Option<&std::path
 
 /// Runs the application until the window is closed. `launch` says whether
 /// to start from an autosave (ADR-T94-1).
-pub async fn run(launch: Launch) {
+pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
     load_fonts();
     let subscriber = register_input_subscriber();
     let mut collector = Collector::new();
@@ -605,6 +606,7 @@ pub async fn run(launch: Launch) {
         std::env::var_os("HOME").as_deref(),
     );
     editor = restored_editor(editor, &launch, state_dir.as_deref());
+    let mut save_path = file_arg.and_then(|path| open_file_argument(&mut editor, path));
     let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
     let setting = std::env::var(MSAA_ENV).ok();
     let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
@@ -658,6 +660,9 @@ pub async fn run(launch: Launch) {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
+        if editor.take_save_request() {
+            save_file(&editor, &mut save_path);
+        }
         let presented = frame.present(&editor, viewport, dpi, dirty);
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
@@ -676,6 +681,75 @@ pub async fn run(launch: Launch) {
         if let Some(hooks) = &mut hooks {
             hooks.after_swap();
         }
+    }
+}
+
+/// Opens the file named on the command line into `editor` and returns the
+/// file `Ctrl+S` should write: the argument, unless it was refused, which
+/// leaves the canvas empty and the file untouched (ADR-T108-1).
+fn open_file_argument(editor: &mut Editor, path: PathBuf) -> Option<PathBuf> {
+    let opened = file::open(&path);
+    let target = file::save_target(&opened, Some(path.clone()));
+    match opened {
+        Opened::Loaded(loaded) => {
+            editor.apply_file(loaded);
+            diag::log(Level::Info, &format!("opened {}", path.display()));
+        }
+        Opened::Missing => {
+            diag::log(
+                Level::Info,
+                &format!(
+                    "{} does not exist yet: the first Ctrl+S creates it",
+                    path.display()
+                ),
+            );
+        }
+        Opened::Refused(message) => {
+            eprintln!("draw: {message}");
+            diag::log(Level::Error, &message);
+        }
+    }
+    target
+}
+
+/// Writes the document to `target`, or to a new `~/draw-<date>-<time>.draw`
+/// that later saves reuse. The text is built here, the write runs on its
+/// own thread so the frame never waits for the disk (ADR-T108-1).
+fn save_file(editor: &Editor, target: &mut Option<PathBuf>) {
+    if target.is_none() {
+        let unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let home = std::env::var_os("HOME")
+            .filter(|home| !home.is_empty())
+            .map(PathBuf::from);
+        let Some(home) = home else {
+            let (level, line) = file::save_log_line(&Err("HOME is not set".to_owned()));
+            eprintln!("draw: {line}");
+            diag::log(level, &line);
+            return;
+        };
+        *target = (0..100)
+            .map(|attempt| file::default_path(&home, unix, attempt))
+            .find(|path| !path.exists());
+    }
+    let Some(path) = target.clone() else { return };
+    let text = editor.file().to_text();
+    let spawned = std::thread::Builder::new()
+        .name("draw-save".to_owned())
+        .spawn(move || {
+            let result = file::write_atomic(&path, &text)
+                .map(|()| path.clone())
+                .map_err(|err| format!("{}: {err}", path.display()));
+            let (level, line) = file::save_log_line(&result);
+            eprintln!("draw: {line}");
+            diag::log(level, &line);
+        });
+    if let Err(err) = spawned {
+        diag::log(
+            Level::Error,
+            &format!("drawing not saved: no thread: {err}"),
+        );
     }
 }
 

@@ -24,7 +24,8 @@ fn main() {
         diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
     }
     let launch = Launch::from_args(std::env::args_os().skip(1));
-    macroquad::Window::from_config(app::window_conf(), app::run(launch));
+    let file = draw::shell::file::path_from_args(std::env::args_os().skip(1));
+    macroquad::Window::from_config(app::window_conf(), app::run(launch, file));
     let received = signal::received();
     if let Some(quit) = received {
         diag::log(Level::Info, &app::signal_line(quit));
