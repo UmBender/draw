@@ -40,6 +40,9 @@ pub const MAX_POINTS: usize = 1000;
 /// Largest size of a coordinate; keeps every span finite (ADR-T93-1).
 pub const MAX_COORDINATE: f64 = 1e300;
 
+/// Extra columns between two trees of a forest (ADR-T119-1).
+const COMPONENT_GAP_COLUMNS: f32 = 0.5;
+
 /// Space between a plotted point's dot and its label, in ems (ADR-T95-1).
 const LABEL_GAP_EM: f32 = 0.15;
 
@@ -421,39 +424,46 @@ impl EdgeList {
         (NODE_RADIUS_EM * size).max(widest / (SQRT_2 * SHAPE_TEXT_FILL))
     }
 
-    /// Node centres of the layered drawing, or `None` if the edges are not
-    /// a tree. Arrow directions do not count. The root is the first node
-    /// named; every leaf takes a column of its own and every parent sits
-    /// centred over its children. Each layer is `extra` further down.
+    /// Node centres of the layered drawing, or `None` if the edges hold a
+    /// cycle (ADR-T119-1). Arrow directions do not count. Every component
+    /// is a tree drawn from the first node named in it, the components left
+    /// to right in the order first named; every leaf takes a column of its
+    /// own and every parent sits centred over its children. Each layer is
+    /// `extra` further down.
     fn layers(&self, pitch: f32, extra: f32) -> Option<Vec<Vec2>> {
         let n = self.names.len();
-        if self.edges.len() + 1 != n {
-            return None;
-        }
         let mut neighbours = vec![Vec::new(); n];
         for edge in &self.edges {
             neighbours[edge.from].push(edge.to);
             neighbours[edge.to].push(edge.from);
         }
-        // Preorder, children in the order they were named.
+        // Preorder per component, children in the order they were named.
         let mut parent = vec![None; n];
         let mut depth = vec![0_u32; n];
         let mut seen = vec![false; n];
-        seen[0] = true;
         let mut order = Vec::with_capacity(n);
-        let mut stack = vec![0];
-        while let Some(node) = stack.pop() {
-            order.push(node);
-            for &next in neighbours[node].iter().rev() {
-                if !seen[next] {
-                    seen[next] = true;
-                    parent[next] = Some(node);
-                    depth[next] = depth[node] + 1;
-                    stack.push(next);
+        let mut roots = 0_usize;
+        for root in 0..n {
+            if seen[root] {
+                continue;
+            }
+            roots += 1;
+            seen[root] = true;
+            let mut stack = vec![root];
+            while let Some(node) = stack.pop() {
+                order.push(node);
+                for &next in neighbours[node].iter().rev() {
+                    if !seen[next] {
+                        seen[next] = true;
+                        parent[next] = Some(node);
+                        depth[next] = depth[node] + 1;
+                        stack.push(next);
+                    }
                 }
             }
         }
-        if order.len() != n {
+        // A forest has one edge fewer than nodes per component.
+        if self.edges.len() + roots != n {
             return None;
         }
 
@@ -466,7 +476,11 @@ impl EdgeList {
         };
         let mut column = vec![0.0_f32; n];
         let mut next_leaf = 0.0;
-        for &node in &order {
+        for (i, &node) in order.iter().enumerate() {
+            // Half a column between one tree and the next.
+            if i > 0 && parent[node].is_none() {
+                next_leaf += COMPONENT_GAP_COLUMNS;
+            }
             if children(node).next().is_none() {
                 column[node] = next_leaf;
                 next_leaf += 1.0;
@@ -1732,9 +1746,98 @@ mod tests {
         assert!(nodes(&shapes).iter().all(|(_, c)| c.y >= top));
     }
 
+    // ---- T119: forests in layers (ADR-T119-1) --------------------------------
+
+    /// `true` when the drawing is layered, i.e. its circles are not all
+    /// the same distance from their mean (at least three of them).
+    fn is_layered(shapes: &[Shape]) -> bool {
+        let centres: Vec<Vec2> = shapes
+            .iter()
+            .filter(|shape| matches!(shape, Shape::Ellipse { .. }))
+            .map(|shape| shape.bounds().center())
+            .collect();
+        let middle = mean(&centres);
+        let first = centres[0].distance(middle);
+        centres.len() >= 3
+            && centres
+                .iter()
+                .any(|c| !approx_eq(c.distance(middle), first, 1e-2))
+    }
+
     #[test]
-    fn forest_goes_on_a_circle() {
-        assert_on_a_circle(&drawn("1-2 3-4"));
+    fn forest_is_drawn_in_layers_side_by_side() {
+        // Act: two separate trees.
+        let shapes = drawn("1-2 1-3 4-5");
+
+        // Assert: both roots on the top row, the second tree to the right.
+        let (first, second) = (centre(&shapes, 1), centre(&shapes, 4));
+        assert!(approx_eq(first.y, second.y, 1e-3), "roots share a row");
+        assert!(first.x < second.x);
+        assert!(centre(&shapes, 2).y > first.y, "children are below");
+        assert!(centre(&shapes, 5).y > second.y);
+        assert!(centre(&shapes, 3).x < second.x, "trees do not interleave");
+    }
+
+    #[test]
+    fn forest_components_keep_the_order_first_named() {
+        // Act: the component of 9 is named before the one of 1.
+        let shapes = drawn("9-8 1-2");
+
+        // Assert
+        assert!(centre(&shapes, 9).x < centre(&shapes, 1).x);
+    }
+
+    #[test]
+    fn forest_circles_never_overlap() {
+        // Act
+        let shapes = drawn("1-2 3-4 5-6 5-7 8-9");
+
+        // Assert
+        assert!(assert_never_overlap(&shapes).is_ok());
+    }
+
+    #[test]
+    fn forest_arrows_do_not_change_the_layout() {
+        // Act
+        let plain = drawn("1-2 3-4 3-5");
+        let arrows = drawn("2>1 3>4 5>3");
+
+        // Assert: same positions for the nodes named in the same order.
+        for (name, _) in nodes(&plain) {
+            let other = nodes(&arrows)
+                .into_iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, c)| c);
+            assert!(other.is_some(), "node {name}");
+        }
+        assert!(is_layered(&plain) && is_layered(&arrows));
+        assert!(centre(&arrows, 2).x < centre(&arrows, 3).x);
+    }
+
+    #[test]
+    fn forest_of_the_reported_input_has_two_trees() {
+        // Arrange: the input of the owner's report: 8 nodes, 6 edges, two
+        // components (`\u{2135}`-`2`, and a six-node tree).
+        let shapes = drawn("$\\aleph$ 2 $\\pi$\n1 3 4\n5 7 2\n3 4 1\n6 3 2\n1 5 1");
+
+        // Assert: layered, never a circle; `1` roots the six-node tree and
+        // `6` hangs under `3`.
+        assert!(is_layered(&shapes));
+        let top = centre(&shapes, 1).y;
+        assert!(nodes(&shapes).iter().all(|(_, c)| c.y >= top - 1e-3));
+        assert!(centre(&shapes, 3).y > top && centre(&shapes, 6).y > centre(&shapes, 3).y);
+    }
+
+    #[test]
+    fn single_tree_positions_do_not_change_with_the_forest_layout() {
+        // Act: the same tree as `tree_is_drawn_in_layers_...`, centred
+        // parent included.
+        let shapes = drawn("1-2 1-3 1-4");
+
+        // Assert
+        let (root, first, last) = (centre(&shapes, 1), centre(&shapes, 2), centre(&shapes, 4));
+        assert!(approx_eq(root.x, f32::midpoint(first.x, last.x), 1e-3));
+        assert!(approx_eq(first.x, 0.0, 1e-3) || first.x < root.x);
     }
 
     #[test]
@@ -1772,6 +1875,29 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn forest_layout_never_panics_and_stays_finite(
+            parents in prop::collection::vec((0.0_f32..1.0, 0_u8..4), 1..80),
+        ) {
+            // Arrange: node i + 2 hangs from an earlier node, or starts a
+            // new tree (a gap in the edge list).
+            let mut edges = Vec::new();
+            for (i, (r, kind)) in parents.iter().enumerate() {
+                if *kind == 0 {
+                    edges.push(format!("{}-{}", i + 2 + 1000, i + 2 + 2000));
+                } else {
+                    edges.push(format!("{}-{}", 1 + (r * (i + 1) as f32) as usize, i + 2));
+                }
+            }
+
+            // Act
+            let shapes = drawn(&edges.join(" "));
+
+            // Assert
+            prop_assert!(shapes.iter().all(Shape::is_finite));
+            assert_never_overlap(&shapes)?;
+        }
+
         #[test]
         fn nodes_never_overlap(
             pairs in prop::collection::vec((1_u32..40, 1_u32..40), 1..80),

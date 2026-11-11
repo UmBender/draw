@@ -50,8 +50,10 @@ can be moved. They are ordinary shapes, so every tool can edit them.
 | `1>3 7` or `1-2 5 2-3 9` | A weight right after a pair belongs to that pair |
 | `$s$ $v_1$ $\infty$` | Formulas as node names or weights, typeset; spaces, `-` and `>` inside `$…$` are part of them |
 
-If the edges form a tree it is drawn in layers from the first node named;
-anything else goes on a circle. Sizes follow the block's text size, and the
+If the edges have no cycle they are drawn in layers, each tree from the
+first node named in it, the trees side by side in the order they were named
+([[ADR-T119-1 Forests drawn in layers]]); a cycle sends the whole graph to a
+circle. Sizes follow the block's text size, and the
 spacing grows with the node count so that circles never overlap. A self-loop
 is skipped, though its node is drawn; an edge repeated with the same
 direction and weight is drawn once. With more than 200 nodes, or a line that
