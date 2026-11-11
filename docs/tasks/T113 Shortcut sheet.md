@@ -1,7 +1,7 @@
 ---
 id: T113
 title: Shortcut sheet
-status: in-progress
+status: review
 wave: 60
 branch: task/T113-shortcut-sheet
 depends_on: [T111]
@@ -55,11 +55,11 @@ Decisions beyond the owner's: [[ADR-T113-1 Shortcut sheet as a second modal over
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T113): specify the shortcut sheet`
-- [ ] tests — `test(T113): add failing tests for the shortcut sheet`
-- [ ] models — `feat(T113): add topics to the keymap and the sheet pages`
-- [ ] behaviour — `feat(T113): show the shortcut sheet on ?`
-- [ ] quality — `chore(T113): pass clippy and rustfmt`
-- [ ] docs — `docs(T113): update the feature note`
+- [x] tests — `test(T113): add failing tests for the shortcut sheet`
+- [x] models — `feat(T113): add topics to the keymap and the sheet pages`
+- [x] behaviour — `feat(T113): show the shortcut sheet on ?`
+- [x] quality — `chore(T113): pass clippy and rustfmt`
+- [x] docs — `docs(T113): update the feature note`
 
 ## Learning path
 
@@ -68,3 +68,4 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written with the owner; like T111 but a paged cheat sheet. Keys chosen by the owner: `?` to open, `←`/`→` and digits for pages, `Esc` to close.
+- 2026-11-11 — implemented on top of T111; `scripts/check.sh` green. The topic of a binding is an exhaustive `match` (`keymap::topic_of`), not a table field ([[ADR-T113-1 Shortcut sheet as a second modal overlay]]). `UNATTENDED CHOICE:` the palette chord and `?` rows sit on the View page (they are not bindings); `ROWS_PER_PAGE` is 14. Manual check for the owner: open the sheet with `?`, flip every page and check none overflows at 1280×800; the topic names wrap to a second line when the window is narrow.
