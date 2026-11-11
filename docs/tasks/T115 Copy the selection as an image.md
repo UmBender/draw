@@ -1,7 +1,7 @@
 ---
 id: T115
 title: Copy the selection as an image
-status: todo
+status: in-progress
 wave: 59
 branch: task/T115-copy-as-image
 depends_on: []
@@ -31,6 +31,10 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 - **AC-2** — Pasting into another app (a browser chat, an image editor) gives the image, on native Wayland and on X11; draw keeps serving the clipboard until another app takes it.
 - **AC-3** — The image is limited to a maximum size (set in the ADR) so a huge selection cannot exhaust memory; larger ones are scaled down and the log says so.
 - **AC-4** — The core part (crop box, size limit, pixel layout) is unit-tested and fuzzed; the backend patch is recorded in `vendor/miniquad/PATCHED.md` and checked by hand on both backends.
+
+Settled in [[ADR-T115-1 Selection image on the clipboard]]: margin 16 px, zoom at least 1:1, at most 4096 × 4096 px.
+
+Tests named per criterion: AC-1 `selection_image_box_adds_margin`, `copy_image_with_nothing_selected_does_nothing`; AC-3 `selection_image_size_scales_down_above_limit`; AC-4 `selection_image_size_fuzz`. AC-2 is checked by hand.
 
 ## Out of scope
 
