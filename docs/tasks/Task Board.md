@@ -222,7 +222,15 @@ flowchart TD
   T114 --> T53
   T115 --> T53
   T116 --> T53
-  T53 --> T50[T50 Version 2.0.0 refactor]
+  T117[T117 Looser shape recognition] --> T118[T118 Release 1.6.0]
+  T53 --> T118
+  T108 --> T118
+  T112 --> T118
+  T113 --> T118
+  T114 --> T118
+  T115 --> T118
+  T116 --> T118
+  T118 --> T50[T50 Version 2.0.0 refactor]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -289,9 +297,10 @@ flowchart TD
 | 57 | [[T99 Spacing commands]] · [[T100 Z-order keys]] · [[T102 Graph input follow-ups]] |
 | 58 | [[T101 Align and distribute]] · [[T103 Labelled extensible arrows]] · [[T104 Segment tree drawing]] |
 | 59 | [[T105 Display mode]] · [[T106 Fading laser pointer]] · [[T107 Lock shapes]] · [[T109 Shape recognition]] · [[T110 Minimap]] · [[T111 Command palette]] · [[T114 Export to SVG]] · [[T115 Copy the selection as an image]] · [[T116 Pages]] |
-| 60 | [[T108 Save and load]] · [[T112 User macros]] · [[T113 Shortcut sheet]] |
+| 60 | [[T108 Save and load]] · [[T112 User macros]] · [[T113 Shortcut sheet]] · [[T117 Looser shape recognition]] |
 | 61 | [[T53 Release 1.5.0]] |
-| 62 | [[T50 Version 2.0.0 refactor]] |
+| 62 | [[T118 Release 1.6.0]] |
+| 63 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
 
@@ -412,5 +421,7 @@ flowchart TD
 | [[T114 Export to SVG]] | todo | — | `task/T114-svg-export` |
 | [[T115 Copy the selection as an image]] | todo | — | `task/T115-copy-as-image` |
 | [[T116 Pages]] | todo | — | `task/T116-pages` |
-| [[T53 Release 1.5.0]] | todo | T46–T49, T51, T52, T54–T107, T109–T111 | `chore/release-1.5.0` |
+| [[T53 Release 1.5.0]] | review | T46–T49, T51, T52, T54–T107, T109–T111 | `chore/release-1.5.0` |
+| [[T117 Looser shape recognition]] | todo | — | `task/T117-looser-recognition` |
+| [[T118 Release 1.6.0]] | todo | T53, T108, T112–T117 | `chore/release-1.6.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

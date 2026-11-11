@@ -1,7 +1,7 @@
 ---
 id: T53
 title: Release 1.5.0
-status: todo
+status: review
 wave: 61
 branch: chore/release-1.5.0
 depends_on: [T46, T47, T48, T49, T51, T52, T54, T55, T56, T57, T58, T59, T60, T61, T62, T63, T64, T65, T66, T67, T68, T69, T70, T71, T72, T73, T74, T75, T76, T77, T78, T79, T80, T81, T82, T83, T84, T85, T86, T87, T88, T89, T90, T91, T92, T93, T94, T95, T96, T97, T98, T99, T100, T101, T102, T103, T104, T105, T106, T107, T109, T110, T111]
@@ -63,8 +63,8 @@ the feature proposal ([[T72 Feature proposal]]).
 ## Subtasks
 
 - [ ] checks — manual checks recorded in *Log*
-- [ ] release — `chore: release 1.5.0`, tag `v1.5.0`
-- [ ] packages — built and checksummed
+- [x] release — `chore: release 1.5.0`, tag `v1.5.0`
+- [x] packages — built and checksummed
 
 ## Log
 
@@ -73,3 +73,4 @@ the feature proposal ([[T72 Feature proposal]]).
 - 2026-11-03 — owner: the TeX symbol series T54–T71 and the feature
   proposal T72 ship in 1.5.0, which stays the last feature release.
 - 2026-11-11 — scope cut by the owner: 1.5.0 ships what is done (T46–T107, T109–T111); T108, T112–T116 move to 1.6.0. Released from `main` after integrating T105–T111.
+- 2026-11-11 — released: `chore: release 1.5.0`, tag `v1.5.0` pushed, packages built (`package.sh` needed a fix for a false `liblib` library name). Manual checks are with the owner.
