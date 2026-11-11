@@ -1,7 +1,7 @@
 ---
 id: T110
 title: Minimap
-status: in-progress
+status: review
 wave: 59
 branch: task/T110-minimap
 depends_on: []
@@ -82,18 +82,19 @@ in `core::editor`, the cached overview and the drawing `shell::minimap`.
 
 - a new `src/core/minimap.rs` (geometry), `src/core/mod.rs` (its `pub mod` line), `src/core/editor.rs`, `src/core/input.rs`
 - `src/shell/` (overview cache, input routing, drawing)
+- `docs/architecture/Architecture.md` (module map, frame flow, invariants)
 - `docs/features/Infinite canvas, pan and zoom.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`
 - this note, and new `ADR-T110-<n>` notes
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T110): specify the minimap`
-- [ ] tests — `test(T110): add failing tests for the minimap`
-- [ ] models — `feat(T110): add the minimap geometry`
-- [ ] behaviour — `feat(T110): show the minimap while panning`
-- [ ] quality — `chore(T110): pass clippy and rustfmt`
-- [ ] docs — `docs(T110): update the feature note`
+- [x] spec — `docs(T110): specify the minimap`
+- [x] tests — `test(T110): add failing tests for the minimap`
+- [x] models — `feat(T110): add the minimap geometry`
+- [x] behaviour — `feat(T110): show the minimap while panning`
+- [x] quality — `chore(T110): pass clippy and rustfmt`
+- [x] docs — `docs(T110): update the feature note`
 
 ## Learning path
 
@@ -107,3 +108,10 @@ None: it extends an existing area.
 - 2026-11-10 — UNATTENDED CHOICE: `src/core/mod.rs` added to *Files owned* for the `pub mod minimap;` line.
 - 2026-11-10 — UNATTENDED CHOICE: the new `gesture minimap` snapshot record is additive, so `snapshot::VERSION` is not bumped (as ADR-T91-1 did).
 - 2026-11-10 — UNATTENDED CHOICE: a hand-tool drag does not show the minimap (the owner listed `Space` and the middle button only).
+- 2026-11-11 — behaviour: the first full test run failed `theme::tests::guard_finds_no_colour_literal_outside_theme` for a colour struct literal in `shell::minimap`; the text bar now uses `Rgba::faded`. No new theme token: the panel reuses the toolbar and selection colours.
+- 2026-11-11 — UNATTENDED CHOICE: the thresholds of the new fuzz check `sessions_reach_the_minimap` (50, 40, 25 of 200) are set at about half the measured counts (98, 89, 56). No existing threshold changed.
+- 2026-11-11 — quality: clippy asked for `Editor::read_snapshot` to stay under 100 lines, so the one-flag records (`toolbar`, `space`) are read through a small `read_flag` helper; same format.
+- 2026-11-11 — UNATTENDED CHOICE: `docs/architecture/Architecture.md` added to *Files owned* (module map row, frame flow and the fuzzed invariant), as the workflow's docs step asks when a task adds modules.
+- 2026-11-11 — gates: `scripts/check.sh --fuzz` green (20 000 cases); `scripts/e2e.sh` green, 14 cases, no golden changed. There is no e2e case for the minimap itself.
+- 2026-11-11 — not verified by a run of the app: how the minimap looks (panel, schematic shapes, marker, frame), the alpha of the overview texture over the panel, and idle CPU after `Space` is released. Manual checks for the owner: hold `Space` on a large drawing, click and drag in the minimap; middle-button pan; pan far from the content (marker); `DRAW_FRAME_TIMES=1` shows no document re-render when the minimap appears; idle CPU.
+- 2026-11-11 — no tutorial: the task extends an existing area (*Learning path*). Feature note, README and cheat sheet updated. Status → `review`.
