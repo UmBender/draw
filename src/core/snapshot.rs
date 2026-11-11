@@ -2275,7 +2275,13 @@ mod tests {
             .lines()
             .take(cut)
             .enumerate()
-            .map(|(i, l)| if i == 0 { "draw-snapshot 2\n".to_owned() } else { format!("{l}\n") })
+            .map(|(i, l)| {
+                if i == 0 {
+                    "draw-snapshot 2\n".to_owned()
+                } else {
+                    format!("{l}\n")
+                }
+            })
             .collect();
 
         // Act

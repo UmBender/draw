@@ -207,7 +207,7 @@ pub struct Editor {
     page: usize,
     /// One slot per page; the current page's slot and the slots of pages
     /// never touched are `None`.
-    pages: Vec<Option<Box<Page>>>,
+    pages: PageSlots,
     doc: Document,
     history: History,
     camera: Camera,
@@ -443,14 +443,7 @@ impl Editor {
         };
         reedit_tokens.end()?;
 
-        let mut t = r.record("camera")?;
-        let offset = t.get()?;
-        let zoom = t.f32("zoom")?;
-        t.end()?;
-        if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
-            return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
-        }
-        let camera = Camera::new(offset, zoom);
+        let camera = read_camera(r)?;
 
         let mut selection_tokens = r.record("selection")?;
         let mut selection = Vec::new();
@@ -469,7 +462,7 @@ impl Editor {
         let tools = ToolStates::read_snapshot(r, &doc)?;
         // Version 2 has one page.
         let (page, pages) = if version >= 3 {
-            Self::read_pages(r, helpers.first_number())?
+            Self::read_pages(r)?
         } else {
             (0, empty_pages())
         };
@@ -561,9 +554,11 @@ impl Editor {
             history: std::mem::replace(&mut self.history, incoming.history),
             camera: std::mem::replace(&mut self.camera, incoming.camera),
             selection: std::mem::replace(&mut self.selection, incoming.selection),
+            // The first number may have changed (zero-based) while the
+            // page was away.
             next_number: std::mem::replace(
                 &mut self.style.helpers.next_number,
-                incoming.next_number,
+                incoming.next_number.max(first),
             ),
         };
         // A page left as it was found takes no slot.
@@ -616,10 +611,7 @@ impl Editor {
 
     /// Reads what [`Editor::write_pages`] wrote: the current page and the
     /// stored ones, each checked like the current page.
-    fn read_pages(
-        r: &mut Reader<'_>,
-        first_number: u32,
-    ) -> Result<(usize, Vec<Option<Box<Page>>>), SnapshotError> {
+    fn read_pages(r: &mut Reader<'_>) -> Result<(usize, PageSlots), SnapshotError> {
         r.section("pages")?;
         let mut t = r.record("current")?;
         let current: usize = t.number("current page")?;
@@ -644,19 +636,11 @@ impl Editor {
                 return Err(t.error(format!("page {index} out of place")));
             }
             last = Some(index);
-            let mut t = r.record("camera")?;
-            let offset = t.get()?;
-            let zoom = t.f32("zoom")?;
-            t.end()?;
-            if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
-                return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
-            }
+            let camera = read_camera(r)?;
             let mut t = r.record("number")?;
+            // May sit below the first number: the switch clamps it.
             let next_number: u32 = t.number("next number")?;
             t.end()?;
-            if next_number < first_number {
-                return Err(t.error("next number out of range"));
-            }
             let mut selection_tokens = r.record("selection")?;
             let mut selection = Vec::new();
             while !selection_tokens.at_end() {
@@ -668,7 +652,7 @@ impl Editor {
             pages[index] = Some(Box::new(Page {
                 doc,
                 history,
-                camera: Camera::new(offset, zoom),
+                camera,
                 selection,
                 next_number,
             }));
@@ -1777,8 +1761,23 @@ impl Editor {
     }
 }
 
+/// One slot per page (see [`Editor`]).
+type PageSlots = Vec<Option<Box<Page>>>;
+
+/// Reads a `camera` record: offset and a zoom inside the zoom range.
+fn read_camera(r: &mut Reader<'_>) -> Result<Camera, SnapshotError> {
+    let mut t = r.record("camera")?;
+    let offset = t.get()?;
+    let zoom = t.f32("zoom")?;
+    t.end()?;
+    if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
+        return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
+    }
+    Ok(Camera::new(offset, zoom))
+}
+
 /// Slots for the pages that are not current: all untouched.
-fn empty_pages() -> Vec<Option<Box<Page>>> {
+fn empty_pages() -> PageSlots {
     vec![None; PAGE_COUNT]
 }
 
@@ -8429,7 +8428,10 @@ mod tests {
         // Act: a new page is empty with the default view and no selection.
         assert!(go(&mut ed, 4));
         let fresh = (ed.document().len(), ed.selection().len(), ed.camera);
-        let tx = tx_insert(&mut ed.doc, vec![rect(9.0, 9.0, 1.0, 1.0), rect(5.0, 5.0, 1.0, 1.0)]);
+        let tx = tx_insert(
+            &mut ed.doc,
+            vec![rect(9.0, 9.0, 1.0, 1.0), rect(5.0, 5.0, 1.0, 1.0)],
+        );
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
         ed.camera = Camera::new(Vec2::new(-7.0, 8.0), 0.5);
         go(&mut ed, 0);
@@ -8515,7 +8517,7 @@ mod tests {
 
         // Assert
         assert!(ed.text_edit().is_none());
-        assert!(texts(&ed).is_empty());
+        assert_eq!(texts(&ed), Vec::<String>::new());
         go(&mut ed, 0);
         assert_eq!(texts(&ed), vec!["abc".to_owned()]);
     }
@@ -8567,6 +8569,29 @@ mod tests {
         assert_eq!(ed.document().len(), 1);
         go(&mut ed, 0);
         assert_eq!(ed.document().len(), 1);
+    }
+
+    #[test]
+    fn zero_based_toggled_while_away_keeps_the_counter_above_the_first_number() {
+        // Arrange: page 2 is left while zero-based, with its counter at 0.
+        let mut ed = Editor::new();
+        ed.apply(Command::ToggleZeroBased);
+        go(&mut ed, 1);
+        ed.apply(Command::ToggleNumbering);
+        draw_node_with(&mut ed, Tool::Rect);
+        go(&mut ed, 0);
+
+        // Act: back to one-based, then to page 2.
+        ed.apply(Command::ToggleZeroBased);
+        go(&mut ed, 1);
+
+        // Assert
+        assert!(ed.helpers().next_number >= ed.helpers().first_number());
+    }
+
+    fn draw_node_with(ed: &mut Editor, tool: Tool) {
+        ed.apply(Command::SetTool(tool));
+        draw_node(ed, 0.0);
     }
 
     #[test]
