@@ -1120,6 +1120,7 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     if editor.toolbar_visible() {
         toolbar::draw(editor, viewport);
     }
+    render::draw_page_label(editor.page(), viewport);
 }
 
 #[cfg(test)]

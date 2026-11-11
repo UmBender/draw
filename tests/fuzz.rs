@@ -2371,13 +2371,14 @@ proptest! {
             // Arrange
             let held = locked_anchors(&editor);
             let undo_redo = is_undo_redo(&event);
+            let page = editor.page();
 
             // Act
             editor.handle(event);
 
-            // Assert
+            // Assert: a page switch shows other shapes (T116).
             check_invariants(&editor, step + 1)?;
-            if undo_redo {
+            if undo_redo || editor.page() != page {
                 continue;
             }
             for (id, anchor) in held {

@@ -247,6 +247,51 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Lay out as a column, no overlap",
     ),
     (
+        KeyChord::alt(Key::Digit1),
+        Command::GoToPage(0),
+        "Page 1",
+    ),
+    (
+        KeyChord::alt(Key::Digit2),
+        Command::GoToPage(1),
+        "Page 2",
+    ),
+    (
+        KeyChord::alt(Key::Digit3),
+        Command::GoToPage(2),
+        "Page 3",
+    ),
+    (
+        KeyChord::alt(Key::Digit4),
+        Command::GoToPage(3),
+        "Page 4",
+    ),
+    (
+        KeyChord::alt(Key::Digit5),
+        Command::GoToPage(4),
+        "Page 5",
+    ),
+    (
+        KeyChord::alt(Key::Digit6),
+        Command::GoToPage(5),
+        "Page 6",
+    ),
+    (
+        KeyChord::alt(Key::Digit7),
+        Command::GoToPage(6),
+        "Page 7",
+    ),
+    (
+        KeyChord::alt(Key::Digit8),
+        Command::GoToPage(7),
+        "Page 8",
+    ),
+    (
+        KeyChord::alt(Key::Digit9),
+        Command::GoToPage(8),
+        "Page 9",
+    ),
+    (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
         "Delete selection",
@@ -450,6 +495,16 @@ mod tests {
     /// independently of `BINDINGS`.
     fn documented() -> Vec<(Key, Modifiers, Command)> {
         vec![
+            // Pages
+            (Key::Digit1, ALT, Command::GoToPage(0)),
+            (Key::Digit2, ALT, Command::GoToPage(1)),
+            (Key::Digit3, ALT, Command::GoToPage(2)),
+            (Key::Digit4, ALT, Command::GoToPage(3)),
+            (Key::Digit5, ALT, Command::GoToPage(4)),
+            (Key::Digit6, ALT, Command::GoToPage(5)),
+            (Key::Digit7, ALT, Command::GoToPage(6)),
+            (Key::Digit8, ALT, Command::GoToPage(7)),
+            (Key::Digit9, ALT, Command::GoToPage(8)),
             // Tools
             (Key::D, NONE, Command::SetTool(Tool::Pen)),
             (Key::W, NONE, Command::SetTool(Tool::Line)),

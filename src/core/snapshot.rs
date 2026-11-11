@@ -2,7 +2,7 @@
 //! small, canonical, line-based text, and back.
 //!
 //! ```text
-//! draw-snapshot 2
+//! draw-snapshot 3
 //! [editor]
 //! tool pen
 //! …
@@ -15,7 +15,9 @@
 //! ```
 //!
 //! Version 2 added the optional `locked` record and the `lock` and
-//! `unlock` edits (ADR-T107-1).
+//! `unlock` edits (ADR-T107-1). Version 3 added the final `[pages]`
+//! section and a `[page]` section per stored page (ADR-T116-1); version 2
+//! still loads, as one page.
 //!
 //! [`Editor::snapshot`] captures a state, [`Snapshot::to_text`] writes it,
 //! [`Snapshot::parse`] reads and validates text, and
@@ -40,7 +42,11 @@ pub const HEADER: &str = "draw-snapshot";
 
 /// Version of the format this build writes and reads. Bumped, with an ADR,
 /// whenever the text changes (ADR-T74-1).
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
+
+/// Oldest version this build still reads: version 2 has no `[pages]`
+/// section, so it loads as a single page (ADR-T116-1).
+pub const MIN_VERSION: u32 = 2;
 
 /// Largest on-screen text size the editor sets, in pixels: the thickest
 /// width's rung, with 1 % for rounding.
@@ -60,7 +66,15 @@ pub fn text_size_ok(size: f32) -> bool {
 }
 
 /// The sections, in the order they appear.
-pub const SECTIONS: [&str; 5] = ["editor", "document", "history", "clipboard", "tools"];
+pub const SECTIONS: [&str; 7] = [
+    "editor",
+    "document",
+    "history",
+    "clipboard",
+    "tools",
+    "pages",
+    "page",
+];
 
 /// Why a text is not a snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,13 +131,13 @@ impl Snapshot {
         let mut r = Reader::new(text);
         let mut header = r.record(HEADER)?;
         let version: u32 = header.number("version")?;
-        if version != VERSION {
+        if !(MIN_VERSION..=VERSION).contains(&version) {
             return Err(header.error(format!(
                 "unsupported snapshot version {version} (this build reads version {VERSION})"
             )));
         }
         header.end()?;
-        let editor = Editor::read_snapshot(&mut r)?;
+        let editor = Editor::read_snapshot(&mut r, version)?;
         r.finish()?;
         Ok(Self(editor))
     }
@@ -2207,6 +2221,7 @@ mod tests {
     /// left on page 3 with its own view.
     fn paged_editor() -> Editor {
         let mut ed = busy_editor();
+        ed.apply(Command::SetTool(Tool::Rect));
         ed.apply(Command::GoToPage(1));
         drag(&mut ed, v(30.0, 30.0), v(90.0, 80.0));
         ed.apply(Command::GoToPage(4));

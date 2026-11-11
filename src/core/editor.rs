@@ -379,11 +379,12 @@ impl Editor {
         snapshot::write_transactions(w, "redo", redo);
         snapshot::write_clipboard(w, self.clipboard.shapes());
         self.tools.write_snapshot(w);
+        self.write_pages(w);
     }
 
     /// Reads every section after the header and checks the editor's
     /// invariants (ADR-T74-1).
-    pub(crate) fn read_snapshot(r: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, version: u32) -> Result<Self, SnapshotError> {
         r.section("editor")?;
         let mut t = r.record("tool")?;
         let tool = t.get()?;
@@ -466,10 +467,16 @@ impl Editor {
         let history = read_history(r)?;
         let clipboard = Clipboard::from_shapes(snapshot::read_clipboard(r)?);
         let tools = ToolStates::read_snapshot(r, &doc)?;
+        // Version 2 has one page.
+        let (page, pages) = if version >= 3 {
+            Self::read_pages(r, helpers.first_number())?
+        } else {
+            (0, empty_pages())
+        };
 
         Ok(Self {
-            page: 0,
-            pages: empty_pages(),
+            page,
+            pages,
             doc,
             history,
             camera,
@@ -540,8 +547,133 @@ impl Editor {
     /// open text edit and swaps the page states (ADR-T116-1). Returns
     /// whether the view needs a redraw.
     fn go_to_page(&mut self, page: usize) -> bool {
-        let _ = page;
-        todo!("T116: swap the page states")
+        if page >= PAGE_COUNT || page == self.page {
+            return false;
+        }
+        self.cancel_gesture();
+        let first = self.style.helpers.first_number();
+        let incoming = match self.pages[page].take() {
+            Some(stored) => *stored,
+            None => Page::fresh(first),
+        };
+        let outgoing = Page {
+            doc: std::mem::replace(&mut self.doc, incoming.doc),
+            history: std::mem::replace(&mut self.history, incoming.history),
+            camera: std::mem::replace(&mut self.camera, incoming.camera),
+            selection: std::mem::replace(&mut self.selection, incoming.selection),
+            next_number: std::mem::replace(
+                &mut self.style.helpers.next_number,
+                incoming.next_number,
+            ),
+        };
+        // A page left as it was found takes no slot.
+        self.pages[self.page] = (outgoing != Page::fresh(first)).then(|| Box::new(outgoing));
+        self.page = page;
+        // A different document: the shell redraws its cached layer.
+        self.doc_revision = self.doc_revision.wrapping_add(1);
+        self.doc_base_revision = self.doc_revision;
+        true
+    }
+
+    /// Writes the `[pages]` section and one `[page]` per stored page
+    /// (ADR-T116-1).
+    fn write_pages(&self, w: &mut Writer) {
+        w.section("pages");
+        w.record("current", |l| {
+            l.word(self.page);
+        });
+        let stored = self.pages.iter().flatten().count();
+        w.record("stored", |l| {
+            l.word(stored);
+        });
+        for (index, page) in self.pages.iter().enumerate() {
+            let Some(page) = page else { continue };
+            w.section("page");
+            w.record("index", |l| {
+                l.word(index);
+            });
+            w.record("camera", |l| {
+                l.put(&page.camera.offset()).f32(page.camera.zoom());
+            });
+            w.record("number", |l| {
+                l.word(page.next_number);
+            });
+            w.record("selection", |l| {
+                for id in &page.selection {
+                    l.put(id);
+                }
+            });
+            snapshot::write_document(w, &page.doc);
+            let (undo, redo, limit, budget) = page.history.parts();
+            w.section("history");
+            w.record("limits", |l| {
+                l.word(limit).word(budget);
+            });
+            snapshot::write_transactions(w, "undo", undo);
+            snapshot::write_transactions(w, "redo", redo);
+        }
+    }
+
+    /// Reads what [`Editor::write_pages`] wrote: the current page and the
+    /// stored ones, each checked like the current page.
+    fn read_pages(
+        r: &mut Reader<'_>,
+        first_number: u32,
+    ) -> Result<(usize, Vec<Option<Box<Page>>>), SnapshotError> {
+        r.section("pages")?;
+        let mut t = r.record("current")?;
+        let current: usize = t.number("current page")?;
+        t.end()?;
+        if current >= PAGE_COUNT {
+            return Err(t.error(format!("page {current} out of range")));
+        }
+        let mut t = r.record("stored")?;
+        let stored: usize = t.number("stored pages")?;
+        t.end()?;
+        if stored >= PAGE_COUNT {
+            return Err(t.error(format!("{stored} stored pages")));
+        }
+        let mut pages = empty_pages();
+        let mut last: Option<usize> = None;
+        for _ in 0..stored {
+            r.section("page")?;
+            let mut t = r.record("index")?;
+            let index: usize = t.number("page index")?;
+            t.end()?;
+            if index >= PAGE_COUNT || index == current || last.is_some_and(|l| index <= l) {
+                return Err(t.error(format!("page {index} out of place")));
+            }
+            last = Some(index);
+            let mut t = r.record("camera")?;
+            let offset = t.get()?;
+            let zoom = t.f32("zoom")?;
+            t.end()?;
+            if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
+                return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
+            }
+            let mut t = r.record("number")?;
+            let next_number: u32 = t.number("next number")?;
+            t.end()?;
+            if next_number < first_number {
+                return Err(t.error("next number out of range"));
+            }
+            let mut selection_tokens = r.record("selection")?;
+            let mut selection = Vec::new();
+            while !selection_tokens.at_end() {
+                selection.push(selection_tokens.get()?);
+            }
+            let doc = read_numbered_document(r)?;
+            snapshot::check_unlocked_ids(&selection_tokens, &doc, &selection)?;
+            let history = read_history(r)?;
+            pages[index] = Some(Box::new(Page {
+                doc,
+                history,
+                camera: Camera::new(offset, zoom),
+                selection,
+                next_number,
+            }));
+        }
+        Ok((current, pages))
     }
 
     /// Sets the tap slop in screen pixels: a press released within it is a

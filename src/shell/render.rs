@@ -903,8 +903,25 @@ fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAt
 /// (ADR-T116-1). `page` is zero-based.
 #[must_use]
 pub fn page_label(page: usize) -> Option<String> {
-    let _ = page;
-    todo!("T116: page label")
+    (page != 0).then(|| (page + 1).to_string())
+}
+
+/// Size of the page indicator's text, in pixels.
+const PAGE_LABEL_PX: u16 = 18;
+/// Gap between the page indicator and the window's top and right edges.
+const PAGE_LABEL_MARGIN_PX: f32 = 12.0;
+
+/// Draws the page indicator top-right when `page` is not page 1.
+pub fn draw_page_label(page: usize, viewport: Vec2) {
+    use macroquad::text::{draw_text, measure_text};
+    let Some(label) = page_label(page) else {
+        return;
+    };
+    let size = measure_text(&label, None, PAGE_LABEL_PX, 1.0);
+    let x = viewport.x - PAGE_LABEL_MARGIN_PX - size.width;
+    let y = PAGE_LABEL_MARGIN_PX + size.offset_y;
+    let color = to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT));
+    draw_text(&label, x, y, f32::from(PAGE_LABEL_PX), color);
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is

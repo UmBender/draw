@@ -1,4 +1,4 @@
-draw-snapshot 2
+draw-snapshot 3
 [editor]
 tool text
 style 0 3.0
@@ -27,3 +27,6 @@ text-size -
 text 100.0 50.0 16.0 0 0.0 - - "a" 1 1
 eraser - remove 0
 select -
+[pages]
+current 0
+stored 0
