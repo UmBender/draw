@@ -5,6 +5,7 @@
 pub mod app;
 pub mod autosave;
 pub mod backend;
+pub mod command_palette;
 pub mod crash;
 pub mod diag;
 pub mod export;

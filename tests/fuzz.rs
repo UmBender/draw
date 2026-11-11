@@ -1156,6 +1156,15 @@ fn run_session_on(mut editor: Editor, session: &[InputEvent]) -> Result<Editor, 
         editor.handle(event.clone());
         check_invariants(&editor, i + 1)?;
     }
+    // The palette is not saved state and ignores commands while open
+    // (ADR-T111-1): a session that ends inside it ends with `Esc`.
+    if editor.palette().is_some() {
+        editor.handle(InputEvent::KeyDown {
+            key: Key::Escape,
+            mods: Modifiers::NONE,
+        });
+        check_invariants(&editor, session.len() + 1)?;
+    }
     Ok(editor)
 }
 

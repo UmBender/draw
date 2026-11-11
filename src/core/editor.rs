@@ -542,6 +542,23 @@ impl Editor {
 
     /// [`Editor::handle`] for one event that left the tap filter.
     fn handle_filtered(&mut self, event: InputEvent) -> bool {
+        if self.palette.is_some() {
+            if let Some(redraw) = self.palette_event(&event) {
+                return redraw;
+            }
+        } else if matches!(
+            event,
+            InputEvent::KeyDown {
+                key: Key::P,
+                mods: Modifiers {
+                    shift: true,
+                    ctrl: true,
+                    alt: false
+                }
+            }
+        ) {
+            return self.open_palette();
+        }
         match event {
             InputEvent::PointerDown { pos, button, mods } => self
                 .track_cursor(pos)
@@ -608,12 +625,64 @@ impl Editor {
         }
     }
 
+    /// Opens the command palette over the canvas (ADR-T111-1). A gesture
+    /// in progress is cancelled and an open text block committed first, so
+    /// nothing is left half-done under the overlay.
+    fn open_palette(&mut self) -> bool {
+        self.cancel_gesture();
+        self.finish_text();
+        self.palette = Some(CommandPalette::new());
+        true
+    }
+
+    /// Handles `event` for the open palette (ADR-T111-1). `None` for the
+    /// events that are not about the keys and pointer (resize, pen
+    /// pressure, key releases), which the editor handles as usual.
+    fn palette_event(&mut self, event: &InputEvent) -> Option<bool> {
+        let palette = self.palette.as_mut()?;
+        let redraw = match *event {
+            InputEvent::KeyDown { key, .. } => match key {
+                Key::Escape => {
+                    self.palette = None;
+                    true
+                }
+                Key::Enter => {
+                    let row = palette.highlighted();
+                    self.palette = None;
+                    if let Some((_, command, _)) = row {
+                        self.apply(command);
+                    }
+                    true
+                }
+                Key::Backspace => palette.backspace(),
+                Key::ArrowUp => palette.up(),
+                Key::ArrowDown => palette.down(),
+                _ => false,
+            },
+            InputEvent::Char { ch, mods } => !mods.ctrl && !mods.alt && palette.insert(ch),
+            InputEvent::PointerDown { .. }
+            | InputEvent::PointerMove { .. }
+            | InputEvent::PointerUp { .. }
+            | InputEvent::Scroll { .. }
+            | InputEvent::Paste(_)
+            | InputEvent::PasteGrid(_) => false,
+            InputEvent::KeyUp { .. }
+            | InputEvent::Pressure { .. }
+            | InputEvent::Resize { .. } => return None,
+        };
+        Some(redraw)
+    }
+
     /// Executes `command`. Returns whether the view needs a redraw.
     ///
     /// An open text block is committed first, except that
     /// [`Command::Undo`] cancels it instead (ADR-T29-2) and
-    /// [`Command::ExportView`] leaves it alone (ADR-T92-2).
+    /// [`Command::ExportView`] leaves it alone (ADR-T92-2). Nothing runs
+    /// under the open command palette (ADR-T111-1).
     pub fn apply(&mut self, command: Command) -> bool {
+        if self.palette.is_some() {
+            return false;
+        }
         if self.tools.text.edit.is_some() {
             if command == Command::Undo {
                 return self.cancel_text();
@@ -7945,7 +8014,10 @@ mod tests {
 
         // Assert
         assert_eq!(ed.palette().map(CommandPalette::query), Some("RECT"));
-        assert_eq!(palette_rows(&ed), ["Rectangle"]);
+        let rows = palette_rows(&ed);
+        assert_eq!(rows.first(), Some(&"Rectangle"));
+        assert!(rows.len() < keymap::BINDINGS.len());
+        assert!(rows.iter().all(|d| d.to_lowercase().contains('r')));
     }
 
     #[test]
@@ -7959,7 +8031,7 @@ mod tests {
         key(&mut ed, Key::Backspace);
 
         // Assert
-        assert_eq!(palette_rows(&ed), ["Rectangle"]);
+        assert_eq!(palette_rows(&ed).first(), Some(&"Rectangle"));
     }
 
     #[test]

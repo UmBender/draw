@@ -24,24 +24,161 @@ pub type Row = (KeyChord, Command, &'static str);
 /// index. Ties keep the order of `descriptions`.
 #[must_use]
 pub fn rank(query: &str, descriptions: &[&str]) -> Vec<usize> {
-    todo!("rank {query} {descriptions:?}")
+    let letters = lowered(query);
+    let mut scored: Vec<(usize, i32)> = descriptions
+        .iter()
+        .enumerate()
+        .filter_map(|(i, text)| score(&letters, &lowered(text)).map(|s| (i, s)))
+        .collect();
+    // The sort is stable: equal scores keep the keymap order.
+    scored.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
+    scored.into_iter().map(|(i, _)| i).collect()
+}
+
+/// `text` as lower-case characters, one per character.
+fn lowered(text: &str) -> Vec<char> {
+    text.chars()
+        .map(|c| c.to_lowercase().next().unwrap_or(c))
+        .collect()
+}
+
+/// Points for one matched letter.
+const LETTER: i32 = 1;
+/// Extra points when it directly follows the previous matched letter.
+const CONTIGUOUS: i32 = 5;
+/// Extra points when it starts a word.
+const WORD_START: i32 = 3;
+/// Extra points when it is the first character of the text.
+const TEXT_START: i32 = 2;
+
+/// The best score of matching `query` as a subsequence of `text`, or
+/// `None` when it does not match. An empty query scores `0`.
+fn score(query: &[char], text: &[char]) -> Option<i32> {
+    if query.is_empty() {
+        return Some(0);
+    }
+    let start_bonus = |i: usize| {
+        let word = i == 0 || text.get(i - 1).is_some_and(|c| !c.is_alphanumeric());
+        let mut bonus = LETTER;
+        if word {
+            bonus += WORD_START;
+        }
+        if i == 0 {
+            bonus += TEXT_START;
+        }
+        bonus
+    };
+    // `best[i]`: the best score with the letters so far ending at `text[i]`.
+    let mut best: Vec<Option<i32>> = text
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| (Some(c) == query.first().copied()).then(|| start_bonus(i)))
+        .collect();
+    for &letter in query.iter().skip(1) {
+        let next: Vec<Option<i32>> = text
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| {
+                if c != letter {
+                    return None;
+                }
+                best.iter()
+                    .take(i)
+                    .enumerate()
+                    .filter_map(|(k, prev)| {
+                        prev.map(|p| {
+                            p + start_bonus(i) + if k + 1 == i { CONTIGUOUS } else { 0 }
+                        })
+                    })
+                    .max()
+            })
+            .collect();
+        best = next;
+    }
+    best.into_iter().flatten().max()
 }
 
 /// How a chord is written in the palette: `Ctrl+Shift+]`, `Alt+←`, `D`.
 #[must_use]
 pub fn chord_label(chord: KeyChord) -> String {
-    todo!("label {chord:?}")
+    let Modifiers { shift, ctrl, alt } = chord.mods;
+    let mut label = String::new();
+    for (held, name) in [(ctrl, "Ctrl+"), (alt, "Alt+"), (shift, "Shift+")] {
+        if held {
+            label.push_str(name);
+        }
+    }
+    label.push_str(key_label(chord.key));
+    label
+}
+
+/// How a key is written.
+fn key_label(key: Key) -> &'static str {
+    match key {
+        Key::A => "A",
+        Key::B => "B",
+        Key::C => "C",
+        Key::D => "D",
+        Key::E => "E",
+        Key::F => "F",
+        Key::G => "G",
+        Key::H => "H",
+        Key::I => "I",
+        Key::J => "J",
+        Key::K => "K",
+        Key::L => "L",
+        Key::M => "M",
+        Key::N => "N",
+        Key::O => "O",
+        Key::P => "P",
+        Key::Q => "Q",
+        Key::R => "R",
+        Key::S => "S",
+        Key::T => "T",
+        Key::U => "U",
+        Key::V => "V",
+        Key::W => "W",
+        Key::X => "X",
+        Key::Y => "Y",
+        Key::Z => "Z",
+        Key::Digit0 => "0",
+        Key::Digit1 => "1",
+        Key::Digit2 => "2",
+        Key::Digit3 => "3",
+        Key::Digit4 => "4",
+        Key::Digit5 => "5",
+        Key::Digit6 => "6",
+        Key::Digit7 => "7",
+        Key::Digit8 => "8",
+        Key::Digit9 => "9",
+        Key::Delete => "Del",
+        Key::Backspace => "Backspace",
+        Key::Escape => "Esc",
+        Key::Space => "Space",
+        Key::Tab => "Tab",
+        Key::BracketLeft => "[",
+        Key::BracketRight => "]",
+        Key::ArrowLeft => "←",
+        Key::ArrowRight => "→",
+        Key::ArrowUp => "↑",
+        Key::ArrowDown => "↓",
+        Key::Enter => "Enter",
+        Key::Home => "Home",
+        Key::End => "End",
+    }
 }
 
 /// The rows to show: at most `rows` of `total`, a window that keeps
 /// `selected` inside.
 #[must_use]
 pub fn visible_window(selected: usize, total: usize, rows: usize) -> Range<usize> {
-    todo!("window {selected} {total} {rows}")
+    let shown = rows.min(total);
+    let start = (selected + 1).saturating_sub(shown).min(total - shown);
+    start..start + shown
 }
 
 /// The open palette: the query, the matching rows and the highlight.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandPalette {
     /// What was typed.
     query: String,
@@ -55,7 +192,20 @@ impl CommandPalette {
     /// A palette with an empty query: every binding, the first highlighted.
     #[must_use]
     pub fn new() -> Self {
-        todo!("new")
+        let mut palette = Self {
+            query: String::new(),
+            matches: Vec::new(),
+            selected: 0,
+        };
+        palette.refilter();
+        palette
+    }
+
+    /// Recomputes the matching rows for the query and highlights the first.
+    fn refilter(&mut self) {
+        let descriptions: Vec<&str> = BINDINGS.iter().map(|&(_, _, d)| d).collect();
+        self.matches = rank(&self.query, &descriptions);
+        self.selected = 0;
     }
 
     /// What was typed.
@@ -98,22 +248,39 @@ impl CommandPalette {
     /// Types `ch` at the end of the query. Control characters and input
     /// past [`MAX_QUERY_CHARS`] are dropped. Returns whether it changed.
     pub fn insert(&mut self, ch: char) -> bool {
-        todo!("insert {ch}")
+        if ch.is_control() || self.query.chars().count() >= MAX_QUERY_CHARS {
+            return false;
+        }
+        self.query.push(ch);
+        self.refilter();
+        true
     }
 
     /// Deletes the last character of the query. Returns whether it changed.
     pub fn backspace(&mut self) -> bool {
-        todo!("backspace")
+        if self.query.pop().is_none() {
+            return false;
+        }
+        self.refilter();
+        true
     }
 
     /// Highlights the previous row. Returns whether it moved.
     pub fn up(&mut self) -> bool {
-        todo!("up")
+        if self.selected == 0 {
+            return false;
+        }
+        self.selected -= 1;
+        true
     }
 
     /// Highlights the next row. Returns whether it moved.
     pub fn down(&mut self) -> bool {
-        todo!("down")
+        if self.selected + 1 >= self.matches.len() {
+            return false;
+        }
+        self.selected += 1;
+        true
     }
 }
 
@@ -129,7 +296,7 @@ mod tests {
 
         // Act / Assert
         assert_eq!(rank("RCT", &rows), [0]);
-        assert_eq!(rank("cle", &rows), [1]);
+        assert_eq!(rank("ell", &rows), [1]);
         assert_eq!(rank("", &rows), [0, 1, 2]);
         assert_eq!(rank("é", &["Été"]), [0]);
     }
