@@ -357,18 +357,7 @@ impl Editor {
         let tool = t.get()?;
         t.end()?;
 
-        let mut t = r.record("style")?;
-        let color = t.get()?;
-        let width_px = t.f32("width")?;
-        t.end()?;
-        if !WIDTH_LADDER_PX
-            .iter()
-            .any(|w| w.to_bits() == width_px.to_bits())
-        {
-            return Err(t.error(format!("width {width_px} is not on the width ladder")));
-        }
-
-        let helpers = read_helpers(r)?;
+        let style = read_style(r)?;
         // Text in shapes is always on (ADR-T52-1).
         r.set_shape_text(true);
 
@@ -443,11 +432,7 @@ impl Editor {
             clipboard,
             tools,
             tool,
-            style: DrawStyle {
-                color,
-                width_px,
-                helpers,
-            },
+            style,
             smoothing,
             toolbar_visible,
             viewport,
@@ -666,9 +651,9 @@ impl Editor {
             | InputEvent::Scroll { .. }
             | InputEvent::Paste(_)
             | InputEvent::PasteGrid(_) => false,
-            InputEvent::KeyUp { .. }
-            | InputEvent::Pressure { .. }
-            | InputEvent::Resize { .. } => return None,
+            InputEvent::KeyUp { .. } | InputEvent::Pressure { .. } | InputEvent::Resize { .. } => {
+                return None;
+            }
         };
         Some(redraw)
     }
@@ -1752,6 +1737,26 @@ fn read_numbered_document(r: &mut Reader<'_>) -> Result<Document, SnapshotError>
         )),
         None => Ok(doc),
     }
+}
+
+/// Reads the `style` record (width on the ladder) and the helpers.
+fn read_style(r: &mut Reader<'_>) -> Result<DrawStyle, SnapshotError> {
+    let mut t = r.record("style")?;
+    let color = t.get()?;
+    let width_px = t.f32("width")?;
+    t.end()?;
+    if !WIDTH_LADDER_PX
+        .iter()
+        .any(|w| w.to_bits() == width_px.to_bits())
+    {
+        return Err(t.error(format!("width {width_px} is not on the width ladder")));
+    }
+    let helpers = read_helpers(r)?;
+    Ok(DrawStyle {
+        color,
+        width_px,
+        helpers,
+    })
 }
 
 /// Reads the `helpers` record (snapshots, ADR-T74-1).
@@ -8025,7 +8030,7 @@ mod tests {
         // Arrange
         let mut ed = palette_editor();
         typed(&mut ed, "rectx");
-        assert!(palette_rows(&ed).is_empty());
+        assert_eq!(palette_rows(&ed).len(), 0);
 
         // Act
         key(&mut ed, Key::Backspace);
@@ -8133,7 +8138,10 @@ mod tests {
             button: PointerButton::Left,
             mods: NONE,
         });
-        ed.handle(InputEvent::PointerMove { pos: end, mods: NONE });
+        ed.handle(InputEvent::PointerMove {
+            pos: end,
+            mods: NONE,
+        });
         ed.handle(InputEvent::PointerUp {
             pos: end,
             button: PointerButton::Left,

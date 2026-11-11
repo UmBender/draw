@@ -86,9 +86,7 @@ fn score(query: &[char], text: &[char]) -> Option<i32> {
                     .take(i)
                     .enumerate()
                     .filter_map(|(k, prev)| {
-                        prev.map(|p| {
-                            p + start_bonus(i) + if k + 1 == i { CONTIGUOUS } else { 0 }
-                        })
+                        prev.map(|p| p + start_bonus(i) + if k + 1 == i { CONTIGUOUS } else { 0 })
                     })
                     .max()
             })
@@ -188,6 +186,12 @@ pub struct CommandPalette {
     selected: usize,
 }
 
+impl Default for CommandPalette {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandPalette {
     /// A palette with an empty query: every binding, the first highlighted.
     #[must_use]
@@ -234,7 +238,9 @@ impl CommandPalette {
 
     /// The matching rows, best first.
     pub fn rows(&self) -> impl Iterator<Item = Row> + '_ {
-        self.matches.iter().filter_map(|&i| BINDINGS.get(i).copied())
+        self.matches
+            .iter()
+            .filter_map(|&i| BINDINGS.get(i).copied())
     }
 
     /// The highlighted row, if any matches.
@@ -307,9 +313,9 @@ mod tests {
         let rows = ["Rectangle", "Redo"];
 
         // Act / Assert
-        assert!(rank("tcr", &rows).is_empty());
-        assert!(rank("redoo", &rows).is_empty());
-        assert!(rank("x", &rows).is_empty());
+        assert_eq!(rank("tcr", &rows).len(), 0);
+        assert_eq!(rank("redoo", &rows).len(), 0);
+        assert_eq!(rank("x", &rows).len(), 0);
     }
 
     #[test]
@@ -341,7 +347,10 @@ mod tests {
         assert_eq!(chord_label(KeyChord::bare(Key::D)), "D");
         assert_eq!(chord_label(KeyChord::bare(Key::Digit3)), "3");
         assert_eq!(chord_label(KeyChord::ctrl(Key::Z)), "Ctrl+Z");
-        assert_eq!(chord_label(KeyChord::ctrl_shift(Key::BracketRight)), "Ctrl+Shift+]");
+        assert_eq!(
+            chord_label(KeyChord::ctrl_shift(Key::BracketRight)),
+            "Ctrl+Shift+]"
+        );
         assert_eq!(chord_label(KeyChord::alt(Key::ArrowLeft)), "Alt+←");
         assert_eq!(chord_label(KeyChord::shift(Key::Tab)), "Shift+Tab");
         assert_eq!(chord_label(KeyChord::bare(Key::Backspace)), "Backspace");
@@ -400,7 +409,11 @@ mod tests {
             found.map(|(_, command, _)| command),
             Some(Command::SetTool(Tool::Rect))
         );
-        assert!(palette.rows().all(|(_, _, d)| d.to_lowercase().contains('r')));
+        assert!(
+            palette
+                .rows()
+                .all(|(_, _, d)| d.to_lowercase().contains('r'))
+        );
     }
 
     #[test]
