@@ -132,6 +132,9 @@ pub enum Command {
     /// Space three or more selected shapes with equal gaps along the axis,
     /// the outer two fixed (ADR-T101-1).
     Distribute(Axis),
+    /// Replace the last pen stroke, if nothing else was done since, by the
+    /// line, rectangle or ellipse it looks like (ADR-T109-1).
+    RecognizeShape,
     /// Delete the selected shapes.
     DeleteSelection,
     /// Remove every unlocked shape (undoable, ADR-T107-1).

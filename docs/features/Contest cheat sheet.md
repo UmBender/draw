@@ -50,6 +50,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Alt+←` | Align left edges | `Alt+→` | Align right edges |
 | `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
 | `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
+| `Z` | Last stroke to line / rectangle / ellipse | | |
 
 ## View
 

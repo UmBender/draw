@@ -2596,6 +2596,63 @@ fn laser_sessions_reach_the_trail_and_mid_gesture_presses() {
     assert!(with_shapes >= 60, "sessions with shapes: {with_shapes}/200");
 }
 
+// T109: shape recognition (ADR-T109-1)
+// ---------------------------------------------------------------------------
+
+/// Drags the left button through `points` on a pen editor with a viewport.
+fn pen_stroke_editor(points: &[Vec2]) -> Editor {
+    let (left, none) = (PointerButton::Left, Modifiers::NONE);
+    let mut editor = Editor::new();
+    editor.handle(InputEvent::Resize {
+        size: Vec2::new(1_200.0, 900.0),
+    });
+    editor.apply(Command::SetTool(Tool::Pen));
+    if let (Some(&first), Some(&last)) = (points.first(), points.last()) {
+        editor.handle(InputEvent::PointerDown {
+            pos: first,
+            button: left,
+            mods: none,
+        });
+        for &pos in &points[1..] {
+            editor.handle(InputEvent::PointerMove { pos, mods: none });
+        }
+        editor.handle(InputEvent::PointerUp {
+            pos: last,
+            button: left,
+            mods: none,
+        });
+    }
+    editor
+}
+
+/// T109: a drawn circle really becomes an ellipse on `Z`, so the property
+/// below reaches the replacing path.
+#[test]
+fn shape_session_circle_becomes_ellipse() {
+    // Arrange
+    let circle: Vec<Vec2> = (0..=60)
+        .map(|i| {
+            let a = i as f32 * std::f32::consts::TAU / 60.0;
+            Vec2::new(500.0 + 120.0 * a.cos(), 400.0 + 120.0 * a.sin())
+        })
+        .collect();
+    let mut editor = pen_stroke_editor(&circle);
+
+    // Act
+    let changed = editor.handle(InputEvent::KeyDown {
+        key: Key::Z,
+        mods: Modifiers::NONE,
+    });
+
+    // Assert
+    assert!(changed);
+    let shapes = shapes_of(&editor);
+    assert!(
+        matches!(shapes.as_slice(), [(_, Shape::Ellipse { .. })]),
+        "{shapes:?}"
+    );
+}
+
 proptest! {
     #![proptest_config(config())]
 
@@ -2633,5 +2690,41 @@ proptest! {
         prop_assert_eq!(editor.snapshot().to_text(), before);
         prop_assert_eq!(editor.document_revision(), revision);
         prop_assert!(!laser.is_held());
+    }
+
+    /// T109 AC-5: `Z` after any pen stroke (wild points included) keeps the
+    /// invariants and the shape count; when it replaces the stroke, undo
+    /// gives the stroke back and redo the shape.
+    #[test]
+    fn shape_recognition_sessions_keep_invariants(
+        points in prop::collection::vec(
+            prop_oneof![
+                8 => arb_screen_pos(),
+                1 => arb_pos(),
+            ],
+            1..80,
+        ),
+    ) {
+        // Arrange
+        let mut editor = pen_stroke_editor(&points);
+        let drawn = shapes_of(&editor);
+
+        // Act
+        editor.handle(InputEvent::KeyDown { key: Key::Z, mods: Modifiers::NONE });
+
+        // Assert
+        check_invariants(&editor, 0)?;
+        let now = shapes_of(&editor);
+        prop_assert_eq!(now.len(), drawn.len());
+        if now != drawn {
+            prop_assert!(matches!(
+                now.as_slice(),
+                [(_, Shape::Line { .. } | Shape::Rect { .. } | Shape::Ellipse { .. })]
+            ), "{:?}", now);
+            prop_assert!(editor.apply(Command::Undo));
+            prop_assert_eq!(shapes_of(&editor), drawn);
+            prop_assert!(editor.apply(Command::Redo));
+            prop_assert_eq!(shapes_of(&editor), now);
+        }
     }
 }
