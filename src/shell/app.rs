@@ -40,6 +40,7 @@ use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
+use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::{Rgba, palette};
 use crate::core::snapshot::Snapshot;
 use crate::core::tools::Overlay;
@@ -54,6 +55,7 @@ use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
     wants_grid_clipboard,
 };
+use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -853,6 +855,10 @@ struct CachedFrame {
     /// Whether the next frame re-renders the layer in full because the
     /// glyph atlas overflowed (ADR-T32-1).
     rerender: bool,
+    /// The minimap's overview of the shapes (ADR-T110-1).
+    overview: Option<RenderTarget>,
+    /// What `overview` shows.
+    overview_key: Option<OverviewKey>,
 }
 
 impl CachedFrame {
@@ -870,6 +876,8 @@ impl CachedFrame {
             samples,
             timed,
             rerender: false,
+            overview: None,
+            overview_key: None,
         }
     }
 
@@ -942,6 +950,11 @@ impl CachedFrame {
             );
             self.key = Some(key);
         }
+        // Nothing while the minimap is hidden (ADR-T110-1).
+        let minimap = editor.minimap();
+        let overview = minimap
+            .as_ref()
+            .and_then(|map| self.update_overview(editor, map, dpi));
         let (Some(document), Some(cached)) = (&self.document, &self.key) else {
             return None;
         };
@@ -960,6 +973,11 @@ impl CachedFrame {
             blit(&document.texture, dest);
         }
         draw_overlay(editor, &overlay, viewport);
+        if let Some(map) = &minimap {
+            let view = camera.visible_world_rect(viewport);
+            let texture = self.overview.as_ref().map(|target| &target.texture);
+            minimap::draw_panel(map, view, texture.zip(overview.as_ref()));
+        }
         if rerender_after_overflow(render::text_overflowed(), cleared) {
             // Glyphs were dropped from the layer; draw it again next frame
             // with the atlas cleared.
@@ -989,6 +1007,36 @@ impl CachedFrame {
         let layer = (u32::from(image.width), u32::from(image.height));
         let rgba = export::view_pixels(&image.bytes, layer, key.size, layer_margin(key.size))?;
         Ok((rgba, key.size))
+    }
+
+    /// Renders the minimap's overview if the document changed since it was
+    /// last rendered, and returns the map it was rendered through; `None`
+    /// for an empty document. The camera is not part of its key, so
+    /// panning never renders it again (ADR-T110-1).
+    fn update_overview(&mut self, editor: &Editor, map: &Minimap, dpi: f32) -> Option<Fit> {
+        let key = OverviewKey::of(editor, map, dpi)?;
+        let area = map.area();
+        let image = key.image(area);
+        if minimap::needs_render(self.overview_key.as_ref(), &key) {
+            let resized = self
+                .overview_key
+                .as_ref()
+                .is_none_or(|cached| cached.size != key.size);
+            if resized || self.overview.is_none() {
+                let target = self.new_target(key.size);
+                // Drawn smaller when the view leaves the content.
+                target.texture.set_filter(FilterMode::Linear);
+                self.overview = Some(target);
+            }
+            if let Some(target) = &self.overview {
+                render_into(target, Vec2::new(area.width(), area.height()), || {
+                    clear_background(minimap::clear_color());
+                    minimap::draw_overview(editor, &image);
+                });
+            }
+            self.overview_key = Some(key);
+        }
+        Some(image)
     }
 
     /// A render target of `size` physical pixels with this cache's sample

@@ -37,19 +37,96 @@ pub const FRAME_MIN_PX: f32 = 4.0;
 /// image counts as magnified: room for rounding.
 const PLACE_SLACK: f64 = 1e-6;
 
+/// Farthest screen coordinate [`Minimap::place`] gives, in pixels: far
+/// beyond any window, and exact in `f32`.
+const PLACE_LIMIT: f64 = 1e7;
+
 /// The panel for a viewport of `viewport` pixels: [`PANEL_SIZE`], with
 /// [`MARGIN_PX`] to the right and bottom edges. `None` when the viewport
 /// is not finite or cannot hold the panel and a margin on every side.
 #[must_use]
 pub fn panel_rect(viewport: Vec2) -> Option<Aabb> {
-    todo!("T110 behaviour: {viewport:?}")
+    let viewport = viewport.sanitize()?;
+    let needed = Vec2::new(
+        PANEL_SIZE.x + 2.0 * MARGIN_PX,
+        PANEL_SIZE.y + 2.0 * MARGIN_PX,
+    );
+    if viewport.x < needed.x || viewport.y < needed.y {
+        return None;
+    }
+    let max = Vec2::new(viewport.x - MARGIN_PX, viewport.y - MARGIN_PX);
+    Some(Aabb::from_corners(max - PANEL_SIZE, max))
+}
+
+/// Whether both corners of `rect` are finite.
+fn is_finite(rect: Aabb) -> bool {
+    rect.min.is_finite() && rect.max.is_finite()
+}
+
+/// One axis of a [`Fit`]: the world interval and the pixel interval it is
+/// drawn in, as centres and extents in `f64`, where the extent of any two
+/// `f32` values is finite.
+#[derive(Debug, Clone, Copy)]
+struct Axis {
+    /// Centre of the world interval.
+    world_mid: f64,
+    /// Ends of the world interval.
+    world: (f64, f64),
+    /// Centre of the pixel interval.
+    rect_mid: f64,
+    /// Ends of the pixel interval.
+    rect: (f64, f64),
+}
+
+impl Axis {
+    /// The axis for a world interval and a pixel interval, each with its
+    /// lower end first.
+    fn new(world: (f32, f32), rect: (f32, f32)) -> Self {
+        let wide = |(lo, hi): (f32, f32)| (f64::from(lo), f64::from(hi));
+        let (world, rect) = (wide(world), wide(rect));
+        Self {
+            world_mid: f64::midpoint(world.0, world.1),
+            world,
+            rect_mid: f64::midpoint(rect.0, rect.1),
+            rect,
+        }
+    }
+
+    /// The scale at which the world interval fills the pixel interval;
+    /// `None` for a world interval with no extent.
+    fn scale(self) -> Option<f64> {
+        let extent = self.world.1 - self.world.0;
+        (extent > 0.0).then(|| (self.rect.1 - self.rect.0) / extent)
+    }
+
+    /// The pixel for world coordinate `world` at `scale`, clamped to the
+    /// pixel interval.
+    fn to_rect(self, world: f32, scale: f64) -> f32 {
+        let pixel = self.rect_mid + (f64::from(world) - self.world_mid) * scale;
+        pixel.clamp(self.rect.0, self.rect.1) as f32
+    }
+
+    /// The world coordinate at pixel `pixel` (clamped to the pixel
+    /// interval) at `scale`, clamped to the world interval. A zero `scale`
+    /// gives the centre.
+    fn to_world(self, pixel: f32, scale: f64) -> f32 {
+        if scale <= 0.0 {
+            return self.world_mid as f32;
+        }
+        let pixel = f64::from(pixel).clamp(self.rect.0, self.rect.1);
+        let world = self.world_mid + (pixel - self.rect_mid) / scale;
+        world.clamp(self.world.0, self.world.1) as f32
+    }
 }
 
 /// The union of the bounds of every shape in `doc`; `None` for an empty
 /// document. Shapes whose bounds are not finite are left out.
 #[must_use]
 pub fn content_bounds(doc: &Document) -> Option<Aabb> {
-    todo!("T110 behaviour: {} shapes", doc.len())
+    doc.shapes()
+        .map(|(_, shape)| shape.bounds())
+        .filter(|bounds| is_finite(*bounds))
+        .reduce(|a, b| a.union(&b))
 }
 
 /// A uniform map between a world box and a pixel rectangle: the box is
@@ -73,7 +150,36 @@ impl Fit {
     /// an empty box at the origin.
     #[must_use]
     pub fn new(world: Aabb, rect: Aabb) -> Self {
-        todo!("T110 behaviour: {world:?} {rect:?}")
+        let empty = Aabb::from_corners(Vec2::ZERO, Vec2::ZERO);
+        let world = if is_finite(world) { world } else { empty };
+        let rect = if is_finite(rect) { rect } else { empty };
+        let mut fit = Self {
+            world,
+            rect,
+            scale: 1.0,
+        };
+        fit.scale = match (fit.x().scale(), fit.y().scale()) {
+            (Some(x), Some(y)) => x.min(y),
+            (Some(scale), None) | (None, Some(scale)) => scale,
+            (None, None) => 1.0,
+        };
+        fit
+    }
+
+    /// The horizontal axis.
+    fn x(&self) -> Axis {
+        Axis::new(
+            (self.world.min.x, self.world.max.x),
+            (self.rect.min.x, self.rect.max.x),
+        )
+    }
+
+    /// The vertical axis.
+    fn y(&self) -> Axis {
+        Axis::new(
+            (self.world.min.y, self.world.max.y),
+            (self.rect.min.y, self.rect.max.y),
+        )
     }
 
     /// The world box shown.
@@ -98,7 +204,14 @@ impl Fit {
     /// point maps to the rectangle's centre.
     #[must_use]
     pub fn point(&self, world: Vec2) -> Vec2 {
-        todo!("T110 behaviour: {world:?}")
+        let (x, y) = (self.x(), self.y());
+        match world.sanitize() {
+            Some(world) => Vec2::new(
+                x.to_rect(world.x, self.scale),
+                y.to_rect(world.y, self.scale),
+            ),
+            None => Vec2::new(x.rect_mid as f32, y.rect_mid as f32),
+        }
     }
 
     /// Where the world box `world` is drawn, clamped to the rectangle.
@@ -112,7 +225,11 @@ impl Fit {
     /// centre of the box.
     #[must_use]
     pub fn world_at(&self, p: Vec2) -> Vec2 {
-        todo!("T110 behaviour: {p:?}")
+        let (x, y) = (self.x(), self.y());
+        match p.sanitize() {
+            Some(p) => Vec2::new(x.to_world(p.x, self.scale), y.to_world(p.y, self.scale)),
+            None => Vec2::new(x.world_mid as f32, y.world_mid as f32),
+        }
     }
 }
 
@@ -136,14 +253,29 @@ impl Minimap {
     /// non-finite `content` counts as none.
     #[must_use]
     pub fn new(viewport: Vec2, content: Option<Aabb>, view: Aabb) -> Option<Self> {
-        todo!("T110 behaviour: {viewport:?} {content:?} {view:?}")
+        if !is_finite(view) {
+            return None;
+        }
+        let world = match content.filter(|content| is_finite(*content)) {
+            Some(content) => content.union(&view),
+            None => view,
+        };
+        Self::with_world(viewport, content, world)
     }
 
     /// Like [`Minimap::new`] with a given world box, which a drag in the
     /// minimap keeps from its press on (ADR-T110-1).
     #[must_use]
     pub fn with_world(viewport: Vec2, content: Option<Aabb>, world: Aabb) -> Option<Self> {
-        todo!("T110 behaviour: {viewport:?} {content:?} {world:?}")
+        let panel = panel_rect(viewport)?;
+        if !is_finite(world) {
+            return None;
+        }
+        Some(Self {
+            panel,
+            fit: Fit::new(world, panel.expand(-PADDING_PX)),
+            content: content.filter(|content| is_finite(*content)),
+        })
     }
 
     /// The panel, in screen pixels.
@@ -206,7 +338,10 @@ impl Minimap {
     /// area and at least [`FRAME_MIN_PX`] on each side.
     #[must_use]
     pub fn frame(&self, view: Aabb) -> Aabb {
-        todo!("T110 behaviour: {view:?}")
+        let (frame, area) = (self.fit.rect_of(view), self.area());
+        let (x0, x1) = widen(frame.min.x, frame.max.x, area.min.x, area.max.x);
+        let (y0, y1) = widen(frame.min.y, frame.max.y, area.min.y, area.max.y);
+        Aabb::from_corners(Vec2::new(x0, y0), Vec2::new(x1, y1))
     }
 
     /// Where to draw an image of the content that was rendered through
@@ -216,8 +351,42 @@ impl Minimap {
     /// extent, or does not belong to this world box.
     #[must_use]
     pub fn place(&self, image: &Fit) -> Option<Aabb> {
-        todo!("T110 behaviour: {image:?} {PLACE_SLACK}")
+        let ratio = self.fit.scale / image.scale;
+        if !(ratio.is_finite() && ratio > 0.0 && ratio <= 1.0 + PLACE_SLACK) {
+            return None;
+        }
+        // Image pixel → world through `image`, world → screen through
+        // this fit, without clamping: the image may reach past the area.
+        let along = |to: Axis, from: Axis, pixel: f32| {
+            let world = (f64::from(pixel) - from.rect_mid) / image.scale;
+            let screen = to.rect_mid + ((from.world_mid - to.world_mid) + world) * self.fit.scale;
+            (screen.abs() <= PLACE_LIMIT).then_some(screen as f32)
+        };
+        let (x, y) = (self.fit.x(), self.fit.y());
+        let (from_x, from_y) = (image.x(), image.y());
+        let rect = image.rect();
+        let min = Vec2::new(
+            along(x, from_x, rect.min.x)?,
+            along(y, from_y, rect.min.y)?,
+        );
+        let max = Vec2::new(
+            along(x, from_x, rect.max.x)?,
+            along(y, from_y, rect.max.y)?,
+        );
+        Some(Aabb::from_corners(min, max))
     }
+}
+
+/// Widens the interval `lo..=hi` about its centre to [`FRAME_MIN_PX`] (or
+/// to all of `min..=max` if that is shorter), moved to lie in `min..=max`.
+/// An interval already that long is returned as it is.
+fn widen(lo: f32, hi: f32, min: f32, max: f32) -> (f32, f32) {
+    if hi - lo >= FRAME_MIN_PX {
+        return (lo, hi);
+    }
+    let size = FRAME_MIN_PX.min(max - min).max(0.0);
+    let start = (f32::midpoint(lo, hi) - size * 0.5).clamp(min, (max - size).max(min));
+    (start, (start + size).min(max))
 }
 
 #[cfg(test)]

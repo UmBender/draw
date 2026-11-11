@@ -8,11 +8,18 @@
 //! panel, that texture and the view frame on the window. The camera is
 //! not part of the key, so panning never re-renders the overview.
 
-use macroquad::texture::Texture2D;
+use macroquad::color::Color;
+use macroquad::math::vec2;
+use macroquad::shapes::draw_rectangle;
+use macroquad::texture::{DrawTextureParams, Texture2D, draw_texture_ex};
 
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::minimap::{Fit, Minimap};
+use crate::core::palette::{Rgba, palette};
+use crate::core::shape::{Shape, grid_cell_rect};
+use crate::shell::render::{Batch, GlSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::theme;
 
 /// Content drawn smaller than this, in pixels on its longer side, gets a
 /// marker: the scaled-down overview can lose its lines.
@@ -50,14 +57,21 @@ impl OverviewKey {
     /// scale factor `dpi`; `None` when there is nothing to draw.
     #[must_use]
     pub fn of(editor: &Editor, map: &Minimap, dpi: f32) -> Option<Self> {
-        todo!("T110 behaviour: {} {map:?} {dpi}", editor.document().len())
+        let area = map.area();
+        Some(Self {
+            revision: editor.document_revision(),
+            len: editor.document().len(),
+            content: map.content()?,
+            size: target_size(Vec2::new(area.width(), area.height()), dpi),
+        })
     }
 
     /// The map the overview is rendered through: the content fitted into
     /// a target of the drawing area's size, in logical pixels.
     #[must_use]
     pub fn image(&self, area: Aabb) -> Fit {
-        todo!("T110 behaviour: {:?} {area:?}", self.content)
+        let size = Vec2::new(area.width(), area.height());
+        Fit::new(self.content, Aabb::from_corners(Vec2::ZERO, size))
     }
 }
 
@@ -65,7 +79,7 @@ impl OverviewKey {
 /// shows something else than `next`.
 #[must_use]
 pub fn needs_render(cached: Option<&OverviewKey>, next: &OverviewKey) -> bool {
-    todo!("T110 behaviour: {cached:?} {next:?}")
+    cached != Some(next)
 }
 
 /// The marker drawn over content that takes less than
@@ -73,28 +87,186 @@ pub fn needs_render(cached: Option<&OverviewKey>, next: &OverviewKey) -> bool {
 /// the content's place, kept inside the drawing area.
 #[must_use]
 pub fn marker_rect(map: &Minimap) -> Option<Aabb> {
-    todo!("T110 behaviour: {map:?}")
+    let rect = map.content_rect()?;
+    if rect.width().max(rect.height()) >= MARKER_BELOW_PX {
+        return None;
+    }
+    Some(square_in(rect.center(), MARKER_PX, map.area()))
+}
+
+/// A square of `side` pixels centred on `center`, moved to lie in `area`
+/// (which is at least `side` wide and high).
+fn square_in(center: Vec2, side: f32, area: Aabb) -> Aabb {
+    let start = |c: f32, min: f32, max: f32| (c - side * 0.5).clamp(min, (max - side).max(min));
+    let min = Vec2::new(
+        start(center.x, area.min.x, area.max.x),
+        start(center.y, area.min.y, area.max.y),
+    );
+    Aabb::from_corners(min, min + Vec2::new(side, side))
 }
 
 /// Draws every shape of `editor`'s document as a schematic through
 /// `image`, into the current render target: lines [`LINE_PX`] wide, fills
 /// as areas, text blocks as bars, shapes below [`DOT_BELOW_PX`] as dots.
 pub fn draw_overview(editor: &Editor, image: &Fit) {
-    todo!("T110 behaviour: {} {image:?}", editor.document().len())
+    let mut batch = Batch::new(GlSink);
+    for (_, shape) in editor.document().shapes() {
+        if shape.is_finite() {
+            draw_schematic(&mut batch, shape, image);
+        }
+    }
+    batch.finish();
+}
+
+/// Segments of an ellipse's outline in the overview.
+const ELLIPSE_SEGMENTS: u16 = 24;
+
+/// Opacity of the bar a text block is drawn as, of 255.
+const TEXT_BAR_ALPHA: u8 = 140;
+
+/// Adds the schematic of one finite `shape` to `batch`, through `image`.
+fn draw_schematic(batch: &mut Batch, shape: &Shape, image: &Fit) {
+    let color = to_mq_color(palette(shape.style().color));
+    let bounds = image.rect_of(shape.bounds());
+    if bounds.width().max(bounds.height()) < DOT_BELOW_PX {
+        let half = Vec2::new(DOT_BELOW_PX * 0.5, DOT_BELOW_PX * 0.5);
+        let center = bounds.center();
+        batch.rect(Aabb::from_corners(center - half, center + half), color);
+        return;
+    }
+    match shape {
+        Shape::Stroke { points, .. } => {
+            batch.polyline(points.iter().map(|p| image.point(*p)), LINE_PX, color);
+        }
+        Shape::Line { a, b, .. } | Shape::Arrow { a, b, .. } => {
+            batch.line(image.point(*a), image.point(*b), LINE_PX, color);
+        }
+        Shape::Rect { a, b, fill, .. } => {
+            let rect = Aabb::from_corners(image.point(*a), image.point(*b));
+            if let Some(fill) = fill {
+                batch.rect(rect, to_mq_color(palette(*fill)));
+            }
+            outline(batch, rect, color);
+        }
+        Shape::Ellipse { a, b, fill, .. } => {
+            let rect = Aabb::from_corners(image.point(*a), image.point(*b));
+            let (center, radii) = (rect.center(), (rect.max - rect.min) * 0.5);
+            let rim: Vec<Vec2> = (0..=ELLIPSE_SEGMENTS)
+                .map(|i| {
+                    let angle = std::f32::consts::TAU * f32::from(i) / f32::from(ELLIPSE_SEGMENTS);
+                    center + Vec2::new(radii.x * angle.cos(), radii.y * angle.sin())
+                })
+                .collect();
+            if let Some(fill) = fill {
+                batch.fan(center, rim.iter().copied(), to_mq_color(palette(*fill)));
+            }
+            batch.polyline(rim, LINE_PX, color);
+        }
+        Shape::Grid {
+            a, b, cols, rows, ..
+        } => {
+            let (a, b) = (image.point(*a), image.point(*b));
+            for fill in shape.cell_fills() {
+                let cell = grid_cell_rect(a, b, *cols, *rows, fill.col, fill.row);
+                batch.rect(cell, to_mq_color(palette(fill.color)));
+            }
+            outline(batch, Aabb::from_corners(a, b), color);
+        }
+        Shape::Text { .. } => {
+            let bar = palette(shape.style().color).faded(TEXT_BAR_ALPHA);
+            batch.rect(bounds, to_mq_color(bar));
+        }
+    }
+}
+
+/// Adds the outline of `rect` to `batch`, [`LINE_PX`] wide.
+fn outline(batch: &mut Batch, rect: Aabb, color: Color) {
+    let (min, max) = (rect.min, rect.max);
+    let corners = [
+        min,
+        Vec2::new(max.x, min.y),
+        max,
+        Vec2::new(min.x, max.y),
+        min,
+    ];
+    batch.polyline(corners, LINE_PX, color);
+}
+
+/// Draws the border of `rect` on the window as four bars `width` pixels
+/// wide, inside the rectangle.
+fn draw_border(rect: Aabb, width: f32, color: Color) {
+    let (min, size) = (rect.min, rect.max - rect.min);
+    draw_rectangle(min.x, min.y, size.x, width, color);
+    draw_rectangle(min.x, rect.max.y - width, size.x, width, color);
+    draw_rectangle(min.x, min.y, width, size.y, color);
+    draw_rectangle(rect.max.x - width, min.y, width, size.y, color);
 }
 
 /// Draws the minimap on the window: the panel, the cached `overview`
 /// (its texture and the map it was rendered through), the content marker
 /// and the frame of the visible world rectangle `view`.
 pub fn draw_panel(map: &Minimap, view: Aabb, overview: Option<(&Texture2D, &Fit)>) {
-    todo!("T110 behaviour: {map:?} {view:?} {} {LINE_PX}", overview.is_some())
+    let panel = map.panel();
+    let background = hex_color_alpha(theme::TOOLBAR_BACKGROUND, PANEL_ALPHA);
+    draw_rectangle(
+        panel.min.x,
+        panel.min.y,
+        panel.width(),
+        panel.height(),
+        background,
+    );
+    draw_border(panel, LINE_PX, hex_color(theme::TOOLBAR_BORDER));
+    if let Some((texture, image)) = overview
+        && let Some(dest) = map.place(image)
+    {
+        draw_texture_ex(
+            texture,
+            dest.min.x,
+            dest.min.y,
+            to_mq_color(Rgba::NO_TINT),
+            DrawTextureParams {
+                dest_size: Some(vec2(dest.width(), dest.height())),
+                // GL textures start at the bottom row.
+                flip_y: true,
+                ..DrawTextureParams::default()
+            },
+        );
+    }
+    if let Some(marker) = marker_rect(map) {
+        draw_rectangle(
+            marker.min.x,
+            marker.min.y,
+            marker.width(),
+            marker.height(),
+            hex_color(theme::TOOLBAR_TEXT),
+        );
+    }
+    draw_border(
+        map.frame(view),
+        LINE_PX,
+        hex_color(theme::SELECTION_OUTLINE),
+    );
+}
+
+/// The colour an overview target is cleared to: the panel background,
+/// fully transparent, so the image's empty margins show the panel.
+#[must_use]
+pub fn clear_color() -> Color {
+    hex_color_alpha(theme::TOOLBAR_BACKGROUND, 0)
 }
 
 /// Size in physical pixels of a target covering `size` logical pixels at
 /// scale factor `dpi`, at least 1 × 1; a bad `dpi` counts as 1.
 #[must_use]
 pub fn target_size(size: Vec2, dpi: f32) -> (u32, u32) {
-    todo!("T110 behaviour: {size:?} {dpi}")
+    let scale = if dpi.is_finite() && dpi > 0.0 {
+        dpi
+    } else {
+        1.0
+    };
+    // Saturating float-to-int casts; NaN becomes 0 and is raised to 1.
+    let side = |logical: f32| ((logical * scale).round() as u32).max(1);
+    (side(size.x), side(size.y))
 }
 
 #[cfg(test)]

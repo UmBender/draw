@@ -545,11 +545,14 @@ impl Editor {
     ///
     /// Events go through the tap filter first (ADR-T34-1).
     pub fn handle(&mut self, event: InputEvent) -> bool {
+        let shown = self.minimap_shown();
         let mut redraw = false;
         for event in self.tap.filter(event).into_iter().flatten() {
             redraw |= self.handle_filtered(event);
         }
-        redraw
+        self.refresh_minimap_content();
+        // The minimap appearing or going is a change on screen (ADR-T110-1).
+        redraw || self.minimap_shown() != shown
     }
 
     /// [`Editor::handle`] for one event that left the tap filter.
@@ -901,7 +904,69 @@ impl Editor {
     /// keeps the world box of its press (ADR-T110-1).
     #[must_use]
     pub fn minimap(&self) -> Option<Minimap> {
-        todo!("T110 behaviour: {:?}", self.minimap_content)
+        if !self.minimap_shown() {
+            return None;
+        }
+        let content = self.content_bounds();
+        match self.gesture {
+            Some(Gesture::Minimap { world, .. }) => {
+                Minimap::with_world(self.viewport, content, world)
+            }
+            _ => {
+                let view = self.camera.visible_world_rect(self.viewport);
+                Minimap::new(self.viewport, content, view)
+            }
+        }
+    }
+
+    /// Whether the minimap is asked for and the viewport can hold it.
+    fn minimap_shown(&self) -> bool {
+        let asked = match self.gesture {
+            Some(
+                Gesture::Minimap { .. }
+                | Gesture::Pan {
+                    button: PointerButton::Middle,
+                    ..
+                },
+            ) => true,
+            _ => self.space_held && self.tools.text.edit.is_none(),
+        };
+        asked && minimap::panel_rect(self.viewport).is_some()
+    }
+
+    /// The bounds of every shape: the cached ones if they are of this
+    /// document revision, else computed now.
+    fn content_bounds(&self) -> Option<Aabb> {
+        match self.minimap_content {
+            Some((revision, bounds)) if revision == self.doc_revision => bounds,
+            _ => minimap::content_bounds(&self.doc),
+        }
+    }
+
+    /// Computes the content bounds for the minimap if it shows and the
+    /// document changed since they were computed (ADR-T110-1).
+    fn refresh_minimap_content(&mut self) {
+        let fresh = matches!(self.minimap_content, Some((r, _)) if r == self.doc_revision);
+        if !fresh && self.minimap_shown() {
+            self.minimap_content = Some((self.doc_revision, minimap::content_bounds(&self.doc)));
+        }
+    }
+
+    /// Pans so that `world` is at the centre of the viewport. Returns
+    /// whether the camera changed.
+    fn center_view(&mut self, world: Vec2) -> bool {
+        let before = self.camera;
+        let delta = self.viewport * 0.5 - self.camera.world_to_screen(world);
+        self.camera.pan_by_screen(delta);
+        self.camera != before
+    }
+
+    /// Centres the view on the point of the minimap under `pos`, with the
+    /// world box `world` the drag started with. Returns whether the camera
+    /// changed.
+    fn minimap_drag(&mut self, world: Aabb, pos: Vec2) -> bool {
+        Minimap::with_world(self.viewport, None, world)
+            .is_some_and(|map| self.center_view(map.world_at(pos)))
     }
 
     /// The text block being edited, if any (ADR-T29-2).
@@ -985,6 +1050,19 @@ impl Editor {
             }
             cancelled = self.cancel_gesture();
         }
+        // A press in the minimap moves the view there and never reaches a
+        // tool (ADR-T110-1).
+        if button == PointerButton::Left
+            && self.space_held
+            && let Some(map) = self.minimap().filter(|map| map.contains(pos))
+        {
+            self.gesture = Some(Gesture::Minimap {
+                button,
+                world: map.world(),
+            });
+            self.center_view(map.world_at(pos));
+            return true;
+        }
         let pans = match button {
             PointerButton::Middle => true,
             PointerButton::Left => self.tool == Tool::Hand || self.space_held,
@@ -1030,7 +1108,10 @@ impl Editor {
     fn pointer_move(&mut self, pos: Vec2, mods: Modifiers) -> bool {
         match &mut self.gesture {
             Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.camera, pos),
-            Some(Gesture::Minimap { .. }) => false,
+            Some(Gesture::Minimap { world, .. }) => {
+                let world = *world;
+                self.minimap_drag(world, pos)
+            }
             Some(Gesture::Tool { tool, fresh, .. }) => {
                 *fresh = false;
                 let tool = *tool;
@@ -1046,6 +1127,10 @@ impl Editor {
             Some(Gesture::Pan { button: b, mut pan }) if b == button => {
                 self.gesture = None;
                 pan.drag(&mut self.camera, pos)
+            }
+            Some(Gesture::Minimap { button: b, world }) if b == button => {
+                self.gesture = None;
+                self.minimap_drag(world, pos)
             }
             Some(Gesture::Tool {
                 button: b, tool, ..
