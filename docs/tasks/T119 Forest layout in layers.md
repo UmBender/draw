@@ -1,7 +1,7 @@
 ---
 id: T119
 title: Forest layout in layers
-status: in-progress
+status: review
 wave: 60
 branch: task/T119-forest-layers
 depends_on: []
@@ -31,7 +31,7 @@ tags: [task]
 - **AC-3** — The owner's example gives two trees and no stray circle layout.
   Test: `forest_of_the_reported_input_has_two_trees`.
 - **AC-4** — Any acyclic edge list, in any order, gives finite layers, and the segment tree drawing is unchanged. Fuzzed with random edge lists.
-  Tests: `forest_layout_never_panics_and_stays_finite` (proptest), the existing T104 tests.
+  Tests: `forest_layout_never_panics_and_stays_finite` (proptest, in `layout.rs`), the existing T104 tests.
 
 ## Out of scope
 
@@ -41,17 +41,16 @@ tags: [task]
 
 - `src/core/tools/layout.rs`
 - `docs/features/Numbered nodes.md`
-- `tests/fuzz.rs`
 - this note, and new `ADR-T119-<n>` notes
 
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T119): specify the forest layout`
-- [ ] tests — `test(T119): add failing tests for the forest layout`
+- [x] tests — `test(T119): add failing tests for the forest layout`
 - [ ] models — skipped: no new types, the change is in `EdgeList::layers`
-- [ ] behaviour — `feat(T119): draw forests in layers`
-- [ ] quality — `chore(T119): pass clippy and rustfmt`
-- [ ] docs — `docs(T119): update the feature note`
+- [x] behaviour — `feat(T119): draw forests in layers`
+- [x] quality — skipped: the behaviour commit already passes clippy and rustfmt
+- [x] docs — `docs(T119): update the feature note`
 
 ## Learning path
 
@@ -60,3 +59,4 @@ None: it extends an existing feature.
 ## Log
 
 - 2026-11-11 — written from the owner's bug report.
+- 2026-11-11 — implemented; `scripts/check.sh` green. Fuzzing lives in the `layout.rs` proptests, so `tests/fuzz.rs` was not touched. `forest_goes_on_a_circle` was replaced by the forest tests (it asserted the behaviour the ADR amends).
