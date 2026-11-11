@@ -11,6 +11,7 @@ use draw::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use draw::core::command::{Command, Tool};
 use draw::core::document::ShapeId;
 use draw::core::editor::Editor;
+use draw::core::file::DocFile;
 use draw::core::geom::Vec2;
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -2426,6 +2427,60 @@ proptest! {
         cut in any::<prop::sample::Index>(),
     ) {
         check_snapshot_continues_equal(&session, cut, pen_editor())?;
+    }
+
+    /// T108 AC-5: any session's document survives a file round trip and
+    /// the text is canonical.
+    #[test]
+    fn file_round_trip_is_equal_and_canonical(session in arb_session()) {
+        // Arrange
+        let editor = run_session_on(Editor::new(), &session)?;
+        let text = editor.file().to_text();
+
+        // Act
+        let file = DocFile::parse(&text)
+            .map_err(|err| TestCaseError::fail(format!("own text rejected: {err}\n{text}")))?;
+        let mut loaded = Editor::new();
+        loaded.apply_file(file);
+
+        // Assert
+        prop_assert_eq!(loaded.file().to_text(), text);
+        prop_assert_eq!(loaded.document(), editor.document());
+        prop_assert_eq!(loaded.page(), editor.page());
+    }
+
+    /// T108 AC-5: any text, and any cut or mutation of a real file, is
+    /// refused with a line number or loads canonically; never a panic.
+    #[test]
+    fn file_parse_is_total(text in "(?s).{0,400}") {
+        if let Err(err) = DocFile::parse(&text) {
+            prop_assert!(err.line >= 1, "{}", err);
+        }
+    }
+
+    #[test]
+    fn file_mutated_or_truncated_text_is_total(
+        session in arb_session(),
+        mutations in prop::collection::vec(arb_mutation(), 0..6),
+        cut in any::<prop::sample::Index>(),
+    ) {
+        let editor = run_session_on(Editor::new(), &session)?;
+        let mut text = mutate(&editor.file().to_text(), &mutations);
+        let mut end = cut.index(text.len() + 1);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+
+        match DocFile::parse(&text) {
+            Err(err) => prop_assert!(err.line >= 1, "{}", err),
+            Ok(file) => {
+                let canonical = file.to_text();
+                let again = DocFile::parse(&canonical)
+                    .map_err(|err| TestCaseError::fail(format!("{err}\n{canonical}")))?;
+                prop_assert_eq!(again.to_text(), canonical);
+            }
+        }
     }
 
     /// T74 AC-3: any text parses or fails with a line number.

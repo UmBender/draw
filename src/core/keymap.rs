@@ -588,6 +588,13 @@ mod tests {
     }
 
     #[test]
+    fn resolve_ctrl_s_saves() {
+        assert_eq!(resolve(Key::S, CTRL), Some(Command::SaveFile));
+        assert_eq!(resolve(Key::S, NONE), Some(Command::CycleSmoothing));
+        assert_eq!(resolve(Key::S, CTRL_SHIFT), None);
+    }
+
+    #[test]
     fn resolve_ctrl_e_exports_the_view() {
         assert_eq!(resolve(Key::E, CTRL), Some(Command::ExportView));
         assert_eq!(resolve(Key::E, NONE), Some(Command::SetTool(Tool::Eraser)));

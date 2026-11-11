@@ -5277,6 +5277,45 @@ mod tests {
     }
 
     #[test]
+    fn save_file_asks_once_and_changes_nothing_else() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        let redraw = key_with(&mut ed, Key::S, CTRL);
+
+        assert!(!redraw);
+        assert_eq!(ed, before);
+        assert!(ed.take_save_request());
+        assert!(!ed.take_save_request(), "a request is answered once");
+        assert!(!Editor::new().take_save_request());
+    }
+
+    #[test]
+    fn save_file_during_text_edit_commits_the_text_and_asks() {
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Text));
+        place(&mut ed, 5.0, 5.0, "a");
+        assert!(ed.text_edit().is_some());
+
+        key_with(&mut ed, Key::S, CTRL);
+
+        assert!(ed.text_edit().is_none(), "the block was committed");
+        assert_eq!(ed.document().shapes().count(), 1);
+        assert!(ed.take_save_request());
+    }
+
+    #[test]
+    fn save_file_during_a_gesture_still_asks() {
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 5.0, 5.0);
+        assert!(ed.active_gesture().is_some());
+
+        key_with(&mut ed, Key::S, CTRL);
+
+        assert!(ed.take_save_request());
+    }
+
+    #[test]
     fn export_view_is_not_requested_by_default() {
         assert!(!Editor::new().take_export_request());
     }
