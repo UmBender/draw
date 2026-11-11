@@ -52,9 +52,21 @@ pub fn extent(text: &str) -> (usize, usize) {
 /// Most distinct texts [`typeset`] keeps; past this the cache starts over.
 pub const TYPESET_CACHE_MAX: usize = 4096;
 
+/// A cached layout and the macros it was laid out with (ADR-T112-1).
+struct Typeset {
+    /// The layout.
+    layout: Rc<Layout>,
+    /// The user-defined or undefined names its formulas mention, with the
+    /// [`tex::MacroTable::hash_of`] they had; the layout is stale when one
+    /// differs now.
+    deps: Vec<(String, u64)>,
+}
+
 thread_local! {
     /// Layouts of the texts seen so far (ADR-T30-1).
-    static TYPESET: RefCell<HashMap<String, Rc<Layout>>> = RefCell::new(HashMap::new());
+    static TYPESET: RefCell<HashMap<String, Typeset>> = RefCell::new(HashMap::new());
+    /// The macros formulas are expanded with (ADR-T112-1).
+    static MACROS: RefCell<tex::MacroTable> = RefCell::new(tex::MacroTable::default());
 }
 
 /// Whether `text` may hold TeX markup (`$…$` or `\$`); text without a `$`
@@ -151,8 +163,7 @@ fn plain_layout(text: &str) -> Layout {
 /// Cached layouts that use a macro whose definition changed are laid out
 /// again on their next lookup; the others stay.
 pub fn set_macros(table: tex::MacroTable) {
-    let _ = table;
-    todo!()
+    MACROS.with(|macros| *macros.borrow_mut() = table);
 }
 
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
@@ -160,21 +171,45 @@ pub fn set_macros(table: tex::MacroTable) {
 /// the cell grid it is drawn on.
 #[must_use]
 pub fn typeset(text: &str) -> Rc<Layout> {
-    TYPESET.with(|cache| {
-        if let Some(layout) = cache.borrow().get(text) {
-            return Rc::clone(layout);
-        }
-        let layout = Rc::new(if has_markup(text) {
-            tex::layout(&tex::parse(text))
-        } else {
-            plain_layout(text)
-        });
-        let mut cache = cache.borrow_mut();
-        if cache.len() >= TYPESET_CACHE_MAX {
-            cache.clear();
-        }
-        cache.insert(text.to_owned(), Rc::clone(&layout));
-        layout
+    MACROS.with(|macros| {
+        let macros = macros.borrow();
+        TYPESET.with(|cache| {
+            if let Some(cached) = cache.borrow().get(text)
+                && cached
+                    .deps
+                    .iter()
+                    .all(|(name, hash)| macros.hash_of(name) == *hash)
+            {
+                return Rc::clone(&cached.layout);
+            }
+            let (layout, deps) = if has_markup(text) {
+                let expanded = tex::expand_macros(text, &macros);
+                let deps = expanded
+                    .names
+                    .into_iter()
+                    .map(|name| {
+                        let hash = macros.hash_of(&name);
+                        (name, hash)
+                    })
+                    .collect();
+                (tex::layout(&tex::parse(&expanded.source)), deps)
+            } else {
+                (plain_layout(text), Vec::new())
+            };
+            let layout = Rc::new(layout);
+            let mut cache = cache.borrow_mut();
+            if cache.len() >= TYPESET_CACHE_MAX {
+                cache.clear();
+            }
+            cache.insert(
+                text.to_owned(),
+                Typeset {
+                    layout: Rc::clone(&layout),
+                    deps,
+                },
+            );
+            layout
+        })
     })
 }
 

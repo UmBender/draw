@@ -9,6 +9,8 @@
 //! [`Node::Literal`], drawn as its source with the warning flag.
 
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::math_metrics;
@@ -1854,8 +1856,44 @@ impl MacroTable {
     /// define macros.
     #[must_use]
     pub fn from_texts<'a>(texts: impl IntoIterator<Item = &'a str>) -> Self {
-        let _ = texts;
-        todo!()
+        let mut table = Self::default();
+        for text in texts {
+            if !text.contains("newcommand") {
+                continue;
+            }
+            let chars: Vec<char> = text.chars().collect();
+            for (start, end, _) in formula_spans(&chars) {
+                table.define_in(&chars[start..end]);
+            }
+        }
+        table
+    }
+
+    /// Registers every definition in the formula `chars`.
+    fn define_in(&mut self, chars: &[char]) {
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] != '\\' {
+                i += 1;
+            } else if let Some(def) = definition(chars, i) {
+                if is_builtin(&def.name) {
+                    if !self.ignored.contains(&def.name) {
+                        self.ignored.push(def.name);
+                    }
+                } else {
+                    self.defs.insert(
+                        def.name,
+                        MacroDef {
+                            params: def.params,
+                            body: def.body,
+                        },
+                    );
+                }
+                i = def.end;
+            } else {
+                i = command_name(chars, i).map_or(i + 2, |(_, end)| end);
+            }
+        }
     }
 
     /// The macro `name` (without the backslash).
@@ -1881,8 +1919,12 @@ impl MacroTable {
     /// when `name` is not defined.
     #[must_use]
     pub fn hash_of(&self, name: &str) -> u64 {
-        let _ = name;
-        todo!()
+        self.defs.get(name).map_or(0, |def| {
+            let mut hasher = DefaultHasher::new();
+            def.params.hash(&mut hasher);
+            def.body.hash(&mut hasher);
+            hasher.finish() | 1
+        })
     }
 }
 
@@ -1903,8 +1945,335 @@ pub struct Expanded {
 /// formulas is untouched.
 #[must_use]
 pub fn expand_macros(text: &str, table: &MacroTable) -> Expanded {
-    let _ = (text, table);
-    todo!()
+    let chars: Vec<char> = text.chars().collect();
+    let spans = formula_spans(&chars);
+    let mut source = String::new();
+    let mut names = Vec::new();
+    let mut last = 0;
+    for (start, end, delim) in spans {
+        source.extend(&chars[last..start - delim]);
+        let mut expander = Expander {
+            table,
+            steps: 0,
+            stripped: false,
+            names: Vec::new(),
+        };
+        let mut body = String::new();
+        if expander.expand(&chars[start..end], 0, &mut body).is_ok() {
+            // A formula that held only definitions draws nothing, not even
+            // its dollars (an empty `$$` would read as text).
+            if !(expander.stripped && body.trim().is_empty()) {
+                source.extend(&chars[start - delim..start]);
+                source.push_str(&body);
+                source.extend(&chars[end..end + delim]);
+            }
+        } else {
+            source.extend(&chars[start - delim..end + delim]);
+        }
+        for name in expander.names {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+        last = end + delim;
+    }
+    source.extend(&chars[last..]);
+    Expanded { source, names }
+}
+
+/// The formulas of a block's characters, as `(content start, content end,
+/// delimiter length)`: the splitting [`parse`] does.
+fn formula_spans(chars: &[char]) -> Vec<(usize, usize, usize)> {
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch == '\\' && chars.get(i + 1) == Some(&'$') {
+            i += 2;
+        } else if let Some(close) = (ch == '$')
+            .then(|| closing_double_dollar(chars, i))
+            .flatten()
+        {
+            spans.push((i + 2, close, 2));
+            i = close + 2;
+        } else if let Some(close) = (ch == '$').then(|| closing_dollar(chars, i)).flatten() {
+            spans.push((i + 1, close, 1));
+            i = close + 1;
+        } else {
+            i += 1;
+        }
+    }
+    spans
+}
+
+/// Commands that are neither symbols, accents, shortcuts, environments,
+/// arrows, alphabets nor spacing but still have a meaning of their own.
+const STRUCTURAL: &[&str] = &[
+    "frac",
+    "dfrac",
+    "tfrac",
+    "binom",
+    "dbinom",
+    "tbinom",
+    "multiset",
+    "sqrt",
+    "pmod",
+    "underline",
+    "text",
+    "operatorname",
+    "left",
+    "right",
+    "begin",
+    "end",
+    "displaystyle",
+    "textstyle",
+    "newcommand",
+    "renewcommand",
+];
+
+/// Whether `\name` means something already, so a macro cannot take it.
+fn is_builtin(name: &str) -> bool {
+    symbol(name).is_some()
+        || accent(name).is_some()
+        || expansion(name).is_some()
+        || environment(name).is_some()
+        || xarrow(name).is_some()
+        || alphabet(name).is_some()
+        || kern(&format!("\\{name}")).is_some()
+        || INFIX.contains(&name)
+        || STRUCTURAL.contains(&name)
+}
+
+/// The letters-only command name after the `\` at `at`, and the index
+/// after it.
+fn command_name(chars: &[char], at: usize) -> Option<(String, usize)> {
+    if chars.get(at) != Some(&'\\') {
+        return None;
+    }
+    let mut end = at + 1;
+    while chars.get(end).is_some_and(char::is_ascii_alphabetic) {
+        end += 1;
+    }
+    (end > at + 1).then(|| (chars[at + 1..end].iter().collect(), end))
+}
+
+/// The index of the `}` closing the `{` at `open`, skipping escaped
+/// characters.
+fn group_end(chars: &[char], open: usize) -> Option<usize> {
+    let mut depth = 0_usize;
+    let mut i = open;
+    while let Some(&ch) = chars.get(i) {
+        match ch {
+            '\\' => i += 1,
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// The index of the first non-space character at or after `i`.
+fn skip_spaces(chars: &[char], mut i: usize) -> usize {
+    while chars.get(i) == Some(&' ') {
+        i += 1;
+    }
+    i
+}
+
+/// A `\newcommand` or `\renewcommand` read from source.
+struct Definition {
+    /// Name without the backslash.
+    name: String,
+    /// Declared argument count.
+    params: usize,
+    /// Body between the braces.
+    body: String,
+    /// Index after the closing brace of the body.
+    end: usize,
+}
+
+/// The definition starting at the `\` at `at`: `\newcommand{\name}[n]{body}`
+/// or `\renewcommand`, with `{\name}` or `\name` and `[n]` optional.
+fn definition(chars: &[char], at: usize) -> Option<Definition> {
+    let (command, end) = command_name(chars, at)?;
+    if command != "newcommand" && command != "renewcommand" {
+        return None;
+    }
+    let mut i = skip_spaces(chars, end);
+    let braced = chars.get(i) == Some(&'{');
+    if braced {
+        i = skip_spaces(chars, i + 1);
+    }
+    let (name, after) = command_name(chars, i)?;
+    i = after;
+    if braced {
+        i = skip_spaces(chars, i);
+        if chars.get(i) != Some(&'}') {
+            return None;
+        }
+        i += 1;
+    }
+    i = skip_spaces(chars, i);
+    let mut params = 0;
+    if chars.get(i) == Some(&'[') {
+        let digit = chars.get(i + 1)?.to_digit(10)?;
+        if chars.get(i + 2) != Some(&']') {
+            return None;
+        }
+        params = usize::try_from(digit).ok()?;
+        i = skip_spaces(chars, i + 3);
+    }
+    if chars.get(i) != Some(&'{') {
+        return None;
+    }
+    let close = group_end(chars, i)?;
+    Some(Definition {
+        name,
+        params,
+        body: chars[i + 1..close].iter().collect(),
+        end: close + 1,
+    })
+}
+
+/// The arguments of a macro of `count` arguments starting at `from`: each
+/// a `{group}` (braces dropped), a command or one character. `None` when
+/// the text runs out first.
+fn macro_args(chars: &[char], from: usize, count: usize) -> Option<(Vec<String>, usize)> {
+    let mut args = Vec::with_capacity(count);
+    let mut i = from;
+    for _ in 0..count {
+        i = skip_spaces(chars, i);
+        let first = *chars.get(i)?;
+        let (arg, next) = if first == '{' {
+            let close = group_end(chars, i)?;
+            (chars[i + 1..close].iter().collect(), close + 1)
+        } else if let Some((_, end)) = command_name(chars, i) {
+            (chars[i..end].iter().collect(), end)
+        } else if first == '\\' {
+            let end = (i + 2).min(chars.len());
+            (chars[i..end].iter().collect(), end)
+        } else {
+            (first.to_string(), i + 1)
+        };
+        args.push(arg);
+        i = next;
+    }
+    Some((args, i))
+}
+
+/// `body` with each slot `#n` replaced by `args[n - 1]`; slots past the
+/// arguments stay as typed.
+fn fill_macro_slots(body: &str, args: &[String]) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut chars = body.chars().peekable();
+    while let Some(ch) = chars.next() {
+        let slot = (ch == '#')
+            .then(|| chars.peek().and_then(|d| d.to_digit(10)))
+            .flatten()
+            .and_then(|n| usize::try_from(n).ok())
+            .and_then(|n| n.checked_sub(1))
+            .and_then(|i| args.get(i));
+        if let Some(arg) = slot {
+            chars.next();
+            out.push_str(arg);
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Expansion of one formula's source.
+struct Expander<'a> {
+    /// The macros to apply.
+    table: &'a MacroTable,
+    /// Macro uses expanded so far.
+    steps: usize,
+    /// Whether a definition was removed.
+    stripped: bool,
+    /// User-defined or undefined names met, once each.
+    names: Vec<String>,
+}
+
+impl Expander<'_> {
+    /// Appends `chars` to `out` with definitions removed and macros
+    /// expanded; `Err` when a limit is passed.
+    fn expand(&mut self, chars: &[char], depth: usize, out: &mut String) -> Result<(), ()> {
+        if depth > MACRO_DEPTH {
+            return Err(());
+        }
+        let mut glued = false;
+        let mut i = 0;
+        while i < chars.len() {
+            let ch = chars[i];
+            if ch != '\\' {
+                // A letter right after an expanded command word would
+                // extend that word.
+                if glued && ch.is_ascii_alphabetic() && ends_with_command_word(out) {
+                    out.push(' ');
+                }
+                glued = false;
+                out.push(ch);
+                i += 1;
+                continue;
+            }
+            glued = false;
+            let Some((name, end)) = command_name(chars, i) else {
+                out.push('\\');
+                if let Some(&next) = chars.get(i + 1) {
+                    out.push(next);
+                }
+                i += 2;
+                continue;
+            };
+            if let Some(def) = definition(chars, i) {
+                self.stripped = true;
+                i = def.end;
+                continue;
+            }
+            if !is_builtin(&name) && !self.names.contains(&name) {
+                self.names.push(name.clone());
+            }
+            let applied = self
+                .table
+                .get(&name)
+                .and_then(|def| macro_args(chars, end, def.params).map(|args| (def, args)));
+            let Some((def, (args, next))) = applied else {
+                out.extend(&chars[i..end]);
+                i = end;
+                continue;
+            };
+            self.steps += 1;
+            if self.steps > MACRO_SIZE {
+                return Err(());
+            }
+            let body: Vec<char> = fill_macro_slots(&def.body, &args).chars().collect();
+            if body.first().is_some_and(char::is_ascii_alphabetic) && ends_with_command_word(out) {
+                out.push(' ');
+            }
+            self.expand(&body, depth + 1, out)?;
+            if out.len() > MACRO_SIZE {
+                return Err(());
+            }
+            glued = true;
+            i = next;
+        }
+        Ok(())
+    }
+}
+
+/// Whether `out` ends in a command name (`\alpha`), which a following
+/// letter would lengthen.
+fn ends_with_command_word(out: &str) -> bool {
+    let word = out.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    word.len() < out.len() && word.ends_with('\\') && !word.ends_with("\\\\")
 }
 
 // ---- parsing ----------------------------------------------------------------
@@ -10487,18 +10856,18 @@ mod tests {
     #[test]
     fn newcommand_with_args_fills_slots() {
         let t = table(&[
-            "$\\newcommand{\\abs}[1]{\\left|#1\\right|}$",
+            "$\\newcommand{\\modul}[1]{\\left|#1\\right|}$",
             "$\\newcommand{\\pair}[2]{#1+#2}$",
         ]);
-        assert_eq!(expanded("$\\abs{x}$", &t), "$\\left|x\\right|$");
+        assert_eq!(expanded("$\\modul{x}$", &t), "$\\left|x\\right|$");
         assert_eq!(expanded("$\\pair{a}b$", &t), "$a+b$");
         assert_eq!(expanded("$\\pair{a b}{c}$", &t), "$a b+c$");
     }
 
     #[test]
     fn macro_with_too_few_arguments_is_left_as_typed() {
-        let t = table(&["$\\newcommand{\\abs}[1]{|#1|}$"]);
-        assert_eq!(expanded("$\\abs$", &t), "$\\abs$");
+        let t = table(&["$\\newcommand{\\modul}[1]{|#1|}$"]);
+        assert_eq!(expanded("$\\modul$", &t), "$\\modul$");
     }
 
     #[test]
@@ -10569,7 +10938,7 @@ mod tests {
 
     #[test]
     fn print_parse_unchanged_by_macros() {
-        let text = "a $\\newcommand{\\abs}[1]{\\left|#1\\right|}$ $\\abs{x}$";
+        let text = "a $\\newcommand{\\modul}[1]{\\left|#1\\right|}$ $\\modul{x}$";
         assert_eq!(print(&parse(text)), text);
     }
 

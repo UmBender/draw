@@ -12,6 +12,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::core::shape::Shape;
 use crate::core::tex::MacroTable;
+use crate::core::text_layout::set_macros;
 
 /// Stable identity of a shape in a [`Document`].
 ///
@@ -211,6 +212,23 @@ pub struct Document {
     /// Id → z-order position, built on the first lookup after an insert or
     /// remove (ADR-T25-1).
     positions: OnceCell<HashMap<ShapeId, usize, IdBuildHasher>>,
+    /// The macros the text blocks define (ADR-T112-1).
+    macros: MacroTable,
+}
+
+/// Whether `shape` is a text block that may define macros.
+fn text_defines_macros(shape: &Shape) -> bool {
+    matches!(shape, Shape::Text { text, .. } if text.contains("newcommand"))
+}
+
+/// Whether applying `edit` may change the macro table.
+fn edit_touches_macros(edit: &Edit) -> bool {
+    match edit {
+        Edit::Insert { shape, .. } | Edit::Remove { shape, .. } => text_defines_macros(shape),
+        Edit::Replace { before, after, .. } => {
+            text_defines_macros(before) || text_defines_macros(after)
+        }
+    }
 }
 
 /// A stretch of a transaction that [`Document::apply`] handles in one go.
@@ -306,18 +324,40 @@ impl Document {
     #[must_use]
     pub(crate) fn from_parts(shapes: Vec<(ShapeId, Shape)>, next_id: u64) -> Self {
         let ids = shapes.iter().map(|(id, _)| *id).collect();
-        Self {
+        let mut doc = Self {
             shapes,
             ids,
             next_id,
             positions: OnceCell::new(),
+            macros: MacroTable::default(),
+        };
+        doc.macros = doc.build_macros();
+        set_macros(doc.macros.clone());
+        doc
+    }
+
+    /// The table of the text blocks, bottom of the stacking order first.
+    fn build_macros(&self) -> MacroTable {
+        MacroTable::from_texts(self.shapes.iter().filter_map(|(_, shape)| match shape {
+            Shape::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        }))
+    }
+
+    /// Rebuilds the table after a change and, when it differs, hands it
+    /// to the layout cache.
+    fn refresh_macros(&mut self) {
+        let table = self.build_macros();
+        if table != self.macros {
+            set_macros(table.clone());
+            self.macros = table;
         }
     }
 
     /// The macros the text blocks of this document define (ADR-T112-1).
     #[must_use]
     pub fn macros(&self) -> &MacroTable {
-        todo!()
+        &self.macros
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.
@@ -381,6 +421,9 @@ impl Document {
             self.roll_back(&tx.0[..done]);
             self.next_id = saved_next_id;
             return Err(err);
+        }
+        if tx.0.iter().any(edit_touches_macros) {
+            self.refresh_macros();
         }
         Ok(())
     }
