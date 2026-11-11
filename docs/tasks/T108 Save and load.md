@@ -1,11 +1,11 @@
 ---
 id: T108
 title: Save and load
-status: todo
+status: in-progress
 wave: 60
 branch: task/T108-save-and-load
 depends_on: [T107, T116]
-adrs: []
+adrs: ["[[ADR-T108-1 The draw file format and its promise]]"]
 feature: "[[Editor snapshots]]"
 tutorial: ""
 tags: [task]
@@ -32,6 +32,7 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 - **AC-2** (owner) — `draw file.draw` opens that file; a missing file starts empty and is created by the first `Ctrl+S`. No file dialog.
 - **AC-3** — The file holds the document only (every page's shapes, locks and view, T116), not the undo history or settings; it starts with a format name and version. A file from a newer version, or a damaged one, is refused with a notice and the canvas stays empty; nothing is overwritten.
 - **AC-4** — Every later change to the shape model must read older files (a test loads a committed version-1 fixture). This is recorded as an ADR the 2.0.0 refactor (T50) must keep.
+- **Tests per AC** — `core::file::tests::*` (AC-3, AC-5), `tests/files.rs::v1_fixture_loads` (AC-4), `tests/fuzz.rs::file_*` (AC-5), `keymap::tests::resolve_ctrl_s_saves` and `editor::tests::save_*` (AC-1), `shell::file::tests::*` (AC-1, AC-2: path, atomic write, arguments).
 - **AC-5** — Round trip and fuzzing: any document saved and loaded is equal to the original; random and truncated files never panic.
 
 ## Out of scope
@@ -41,7 +42,7 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 
 ## Files owned
 
-- `src/core/snapshot.rs` or a new `src/core/file.rs`, `src/core/editor.rs`, `src/core/keymap.rs`, `src/core/command.rs`
+- `src/core/snapshot.rs` or a new `src/core/file.rs`, `src/shell/file.rs`, `src/shell/mod.rs`, `src/core/mod.rs`, `tests/files.rs`, `src/core/editor.rs`, `src/core/keymap.rs`, `src/core/command.rs`
 - `src/main.rs`, `src/shell/` (arguments, writing off the frame)
 - `docs/features/Editor snapshots.md`, `docs/features/Crash recovery.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`, `tests/` fixtures
@@ -49,7 +50,7 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T108): specify save and load`
+- [x] spec — `docs(T108): specify save and load`
 - [ ] tests — `test(T108): add failing tests for save and load`
 - [ ] models — `feat(T108): add the versioned document file format`
 - [ ] behaviour — `feat(T108): save with Ctrl+S and open a file from the command line`
@@ -65,3 +66,4 @@ None: it extends an existing area.
 - 2026-11-10 — note written with the owner, from K3 of the [[Feature proposal]].
 - Depends on T107 so the first file version already stores the lock flag.
 - 2026-11-10 — also depends on T116 so the first file version stores every page.
+- 2026-11-11 — spec: ADR-T108-1. UNATTENDED CHOICE: files owned gain `src/shell/file.rs`, `src/shell/mod.rs`, `src/core/mod.rs` and `tests/files.rs`.
