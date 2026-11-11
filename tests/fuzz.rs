@@ -11,10 +11,11 @@ use draw::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use draw::core::command::{Command, Tool};
 use draw::core::document::ShapeId;
 use draw::core::editor::Editor;
-use draw::core::geom::Vec2;
+use draw::core::geom::{Aabb, Vec2};
 use draw::core::history::HISTORY_LIMIT;
 use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
+use draw::core::minimap;
 use draw::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
@@ -748,6 +749,62 @@ fn arb_space_drag() -> impl Strategy<Value = Vec<InputEvent>> {
     })
 }
 
+/// A drag in the minimap (T110): a viewport that holds the panel, `Space`,
+/// a left press inside the panel, moves (rarely a wild point), then the
+/// releases in either order, or none.
+fn arb_minimap_drag() -> impl Strategy<Value = Vec<InputEvent>> {
+    let step = prop_oneof![
+        8 => (-40.0f32..40.0, -40.0f32..40.0).prop_map(|(x, y)| Vec2::new(x, y)),
+        1 => arb_pos(),
+    ];
+    (
+        (300.0f32..2_000.0, 250.0f32..1_200.0),
+        (0.0f32..=1.0, 0.0f32..=1.0),
+        prop::collection::vec(step, 0..12),
+        any::<(bool, bool, bool)>(),
+    )
+        .prop_map(|(size, at, steps, (release, space_up, space_first))| {
+            let size = Vec2::new(size.0, size.1);
+            let mods = Modifiers::NONE;
+            let button = PointerButton::Left;
+            let panel = minimap::panel_rect(size)
+                .unwrap_or_else(|| Aabb::from_corners(Vec2::ZERO, size));
+            let start = Vec2::new(
+                panel.min.x + at.0 * panel.width(),
+                panel.min.y + at.1 * panel.height(),
+            );
+            let key = Key::Space;
+            let mut events = vec![
+                InputEvent::Resize { size },
+                InputEvent::KeyDown { key, mods },
+                InputEvent::PointerDown {
+                    pos: start,
+                    button,
+                    mods,
+                },
+            ];
+            let mut pos = start;
+            for step in steps {
+                pos = if step.is_finite() && step.length() <= 60.0 {
+                    pos + step
+                } else {
+                    step
+                };
+                events.push(InputEvent::PointerMove { pos, mods });
+            }
+            if space_up && space_first {
+                events.push(InputEvent::KeyUp { key, mods });
+            }
+            if release {
+                events.push(InputEvent::PointerUp { pos, button, mods });
+            }
+            if space_up && !space_first {
+                events.push(InputEvent::KeyUp { key, mods });
+            }
+            events
+        })
+}
+
 /// A grid-tool drag with arrow keys pressed while the button is held.
 fn arb_grid_drag() -> impl Strategy<Value = Vec<InputEvent>> {
     let arrow = select(ARROW_KEYS.to_vec()).prop_map(|key| InputEvent::KeyDown {
@@ -871,6 +928,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         1 => arb_resize_session(),
         3 => arb_command_burst(),
         1 => arb_space_drag(),
+        1 => arb_minimap_drag(),
         2 => arb_text_session(),
         1 => arb_host_session(),
         1 => arb_table_session(),
@@ -972,6 +1030,54 @@ fn check_stroke_widths(id: ShapeId, shape: &Shape, step: usize) -> Result<(), Te
     Ok(())
 }
 
+/// T110: while the minimap shows, its panel, world box, view frame,
+/// content and overview placement are finite, the frame and the content
+/// lie in the drawing area, and the content is the document's.
+fn check_minimap(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
+    let Some(map) = editor.minimap() else {
+        return Ok(());
+    };
+    let finite = |rect: Aabb| rect.min.is_finite() && rect.max.is_finite();
+    let (panel, area, world) = (map.panel(), map.area(), map.world());
+    prop_assert!(
+        finite(panel) && finite(area) && finite(world),
+        "step {step}: minimap {map:?}"
+    );
+    prop_assert_eq!(Some(panel), minimap::panel_rect(editor.viewport()));
+    let room = area.expand(1e-3);
+    let view = editor.camera().visible_world_rect(editor.viewport());
+    let frame = map.frame(view);
+    prop_assert!(
+        finite(frame) && room.contains(frame.min) && room.contains(frame.max),
+        "step {step}: minimap frame {frame:?} outside {area:?}"
+    );
+    prop_assert_eq!(
+        map.content(),
+        minimap::content_bounds(editor.document()),
+        "step {}: stale minimap content",
+        step
+    );
+    if let Some(rect) = map.content_rect() {
+        prop_assert!(
+            finite(rect) && room.contains(rect.min) && room.contains(rect.max),
+            "step {step}: minimap content {rect:?} outside {area:?}"
+        );
+    }
+    if let Some(content) = map.content() {
+        let size = Vec2::new(area.width(), area.height());
+        let image = minimap::Fit::new(content, Aabb::from_corners(Vec2::ZERO, size));
+        if let Some(dest) = map.place(&image) {
+            prop_assert!(finite(dest), "step {step}: overview at {dest:?}");
+        }
+    }
+    let at = map.world_at(map.point(view.center()));
+    prop_assert!(
+        at.is_finite() && world.contains(at),
+        "step {step}: minimap point {at:?} outside {world:?}"
+    );
+    Ok(())
+}
+
 /// Checks every editor invariant from the architecture note.
 fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
     let cells = 1..=GRID_MAX_CELLS;
@@ -1058,6 +1164,7 @@ fn check_invariants(editor: &Editor, step: usize) -> Result<(), TestCaseError> {
         "step {step}: camera offset not finite: {:?}",
         camera.offset()
     );
+    check_minimap(editor, step)?;
 
     let mut seen = HashSet::new();
     for &id in editor.selection() {
@@ -1354,6 +1461,47 @@ fn resize_sessions_resize_shapes() {
 
     // Assert
     assert!(resized >= 20, "sessions that resized: {resized}/200");
+}
+
+#[test]
+fn sessions_reach_the_minimap() {
+    // Arrange
+    let mut runner = TestRunner::deterministic();
+    let strategy = arb_session();
+    let (mut shown, mut with_content, mut jumped) = (0, 0, 0);
+
+    // Act
+    for _ in 0..200 {
+        let Ok(tree) = strategy.new_tree(&mut runner) else {
+            panic!("arb_session failed to generate a value");
+        };
+        let mut editor = Editor::new();
+        let (mut show, mut content, mut jump) = (false, false, false);
+        for event in tree.current() {
+            let press = matches!(event, InputEvent::PointerDown { .. });
+            let camera = *editor.camera();
+            editor.handle(event);
+            let map = editor.minimap();
+            show |= map.is_some();
+            content |= map.is_some_and(|map| map.content().is_some());
+            // Only a press in the minimap moves the view.
+            jump |= press && map.is_some() && *editor.camera() != camera;
+        }
+        shown += usize::from(show);
+        with_content += usize::from(content);
+        jumped += usize::from(jump);
+    }
+
+    // Assert: the minimap invariants are checked on real states.
+    assert!(shown >= 100, "sessions that showed the minimap: {shown}/200");
+    assert!(
+        with_content >= 60,
+        "sessions that showed shapes in the minimap: {with_content}/200"
+    );
+    assert!(
+        jumped >= 60,
+        "sessions that moved the view with the minimap: {jumped}/200"
+    );
 }
 
 #[test]
@@ -1763,7 +1911,7 @@ fn check_snapshot_continues_equal(
 }
 
 /// Tokens that appear in snapshot text, for mutations.
-const SNAPSHOT_TOKENS: [&str; 34] = [
+const SNAPSHOT_TOKENS: [&str; 35] = [
     "-",
     "0",
     "1",
@@ -1792,6 +1940,7 @@ const SNAPSHOT_TOKENS: [&str; 34] = [
     "holding",
     "move",
     "marquee",
+    "minimap",
     "replace",
     "insert",
     "stroke",
