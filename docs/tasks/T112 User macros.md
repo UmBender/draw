@@ -1,7 +1,7 @@
 ---
 id: T112
 title: User macros
-status: in-progress
+status: review
 wave: 60
 branch: task/T112-user-macros
 depends_on: [T105]
@@ -55,12 +55,12 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T112): specify user macros`
-- [ ] tests — `test(T112): add failing tests for user macros`
-- [ ] models — `feat(T112): add the macro table and expansion`
-- [ ] behaviour — `feat(T112): expand user macros in every formula`
-- [ ] quality — `chore(T112): pass clippy and rustfmt`
-- [ ] docs — `docs(T112): update the feature note`
+- [x] spec — `docs(T112): specify user macros`
+- [x] tests — `test(T112): add failing tests for user macros`
+- [x] models — `feat(T112): add the macro table and expansion`
+- [x] behaviour — `feat(T112): expand user macros in every formula`
+- [x] quality — `chore(T112): pass clippy and rustfmt`
+- [x] docs — `docs(T112): update the feature note`
 
 ## Learning path
 

@@ -409,6 +409,16 @@ flag down with the alphabets, `\displaystyle` / `\textstyle` are
 `Node::MathStyle` switches read while walking a list, and `layout`
 centres each display line once the block's width is known
 ([[ADR-T105-1 Display style as a style field and display segments]]).
+User macros (`\newcommand{\R}{\mathbb{R}}`, `\newcommand{\f}[2]{#1+#2}`,
+`\renewcommand`) are source expansion: `tex::expand_macros` rewrites each
+formula before `parse`, which is untouched, so sources round-trip. The
+`MacroTable` is built by `Document` from its text blocks, higher block
+wins, and handed to `text_layout::set_macros`; each cached layout records
+the macro names it used with their hashes, so a changed definition
+re-lays out only its users. Built-in names (`\abs`, `\frac`, …) cannot
+be redefined; expansion stops at depth 32 or 10 000 steps and then the
+formula draws as typed
+([[ADR-T112-1 User macros as source expansion]]).
 `core::text_layout::typeset` caches the layout per text, and
 `text_layout::bounds` gives every shape query (hit-test, culling,
 snapping, selection) the typeset box; the edit session keeps the source
@@ -419,7 +429,11 @@ of the same batch.
 
 ## Limits
 
-- No macros. Display mode is `$$…$$` on one line only: no `\[ … \]`,
+- Macros: no `\def`, `\let`, optional-argument defaults or
+  `\DeclareMathOperator`; definitions are read only in formulas of text
+  blocks (shape labels use them but do not define); a definition applies
+  when the edit is committed, not while it is typed; `\abs`, `\norm` and
+  the other physics shortcuts are built in and keep their meaning. Display mode is `$$…$$` on one line only: no `\[ … \]`,
   `equation`, `align`, numbered equations, `\limits` / `\nolimits`,
   `\scriptstyle` or `\scriptscriptstyle`; display operators are the
   inline glyph scaled, not the font's display variants, and superscripts

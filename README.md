@@ -297,6 +297,7 @@ $dp_{i,j} = \min(dp_{i-1,j}, dp_{i,j-1}) + a_{i,j}$ in $O(nm)$
 | `x^2`, `x_i`, `x_{i,j}^{2k}` | Superscript, subscript (one character or `{group}`) |
 | `\frac{a}{b}`, `\binom{n}{k}`, `\sqrt{x}` | Fraction, binomial, root |
 | `$$\sum_{i=1}^n \frac{a_i}{b_i}$$` | Display formula: own line, centred, larger operators, full-size fraction parts |
+| `$\newcommand{\R}{\mathbb{R}}$`, `\newcommand{\f}[2]{#1+#2}`, `\renewcommand` | Define a macro for every formula of the drawing (up to 9 arguments; the definition draws nothing; the block higher in the stack wins; built-in names such as `\abs` cannot be redefined) |
 | `\dfrac{a}{b}`, `\tfrac{a}{b}`, `\displaystyle`, `\textstyle` | Force display or inline style (the switches last to the end of their group) |
 | `\left( \frac{a}{b} \right)^2`, `\left. x \right|` | Brackets that grow to fit (`.` draws nothing) |
 | `\begin{pmatrix} a & b \\ c & d \end{pmatrix}`, `matrix`, `bmatrix`, `vmatrix` | Matrices, on one line |

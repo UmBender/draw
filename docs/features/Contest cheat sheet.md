@@ -85,6 +85,7 @@ cancel · `Enter` new line · `Tab` 4 spaces · arrows, `Home`, `End` move ·
 `Ctrl+V` paste text from the system clipboard.
 Edit again: Text click, or Select double-click. Formulas: `$…$` inline,
 `$$…$$` display (own line, centred; `\dfrac`, `\displaystyle` too).
+Macros: `$\newcommand{\R}{\mathbb{R}}$` defines `\R` for the whole drawing.
 
 ## Typing in a shape
 
