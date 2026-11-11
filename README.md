@@ -46,6 +46,9 @@ long. If it crashes, `draw --recover` brings your drawing back.
   all, delete, clear canvas, raise / lower with `Ctrl+]` / `Ctrl+[`
   (`Shift` for top / bottom), align edges with `Alt+←/→/↑/↓`, lay out
   as a row / column without overlap with `Alt+H` / `Alt+V`.
+- **Shape recognition** — `Z` right after a pen stroke turns a shaky
+  line, box or circle into a clean line, rectangle or ellipse; a scribble
+  stays as drawn, and `Ctrl+Z` gives the stroke back.
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -218,6 +221,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Alt+←` | Align left edges | `Alt+→` | Align right edges |
 | `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
 | `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
+| `Z` | Last stroke to line / rectangle / ellipse | | |
 
 ### View
 

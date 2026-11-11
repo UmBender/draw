@@ -52,6 +52,7 @@ snap sit under the left hand ([[ADR-T38-1 Left-hand keys for pen, line and smart
 | `Ctrl+Shift+]` / `Ctrl+Shift+[` | Selection to the top / bottom of the stacking order |
 | `Alt+←` / `Alt+→` / `Alt+↑` / `Alt+↓` | Align the selected shapes' left / right / top / bottom edges to that side of the selection's box ([[ADR-T101-1 Align and distribute keys]]); in text edit mode they move the caret |
 | `Alt+H` / `Alt+V` | Space three or more selected shapes with equal horizontal / vertical gaps, the outer two fixed |
+| `Z` | Replace the last pen stroke, if nothing else was done since, by the line, rectangle or ellipse it looks like; a stroke that fits none stays ([[ADR-T109-1 Shape recognition on Z]]); in text edit mode it types `z` |
 | `Delete`, `Backspace` | Delete selection |
 | `Ctrl+Backspace` | Clear canvas (undoable) |
 | `Esc` | Cancel current gesture / clear selection |

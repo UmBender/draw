@@ -1,7 +1,7 @@
 ---
 id: T109
 title: Shape recognition
-status: in-progress
+status: review
 wave: 59
 branch: task/T109-shape-recognition
 depends_on: []
@@ -69,12 +69,12 @@ Owner decisions are marked (owner). Rules and thresholds: [[ADR-T109-1 Shape rec
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T109): specify shape recognition`
-- [ ] tests — `test(T109): add failing tests for shape recognition`
-- [ ] models — `feat(T109): fit lines, rectangles and ellipses to a stroke`
-- [ ] behaviour — `feat(T109): replace the last stroke with its shape on Z`
-- [ ] quality — `chore(T109): pass clippy and rustfmt`
-- [ ] docs — `docs(T109): update the feature note`
+- [x] spec — `docs(T109): specify shape recognition`
+- [x] tests — `test(T109): add failing tests for shape recognition`
+- [x] models — `feat(T109): fit lines, rectangles and ellipses to a stroke`
+- [x] behaviour — `feat(T109): replace the last stroke with its shape on Z`
+- [x] quality — `chore(T109): pass clippy and rustfmt`
+- [x] docs — `docs(T109): update the feature note`
 
 ## Learning path
 
@@ -86,3 +86,8 @@ None: it extends an existing area.
 - Key changed from `Q` to `Z`: `Q` is the laser pointer (T106).
 - 2026-11-10 — UNATTENDED CHOICE: added `src/core/mod.rs` (declares the new `recognize` module) and `docs/architecture/Keymap.md` (the documented key table, as T100 did) to *Files owned*.
 - 2026-11-10 — UNATTENDED CHOICE: "nothing else since" is read from the history (ADR-T109-1), so a redo that brings the stroke back re-enables `Z`, and so does a paste or duplicate of exactly one stroke; no snapshot format change.
+- 2026-11-10 — UNATTENDED CHOICE: recognised rectangles and ellipses are unlabelled even with numbering on (numbering is for nodes drawn with the tools); pressure width factors of the stroke are dropped, the shape keeps `style.width` (ADR-T109-1).
+- 2026-11-10 — The editor tests live in a nested `editor::tests::recognize_shape` module (their helpers `pen_editor` and `shapes_of` shadow older ones of the same name); the AC test names are otherwise as listed.
+- 2026-11-10 — The fitter's thresholds passed on the first run on every generated sample; the short-line sample's jitter was lowered to 0.05 px before the tests were committed (anti-tremor never leaves noise that large next to the sample spacing).
+- 2026-11-10 — `scripts/check.sh --fuzz` and `scripts/e2e.sh` green; no golden changed. Status `review`.
+- Manual check left for the owner: draw a few shaky circles, squares, lines and scribbles with the pen and press `Z`; also a tilted box and an open arc.

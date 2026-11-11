@@ -1,9 +1,9 @@
 ---
 title: Drawing tools
 task: "[[T09 Creation tools]]"
-adrs: ["[[ADR-0007 Anti-tremor pipeline]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T08-1 Tool context and gesture overlay]]"]
+adrs: ["[[ADR-0007 Anti-tremor pipeline]]", "[[ADR-0013 World-space widths and zoom limits]]", "[[ADR-T08-1 Tool context and gesture overlay]]", "[[ADR-T109-1 Shape recognition on Z]]"]
 tutorial: "[[09 Building drawing tools]]"
-shortcuts: ["D", "W", "A", "R", "C", "Shift", "Esc"]
+shortcuts: ["D", "W", "A", "R", "C", "Shift", "Esc", "Z"]
 tags: [feature]
 ---
 
@@ -27,6 +27,25 @@ see the shape being drawn; releasing commits it as a single undo step.
 | Square, circle, 45° line or arrow | hold `Shift` while dragging (checked on every move) |
 | Abandon the shape being drawn | `Esc` or switch tool |
 | Undo the last shape | `Ctrl+Z` (one shape per gesture) |
+| Clean up the last pen stroke | `Z` right after drawing it: a shaky line, box or circle becomes a line, rectangle or ellipse ([[T109 Shape recognition]]) |
+
+### Shape recognition
+
+`Z` acts on the last pen stroke only while nothing else was done since
+(another stroke, an edit, an undo); view, tool, colour and selection
+changes don't count. The stroke becomes:
+
+- a **line** from its first to its last point when it is nearly straight;
+- a **rectangle** when it is a closed loop passing near the four corners
+  of its box;
+- an **ellipse** when it is a closed round loop.
+
+The new shape keeps the stroke's colour and width, takes the stroke's
+place in the stacking order and is one undo step (`Ctrl+Z` gives the
+stroke back). A stroke that fits nothing well — a scribble, a triangle,
+an open arc — is left alone and no undo step is added. A tilted box or
+ellipse becomes the axis-aligned shape filling the stroke's box, since
+draw has no rotation.
 
 ## How it works
 
@@ -49,11 +68,24 @@ Both tools implement the tool API of
   chosen pixel width at the zoom it was drawn and scales with the drawing
   afterwards ([[ADR-0013 World-space widths and zoom limits]]).
 - Shapes with non-finite coordinates are never committed.
+- `src/core/recognize.rs` — `fit(points)` resamples the stroke to 128
+  points along its length (in `f64`), tries a line (chord ≥ 0.8 of the
+  path, every sample within 0.05 of the chord), then a closed loop (ends
+  within 0.15 of the path) measured in its minimum-area box over 90
+  rotations: 4 corners hit and a hugging outline → rectangle, no corner
+  and a hugging inscribed ellipse → ellipse, else nothing
+  ([[ADR-T109-1 Shape recognition on Z]]). `Editor::recognize_last_stroke`
+  checks that the newest undo step inserts exactly one stroke and that
+  the redo stack is empty, then commits a `tx_replace`.
 
 ## Limits
 
 - No pressure sensitivity, curve fitting or text (out of scope for
   [[T09 Creation tools]]).
 - New rectangles and ellipses are unfilled; use the bucket to fill them.
+- Shape recognition knows lines, rectangles and ellipses only (no
+  triangles, arrows or polygons) and works on demand, not while drawing.
+  A redo that brings the last stroke back, or a paste / duplicate of a
+  single stroke, makes `Z` available again.
 - Zooming with the wheel in the middle of a gesture keeps the width and
   smoothing scale sampled on `Down`.
