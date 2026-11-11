@@ -8,6 +8,8 @@
 //! font size, y down. Both are total: anything outside the subset is a
 //! [`Node::Literal`], drawn as its source with the warning flag.
 
+use std::collections::HashMap;
+
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::math_metrics;
 use crate::core::text_layout::{ADVANCE, BASELINE, LINE_HEIGHT};
@@ -1816,6 +1818,93 @@ pub fn glyph_extent(ch: char) -> (f32, f32) {
     } else {
         (GLYPH_ASCENT, GLYPH_DESCENT)
     }
+}
+
+// ---- user macros (ADR-T112-1) -------------------------------------------------
+
+/// Deepest nesting of macro bodies [`expand_macros`] follows.
+pub const MACRO_DEPTH: usize = 32;
+
+/// Most expansion steps, and most characters of output beyond the input,
+/// that [`expand_macros`] spends on one formula.
+pub const MACRO_SIZE: usize = 10_000;
+
+/// One `\newcommand`: how many arguments it takes and its body, with the
+/// slots `#1` … `#9` as typed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacroDef {
+    /// Number of arguments, 0 to 9.
+    pub params: usize,
+    /// The body between the braces.
+    pub body: String,
+}
+
+/// The macros defined by the text blocks of a drawing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MacroTable {
+    /// Definitions by name without the backslash.
+    defs: HashMap<String, MacroDef>,
+    /// Names of definitions skipped because the command is built in.
+    ignored: Vec<String>,
+}
+
+impl MacroTable {
+    /// The table of `texts`, given bottom of the stacking order first: a
+    /// later definition of a name replaces an earlier one. Only formulas
+    /// define macros.
+    #[must_use]
+    pub fn from_texts<'a>(texts: impl IntoIterator<Item = &'a str>) -> Self {
+        let _ = texts;
+        todo!()
+    }
+
+    /// The macro `name` (without the backslash).
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&MacroDef> {
+        self.defs.get(name)
+    }
+
+    /// Whether no macro is defined.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.defs.is_empty()
+    }
+
+    /// Names whose definition was skipped because the command is built in,
+    /// in the order met.
+    #[must_use]
+    pub fn ignored(&self) -> &[String] {
+        &self.ignored
+    }
+
+    /// A number that changes when the definition of `name` changes; 0
+    /// when `name` is not defined.
+    #[must_use]
+    pub fn hash_of(&self, name: &str) -> u64 {
+        let _ = name;
+        todo!()
+    }
+}
+
+/// A block text after macro expansion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Expanded {
+    /// The text to parse: definitions removed, macros replaced.
+    pub source: String,
+    /// The user-defined or still undefined names the formulas mention,
+    /// directly or through macro bodies, each once; built-in commands are
+    /// left out.
+    pub names: Vec<String>,
+}
+
+/// Rewrites the formulas of `text` with the macros of `table`: definitions
+/// are removed, uses replaced by their bodies. A formula that exceeds
+/// [`MACRO_DEPTH`] or [`MACRO_SIZE`] is kept as typed. Text outside
+/// formulas is untouched.
+#[must_use]
+pub fn expand_macros(text: &str, table: &MacroTable) -> Expanded {
+    let _ = (text, table);
+    todo!()
 }
 
 // ---- parsing ----------------------------------------------------------------

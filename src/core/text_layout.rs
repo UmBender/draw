@@ -147,6 +147,14 @@ fn plain_layout(text: &str) -> Layout {
     }
 }
 
+/// Makes `table` the macros every later [`typeset`] expands (ADR-T112-1).
+/// Cached layouts that use a macro whose definition changed are laid out
+/// again on their next lookup; the others stay.
+pub fn set_macros(table: tex::MacroTable) {
+    let _ = table;
+    todo!()
+}
+
 /// The typeset layout of `text` in em (ADR-T30-1), parsed and laid out
 /// once per distinct text and then shared. Text without markup stays on
 /// the cell grid it is drawn on.

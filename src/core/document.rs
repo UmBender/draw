@@ -11,6 +11,7 @@ use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::core::shape::Shape;
+use crate::core::tex::MacroTable;
 
 /// Stable identity of a shape in a [`Document`].
 ///
@@ -311,6 +312,12 @@ impl Document {
             next_id,
             positions: OnceCell::new(),
         }
+    }
+
+    /// The macros the text blocks of this document define (ADR-T112-1).
+    #[must_use]
+    pub fn macros(&self) -> &MacroTable {
+        todo!()
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.
