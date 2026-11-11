@@ -480,6 +480,7 @@ mod tests {
             (Key::BracketLeft, CTRL, Command::LowerSelection),
             (Key::BracketRight, CTRL_SHIFT, Command::SelectionToTop),
             (Key::BracketLeft, CTRL_SHIFT, Command::SelectionToBottom),
+            (Key::Z, NONE, Command::RecognizeShape),
             (Key::ArrowLeft, ALT, Command::Align(Side::Left)),
             (Key::ArrowRight, ALT, Command::Align(Side::Right)),
             (Key::ArrowUp, ALT, Command::Align(Side::Top)),
@@ -552,7 +553,7 @@ mod tests {
         // Extra modifiers on bare keys resolve to nothing.
         assert_eq!(resolve(Key::R, SHIFT), None);
         assert_eq!(resolve(Key::Digit1, ALT), None);
-        assert_eq!(resolve(Key::Z, NONE), None);
+        assert_eq!(resolve(Key::Z, SHIFT), None);
         assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
     }
 
@@ -642,6 +643,16 @@ mod tests {
         assert_eq!(resolve(Key::BracketRight, NONE), Some(Command::WidthUp));
         assert_eq!(resolve(Key::BracketRight, ALT), Some(Command::ScaleUp));
         assert_eq!(resolve(Key::BracketLeft, SHIFT), None);
+    }
+
+    #[test]
+    fn z_recognizes_the_last_stroke() {
+        assert_eq!(resolve(Key::Z, NONE), Some(Command::RecognizeShape));
+        // The modified chords keep their meaning.
+        assert_eq!(resolve(Key::Z, CTRL), Some(Command::Undo));
+        assert_eq!(resolve(Key::Z, CTRL_SHIFT), Some(Command::Redo));
+        assert_eq!(resolve(Key::Z, SHIFT), None);
+        assert_eq!(resolve(Key::Z, ALT), None);
     }
 
     #[test]
