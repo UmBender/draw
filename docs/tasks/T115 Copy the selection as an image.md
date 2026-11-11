@@ -64,4 +64,6 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written with the owner, from K6 of the [[Feature proposal]].
+- 2026-11-11 — spec and [[ADR-T115-1 Selection image on the clipboard]] committed; the vendored miniquad patch (Wayland and X11, `PATCHED.md`) compiles on both backends and `scripts/check.sh` is green. Not tested on a desktop.
+- 2026-11-11 — BLOCKED (batch): the rest needs files outside *Files owned*: `src/core/mod.rs` (declare `snapshot_image`), `src/shell/app.rs` (the frame loop: render the selection off-screen and call `miniquad::window::clipboard_set_png`) and `src/shell/input_map.rs` (drop `Ctrl+Shift+C` repeats, as for `Ctrl+E`). Left undone: tests, `snapshot_image.rs`, the command and key, the render and wiring. Recommended fix: add those three files to *Files owned* and re-run T115 (it resumes after the `feat(T115): offer a PNG…` commit).
 - Risk: the largest part is the vendored miniquad patch; check on Hyprland and X11 by hand.
