@@ -43,6 +43,7 @@ Tests named per criterion: AC-1 `selection_image_box_adds_margin`, `copy_image_w
 ## Files owned
 
 - `src/core/editor.rs`, `src/core/keymap.rs`, `src/core/command.rs`, a new `src/core/snapshot_image.rs` (crop and limits)
+- `src/core/mod.rs`, `src/shell/app.rs`, `src/shell/input_map.rs` (owner added after the batch blocked on them)
 - `src/shell/export.rs`, `src/shell/render.rs`, `vendor/miniquad/` (binary clipboard), `vendor/miniquad/PATCHED.md`
 - `docs/features/Editing tools.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`
