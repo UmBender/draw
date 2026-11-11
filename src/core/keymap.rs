@@ -390,7 +390,43 @@ impl Topic {
 /// be added without choosing its topic (ADR-T113-1).
 #[must_use]
 pub fn topic_of(command: Command) -> Topic {
-    todo!("T113 behaviour: {command:?}")
+    match command {
+        Command::SetTool(_) => Topic::Tools,
+        Command::SetColor(_) | Command::WidthUp | Command::WidthDown | Command::CycleSmoothing => {
+            Topic::Style
+        }
+        Command::Undo
+        | Command::Redo
+        | Command::Copy
+        | Command::Cut
+        | Command::Paste
+        | Command::Duplicate
+        | Command::SelectAll
+        | Command::GridFromText
+        | Command::GraphFromText
+        | Command::PlotFromText
+        | Command::ScaleUp
+        | Command::ScaleDown
+        | Command::RaiseSelection
+        | Command::LowerSelection
+        | Command::SelectionToTop
+        | Command::SelectionToBottom
+        | Command::Align(_)
+        | Command::Distribute(_)
+        | Command::DeleteSelection
+        | Command::ClearAll
+        | Command::Cancel => Topic::Edit,
+        Command::ResetView | Command::FitView | Command::ToggleToolbar | Command::ExportView => {
+            Topic::View
+        }
+        Command::ToggleSmartSnap
+        | Command::ToggleGridSnap
+        | Command::ToggleNumbering
+        | Command::ResetNumbering
+        | Command::ToggleZeroBased
+        | Command::GridCols(_)
+        | Command::GridRows(_) => Topic::Helpers,
+    }
 }
 
 /// The command bound to `key` pressed with `mods`, if any.

@@ -29,7 +29,7 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
-use crate::core::sheet::{self, Sheet};
+use crate::core::sheet::Sheet;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
@@ -534,10 +534,20 @@ impl Editor {
 
     /// [`Editor::handle`] for one event that left the tap filter.
     fn handle_filtered(&mut self, event: InputEvent) -> bool {
-        if self.palette.is_some() {
+        if self.sheet.is_some() {
+            if let Some(redraw) = self.sheet_event(&event) {
+                return redraw;
+            }
+        } else if self.palette.is_some() {
             if let Some(redraw) = self.palette_event(&event) {
                 return redraw;
             }
+        } else if matches!(
+            event,
+            InputEvent::Char { ch: '?', mods } if !mods.ctrl && !mods.alt
+        ) && self.tools.text.edit.is_none()
+        {
+            return self.open_sheet();
         } else if matches!(
             event,
             InputEvent::KeyDown {
@@ -627,6 +637,62 @@ impl Editor {
         true
     }
 
+    /// Opens the shortcut sheet over the canvas (ADR-T113-1). A gesture in
+    /// progress is cancelled first, like for the palette.
+    fn open_sheet(&mut self) -> bool {
+        self.cancel_gesture();
+        self.sheet = Some(Sheet::new());
+        true
+    }
+
+    /// Handles `event` for the open shortcut sheet (ADR-T113-1). `None` for
+    /// the events that are not about the keys and pointer (resize, pen
+    /// pressure, key releases), which the editor handles as usual.
+    fn sheet_event(&mut self, event: &InputEvent) -> Option<bool> {
+        let sheet = self.sheet.as_mut()?;
+        let redraw = match *event {
+            InputEvent::KeyDown { key, .. } => match key {
+                Key::Escape => {
+                    self.sheet = None;
+                    true
+                }
+                Key::ArrowRight => {
+                    sheet.next();
+                    true
+                }
+                Key::ArrowLeft => {
+                    sheet.prev();
+                    true
+                }
+                Key::Digit1 => sheet.jump(1),
+                Key::Digit2 => sheet.jump(2),
+                Key::Digit3 => sheet.jump(3),
+                Key::Digit4 => sheet.jump(4),
+                Key::Digit5 => sheet.jump(5),
+                Key::Digit6 => sheet.jump(6),
+                Key::Digit7 => sheet.jump(7),
+                Key::Digit8 => sheet.jump(8),
+                Key::Digit9 => sheet.jump(9),
+                _ => false,
+            },
+            InputEvent::Char { ch: '?', mods } if !mods.ctrl && !mods.alt => {
+                self.sheet = None;
+                true
+            }
+            InputEvent::Char { .. }
+            | InputEvent::PointerDown { .. }
+            | InputEvent::PointerMove { .. }
+            | InputEvent::PointerUp { .. }
+            | InputEvent::Scroll { .. }
+            | InputEvent::Paste(_)
+            | InputEvent::PasteGrid(_) => false,
+            InputEvent::KeyUp { .. } | InputEvent::Pressure { .. } | InputEvent::Resize { .. } => {
+                return None;
+            }
+        };
+        Some(redraw)
+    }
+
     /// Handles `event` for the open palette (ADR-T111-1). `None` for the
     /// events that are not about the keys and pointer (resize, pen
     /// pressure, key releases), which the editor handles as usual.
@@ -672,7 +738,7 @@ impl Editor {
     /// [`Command::ExportView`] leaves it alone (ADR-T92-2). Nothing runs
     /// under the open command palette (ADR-T111-1).
     pub fn apply(&mut self, command: Command) -> bool {
-        if self.palette.is_some() {
+        if self.palette.is_some() || self.sheet.is_some() {
             return false;
         }
         if self.tools.text.edit.is_some() {
@@ -1851,6 +1917,7 @@ mod tests {
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
+    use crate::core::sheet;
     use crate::core::shape::GRID_MAX_CELLS;
     use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
     use crate::core::smoothing::SmoothingLevel;

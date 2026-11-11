@@ -47,6 +47,7 @@ use crate::core::tools::text::TextEdit;
 use crate::shell::autosave::{self, Autosaver, Launch};
 use crate::shell::backend::{self, Backend};
 use crate::shell::command_palette;
+use crate::shell::sheet;
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
@@ -1123,6 +1124,9 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     }
     if let Some(palette) = editor.palette() {
         command_palette::draw(palette, viewport);
+    }
+    if let Some(sheet) = editor.sheet() {
+        sheet::draw(sheet, viewport);
     }
 }
 

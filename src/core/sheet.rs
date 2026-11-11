@@ -6,7 +6,8 @@
 //! key bindings, live in one table here. Nothing here is saved or recorded in
 //! the history.
 
-use crate::core::keymap::Topic;
+use crate::core::command_palette::chord_label;
+use crate::core::keymap::{BINDINGS, Topic, topic_of};
 
 /// Most rows on one page: the header, the topic line, 14 rows of 30 px and
 /// the footer fit the default 1280×800 window.
@@ -36,20 +37,119 @@ impl Page {
     /// The page title: the topic name, with `1/2` when it is split.
     #[must_use]
     pub fn title(&self) -> String {
-        todo!("T113 behaviour")
+        if self.parts > 1 {
+            format!("{} {}/{}", self.topic.name(), self.part + 1, self.parts)
+        } else {
+            self.topic.name().to_owned()
+        }
     }
 
     /// The rows of this page, at most [`ROWS_PER_PAGE`].
     #[must_use]
     pub fn rows(&self) -> Vec<SheetRow> {
-        todo!("T113 behaviour")
+        let all = topic_rows(self.topic);
+        let per = all.len().div_ceil(self.parts.max(1)).max(1);
+        all.into_iter()
+            .skip(self.part * per)
+            .take(per)
+            .collect()
     }
+}
+
+/// Rows that are not key bindings: `(topic, input, effect)`, in the order
+/// shown after the bindings of the topic.
+const EXTRA_ROWS: &[(Topic, &str, &str)] = &[
+    (Topic::View, "Wheel", "Zoom at the cursor"),
+    (Topic::View, "Middle drag, Space+drag", "Pan"),
+    (Topic::View, "Ctrl+Shift+P", "Command palette"),
+    (Topic::View, "?", "This shortcut sheet"),
+    (
+        Topic::Gestures,
+        "Shift while drawing",
+        "Square / circle, 45° lines and arrows",
+    ),
+    (Topic::Gestures, "Alt while drawing", "No snapping"),
+    (
+        Topic::Gestures,
+        "Alt + drag selection",
+        "Duplicate while moving",
+    ),
+    (
+        Topic::Gestures,
+        "Drag a corner handle",
+        "Resize; Shift keeps the proportions",
+    ),
+    (
+        Topic::Gestures,
+        "Right drag",
+        "Temporary eraser, from any tool",
+    ),
+    (Topic::TypingText, "Esc, Ctrl+Enter", "Finish the block"),
+    (Topic::TypingText, "Ctrl+Z", "Cancel the block"),
+    (Topic::TypingText, "Enter", "New line"),
+    (Topic::TypingText, "Tab", "Four spaces"),
+    (
+        Topic::TypingText,
+        "Arrows, Home, End",
+        "Move the cursor",
+    ),
+    (
+        Topic::TypingText,
+        "Backspace, Delete",
+        "Delete a character",
+    ),
+    (
+        Topic::TypingText,
+        "Ctrl+] / Ctrl+[",
+        "Bigger / smaller text",
+    ),
+    (Topic::TypingText, "Ctrl+V", "Paste text"),
+    (
+        Topic::TypingShape,
+        "T, click in a shape",
+        "Type inside a box, circle or grid cell",
+    ),
+    (
+        Topic::TypingShape,
+        "Tab / Shift+Tab",
+        "Next / previous grid cell",
+    ),
+    (
+        Topic::TypingShape,
+        "Enter / Shift+Enter",
+        "Cell below / above",
+    ),
+];
+
+/// Every row of `topic`: its key bindings, then its extra rows.
+fn topic_rows(topic: Topic) -> Vec<SheetRow> {
+    let bindings = BINDINGS
+        .iter()
+        .filter(|&&(_, command, _)| topic_of(command) == topic)
+        .map(|&(chord, _, text)| SheetRow {
+            keys: chord_label(chord),
+            text,
+        });
+    let extra = EXTRA_ROWS
+        .iter()
+        .filter(|&&(t, _, _)| t == topic)
+        .map(|&(_, keys, text)| SheetRow {
+            keys: keys.to_owned(),
+            text,
+        });
+    bindings.chain(extra).collect()
 }
 
 /// Every page, topic by topic in [`Topic::ALL`] order.
 #[must_use]
 pub fn pages() -> Vec<Page> {
-    todo!("T113 behaviour")
+    Topic::ALL
+        .iter()
+        .flat_map(|&topic| {
+            let parts = topic_rows(topic).len().div_ceil(ROWS_PER_PAGE).max(1);
+            (0..parts).map(move |part| Page { topic, part, parts })
+        })
+        .collect()
 }
 
 /// The open sheet: which page it shows.
@@ -75,31 +175,47 @@ impl Sheet {
     /// The current page.
     #[must_use]
     pub fn current(&self) -> Page {
-        todo!("T113 behaviour")
+        let all = pages();
+        all.get(self.page)
+            .or_else(|| all.first())
+            .copied()
+            .unwrap_or(Page {
+                topic: Topic::Tools,
+                part: 0,
+                parts: 1,
+            })
     }
 
     /// Goes to the next page, wrapping after the last.
     pub fn next(&mut self) {
-        todo!("T113 behaviour")
+        self.page = (self.page + 1) % pages().len().max(1);
     }
 
     /// Goes to the previous page, wrapping before the first.
     pub fn prev(&mut self) {
-        todo!("T113 behaviour")
+        let count = pages().len().max(1);
+        self.page = (self.page + count - 1) % count;
     }
 
     /// Goes to the first page of topic number `number` (from 1). Returns
     /// whether there is such a topic.
     pub fn jump(&mut self, number: usize) -> bool {
-        todo!("T113 behaviour")
+        let Some(topic) = number.checked_sub(1).and_then(|i| Topic::ALL.get(i)) else {
+            return false;
+        };
+        match pages().iter().position(|p| p.topic == *topic) {
+            Some(index) => {
+                self.page = index;
+                true
+            }
+            None => false,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::command_palette::chord_label;
-    use crate::core::keymap::{BINDINGS, Topic, topic_of};
 
     /// The topic of each page, in order, without repeats.
     fn page_topics() -> Vec<Topic> {
