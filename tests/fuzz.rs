@@ -767,8 +767,8 @@ fn arb_minimap_drag() -> impl Strategy<Value = Vec<InputEvent>> {
             let size = Vec2::new(size.0, size.1);
             let mods = Modifiers::NONE;
             let button = PointerButton::Left;
-            let panel = minimap::panel_rect(size)
-                .unwrap_or_else(|| Aabb::from_corners(Vec2::ZERO, size));
+            let panel =
+                minimap::panel_rect(size).unwrap_or_else(|| Aabb::from_corners(Vec2::ZERO, size));
             let start = Vec2::new(
                 panel.min.x + at.0 * panel.width(),
                 panel.min.y + at.1 * panel.height(),

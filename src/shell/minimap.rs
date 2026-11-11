@@ -265,8 +265,8 @@ pub fn target_size(size: Vec2, dpi: f32) -> (u32, u32) {
         1.0
     };
     // Saturating float-to-int casts; NaN becomes 0 and is raised to 1.
-    let side = |logical: f32| ((logical * scale).round() as u32).max(1);
-    (side(size.x), side(size.y))
+    let pixels = |logical: f32| ((logical * scale).round() as u32).max(1);
+    (pixels(size.x), pixels(size.y))
 }
 
 #[cfg(test)]
@@ -306,7 +306,11 @@ mod tests {
     fn panning_editor() -> Editor {
         let mut editor = Editor::new();
         editor.handle(InputEvent::Resize { size: VIEWPORT });
-        drag(&mut editor, Vec2::new(100.0, 100.0), Vec2::new(300.0, 250.0));
+        drag(
+            &mut editor,
+            Vec2::new(100.0, 100.0),
+            Vec2::new(300.0, 250.0),
+        );
         key(&mut editor, Key::Space, Modifiers::NONE);
         editor
     }
@@ -374,7 +378,10 @@ mod tests {
         assert_ne!(one, two);
         assert_eq!(one.map(|key| key.size), Some((188, 138)));
         assert_eq!(two.map(|key| key.size), Some((376, 276)));
-        assert_eq!(key_of(&editor, f32::NAN).map(|key| key.size), Some((188, 138)));
+        assert_eq!(
+            key_of(&editor, f32::NAN).map(|key| key.size),
+            Some((188, 138))
+        );
     }
 
     #[test]

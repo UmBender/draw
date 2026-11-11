@@ -365,14 +365,8 @@ impl Minimap {
         let (x, y) = (self.fit.x(), self.fit.y());
         let (from_x, from_y) = (image.x(), image.y());
         let rect = image.rect();
-        let min = Vec2::new(
-            along(x, from_x, rect.min.x)?,
-            along(y, from_y, rect.min.y)?,
-        );
-        let max = Vec2::new(
-            along(x, from_x, rect.max.x)?,
-            along(y, from_y, rect.max.y)?,
-        );
+        let min = Vec2::new(along(x, from_x, rect.min.x)?, along(y, from_y, rect.min.y)?);
+        let max = Vec2::new(along(x, from_x, rect.max.x)?, along(y, from_y, rect.max.y)?);
         Some(Aabb::from_corners(min, max))
     }
 }

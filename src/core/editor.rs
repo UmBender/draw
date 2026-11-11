@@ -387,9 +387,7 @@ impl Editor {
         let mut t = r.record("smoothing")?;
         let smoothing = t.get()?;
         t.end()?;
-        let mut t = r.record("toolbar")?;
-        let toolbar_visible = t.bool("toolbar")?;
-        t.end()?;
+        let toolbar_visible = read_flag(r, "toolbar")?;
         let mut t = r.record("viewport")?;
         let viewport: Vec2 = t.get()?;
         t.end()?;
@@ -399,9 +397,7 @@ impl Editor {
         let mut t = r.record("cursor")?;
         let cursor = t.get()?;
         t.end()?;
-        let mut t = r.record("space")?;
-        let space_held = t.bool("space")?;
-        t.end()?;
+        let space_held = read_flag(r, "space")?;
         let mut t = r.record("pressure")?;
         let pressure: Option<f32> = t.opt()?;
         t.end()?;
@@ -908,15 +904,11 @@ impl Editor {
             return None;
         }
         let content = self.content_bounds();
-        match self.gesture {
-            Some(Gesture::Minimap { world, .. }) => {
-                Minimap::with_world(self.viewport, content, world)
-            }
-            _ => {
-                let view = self.camera.visible_world_rect(self.viewport);
-                Minimap::new(self.viewport, content, view)
-            }
+        if let Some(Gesture::Minimap { world, .. }) = self.gesture {
+            return Minimap::with_world(self.viewport, content, world);
         }
+        let view = self.camera.visible_world_rect(self.viewport);
+        Minimap::new(self.viewport, content, view)
     }
 
     /// Whether the minimap is asked for and the viewport can hold it.
@@ -1808,6 +1800,15 @@ fn read_helpers(r: &mut Reader<'_>) -> Result<Helpers, SnapshotError> {
         return Err(t.error("helper settings out of range"));
     }
     Ok(helpers)
+}
+
+/// Reads a record holding one flag, such as `toolbar` or `space`
+/// (snapshots, ADR-T74-1).
+fn read_flag(r: &mut Reader<'_>, key: &str) -> Result<bool, SnapshotError> {
+    let mut t = r.record(key)?;
+    let flag = t.bool(key)?;
+    t.end()?;
+    Ok(flag)
 }
 
 /// Reads the `gesture` record (snapshots, ADR-T74-1).
@@ -8232,7 +8233,13 @@ mod tests {
 
     #[test]
     fn minimap_click_never_reaches_the_tool() {
-        for tool in [Tool::Pen, Tool::Rect, Tool::Select, Tool::Eraser, Tool::Text] {
+        for tool in [
+            Tool::Pen,
+            Tool::Rect,
+            Tool::Select,
+            Tool::Eraser,
+            Tool::Text,
+        ] {
             // Arrange
             let mut ed = minimap_editor();
             ed.apply(Command::SetTool(tool));
@@ -8328,11 +8335,11 @@ mod tests {
 
         // Assert: the same state, and the drag goes on the same way.
         assert!(text.contains("gesture minimap left "), "{text}");
-        assert!(loaded == ed);
+        assert_eq!(loaded, ed);
         assert_eq!(loaded.minimap(), ed.minimap());
         move_to(&mut ed, 720.0, 470.0);
         move_to(&mut loaded, 720.0, 470.0);
-        assert!(loaded == ed);
+        assert_eq!(loaded, ed);
         assert_eq!(loaded.camera(), ed.camera());
     }
 
@@ -8398,7 +8405,10 @@ mod tests {
             panic!("bounds are computed when the minimap shows: {first:?}");
         };
         assert_eq!(revision, drawn);
-        assert_eq!(Some(bounds), minimap::content_bounds(ed_redone(&ed).document()));
+        assert_eq!(
+            Some(bounds),
+            minimap::content_bounds(ed_redone(&ed).document())
+        );
         assert_eq!(panned, first, "panning computes nothing");
         assert_eq!(undone, Some((ed.document_revision(), None)));
         assert!(ed.document_revision() > drawn);
