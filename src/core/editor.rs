@@ -19,6 +19,7 @@ use crate::core::camera::Camera;
 use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
 use crate::core::clipboard::{self, Clipboard};
 use crate::core::command::{Command, Tool};
+use crate::core::command_palette::CommandPalette;
 use crate::core::document::{
     Document, IdSet, ShapeId, tx_clear, tx_insert, tx_remove, tx_replace, tx_restack,
 };
@@ -209,6 +210,9 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// The open command palette, which captures the keys while it is
+    /// `Some` (ADR-T111-1). Not saved state.
+    palette: Option<CommandPalette>,
 }
 
 impl Default for Editor {
@@ -257,6 +261,7 @@ impl Editor {
             keymap: keymap::resolve,
             doc_revision: 0,
             doc_base_revision: 0,
+            palette: None,
             ..snapshot.0
         }
     }
@@ -457,6 +462,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            palette: None,
         })
     }
 
@@ -486,6 +492,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            palette: None,
         }
     }
 
@@ -907,6 +914,12 @@ impl Editor {
     fn ask_export(&mut self) -> bool {
         self.export_asked |= self.can_export();
         false
+    }
+
+    /// The open command palette, if any (ADR-T111-1).
+    #[must_use]
+    pub fn palette(&self) -> Option<&CommandPalette> {
+        self.palette.as_ref()
     }
 
     /// Whether an export was asked for since the last call (ADR-T92-2).

@@ -1,9 +1,126 @@
+//! The command palette: a prompt that lists the keymap's commands by
+//! description, with their keys (ADR-T111-1).
+//!
+//! The palette is plain state: the editor holds an `Option` of it and sends
+//! it the keys while it is open. Nothing here is saved or recorded in the
+//! history.
+
+use std::ops::Range;
+
+use crate::core::command::Command;
+use crate::core::input::{Key, Modifiers};
+use crate::core::keymap::{BINDINGS, KeyChord};
+
+/// Longest query in characters; further typing is dropped.
+pub const MAX_QUERY_CHARS: usize = 64;
+/// Rows the shell shows at once.
+pub const VISIBLE_ROWS: usize = 10;
+
+/// One palette row: a keymap binding.
+pub type Row = (KeyChord, Command, &'static str);
+
+/// The indices of `descriptions` that contain the letters of `query` in
+/// order (ignoring case), best match first. An empty query keeps every
+/// index. Ties keep the order of `descriptions`.
+#[must_use]
+pub fn rank(query: &str, descriptions: &[&str]) -> Vec<usize> {
+    todo!("rank {query} {descriptions:?}")
+}
+
+/// How a chord is written in the palette: `Ctrl+Shift+]`, `Alt+←`, `D`.
+#[must_use]
+pub fn chord_label(chord: KeyChord) -> String {
+    todo!("label {chord:?}")
+}
+
+/// The rows to show: at most `rows` of `total`, a window that keeps
+/// `selected` inside.
+#[must_use]
+pub fn visible_window(selected: usize, total: usize, rows: usize) -> Range<usize> {
+    todo!("window {selected} {total} {rows}")
+}
+
+/// The open palette: the query, the matching rows and the highlight.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CommandPalette {
+    /// What was typed.
+    query: String,
+    /// Indices into [`BINDINGS`] of the matching rows, best first.
+    matches: Vec<usize>,
+    /// Index into `matches` of the highlighted row.
+    selected: usize,
+}
+
+impl CommandPalette {
+    /// A palette with an empty query: every binding, the first highlighted.
+    #[must_use]
+    pub fn new() -> Self {
+        todo!("new")
+    }
+
+    /// What was typed.
+    #[must_use]
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// Index of the highlighted row among [`CommandPalette::rows`].
+    #[must_use]
+    pub fn selected(&self) -> usize {
+        self.selected
+    }
+
+    /// Number of matching rows.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.matches.len()
+    }
+
+    /// Whether no row matches.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.matches.is_empty()
+    }
+
+    /// The matching rows, best first.
+    pub fn rows(&self) -> impl Iterator<Item = Row> + '_ {
+        self.matches.iter().filter_map(|&i| BINDINGS.get(i).copied())
+    }
+
+    /// The highlighted row, if any matches.
+    #[must_use]
+    pub fn highlighted(&self) -> Option<Row> {
+        self.matches
+            .get(self.selected)
+            .and_then(|&i| BINDINGS.get(i).copied())
+    }
+
+    /// Types `ch` at the end of the query. Control characters and input
+    /// past [`MAX_QUERY_CHARS`] are dropped. Returns whether it changed.
+    pub fn insert(&mut self, ch: char) -> bool {
+        todo!("insert {ch}")
+    }
+
+    /// Deletes the last character of the query. Returns whether it changed.
+    pub fn backspace(&mut self) -> bool {
+        todo!("backspace")
+    }
+
+    /// Highlights the previous row. Returns whether it moved.
+    pub fn up(&mut self) -> bool {
+        todo!("up")
+    }
+
+    /// Highlights the next row. Returns whether it moved.
+    pub fn down(&mut self) -> bool {
+        todo!("down")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::command::{Command, Tool};
-    use crate::core::input::{Key, Modifiers};
-    use crate::core::keymap::{BINDINGS, KeyChord};
+    use crate::core::command::Tool;
 
     #[test]
     fn rank_matches_letters_in_order_ignoring_case() {
