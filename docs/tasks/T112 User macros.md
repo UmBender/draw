@@ -70,3 +70,8 @@ None: it extends an existing area.
 
 - 2026-11-10 — note written with the owner, from F6 of the [[Feature proposal]].
 - Depends on T105 because both change `src/core/tex.rs`.
+- 2026-11-11 (batch) — implemented on top of T105 per [[ADR-T112-1 User macros as source expansion]]. `scripts/check.sh` green. AC-5 is covered by `print_parse_unchanged_by_macros` and `from_parts_builds_macros_from_block_text` (block text is what snapshots store); the fuzz test is `user_macros_never_hang_or_panic`.
+- UNATTENDED CHOICE: the goal's example `\newcommand{\abs}[1]{…}` is ignored, because `\abs` is a built-in physics shortcut (ADR-T69-1) and AC-4 forbids redefining built-ins; the tests use `\modul`.
+- UNATTENDED CHOICE: "the log says so" for an ignored definition is `MacroTable::ignored()`; the project has no logger, so nothing is printed.
+- UNATTENDED CHOICE: only `Shape::Text` blocks define macros; shape labels use them. A definition applies on commit, not while the block is being typed.
+- No layout output of existing formulas changed, so `scripts/e2e.sh` was not run.
