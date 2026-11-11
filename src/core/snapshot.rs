@@ -146,7 +146,7 @@ impl Snapshot {
 /// Builds snapshot text section by section.
 #[derive(Debug, Default)]
 pub struct Writer {
-    out: String,
+    pub(crate) out: String,
 }
 
 impl Writer {

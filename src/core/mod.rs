@@ -5,6 +5,7 @@ pub mod clipboard;
 pub mod command;
 pub mod document;
 pub mod editor;
+pub mod file;
 pub mod geom;
 pub mod history;
 pub mod input;

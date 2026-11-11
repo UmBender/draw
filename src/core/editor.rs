@@ -31,6 +31,7 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
 use crate::core::smoothing::SmoothingLevel;
+use crate::core::file::DocFile;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
 use crate::core::tools::grid::{TableError, TextTable};
@@ -244,6 +245,9 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// `Ctrl+S` was pressed and the shell has not collected it yet
+    /// (ADR-T108-1). Not saved state.
+    save_asked: bool,
 }
 
 impl Default for Editor {
@@ -496,6 +500,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            save_asked: false,
         })
     }
 
@@ -527,7 +532,36 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            save_asked: false,
         }
+    }
+
+    /// This document as a [`DocFile`] (ADR-T108-1).
+    #[must_use]
+    pub fn file(&self) -> DocFile {
+        DocFile(self.clone())
+    }
+
+    /// Replaces the document (every page and the current one) with the one
+    /// in `file`; settings, tools and clipboard stay. The history starts
+    /// empty and the shell redraws everything (ADR-T108-1).
+    pub fn apply_file(&mut self, file: DocFile) {
+        todo!("apply {file:?}")
+    }
+
+    /// Whether `Ctrl+S` was pressed since the last call (ADR-T108-1).
+    pub fn take_save_request(&mut self) -> bool {
+        std::mem::take(&mut self.save_asked)
+    }
+
+    /// Writes the pages for a document file (ADR-T108-1).
+    pub(crate) fn write_file(&self, w: &mut Writer) {
+        todo!("write {w:?}")
+    }
+
+    /// Reads the pages of a document file of `version` (ADR-T108-1).
+    pub(crate) fn read_file(r: &mut Reader<'_>, version: u32) -> Result<Self, SnapshotError> {
+        todo!("read {r:?} {version}")
     }
 
     /// The current page, `0` for page 1 (ADR-T116-1).
@@ -883,6 +917,10 @@ impl Editor {
             }
             Command::GoToPage(page) => self.go_to_page(page),
             Command::ExportView => self.ask_export(),
+            Command::SaveFile => {
+                self.save_asked = true;
+                false
+            }
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap

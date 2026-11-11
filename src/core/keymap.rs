@@ -306,6 +306,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ExportView,
         "Export the view to PNG",
     ),
+    (
+        KeyChord::ctrl(Key::S),
+        Command::SaveFile,
+        "Save the drawing to a .draw file",
+    ),
     // Helpers
     (
         KeyChord::bare(Key::X),
@@ -526,6 +531,7 @@ mod tests {
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
             (Key::E, CTRL, Command::ExportView),
+            (Key::S, CTRL, Command::SaveFile),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),

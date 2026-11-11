@@ -8,6 +8,7 @@ pub mod backend;
 pub mod crash;
 pub mod diag;
 pub mod export;
+pub mod file;
 pub mod glyphs;
 pub mod input_map;
 pub mod preflight;
