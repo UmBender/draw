@@ -1,7 +1,7 @@
 ---
 id: T111
 title: Command palette
-status: in-progress
+status: review
 wave: 59
 branch: task/T111-command-palette
 depends_on: []
@@ -52,11 +52,11 @@ Decisions beyond the owner's: [[ADR-T111-1 Command palette as a modal editor sta
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T111): specify the command palette`
-- [ ] tests — `test(T111): add failing tests for the command palette`
-- [ ] models — `feat(T111): add the palette model and fuzzy matching`
-- [ ] behaviour — `feat(T111): open the palette and run commands from it`
-- [ ] quality — `chore(T111): pass clippy and rustfmt`
-- [ ] docs — `docs(T111): update the feature note`
+- [x] tests — `test(T111): add failing tests for the command palette`
+- [x] models — `feat(T111): add the palette model and fuzzy matching`
+- [x] behaviour — `feat(T111): open the palette and run commands from it`
+- [x] quality — `chore(T111): pass clippy and rustfmt`
+- [x] docs — `docs(T111): update the feature note`
 
 ## Learning path
 
@@ -65,3 +65,4 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written with the owner, from E10 of the [[Feature proposal]].
+- 2026-11-11 — implemented; `scripts/check.sh` green. `read_style` extracted from `Editor::read_snapshot` to keep it under the clippy line limit. Manual check for the owner: open the palette in the running app and run a command.

@@ -36,6 +36,7 @@ two-step actions.
 | Cancel gesture / clear selection | `Esc` |
 | Reset view / fit content | `0` / `F` |
 | Show / hide toolbar | `Tab` |
+| Command palette | `Ctrl+Shift+P` (type to filter, `↑`/`↓`, `Enter` runs, `Esc` closes) |
 | Zoom towards cursor | Mouse wheel |
 | Pan from any tool | Middle drag, `Space` + drag |
 | Constrain (square, circle, 45°) | Hold `Shift` while drawing |
@@ -55,6 +56,16 @@ and docs list the bindings from the same source.
 `Space`, the mouse wheel and the gesture macros are not keymap entries: the
 editor handles them directly in its input state machine (T08), and the tools
 read `Shift`/`Alt` from pointer events (T09, T10).
+
+### Command palette
+
+`Ctrl+Shift+P` opens a prompt over the canvas listing every keymap command
+with its key. Typing keeps the commands whose description contains the
+letters in order (case-insensitive), best match first; `Enter` runs the
+highlighted one exactly as its key would. While it is open no key or
+pointer event reaches the tools. It is a modal editor state with no
+history entry ([[ADR-T111-1 Command palette as a modal editor state]]); the
+rows come from `BINDINGS`, so a new binding appears in it automatically.
 
 ## Limits
 

@@ -218,6 +218,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Alt+←` | Align left edges | `Alt+→` | Align right edges |
 | `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
 | `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
+| `Ctrl+Shift+P` | Command palette: type, `Enter` runs, `Esc` closes | | |
 
 ### View
 
