@@ -7887,4 +7887,236 @@ mod tests {
             .collect();
         assert_eq!(now, rects);
     }
+
+    // ---- T111 command palette ----------------------------------------------
+
+    /// Editor with a viewport and the palette open.
+    fn palette_editor() -> Editor {
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        assert!(key_with(&mut ed, Key::P, CTRL_SHIFT));
+        ed
+    }
+
+    /// The descriptions of the palette's rows.
+    fn palette_rows(ed: &Editor) -> Vec<&'static str> {
+        ed.palette()
+            .map(|p| p.rows().map(|(_, _, description)| description).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn palette_ctrl_shift_p_opens() {
+        // Arrange
+        let mut ed = Editor::new();
+        assert!(ed.palette().is_none());
+
+        // Act
+        let redraw = key_with(&mut ed, Key::P, CTRL_SHIFT);
+
+        // Assert
+        assert!(redraw);
+        assert!(ed.palette().is_some());
+        assert_eq!(palette_rows(&ed).len(), keymap::BINDINGS.len());
+    }
+
+    #[test]
+    fn palette_typing_filters_rows() {
+        // Arrange
+        let mut ed = palette_editor();
+
+        // Act
+        typed(&mut ed, "RECT");
+
+        // Assert
+        assert_eq!(ed.palette().map(CommandPalette::query), Some("RECT"));
+        assert_eq!(palette_rows(&ed), ["Rectangle"]);
+    }
+
+    #[test]
+    fn palette_backspace_widens_the_filter() {
+        // Arrange
+        let mut ed = palette_editor();
+        typed(&mut ed, "rectx");
+        assert!(palette_rows(&ed).is_empty());
+
+        // Act
+        key(&mut ed, Key::Backspace);
+
+        // Assert
+        assert_eq!(palette_rows(&ed), ["Rectangle"]);
+    }
+
+    #[test]
+    fn palette_arrows_move_the_highlight() {
+        // Arrange
+        let mut ed = palette_editor();
+        let at = |ed: &Editor| ed.palette().map(CommandPalette::selected);
+        assert_eq!(at(&ed), Some(0));
+
+        // Act / Assert
+        key(&mut ed, Key::ArrowDown);
+        key(&mut ed, Key::ArrowDown);
+        assert_eq!(at(&ed), Some(2));
+        key(&mut ed, Key::ArrowUp);
+        assert_eq!(at(&ed), Some(1));
+        for _ in 0..3 {
+            key(&mut ed, Key::ArrowUp);
+        }
+        assert_eq!(at(&ed), Some(0));
+        for _ in 0..keymap::BINDINGS.len() + 5 {
+            key(&mut ed, Key::ArrowDown);
+        }
+        assert_eq!(at(&ed), Some(keymap::BINDINGS.len() - 1));
+    }
+
+    #[test]
+    fn palette_enter_runs_the_highlighted_command() {
+        // Arrange
+        let mut ed = palette_editor();
+        typed(&mut ed, "rect");
+
+        // Act
+        key(&mut ed, Key::Enter);
+
+        // Assert
+        assert!(ed.palette().is_none());
+        assert_eq!(ed.tool(), Tool::Rect);
+    }
+
+    #[test]
+    fn palette_enter_runs_the_row_the_arrows_picked() {
+        // Arrange: the second row of the empty query.
+        let mut ed = palette_editor();
+        key(&mut ed, Key::ArrowDown);
+
+        // Act
+        key(&mut ed, Key::Enter);
+
+        // Assert
+        assert_eq!(
+            Some(Command::SetTool(ed.tool())),
+            keymap::BINDINGS.get(1).map(|&(_, command, _)| command)
+        );
+        assert!(ed.palette().is_none());
+    }
+
+    #[test]
+    fn palette_enter_without_a_match_just_closes() {
+        // Arrange
+        let mut ed = palette_editor();
+        typed(&mut ed, "zzzz");
+
+        // Act
+        key(&mut ed, Key::Enter);
+
+        // Assert
+        assert!(ed.palette().is_none());
+        assert_eq!(ed.tool(), Tool::Pen);
+    }
+
+    #[test]
+    fn palette_escape_closes_doing_nothing() {
+        // Arrange
+        let mut ed = palette_editor();
+        typed(&mut ed, "rect");
+
+        // Act
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert!(ed.palette().is_none());
+        assert_eq!(ed.tool(), Tool::Pen);
+    }
+
+    #[test]
+    fn palette_keys_and_pointer_do_not_reach_the_tools() {
+        // Arrange
+        let mut ed = palette_editor();
+        let before = ed.snapshot();
+
+        // Act: tool keys, a space, a drag and a wheel turn.
+        for k in [Key::R, Key::Digit3, Key::Tab, Key::Space, Key::Delete] {
+            key(&mut ed, k);
+        }
+        let pos = Vec2::new(100.0, 100.0);
+        let end = Vec2::new(200.0, 160.0);
+        ed.handle(InputEvent::PointerDown {
+            pos,
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::PointerMove { pos: end, mods: NONE });
+        ed.handle(InputEvent::PointerUp {
+            pos: end,
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::Scroll { pos, delta: 3.0 });
+
+        // Assert
+        assert!(ed.palette().is_some());
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert!(ed.active_gesture().is_none());
+        assert!(ed.toolbar_visible());
+        assert_eq!(ed.snapshot(), before);
+    }
+
+    #[test]
+    fn palette_ignores_commands_while_open() {
+        // Arrange
+        let mut ed = palette_editor();
+
+        // Act: what a toolbar click would send.
+        let changed = ed.apply(Command::SetTool(Tool::Rect));
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert!(ed.palette().is_some());
+    }
+
+    #[test]
+    fn palette_open_and_close_record_nothing() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        let before = ed.snapshot();
+
+        // Act
+        key_with(&mut ed, Key::P, CTRL_SHIFT);
+        typed(&mut ed, "undo");
+        key(&mut ed, Key::Escape);
+        key_with(&mut ed, Key::P, CTRL_SHIFT);
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert!(!ed.can_undo());
+        assert_eq!(ed.snapshot(), before);
+    }
+
+    #[test]
+    fn palette_opens_while_a_text_block_is_open() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "x");
+
+        // Act
+        key_with(&mut ed, Key::P, CTRL_SHIFT);
+
+        // Assert: the block was committed and the palette is open.
+        assert!(ed.palette().is_some());
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), ["x"]);
+    }
+
+    #[test]
+    fn palette_chord_is_not_a_binding() {
+        assert_eq!(keymap::resolve(Key::P, CTRL_SHIFT), None);
+    }
 }

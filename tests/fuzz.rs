@@ -863,6 +863,79 @@ fn arb_resize_session() -> impl Strategy<Value = Vec<InputEvent>> {
         })
 }
 
+/// `Ctrl+Shift+P`, as the shell sends it.
+fn palette_chord() -> InputEvent {
+    InputEvent::KeyDown {
+        key: Key::P,
+        mods: Modifiers {
+            shift: true,
+            ctrl: true,
+            alt: false,
+        },
+    }
+}
+
+/// What a user does inside the command palette (T111): typing, deleting,
+/// moving, and anything the tools would take. `ending` are the events that
+/// may close it.
+fn arb_palette_inner(close: bool) -> impl Strategy<Value = Vec<InputEvent>> {
+    let nav = select(vec![
+        Key::Backspace,
+        Key::ArrowUp,
+        Key::ArrowDown,
+        Key::ArrowLeft,
+        Key::Home,
+    ]);
+    let other = prop_oneof![
+        arb_char().prop_map(|ch| InputEvent::Char {
+            ch,
+            mods: Modifiers::NONE
+        }),
+        nav.prop_map(|key| InputEvent::KeyDown {
+            key,
+            mods: Modifiers::NONE
+        }),
+        (
+            arb_key().prop_filter("Esc and Enter close the palette", |key| {
+                !matches!(key, Key::Escape | Key::Enter)
+            }),
+            arb_mods()
+        )
+            .prop_map(|(key, mods)| InputEvent::KeyDown { key, mods }),
+        (arb_pos(), arb_button(), arb_mods())
+            .prop_map(|(pos, button, mods)| InputEvent::PointerDown { pos, button, mods }),
+        (arb_pos(), arb_mods()).prop_map(|(pos, mods)| InputEvent::PointerMove { pos, mods }),
+        (arb_pos(), arb_scroll_delta()).prop_map(|(pos, delta)| InputEvent::Scroll { pos, delta }),
+        arb_paste_text().prop_map(InputEvent::Paste),
+    ];
+    // Typing dominates; the rest only has to stay harmless.
+    let step = prop_oneof![
+        6 => proptest::char::range('a', 'z').prop_map(|ch| InputEvent::Char {
+            ch,
+            mods: Modifiers::NONE
+        }),
+        3 => other,
+    ];
+    let end = select(if close {
+        vec![Key::Escape, Key::Enter]
+    } else {
+        vec![Key::Escape]
+    });
+    (prop::collection::vec(step, 0..20), end).prop_map(|(mut events, key)| {
+        events.insert(0, palette_chord());
+        events.push(InputEvent::KeyDown {
+            key,
+            mods: Modifiers::NONE,
+        });
+        events
+    })
+}
+
+/// A palette visit that may run a command (`Enter`) or not (`Esc`).
+fn arb_palette_session() -> impl Strategy<Value = Vec<InputEvent>> {
+    arb_palette_inner(true)
+}
+
 /// A session of 1..=500 events, biased towards realistic gestures.
 fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
     let chunk = prop_oneof![
@@ -876,6 +949,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         1 => arb_table_session(),
         1 => arb_graph_session_maybe_undone(),
         1 => arb_plot_session(),
+        1 => arb_palette_session(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
     ];
@@ -1553,6 +1627,29 @@ proptest! {
     fn editor_never_panics_and_keeps_invariants(session in arb_session()) {
         // Arrange / Act / Assert: invariants are checked after every event.
         run_session(&session)?;
+    }
+
+    #[test]
+    fn palette_sessions_never_panic_and_change_nothing(
+        events in arb_palette_inner(false),
+        session in arb_session(),
+    ) {
+        // Arrange: any reachable state, then a visit that ends with Esc.
+        let mut editor = run_session_on(Editor::new(), &session)?;
+        // Close whatever a session left open first, so the visit starts clean.
+        editor.apply(Command::Cancel);
+        let before = editor.clone();
+
+        // Act
+        for event in events {
+            editor.handle(event);
+        }
+
+        // Assert: typing, keys and pointer events under the overlay left
+        // no trace, in the document, the history or the view.
+        prop_assert!(editor.palette().is_none(), "Esc closes the palette");
+        prop_assert!(editor.snapshot() == before.snapshot(), "the palette changed the state");
+        prop_assert_eq!(editor.can_undo(), before.can_undo());
     }
 
     #[test]
