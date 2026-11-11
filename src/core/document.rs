@@ -779,7 +779,9 @@ mod tests {
         let tx = tx_insert(&mut doc, [text_block("$\\newcommand{\\a}{1}$")]);
         assert!(doc.apply(&tx).is_ok());
         assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
-        let id = doc.shapes().next().map(|(id, _)| id).unwrap();
+        let Some((id, _)) = doc.shapes().next() else {
+            panic!("a text block was inserted");
+        };
         let edit = tx_replace(&doc, id, text_block("$\\newcommand{\\a}{7}$"));
         assert!(doc.apply(&edit).is_ok());
         assert_eq!(macro_body(&doc, "a").as_deref(), Some("7"));

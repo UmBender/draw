@@ -10894,7 +10894,12 @@ mod tests {
     fn renewcommand_defines_like_newcommand() {
         let t = table(&["$\\newcommand{\\a}{1}$", "$\\renewcommand{\\a}{3}$"]);
         assert_eq!(expanded("$\\a$", &t), "$3$");
-        assert_eq!(table(&["$\\renewcommand{\\b}{4}$"]).get("b").map(|m| m.params), Some(0));
+        assert_eq!(
+            table(&["$\\renewcommand{\\b}{4}$"])
+                .get("b")
+                .map(|m| m.params),
+            Some(0)
+        );
     }
 
     #[test]
@@ -10904,7 +10909,10 @@ mod tests {
             "$\\newcommand{\\frac}[2]{y}$",
             "$\\newcommand{\\choose}{z}$",
         ]);
-        assert_eq!(expanded("$\\alpha\\frac{1}{2}$", &t), "$\\alpha\\frac{1}{2}$");
+        assert_eq!(
+            expanded("$\\alpha\\frac{1}{2}$", &t),
+            "$\\alpha\\frac{1}{2}$"
+        );
         assert!(t.get("alpha").is_none() && t.get("frac").is_none());
         assert_eq!(t.ignored(), ["alpha", "frac", "choose"]);
     }

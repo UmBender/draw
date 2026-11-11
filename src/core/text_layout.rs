@@ -713,10 +713,7 @@ mod tests {
     #[test]
     fn typeset_expands_user_macros() {
         macros(&["$\\newcommand{\\R}{\\mathbb{R}}$"]);
-        assert_eq!(
-            *typeset("$\\R$"),
-            tex::layout(&tex::parse("$\\mathbb{R}$"))
-        );
+        assert_eq!(*typeset("$\\R$"), tex::layout(&tex::parse("$\\mathbb{R}$")));
         macros(&[]);
     }
 
@@ -757,7 +754,7 @@ mod tests {
     #[test]
     fn typeset_of_a_definition_block_is_empty() {
         macros(&["$\\newcommand{\\a}{x}$"]);
-        assert!(typeset("$\\newcommand{\\a}{x}$").ink.is_empty());
+        assert_eq!(typeset("$\\newcommand{\\a}{x}$").ink.len(), 0);
         macros(&[]);
     }
 
