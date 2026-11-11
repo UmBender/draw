@@ -56,6 +56,12 @@ are bound by [[T11 Keymap and macros]] and the toolbar buttons by
   entirely, gives the empty document; redone entirely, gives the same shapes
   and ids.
 
+## Pages (T116)
+
+Each page has its own history: `Ctrl+Z` and `Ctrl+Shift+Z` act on the
+current page only, and switching pages with `Alt+1`…`Alt+9` is never an
+undo step. The 500-action limit and the 64 MiB budget are per page.
+
 ## Limits
 
 - The history lives in memory. The only copy on disk is the autosave, which

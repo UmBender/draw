@@ -84,7 +84,12 @@ Bug snapshots go in `tests/snapshots/regressions/` (see its README and
   default), the document revisions (a load is a fresh start), the
   history's change count and byte estimate (recomputed, so byte-budget
   eviction right after a load can differ slightly).
-- No compatibility between format versions: a new `VERSION` means
+- Version 3 (T116) stores every page: the `[editor]` sections describe the
+  current page, a final `[pages]` section names it and counts the stored
+  pages, and each stored page has a `[page]` section with its view, number
+  counter, selection, document and history. Version 2 still loads, as one
+  page; recovery restores the page that was open.
+- No other compatibility between format versions: a new `VERSION` means
   regenerating fixtures and regression snapshots.
 - A loaded snapshot replaces the `DRAW_EXPERIMENTAL` and tablet
   settings with the ones it was saved with.

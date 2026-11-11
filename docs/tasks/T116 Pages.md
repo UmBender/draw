@@ -1,7 +1,7 @@
 ---
 id: T116
 title: Pages
-status: in-progress
+status: review
 wave: 59
 branch: task/T116-pages
 depends_on: []
@@ -47,12 +47,12 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T116): specify pages`
-- [ ] tests — `test(T116): add failing tests for pages`
-- [ ] models — `feat(T116): keep nine pages with their own views and histories`
-- [ ] behaviour — `feat(T116): switch pages with Alt+1 to Alt+9`
-- [ ] quality — `chore(T116): pass clippy and rustfmt`
-- [ ] docs — `docs(T116): update the feature note`
+- [x] spec — `docs(T116): specify pages`
+- [x] tests — `test(T116): add failing tests for pages`
+- [x] models — `feat(T116): keep nine pages with their own views and histories`
+- [x] behaviour — `feat(T116): switch pages with Alt+1 to Alt+9`
+- [x] quality — `chore(T116): pass clippy and rustfmt`
+- [x] docs — `docs(T116): update the feature note`
 
 ## Learning path
 
@@ -62,3 +62,10 @@ None: it extends an existing area.
 
 - 2026-11-10 — note written with the owner, from V1 of the [[Feature proposal]].
 - T108 depends on it so saved files store every page. The proposal's per-page undo rule is marked as the owner's default; revisit at batch planning if needed.
+- 2026-11-11 — batch run. Design in [[ADR-T116-1 Nine pages swapped into the editor]]: the current page stays in the editor's fields, the others wait in nine slots; no tool changed. Snapshot `VERSION` 3 (`[pages]` + `[page]` sections), version 2 still loads (`MIN_VERSION`). The test and tooling steps deviate in small ways:
+  - Page logic lives in `editor.rs` (no new `pages.rs`, so `core/mod.rs` stays untouched).
+  - The 11 snapshot fixtures were updated by hand (header 3 and an empty `[pages]` tail) because `DRAW_UPDATE_SNAPSHOTS=1` was not an allowed command; `fixtures_are_canonical` and the fixture tests pass.
+  - Fuzz found a counter bug (zero-based toggled while a page is away); fixed in `0bea341` with a unit test. The `lock_sessions_never_move_or_remove_locked_shapes` fuzz now skips steps that switch page.
+  - The old `Alt+1` → none assertion in `keymap::modifiers_disambiguate` became `Shift+1`.
+  - No e2e case added; `scripts/e2e.sh` was not run (the shell part is a text label).
+  - Owner checks: draw on pages 1, 2, 5; undo on each; copy on 1, paste on 3; kill and recover.

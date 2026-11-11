@@ -49,6 +49,9 @@ long. If it crashes, `draw --recover` brings your drawing back.
 - **Lock shapes** — `Ctrl+K` locks the selection so a background table or
   diagram can no longer be selected, moved or erased; it still takes fills
   and text. `Ctrl+Shift+K` unlocks everything.
+- **Nine pages** — `Alt+1`…`Alt+9` switch canvases (one per problem); each
+  keeps its own shapes, view and undo history, and the page number shows
+  top-right when it is not page 1.
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -216,6 +219,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+L` | Text block to graph | `Ctrl+P` | Text block to plot |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
 | `Ctrl+K` | Lock selection | `Ctrl+Shift+K` | Unlock every shape |
+| `Alt+1`…`Alt+9` | Go to page 1…9 | | |
 | `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 | `Ctrl+]` | Raise selection one step | `Ctrl+[` | Lower selection one step |
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |

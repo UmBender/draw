@@ -103,6 +103,8 @@ inside one starts a free text block.
 - **DP table**: `G`, `→`/`↓` to size it while dragging, `N` for indices,
   `B` to fill cells, `E` on a fill to clear it.
 - **Start over**: `Ctrl+Backspace`, then `Shift+N`; `Ctrl+Z` brings it back.
+- **One page per problem**: `Alt+1`…`Alt+9`; each page has its own shapes,
+  view and undo history.
 
 ## Limits
 
