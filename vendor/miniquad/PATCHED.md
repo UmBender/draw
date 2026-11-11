@@ -83,6 +83,15 @@ Every change is marked `draw patch (ADR-T35-1)` in the source.
   `wl_display_roundtrip`, whose handlers (pointer and tablet motion, touch,
   output scale) lock that mutex. Marked `draw patch (ADR-T83-1)`.
 
+- Image on the clipboard (ADR-T115-1), marked `draw patch (ADR-T115-1)`:
+  `Clipboard::set_png` (default: ignored) in `src/native.rs` and
+  `miniquad::window::clipboard_set_png(&[u8])` in `src/lib.rs`.
+  Wayland (`linux_wayland/clipboard.rs`) offers `image/png` on a new
+  `wl_data_source` and writes the bytes on a short thread. X11
+  (`linux_x11/clipboard.rs`, atoms in `libx11.rs`) answers `TARGETS` and
+  `image/png` with one property, no INCR. Text and image replace each
+  other. Not covered by automated tests: check by hand.
+
 - Upstream warnings, which Cargo shows for a path dependency:
   `set_or_replace_display` (`src/lib.rs`) is compiled only for Android,
   where it is used, and `respond_to_clipboard_request`

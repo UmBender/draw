@@ -25,6 +25,8 @@ static mut CLIPBOARD: OnceLock<ClipboardContext> = OnceLock::new();
 struct ClipboardContext {
     display: *mut WaylandPayload,
     content: String,
+    // draw patch (ADR-T115-1): PNG offered as `image/png`, empty for text.
+    image: std::sync::Arc<Vec<u8>>,
     data_source: Option<*mut wl_data_source>,
     data_offer: Option<*mut wl_data_offer>,
 }
@@ -43,6 +45,7 @@ impl ClipboardContext {
     unsafe fn set(&mut self, data: &str) {
         self.content.clear();
         self.content.push_str(data);
+        self.image = Default::default();
         let display: &mut WaylandPayload = &mut *self.display;
         // Wayland requires that only the window with focus can set the clipboard
         if let Some(serial) = display.keyboard_context.enter_serial {
@@ -65,9 +68,52 @@ impl ClipboardContext {
         }
     }
 
+    // draw patch (ADR-T115-1): offers `png` as the only type, `image/png`.
+    unsafe fn set_png(&mut self, png: &[u8]) {
+        self.content.clear();
+        self.image = std::sync::Arc::new(png.to_vec());
+        let display: &mut WaylandPayload = &mut *self.display;
+        if let Some(serial) = display.keyboard_context.enter_serial {
+            let data_source = self.new_data_source();
+            let mime_type = std::ffi::CString::new("image/png").unwrap();
+            wl_request!(
+                display.client,
+                data_source,
+                WL_DATA_SOURCE_OFFER,
+                mime_type.as_ptr()
+            );
+            wl_request!(
+                display.client,
+                display.data_device,
+                WL_DATA_DEVICE_SET_SELECTION,
+                data_source,
+                serial
+            );
+        }
+    }
+
     unsafe fn respond_to_clipboard_request(&mut self, mime_type: &str, fd: c_int) {
         #![allow(clippy::single_match)]
         match mime_type {
+            "image/png" if !self.image.is_empty() => {
+                // A thread writes it, so a slow reader never stalls a frame.
+                let png = self.image.clone();
+                std::thread::spawn(move || {
+                    let mut done = 0;
+                    while done < png.len() {
+                        let n = libc::write(fd, png[done..].as_ptr() as _, png.len() - done);
+                        if n > 0 {
+                            done += n as usize;
+                        } else if n < 0 && *libc::__errno_location() == libc::EINTR {
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                    libc::close(fd);
+                });
+                return;
+            }
             "UTF8_STRING" => {
                 libc::write(fd, self.content.as_ptr() as _, self.content.len());
             }
@@ -145,6 +191,7 @@ impl WaylandClipboard {
                 .set(ClipboardContext {
                     display,
                     content: String::new(),
+                    image: Default::default(),
                     data_source: None,
                     data_offer: None,
                 })
@@ -162,6 +209,11 @@ impl crate::native::Clipboard for WaylandClipboard {
     fn set(&mut self, data: &str) {
         unsafe {
             CLIPBOARD.get_mut().unwrap().set(data);
+        }
+    }
+    fn set_png(&mut self, png: &[u8]) {
+        unsafe {
+            CLIPBOARD.get_mut().unwrap().set_png(png);
         }
     }
 }

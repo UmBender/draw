@@ -129,6 +129,8 @@ pub(crate) unsafe fn get_property_bytes(
 
 // Next message for clipboard request
 static mut MESSAGE: Option<String> = None;
+// draw patch (ADR-T115-1): the PNG offered as `image/png`, if any.
+static mut IMAGE: Option<Vec<u8>> = None;
 
 /// Claim that our app is X11 clipboard owner
 /// Now when some other linux app will ask X11 for clipboard content - it will be redirected to our app
@@ -146,6 +148,24 @@ unsafe fn claim_clipboard_ownership(
     );
 
     MESSAGE = Some(message);
+    IMAGE = None;
+}
+
+/// draw patch (ADR-T115-1): claims the clipboard to serve `png` as `image/png`.
+unsafe fn claim_clipboard_image(
+    libx11: &mut LibX11,
+    display: *mut Display,
+    window: Window,
+    png: Vec<u8>,
+) {
+    (libx11.XSetSelectionOwner)(
+        display,
+        libx11.extensions.clipboard,
+        window,
+        CurrentTime as Time,
+    );
+    MESSAGE = None;
+    IMAGE = Some(png);
 }
 
 /// this function is supposed to be called from sapp's event loop
@@ -177,6 +197,47 @@ pub(crate) unsafe fn respond_to_clipboard_request(
         property: xselectionrequest.property,
         time: xselectionrequest.time,
     };
+
+    // draw patch (ADR-T115-1): with an image held, answer TARGETS and
+    // `image/png` only.
+    let image = (*std::ptr::addr_of!(IMAGE)).as_ref();
+    if let Some(png) = image {
+        let extensions = &libx11.extensions;
+        if xselectionrequest.target == extensions.targets {
+            let targets = [extensions.targets, extensions.image_png];
+            (libx11.XChangeProperty)(
+                xselectionrequest.display,
+                xselectionrequest.requestor,
+                xselectionrequest.property,
+                extensions.atom,
+                32 as libc::c_int,
+                PropModeReplace,
+                targets.as_ptr() as *const u8,
+                targets.len() as _,
+            );
+        } else if xselectionrequest.target == extensions.image_png {
+            (libx11.XChangeProperty)(
+                xselectionrequest.display,
+                xselectionrequest.requestor,
+                xselectionrequest.property,
+                extensions.image_png,
+                8 as libc::c_int,
+                PropModeReplace,
+                png.as_ptr(),
+                png.len() as _,
+            );
+        } else {
+            ev.property = 0 as Atom;
+        }
+        (libx11.XSendEvent)(
+            display,
+            ev.requestor,
+            false as _,
+            NoEventMask,
+            &mut ev as *mut XSelectionEvent as *mut XEvent,
+        );
+        return;
+    }
 
     // only UTF8 requests are supported
     if xselectionrequest.target == utf8_string {
@@ -240,6 +301,12 @@ impl crate::native::Clipboard for X11Clipboard {
     fn set(&mut self, data: &str) {
         unsafe {
             claim_clipboard_ownership(&mut self.libx11, self.display, self.window, data.to_owned());
+        };
+    }
+
+    fn set_png(&mut self, png: &[u8]) {
+        unsafe {
+            claim_clipboard_image(&mut self.libx11, self.display, self.window, png.to_vec());
         };
     }
 }
