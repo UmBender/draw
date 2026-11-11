@@ -768,6 +768,31 @@ mod tests {
     }
 
     #[test]
+    fn topic_of_matches_the_sections_of_the_keymap() {
+        // Arrange: the table is written section by section.
+        let order = [
+            Topic::Tools,
+            Topic::Style,
+            Topic::Edit,
+            Topic::View,
+            Topic::Helpers,
+        ];
+        let mut section = 0;
+
+        // Act / Assert: topics never go back to an earlier section.
+        for &(chord, command, _) in BINDINGS {
+            let topic = topic_of(command);
+            let at = order
+                .iter()
+                .position(|&t| t == topic)
+                .unwrap_or_else(|| panic!("{chord:?} has the non-key topic {topic:?}"));
+            assert!(at >= section, "{chord:?} -> {command:?} is out of order");
+            section = at;
+        }
+        assert_eq!(section, order.len() - 1);
+    }
+
+    #[test]
     fn resolve_agrees_with_bindings() {
         for &(chord, command, _) in BINDINGS {
             assert_eq!(resolve(chord.key, chord.mods), Some(command), "{chord:?}");

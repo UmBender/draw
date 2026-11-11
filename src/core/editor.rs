@@ -8212,4 +8212,198 @@ mod tests {
     fn palette_chord_is_not_a_binding() {
         assert_eq!(keymap::resolve(Key::P, CTRL_SHIFT), None);
     }
+
+    // ---- T113 shortcut sheet -------------------------------------------------
+
+    /// Editor with a viewport and the shortcut sheet open.
+    fn sheet_editor() -> Editor {
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        typed(&mut ed, "?");
+        ed
+    }
+
+    #[test]
+    fn sheet_question_mark_opens_on_the_first_page() {
+        // Arrange
+        let mut ed = Editor::new();
+        assert!(ed.sheet().is_none());
+
+        // Act
+        let redraw = ed.handle(InputEvent::Char {
+            ch: '?',
+            mods: NONE,
+        });
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(ed.sheet().map(sheet::Sheet::page), Some(0));
+    }
+
+    #[test]
+    fn sheet_question_mark_and_escape_close() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act / Assert
+        typed(&mut ed, "?");
+        assert!(ed.sheet().is_none());
+        typed(&mut ed, "?");
+        assert!(ed.sheet().is_some());
+        key(&mut ed, Key::Escape);
+        assert!(ed.sheet().is_none());
+    }
+
+    #[test]
+    fn sheet_question_mark_types_in_a_text_block() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+
+        // Act
+        typed(&mut ed, "?");
+
+        // Assert
+        assert!(ed.sheet().is_none());
+        assert_eq!(ed.text_edit().map(|e| e.text().to_owned()), Some("a?".to_owned()));
+    }
+
+    #[test]
+    fn sheet_does_not_open_over_the_palette() {
+        // Arrange
+        let mut ed = palette_editor();
+
+        // Act
+        typed(&mut ed, "?");
+
+        // Assert: the `?` went into the palette query.
+        assert!(ed.sheet().is_none());
+        assert_eq!(ed.palette().map(CommandPalette::query), Some("?"));
+    }
+
+    #[test]
+    fn sheet_palette_chord_is_ignored_while_open() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act
+        key_with(&mut ed, Key::P, CTRL_SHIFT);
+
+        // Assert
+        assert!(ed.palette().is_none());
+        assert!(ed.sheet().is_some());
+    }
+
+    #[test]
+    fn sheet_arrows_wrap_pages() {
+        // Arrange
+        let mut ed = sheet_editor();
+        let page = |ed: &Editor| ed.sheet().map(sheet::Sheet::page);
+
+        // Act / Assert
+        key(&mut ed, Key::ArrowRight);
+        assert_eq!(page(&ed), Some(1));
+        key(&mut ed, Key::ArrowLeft);
+        key(&mut ed, Key::ArrowLeft);
+        assert_eq!(page(&ed), Some(sheet::pages().len() - 1));
+        key(&mut ed, Key::ArrowRight);
+        assert_eq!(page(&ed), Some(0));
+    }
+
+    #[test]
+    fn sheet_digits_jump_to_a_topic() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act
+        key(&mut ed, Key::Digit3);
+
+        // Assert
+        let topic = ed.sheet().map(|s| s.current().topic);
+        assert_eq!(topic, Some(keymap::Topic::Edit));
+    }
+
+    #[test]
+    fn sheet_digit_without_topic_is_ignored() {
+        // Arrange
+        let mut ed = sheet_editor();
+        key(&mut ed, Key::ArrowRight);
+
+        // Act
+        key(&mut ed, Key::Digit9);
+        key(&mut ed, Key::Digit0);
+
+        // Assert
+        assert_eq!(ed.sheet().map(sheet::Sheet::page), Some(1));
+    }
+
+    #[test]
+    fn sheet_keys_and_pointer_do_not_reach_the_tools() {
+        // Arrange
+        let mut ed = sheet_editor();
+        let before = ed.snapshot();
+
+        // Act
+        for k in [Key::R, Key::Tab, Key::Space, Key::Delete, Key::Enter] {
+            key(&mut ed, k);
+        }
+        let pos = Vec2::new(100.0, 100.0);
+        let end = Vec2::new(200.0, 160.0);
+        ed.handle(InputEvent::PointerDown {
+            pos,
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::PointerMove {
+            pos: end,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::PointerUp {
+            pos: end,
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::Scroll { pos, delta: 3.0 });
+
+        // Assert
+        assert!(ed.sheet().is_some());
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert!(ed.active_gesture().is_none());
+        assert!(ed.toolbar_visible());
+        assert_eq!(ed.snapshot(), before);
+    }
+
+    #[test]
+    fn sheet_ignores_commands_while_open() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act
+        let changed = ed.apply(Command::SetTool(Tool::Rect));
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert!(ed.sheet().is_some());
+    }
+
+    #[test]
+    fn sheet_open_and_close_record_nothing() {
+        // Arrange
+        let mut ed = Editor::new();
+        let before = ed.snapshot();
+
+        // Act
+        typed(&mut ed, "?");
+        key(&mut ed, Key::ArrowRight);
+        key(&mut ed, Key::Digit4);
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert!(!ed.can_undo());
+        assert_eq!(ed.snapshot(), before);
+    }
 }

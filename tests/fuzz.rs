@@ -936,6 +936,54 @@ fn arb_palette_session() -> impl Strategy<Value = Vec<InputEvent>> {
     arb_palette_inner(true)
 }
 
+/// What a user does inside the shortcut sheet (T113): flipping pages,
+/// digits, and anything the tools would take. Ends with `Esc`.
+fn arb_sheet_inner() -> impl Strategy<Value = Vec<InputEvent>> {
+    let nav = select(vec![
+        Key::ArrowLeft,
+        Key::ArrowRight,
+        Key::Digit0,
+        Key::Digit1,
+        Key::Digit3,
+        Key::Digit8,
+        Key::Digit9,
+    ]);
+    let other = prop_oneof![
+        arb_char().prop_map(|ch| InputEvent::Char {
+            ch,
+            mods: Modifiers::NONE
+        }),
+        (
+            arb_key().prop_filter("Esc closes the sheet", |key| !matches!(key, Key::Escape)),
+            arb_mods()
+        )
+            .prop_map(|(key, mods)| InputEvent::KeyDown { key, mods }),
+        (arb_pos(), arb_button(), arb_mods())
+            .prop_map(|(pos, button, mods)| InputEvent::PointerDown { pos, button, mods }),
+        (arb_pos(), arb_mods()).prop_map(|(pos, mods)| InputEvent::PointerMove { pos, mods }),
+        (arb_pos(), arb_scroll_delta()).prop_map(|(pos, delta)| InputEvent::Scroll { pos, delta }),
+        arb_paste_text().prop_map(InputEvent::Paste),
+    ];
+    let step = prop_oneof![
+        6 => nav.prop_map(|key| InputEvent::KeyDown { key, mods: Modifiers::NONE }),
+        3 => other,
+    ];
+    prop::collection::vec(step, 0..20).prop_map(|mut events| {
+        events.insert(
+            0,
+            InputEvent::Char {
+                ch: '?',
+                mods: Modifiers::NONE,
+            },
+        );
+        events.push(InputEvent::KeyDown {
+            key: Key::Escape,
+            mods: Modifiers::NONE,
+        });
+        events
+    })
+}
+
 /// A session of 1..=500 events, biased towards realistic gestures.
 fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
     let chunk = prop_oneof![
@@ -950,6 +998,7 @@ fn arb_session() -> impl Strategy<Value = Vec<InputEvent>> {
         1 => arb_graph_session_maybe_undone(),
         1 => arb_plot_session(),
         1 => arb_palette_session(),
+        1 => arb_sheet_inner(),
         3 => arb_event().prop_map(|event| vec![event]),
         1 => arb_screen_pos().prop_map(|size| vec![InputEvent::Resize { size }]),
     ];
@@ -1158,7 +1207,7 @@ fn run_session_on(mut editor: Editor, session: &[InputEvent]) -> Result<Editor, 
     }
     // The palette is not saved state and ignores commands while open
     // (ADR-T111-1): a session that ends inside it ends with `Esc`.
-    if editor.palette().is_some() {
+    if editor.palette().is_some() || editor.sheet().is_some() {
         editor.handle(InputEvent::KeyDown {
             key: Key::Escape,
             mods: Modifiers::NONE,
@@ -1658,6 +1707,27 @@ proptest! {
         // no trace, in the document, the history or the view.
         prop_assert!(editor.palette().is_none(), "Esc closes the palette");
         prop_assert!(editor.snapshot() == before.snapshot(), "the palette changed the state");
+        prop_assert_eq!(editor.can_undo(), before.can_undo());
+    }
+
+    #[test]
+    fn sheet_sessions_never_panic_and_change_nothing(
+        events in arb_sheet_inner(),
+        session in arb_session(),
+    ) {
+        // Arrange: any reachable state, then a visit that ends with Esc.
+        let mut editor = run_session_on(Editor::new(), &session)?;
+        editor.apply(Command::Cancel);
+        let before = editor.clone();
+
+        // Act
+        for event in events {
+            editor.handle(event);
+        }
+
+        // Assert
+        prop_assert!(editor.sheet().is_none(), "Esc closes the sheet");
+        prop_assert!(editor.snapshot() == before.snapshot(), "the sheet changed the state");
         prop_assert_eq!(editor.can_undo(), before.can_undo());
     }
 
