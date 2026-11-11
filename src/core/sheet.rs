@@ -1,3 +1,100 @@
+//! The shortcut sheet: a paged cheat sheet with one topic per page
+//! (ADR-T113-1).
+//!
+//! The key rows come from [`BINDINGS`], grouped by [`topic_of`], so the sheet
+//! cannot drift from the real keys. Gestures and typing rows, which are not
+//! key bindings, live in one table here. Nothing here is saved or recorded in
+//! the history.
+
+use crate::core::keymap::Topic;
+
+/// Most rows on one page: the header, the topic line, 14 rows of 30 px and
+/// the footer fit the default 1280×800 window.
+pub const ROWS_PER_PAGE: usize = 14;
+
+/// One line of a page: the keys or gesture, and what they do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SheetRow {
+    /// How the input is written (`Ctrl+Z`, `Wheel`).
+    pub keys: String,
+    /// What it does.
+    pub text: &'static str,
+}
+
+/// One page of the sheet: part `part` (from 0) of `parts` of a topic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Page {
+    /// The topic.
+    pub topic: Topic,
+    /// Which part of the topic this is, from 0.
+    pub part: usize,
+    /// How many pages the topic has.
+    pub parts: usize,
+}
+
+impl Page {
+    /// The page title: the topic name, with `1/2` when it is split.
+    #[must_use]
+    pub fn title(&self) -> String {
+        todo!("T113 behaviour")
+    }
+
+    /// The rows of this page, at most [`ROWS_PER_PAGE`].
+    #[must_use]
+    pub fn rows(&self) -> Vec<SheetRow> {
+        todo!("T113 behaviour")
+    }
+}
+
+/// Every page, topic by topic in [`Topic::ALL`] order.
+#[must_use]
+pub fn pages() -> Vec<Page> {
+    todo!("T113 behaviour")
+}
+
+/// The open sheet: which page it shows.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Sheet {
+    /// Index into [`pages`].
+    page: usize,
+}
+
+impl Sheet {
+    /// A sheet on its first page.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Index of the current page in [`pages`].
+    #[must_use]
+    pub fn page(&self) -> usize {
+        self.page
+    }
+
+    /// The current page.
+    #[must_use]
+    pub fn current(&self) -> Page {
+        todo!("T113 behaviour")
+    }
+
+    /// Goes to the next page, wrapping after the last.
+    pub fn next(&mut self) {
+        todo!("T113 behaviour")
+    }
+
+    /// Goes to the previous page, wrapping before the first.
+    pub fn prev(&mut self) {
+        todo!("T113 behaviour")
+    }
+
+    /// Goes to the first page of topic number `number` (from 1). Returns
+    /// whether there is such a topic.
+    pub fn jump(&mut self, number: usize) -> bool {
+        todo!("T113 behaviour")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

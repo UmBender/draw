@@ -29,6 +29,7 @@ use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap;
 use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
+use crate::core::sheet::{self, Sheet};
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
@@ -213,6 +214,9 @@ pub struct Editor {
     /// The open command palette, which captures the keys while it is
     /// `Some` (ADR-T111-1). Not saved state.
     palette: Option<CommandPalette>,
+    /// The open shortcut sheet, which captures the keys while it is `Some`
+    /// (ADR-T113-1). Never open together with the palette. Not saved state.
+    sheet: Option<Sheet>,
 }
 
 impl Default for Editor {
@@ -262,6 +266,7 @@ impl Editor {
             doc_revision: 0,
             doc_base_revision: 0,
             palette: None,
+            sheet: None,
             ..snapshot.0
         }
     }
@@ -448,6 +453,7 @@ impl Editor {
             notice: None,
             export_asked: false,
             palette: None,
+            sheet: None,
         })
     }
 
@@ -478,6 +484,7 @@ impl Editor {
             notice: None,
             export_asked: false,
             palette: None,
+            sheet: None,
         }
     }
 
@@ -968,6 +975,12 @@ impl Editor {
     fn ask_export(&mut self) -> bool {
         self.export_asked |= self.can_export();
         false
+    }
+
+    /// The open shortcut sheet, if any (ADR-T113-1).
+    #[must_use]
+    pub fn sheet(&self) -> Option<&Sheet> {
+        self.sheet.as_ref()
     }
 
     /// The open command palette, if any (ADR-T111-1).

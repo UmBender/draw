@@ -335,6 +335,64 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     ),
 ];
 
+/// A page of the shortcut sheet (ADR-T113-1), in the order of
+/// `docs/features/Contest cheat sheet.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Topic {
+    /// Tool keys.
+    Tools,
+    /// Colours, stroke width, smoothing.
+    Style,
+    /// Undo, clipboard, selection, arrangement.
+    Edit,
+    /// Zoom, pan, fit, toolbar, export.
+    View,
+    /// Snapping, numbering, grid size.
+    Helpers,
+    /// Mouse gestures and modifiers (no key binding).
+    Gestures,
+    /// Keys inside a text block (no key binding).
+    TypingText,
+    /// Keys inside a shape or grid cell (no key binding).
+    TypingShape,
+}
+
+impl Topic {
+    /// Every topic, one sheet page group each.
+    pub const ALL: [Self; 8] = [
+        Self::Tools,
+        Self::Style,
+        Self::Edit,
+        Self::View,
+        Self::Helpers,
+        Self::Gestures,
+        Self::TypingText,
+        Self::TypingShape,
+    ];
+
+    /// The name shown on the sheet.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Tools => "Tools",
+            Self::Style => "Style",
+            Self::Edit => "Edit",
+            Self::View => "View",
+            Self::Helpers => "Helpers",
+            Self::Gestures => "Gestures",
+            Self::TypingText => "Typing in a text block",
+            Self::TypingShape => "Typing in a shape",
+        }
+    }
+}
+
+/// The sheet topic of `command`. An exhaustive `match`: a new command cannot
+/// be added without choosing its topic (ADR-T113-1).
+#[must_use]
+pub fn topic_of(command: Command) -> Topic {
+    todo!("T113 behaviour: {command:?}")
+}
+
 /// The command bound to `key` pressed with `mods`, if any.
 ///
 /// Modifiers must match exactly: `Shift+R` resolves to nothing rather than to
