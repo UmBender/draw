@@ -171,9 +171,43 @@ impl Gesture {
     }
 }
 
+/// How many pages there are (ADR-T116-1).
+pub const PAGE_COUNT: usize = 9;
+
+/// What one page owns besides the shapes: the state of a page that is not
+/// the current one (ADR-T116-1).
+#[derive(Debug, Clone, PartialEq)]
+struct Page {
+    doc: Document,
+    history: History,
+    camera: Camera,
+    selection: Vec<ShapeId>,
+    /// The auto-number counter of this page.
+    next_number: u32,
+}
+
+impl Page {
+    /// An empty page whose numbering starts at `first_number`.
+    fn fresh(first_number: u32) -> Self {
+        Self {
+            doc: Document::new(),
+            history: History::new(),
+            camera: Camera::default(),
+            selection: Vec::new(),
+            next_number: first_number,
+        }
+    }
+}
+
 /// All editor state: document, history, view, tools and settings.
 #[derive(Debug, Clone)]
 pub struct Editor {
+    /// The current page's document, history, camera and selection live in
+    /// the fields below; the other pages wait in `pages` (ADR-T116-1).
+    page: usize,
+    /// One slot per page; the current page's slot and the slots of pages
+    /// never touched are `None`.
+    pages: Vec<Option<Box<Page>>>,
     doc: Document,
     history: History,
     camera: Camera,
@@ -223,7 +257,9 @@ impl PartialEq for Editor {
     /// revisions and the history's change count and byte estimate are not
     /// part of it.
     fn eq(&self, other: &Self) -> bool {
-        self.doc == other.doc
+        self.page == other.page
+            && self.pages == other.pages
+            && self.doc == other.doc
             && self.history == other.history
             && self.camera == other.camera
             && self.selection == other.selection
@@ -432,6 +468,8 @@ impl Editor {
         let tools = ToolStates::read_snapshot(r, &doc)?;
 
         Ok(Self {
+            page: 0,
+            pages: empty_pages(),
             doc,
             history,
             camera,
@@ -465,6 +503,8 @@ impl Editor {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            page: 0,
+            pages: empty_pages(),
             doc: Document::new(),
             history: History::new(),
             camera: Camera::default(),
@@ -488,6 +528,20 @@ impl Editor {
             notice: None,
             export_asked: false,
         }
+    }
+
+    /// The current page, `0` for page 1 (ADR-T116-1).
+    #[must_use]
+    pub fn page(&self) -> usize {
+        self.page
+    }
+
+    /// Shows page `page` (`0..PAGE_COUNT`): cancels the gesture, closes an
+    /// open text edit and swaps the page states (ADR-T116-1). Returns
+    /// whether the view needs a redraw.
+    fn go_to_page(&mut self, page: usize) -> bool {
+        let _ = page;
+        todo!("T116: swap the page states")
     }
 
     /// Sets the tap slop in screen pixels: a press released within it is a
@@ -711,6 +765,7 @@ impl Editor {
             Command::GridRows(delta) if self.resizable_grid().is_some() => {
                 self.resize_selected_grid(0, delta)
             }
+            Command::GoToPage(page) => self.go_to_page(page),
             Command::ExportView => self.ask_export(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
@@ -1588,6 +1643,11 @@ impl Editor {
     fn prune_selection(&mut self) {
         select::prune(&mut self.selection, &self.doc);
     }
+}
+
+/// Slots for the pages that are not current: all untouched.
+fn empty_pages() -> Vec<Option<Box<Page>>> {
+    vec![None; PAGE_COUNT]
 }
 
 /// Whether `tool` commits only new shapes on top, on pointer up.

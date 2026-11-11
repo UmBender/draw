@@ -899,6 +899,14 @@ fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAt
     });
 }
 
+/// The page indicator: the page number, only when it is not page 1
+/// (ADR-T116-1). `page` is zero-based.
+#[must_use]
+pub fn page_label(page: usize) -> Option<String> {
+    let _ = page;
+    todo!("T116: page label")
+}
+
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
 /// on (ADR-T17-1), as seen through `camera` in a viewport of `viewport`
 /// pixels. Nothing is drawn when the view has too many dots.
