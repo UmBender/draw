@@ -3,6 +3,7 @@
 pub mod camera;
 pub mod clipboard;
 pub mod command;
+pub mod command_palette;
 pub mod document;
 pub mod editor;
 pub mod geom;
