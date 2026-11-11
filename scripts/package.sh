@@ -22,7 +22,9 @@ fail() { echo "package.sh: $*" >&2; exit 1; }
 check_runtime_libs() {
     local listed mentioned base missing=()
     listed=$(grep -v '^#' packaging/runtime-libs | awk 'NF { sub(/\.so.*/, "", $1); print $1 }')
-    mentioned=$(grep -aoE 'lib[A-Za-z0-9_+-]+\.so' "$out/draw" | sed 's/\.so$//' | sort -u)
+    # `liblib` is not a library: the literals "lib" and ".so" of the
+    # preflight sit next to `/usr/local/lib` in the binary.
+    mentioned=$(grep -aoE 'lib[A-Za-z0-9_+-]+\.so' "$out/draw" | sed 's/\.so$//' | grep -vx liblib | sort -u)
     grep -qx libX11 <<<"$mentioned" || fail "library scan found nothing in $out/draw"
     for base in $mentioned; do
         grep -qx "$base" <<<"$listed" || missing+=("$base")
