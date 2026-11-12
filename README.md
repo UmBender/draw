@@ -101,8 +101,7 @@ symbols that turn a crash address back into a source line.
 On a Wayland session the window talks to the compositor directly; the
 `.rpm` and `.deb` recommend the Wayland libraries for it. Without them draw
 falls back to X11 through XWayland. On an X11 session draw uses X11, which
-is deprecated and will be removed in draw 2.0.0 (see
-[Window backend](#window-backend)). If a display or a library is missing,
+stays supported (see [Window backend](#window-backend)). If a display or a library is missing,
 draw says which and what to install instead of opening a window;
 `DRAW_SKIP_PREFLIGHT=1 draw` skips that check (for instance when libraries
 live somewhere unusual, as on NixOS).
@@ -405,7 +404,7 @@ Five environment variables exist for troubleshooting:
 |----------|--------|--------|
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
-| `DRAW_BACKEND` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` is deprecated and removed in 2.0.0 (see [Window backend](#window-backend)) |
+| `DRAW_BACKEND` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` stays supported (see [Window backend](#window-backend)) |
 | `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
 | `DRAW_TABLET` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
 
@@ -444,11 +443,10 @@ the compositor fails or its libraries are missing, it falls back to X11
 through XWayland. Without `libdecor` the window may have no title bar on
 GNOME.
 
-**X11 is deprecated and will be removed in draw 2.0.0**, both XWayland on
-Wayland sessions and plain X11 sessions; 2.0.0 needs a Wayland session.
-Until then `DRAW_BACKEND=x11` still forces X11 (for instance if text looks
-blurrier under fractional scaling), and every start on X11 prints one line
-saying so.
+**X11 is supported**, both XWayland on Wayland sessions and plain X11
+sessions, and is not scheduled for removal. Native Wayland stays the
+default on Wayland sessions; `DRAW_BACKEND=x11` forces X11 (for instance if
+text looks blurrier under fractional scaling).
 
 ```sh
 DRAW_BACKEND=x11 draw
@@ -485,7 +483,7 @@ normal (half) press gives the width chosen with `[` / `]`, a light touch
 down to a quarter of it, a hard press up to twice. Mouse strokes and the
 other tools are unchanged. Pressure works on native Wayland, where the pen
 also draws and both barrel buttons pan and erase and the mouse is ignored
-while the pen hovers over the window, and on the deprecated X11 backend.
+while the pen hovers over the window, and on the X11 backend.
 Tilt, rotation and the eraser end of the pen are not used. draw ships a
 patched copy of its window library for this (`vendor/miniquad`).
 

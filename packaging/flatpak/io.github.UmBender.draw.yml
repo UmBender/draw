@@ -7,8 +7,8 @@ sdk: org.freedesktop.Sdk
 command: draw
 finish-args:
   # Native Wayland is the default on Wayland sessions (ADR-T46-1). X11
-  # (XWayland) is deprecated but still works with DRAW_BACKEND=x11 until
-  # 2.0.0, so it stays x11, not fallback-x11, which would hide it there.
+  # (XWayland) stays supported (ADR-T128-1) and works with DRAW_BACKEND=x11,
+  # so it stays x11, not fallback-x11, which would hide it there.
   - --socket=x11
   - --socket=wayland
   - --share=ipc

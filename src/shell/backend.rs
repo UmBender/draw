@@ -4,8 +4,8 @@
 //! [`choose`] is a pure function over the variable's value and
 //! `WAYLAND_DISPLAY`; [`from_env`] feeds it the real ones. Native Wayland
 //! is the default on Wayland sessions and falls back to X11 when it
-//! cannot connect; X11 (Xwayland on Wayland sessions) is deprecated and
-//! goes away in draw [`REMOVAL_VERSION`].
+//! cannot connect; X11 (Xwayland on Wayland sessions) stays supported
+//! (ADR-T128-1).
 
 use std::ffi::OsStr;
 
@@ -17,13 +17,10 @@ pub const BACKEND_ENV: &str = "DRAW_BACKEND";
 /// Environment variable set in a Wayland session.
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 
-/// The draw release that removes the X11 backend (ADR-T46-1).
-pub const REMOVAL_VERSION: &str = "2.0.0";
-
 /// The window backend draw asks miniquad for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Backend {
-    /// X11 only, through Xwayland on Wayland sessions (deprecated).
+    /// X11 only, through Xwayland on Wayland sessions.
     X11,
     /// Native Wayland, falling back to X11 (the default on Wayland
     /// sessions).
@@ -38,7 +35,8 @@ pub struct Choice {
     pub backend: Backend,
     /// One stderr line when the value was not understood.
     pub warning: Option<String>,
-    /// One stderr line when draw will run on the deprecated X11 backend.
+    /// One stderr line of information; always `None` since X11 is
+    /// supported (ADR-T128-1), kept for the start-up printing in `app`.
     pub notice: Option<String>,
 }
 
@@ -92,7 +90,7 @@ pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice 
     Choice {
         backend,
         warning,
-        notice: deprecation_notice(backend, session),
+        notice: None,
     }
 }
 
@@ -100,25 +98,6 @@ pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice 
 /// names a Wayland session.
 fn is_wayland_session(wayland_display: Option<&OsStr>) -> bool {
     wayland_display.is_some_and(|value| !value.is_empty())
-}
-
-/// The deprecation line when `backend` in this session ends up on X11:
-/// [`Backend::X11`] anywhere, or [`Backend::Wayland`] whose fallback
-/// miniquad takes without a Wayland session.
-fn deprecation_notice(backend: Backend, wayland_session: bool) -> Option<String> {
-    if !wayland_session {
-        Some(format!(
-            "draw: X11 is deprecated and will be removed in draw \
-             {REMOVAL_VERSION}, which needs a Wayland session"
-        ))
-    } else if backend == Backend::X11 {
-        Some(format!(
-            "draw: X11 (Xwayland) is deprecated and will be removed in draw \
-             {REMOVAL_VERSION}; unset {BACKEND_ENV} to use native Wayland"
-        ))
-    } else {
-        None
-    }
 }
 
 /// [`choose`] applied to the real environment.
@@ -164,10 +143,6 @@ mod tests {
         choose(Some(OsStr::new(value)), wayland_display)
     }
 
-    fn notice(choice: &Choice) -> String {
-        choice.notice.clone().unwrap_or_default()
-    }
-
     #[test]
     fn choose_unset_on_wayland_session_is_wayland() {
         // Arrange / Act
@@ -186,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn choose_unset_without_wayland_session_is_x11_with_deprecation() {
+    fn choose_unset_without_wayland_session_is_x11_without_notice() {
         // Arrange / Act
         let choices = [
             choose(None, None),
@@ -198,24 +173,19 @@ mod tests {
         for choice in choices {
             assert_eq!(choice.backend, Backend::X11);
             assert_eq!(choice.warning, None);
-            let notice = notice(&choice);
-            assert!(notice.contains(REMOVAL_VERSION), "{notice}");
-            assert!(notice.contains("Wayland session"), "{notice}");
+            assert_eq!(choice.notice, None);
         }
     }
 
     #[test]
-    fn choose_x11_on_wayland_session_is_x11_with_deprecation() {
+    fn choose_x11_on_wayland_session_is_x11_without_notice() {
         // Arrange / Act
         let choice = choose_str("x11", Some(display()));
 
         // Assert
         assert_eq!(choice.backend, Backend::X11);
         assert_eq!(choice.warning, None);
-        let notice = notice(&choice);
-        assert!(notice.contains("deprecated"), "{notice}");
-        assert!(notice.contains(REMOVAL_VERSION), "{notice}");
-        assert!(notice.contains(BACKEND_ENV), "{notice}");
+        assert_eq!(choice.notice, None);
     }
 
     #[test]
@@ -230,16 +200,14 @@ mod tests {
     }
 
     #[test]
-    fn choose_wayland_without_wayland_session_warns_of_deprecation() {
+    fn choose_wayland_without_wayland_session_has_no_notice() {
         // Arrange / Act: miniquad falls back to X11 here
         let choice = choose_str("wayland", None);
 
         // Assert
         assert_eq!(choice.backend, Backend::Wayland);
         assert_eq!(choice.warning, None);
-        let notice = notice(&choice);
-        assert!(notice.contains(REMOVAL_VERSION), "{notice}");
-        assert!(!notice.contains("experimental"), "{notice}");
+        assert_eq!(choice.notice, None);
     }
 
     #[test]
@@ -258,11 +226,7 @@ mod tests {
             // Assert
             assert_eq!(choice.backend, expected, "{value:?}");
             assert_eq!(choice.warning, None, "{value:?}");
-            assert_eq!(
-                choice.notice.is_some(),
-                expected == Backend::X11,
-                "{value:?}"
-            );
+            assert_eq!(choice.notice, None, "{value:?}");
         }
     }
 
@@ -321,14 +285,11 @@ mod tests {
     }
 
     #[test]
-    fn warning_and_notice_are_one_line() {
+    fn warning_is_one_line() {
         // Arrange
         let lines = [
             choose_str("bogus", Some(display())).warning,
             choose_str("bogus", None).warning,
-            choose_str("x11", Some(display())).notice,
-            choose(None, None).notice,
-            choose_str("wayland", None).notice,
         ];
 
         for line in lines {
@@ -340,7 +301,33 @@ mod tests {
     }
 
     #[test]
-    fn readme_documents_wayland_default_and_x11_deprecation() {
+    fn x11_is_not_marked_deprecated() {
+        // Arrange
+        let texts = [
+            include_str!("../../README.md"),
+            include_str!("../../packaging/flatpak/io.github.UmBender.draw.yml"),
+            include_str!("../../packaging/runtime-libs"),
+            include_str!("../../docs/features/Native Wayland.md")
+                .split("## Rollback")
+                .next()
+                .unwrap_or_default(),
+        ];
+
+        // Act / Assert
+        for text in texts {
+            // Titles of linked notes keep the word; the prose must not.
+            let hit = text.lines().find(|line| {
+                let prose = line.split("[[").next().unwrap_or_default();
+                !line.starts_with("task:")
+                    && !line.starts_with("adrs:")
+                    && prose.to_lowercase().contains("deprecat")
+            });
+            assert_eq!(hit, None);
+        }
+    }
+
+    #[test]
+    fn readme_documents_wayland_default_and_x11_supported() {
         // Arrange
         let readme = include_str!("../../README.md");
 
@@ -357,7 +344,8 @@ mod tests {
 
         // Assert
         assert!(row.contains("`wayland` (default"), "{row}");
-        assert!(row.contains(REMOVAL_VERSION), "{row}");
+        assert!(row.contains("`x11`"), "{row}");
+        assert!(!row.contains("removed"), "{row}");
         assert!(!row.contains("experimental"), "{row}");
         assert!(
             !experimental.contains(BACKEND_ENV),
@@ -404,8 +392,7 @@ mod tests {
                 _ => Backend::X11,
             };
             prop_assert_eq!(choice.backend, expected);
-            let on_x11 = choice.backend == Backend::X11 || !session;
-            prop_assert_eq!(choice.notice.is_some(), on_x11);
+            prop_assert_eq!(choice.notice, None);
         }
     }
 }

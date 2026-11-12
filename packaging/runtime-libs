@@ -1,7 +1,7 @@
 # Shared libraries the draw binary may load, one per line (ADR-T27-2,
 # ADR-T28-1, ADR-T46-1).
 #
-# role:  required  loaded by the X11 backend (deprecated, the fallback), needed to start on X11
+# role:  required  loaded by the X11 backend (supported, also the fallback), needed to start on X11
 #        gl        X11 backend: at least one of the group is needed (GLX, falling back to EGL)
 #        wayland   loaded by the native Wayland backend (the default on Wayland sessions);
 #                  a package recommendation, not a dependency
