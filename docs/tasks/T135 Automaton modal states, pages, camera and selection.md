@@ -1,7 +1,7 @@
 ---
 id: T135
 title: Automaton modal states, pages, camera and selection
-status: in-progress
+status: review
 wave: 67
 branch: task/T135-automaton-modal-states-pages-camera-and-
 depends_on: [T133, T134]
@@ -47,12 +47,13 @@ holds them in place of the loose fields `palette`, `sheet`, `page`, `pages`,
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T135): specify the modal and view regions`
-- [ ] tests — `test(T135): add failing tests for the regions`
-- [ ] behaviour — `refactor(T135): move the modal and view regions into the machine`
-- [ ] quality — `chore(T135): pass clippy and rustfmt`
+- [x] tests — `test(T135): add failing tests for the regions`
+- [x] behaviour — `refactor(T135): move the modal and view regions into the machine`
+- [x] quality — `chore(T135): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-12 — resumed: the owner amended *Files owned* in the plan (triage): `core/editor.rs` and the `core/*.rs` that read the fields. ADR-T135-1 records that the types move into `machine/regions.rs` while the storage stays in the editor adapter.
+- 2026-11-12 — done: `Modal`, `Pages`, `View` in `machine/regions.rs`; `Editor` uses them. Deviations: models and behaviour share one commit (the types are only useful wired in); `Page` became `pub(crate)`; the storage stays in the editor adapter (ADR-T135-1, UNATTENDED CHOICE). Snapshot fixtures unchanged, `scripts/check.sh` green.
 - 2026-11-12 — (earlier, now resolved) BLOCKED (batch): *Files owned* names `crates/draw-core/src/editor/**`, which does not exist; the fields to migrate (`page`, `pages`, `camera`, `selection`, `palette`, `sheet`) live in `crates/draw-core/src/core/editor.rs` (about 10.5k lines), outside the owned files. Tried: checked the tree and the `Editor` struct. Recommended fix: amend *Files owned* to `crates/draw-core/src/core/editor.rs` (and any `core/*.rs` that reads those fields), then re-run T135.
