@@ -1,7 +1,7 @@
 ---
 id: T137
 title: Automaton effects queue and time as an input
-status: in-progress
+status: review
 wave: 67
 branch: task/T137-automaton-effects-queue-and-time-as-an-i
 depends_on: [T133, T134]
@@ -44,13 +44,14 @@ See [[ADR-T137-1 One effect queue and time as a parameter]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T137): specify effects and time`
-- [ ] tests — `test(T137): add failing tests for effects and ticks`
-- [ ] behaviour — `refactor(T137): replace the request flags by effects`
-- [ ] quality — `chore(T137): pass clippy and rustfmt`
+- [x] spec — `docs(T137): specify effects and time`
+- [x] tests — `test(T137): add failing tests for effects and ticks`
+- [x] behaviour — `refactor(T137): replace the request flags by effects` (models and behaviour in one commit)
+- [x] quality — `chore(T137): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-12 — amendment (owner triage, plan): `crates/draw/src/app.rs` does not exist; files owned are the list above, so the blocker below is resolved. `tests/fuzz.rs` added because it calls a removed method. A stash `batch-T137-spec` on the T136 branch holds a duplicate of these spec edits and can be dropped.
+- 2026-11-12 — done: `Editor::take_effects` replaces the four `take_*` methods; the shell interprets effects (`serve_effects`, `arm_export`). `core_never_reads_the_clock` guards the core; the laser and the autosaver already took time as a value, so AC-3 is covered by replay tests on fake time (UNATTENDED CHOICE, ADR-T137-1: they are not moved into `Machine`). The machine test for AC-1 is the existing `step_ctrl_s_becomes_a_save_effect`. `scripts/check.sh` and `scripts/e2e.sh` green. Owner: try the laser trail (Q + move) and an autosave by hand.
 - 2026-11-12 — (earlier run) BLOCKED (batch): Files owned names `crates/draw/src/app.rs`, which does not exist (the shell is `src/shell/app.rs`). Removing the four `take_*` methods also needs `crates/draw-core/src/core/editor.rs`, and the laser and autosave timers live in `crates/draw-core/src/core/laser.rs` and `src/shell/autosave.rs`, all outside the owned paths. Recommended fix: amend Files owned (as for T135) to `machine/**`, `core/editor.rs`, `core/laser.rs`, `src/shell/app.rs`, `src/shell/autosave.rs`, then re-run.
