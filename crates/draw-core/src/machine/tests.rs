@@ -248,3 +248,121 @@ proptest! {
         }
     }
 }
+
+// ---- T135: the modal and view regions ----
+
+fn open(kind: ModalKind) -> Machine {
+    let opener = match kind {
+        ModalKind::Palette => key(Key::P, CTRL_SHIFT),
+        ModalKind::Sheet => Input::from_event(InputEvent::Char {
+            ch: '?',
+            mods: Modifiers::NONE,
+        }),
+    };
+    step(Machine::new(), opener).0
+}
+
+#[test]
+fn every_state_leaves_with_escape() {
+    for kind in ModalKind::ALL {
+        // Arrange
+        let machine = open(kind);
+        assert_ne!(machine.interaction(), Interaction::Idle, "{kind:?} opens");
+
+        // Act
+        let (machine, _) = step(machine, key(Key::Escape, Modifiers::NONE));
+
+        // Assert
+        assert_eq!(machine.interaction(), Interaction::Idle, "{kind:?} leaves");
+    }
+}
+
+#[test]
+fn modal_captures_input() {
+    for kind in ModalKind::ALL {
+        // Arrange
+        let mut machine = open(kind);
+        let before = machine.editor().snapshot();
+        let at = Vec2::new(300.0, 260.0);
+        let battery = [
+            down(200.0, 200.0),
+            Input::from_event(InputEvent::PointerMove {
+                pos: at,
+                mods: Modifiers::NONE,
+            }),
+            Input::from_event(InputEvent::PointerUp {
+                pos: at,
+                button: PointerButton::Left,
+                mods: Modifiers::NONE,
+            }),
+            Input::from_event(InputEvent::Scroll {
+                pos: at,
+                delta: 3.0,
+            }),
+            key(Key::Z, CTRL),
+            key(Key::A, CTRL),
+            key(Key::Delete, Modifiers::NONE),
+        ];
+
+        // Act
+        for input in battery {
+            machine = step(machine, input).0;
+        }
+
+        // Assert: nothing under the overlay moved and it is still current.
+        assert_eq!(machine.editor().snapshot(), before, "{kind:?}");
+        assert_ne!(machine.interaction(), Interaction::Idle, "{kind:?}");
+    }
+}
+
+#[test]
+fn modal_opens_one_overlay_at_a_time() {
+    // Arrange
+    let mut modal = Modal::default();
+    assert_eq!(modal.kind(), None);
+
+    // Act / Assert
+    modal.open_palette();
+    assert_eq!(modal.kind(), Some(ModalKind::Palette));
+    assert!(modal.palette().is_some() && modal.sheet().is_none());
+    modal.open_sheet();
+    assert_eq!(modal.kind(), Some(ModalKind::Sheet));
+    assert!(modal.palette().is_none() && modal.sheet().is_some());
+    modal.close();
+    assert_eq!(modal.kind(), None);
+}
+
+#[test]
+fn pages_start_on_the_first_page() {
+    // Arrange / Act
+    let pages = Pages::new();
+
+    // Assert
+    assert_eq!(pages.current(), 0);
+    assert_eq!(pages.stored(), 0);
+}
+
+#[test]
+fn view_starts_empty_at_the_default_camera() {
+    // Arrange / Act
+    let view = View::default();
+
+    // Assert
+    assert_eq!(view.selection(), []);
+    assert_eq!(*view.camera(), crate::core::camera::Camera::default());
+}
+
+#[test]
+fn snapshot_of_machine_equals_the_editor_snapshot() {
+    // Arrange
+    let mut editor = Editor::new();
+    editor.handle(InputEvent::PointerDown {
+        pos: Vec2::new(10.0, 10.0),
+        button: PointerButton::Left,
+        mods: Modifiers::NONE,
+    });
+    let machine = Machine::from_editor(editor.clone());
+
+    // Act / Assert
+    assert_eq!(machine.editor().snapshot(), editor.snapshot());
+}

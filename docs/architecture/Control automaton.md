@@ -22,6 +22,10 @@ Code: `crates/draw-core/src/machine/`.
 - **`Effect`** — `Redraw`, `Clipboard`, `Save`, `ExportPng`, `ExportSvg`,
   `CopyImage`, `Notify`, `Schedule`. They replace the polling flags the
   shell used to collect one by one.
+- **Regions** (T135, [[ADR-T135-1 Regions live in the machine module]]) —
+  `Modal` (`Closed | Palette | Sheet`, one overlay at a time), `Pages` and
+  `View` (camera and selection) are defined in `machine/regions.rs`; the
+  editor holds one of each in place of the six loose fields.
 - **Routing table** — `route(InteractionKind, InputKind)`, a `match` with no
   wildcard arm: a new state or input does not compile until every cell is
   decided, "ignored" included. Today the editor still does the work behind

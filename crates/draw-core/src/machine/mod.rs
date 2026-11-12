@@ -7,6 +7,7 @@
 
 mod effect;
 mod input;
+mod regions;
 mod state;
 mod table;
 
@@ -15,6 +16,7 @@ mod tests;
 
 pub use effect::{ClipboardOp, Effect};
 pub use input::{Input, InputKind, Reply};
+pub use regions::{Modal, ModalKind, Pages, View};
 pub use state::{Interaction, InteractionKind};
 pub use table::{DIAGRAM_BEGIN, DIAGRAM_END, Route, Transition, diagram, route, transitions};
 
