@@ -679,7 +679,12 @@ impl Shape {
     pub fn cell_fills(&self) -> &[CellFill] {
         match self {
             Self::Grid { fills, .. } => fills,
-            _ => &[],
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Rect { .. }
+            | Self::Ellipse { .. }
+            | Self::Text { .. } => &[],
         }
     }
 
@@ -731,7 +736,9 @@ impl Shape {
             Self::Grid { .. } => self
                 .grid_cell_at(p)
                 .map(|(col, row)| TextSlot::Cell { col, row }),
-            _ => None,
+            Self::Stroke { .. } | Self::Line { .. } | Self::Arrow { .. } | Self::Text { .. } => {
+                None
+            }
         }
     }
 
@@ -803,7 +810,12 @@ impl Shape {
     pub fn cell_texts(&self) -> &[CellText] {
         match self {
             Self::Grid { texts, .. } => texts,
-            _ => &[],
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Rect { .. }
+            | Self::Ellipse { .. }
+            | Self::Text { .. } => &[],
         }
     }
 
@@ -916,7 +928,13 @@ impl Shape {
                 axes: true,
                 ..
             } => grid_axis_labels(a, b, cols, rows).collect(),
-            _ => Vec::new(),
+            Self::Stroke { .. }
+            | Self::Line { .. }
+            | Self::Arrow { .. }
+            | Self::Rect { .. }
+            | Self::Ellipse { .. }
+            | Self::Grid { .. }
+            | Self::Text { .. } => Vec::new(),
         }
     }
 

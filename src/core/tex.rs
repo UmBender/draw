@@ -1155,7 +1155,19 @@ fn fill_slots(nodes: Vec<Node>, args: &[Arg]) -> Vec<Node> {
                     })
                     .collect(),
             }),
-            other => out.push(other),
+            other @ (Node::Space(_)
+            | Node::Char(_)
+            | Node::Symbol(_)
+            | Node::Scripts { .. }
+            | Node::Text { .. }
+            | Node::OperatorName { .. }
+            | Node::Infix { .. }
+            | Node::LeftRight { .. }
+            | Node::Environment { .. }
+            | Node::Kern(_)
+            | Node::XArrow { .. }
+            | Node::MathStyle(_)
+            | Node::Literal(_)) => out.push(other),
         }
     }
     out
@@ -3324,7 +3336,20 @@ fn push_atoms(
 fn kern_width(node: &Node, scale: f32) -> Option<f32> {
     match node {
         Node::Kern(source) => Some(kern(source).unwrap_or(0.0) * scale),
-        _ => None,
+        Node::Space(_)
+        | Node::Char(_)
+        | Node::Symbol(_)
+        | Node::Group(_)
+        | Node::Scripts { .. }
+        | Node::Command { .. }
+        | Node::Text { .. }
+        | Node::OperatorName { .. }
+        | Node::Infix { .. }
+        | Node::LeftRight { .. }
+        | Node::Environment { .. }
+        | Node::XArrow { .. }
+        | Node::MathStyle(_)
+        | Node::Literal(_) => None,
     }
 }
 
@@ -3415,21 +3440,7 @@ fn atom(node: &Node, scale: f32, style: Style) -> Option<(MathBox, Class)> {
                     ScriptKind::Sub => sub = Some(b),
                 }
             }
-            let b = match class {
-                Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
-                // The advance already holds the italic correction
-                // (ADR-T41-1); the subscript tucks under the slant
-                // (ADR-T36-1).
-                Class::Integral => {
-                    let (kern, tuck) = (0.0, base.italic);
-                    scripts(base, sup, sub, kern, tuck, scale)
-                }
-                _ => {
-                    let kern = base.italic;
-                    scripts(base, sup, sub, kern, 0.0, scale)
-                }
-            };
-            (b, class)
+            (attach_scripts(base, class, sup, sub, scale), class)
         }
         Node::Command { name, args } => {
             let arg = |i: usize| args.get(i).map_or(&[][..], |a: &Arg| &a.nodes[..]);
@@ -3673,6 +3684,37 @@ fn big_operator(ch: char, scale: f32, display: bool) -> MathBox {
     };
     out.put(&glyph, Vec2::new(0.0, y));
     out
+}
+
+/// `base` of `class` with its superscript and subscript: limits above and
+/// below for big operators, beside it for every other class.
+fn attach_scripts(
+    base: MathBox,
+    class: Class,
+    sup: Option<MathBox>,
+    sub: Option<MathBox>,
+    scale: f32,
+) -> MathBox {
+    match class {
+        Class::BigOp | Class::Limits => limits(&base, sup, sub, scale),
+        // The advance already holds the italic correction (ADR-T41-1); the
+        // subscript tucks under the slant (ADR-T36-1).
+        Class::Integral
+        | Class::Ord
+        | Class::Op
+        | Class::Bin
+        | Class::Rel
+        | Class::Open
+        | Class::Close
+        | Class::Punct => {
+            let (kern, tuck) = if matches!(class, Class::Integral) {
+                (0.0, base.italic)
+            } else {
+                (base.italic, 0.0)
+            };
+            scripts(base, sup, sub, kern, tuck, scale)
+        }
+    }
 }
 
 /// Superscript and subscript to the right of `base` (ADR-T33-1): the

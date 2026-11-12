@@ -1034,6 +1034,7 @@ impl Editor {
     /// Handles `event` for the open shortcut sheet (ADR-T113-1). `None` for
     /// the events that are not about the keys and pointer (resize, pen
     /// pressure, key releases), which the editor handles as usual.
+    #[allow(clippy::wildcard_enum_match_arm, reason = "key table, ADR-T131-1")]
     fn sheet_event(&mut self, event: &InputEvent) -> Option<bool> {
         let sheet = self.sheet.as_mut()?;
         let redraw = match *event {
@@ -1082,6 +1083,7 @@ impl Editor {
     /// Handles `event` for the open palette (ADR-T111-1). `None` for the
     /// events that are not about the keys and pointer (resize, pen
     /// pressure, key releases), which the editor handles as usual.
+    #[allow(clippy::wildcard_enum_match_arm, reason = "key table, ADR-T131-1")]
     fn palette_event(&mut self, event: &InputEvent) -> Option<bool> {
         let palette = self.palette.as_mut()?;
         let redraw = match *event {
@@ -1907,6 +1909,7 @@ impl Editor {
     /// without `Shift`) move to another cell, every other key does nothing
     /// (ADR-T29-2, ADR-T29-3, ADR-T31-1). Returns whether a redraw is
     /// needed.
+    #[allow(clippy::wildcard_enum_match_arm, reason = "key table, ADR-T131-1")]
     fn text_key(&mut self, key: Key, mods: Modifiers) -> bool {
         let ctrl_only = Modifiers {
             ctrl: true,
@@ -2385,7 +2388,43 @@ fn apply_helper(helpers: &mut Helpers, command: Command) -> bool {
         }
         Command::GridCols(delta) => step_cells(&mut helpers.grid_cols, delta),
         Command::GridRows(delta) => step_cells(&mut helpers.grid_rows, delta),
-        _ => false,
+        Command::SetTool(_)
+        | Command::SetColor(_)
+        | Command::WidthUp
+        | Command::WidthDown
+        | Command::CycleSmoothing
+        | Command::Undo
+        | Command::Redo
+        | Command::Copy
+        | Command::Cut
+        | Command::Paste
+        | Command::Duplicate
+        | Command::SelectAll
+        | Command::GridFromText
+        | Command::GraphFromText
+        | Command::ScaleUp
+        | Command::ScaleDown
+        | Command::PlotFromText
+        | Command::RaiseSelection
+        | Command::LowerSelection
+        | Command::SelectionToTop
+        | Command::SelectionToBottom
+        | Command::Align(_)
+        | Command::Distribute(_)
+        | Command::RecognizeShape
+        | Command::DeleteSelection
+        | Command::ClearAll
+        | Command::LockSelection
+        | Command::UnlockAll
+        | Command::Cancel
+        | Command::ResetView
+        | Command::FitView
+        | Command::GoToPage(_)
+        | Command::ToggleToolbar
+        | Command::ExportView
+        | Command::SaveFile
+        | Command::ExportSvg
+        | Command::CopyImage => false,
     }
 }
 

@@ -953,7 +953,7 @@ fn pair_edges<'a>(tokens: impl IntoIterator<Item = Cow<'a, str>>) -> Option<Vec<
                 raws.last_mut()?.weight = Some(weight);
                 weighed = true;
             }
-            _ => return None,
+            Cow::Borrowed(_) | Cow::Owned(_) => return None,
         }
     }
     Some(raws)

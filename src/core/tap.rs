@@ -75,7 +75,17 @@ impl TapFilter {
             {
                 pos
             }
-            _ => return [Some(event), None],
+            InputEvent::PointerDown { .. }
+            | InputEvent::PointerMove { .. }
+            | InputEvent::PointerUp { .. }
+            | InputEvent::Scroll { .. }
+            | InputEvent::KeyDown { .. }
+            | InputEvent::KeyUp { .. }
+            | InputEvent::Char { .. }
+            | InputEvent::Pressure { .. }
+            | InputEvent::Paste(_)
+            | InputEvent::PasteGrid(_)
+            | InputEvent::Resize { .. } => return [Some(event), None],
         };
         let pass = [Some(event.clone()), None];
         match (self.state, &event) {

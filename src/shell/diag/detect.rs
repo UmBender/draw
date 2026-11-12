@@ -130,7 +130,36 @@ impl BackendWatch {
                 (self.keyboards > 1).then_some(Anomaly::KeyboardRecreated)
             }
             Event::BackendDropped { count } if count > 0 => Some(Anomaly::BackendOverflow),
-            _ => None,
+            Event::Start
+            | Event::Capabilities { .. }
+            | Event::DeviceCreated(_)
+            | Event::DeviceReleased(_)
+            | Event::KeyboardEnter
+            | Event::KeyboardLeave
+            | Event::WlKey { .. }
+            | Event::RepeatInfo { .. }
+            | Event::RepeatTimer { .. }
+            | Event::Keymap
+            | Event::KeymapIgnored { .. }
+            | Event::ToolAdded
+            | Event::ToolRemoved
+            | Event::ProximityIn
+            | Event::ProximityOut
+            | Event::ProtocolError { .. }
+            | Event::BackendDropped { .. }
+            | Event::KeyDown { .. }
+            | Event::KeyUp { .. }
+            | Event::Char { .. }
+            | Event::PointerDown(_)
+            | Event::PointerUp(_)
+            | Event::Wheel
+            | Event::PointerMoves { .. }
+            | Event::Frame { .. }
+            | Event::Tool(_)
+            | Event::Revision(_)
+            | Event::Idle { .. }
+            | Event::Anomaly(_)
+            | Event::DumpRequested => None,
         }
     }
 }

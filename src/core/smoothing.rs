@@ -316,6 +316,21 @@ pub fn simplify_rdp_widths(points: &[Vec2], widths: &[f32], eps: f32) -> (Vec<Ve
         .unzip()
 }
 
+/// The index in `first + 1..last` whose `error` is largest and above
+/// `tolerance`; `first` when none is.
+fn farthest(first: usize, last: usize, error: impl Fn(usize) -> f32, tolerance: f32) -> usize {
+    let mut farthest = first;
+    let mut max_error = tolerance;
+    for i in first + 1..last {
+        let e = error(i);
+        if e > max_error {
+            farthest = i;
+            max_error = e;
+        }
+    }
+    farthest
+}
+
 /// The points Ramer–Douglas–Peucker keeps: a point is kept when it is more
 /// than `eps` from the chord of its span; when no point is, the one whose
 /// `width_error(first, last, i)` exceeds [`WIDTH_EPSILON`] the most. Every
@@ -341,21 +356,9 @@ fn rdp_keep(
             continue;
         }
         let (a, b) = (points[first], points[last]);
-        let farthest = |error: &dyn Fn(usize) -> f32, tolerance: f32| {
-            let mut farthest = first;
-            let mut max_error = tolerance;
-            for i in first + 1..last {
-                let e = error(i);
-                if e > max_error {
-                    farthest = i;
-                    max_error = e;
-                }
-            }
-            farthest
-        };
-        let mut split = farthest(&|i| distance_to_segment(points[i], a, b), eps);
+        let mut split = farthest(first, last, |i| distance_to_segment(points[i], a, b), eps);
         if split == first {
-            split = farthest(&|i| width_error(first, last, i), WIDTH_EPSILON);
+            split = farthest(first, last, |i| width_error(first, last, i), WIDTH_EPSILON);
         }
         if split != first {
             keep[split] = true;

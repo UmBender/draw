@@ -295,7 +295,24 @@ impl Diag {
                 }
             }
             Event::ProtocolError { .. } => self.log(Level::Error, &event.to_string()),
-            _ => {}
+            Event::Start
+            | Event::WlKey { .. }
+            | Event::RepeatTimer { .. }
+            | Event::Keymap
+            | Event::ProximityIn
+            | Event::ProximityOut
+            | Event::BackendDropped { .. }
+            | Event::KeyDown { .. }
+            | Event::KeyUp { .. }
+            | Event::Char { .. }
+            | Event::PointerDown(_)
+            | Event::PointerUp(_)
+            | Event::Wheel
+            | Event::PointerMoves { .. }
+            | Event::Tool(_)
+            | Event::Revision(_)
+            | Event::Idle { .. }
+            | Event::DumpRequested => {}
         }
         if event.is_input()
             && let Some(gap) = self.idle.input(micros)

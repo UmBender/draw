@@ -145,7 +145,17 @@ impl Laser {
                 }
                 Routed::Consumed
             }
-            _ => Routed::Forward,
+            InputEvent::PointerDown { .. }
+            | InputEvent::PointerMove { .. }
+            | InputEvent::PointerUp { .. }
+            | InputEvent::Scroll { .. }
+            | InputEvent::KeyDown { .. }
+            | InputEvent::KeyUp { .. }
+            | InputEvent::Char { .. }
+            | InputEvent::Pressure { .. }
+            | InputEvent::Paste(_)
+            | InputEvent::PasteGrid(_)
+            | InputEvent::Resize { .. } => Routed::Forward,
         }
     }
 

@@ -21,6 +21,10 @@ use crate::shell::diag::event::{Event, char_class, key_tag};
 
 /// The editor key for a macroquad key code, `None` for keys the editor ignores.
 #[must_use]
+#[allow(
+    clippy::wildcard_enum_match_arm,
+    reason = "KeyCode is miniquad's, about 120 keys; ADR-T131-1"
+)]
 pub fn map_key(code: KeyCode) -> Option<Key> {
     let key = match code {
         KeyCode::A => Key::A,
@@ -161,6 +165,10 @@ impl HeldMods {
     const ALT: u8 = Self::LEFT_ALT | Self::RIGHT_ALT;
 
     /// Records a modifier key going down (`true`) or up; other keys are ignored.
+    #[allow(
+        clippy::wildcard_enum_match_arm,
+        reason = "KeyCode is miniquad's, about 120 keys; ADR-T131-1"
+    )]
     fn set(&mut self, code: KeyCode, down: bool) {
         let bit = match code {
             KeyCode::LeftShift => Self::LEFT_SHIFT,

@@ -26,7 +26,13 @@ pub fn label_new(shape: Shape, helpers: &Helpers) -> Shape {
         Shape::Rect { .. } | Shape::Ellipse { .. } if helpers.numbering => {
             shape.with_label(Some(helpers.next_number))
         }
-        _ => shape,
+        Shape::Stroke { .. }
+        | Shape::Line { .. }
+        | Shape::Arrow { .. }
+        | Shape::Rect { .. }
+        | Shape::Ellipse { .. }
+        | Shape::Grid { .. }
+        | Shape::Text { .. } => shape,
     }
 }
 

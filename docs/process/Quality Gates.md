@@ -15,7 +15,7 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 |------|---------|------|
 | Format | `cargo fmt --all -- --check` | no diff |
 | Lint | `cargo clippy --all-targets -- -D warnings` | zero warnings (lint levels in `Cargo.toml` `[lints]`, see [[ADR-0010 Clippy lint policy]]) |
-| Tests | `cargo test --all-targets` | all pass, including property tests |
+| Tests | `cargo test --all-targets` | all pass, including property tests; `tests/no_dyn.rs` fails on `dyn` outside the allow-list of [[ADR-T131-1 No dyn outside an allow-list]] |
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
 | Fuzz | `PROPTEST_CASES=20000 cargo test --release --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
 | Coverage | `bash scripts/coverage.sh` (needs `cargo-llvm-cov`; separate from `check.sh`, the `coverage` job of `ci.yml`) | line coverage of each `src/` module within 0.5 points of its value in `coverage-baseline.toml`; a rise is recorded with `scripts/coverage.sh --update` (T130) |
