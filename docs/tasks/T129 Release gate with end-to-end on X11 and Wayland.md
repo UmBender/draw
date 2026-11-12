@@ -1,7 +1,7 @@
 ---
 id: T129
 title: Release gate with end-to-end on X11 and Wayland
-status: todo
+status: in-progress
 wave: 65
 branch: task/T129-release-gate-with-end-to-end-on-x11-and-
 depends_on: [T127]
@@ -24,14 +24,17 @@ A release cannot be packaged unless `check.sh --fuzz` and the e2e suite pass on 
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Refined 2026-11-12 (unattended batch). All tests live in `self_tests` of
+`tests/e2e.rs`.
 
-- **AC-1** — `scripts/e2e.sh` takes `--backend wayland|x11|all`; the X11 run uses a private Xvfb with no access to the desktop and the same resource caps.
-  Tests: the harness's own tests for argument parsing and isolation.
-- **AC-2** — `scripts/release.sh X.Y.Z` runs `check.sh --fuzz`, then the e2e suite on both backends, then `package.sh`, and refuses to package when any step fails.
-  Test: a dry-run mode with injected failures (`release_stops_on_a_failing_step`).
-- **AC-3** — `package.sh` called directly prints that it is not the release path, and `docs/process/Quality Gates.md` lists the release gate.
-- **AC-4** — The goldens of both backends are regenerated and committed; a golden that differs only by backend is a separate file.
+- **AC-1** — `scripts/e2e.sh` takes `--backend wayland|x11|all` (default `all`); the X11 run uses a private Xvfb (`-nolisten tcp`, own `XAUTHORITY` in the private runtime directory, `DISPLAY` from `-displayfd`, no `WAYLAND_DISPLAY`) under the same resource caps.
+  Tests: `script_isolates_the_session` (extended), `script_rejects_an_unknown_backend`, `script_x11_run_is_private`, `x11_guard_accepts_the_private_display`, `x11_guard_rejects_an_authority_outside_the_runtime`, `x11_guard_rejects_a_missing_display`.
+- **AC-2** — `scripts/release.sh X.Y.Z` runs `check.sh --fuzz`, then the e2e suite on both backends, then `package.sh`, and refuses to package when any step fails. `--dry-run` prints the steps without running them; `DRAW_RELEASE_FAIL=<step>` makes a dry-run step fail.
+  Tests: `release_dry_run_lists_the_steps_in_order`, `release_stops_on_a_failing_step`, `release_rejects_a_malformed_version`.
+- **AC-3** — `package.sh` called directly prints that it is not the release path (`release.sh` sets `DRAW_RELEASE=1`), and `docs/process/Quality Gates.md` lists the release gate.
+  Tests: `package_script_says_it_is_not_the_release_path`, `quality_gates_lists_the_release_gate`.
+- **AC-4** — A golden that differs only by backend is a separate file (`expected.x11.ppm`, `expected.x11.snap`), preferred on X11; the goldens of both backends are regenerated and committed when the tools allow it.
+  Tests: `golden_path_prefers_the_backend_file`, `golden_path_falls_back_to_the_shared_file`.
 
 ## Out of scope
 
