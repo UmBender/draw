@@ -62,3 +62,4 @@ None: it extends an existing area.
 ## Log
 
 - 2026-11-10 — note written with the owner, from K5 of the [[Feature proposal]].
+- 2026-11-11 — BLOCKED (batch): the work needs files outside *Files owned*. `src/shell/app.rs` must take the new export request (it alone calls `take_export_request`, builds the document off the frame and writes the file); `src/shell/input_map.rs:470` must also ignore key repeat for the new chord (holding it would write many files); `Cargo.toml` and `Cargo.lock` are needed for ttf-parser 0.25 (the plan allows them, the note does not list them); `src/shell/render.rs` is needed to share the stroke polyline function (AC-2 recommended default). Nothing was implemented. Recommended fix: add `src/shell/app.rs`, `src/shell/input_map.rs`, `src/shell/render.rs`, `Cargo.toml`, `Cargo.lock` to *Files owned*, then re-run the task.
