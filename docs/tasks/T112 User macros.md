@@ -1,7 +1,7 @@
 ---
 id: T112
 title: User macros
-status: review
+status: done
 wave: 60
 branch: task/T112-user-macros
 depends_on: [T105]

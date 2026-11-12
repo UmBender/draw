@@ -1,7 +1,7 @@
 ---
 id: T115
 title: Copy the selection as an image
-status: review
+status: done
 wave: 59
 branch: task/T115-copy-as-image
 depends_on: []

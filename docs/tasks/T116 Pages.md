@@ -1,7 +1,7 @@
 ---
 id: T116
 title: Pages
-status: review
+status: done
 wave: 59
 branch: task/T116-pages
 depends_on: []

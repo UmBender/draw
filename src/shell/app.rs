@@ -675,17 +675,8 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
-        if editor.take_svg_export_request() {
-            svg_writes.push(export_svg(&editor));
-        }
-        log_finished_svg_writes(&mut svg_writes);
-        if let Some(bounds) = editor.take_copy_image_request() {
-            copy_selection_image(&editor, &mut frame, bounds);
-        }
         dirty |= laser.tick();
-        if editor.take_save_request() {
-            save_file(&editor, &mut save_path);
-        }
+        serve_requests(&mut editor, &mut frame, &mut svg_writes, &mut save_path);
         let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
@@ -704,6 +695,27 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
         if let Some(hooks) = &mut hooks {
             hooks.after_swap();
         }
+    }
+}
+
+/// Answers the requests the editor collected this frame: an SVG export, a
+/// copy of the selection as an image and a save (ADR-T114-2, ADR-T115-1,
+/// ADR-T108-1).
+fn serve_requests(
+    editor: &mut Editor,
+    frame: &mut CachedFrame,
+    svg_writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>,
+    save_path: &mut Option<PathBuf>,
+) {
+    if editor.take_svg_export_request() {
+        svg_writes.push(export_svg(editor));
+    }
+    log_finished_svg_writes(svg_writes);
+    if let Some(bounds) = editor.take_copy_image_request() {
+        copy_selection_image(editor, frame, bounds);
+    }
+    if editor.take_save_request() {
+        save_file(editor, save_path);
     }
 }
 

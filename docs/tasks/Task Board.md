@@ -415,15 +415,15 @@ flowchart TD
 | [[T105 Display mode]] | done | — | `task/T105-display-mode` |
 | [[T106 Fading laser pointer]] | done | — | `task/T106-laser-pointer` |
 | [[T107 Lock shapes]] | done | — | `task/T107-lock` |
-| [[T108 Save and load]] | todo | T107, T116 | `task/T108-save-and-load` |
+| [[T108 Save and load]] | done | T107, T116 | `task/T108-save-and-load` |
 | [[T109 Shape recognition]] | done | — | `task/T109-shape-recognition` |
 | [[T110 Minimap]] | done | — | `task/T110-minimap` |
 | [[T111 Command palette]] | done | — | `task/T111-command-palette` |
-| [[T112 User macros]] | todo | T105 | `task/T112-user-macros` |
-| [[T113 Shortcut sheet]] | todo | T111 | `task/T113-shortcut-sheet` |
-| [[T114 Export to SVG]] | todo | — | `task/T114-svg-export` |
-| [[T115 Copy the selection as an image]] | todo | — | `task/T115-copy-as-image` |
-| [[T116 Pages]] | todo | — | `task/T116-pages` |
+| [[T112 User macros]] | done | T105 | `task/T112-user-macros` |
+| [[T113 Shortcut sheet]] | done | T111 | `task/T113-shortcut-sheet` |
+| [[T114 Export to SVG]] | done | — | `task/T114-svg-export` |
+| [[T115 Copy the selection as an image]] | done | — | `task/T115-copy-as-image` |
+| [[T116 Pages]] | done | — | `task/T116-pages` |
 | [[T53 Release 1.5.0]] | review | T46–T49, T51, T52, T54–T107, T109–T111 | `chore/release-1.5.0` |
 | [[T117 Looser shape recognition]] | todo | — | `task/T117-looser-recognition` |
 | [[T119 Forest layout in layers]] | done | — | `task/T119-forest-layers` |

@@ -1,7 +1,7 @@
 ---
 id: T108
 title: Save and load
-status: review
+status: done
 wave: 60
 branch: task/T108-save-and-load
 depends_on: [T107, T116]

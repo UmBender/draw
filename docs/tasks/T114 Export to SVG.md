@@ -1,7 +1,7 @@
 ---
 id: T114
 title: Export to SVG
-status: review
+status: done
 wave: 59
 branch: task/T114-svg-export
 depends_on: []

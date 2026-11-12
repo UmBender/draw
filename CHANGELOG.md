@@ -6,6 +6,20 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Files: `Ctrl+S` writes every page to `draw file.draw` (the file named on
+  the command line) or to `~/draw-<date>-<time>.draw`, and `draw file.draw`
+  opens it. Newer or damaged files are refused, never overwritten.
+- Nine pages: `Alt+1`…`Alt+9` switch canvases, each with its own shapes,
+  view and undo history; the page number shows top-right.
+- `Ctrl+Shift+E` exports the whole drawing to an SVG in `~`.
+- `Ctrl+Shift+C` copies the selection to the clipboard as an image.
+- User macros in formulas: `\newcommand` and `\renewcommand` with `#1`…`#9`
+  in any text block apply to every formula.
+- `?` opens a shortcut sheet: `←`/`→` change page, `1`–`9` jump to a topic,
+  `Esc` closes it.
+
 ### Changed
 
 - A graph typed with `Ctrl+L` that has no cycle is drawn in layers even

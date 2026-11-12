@@ -2168,9 +2168,9 @@ fn check_undo_redo_symmetric(session: &[InputEvent], editor: Editor) -> Result<(
 /// The undo/redo half of [`check_undo_redo_symmetric`], on an editor that
 /// already ran `steps` events.
 fn check_undo_redo_from(mut editor: Editor, steps: usize) -> Result<(), TestCaseError> {
-    // Arrange: a session may end inside the command palette, which ignores
-    // commands while open (ADR-T111-1).
-    if editor.palette().is_some() {
+    // Arrange: a session may end inside the command palette or the shortcut
+    // sheet, which ignore commands while open (ADR-T111-1, ADR-T113-1).
+    if editor.palette().is_some() || editor.sheet().is_some() {
         editor.handle(InputEvent::KeyDown {
             key: Key::Escape,
             mods: Modifiers::NONE,

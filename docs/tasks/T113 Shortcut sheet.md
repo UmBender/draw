@@ -1,7 +1,7 @@
 ---
 id: T113
 title: Shortcut sheet
-status: review
+status: done
 wave: 60
 branch: task/T113-shortcut-sheet
 depends_on: [T111]

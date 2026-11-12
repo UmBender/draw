@@ -140,3 +140,10 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 129 | [[ADR-T111-1 Command palette as a modal editor state]] | accepted | decision | T11-1, 0006 | — |
 | 130 | [[ADR-T119-1 Forests drawn in layers]] | accepted | decision | T87-1, T104-2 | amends T87-1 |
 | 131 | [[ADR-T121-1 Self-loops and lanes for edges between the same nodes]] | accepted | decision | T87-1, T119-1 | amends T87-1 |
+| 132 | [[ADR-T108-1 The draw file format and its promise]] | accepted | decision | T74-1, T116-1 | — |
+| 133 | [[ADR-T112-1 User macros as source expansion]] | accepted | decision | T69-1, T105-1 | — |
+| 134 | [[ADR-T113-1 Shortcut sheet as a second modal overlay]] | accepted | decision | T111-1 | — |
+| 135 | [[ADR-T114-1 The ttf-parser crate as a direct dependency]] | accepted | decision | 0014, T92-1 | amends 0014 |
+| 136 | [[ADR-T114-2 SVG export is a pure writer over glyph outlines]] | accepted | decision | T92-2, T30-1 | — |
+| 137 | [[ADR-T115-1 Selection image on the clipboard]] | accepted | decision | T35-1, T92-1 | — |
+| 138 | [[ADR-T116-1 Nine pages swapped into the editor]] | accepted | decision | — | — |
