@@ -1,7 +1,7 @@
 ---
 id: T114
 title: Export to SVG
-status: in-progress
+status: review
 wave: 59
 branch: task/T114-svg-export
 depends_on: []
@@ -59,11 +59,11 @@ Refined (ADR-T114-1, ADR-T114-2). Tests:
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T114): specify SVG export`
-- [ ] tests — `test(T114): add failing tests for SVG export`
-- [ ] models — `feat(T114): write documents as SVG with glyph outlines`
-- [ ] behaviour — `feat(T114): export to SVG on Ctrl+Shift+E`
-- [ ] quality — `chore(T114): pass clippy and rustfmt`
-- [ ] docs — `docs(T114): update the feature note`
+- [x] tests — `test(T114): add failing tests for SVG export`
+- [x] models — `feat(T114): write documents as SVG with glyph outlines`
+- [x] behaviour — `feat(T114): export to SVG on Ctrl+Shift+E`
+- [x] quality — `chore(T114): pass clippy and rustfmt`
+- [x] docs — `docs(T114): update the feature note`
 
 ## Learning path
 
@@ -73,3 +73,5 @@ None: it extends an existing area.
 
 - 2026-11-10 — note written with the owner, from K5 of the [[Feature proposal]].
 - 2026-11-11 — BLOCKED (batch): the work needs files outside *Files owned*. `src/shell/app.rs` must take the new export request (it alone calls `take_export_request`, builds the document off the frame and writes the file); `src/shell/input_map.rs:470` must also ignore key repeat for the new chord (holding it would write many files); `Cargo.toml` and `Cargo.lock` are needed for ttf-parser 0.25 (the plan allows them, the note does not list them); `src/shell/render.rs` is needed to share the stroke polyline function (AC-2 recommended default). Nothing was implemented. Recommended fix: add `src/shell/app.rs`, `src/shell/input_map.rs`, `src/shell/render.rs`, `Cargo.toml`, `Cargo.lock` to *Files owned*, then re-run the task.
+- 2026-11-11 — resumed after the owner added those files; merged `main` into the branch. Implemented per ADR-T114-1 and ADR-T114-2. Deviations: `src/core/mod.rs` got `pub mod svg;` (added to *Files owned*); `render.rs` is untouched because stored stroke points are already smoothed, so there is no function to share; the label size constants are copied into `core::svg` (the renderer's are in the shell); a pressure stroke is one round-capped segment per pair of points at the mean width; the "notice" is the log line (there is no on-screen notice); the quality step needed a commit (clippy: `format!` pushes, bool fields). Goldens are rewritten with `cargo test --test svg -- --ignored regenerate` because an env-var prefix is not an allowed command here.
+- Manual checks left for the owner: export a drawing with a grid, arrows and formulas with `Ctrl+Shift+E`; open the file in a browser and compare with the screen (`xmllint --noout <file>` was not run: not an allowed command in the batch).
