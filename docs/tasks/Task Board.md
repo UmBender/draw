@@ -530,7 +530,7 @@ flowchart TD
 | [[T129 Release gate with end-to-end on X11 and Wayland]] | done | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
 | [[T130 Coverage in CI with a ratchet]] | done | T127 | `task/T130-coverage-in-ci-with-a-ratchet` |
 | [[T131 No dynamic dispatch and stricter lints]] | done | T127 | `task/T131-no-dynamic-dispatch-and-stricter-lints` |
-| [[T132 Workspace split with unsafe levels]] | todo | T131 | `task/T132-workspace-split-with-unsafe-levels` |
+| [[T132 Workspace split with unsafe levels]] | done | T131 | `task/T132-workspace-split-with-unsafe-levels` |
 | [[T133 Typed units and ids]] | todo | T132 | `task/T133-typed-units-and-ids` |
 | [[T134 The control automaton states, inputs and effects]] | todo | T132 | `task/T134-the-control-automaton-states-inputs-effe` |
 | [[T135 Automaton modal states, pages, camera and selection]] | todo | T133, T134 | `task/T135-automaton-modal-states-pages-camera-and-` |

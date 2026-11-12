@@ -159,3 +159,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 148 | [[ADR-T127-5 OpenGL ES 3.0 first, Vulkan optional]] | accepted | decision | T127-1, T127-4 | — |
 | 149 | [[ADR-T128-1 X11 stays supported]] | accepted | decision | T28-1, T44-1 | reverts T46-1 |
 | 150 | [[ADR-T131-1 No dyn outside an allow-list]] | accepted | decision | 0010, 0014 | — |
+| 151 | [[ADR-T132-1 Workspace of five crates with unsafe levels]] | accepted | decision | T127-1, T127-2, T127-3 | — |

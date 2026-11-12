@@ -1,7 +1,7 @@
 ---
 id: T132
 title: Workspace split with unsafe levels
-status: review
+status: done
 wave: 65
 branch: task/T132-workspace-split-with-unsafe-levels
 depends_on: [T131]

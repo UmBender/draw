@@ -14,6 +14,9 @@ All notable changes to draw are listed here. The format follows
   end-to-end suite on Wayland and on X11 before it packages.
 - The source has no `dyn` outside a short allow-list, and matches on enums
   list their variants; both are checked by the build.
+- The code is a cargo workspace of five crates (`draw-types`, `draw-core`,
+  `draw-gfx`, `draw-sys` and `draw`); the compiler enforces where `unsafe`
+  may appear, and the module paths and the binary are unchanged.
 - CI measures line coverage and fails when a module drops below its
   recorded value.
 - The menus have a new look, after the status bar: the tool strip is made of
