@@ -1,4 +1,4 @@
-draw-snapshot 2
+draw-snapshot 3
 [editor]
 tool select
 style 0 3.0
@@ -36,3 +36,6 @@ text-size -
 text -
 eraser - remove 0
 select move 200.0 100.0 260.0 130.0 0 0 2 0 1
+[pages]
+current 0
+stored 0

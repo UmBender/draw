@@ -149,6 +149,9 @@ pub enum Command {
     ResetView,
     /// Frame all content.
     FitView,
+    /// Show page `n` (`0` is page 1, up to 8): its own shapes, selection,
+    /// view and history (ADR-T116-1).
+    GoToPage(usize),
     /// Show or hide the toolbar.
     ToggleToolbar,
     /// Ask the shell to write the view to a PNG file (ADR-T92-2).

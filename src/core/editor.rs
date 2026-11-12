@@ -182,9 +182,43 @@ impl Gesture {
     }
 }
 
+/// How many pages there are (ADR-T116-1).
+pub const PAGE_COUNT: usize = 9;
+
+/// What one page owns besides the shapes: the state of a page that is not
+/// the current one (ADR-T116-1).
+#[derive(Debug, Clone, PartialEq)]
+struct Page {
+    doc: Document,
+    history: History,
+    camera: Camera,
+    selection: Vec<ShapeId>,
+    /// The auto-number counter of this page.
+    next_number: u32,
+}
+
+impl Page {
+    /// An empty page whose numbering starts at `first_number`.
+    fn fresh(first_number: u32) -> Self {
+        Self {
+            doc: Document::new(),
+            history: History::new(),
+            camera: Camera::default(),
+            selection: Vec::new(),
+            next_number: first_number,
+        }
+    }
+}
+
 /// All editor state: document, history, view, tools and settings.
 #[derive(Debug, Clone)]
 pub struct Editor {
+    /// The current page's document, history, camera and selection live in
+    /// the fields below; the other pages wait in `pages` (ADR-T116-1).
+    page: usize,
+    /// One slot per page; the current page's slot and the slots of pages
+    /// never touched are `None`.
+    pages: PageSlots,
     doc: Document,
     history: History,
     camera: Camera,
@@ -241,7 +275,9 @@ impl PartialEq for Editor {
     /// revisions and the history's change count and byte estimate are not
     /// part of it.
     fn eq(&self, other: &Self) -> bool {
-        self.doc == other.doc
+        self.page == other.page
+            && self.pages == other.pages
+            && self.doc == other.doc
             && self.history == other.history
             && self.camera == other.camera
             && self.selection == other.selection
@@ -366,11 +402,12 @@ impl Editor {
         snapshot::write_transactions(w, "redo", redo);
         snapshot::write_clipboard(w, self.clipboard.shapes());
         self.tools.write_snapshot(w);
+        self.write_pages(w);
     }
 
     /// Reads every section after the header and checks the editor's
     /// invariants (ADR-T74-1).
-    pub(crate) fn read_snapshot(r: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+    pub(crate) fn read_snapshot(r: &mut Reader<'_>, version: u32) -> Result<Self, SnapshotError> {
         r.section("editor")?;
         let mut t = r.record("tool")?;
         let tool = t.get()?;
@@ -414,14 +451,7 @@ impl Editor {
         };
         reedit_tokens.end()?;
 
-        let mut t = r.record("camera")?;
-        let offset = t.get()?;
-        let zoom = t.f32("zoom")?;
-        t.end()?;
-        if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
-            return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
-        }
-        let camera = Camera::new(offset, zoom);
+        let camera = read_camera(r)?;
 
         let mut selection_tokens = r.record("selection")?;
         let mut selection = Vec::new();
@@ -438,8 +468,16 @@ impl Editor {
         let history = read_history(r)?;
         let clipboard = Clipboard::from_shapes(snapshot::read_clipboard(r)?);
         let tools = ToolStates::read_snapshot(r, &doc)?;
+        // Version 2 has one page.
+        let (page, pages) = if version >= 3 {
+            Self::read_pages(r)?
+        } else {
+            (0, empty_pages())
+        };
 
         Ok(Self {
+            page,
+            pages,
             doc,
             history,
             camera,
@@ -471,6 +509,8 @@ impl Editor {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            page: 0,
+            pages: empty_pages(),
             doc: Document::new(),
             history: History::new(),
             camera: Camera::default(),
@@ -496,6 +536,136 @@ impl Editor {
             minimap_content: None,
             palette: None,
         }
+    }
+
+    /// The current page, `0` for page 1 (ADR-T116-1).
+    #[must_use]
+    pub fn page(&self) -> usize {
+        self.page
+    }
+
+    /// Shows page `page` (`0..PAGE_COUNT`): cancels the gesture, closes an
+    /// open text edit and swaps the page states (ADR-T116-1). Returns
+    /// whether the view needs a redraw.
+    fn go_to_page(&mut self, page: usize) -> bool {
+        if page >= PAGE_COUNT || page == self.page {
+            return false;
+        }
+        self.cancel_gesture();
+        let first = self.style.helpers.first_number();
+        let incoming = match self.pages[page].take() {
+            Some(stored) => *stored,
+            None => Page::fresh(first),
+        };
+        let outgoing = Page {
+            doc: std::mem::replace(&mut self.doc, incoming.doc),
+            history: std::mem::replace(&mut self.history, incoming.history),
+            camera: std::mem::replace(&mut self.camera, incoming.camera),
+            selection: std::mem::replace(&mut self.selection, incoming.selection),
+            // The first number may have changed (zero-based) while the
+            // page was away.
+            next_number: std::mem::replace(
+                &mut self.style.helpers.next_number,
+                incoming.next_number.max(first),
+            ),
+        };
+        // A page left as it was found takes no slot.
+        self.pages[self.page] = (outgoing != Page::fresh(first)).then(|| Box::new(outgoing));
+        self.page = page;
+        // A different document: the shell redraws its cached layer.
+        self.doc_revision = self.doc_revision.wrapping_add(1);
+        self.doc_base_revision = self.doc_revision;
+        true
+    }
+
+    /// Writes the `[pages]` section and one `[page]` per stored page
+    /// (ADR-T116-1).
+    fn write_pages(&self, w: &mut Writer) {
+        w.section("pages");
+        w.record("current", |l| {
+            l.word(self.page);
+        });
+        let stored = self.pages.iter().flatten().count();
+        w.record("stored", |l| {
+            l.word(stored);
+        });
+        for (index, page) in self.pages.iter().enumerate() {
+            let Some(page) = page else { continue };
+            w.section("page");
+            w.record("index", |l| {
+                l.word(index);
+            });
+            w.record("camera", |l| {
+                l.put(&page.camera.offset()).f32(page.camera.zoom());
+            });
+            w.record("number", |l| {
+                l.word(page.next_number);
+            });
+            w.record("selection", |l| {
+                for id in &page.selection {
+                    l.put(id);
+                }
+            });
+            snapshot::write_document(w, &page.doc);
+            let (undo, redo, limit, budget) = page.history.parts();
+            w.section("history");
+            w.record("limits", |l| {
+                l.word(limit).word(budget);
+            });
+            snapshot::write_transactions(w, "undo", undo);
+            snapshot::write_transactions(w, "redo", redo);
+        }
+    }
+
+    /// Reads what [`Editor::write_pages`] wrote: the current page and the
+    /// stored ones, each checked like the current page.
+    fn read_pages(r: &mut Reader<'_>) -> Result<(usize, PageSlots), SnapshotError> {
+        r.section("pages")?;
+        let mut t = r.record("current")?;
+        let current: usize = t.number("current page")?;
+        t.end()?;
+        if current >= PAGE_COUNT {
+            return Err(t.error(format!("page {current} out of range")));
+        }
+        let mut t = r.record("stored")?;
+        let stored: usize = t.number("stored pages")?;
+        t.end()?;
+        if stored >= PAGE_COUNT {
+            return Err(t.error(format!("{stored} stored pages")));
+        }
+        let mut pages = empty_pages();
+        let mut last: Option<usize> = None;
+        for _ in 0..stored {
+            r.section("page")?;
+            let mut t = r.record("index")?;
+            let index: usize = t.number("page index")?;
+            t.end()?;
+            if index >= PAGE_COUNT || index == current || last.is_some_and(|l| index <= l) {
+                return Err(t.error(format!("page {index} out of place")));
+            }
+            last = Some(index);
+            let camera = read_camera(r)?;
+            let mut t = r.record("number")?;
+            // May sit below the first number: the switch clamps it.
+            let next_number: u32 = t.number("next number")?;
+            t.end()?;
+            let mut selection_tokens = r.record("selection")?;
+            let mut selection = Vec::new();
+            while !selection_tokens.at_end() {
+                selection.push(selection_tokens.get()?);
+            }
+            let doc = read_numbered_document(r)?;
+            snapshot::check_unlocked_ids(&selection_tokens, &doc, &selection)?;
+            let history = read_history(r)?;
+            pages[index] = Some(Box::new(Page {
+                doc,
+                history,
+                camera,
+                selection,
+                next_number,
+            }));
+        }
+        Ok((current, pages))
     }
 
     /// Sets the tap slop in screen pixels: a press released within it is a
@@ -792,6 +962,7 @@ impl Editor {
             Command::GridRows(delta) if self.resizable_grid().is_some() => {
                 self.resize_selected_grid(0, delta)
             }
+            Command::GoToPage(page) => self.go_to_page(page),
             Command::ExportView => self.ask_export(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
@@ -1796,6 +1967,26 @@ impl Editor {
     fn prune_selection(&mut self) {
         select::prune(&mut self.selection, &self.doc);
     }
+}
+
+/// One slot per page (see [`Editor`]).
+type PageSlots = Vec<Option<Box<Page>>>;
+
+/// Reads a `camera` record: offset and a zoom inside the zoom range.
+fn read_camera(r: &mut Reader<'_>) -> Result<Camera, SnapshotError> {
+    let mut t = r.record("camera")?;
+    let offset = t.get()?;
+    let zoom = t.f32("zoom")?;
+    t.end()?;
+    if !(ZOOM_MIN..=ZOOM_MAX).contains(&zoom) {
+        return Err(t.error(format!("zoom {zoom} outside [{ZOOM_MIN}, {ZOOM_MAX}]")));
+    }
+    Ok(Camera::new(offset, zoom))
+}
+
+/// Slots for the pages that are not current: all untouched.
+fn empty_pages() -> PageSlots {
+    vec![None; PAGE_COUNT]
 }
 
 /// Whether `tool` commits only new shapes on top, on pointer up.
@@ -9327,5 +9518,237 @@ mod tests {
     #[test]
     fn palette_chord_is_not_a_binding() {
         assert_eq!(keymap::resolve(Key::P, CTRL_SHIFT), None);
+    }
+
+    // ---- T116 pages ------------------------------------------------------
+
+    fn go(ed: &mut Editor, page: usize) -> bool {
+        ed.apply(Command::GoToPage(page))
+    }
+
+    #[test]
+    fn new_editor_is_on_page_one() {
+        assert_eq!(Editor::new().page(), 0);
+    }
+
+    #[test]
+    fn going_to_the_current_page_changes_nothing() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = go(&mut ed, 0);
+
+        // Assert
+        assert!(!redraw);
+        assert_eq!(ed, before);
+        assert_eq!(ed.document_revision(), before.document_revision());
+    }
+
+    #[test]
+    fn going_to_a_page_out_of_range_changes_nothing() {
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        let before = ed.clone();
+
+        assert!(!go(&mut ed, PAGE_COUNT));
+        assert_eq!(ed, before);
+    }
+
+    #[test]
+    fn pages_keep_their_own_shapes_selection_and_view() {
+        // Arrange: page 1 has a selected rectangle and a panned, zoomed view.
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        ed.selection = ids(&ed);
+        ed.camera = Camera::new(Vec2::new(40.0, 30.0), 2.0);
+        let first = ids(&ed);
+
+        // Act: a new page is empty with the default view and no selection.
+        assert!(go(&mut ed, 4));
+        let fresh = (ed.document().len(), ed.selection().len(), ed.camera);
+        let tx = tx_insert(
+            &mut ed.doc,
+            vec![rect(9.0, 9.0, 1.0, 1.0), rect(5.0, 5.0, 1.0, 1.0)],
+        );
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+        ed.camera = Camera::new(Vec2::new(-7.0, 8.0), 0.5);
+        go(&mut ed, 0);
+
+        // Assert
+        assert_eq!(ed.page(), 0);
+        assert_eq!(fresh, (0, 0, Camera::default()));
+        assert_eq!(ids(&ed), first);
+        assert_eq!(ed.selection(), first.as_slice());
+        assert_eq!(ed.camera, Camera::new(Vec2::new(40.0, 30.0), 2.0));
+        go(&mut ed, 4);
+        assert_eq!(ed.document().len(), 2);
+        assert_eq!(ed.camera, Camera::new(Vec2::new(-7.0, 8.0), 0.5));
+    }
+
+    #[test]
+    fn undo_acts_on_the_current_page_only() {
+        // Arrange: one rectangle on each of pages 1 and 2.
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        go(&mut ed, 1);
+        let tx = tx_insert(&mut ed.doc, vec![rect(5.0, 5.0, 1.0, 1.0)]);
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+
+        // Act: undo on page 2, then on page 1.
+        assert!(ed.apply(Command::Undo));
+        let second_empty = ed.document().is_empty();
+        assert!(!ed.can_undo());
+        go(&mut ed, 0);
+        let first_kept = ed.document().len();
+        assert!(ed.apply(Command::Undo));
+
+        // Assert
+        assert!(second_empty);
+        assert_eq!(first_kept, 1);
+        assert!(ed.document().is_empty());
+        go(&mut ed, 1);
+        assert!(ed.can_redo());
+    }
+
+    #[test]
+    fn switching_pages_is_not_an_undo_step() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+
+        // Act
+        go(&mut ed, 2);
+        go(&mut ed, 0);
+        ed.apply(Command::Undo);
+
+        // Assert: the one undo took back the rectangle, not a switch.
+        assert!(ed.document().is_empty());
+        assert!(!ed.can_undo());
+        assert_eq!(ed.page(), 0);
+    }
+
+    #[test]
+    fn switching_pages_cancels_the_gesture() {
+        // Arrange
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Rect));
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 60.0, 50.0);
+
+        // Act
+        go(&mut ed, 1);
+        up(&mut ed, PointerButton::Left, 60.0, 50.0);
+
+        // Assert
+        assert_eq!(ed.active_gesture(), None);
+        assert!(ed.document().is_empty());
+        go(&mut ed, 0);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn switching_pages_commits_the_open_text() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+
+        // Act
+        go(&mut ed, 1);
+
+        // Assert
+        assert!(ed.text_edit().is_none());
+        assert_eq!(texts(&ed), Vec::<String>::new());
+        go(&mut ed, 0);
+        assert_eq!(texts(&ed), vec!["abc".to_owned()]);
+    }
+
+    #[test]
+    fn switching_pages_bumps_the_document_revision() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        let before = ed.document_revision();
+
+        // Act
+        go(&mut ed, 3);
+
+        // Assert: a full re-render, not an append on the cached layer.
+        assert!(ed.document_revision() > before);
+        assert_eq!(ed.document_base_revision(), ed.document_revision());
+    }
+
+    #[test]
+    fn clear_all_clears_only_the_current_page() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+        go(&mut ed, 1);
+        let tx = tx_insert(&mut ed.doc, vec![rect(5.0, 5.0, 1.0, 1.0)]);
+        assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
+
+        // Act
+        ed.apply(Command::ClearAll);
+        go(&mut ed, 0);
+
+        // Assert
+        assert_eq!(ed.document().len(), 1);
+        go(&mut ed, 1);
+        assert!(ed.document().is_empty());
+    }
+
+    #[test]
+    fn copy_on_one_page_pastes_on_another() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        ed.apply(Command::SelectAll);
+        ed.apply(Command::Copy);
+
+        // Act
+        go(&mut ed, 2);
+        ed.apply(Command::Paste);
+
+        // Assert
+        assert_eq!(ed.document().len(), 1);
+        go(&mut ed, 0);
+        assert_eq!(ed.document().len(), 1);
+    }
+
+    #[test]
+    fn zero_based_toggled_while_away_keeps_the_counter_above_the_first_number() {
+        // Arrange: page 2 is left while zero-based, with its counter at 0.
+        let mut ed = Editor::new();
+        ed.apply(Command::ToggleZeroBased);
+        go(&mut ed, 1);
+        ed.apply(Command::ToggleNumbering);
+        draw_node_with(&mut ed, Tool::Rect);
+        go(&mut ed, 0);
+
+        // Act: back to one-based, then to page 2.
+        ed.apply(Command::ToggleZeroBased);
+        go(&mut ed, 1);
+
+        // Assert
+        assert!(ed.helpers().next_number >= ed.helpers().first_number());
+    }
+
+    fn draw_node_with(ed: &mut Editor, tool: Tool) {
+        ed.apply(Command::SetTool(tool));
+        draw_node(ed, 0.0);
+    }
+
+    #[test]
+    fn numbering_counts_per_page() {
+        // Arrange: two nodes on page 1.
+        let mut ed = numbering_editor();
+        draw_node(&mut ed, 0.0);
+        draw_node(&mut ed, 100.0);
+
+        // Act: a node on page 2, then back to page 1.
+        go(&mut ed, 1);
+        let fresh_counter = ed.helpers().next_number;
+        draw_node(&mut ed, 0.0);
+        let on_second = labels(&ed);
+        go(&mut ed, 0);
+
+        // Assert
+        assert_eq!(fresh_counter, FIRST_NUMBER);
+        assert_eq!(on_second, vec![Some(FIRST_NUMBER)]);
+        assert_eq!(ed.helpers().next_number, FIRST_NUMBER + 2);
     }
 }

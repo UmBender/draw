@@ -2650,13 +2650,14 @@ proptest! {
             // Arrange
             let held = locked_anchors(&editor);
             let undo_redo = is_undo_redo(&event);
+            let page = editor.page();
 
             // Act
             editor.handle(event);
 
-            // Assert
+            // Assert: a page switch shows other shapes (T116).
             check_invariants(&editor, step + 1)?;
-            if undo_redo {
+            if undo_redo || editor.page() != page {
                 continue;
             }
             for (id, anchor) in held {
@@ -2673,6 +2674,28 @@ proptest! {
         cut in any::<prop::sample::Index>(),
     ) {
         check_snapshot_continues_equal(&session, cut, Editor::new())?;
+    }
+
+    /// T116 AC-5: page switches (`Alt+1`…`Alt+9`) mixed into the session.
+    #[test]
+    fn snapshot_round_trip_with_page_switches(
+        session in arb_session(),
+        picks in prop::collection::vec(0usize..18, 0..60),
+        cut in any::<prop::sample::Index>(),
+    ) {
+        const DIGITS: [Key; 9] = [
+            Key::Digit1, Key::Digit2, Key::Digit3, Key::Digit4, Key::Digit5,
+            Key::Digit6, Key::Digit7, Key::Digit8, Key::Digit9,
+        ];
+        let alt = Modifiers { shift: false, ctrl: false, alt: true };
+        let mut mixed = Vec::new();
+        for (i, event) in session.into_iter().enumerate() {
+            mixed.push(event);
+            if let Some(&key) = picks.get(i).and_then(|&p| DIGITS.get(p)) {
+                mixed.push(InputEvent::KeyDown { key, mods: alt });
+            }
+        }
+        check_snapshot_continues_equal(&mixed, cut, Editor::new())?;
     }
 
     /// T74 AC-1 with the pen tap filter on (mid-tap states).
