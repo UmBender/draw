@@ -1,7 +1,7 @@
 ---
 id: T129
 title: Release gate with end-to-end on X11 and Wayland
-status: in-progress
+status: review
 wave: 65
 branch: task/T129-release-gate-with-end-to-end-on-x11-and-
 depends_on: [T127]
@@ -48,11 +48,15 @@ Refined 2026-11-12 (unattended batch). All tests live in `self_tests` of
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T129): specify the release gate`
-- [ ] tests — `test(T129): add failing tests for the release gate`
-- [ ] behaviour — `feat(T129): add the X11 e2e run and release.sh`
-- [ ] docs — `docs(T129): update the quality gates`
+- [x] spec — `docs(T129): specify the release gate`
+- [x] tests — `test(T129): add failing tests for the release gate`
+- [x] behaviour — `feat(T129): add the X11 e2e run and release.sh`
+- [x] docs — `docs(T129): update the quality gates`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — implemented in an unattended batch run. `e2e.sh --backend wayland|x11|all` (default `all`); X11 runs on a private Xvfb (`-nolisten tcp`, `-displayfd`, private empty `XAUTHORITY`, no `WAYLAND_DISPLAY`) under the same caps. Input goes through `xdotool`, screenshots through ImageMagick `import -depth 8` of the app window, and the close is a `WM_DELETE_WINDOW` client message sent by the harness over the X protocol (`x11_close`), because the private server has no window manager. `release.sh` and the `package.sh` notice added; `Quality Gates.md` has a Release row.
+- 2026-11-12 — AC-4: seven cases differ on X11 by about 200 to 1000 pixels (text and cursor rendering) and got `expected.x11.ppm`; all snapshots are shared. `e2e.sh` on both backends passes; `check.sh` green. The X11 server has no clipboard manager, so `clipboard` steps use the app's file hook there.
+- 2026-11-12 — extra tests beyond the spec: `release_rejects_a_version_that_is_not_the_manifest_one`, `x11_intern_request_pads_the_name_to_four_bytes`, `x11_delete_request_is_a_client_message_to_the_window`, `xdotool_commands_translate_a_chord_and_text`, `backend_from_name_knows_both_and_rejects_others`. The `-displayfd` server has no cookie (the display is local-only and only this script's children know its number).
+- 2026-11-12 — deviations: the end-to-end note is `docs/features/End-to-end tests.md` (not `docs/architecture/`, which has none), so it was not edited; it still describes only sway. The batch shell could not `chmod`, so `scripts/release.sh` is not executable: run `chmod +x scripts/release.sh` once (it works as `bash scripts/release.sh`). `release.sh` was only run with `--dry-run`; `package.sh` and a real release were not run. The first X11 run showed that `import` writes 16-bit PPMs, fixed with `-depth 8`.
