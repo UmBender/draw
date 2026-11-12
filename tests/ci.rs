@@ -358,6 +358,7 @@ fn run_gates(test: &str, env: &[(&str, &str)]) -> GateRun {
         .env("GATE_LOG", &log)
         .env_remove("CARGO_BUILD_JOBS")
         .env_remove("RUST_TEST_THREADS")
+        .env("COMPILE_FAIL_CMD", "true")
         .envs(env.iter().copied())
         .output()
         .unwrap_or_else(|err| panic!("check.sh: {err}"));
@@ -403,6 +404,17 @@ fn gates_limit_threads() {
         assert_eq!(field(step, "jobs"), "2", "{step}");
         assert_eq!(field(step, "threads"), "3", "{step}");
     }
+}
+
+#[test]
+fn gates_stop_when_the_compile_fail_tests_fail() {
+    // Arrange, Act
+    let run = run_gates("compile-fail", &[("COMPILE_FAIL_CMD", "false")]);
+
+    // Assert
+    assert_ne!(run.code, Some(0), "{}", run.output);
+    assert!(run.output.contains("==> compile-fail"), "{}", run.output);
+    assert_eq!(subcommands(&run), ["fmt", "clippy", "test"]);
 }
 
 #[test]

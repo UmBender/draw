@@ -7,7 +7,7 @@ tags: [process]
 All gates run with one command:
 
 ```sh
-scripts/check.sh          # fmt check, clippy -D warnings, tests, docs
+scripts/check.sh          # fmt check, clippy -D warnings, tests, compile-fail tests of draw-types, docs
 scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 ```
 
