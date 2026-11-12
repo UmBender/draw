@@ -2039,9 +2039,218 @@ mod self_tests {
             "export WAYLAND_DISPLAY=$socket",
             "refusing to run",
             "MemoryMax=",
+            "--backend",
         ] {
             assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
         }
+    }
+
+    // ---- release gate (T129) ---------------------------------------------
+
+    fn script_path(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join(name)
+    }
+
+    fn script_text(name: &str) -> String {
+        let path = script_path(name);
+        std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()))
+    }
+
+    /// Runs a script with `args` and extra `env`; returns success, stdout
+    /// and stderr.
+    fn run_script(name: &str, args: &[&str], env: &[(&str, &str)]) -> (bool, String, String) {
+        let output = Command::new("bash")
+            .arg(script_path(name))
+            .args(args)
+            .envs(env.iter().copied())
+            .stdin(Stdio::null())
+            .output()
+            .unwrap_or_else(|err| panic!("bash {name}: {err}"));
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    fn cargo_version() -> String {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        let text = std::fs::read_to_string(manifest).unwrap_or_default();
+        text.lines()
+            .find_map(|l| l.strip_prefix("version = \"")?.strip_suffix('"'))
+            .unwrap_or("0.0.0")
+            .to_owned()
+    }
+
+    #[test]
+    fn script_rejects_an_unknown_backend() {
+        let (ok, _, err) = run_script("e2e.sh", &["--backend", "bogus"], &[]);
+
+        assert!(!ok);
+        assert!(err.contains("unknown backend"), "{err}");
+    }
+
+    #[test]
+    fn script_x11_run_is_private() {
+        let script = script_text("e2e.sh");
+
+        for needle in [
+            "Xvfb",
+            "-nolisten tcp",
+            "-displayfd",
+            "export XAUTHORITY=",
+            "unset DISPLAY WAYLAND_DISPLAY",
+            "refusing to run: DISPLAY",
+        ] {
+            assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
+        }
+    }
+
+    fn x11_runtime(name: &str) -> (PathBuf, OsString) {
+        let dir = temp_dir(name);
+        let authority = dir.join("Xauthority");
+        std::fs::write(&authority, b"").unwrap_or_else(|err| panic!("{err}"));
+        (dir, authority.into_os_string())
+    }
+
+    #[test]
+    fn x11_guard_accepts_the_private_display() {
+        let (dir, authority) = x11_runtime("x11-ok");
+
+        let guard = x11_guard(
+            Some(dir.clone().into_os_string()),
+            Some(":97".into()),
+            Some(authority),
+        );
+
+        assert_eq!(guard.map(|g| g.display), Ok(":97".to_owned()));
+    }
+
+    #[test]
+    fn x11_guard_rejects_an_authority_outside_the_runtime() {
+        let (dir, _) = x11_runtime("x11-outside");
+        let other = temp_dir("x11-other").join("Xauthority");
+        std::fs::write(&other, b"").unwrap_or_else(|err| panic!("{err}"));
+
+        let err = x11_guard(
+            Some(dir.into_os_string()),
+            Some(":97".into()),
+            Some(other.into_os_string()),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("outside the private"), "{err}");
+    }
+
+    #[test]
+    fn x11_guard_rejects_a_missing_display() {
+        let (dir, authority) = x11_runtime("x11-nodisplay");
+
+        let err = x11_guard(Some(dir.into_os_string()), None, Some(authority)).unwrap_err();
+
+        assert!(err.contains("DISPLAY is not set"), "{err}");
+    }
+
+    #[test]
+    fn release_dry_run_lists_the_steps_in_order() {
+        let version = cargo_version();
+
+        let (ok, out, err) = run_script("release.sh", &["--dry-run", &version], &[]);
+
+        assert!(ok, "{err}");
+        let at = |step: &str| {
+            out.find(&format!("==> {step}"))
+                .unwrap_or_else(|| panic!("no step {step} in {out}"))
+        };
+        assert!(at("check") < at("e2e-wayland"));
+        assert!(at("e2e-wayland") < at("e2e-x11"));
+        assert!(at("e2e-x11") < at("package"));
+    }
+
+    #[test]
+    fn release_stops_on_a_failing_step() {
+        let version = cargo_version();
+
+        let (ok, out, err) = run_script(
+            "release.sh",
+            &["--dry-run", &version],
+            &[("DRAW_RELEASE_FAIL", "e2e-x11")],
+        );
+
+        assert!(!ok);
+        assert!(err.contains("step e2e-x11 failed"), "{err}");
+        assert!(out.contains("==> e2e-wayland"), "{out}");
+        assert!(!out.contains("==> package"), "{out}");
+    }
+
+    #[test]
+    fn release_rejects_a_malformed_version() {
+        for bad in ["2.0", "v2.0.0", "2.0.0-rc1", ""] {
+            let (ok, out, err) = run_script("release.sh", &["--dry-run", bad], &[]);
+
+            assert!(!ok, "{bad}: {out}");
+            assert!(err.contains("X.Y.Z"), "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn release_rejects_a_version_that_is_not_the_manifest_one() {
+        let (ok, _, err) = run_script("release.sh", &["--dry-run", "999.0.0"], &[]);
+
+        assert!(!ok);
+        assert!(err.contains("Cargo.toml"), "{err}");
+    }
+
+    #[test]
+    fn package_script_says_it_is_not_the_release_path() {
+        let script = script_text("package.sh");
+
+        assert!(script.contains("not the release path"));
+        assert!(script.contains("DRAW_RELEASE"));
+        assert!(script_text("release.sh").contains("DRAW_RELEASE=1"));
+    }
+
+    #[test]
+    fn quality_gates_lists_the_release_gate() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/process/Quality Gates.md");
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+
+        assert!(text.contains("scripts/release.sh"), "no release gate row");
+        assert!(text.contains("check.sh --fuzz"));
+    }
+
+    #[test]
+    fn golden_path_prefers_the_backend_file() {
+        let dir = temp_dir("golden-prefers");
+        std::fs::write(dir.join("expected.ppm"), b"w").unwrap_or_else(|err| panic!("{err}"));
+        std::fs::write(dir.join("expected.x11.ppm"), b"x").unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(
+            golden_path(&dir, "expected.ppm", Backend::X11),
+            dir.join("expected.x11.ppm")
+        );
+        assert_eq!(
+            golden_path(&dir, "expected.ppm", Backend::Wayland),
+            dir.join("expected.ppm")
+        );
+    }
+
+    #[test]
+    fn golden_path_falls_back_to_the_shared_file() {
+        let dir = temp_dir("golden-fallback");
+        std::fs::write(dir.join("expected.snap"), b"w").unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(
+            golden_path(&dir, "expected.snap", Backend::X11),
+            dir.join("expected.snap")
+        );
+    }
+
+    #[test]
+    fn backend_from_name_knows_both_and_rejects_others() {
+        assert_eq!(Backend::from_name("x11"), Ok(Backend::X11));
+        assert_eq!(Backend::from_name("wayland"), Ok(Backend::Wayland));
+        assert!(Backend::from_name("mir").is_err());
     }
 
     // ---- wire format ----------------------------------------------------
