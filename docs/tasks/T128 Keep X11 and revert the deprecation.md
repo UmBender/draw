@@ -1,7 +1,7 @@
 ---
 id: T128
 title: Keep X11 and revert the deprecation
-status: todo
+status: in-progress
 wave: 65
 branch: task/T128-keep-x11-revert-the-deprecation
 depends_on: [T127]
@@ -24,12 +24,10 @@ X11 is a supported backend again: the deprecation of ADR-T46-1 is reverted and t
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
-
-- **AC-1** — `ADR-T128-1` (`kind: rollback`, `reverts` the deprecation part of ADR-T46-1) says X11 is supported, tested and not scheduled for removal; the Wayland-first default is kept.
-  Test: `docs` consistency test `x11_is_not_marked_deprecated` over README, CHANGELOG notes and the feature notes.
-- **AC-2** — The README, the Flatpak finish arguments, the preflight messages and the `--help` text no longer call X11 deprecated; the `x11` socket stays.
-  Tests: the existing preflight tests, updated; `tests/ci.rs` packaging checks.
+- **AC-1** — `ADR-T128-1` (`kind: rollback`, `reverts` ADR-T46-1) says X11 is supported, tested and not scheduled for removal; the Wayland-first default is kept.
+  Test: `x11_is_not_marked_deprecated` in `src/shell/backend.rs` over README, the Flatpak manifest, `packaging/runtime-libs` and the feature note (no "deprecat" word).
+- **AC-2** — README, Flatpak manifest, runtime-libs and backend messages no longer call X11 deprecated; no deprecation line is printed; the `x11` socket stays. Preflight and `--help` had no such wording.
+  Tests: `choose_x11_on_wayland_session_is_x11_without_notice`, `choose_unset_without_wayland_session_is_x11_without_notice`, `choose_wayland_without_wayland_session_has_no_notice`, `readme_documents_wayland_default_and_x11_supported` (replace the old deprecation tests); `tests/packaging.rs` stays green.
 - **AC-3** — Both backends are in the e2e matrix by [[T129 Release gate with end-to-end on X11 and Wayland]].
 
 ## Out of scope
