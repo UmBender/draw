@@ -8,7 +8,13 @@ use crate::core::editor::{ActiveGesture, Editor};
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 
-const CREATING: [Tool; 5] = [Tool::Pen, Tool::Line, Tool::Arrow, Tool::Rect, Tool::Ellipse];
+const CREATING: [Tool; 5] = [
+    Tool::Pen,
+    Tool::Line,
+    Tool::Arrow,
+    Tool::Rect,
+    Tool::Ellipse,
+];
 
 fn ev_down(ed: &mut Editor, button: PointerButton, x: f32, y: f32) {
     ed.handle(InputEvent::PointerDown {
