@@ -73,6 +73,8 @@ gate() {
 gate "format" cargo fmt --all -- --check
 gate "clippy" cargo clippy --workspace --all-targets -- -D warnings
 gate "tests" cargo test --workspace --all-targets
+# COMPILE_FAIL_CMD is overridden by tests/ci.rs, which runs this script with a fake cargo.
+gate "compile-fail" ${COMPILE_FAIL_CMD:-scripts/compile_fail.sh}
 RUSTDOCFLAGS="-D warnings" gate "docs" cargo doc --workspace --no-deps
 
 if $fuzz; then
