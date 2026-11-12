@@ -1926,6 +1926,27 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_stroke_without_points_is_rejected() {
+        // Arrange
+        let ed = busy_editor();
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "stroke ");
+        let original = text.lines().nth(line).unwrap_or_default().to_owned();
+        let mut tokens: Vec<&str> = original.split(' ').collect();
+        let at = tokens.iter().position(|t| *t == "stroke");
+
+        // Act
+        let result = at.map(|i| {
+            tokens.truncate(i + 1);
+            tokens.push("0");
+            Snapshot::parse(&edited(&ed, line, &tokens.join(" ")))
+        });
+
+        // Assert: whatever the line now is, an empty stroke never loads.
+        assert!(!matches!(result, Some(Ok(_))), "empty stroke accepted");
+    }
+
+    #[test]
     fn parse_rejects_non_finite_float() {
         // Arrange
         let ed = editor();

@@ -602,3 +602,66 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod typed_tests {
+    use super::*;
+    use crate::core::geom::approx_eq;
+    use draw_types::units::{Len, Point, Screen, World};
+
+    fn camera() -> Camera {
+        Camera::new(Vec2::new(10.0, -4.0), 2.5)
+    }
+
+    #[test]
+    fn units_point_round_trip_through_camera() {
+        let cam = camera();
+        let world = Point::<World>::new(3.0, 7.0);
+
+        let back = cam.point_to_world(cam.point_to_screen(world));
+
+        assert!(back.vec2().approx_eq(world.vec2(), 1e-3));
+    }
+
+    #[test]
+    fn units_point_to_screen_matches_vec2_api() {
+        let cam = camera();
+        let world = Point::<World>::new(3.0, 7.0);
+
+        let typed = cam.point_to_screen(world).vec2();
+
+        assert!(typed.approx_eq(cam.world_to_screen(world.vec2()), 1e-6));
+    }
+
+    #[test]
+    fn units_rect_visible_world_matches_vec2_api() {
+        let cam = camera();
+        let viewport = Vec2::new(800.0, 600.0);
+
+        let typed = cam
+            .visible_rect(Point::<Screen>::from_vec2(viewport))
+            .aabb();
+
+        let plain = cam.visible_world_rect(viewport);
+        assert!(typed.min.approx_eq(plain.min, 1e-6));
+        assert!(typed.max.approx_eq(plain.max, 1e-6));
+    }
+
+    #[test]
+    fn units_len_scales_with_zoom() {
+        let cam = camera();
+
+        let screen = cam.len_to_screen(Len::<World>::new(4.0));
+        let world = cam.len_to_world(screen);
+
+        assert!(approx_eq(screen.get(), 10.0, 1e-5));
+        assert!(approx_eq(world.get(), 4.0, 1e-5));
+    }
+
+    #[test]
+    fn camera_zoom_level_is_the_zoom() {
+        let cam = camera();
+
+        assert!(approx_eq(cam.zoom_level().get(), cam.zoom(), 1e-6));
+    }
+}
