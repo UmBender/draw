@@ -1,7 +1,7 @@
 ---
 id: T122
 title: ASCII text in the palette and the sheet
-status: in-progress
+status: done
 wave: 60
 branch: fix/ui-text-ascii
 depends_on: []
@@ -42,9 +42,9 @@ Every character the command palette, the shortcut sheet and the toolbar draw exi
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T122): specify ASCII overlay text`
-- [ ] regression — `test(T122): add regression test for missing glyphs in the overlays`
-- [ ] behaviour — `fix(T122): write the overlay text in ASCII`
+- [x] spec — `docs(T122): specify ASCII overlay text`
+- [x] regression — `test(T122): add regression test for missing glyphs in the overlays`
+- [x] behaviour — `fix(T122): write the overlay text in ASCII`
 
 ## Log
 
