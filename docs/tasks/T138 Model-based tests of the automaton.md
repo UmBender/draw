@@ -1,7 +1,7 @@
 ---
 id: T138
 title: Model-based tests of the automaton
-status: todo
+status: in-progress
 wave: 68
 branch: task/T138-model-based-tests-of-the-automaton
 depends_on: [T135, T136, T137]
@@ -30,18 +30,26 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 - **AC-2** — Exploration to a stated depth shows every reachable state can return to `Idle` (`no_state_traps_the_user`).
 - **AC-3** — Every bug found here gets a `regression_<ID>_<slug>` test.
 
+### Refined (spec step)
+
+Location (owner's batch decision): the repo-level `tests/model.rs`, next to `tests/fuzz.rs`, because that is where the existing suite lives and runs (`cargo test --test …`, `PROPTEST_CASES` for the nightly count). `crates/draw-core/tests/` does not exist; no `[[test]]` entry is needed.
+
+- **AC-1** — `machine_matches_the_model`: the model keeps `tool`, `page`, per-page shape count and undo depth, `selection` count. Actions: tool key, `Alt+digit` page switch, draw a rectangle, `Ctrl+A`, `Delete`, `Ctrl+Z`, `Escape`. After each step the machine's `tool()`, `page()`, `selection().len()` and `can_undo()` equal the model's. Proptest, `PROPTEST_CASES` cases (default quick).
+- **AC-2** — `no_state_traps_the_user`: breadth-first search over a fixed alphabet of actions (tool keys, page keys, drag, `Ctrl+A`, `Ctrl+K`-style overlays if bound, `Escape`, press without release) to depth 3, deduplicated by an abstract key; from every reached machine, at most 3 `Escape`s and a button release return `interaction()` to `Idle`.
+- **AC-3** — each bug found: `fix(T138)` commit with `regression_T138_<slug>`.
+
 ## Out of scope
 
 - Anything in another task of [[T50 Version 2.0.0 refactor]]; new user-facing features.
 
 ## Files owned
 
-- `crates/draw-core/tests/model.rs`, `tests/fuzz.rs`
+- `tests/model.rs` (new; `crates/draw-core/tests/` does not exist), `tests/fuzz.rs` if needed
 - this note
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T138): specify the model-based tests`
+- [x] spec — `docs(T138): specify the model-based tests`
 - [ ] tests — `test(T138): add the model and the exploration`
 - [ ] fixes — one `fix(T138)` commit per bug found, each with its regression test
 
