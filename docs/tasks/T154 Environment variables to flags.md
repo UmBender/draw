@@ -1,7 +1,7 @@
 ---
 id: T154
 title: Environment variables to flags
-status: in-progress
+status: review
 wave: 72
 branch: task/T154-environment-variables-to-flags
 depends_on: [T152, T129]
@@ -44,20 +44,23 @@ Design: `src/shell/options.rs` holds `Options` and the pure `parse(args) -> Pars
 ## Files owned
 
 - `src/main.rs`, `src/shell/**`, `tests/e2e.rs`, `tests/e2e/**`, `tests/common/**`
-- `scripts/audit/frames.sh`, `.github/**`, `packaging/**`, `tests/no_draw_env.rs`
+- `scripts/audit/frames.sh`, `.github/**`, `packaging/**`, `tests/no_draw_env.rs`, `tests/options.rs`, `tests/skeleton.rs` (one call of `window_conf`), `docs/architecture/Architecture.md` (two lines)
 - `README.md`, `docs/features/**` (the lines naming the variables), `CHANGELOG.md` is the integrator's
 - this note, `ADR-T154-1`
 
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T154): specify the flags`
-- [ ] tests — `test(T154): add failing tests for the options`
-- [ ] models — `feat(T154): parse the arguments into Options`
-- [ ] behaviour — `refactor(T154): read Options instead of the environment`
-- [ ] quality — `chore(T154): pass clippy and rustfmt`
-- [ ] docs — `docs(T154): document the flags`
+- [x] tests — `test(T154): add failing tests for the options`
+- [x] models — `feat(T154): parse the arguments into Options`
+- [x] behaviour — `refactor(T154): read Options instead of the environment`
+- [x] quality — `chore(T154): pass clippy and rustfmt`
+- [x] docs — `docs(T154): document the flags`
 
 ## Log
 
 - 2026-11-12 — created after the owner chose flags over variables, with no fallback.
 - 2026-11-12 — spec: parser design and test names; `scripts/audit/frames.sh` and `tests/no_draw_env.rs` added to the files owned (the first still runs the app with the variable); `scripts/e2e.sh` and `scripts/release.sh` only use variables the binary does not read, so they are not touched.
+- 2026-11-12 — done. `src/shell/options.rs` holds `Options` and `parse`; `main` builds it once, picks the backend and the pen mode, and passes them to `diag::init`, `preflight::run`, `window_conf` and `app::run`. Removed: `DRAW_*` constants, `backend::from_env`, `tablet::from_env`, `Hooks::from_env`, `diag::init_from_env`, `parse_level`, `msaa_samples`, `frame_timing_enabled`, the `Choice` warnings of backend and tablet. A bad value is now refused (exit 2) instead of warned about and replaced by the default. `scripts/check.sh` green; `scripts/e2e.sh --backend all` green on Wayland and X11 with the flags.
+- 2026-11-12 — deviations: models and a first part of behaviour (`Level::from_name`, `Backend::from_name`) share the parser commit's neighbours; the module unit tests whose signatures changed (`backend`, `tablet`, `preflight`, `app`, `diag`, `e2e`) were adapted in the behaviour commit, not the test commit; `tests/skeleton.rs` and `Architecture.md` touched (added to the files owned); `--recover` followed by a flag now reads no value (`--recover --log warn`), where it used to take the next word whatever it was.
+- 2026-11-12 — not changed on purpose: the tutorials and the older ADRs, tasks and the 2.0 baseline still name the variables as history. `scripts/e2e.sh`, `scripts/release.sh` and `scripts/package.sh` only use `DRAW_E2E_*` and `DRAW_RELEASE*` variables that the binary does not read. Owner: try `draw --frame-times`, `draw --backend x11`, `draw --msaa 3` (refused, exit 2) and `draw --help`.

@@ -48,7 +48,7 @@ blank. Closing the window leaves the files in place.
   syncs it, rotates the old file on the session's first save, then renames.
   A failure goes to the diagnostics log and is tried again 30 s later.
 - `Launch::from_args` reads `--recover`; `recover` turns the file into a
-  `Snapshot` or a reason. `--recover` wins over `DRAW_SNAPSHOT`.
+  `Snapshot` or a reason. `--recover` wins over `--snapshot`.
 
 ## Limits
 

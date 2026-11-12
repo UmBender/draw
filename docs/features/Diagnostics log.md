@@ -24,7 +24,7 @@ never contains what you typed.
 | Action | Shortcut / setting |
 |--------|--------------------|
 | Write a dump of the last moments right now (e.g. just after seeing a bug) | `Ctrl+Shift+L` (the path is printed on stderr and in `draw.log`) |
-| Say more or less in `draw.log` | `DRAW_LOG=off\|error\|warn\|info\|debug\|trace` (default `info`) |
+| Say more or less in `draw.log` | `--log off\|error\|warn\|info\|debug\|trace` (default `info`) |
 
 **Where the files are:** `$XDG_STATE_HOME/draw/`, usually
 `~/.local/state/draw/`:

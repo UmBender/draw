@@ -43,7 +43,7 @@ directive per line:
 | `sections <name>...` | compare only these snapshot sections |
 | `screenshot [pixels channel]` | also compare `expected.ppm` |
 | `text <text>` | type literally; may not start with `-` |
-| `clipboard <text>` | put text on the system clipboard, with `wl-copy` or else through the app's `DRAW_E2E_CLIPBOARD` hook; may not start with `-` |
+| `clipboard <text>` | put text on the system clipboard, with `wl-copy` or else through the app's `--e2e-clipboard` hook; may not start with `-` |
 | `key <keysym>` | one key, by XKB name (`Return`, `Escape`) |
 | `chord <mod>... <keysym>` | key with modifiers, e.g. `chord ctrl shift z` |
 | `hold <keysym> <ms>` | hold a key down |
@@ -70,12 +70,12 @@ case), no `crash.log`, and no `WARN` or `ERROR` line in `draw.log`.
 
 ## Hooks in the app
 
-Inert unless their variable is set.
+Inert unless their flag is given (hidden from `--help`).
 
-| Variable | Receives |
-|----------|----------|
-| `DRAW_E2E_DUMP=<file>` | the editor snapshot, at every sync |
-| `DRAW_E2E_IDLE=<file>` | the number of syncs answered, after the frame is on screen |
+| Flag | Receives |
+|------|----------|
+| `--e2e-dump <file>` | the editor snapshot, at every sync |
+| `--e2e-idle <file>` | the number of syncs answered, after the frame is on screen |
 
 The harness sends `Ctrl+Shift+9` after each input step and waits for the
 count, so it never sleeps for a fixed time. A hung app fails the case after

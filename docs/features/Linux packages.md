@@ -25,7 +25,7 @@ report that points at the source line.
 | Skip the Flatpak bundle | `scripts/package.sh --no-flatpak` |
 | Install the tarball into `~/.local` | `draw-*/install.sh` (`--prefix DIR`) |
 | Remove it again | `draw-*/install.sh --uninstall` |
-| Start without the startup check | `DRAW_SKIP_PREFLIGHT=1 draw` |
+| Start without the startup check | `draw --skip-preflight` |
 | Read the last crash | `~/.local/state/draw/crash.log` |
 | Resolve a crash address | `addr2line -e draw.debug <offset>` |
 
@@ -62,4 +62,4 @@ report that points at the source line.
 - Nothing is published or signed; the Flatpak bundle is local, not on
   Flathub.
 - The startup check knows the usual library paths; on NixOS or with
-  libraries in unusual places use `DRAW_SKIP_PREFLIGHT=1`.
+  libraries in unusual places use `--skip-preflight`.

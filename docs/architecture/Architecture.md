@@ -81,7 +81,7 @@ flowchart LR
 | `shell::diag::e2e` ([[T75 End-to-end test suite]]) | Test-only hooks for the end-to-end suite: answers sync requests once a frame has settled and writes the editor snapshot. Inert unless the suite sets its variables ([[ADR-T75-1 Headless sway session for end-to-end tests]]) |
 | `shell::autosave` ([[T94 Autosave and crash recovery]]) | `Policy` decides when an input frame saves; `Autosaver` clones the editor on the main thread and writes `autosave.snap` atomically on a short-lived thread, keeping `autosave.prev.snap`; `Launch` and `recover` implement `draw --recover` ([[ADR-T94-1 Autosave captured on input and written off the frame]]) |
 | `shell::export` ([[T92 Export the view to PNG]]) | `Ctrl+E`: crops and orders the read-back layer, encodes the PNG with the `png` crate and creates a new file in the home directory; every failure is a value for the diagnostics log ([[ADR-T92-1 The png crate as a direct dependency]], [[ADR-T92-2 Ctrl+E reads back the document layer]]) |
-| `shell::tablet` ([[T34 Pen tablet input]]) | `DRAW_TABLET` and `/proc/bus/input/devices` → pen mode and the editor's tap slop, read once at start-up ([[ADR-T34-1 Tap slop for pen tablets detected at start-up]]) |
+| `shell::tablet` ([[T34 Pen tablet input]]) | The `--tablet` mode and `/proc/bus/input/devices` → pen mode and the editor's tap slop, read once at start-up ([[ADR-T34-1 Tap slop for pen tablets detected at start-up]]) |
 | `vendor/miniquad` ([[T35 Pen pressure and native Wayland tablets]]) | miniquad 0.4.11 patched through `[patch.crates-io]`: `miniquad::pen` samples, pen pressure from X11 raw events, `zwp_tablet_v2` on Wayland; `miniquad::signal` turns `SIGINT`/`SIGTERM` into an ordered quit through a self-pipe the event loops poll, and runs `app::on_fatal_signal` on fatal signals ([[ADR-T48-1 Signal handling in the vendored miniquad]]); changes listed in `vendor/miniquad/PATCHED.md` ([[ADR-T35-1 Vendored miniquad with a pen tablet patch]]) |
 | `tests/fuzz.rs` ([[T13 Fuzz harness]]) | Random input-sequence fuzzing of `Editor` |
 
@@ -139,7 +139,7 @@ resize ([[ADR-T12-1 Blocking event loop with cached frame]]). Per woken frame:
    [[ADR-T32-2 Shapes and glyphs share one textured batch]]); an atlas
    that overflowed is cleared at the start of the next frame and the layer
    re-rendered once.
-   `DRAW_FRAME_TIMES=1` logs each re-render, with the frame's text time
+   `--frame-times` logs each re-render, with the frame's text time
    and rasterized glyphs. More
    ideas: [[Rendering performance options]].
 4. The document layer is blitted to the window (one quad, 1:1 at rest) and

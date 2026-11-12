@@ -26,15 +26,15 @@ by [[T46 Native Wayland by default and Xwayland deprecated]].
 | Action | How |
 |--------|-----|
 | Native Wayland (default on Wayland sessions) | `draw` |
-| Force X11 / Xwayland | `DRAW_BACKEND=x11 draw` |
-| Force Wayland | `DRAW_BACKEND=wayland draw` |
-| Start despite a failed preflight | `DRAW_SKIP_PREFLIGHT=1` |
+| Force X11 / Xwayland | `draw --backend x11` |
+| Force Wayland | `draw --backend wayland` |
+| Start despite a failed preflight | `draw --skip-preflight` |
 
 An unknown value prints a warning and uses the session's default.
 
 ## How it works
 
-`shell::backend::choose(value, wayland_display)` maps `DRAW_BACKEND` and
+`shell::backend::choose(requested, wayland_display)` maps `--backend` and
 `WAYLAND_DISPLAY` to a `Choice { backend, warning, notice }`:
 unset/empty/unknown → `Wayland` on a Wayland session, `X11` elsewhere;
 `x11` and `wayland` force theirs. `Wayland` is miniquad's
@@ -70,7 +70,7 @@ typing ([[T79 Wayland keyboard without a keymap]],
 ## Limits
 
 - miniquad 0.4.11 has no fractional-scale support, so text may be no
-  sharper than under Xwayland at 125 % / 150 %; `DRAW_BACKEND=x11` is
+  sharper than under Xwayland at 125 % / 150 %; `--backend x11` is
   the 1.x workaround (T46 AC-11).
 - Without `libdecor` the window may have no title bar on GNOME.
 - A fallback to X11 caused by missing libraries or a failed connection

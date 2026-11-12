@@ -26,7 +26,7 @@ crash autosave uses the same format ([[Crash recovery]]).
 | Action | Shortcut / gesture |
 |--------|--------------------|
 | Save a snapshot of the running app | `Ctrl+Shift+S`: writes `$XDG_STATE_HOME/draw/snapshots/snapshot-<UTC>.snap` (default `~/.local/state/draw/…`), prints the path and logs it |
-| Start the app from a snapshot | `DRAW_SNAPSHOT=<file> draw`; a missing or bad file prints and logs an error with the line, and the app starts empty |
+| Start the app from a snapshot | `draw --snapshot <file>` (a flag for tests, not in `--help`); a missing or bad file prints and logs an error with the line, and the app starts empty |
 | Load a fixture in a test | `common::snapshots::load_fixture("text-mid-edit")` (from `tests/snapshots/`) |
 | Compare a state with a fixture | `assert_snapshot!(editor, "name")`: panics with a line diff when they differ |
 | Rewrite fixtures on purpose | `DRAW_UPDATE_SNAPSHOTS=1 cargo test --test snapshots -- --test-threads=1` |
@@ -73,7 +73,7 @@ Bug snapshots go in `tests/snapshots/regressions/` (see its README and
 - `golden::{check, diff}` in core decide match/write/mismatch; the file
   IO and `DRAW_UPDATE_SNAPSHOTS` are in `tests/common/snapshots.rs`.
 - Shell (`src/shell/app.rs`): `SNAPSHOT_CHORD` is caught before the
-  editor like the dump chord; `startup_snapshot` reads `DRAW_SNAPSHOT`.
+  editor like the dump chord; `startup_snapshot` reads the `--snapshot` path.
 - Fuzzed: round trips continue equal under random sessions (also with
   text in shapes and the pen tap filter), and random or mutated text
   never panics the parser or the loaded editor (`tests/fuzz.rs`).
@@ -111,7 +111,7 @@ and up; `tests/files/v1.draw` must keep loading, and the 2.0.0 refactor
   page; recovery restores the page that was open.
 - No other compatibility between format versions: a new `VERSION` means
   regenerating fixtures and regression snapshots.
-- A loaded snapshot replaces the `DRAW_EXPERIMENTAL` and tablet
+- A loaded snapshot replaces the old experimental switch and tablet
   settings with the ones it was saved with.
 - Two snapshots saved in the same second overwrite each other.
 - No full 64 MiB history fixture (too large for the repository); the

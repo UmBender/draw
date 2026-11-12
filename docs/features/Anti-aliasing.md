@@ -20,8 +20,8 @@ nothing while the app is idle.
 | Action | Shortcut / gesture |
 |--------|--------------------|
 | Default (4× multisampling) | Nothing to do |
-| Turn it off (old GPU, GL 2 only) | Start with `DRAW_MSAA=off draw` |
-| Pick the quality | `DRAW_MSAA=2`, `4` or `8` |
+| Turn it off (old GPU, GL 2 only) | Start with `draw --msaa off` |
+| Pick the quality | `--msaa 2`, `4` or `8` |
 
 ## How it works
 
@@ -31,7 +31,7 @@ changes (ADR-T12-1). Since T15 that target is multisampled: each pixel keeps
 texture at the end of the pass. The per-frame blit of that texture is
 unchanged, so the extra cost is paid only on re-render.
 
-`src/shell/app.rs`: `msaa_samples` parses `DRAW_MSAA`,
+`src/shell/app.rs`: `options::parse` reads `--msaa`,
 `frame_target_params` builds the render-target parameters, and
 `CachedFrame::present` creates the target with `render_target_ex`.
 Rationale and alternatives: [[ADR-T15-1 MSAA on the cached frame]].
@@ -39,7 +39,7 @@ Rationale and alternatives: [[ADR-T15-1 MSAA on the cached frame]].
 ## Limits
 
 - No runtime detection of GPU support (it would need `unsafe`); on a GL 2
-  machine start with `DRAW_MSAA=off`.
+  machine start with `--msaa off`.
 - The cached frame uses about 5× the memory of a single-sampled one
   (≈ 40 MB at 2560×1600).
 - Not toggleable while running.
