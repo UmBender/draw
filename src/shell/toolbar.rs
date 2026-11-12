@@ -679,7 +679,7 @@ mod tests {
         // Assert
         assert!(cells.len() < PAGE_COUNT);
         assert!(cells.iter().all(|c| c.rect.max.y <= VIEWPORT.y));
-        assert!(page_layout(Vec2::new(1280.0, 100.0)).is_empty());
+        assert_eq!(page_layout(Vec2::new(1280.0, 100.0)), []);
     }
 
     #[test]

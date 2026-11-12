@@ -1,7 +1,7 @@
 ---
 id: T124
 title: Page switcher in the toolbar
-status: in-progress
+status: done
 wave: 60
 branch: task/T124-page-switcher
 depends_on: [T116, T123]
@@ -48,10 +48,11 @@ Under the undo and redo buttons there is a small switcher, like the workspaces o
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T124): specify the page switcher`
-- [ ] behaviour — `feat(T124): add the page switcher and the tenth page` (tests with the code)
-- [ ] docs — `docs(T124): update the feature notes`
+- [x] spec — `docs(T124): specify the page switcher`
+- [x] behaviour — `feat(T124): add the page switcher and the tenth page` (tests with the code)
+- [x] docs — `docs(T124): update the feature notes`
 
 ## Log
 
 - 2026-11-12 — written from the owner's request.
+- 2026-11-12 — done; `scripts/check.sh` green. Not seen in the running app: the owner judges the look.
