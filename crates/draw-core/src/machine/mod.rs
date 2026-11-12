@@ -2,7 +2,7 @@
 //! (ADR-T134-1).
 //!
 //! The old [`Editor`] stays inside the machine as an adapter: the routing
-//! [`table`] decides, state by state, what each kind of input does, and the
+//! [`route`] table decides, state by state, what each kind of input does, and the
 //! editor still does the work for the cells that say so.
 
 mod effect;
@@ -77,6 +77,10 @@ impl Machine {
 
 /// One transition: total and pure (the machine is moved in and out).
 #[must_use]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "the input is moved in so later tasks can take its payload without a clone"
+)]
 pub fn step(machine: Machine, input: Input) -> (Machine, Vec<Effect>) {
     let mut machine = machine;
     let mut effects = Vec::new();

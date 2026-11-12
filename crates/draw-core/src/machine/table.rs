@@ -29,6 +29,10 @@ pub struct Transition {
 
 /// What `from` does with an input of kind `input`.
 #[must_use]
+#[allow(
+    clippy::match_same_arms,
+    reason = "one row per state on purpose: T135 to T137 change them one by one"
+)]
 pub fn route(from: InteractionKind, input: InputKind) -> Route {
     use InputKind as K;
     use InteractionKind as S;
@@ -135,7 +139,11 @@ pub const DIAGRAM_END: &str = "<!-- diagram:end -->";
 /// `docs/architecture/Control automaton.md`.
 #[must_use]
 pub fn diagram() -> String {
-    let mut out = String::from("```mermaid\nstateDiagram-v2\n    [*] --> Idle\n");
+    let mut lines = vec![
+        "```mermaid".to_owned(),
+        "stateDiagram-v2".to_owned(),
+        "    [*] --> Idle".to_owned(),
+    ];
     for from in InteractionKind::ALL {
         for (route_kind, label) in [(Route::Ignore, "ignored"), (Route::Editor, "editor")] {
             let inputs: Vec<String> = InputKind::ALL
@@ -150,13 +158,13 @@ pub fn diagram() -> String {
                 Route::Ignore => from.name(),
                 Route::Editor => "Editor",
             };
-            out.push_str(&format!(
-                "    {} --> {target} : {} ({label})\n",
+            lines.push(format!(
+                "    {} --> {target} : {} ({label})",
                 from.name(),
                 inputs.join(", ")
             ));
         }
     }
-    out.push_str("```\n");
-    out
+    lines.push("```".to_owned());
+    lines.join("\n") + "\n"
 }

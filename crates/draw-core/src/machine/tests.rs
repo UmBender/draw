@@ -129,7 +129,7 @@ fn step_tick_is_ignored() {
     let (next, effects) = step(machine.clone(), Input::Tick(Instant::now()));
 
     // Assert
-    assert!(effects.is_empty());
+    assert_eq!(effects, Vec::<Effect>::new());
     assert_eq!(next, machine);
 }
 
@@ -139,7 +139,7 @@ fn step_reply_is_ignored() {
 
     let (next, effects) = step(machine.clone(), Input::Reply(Reply::Done));
 
-    assert!(effects.is_empty());
+    assert_eq!(effects, Vec::<Effect>::new());
     assert_eq!(next, machine);
 }
 
@@ -209,8 +209,9 @@ fn table_has_no_wildcard_arm() {
 fn diagram_matches_the_table() {
     // Arrange
     let note = include_str!("../../../../docs/architecture/Control automaton.md");
-    let begin = note.find(DIAGRAM_BEGIN).expect("begin marker in the note");
-    let end = note.find(DIAGRAM_END).expect("end marker in the note");
+    let (Some(begin), Some(end)) = (note.find(DIAGRAM_BEGIN), note.find(DIAGRAM_END)) else {
+        panic!("the note must hold both diagram markers");
+    };
 
     // Act
     let embedded = note[begin + DIAGRAM_BEGIN.len()..end].trim();

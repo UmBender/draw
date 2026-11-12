@@ -143,7 +143,9 @@ impl Input {
     #[must_use]
     pub fn from_event(event: InputEvent) -> Self {
         match event {
-            InputEvent::PointerDown { pos, button, mods } => Self::PointerDown { pos, button, mods },
+            InputEvent::PointerDown { pos, button, mods } => {
+                Self::PointerDown { pos, button, mods }
+            }
             InputEvent::PointerMove { pos, mods } => Self::PointerMove { pos, mods },
             InputEvent::PointerUp { pos, button, mods } => Self::PointerUp { pos, button, mods },
             InputEvent::Scroll { pos, delta } => Self::Scroll { pos, delta },
