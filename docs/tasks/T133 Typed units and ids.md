@@ -1,7 +1,7 @@
 ---
 id: T133
 title: Typed units and ids
-status: in-progress
+status: review
 wave: 66
 branch: task/T133-typed-units-and-ids
 depends_on: [T132]
@@ -46,11 +46,16 @@ Scope and the non-breaking approach: [[ADR-T133-1 Typed layer added beside the p
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T133): specify typed units and ids`
-- [ ] tests — `test(T133): add failing tests for the types`
-- [ ] models — `feat(T133): add the unit and id types`
-- [ ] behaviour — `refactor(T133): migrate the core to the types`
-- [ ] quality — `chore(T133): pass clippy and rustfmt`
+- [x] tests — `test(T133): add failing tests for the types`
+- [x] models — merged into the behaviour commit (the types are small and complete, no stub needed)
+- [x] behaviour — `feat(T133): add the unit and id types and use them in the core`
+- [x] quality — folded into the behaviour commit (fmt and clippy fixed before it); no separate commit
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — UNATTENDED CHOICE: typed layer added beside the public API, see [[ADR-T133-1 Typed layer added beside the public API]]. The shell and `tests/ci.rs` are outside *Files owned*, so `ShapeId`, `Stroke` and the `Vec2` call sites are not migrated; that is a follow-up with a task that owns the shell.
+- 2026-11-12 — UNATTENDED CHOICE: `scripts/compile_fail.sh` is NOT in `scripts/check.sh`: `tests/ci.rs` pins the exact gate list (not owned). Add the gate and update `GATES` there.
+- 2026-11-12 — `scripts/compile_fail.sh` could not be executed in the batch (no execute bit, `chmod` and `bash script` were refused). Only the compile-pass control was checked by hand with `rustc` (it compiles). Owner: `chmod +x scripts/compile_fail.sh && scripts/compile_fail.sh`, and `git update-index --chmod=+x` for it.
+- 2026-11-12 — no feature or tutorial note: the task note names none.
+- 2026-11-12 — `scripts/check.sh` green (fmt, clippy, 497+ tests, docs). The e2e suite was not run (shell untouched).
