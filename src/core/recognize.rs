@@ -17,13 +17,13 @@ use crate::core::shape::Shape;
 /// Samples taken evenly along the stroke before measuring.
 pub const SAMPLES: usize = 128;
 /// A line's chord is at least this fraction of the path length.
-pub const LINE_MIN_STRAIGHTNESS: f32 = 0.8;
+pub const LINE_MIN_STRAIGHTNESS: f32 = 0.75;
 /// No sample of a line lies farther than this fraction of the chord from
 /// it.
-pub const LINE_MAX_DEVIATION: f32 = 0.05;
+pub const LINE_MAX_DEVIATION: f32 = 0.1;
 /// A loop is closed when its ends are at most this fraction of the path
 /// length apart.
-pub const CLOSED_MAX_GAP: f32 = 0.15;
+pub const CLOSED_MAX_GAP: f32 = 0.3;
 /// Rotations of the measuring box tried over a quarter turn.
 pub const ROTATION_STEPS: u32 = 90;
 /// The short side of a closed shape's box is at least this fraction of its
@@ -31,16 +31,30 @@ pub const ROTATION_STEPS: u32 = 90;
 pub const MIN_ASPECT: f32 = 0.1;
 /// A closed shape winds around its box centre at least this fraction of a
 /// full turn.
-pub const MIN_TURN: f32 = 0.8;
-/// A box corner counts when a sample lies within this fraction of the box
-/// diagonal.
-pub const CORNER_TOLERANCE: f32 = 0.08;
+pub const MIN_TURN: f32 = 0.7;
+/// A box corner counts for a rectangle when a sample lies within this
+/// fraction of the box diagonal.
+pub const RECT_CORNER_TOLERANCE: f32 = 0.12;
+/// A rectangle passes near at least this many of the four box corners.
+pub const RECT_MIN_CORNERS: usize = 3;
+/// A box corner counts against an ellipse when a sample lies within this
+/// fraction of the box diagonal.
+pub const ELLIPSE_CORNER_TOLERANCE: f32 = 0.06;
+/// An ellipse passes near at most this many of the four box corners.
+pub const ELLIPSE_MAX_CORNERS: usize = 1;
+/// When both a rectangle and an ellipse fit, the better one wins only if
+/// its score is below this fraction of the other's; otherwise the stroke
+/// stays as drawn.
+pub const NEAR_TIE: f32 = 0.9;
+/// The largest residual is read after leaving out this fraction of the
+/// worst samples, so a short tail or a flick does not veto the shape.
+pub const TAIL_ALLOWANCE: f32 = 0.04;
 /// Mean distance of the samples to the outline, as a fraction of the box
 /// diagonal.
-pub const MEAN_RESIDUAL: f32 = 0.035;
+pub const MEAN_RESIDUAL: f32 = 0.05;
 /// Largest distance of a sample to the outline, as a fraction of the box
 /// diagonal.
-pub const MAX_RESIDUAL: f32 = 0.1;
+pub const MAX_RESIDUAL: f32 = 0.14;
 
 /// The shape a stroke looks like. For [`Fit::Rect`] and [`Fit::Ellipse`],
 /// `a` and `b` are opposite corners of the stroke's axis-aligned bounding
@@ -269,16 +283,19 @@ fn bounds(points: impl Iterator<Item = P>) -> (P, P) {
     (lo, hi)
 }
 
-/// Whether the residuals of `samples` are small for a box of diagonal
-/// `diagonal`.
-fn hugs(residuals: impl Iterator<Item = f64>, count: usize, diagonal: f64) -> bool {
-    let (mut sum, mut max) = (0.0, 0.0f64);
-    for r in residuals {
-        sum += r;
-        max = max.max(r);
-    }
-    let mean = sum / count.max(1) as f64;
-    mean <= f64::from(MEAN_RESIDUAL) * diagonal && max <= f64::from(MAX_RESIDUAL) * diagonal
+/// How badly the residuals of the samples fit a box of diagonal
+/// `diagonal`: the larger of the mean and the largest residual (leaving
+/// out the [`TAIL_ALLOWANCE`] worst samples), each over its limit. A score
+/// of `1` or less passes; a lower score is a better fit (ADR-T117-1).
+fn score(residuals: impl Iterator<Item = f64>, diagonal: f64) -> f64 {
+    let mut all: Vec<f64> = residuals.collect();
+    all.sort_by(f64::total_cmp);
+    let count = all.len().max(1);
+    let mean = all.iter().sum::<f64>() / count as f64;
+    let kept = count - (count as f64 * f64::from(TAIL_ALLOWANCE)).floor() as usize;
+    let largest = all.get(kept.max(1) - 1).copied().unwrap_or(0.0);
+    (mean / (f64::from(MEAN_RESIDUAL) * diagonal))
+        .max(largest / (f64::from(MAX_RESIDUAL) * diagonal))
 }
 
 /// The rectangle or ellipse a closed loop of evenly spaced `samples`
@@ -321,44 +338,49 @@ fn closed_kind(samples: &[P]) -> Option<Closed> {
     if winding(&local, hu, hv) < f64::from(MIN_TURN) * std::f64::consts::TAU {
         return None;
     }
-    let reach = f64::from(CORNER_TOLERANCE) * diagonal;
-    let corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
-        .into_iter()
-        .filter(|&(sx, sy)| {
-            let corner = P {
-                x: sx * hu,
-                y: sy * hv,
-            };
-            local.iter().any(|p| p.distance(corner) <= reach)
+    let corners_within = |tolerance: f32| {
+        let reach = f64::from(tolerance) * diagonal;
+        [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+            .into_iter()
+            .filter(|&(sx, sy)| {
+                let corner = P {
+                    x: sx * hu,
+                    y: sy * hv,
+                };
+                local.iter().any(|p| p.distance(corner) <= reach)
+            })
+            .count()
+    };
+    let rect = (corners_within(RECT_CORNER_TOLERANCE) >= RECT_MIN_CORNERS)
+        .then(|| {
+            score(
+                local
+                    .iter()
+                    .map(|p| (hu - p.x.abs()).min(hv - p.y.abs()).max(0.0)),
+                diagonal,
+            )
         })
-        .count();
-    let n = local.len();
-    match corners {
-        4 if hugs(
-            local
-                .iter()
-                .map(|p| (hu - p.x.abs()).min(hv - p.y.abs()).max(0.0)),
-            n,
-            diagonal,
-        ) =>
-        {
-            Some(Closed::Rect)
-        }
-        0 if hugs(
-            local.iter().map(|p| {
-                let r = (p.x / hu).hypot(p.y / hv);
-                if r > 0.0 {
-                    p.x.hypot(p.y) * (1.0 - 1.0 / r).abs()
-                } else {
-                    hu.min(hv)
-                }
-            }),
-            n,
-            diagonal,
-        ) =>
-        {
-            Some(Closed::Ellipse)
-        }
+        .filter(|&s| s <= 1.0);
+    let ellipse = (corners_within(ELLIPSE_CORNER_TOLERANCE) <= ELLIPSE_MAX_CORNERS)
+        .then(|| {
+            score(
+                local.iter().map(|p| {
+                    let r = (p.x / hu).hypot(p.y / hv);
+                    if r > 0.0 {
+                        p.x.hypot(p.y) * (1.0 - 1.0 / r).abs()
+                    } else {
+                        hu.min(hv)
+                    }
+                }),
+                diagonal,
+            )
+        })
+        .filter(|&s| s <= 1.0);
+    match (rect, ellipse) {
+        (Some(_), None) => Some(Closed::Rect),
+        (None, Some(_)) => Some(Closed::Ellipse),
+        (Some(r), Some(e)) if r < f64::from(NEAR_TIE) * e => Some(Closed::Rect),
+        (Some(r), Some(e)) if e < f64::from(NEAR_TIE) * r => Some(Closed::Ellipse),
         _ => None,
     }
 }
@@ -559,55 +581,60 @@ mod tests {
         }
     }
 
+    /// The point `walked` pixels along the clockwise outline of a
+    /// `width` × `height` rectangle whose corners are quarter circles of
+    /// `radius`, starting at the top-left of the top side.
+    fn rounded_point(walked: f32, width: f32, height: f32, radius: f32) -> Vec2 {
+        let (side_w, side_h) = (width - 2.0 * radius, height - 2.0 * radius);
+        let arc = FRAC_PI_2 * radius;
+        let mut rest = walked;
+        let mut take = |length: f32| {
+            let inside = rest <= length;
+            if !inside {
+                rest -= length;
+            }
+            inside
+        };
+        let corner = |centre: Vec2, start: f32, along: f32| {
+            let angle = start + along / radius;
+            centre + Vec2::new(radius * angle.cos(), radius * angle.sin())
+        };
+        if take(side_w) {
+            return Vec2::new(radius + rest, 0.0);
+        }
+        if take(arc) {
+            return corner(Vec2::new(width - radius, radius), -FRAC_PI_2, rest);
+        }
+        if take(side_h) {
+            return Vec2::new(width, radius + rest);
+        }
+        if take(arc) {
+            return corner(Vec2::new(width - radius, height - radius), 0.0, rest);
+        }
+        if take(side_w) {
+            return Vec2::new(width - radius - rest, height);
+        }
+        if take(arc) {
+            return corner(Vec2::new(radius, height - radius), FRAC_PI_2, rest);
+        }
+        if take(side_h) {
+            return Vec2::new(0.0, height - radius - rest);
+        }
+        corner(Vec2::new(radius, radius), PI, rest)
+    }
+
     /// A rectangle outline with quarter-circle corners of radius `round`
     /// (a fraction of the shorter side), `jitter` pixels of noise.
-    fn rounded_rect(w: f32, h: f32, round: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
+    fn rounded_rect(width: f32, height: f32, round: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
         let mut noise = Noise(seed);
-        let r = round * w.min(h);
-        let (sw, sh) = (w - 2.0 * r, h - 2.0 * r);
-        let arc = FRAC_PI_2 * r;
-        let perimeter = 2.0 * (sw + sh) + 4.0 * arc;
-        let n = 200;
-        (0..=n)
+        let radius = round * width.min(height);
+        let perimeter = 2.0 * (width + height - 4.0 * radius) + TAU * radius;
+        let steps = 200;
+        (0..=steps)
             .map(|i| {
-                let mut d = perimeter * i as f32 / n as f32;
-                // Top side, corner, right side, corner, … clockwise.
-                let p = loop {
-                    if d <= sw {
-                        break Vec2::new(r + d, 0.0);
-                    }
-                    d -= sw;
-                    if d <= arc {
-                        let a = d / r - FRAC_PI_2;
-                        break Vec2::new(w - r + r * a.cos(), r + r * a.sin());
-                    }
-                    d -= arc;
-                    if d <= sh {
-                        break Vec2::new(w, r + d);
-                    }
-                    d -= sh;
-                    if d <= arc {
-                        let a = d / r;
-                        break Vec2::new(w - r + r * a.cos(), h - r + r * a.sin());
-                    }
-                    d -= arc;
-                    if d <= sw {
-                        break Vec2::new(w - r - d, h);
-                    }
-                    d -= sw;
-                    if d <= arc {
-                        let a = d / r + FRAC_PI_2;
-                        break Vec2::new(r + r * a.cos(), h - r + r * a.sin());
-                    }
-                    d -= arc;
-                    if d <= sh {
-                        break Vec2::new(0.0, h - r - d);
-                    }
-                    d -= sh;
-                    let a = d / r + PI;
-                    break Vec2::new(r + r * a.cos(), r + r * a.sin());
-                };
-                p + Vec2::new(noise.next(), noise.next()) * jitter
+                let walked = perimeter * i as f32 / steps as f32;
+                rounded_point(walked, width, height, radius)
+                    + Vec2::new(noise.next(), noise.next()) * jitter
             })
             .collect()
     }
@@ -615,7 +642,7 @@ mod tests {
     /// `(name, expected, builder)` of every sloppy family. The builder gets
     /// a noise level (`1.0` is the level the family must survive) and a
     /// seed.
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, clippy::too_many_lines)]
     fn families() -> Vec<(&'static str, Kind, fn(f32, u64) -> Vec<Vec2>)> {
         vec![
             ("hurried circle", Kind::Ellipse, |k, seed| {
@@ -733,15 +760,15 @@ mod tests {
 
     /// Points on the superellipse `|x|^p + |y|^p = 1` scaled to `rx`, `ry`:
     /// a circle at `p = 2`, a rounded square as `p` grows.
-    fn superellipse(p: f32, rx: f32, ry: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
+    fn superellipse(power: f32, rx: f32, ry: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
         let mut noise = Noise(seed);
         (0..=120)
             .map(|i| {
-                let a = TAU * i as f32 / 120.0;
-                let (c, s) = (a.cos(), a.sin());
-                let x = c.signum() * c.abs().powf(2.0 / p);
-                let y = s.signum() * s.abs().powf(2.0 / p);
-                Vec2::new(rx * x, ry * y) + Vec2::new(noise.next(), noise.next()) * jitter
+                let angle = TAU * i as f32 / 120.0;
+                let (cos, sin) = (angle.cos(), angle.sin());
+                let px = cos.signum() * cos.abs().powf(2.0 / power);
+                let py = sin.signum() * sin.abs().powf(2.0 / power);
+                Vec2::new(rx * px, ry * py) + Vec2::new(noise.next(), noise.next()) * jitter
             })
             .collect()
     }
