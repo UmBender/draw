@@ -6,6 +6,8 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-12
+
 ### Added
 
 - Files: `Ctrl+S` writes every page to `draw file.draw` (the file named on
@@ -356,7 +358,8 @@ First release.
   frame reuse during pan and zoom, smooth with thousands of shapes on an
   8th-gen i5 iGPU (`DRAW_FRAME_TIMES=1` logs frame times).
 
-[Unreleased]: https://github.com/UmBender/draw/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/UmBender/draw/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/UmBender/draw/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/UmBender/draw/compare/v1.4.3...v1.5.0
 [1.4.3]: https://github.com/UmBender/draw/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/UmBender/draw/compare/v1.4.1...v1.4.2
