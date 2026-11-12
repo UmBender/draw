@@ -6863,7 +6863,7 @@ mod tests {
     }
 
     #[test]
-    fn graph_from_text_only_self_loops_draws_the_nodes() {
+    fn graph_from_text_only_self_loops_draws_the_nodes_and_their_loops() {
         // Arrange
         let mut ed = selected_block("1-1 2-2");
 
@@ -6871,8 +6871,9 @@ mod tests {
         ctrl_l(&mut ed);
 
         // Assert
+        // The loops are kept since ADR-T121-1: a stroke each.
         assert_eq!(count(&ed, is_ellipse), 2);
-        assert_eq!(ed.document().len(), 2);
+        assert_eq!(ed.document().len(), 4);
     }
 
     // ---- T104 segment tree -------------------------------------------------

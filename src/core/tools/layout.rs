@@ -47,6 +47,22 @@ const COMPONENT_GAP_COLUMNS: f32 = 0.5;
 /// to count as tied (T120).
 const WEIGHT_SIDE_TIE: f32 = 1e-4;
 
+/// Radius of a self-loop, in node radii (ADR-T121-1).
+const LOOP_RADIUS: f32 = 0.6;
+
+/// How far a loop's centre sits beyond its node's outline, in loop radii.
+const LOOP_OUT: f32 = 0.4;
+
+/// Segments in the polyline of a loop.
+const LOOP_SEGMENTS: usize = 24;
+
+/// Segments of a directed loop's last stretch, drawn as the arrow.
+const LOOP_ARROW_SEGMENTS: usize = 4;
+
+/// The width, in node radii, that the lanes of edges between the same two
+/// nodes share, split evenly, at least two gaps' worth (ADR-T121-1).
+const LANE_SPREAD: f32 = 1.6;
+
 /// Space between a plotted point's dot and its label, in ems (ADR-T95-1).
 const LABEL_GAP_EM: f32 = 0.15;
 
@@ -143,7 +159,7 @@ pub enum NodeName {
     Math(String),
 }
 
-/// One edge of an [`EdgeList`]; never a self-loop.
+/// One edge of an [`EdgeList`], or one of its self-loops (`from == to`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Edge {
     /// Index of its first node in [`EdgeList::names`].
@@ -157,13 +173,16 @@ pub struct Edge {
 }
 
 /// A text read as a graph (ADR-T87-1): at least one node, at most
-/// [`MAX_NODES`], no self-loop and no repeated edge.
+/// [`MAX_NODES`], no repeated edge. Self-loops are kept apart from the
+/// edges (ADR-T121-1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeList {
     /// Node names, in the order they were first named.
     names: Vec<NodeName>,
-    /// The edges, in the order they were written.
+    /// The edges, in the order they were written; never a self-loop.
     edges: Vec<Edge>,
+    /// The self-loops, in the order they were written (ADR-T121-1).
+    loops: Vec<Edge>,
     /// Whether it came from `segtree:`, drawn as boxes (ADR-T104-2).
     boxes: bool,
 }
@@ -252,12 +271,10 @@ impl EdgeList {
             node(root);
         }
         let mut edges: Vec<Edge> = Vec::new();
+        let mut loops: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
         for raw in raws {
             let (from, to) = (node(raw.u), node(raw.v));
-            if from == to {
-                continue;
-            }
             // An undirected edge is the same edge read either way.
             let ends = if raw.directed {
                 (from, to)
@@ -265,12 +282,17 @@ impl EdgeList {
                 (from.min(to), from.max(to))
             };
             if seen.insert((ends, raw.directed, raw.weight)) {
-                edges.push(Edge {
+                let edge = Edge {
                     from,
                     to,
                     directed: raw.directed,
                     weight: raw.weight.map(str::to_owned),
-                });
+                };
+                if from == to {
+                    loops.push(edge);
+                } else {
+                    edges.push(edge);
+                }
             }
         }
         if names.len() > MAX_NODES {
@@ -279,6 +301,7 @@ impl EdgeList {
         Ok((!names.is_empty()).then_some(Self {
             names,
             edges,
+            loops,
             boxes: false,
         }))
     }
@@ -293,6 +316,12 @@ impl EdgeList {
     #[must_use]
     pub fn edges(&self) -> &[Edge] {
         &self.edges
+    }
+
+    /// The self-loops, in the order they were written (ADR-T121-1).
+    #[must_use]
+    pub fn loops(&self) -> &[Edge] {
+        &self.loops
     }
 
     /// The drawing of this graph at text size `size`, the top-left of its
@@ -321,7 +350,8 @@ impl EdgeList {
 
         let mut lines = Vec::with_capacity(self.edges.len());
         let mut weights = Vec::new();
-        for edge in &self.edges {
+        let gaps = self.lane_offsets(radius);
+        for (edge, lane) in self.edges.iter().zip(&gaps) {
             let (from, to) = (centres[edge.from], centres[edge.to]);
             let delta = to - from;
             let length = delta.length();
@@ -329,18 +359,38 @@ impl EdgeList {
                 return None;
             }
             let along = delta / length;
+            // The lane's side of the line between the centres, the same for
+            // both directions of the pair.
+            let canonical = if edge.from < edge.to { along } else { -along };
+            let across = Vec2::new(canonical.y, -canonical.x);
+            let apart = across * *lane;
             // Just off both strokes, as outline snapping leaves it.
-            let reach = along * (radius + style.width);
-            let (a, b) = (from + reach + shift, to - reach + shift);
+            let rim = radius + style.width;
+            let reach = along
+                * if *lane == 0.0 {
+                    rim
+                } else {
+                    (rim * rim - lane * lane).max(0.0).sqrt()
+                };
+            let (a, b) = (from + apart + reach + shift, to + apart - reach + shift);
             lines.push(if edge.directed {
                 Shape::Arrow { a, b, style }
             } else {
                 Shape::Line { a, b, style }
             });
             if let Some(weight) = &edge.weight {
-                weights.push(weight_text(weight, a.lerp(b, 0.5), along, size, style));
+                let middle = a.lerp(b, 0.5);
+                weights.push(if *lane == 0.0 {
+                    weight_text(weight, middle, along, size, style)
+                } else {
+                    // On the outer side of its lane.
+                    weight_text_on(weight, middle, across * lane.signum(), size, style)
+                });
             }
         }
+        let (loop_lines, loop_weights) = self.loop_shapes(&centres, shift, radius, size, style);
+        lines.extend(loop_lines);
+        weights.extend(loop_weights);
         let circles = self
             .names
             .iter()
@@ -348,6 +398,121 @@ impl EdgeList {
             .map(|(name, centre)| node_circle(name, *centre + shift, radius, size, style));
         let shapes: Vec<Shape> = lines.into_iter().chain(circles).chain(weights).collect();
         shapes.iter().all(Shape::is_finite).then_some(shapes)
+    }
+
+    /// How far each edge's lane lies from the line between its nodes, along
+    /// the normal of the pair's lower-to-higher direction (ADR-T121-1): `0`
+    /// for an edge alone, else the edges of a pair spread evenly about `0`
+    /// in the order written.
+    fn lane_offsets(&self, radius: f32) -> Vec<f32> {
+        let key = |edge: &Edge| (edge.from.min(edge.to), edge.from.max(edge.to));
+        let mut sizes: HashMap<(usize, usize), usize> = HashMap::new();
+        for edge in &self.edges {
+            *sizes.entry(key(edge)).or_default() += 1;
+        }
+        let mut used: HashMap<(usize, usize), usize> = HashMap::new();
+        self.edges
+            .iter()
+            .map(|edge| {
+                let pair = key(edge);
+                let count = sizes[&pair];
+                let nth = used.entry(pair).or_default();
+                let lane = *nth as f32 - (count - 1) as f32 / 2.0;
+                *nth += 1;
+                lane * LANE_SPREAD * radius / (count - 1).max(2) as f32
+            })
+            .collect()
+    }
+
+    /// The strokes and the weights of the self-loops (ADR-T121-1). A loop leaves its node into the widest gap
+    /// between the node's edges and loops so far, up if it has none.
+    fn loop_shapes(
+        &self,
+        centres: &[Vec2],
+        shift: Vec2,
+        radius: f32,
+        size: f32,
+        style: Style,
+    ) -> (Vec<Shape>, Vec<Shape>) {
+        let (mut lines, mut weights) = (Vec::new(), Vec::new());
+        let rim = radius + style.width;
+        let mut taken: Vec<Vec<f32>> = vec![Vec::new(); self.names.len()];
+        for edge in &self.loops {
+            let node = edge.from;
+            let centre = centres[node] + shift;
+            let out = self.free_direction(centres, node, &taken[node]);
+            taken[node].push(out.y.atan2(out.x));
+            let loop_radius = LOOP_RADIUS * radius;
+            let distance = rim + LOOP_OUT * loop_radius;
+            let middle = centre + out * distance;
+            // Where the loop's circle meets the node's outline.
+            let cosine = ((loop_radius * loop_radius + distance * distance - rim * rim)
+                / (2.0 * loop_radius * distance))
+                .clamp(-1.0, 1.0);
+            let half_open = cosine.acos();
+            let back = (-out.y).atan2(-out.x);
+            let points: Vec<Vec2> = (0..=LOOP_SEGMENTS)
+                .map(|i| {
+                    let t = i as f32 / LOOP_SEGMENTS as f32;
+                    let angle = back + half_open + t * (TAU - 2.0 * half_open);
+                    middle + Vec2::new(angle.cos(), angle.sin()) * loop_radius
+                })
+                .collect();
+            if edge.directed {
+                let split = LOOP_SEGMENTS - LOOP_ARROW_SEGMENTS;
+                lines.push(Shape::Stroke {
+                    points: points[..=split].to_vec(),
+                    widths: None,
+                    style,
+                });
+                lines.push(Shape::Arrow {
+                    a: points[split],
+                    b: points[LOOP_SEGMENTS],
+                    style,
+                });
+            } else {
+                lines.push(Shape::Stroke {
+                    points,
+                    widths: None,
+                    style,
+                });
+            }
+            if let Some(weight) = &edge.weight {
+                let far = middle + out * loop_radius;
+                weights.push(weight_text_on(weight, far, out, size, style));
+            }
+        }
+        (lines, weights)
+    }
+
+    /// The unit vector, from the centre of `node`, along the bisector of the
+    /// widest angle between its edges and the angles `taken` by its loops;
+    /// up for a node with none.
+    fn free_direction(&self, centres: &[Vec2], node: usize, taken: &[f32]) -> Vec2 {
+        let mut angles: Vec<f32> = taken.to_vec();
+        angles.extend(self.edges.iter().filter_map(|edge| {
+            let other = if edge.from == node {
+                edge.to
+            } else if edge.to == node {
+                edge.from
+            } else {
+                return None;
+            };
+            let delta = centres[other] - centres[node];
+            Some(delta.y.atan2(delta.x))
+        }));
+        if angles.is_empty() {
+            return Vec2::new(0.0, -1.0);
+        }
+        angles.sort_by(f32::total_cmp);
+        let mut best = (-1.0_f32, 0.0_f32);
+        for (i, angle) in angles.iter().enumerate() {
+            let next = angles.get(i + 1).copied().unwrap_or(angles[0] + TAU);
+            if next - angle > best.0 {
+                best = (next - angle, angle + (next - angle) / 2.0);
+            }
+        }
+        Vec2::new(best.1.cos(), best.1.sin())
     }
 
     /// The drawing of a segment tree (ADR-T104-2): per node a square
@@ -930,8 +1095,6 @@ fn node_circle(name: &NodeName, centre: Vec2, radius: f32, size: f32, style: Sty
 /// The text block of `weight`, beside the point `middle` of an edge
 /// running along the unit vector `along`, on its upper right side.
 fn weight_text(weight: &str, middle: Vec2, along: Vec2, size: f32, style: Style) -> Shape {
-    let bounds = text_layout::bounds(Vec2::ZERO, weight, size);
-    let half = Vec2::new(bounds.width(), bounds.height()) * 0.5;
     let normal = Vec2::new(along.y, -along.x);
     // Upper right. On a `/` diagonal both normals score the same, up to
     // float noise: take the upper one, whatever the noise says (T120).
@@ -941,6 +1104,14 @@ fn weight_text(weight: &str, middle: Vec2, along: Vec2, size: f32, style: Style)
     } else {
         normal
     };
+    weight_text_on(weight, middle, normal, size, style)
+}
+
+/// The text block of `weight`, beside the point `middle` of a stroke, on
+/// the side the unit vector `normal` points to (ADR-T121-1).
+fn weight_text_on(weight: &str, middle: Vec2, normal: Vec2, size: f32, style: Style) -> Shape {
+    let bounds = text_layout::bounds(Vec2::ZERO, weight, size);
+    let half = Vec2::new(bounds.width(), bounds.height()) * 0.5;
     // How far the box's centre must be for the box to clear the stroke.
     let clear = half.x * normal.x.abs()
         + half.y * normal.y.abs()
@@ -1739,6 +1910,252 @@ mod tests {
         assert!(radius > RADIUS);
         for c in &centres {
             assert!(approx_eq(c.distance(middle), radius, 1e-2), "{c:?}");
+        }
+    }
+
+    // ---- T121: self-loops and lanes ------------------------------------------
+
+    /// The polyline points of every stroke (the loops).
+    fn strokes(shapes: &[Shape]) -> Vec<Vec<Vec2>> {
+        shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Stroke { points, .. } => Some(points.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The box of every text block (the weights).
+    fn weight_boxes(shapes: &[Shape]) -> Vec<crate::core::geom::Aabb> {
+        shapes
+            .iter()
+            .filter(|shape| matches!(shape, Shape::Text { .. }))
+            .map(Shape::bounds)
+            .collect()
+    }
+
+    /// Distance from `p` to the infinite line through `a` and `b`.
+    fn line_distance(point: Vec2, start: Vec2, end: Vec2) -> f32 {
+        let unit = (end - start) / (end - start).length();
+        let rel = point - start;
+        (rel.x * unit.y - rel.y * unit.x).abs()
+    }
+
+    #[test]
+    fn parse_keeps_a_self_loop_apart_from_the_edges() {
+        // Act
+        let parsed = list("1-1\n2 2\n1 2");
+
+        // Assert
+        assert_eq!(parsed.loops().len(), 2);
+        assert_eq!(edges(&parsed), [(1, 2, false, None)]);
+        assert_eq!(parsed.loops()[0].from, parsed.loops()[0].to);
+    }
+
+    #[test]
+    fn parse_draws_a_repeated_self_loop_once() {
+        assert_eq!(list("1>1 1>1").loops().len(), 1);
+        assert_eq!(list("1 1 5\n1 1 5").loops().len(), 1);
+        assert_eq!(list("1 1 5\n1 1 7").loops().len(), 2);
+        assert_eq!(list("1>1 1-1").loops().len(), 2);
+    }
+
+    #[test]
+    fn loop_is_drawn_outside_its_node() {
+        // Act
+        let shapes = drawn("graph:\n1 2\n1 1");
+
+        // Assert: one stroke, from the circle's outline round to it again.
+        let loops = strokes(&shapes);
+        assert_eq!(loops.len(), 1);
+        let node = centre(&shapes, 1);
+        let points = &loops[0];
+        let (first, last) = (points[0], points[points.len() - 1]);
+        let rim = RADIUS + WIDTH;
+        assert!(approx_eq(first.distance(node), rim, 0.1), "{first:?}");
+        for p in points {
+            assert!(p.distance(node) >= rim - 0.1, "{p:?} is inside the node");
+            assert!(p.distance(node) <= 3.0 * RADIUS, "{p:?} is far away");
+        }
+        assert!(
+            last.distance(node) <= rim + 0.1 + WIDTH,
+            "ends on the circle"
+        );
+    }
+
+    #[test]
+    fn loop_leaves_the_widest_gap_between_edges() {
+        // Arrange: node 1 is the root of a layered tree: its edge goes down.
+        let shapes = drawn("1 2\n1 1");
+
+        // Act
+        let loops = strokes(&shapes);
+        let above = mean(&loops[0]).y < centre(&shapes, 1).y;
+
+        // Assert: the loop is on the free side.
+        assert!(above, "the loop points into the edge");
+
+        // And on a ring, away from the other nodes.
+        let ring_shapes = drawn(&format!("{}\n3-3", ring(6)));
+        let middle = mean(&nodes(&ring_shapes).iter().map(|n| n.1).collect::<Vec<_>>());
+        let loop_mean = mean(&strokes(&ring_shapes)[0]);
+        let node = centre(&ring_shapes, 3);
+        assert!(loop_mean.distance(middle) > node.distance(middle));
+    }
+
+    #[test]
+    fn directed_loop_ends_in_an_arrow() {
+        // Act
+        let directed = drawn("1>1");
+        let plain = drawn("1-1");
+
+        // Assert
+        let arrows = |shapes: &[Shape]| {
+            shapes
+                .iter()
+                .filter(|shape| matches!(shape, Shape::Arrow { .. }))
+                .count()
+        };
+        assert_eq!(arrows(&directed), 1);
+        let tip = directed.iter().find_map(|shape| match shape {
+            Shape::Arrow { b, .. } => Some(*b),
+            _ => None,
+        });
+        let tip = tip.unwrap_or(Vec2::ZERO);
+        assert!(approx_eq(
+            tip.distance(centre(&directed, 1)),
+            RADIUS + WIDTH,
+            0.1
+        ));
+        assert_eq!(arrows(&plain), 0);
+        assert_eq!(strokes(&plain).len(), 1);
+    }
+
+    #[test]
+    fn loop_weight_is_beyond_the_loop() {
+        // Act: a lone node, so the loop points up.
+        let shapes = drawn("1 1 7");
+
+        // Assert
+        let loops = strokes(&shapes);
+        let top = loops[0].iter().map(|p| p.y).fold(f32::MAX, f32::min);
+        let weights = weight_boxes(&shapes);
+        assert_eq!(weights.len(), 1);
+        assert!(weights[0].max.y <= top + 0.5, "{:?} vs {top}", weights[0]);
+    }
+
+    #[test]
+    fn loops_of_one_node_do_not_overlap() {
+        // Act
+        let shapes = drawn("1 1 5\n1 1 7");
+
+        // Assert: two loops, two weights, none on another.
+        assert_eq!(strokes(&shapes).len(), 2);
+        let weights = weight_boxes(&shapes);
+        assert_eq!(weights.len(), 2);
+        assert!(!weights[0].intersects(&weights[1]));
+        let outer = |points: &[Vec2]| points.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+        let loops = strokes(&shapes);
+        assert!(
+            (outer(&loops[0]) - outer(&loops[1])).abs() > WIDTH,
+            "the loops are the same"
+        );
+    }
+
+    #[test]
+    fn opposite_edges_are_drawn_on_two_lanes() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2\n2 1");
+
+        // Assert: two arrows, parallel, a lane apart, pointing opposite ways.
+        let arrows = segments(&shapes);
+        assert_eq!(arrows.len(), 2);
+        let ((a1, b1), (a2, b2)) = (arrows[0], arrows[1]);
+        let apart = line_distance(a2, a1, b1);
+        assert!(apart > 0.5 * RADIUS, "{apart}");
+        assert!(line_distance(b2, a1, b1) > 0.5 * RADIUS);
+        let (d1, d2) = (
+            (b1 - a1) / (b1 - a1).length(),
+            (b2 - a2) / (b2 - a2).length(),
+        );
+        assert!(d1.dot(d2) < -0.99, "not opposite: {d1:?} {d2:?}");
+    }
+
+    #[test]
+    fn weights_of_opposite_edges_do_not_overlap() {
+        for text in [
+            "dgraph:\n1 2 4\n2 1 2",
+            "dgraph:\n1 3 4\n3 1 2\n1 2 1",
+            "1 2 4\n2 1 2",
+            "dgraph:\n1 2 4\n1 2 5\n2 1 6",
+        ] {
+            // Act
+            let shapes = drawn(text);
+
+            // Assert
+            let weights = weight_boxes(&shapes);
+            for (i, weight) in weights.iter().enumerate() {
+                for other in &weights[i + 1..] {
+                    assert!(!weight.intersects(other), "{text}: {weight:?} {other:?}");
+                }
+                for (_, c) in nodes(&shapes) {
+                    assert!(!weight.contains(c), "{text}: {weight:?} over a node");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lone_edge_is_not_moved() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2");
+
+        // Assert: exactly between the circles' outlines, on the centres' line.
+        let (a, b) = segments(&shapes)[0];
+        let (c1, c2) = (centre(&shapes, 1), centre(&shapes, 2));
+        let reach = RADIUS + WIDTH;
+        assert!(approx_eq(a.distance(c1), reach, 1e-3));
+        assert!(approx_eq(b.distance(c2), reach, 1e-3));
+        assert!(line_distance(a, c1, c2) < 1e-3);
+        assert!(line_distance(b, c1, c2) < 1e-3);
+    }
+
+    #[test]
+    fn lanes_end_on_the_circles() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2\n2 1\n1 2 5");
+
+        // Assert
+        let (c1, c2) = (centre(&shapes, 1), centre(&shapes, 2));
+        let reach = RADIUS + WIDTH;
+        for (a, b) in segments(&shapes) {
+            let near = |p: Vec2| p.distance(c1).min(p.distance(c2));
+            assert!(approx_eq(near(a), reach, 1e-2), "{a:?}");
+            assert!(approx_eq(near(b), reach, 1e-2), "{b:?}");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn loops_and_lanes_layout_never_panics_and_stays_finite(
+            edges in prop::collection::vec((1_u32..6, 1_u32..6, any::<bool>(), 0_u8..3), 1..30),
+        ) {
+            // Arrange: loops, opposite and repeated edges all show up.
+            let text = edges
+                .iter()
+                .map(|(u, v, directed, weight)| {
+                    let weight = if *weight == 0 { String::new() } else { format!(" {weight}") };
+                    format!("{u}{}{v}{weight}", if *directed { ">" } else { "-" })
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            // Act
+            let shapes = drawn(&text);
+
+            // Assert
+            prop_assert!(shapes.iter().all(Shape::is_finite));
         }
     }
 
