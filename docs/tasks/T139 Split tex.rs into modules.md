@@ -1,7 +1,7 @@
 ---
 id: T139
 title: Split tex.rs into modules
-status: todo
+status: in-progress
 wave: 66
 branch: task/T139-split-tex-rs-into-modules
 depends_on: [T132]
@@ -27,8 +27,16 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 - **AC-1** — `core/tex/` has `parse`, `layout`, `metrics`, `glyphs`, `macros` modules; the public API is unchanged.
   All existing tex tests pass; the formula goldens are unchanged.
+  Tests: every existing `core::tex::tests::*` test keeps its name and
+  passes (moved under `tests/`), plus the unchanged goldens in `tests/`.
 - **AC-2** — No module exceeds 3000 lines and each has its own tests.
-  Test: `modules_stay_under_the_limit` (source guard).
+  Test: `modules_stay_under_the_limit` (source guard, reads every file of
+  `core/tex/` and checks the line count).
+- Layout: `mod.rs` re-exports every item of the modules (`pub use`), so
+  paths like `tex::Node` and `tex::layout` stay. Modules are private;
+  items shared between siblings are `pub(super)`. Tests live in
+  `tex/tests/{parse,layout,alphabets,symbols,macros}.rs`.
+- No ADR: a mechanical move, no architecture choice.
 
 ## Out of scope
 
@@ -36,7 +44,8 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `crates/draw-core/src/tex/**`
+- `crates/draw-core/src/core/tex/**` (the file is `core/tex.rs` today; owner's
+  triage 2026-11-12)
 - this note
 
 ## Subtasks (one commit each)
