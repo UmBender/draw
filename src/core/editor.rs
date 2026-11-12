@@ -221,6 +221,9 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// `Ctrl+Shift+E` was pressed and the shell has not collected it yet
+    /// (ADR-T114-2). Not saved state.
+    svg_export_asked: bool,
     /// The content bounds the minimap shows and the document revision they
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
@@ -462,6 +465,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            svg_export_asked: false,
             minimap_content: None,
             palette: None,
         })
@@ -493,6 +497,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            svg_export_asked: false,
             minimap_content: None,
             palette: None,
         }
@@ -793,6 +798,7 @@ impl Editor {
                 self.resize_selected_grid(0, delta)
             }
             Command::ExportView => self.ask_export(),
+            Command::ExportSvg => self.ask_svg_export(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -1058,6 +1064,19 @@ impl Editor {
     fn ask_export(&mut self) -> bool {
         self.export_asked |= self.can_export();
         false
+    }
+
+    /// Records an SVG export request if the drawing may be exported now
+    /// (no open text block, no gesture); never needs a redraw.
+    fn ask_svg_export(&mut self) -> bool {
+        self.svg_export_asked |= self.can_export();
+        false
+    }
+
+    /// Whether an SVG export was asked for since the last call
+    /// (ADR-T114-2).
+    pub fn take_svg_export_request(&mut self) -> bool {
+        std::mem::take(&mut self.svg_export_asked)
     }
 
     /// The open command palette, if any (ADR-T111-1).

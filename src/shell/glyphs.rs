@@ -15,6 +15,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use macroquad::texture::{FilterMode, Image, Texture2D};
 
 use crate::core::geom::Vec2;
+use crate::core::svg::{Outline, Outlines};
 use crate::core::tex::Face;
 
 /// Side of one atlas page in texels.
@@ -495,6 +496,34 @@ pub fn raster_px(raster: u16, dpi: f32) -> u16 {
 #[must_use]
 pub fn glyph_scale(px: f32, raster_px: u16) -> f32 {
     px / f32::from(raster_px.max(1))
+}
+
+/// Glyph outlines of the embedded text and math fonts, read with
+/// ttf-parser for the SVG export (ADR-T114-1, ADR-T114-2).
+pub struct FontOutlines<'a> {
+    /// The text font.
+    text: ttf_parser::Face<'a>,
+    /// The math font; the text font stands in without it.
+    math: ttf_parser::Face<'a>,
+}
+
+impl<'a> FontOutlines<'a> {
+    /// The outlines of the fonts in `text` and `math`.
+    ///
+    /// # Errors
+    ///
+    /// The parser's message if either font cannot be parsed.
+    pub fn new(text: &'a [u8], math: &'a [u8]) -> Result<Self, String> {
+        let _ = (text, math);
+        todo!("parse the fonts")
+    }
+}
+
+impl Outlines for FontOutlines<'_> {
+    fn outline(&self, face: Face, ch: char) -> Option<Outline> {
+        let _ = (face, ch);
+        todo!("read the outline")
+    }
 }
 
 #[cfg(test)]

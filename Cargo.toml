@@ -14,6 +14,8 @@ macroquad = "0.4"
 fontdue = "0.9"
 # Same version macroquad uses: no second copy (ADR-T92-1).
 png = "0.17"
+# Same version fontdue uses: no second copy (ADR-T114-1).
+ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 proptest = "1"

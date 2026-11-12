@@ -1,3 +1,66 @@
+//! The drawing as an SVG file (ADR-T114-2).
+//!
+//! [`to_svg`] is pure: it takes the shapes bottom to top and a source of
+//! glyph outlines, and returns the text of the file. The world is the SVG's
+//! user space (one world unit is one user unit), text and formulas go
+//! through the same layout the renderer uses and are written as outlines,
+//! each glyph defined once and reused.
+
+use crate::core::geom::Vec2;
+use crate::core::palette::Rgba;
+use crate::core::shape::Shape;
+use crate::core::tex::Face;
+
+/// The outline of one character, as an SVG path.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outline {
+    /// Path data in font units, y down, so ink above the baseline has a
+    /// negative y.
+    pub path: String,
+    /// Font units per em.
+    pub units_per_em: f32,
+    /// Advance width in font units.
+    pub advance: f32,
+    /// Height of the ink above the baseline in font units.
+    pub ink_top: f32,
+}
+
+/// Where the glyph outlines come from: the embedded fonts, in the shell.
+pub trait Outlines {
+    /// The outline of `ch` in `face`; `None` for a character without ink
+    /// (a space) or one the font lacks.
+    fn outline(&self, face: Face, ch: char) -> Option<Outline>;
+}
+
+/// `shapes`, bottom to top, as an SVG document on a `background` canvas.
+/// Non-finite shapes are skipped, so every number in it is finite.
+#[must_use]
+pub fn to_svg<'a>(
+    shapes: impl IntoIterator<Item = &'a Shape>,
+    background: Rgba,
+    outlines: &dyn Outlines,
+) -> String {
+    let _ = (shapes, background, outlines);
+    todo!("write the document")
+}
+
+/// `value` with at most 2 decimals and no trailing zeros; 0 when it is not
+/// finite or rounds to zero.
+#[must_use]
+pub fn number(value: f32) -> String {
+    let _ = value;
+    todo!("format a number")
+}
+
+/// Whether `xml` is one well-formed element tree: balanced and matching
+/// tags, quoted and unique attributes. A small check for tests; it knows
+/// no entities or comments beyond `<?…?>` declarations.
+#[must_use]
+pub fn is_well_formed(xml: &str) -> bool {
+    let _ = xml;
+    todo!("check the markup")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

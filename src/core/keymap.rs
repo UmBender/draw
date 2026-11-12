@@ -302,6 +302,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ExportView,
         "Export the view to PNG",
     ),
+    (
+        KeyChord::ctrl_shift(Key::E),
+        Command::ExportSvg,
+        "Export the drawing to SVG",
+    ),
     // Helpers
     (
         KeyChord::bare(Key::X),

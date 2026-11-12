@@ -202,6 +202,33 @@ pub fn save(
     write_new(&home, unix_secs, &bytes)
 }
 
+/// Where an SVG export taken at `unix_secs` goes: as [`export_path`] with
+/// the extension `.svg`.
+#[must_use]
+pub fn svg_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
+    let _ = (home, unix_secs, attempt);
+    todo!("name the file")
+}
+
+/// Writes `svg` to a new [`svg_path`] in the directory named by `home`, the
+/// value of `HOME`, never replacing a file: the text goes to a temporary
+/// file first, so the name never holds a partial file.
+///
+/// # Errors
+///
+/// As [`home_dir`] and [`write_new`].
+pub fn save_svg(svg: &str, home: Option<&OsStr>, unix_secs: u64) -> Result<PathBuf, ExportError> {
+    let _ = (svg, home, unix_secs);
+    todo!("write the file")
+}
+
+/// The diagnostics log's level and line for the outcome of an SVG export.
+#[must_use]
+pub fn svg_log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
+    let _ = result;
+    todo!("describe the outcome")
+}
+
 /// The diagnostics log's level and line for the outcome of an export.
 #[must_use]
 pub fn log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
