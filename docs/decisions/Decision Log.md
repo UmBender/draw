@@ -166,3 +166,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 155 | [[ADR-T135-1 Regions live in the machine module]] | accepted | decision | — | — |
 | 156 | [[ADR-T136-1 One gesture variant per tool in the machine]] | accepted | decision | — | — |
 | 157 | [[ADR-T137-1 One effect queue and time as a parameter]] | accepted | decision | — | — |
+| 158 | [[ADR-T153-1 Text and select are sub-automata of the machine]] | accepted | decision | T134-1, T136-1 | amends T136-1 |

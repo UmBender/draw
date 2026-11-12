@@ -4,7 +4,7 @@ title: Release 2.0.0
 status: todo
 wave: 74
 branch: task/T151-release-2-0-0
-depends_on: [T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T152]
+depends_on: [T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T152, T153]
 adrs: []
 feature: ""
 tutorial: ""

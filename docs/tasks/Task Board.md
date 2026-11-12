@@ -274,6 +274,7 @@ flowchart TD
   T142 --> T145
   T135 --> T146
   T136 --> T146
+  T153 --> T146
   T145 --> T146
   T143 --> T147
   T144 --> T147
@@ -310,6 +311,9 @@ flowchart TD
   T148 --> T151
   T149 --> T151
   T152 --> T151
+  T153 --> T151
+  T136 --> T153
+  T138 --> T153
   T127 --> T152
   T128 --> T152
 ```
@@ -387,7 +391,7 @@ flowchart TD
 | 66 | [[T133 Typed units and ids]] · [[T134 The control automaton states, inputs and effects]] · [[T139 Split tex.rs into modules]] |
 | 67 | [[T135 Automaton modal states, pages, camera and selection]] · [[T136 Automaton gestures and text editing per tool]] · [[T137 Automaton effects queue and time as an input]] |
 | 68 | [[T138 Model-based tests of the automaton]] · [[T140 Platform and Gpu traits with recording interpreters]] · [[T141 Fuzz of the shell through the recording platform]] |
-| 69 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] · [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] |
+| 69 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] · [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] · [[T153 Text and select as sub-automata]] |
 | 70 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] · [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] |
 | 71 | [[T146 Retained renderer in draw-gfx]] · [[T147 Frame pacing by the compositor and idle at zero]] |
 | 72 | [[T148 Multithreaded tessellation, only with a measured gain]] · [[T152 Command line and DRAW_* variables audit]] |
@@ -524,7 +528,7 @@ flowchart TD
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
 | [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
-| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T152 | `task/T50-v2-refactor` |
+| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T153 | `task/T50-v2-refactor` |
 | [[T127 2.0 audit and baseline]] | done | T118 | `task/T127-2-0-audit-and-baseline` |
 | [[T128 Keep X11 and revert the deprecation]] | done | T127 | `task/T128-keep-x11-revert-the-deprecation` |
 | [[T129 Release gate with end-to-end on X11 and Wayland]] | done | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
@@ -544,10 +548,11 @@ flowchart TD
 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | todo | T142, T145 | `task/T143-wayland-backend-window-keyboard-pointer-` |
 | [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | todo | T142, T145 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
 | [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | todo | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
-| [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136 | `task/T146-retained-renderer-in-draw-gfx` |
+| [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136, T153 | `task/T146-retained-renderer-in-draw-gfx` |
 | [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
 | [[T148 Multithreaded tessellation, only with a measured gain]] | todo | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
-| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152 | `task/T149-cutover-remove-miniquad-and-macroquad` |
+| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152, T153 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
-| [[T151 Release 2.0.0]] | todo | T127–T149, T152 | `task/T151-release-2-0-0` |
+| [[T151 Release 2.0.0]] | todo | T127–T149, T152, T153 | `task/T151-release-2-0-0` |
 | [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
+| [[T153 Text and select as sub-automata]] | todo | T136, T138 | `task/T153-text-and-select-as-sub-automata` |
