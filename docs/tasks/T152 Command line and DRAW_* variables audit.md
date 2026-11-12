@@ -1,7 +1,7 @@
 ---
 id: T152
 title: Command line and DRAW_* variables audit
-status: in-progress
+status: review
 wave: 72
 branch: task/T152-command-line-and-draw-variables-audit
 depends_on: [T128, T127]
@@ -48,11 +48,12 @@ Only basic flags remain, and the `DRAW_*` variables are for debugging.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T152): specify the command line`
-- [ ] tests — `test(T152): add failing tests for the flags`
-- [ ] behaviour — `feat(T152): trim the command line`
-- [ ] docs — `docs(T152): move the variables to a Debugging section`
+- [x] spec — `docs(T152): specify the command line`
+- [x] tests — `test(T152): add failing tests for the flags`
+- [x] behaviour — `feat(T152): trim the command line`
+- [x] docs — `docs(T152): move the variables to a Debugging section`
 
 ## Log
 
+- 2026-11-12 — done in the batch run. The task note's `crates/draw/src/main.rs` is `src/main.rs`. `DRAW_EXPERIMENTAL` was already gone (T128). `DRAW_TABLET` kept: UNATTENDED CHOICE, [[ADR-T152-1 Keep DRAW_TABLET as a debugging variable]]. `DRAW_MSAA` listed as debugging until T146. The README docs commit came before the code commit so the README guard test is green when the code lands; models and behaviour are one commit (small task). `docs/features/**` are developer notes and were not touched. Owner: read `draw --help`.
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
