@@ -1,10 +1,10 @@
 ---
 id: T50
 title: Version 2.0.0 refactor
-status: todo
+status: in-progress
 wave: 63
 branch: task/T50-v2-refactor
-depends_on: [T46, T47, T48, T49, T51, T52, T53, T118]
+depends_on: [T46, T47, T48, T49, T51, T52, T53, T118, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T151, T152]
 adrs: []
 feature: ""
 tutorial: ""
@@ -98,8 +98,55 @@ child tasks; it does not implement code.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T50): audit the codebase and plan the 2.0.0 tasks`
-- [ ] child tasks — listed here once created
+- [x] spec — `docs(T50): propose the 2.0 architecture` ([[2.0 Architecture proposal]])
+- [x] child tasks — created 2026-11-12, in the order below
+
+**Audit and rails**
+
+- [ ] [[T127 2.0 audit and baseline]]
+- [ ] [[T128 Keep X11 and revert the deprecation]]
+- [ ] [[T129 Release gate with end-to-end on X11 and Wayland]]
+- [ ] [[T130 Coverage in CI with a ratchet]]
+- [ ] [[T131 No dynamic dispatch and stricter lints]]
+- [ ] [[T132 Workspace split with unsafe levels]]
+
+**Types and the automaton**
+
+- [ ] [[T133 Typed units and ids]]
+- [ ] [[T134 The control automaton states, inputs and effects]]
+- [ ] [[T135 Automaton modal states, pages, camera and selection]]
+- [ ] [[T136 Automaton gestures and text editing per tool]]
+- [ ] [[T137 Automaton effects queue and time as an input]]
+- [ ] [[T138 Model-based tests of the automaton]]
+- [ ] [[T139 Split tex.rs into modules]]
+
+**Platform traits and shell tests**
+
+- [ ] [[T140 Platform and Gpu traits with recording interpreters]]
+- [ ] [[T141 Fuzz of the shell through the recording platform]]
+
+**Own backend**
+
+- [ ] [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]]
+- [ ] [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]]
+- [ ] [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]]
+- [ ] [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]]
+
+**Renderer, pacing, threads**
+
+- [ ] [[T146 Retained renderer in draw-gfx]]
+- [ ] [[T147 Frame pacing by the compositor and idle at zero]]
+- [ ] [[T148 Multithreaded tessellation, only with a measured gain]]
+- [ ] [[T152 Command line and DRAW_* variables audit]]
+
+**Cutover and release**
+
+- [ ] [[T149 Cutover removing miniquad and macroquad]]
+- [ ] [[T151 Release 2.0.0]]
+
+**Optional**
+
+- [ ] [[T150 Optional Vulkan backend for the Gpu trait]]
 
 ## Learning path
 
@@ -118,3 +165,4 @@ Decided per child task.
   wave 52.
 - 2026-11-12 — owner's decisions after the 1.6.0 release (see [[2.0 Architecture proposal]]): **X11 stays** (goal 1 above is reversed and the deprecation of T46 is reverted by a new ADR); the patched miniquad, and so macroquad, are replaced by a backend of our own; the release depends on the e2e suite; `unsafe` is allowed in confined modules with full unit, integration and regression tests per primitive; threads only with a measured gain; all the quality proposals are accepted; no dynamic dispatch where avoidable, with tagless final, GADT-like encodings and type states; the control engine is an automaton. Still no new features.
 - 2026-11-12 — owner: OpenGL ES 3.0 for 2.0.0 and a Vulkan backend as an **optional** child task, conditioned on a measurement (see *OpenGL or Vulkan* in [[2.0 Architecture proposal]]); the `Gpu` trait is designed for both.
+- 2026-11-12 — child tasks T127–T152 created after the owner approved the removal of macroquad with the miniquad and the `dlopen` of the C libraries. T150 (Vulkan) is optional and does not block T151.

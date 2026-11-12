@@ -244,6 +244,74 @@ flowchart TD
   T115 --> T118
   T116 --> T118
   T118 --> T50[T50 Version 2.0.0 refactor]
+  T118 --> T127
+  T127 --> T128
+  T127 --> T129
+  T127 --> T130
+  T127 --> T131
+  T131 --> T132
+  T132 --> T133
+  T132 --> T134
+  T133 --> T135
+  T134 --> T135
+  T133 --> T136
+  T134 --> T136
+  T133 --> T137
+  T134 --> T137
+  T135 --> T138
+  T136 --> T138
+  T137 --> T138
+  T132 --> T139
+  T132 --> T140
+  T137 --> T140
+  T140 --> T141
+  T132 --> T142
+  T140 --> T142
+  T142 --> T143
+  T145 --> T143
+  T142 --> T144
+  T145 --> T144
+  T142 --> T145
+  T135 --> T146
+  T136 --> T146
+  T145 --> T146
+  T143 --> T147
+  T144 --> T147
+  T146 --> T147
+  T146 --> T148
+  T143 --> T149
+  T144 --> T149
+  T146 --> T149
+  T147 --> T149
+  T148 --> T149
+  T152 --> T149
+  T149 --> T150
+  T127 --> T151
+  T128 --> T151
+  T129 --> T151
+  T130 --> T151
+  T131 --> T151
+  T132 --> T151
+  T133 --> T151
+  T134 --> T151
+  T135 --> T151
+  T136 --> T151
+  T137 --> T151
+  T138 --> T151
+  T139 --> T151
+  T140 --> T151
+  T141 --> T151
+  T142 --> T151
+  T143 --> T151
+  T144 --> T151
+  T145 --> T151
+  T146 --> T151
+  T147 --> T151
+  T148 --> T151
+  T149 --> T151
+  T152 --> T151
+  T127 --> T152
+  T128 --> T152
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -314,6 +382,17 @@ flowchart TD
 | 61 | [[T53 Release 1.5.0]] |
 | 62 | [[T118 Release 1.6.0]] · [[T126 Menu islands]] |
 | 63 | [[T50 Version 2.0.0 refactor]] |
+| 64 | [[T127 2.0 audit and baseline]] |
+| 65 | [[T128 Keep X11 and revert the deprecation]] · [[T129 Release gate with end-to-end on X11 and Wayland]] · [[T130 Coverage in CI with a ratchet]] · [[T131 No dynamic dispatch and stricter lints]] · [[T132 Workspace split with unsafe levels]] |
+| 66 | [[T133 Typed units and ids]] · [[T134 The control automaton states, inputs and effects]] · [[T139 Split tex.rs into modules]] |
+| 67 | [[T135 Automaton modal states, pages, camera and selection]] · [[T136 Automaton gestures and text editing per tool]] · [[T137 Automaton effects queue and time as an input]] |
+| 68 | [[T138 Model-based tests of the automaton]] · [[T140 Platform and Gpu traits with recording interpreters]] · [[T141 Fuzz of the shell through the recording platform]] |
+| 69 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] · [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] |
+| 70 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] · [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] |
+| 71 | [[T146 Retained renderer in draw-gfx]] · [[T147 Frame pacing by the compositor and idle at zero]] |
+| 72 | [[T148 Multithreaded tessellation, only with a measured gain]] · [[T152 Command line and DRAW_* variables audit]] |
+| 73 | [[T149 Cutover removing miniquad and macroquad]] |
+| 74 | [[T150 Optional Vulkan backend for the Gpu trait]] · [[T151 Release 2.0.0]] |
 
 ## Status
 
@@ -445,4 +524,30 @@ flowchart TD
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
 | [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
-| [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
+| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T152 | `task/T50-v2-refactor` |
+| [[T127 2.0 audit and baseline]] | todo | T118 | `task/T127-2-0-audit-and-baseline` |
+| [[T128 Keep X11 and revert the deprecation]] | todo | T127 | `task/T128-keep-x11-revert-the-deprecation` |
+| [[T129 Release gate with end-to-end on X11 and Wayland]] | todo | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
+| [[T130 Coverage in CI with a ratchet]] | todo | T127 | `task/T130-coverage-in-ci-with-a-ratchet` |
+| [[T131 No dynamic dispatch and stricter lints]] | todo | T127 | `task/T131-no-dynamic-dispatch-and-stricter-lints` |
+| [[T132 Workspace split with unsafe levels]] | todo | T131 | `task/T132-workspace-split-with-unsafe-levels` |
+| [[T133 Typed units and ids]] | todo | T132 | `task/T133-typed-units-and-ids` |
+| [[T134 The control automaton states, inputs and effects]] | todo | T132 | `task/T134-the-control-automaton-states-inputs-effe` |
+| [[T135 Automaton modal states, pages, camera and selection]] | todo | T133, T134 | `task/T135-automaton-modal-states-pages-camera-and-` |
+| [[T136 Automaton gestures and text editing per tool]] | todo | T133, T134 | `task/T136-automaton-gestures-and-text-editing-per-` |
+| [[T137 Automaton effects queue and time as an input]] | todo | T133, T134 | `task/T137-automaton-effects-queue-and-time-as-an-i` |
+| [[T138 Model-based tests of the automaton]] | todo | T135, T136, T137 | `task/T138-model-based-tests-of-the-automaton` |
+| [[T139 Split tex.rs into modules]] | todo | T132 | `task/T139-split-tex-rs-into-modules` |
+| [[T140 Platform and Gpu traits with recording interpreters]] | todo | T132, T137 | `task/T140-platform-and-gpu-traits-with-recording-i` |
+| [[T141 Fuzz of the shell through the recording platform]] | todo | T140 | `task/T141-fuzz-of-the-shell-through-the-recording-` |
+| [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] | todo | T132, T140 | `task/T142-draw-sys-foundation-dlopen-safe-wrappers` |
+| [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | todo | T142, T145 | `task/T143-wayland-backend-window-keyboard-pointer-` |
+| [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | todo | T142, T145 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
+| [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | todo | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
+| [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136 | `task/T146-retained-renderer-in-draw-gfx` |
+| [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
+| [[T148 Multithreaded tessellation, only with a measured gain]] | todo | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
+| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152 | `task/T149-cutover-remove-miniquad-and-macroquad` |
+| [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
+| [[T151 Release 2.0.0]] | todo | T127–T149, T152 | `task/T151-release-2-0-0` |
+| [[T152 Command line and DRAW_* variables audit]] | todo | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
