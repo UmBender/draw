@@ -11,6 +11,8 @@ use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::core::shape::Shape;
+use crate::core::tex::MacroTable;
+use crate::core::text_layout::set_macros;
 
 /// Stable identity of a shape in a [`Document`].
 ///
@@ -228,6 +230,24 @@ pub struct Document {
     /// Id → z-order position, built on the first lookup after an insert or
     /// remove (ADR-T25-1).
     positions: OnceCell<HashMap<ShapeId, usize, IdBuildHasher>>,
+    /// The macros the text blocks define (ADR-T112-1).
+    macros: MacroTable,
+}
+
+/// Whether `shape` is a text block that may define macros.
+fn text_defines_macros(shape: &Shape) -> bool {
+    matches!(shape, Shape::Text { text, .. } if text.contains("newcommand"))
+}
+
+/// Whether applying `edit` may change the macro table.
+fn edit_touches_macros(edit: &Edit) -> bool {
+    match edit {
+        Edit::Insert { shape, .. } | Edit::Remove { shape, .. } => text_defines_macros(shape),
+        Edit::Replace { before, after, .. } => {
+            text_defines_macros(before) || text_defines_macros(after)
+        }
+        Edit::Lock { .. } => false,
+    }
 }
 
 /// A stretch of a transaction that [`Document::apply`] handles in one go.
@@ -325,12 +345,34 @@ impl Document {
     #[must_use]
     pub(crate) fn from_parts(shapes: Vec<(ShapeId, Shape)>, locked: IdSet, next_id: u64) -> Self {
         let ids = shapes.iter().map(|(id, _)| *id).collect();
-        Self {
+        let mut doc = Self {
             shapes,
             ids,
             next_id,
             locked,
             positions: OnceCell::new(),
+            macros: MacroTable::default(),
+        };
+        doc.macros = doc.build_macros();
+        set_macros(doc.macros.clone());
+        doc
+    }
+
+    /// The table of the text blocks, bottom of the stacking order first.
+    fn build_macros(&self) -> MacroTable {
+        MacroTable::from_texts(self.shapes.iter().filter_map(|(_, shape)| match shape {
+            Shape::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        }))
+    }
+
+    /// Rebuilds the table after a change and, when it differs, hands it
+    /// to the layout cache.
+    fn refresh_macros(&mut self) {
+        let table = self.build_macros();
+        if table != self.macros {
+            set_macros(table.clone());
+            self.macros = table;
         }
     }
 
@@ -346,6 +388,12 @@ impl Document {
         self.shapes()
             .map(|(id, _)| id)
             .filter(|id| self.is_locked(*id))
+    }
+
+    /// The macros the text blocks of this document define (ADR-T112-1).
+    #[must_use]
+    pub fn macros(&self) -> &MacroTable {
+        &self.macros
     }
 
     /// Allocate a fresh id, larger than every id handed out or inserted so far.
@@ -419,6 +467,9 @@ impl Document {
             self.roll_back(&tx.0[..done]);
             self.next_id = saved_next_id;
             return Err(err);
+        }
+        if tx.0.iter().any(edit_touches_macros) {
+            self.refresh_macros();
         }
         Ok(())
     }
@@ -784,6 +835,74 @@ mod tests {
         assert!(doc.apply(&tx).is_ok());
         let ids = doc.shapes().map(|(id, _)| id).collect();
         (doc, ids)
+    }
+
+    fn text_block(content: &str) -> Shape {
+        Shape::Text {
+            origin: Vec2::new(0.0, 0.0),
+            text: content.to_owned(),
+            size: 20.0,
+            style: Style {
+                color: ColorId::INK,
+                width: 0.0,
+            },
+        }
+    }
+
+    fn macro_body(doc: &Document, name: &str) -> Option<String> {
+        doc.macros().get(name).map(|m| m.body.clone())
+    }
+
+    #[test]
+    fn macros_follow_stacking_order() {
+        let mut doc = Document::new();
+        let tx = tx_insert(
+            &mut doc,
+            [
+                text_block("$\\newcommand{\\a}{1}$"),
+                text_block("$\\newcommand{\\a}{2}$"),
+            ],
+        );
+        assert!(doc.apply(&tx).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("2"));
+    }
+
+    #[test]
+    fn macros_change_with_undo() {
+        let mut doc = Document::new();
+        let tx = tx_insert(&mut doc, [text_block("$\\newcommand{\\a}{1}$")]);
+        assert!(doc.apply(&tx).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
+        let Some((id, _)) = doc.shapes().next() else {
+            panic!("a text block was inserted");
+        };
+        let edit = tx_replace(&doc, id, text_block("$\\newcommand{\\a}{7}$"));
+        assert!(doc.apply(&edit).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("7"));
+        assert!(doc.apply(&edit.inverse()).is_ok());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
+        assert!(doc.apply(&tx.inverse()).is_ok());
+        assert!(doc.macros().is_empty());
+    }
+
+    #[test]
+    fn failed_transaction_leaves_macros_unchanged() {
+        let mut doc = Document::new();
+        let tx = tx_insert(&mut doc, [text_block("$\\newcommand{\\a}{1}$")]);
+        assert!(doc.apply(&tx).is_ok());
+        assert!(doc.apply(&tx).is_err());
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn from_parts_builds_macros_from_block_text() {
+        let doc = Document::from_parts(
+            vec![(ShapeId(0), text_block("$\\newcommand{\\a}[2]{#2#1}$"))],
+            IdSet::default(),
+            1,
+        );
+        assert_eq!(macro_body(&doc, "a").as_deref(), Some("#2#1"));
+        assert_eq!(doc.macros().get("a").map(|m| m.params), Some(2));
     }
 
     fn snapshot(doc: &Document) -> Vec<(ShapeId, Shape)> {
