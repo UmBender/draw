@@ -147,3 +147,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 136 | [[ADR-T114-2 SVG export is a pure writer over glyph outlines]] | accepted | decision | T92-2, T30-1 | — |
 | 137 | [[ADR-T115-1 Selection image on the clipboard]] | accepted | decision | T35-1, T92-1 | — |
 | 138 | [[ADR-T116-1 Nine pages swapped into the editor]] | accepted | decision | — | — |
+| 139 | [[ADR-T123-1 Menus use the bundled font on whole pixels]] | accepted | decision | T29-1 | — |
+| 140 | [[ADR-T124-1 Ten pages and a switcher under undo and redo]] | accepted | decision | T116-1, T123-1 | amends T116-1 |

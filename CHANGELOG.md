@@ -11,8 +11,10 @@ All notable changes to draw are listed here. The format follows
 - Files: `Ctrl+S` writes every page to `draw file.draw` (the file named on
   the command line) or to `~/draw-<date>-<time>.draw`, and `draw file.draw`
   opens it. Newer or damaged files are refused, never overwritten.
-- Nine pages: `Alt+1`…`Alt+9` switch canvases, each with its own shapes,
-  view and undo history; the page number shows top-right.
+- Ten pages: `Alt+1`…`Alt+9` and `Alt+0` switch canvases, each with its own
+  shapes, view and undo history. A switcher under the undo and redo buttons
+  shows 1–10 (current filled, pages with a drawing marked, empty dimmed) and
+  a click goes to the page; it needs a window about 890 px tall.
 - `Ctrl+Shift+E` exports the whole drawing to an SVG in `~`.
 - `Ctrl+Shift+C` copies the selection to the clipboard as an image.
 - User macros in formulas: `\newcommand` and `\renewcommand` with `#1`…`#9`
@@ -22,6 +24,8 @@ All notable changes to draw are listed here. The format follows
 
 ### Changed
 
+- The toolbar, command palette, shortcut sheet and page switcher are drawn
+  in the bundled text font on whole pixels, sharper than before.
 - A graph typed with `Ctrl+L` that has no cycle is drawn in layers even
   when it is a forest: each tree from its first node, side by side. Only
   a cycle sends it to the circle.

@@ -9,13 +9,13 @@ One note per user-visible feature, created by the task that implements it
 
 | Feature | Task | Tutorial | Status |
 |---------|------|----------|--------|
-| [[Infinite canvas, pan and zoom]] | [[T03 Camera]], [[T08 Editor core and input model]], [[T106 Fading laser pointer]], [[T110 Minimap]], [[T116 Pages]] | [[03 Cameras - world space vs screen space]], [[08 An editor as an input-driven state machine]] | done |
+| [[Infinite canvas, pan and zoom]] | [[T03 Camera]], [[T08 Editor core and input model]], [[T106 Fading laser pointer]], [[T110 Minimap]], [[T116 Pages]], [[T124 Page switcher in the toolbar]] | [[03 Cameras - world space vs screen space]], [[08 An editor as an input-driven state machine]] | done |
 | [[Anti-tremor strokes]] | [[T04 Stroke smoothing]], [[T09 Creation tools]] | [[04 Taming shaky input]], [[09 Building drawing tools]] | done |
 | [[Shapes]] | [[T05 Shape model]], [[T07 Renderer]], [[T09 Creation tools]], [[T93 Coordinate plane from points]], [[T95 Labels on plotted points]] | [[05 Modelling shapes and hit-testing]], [[07 Rendering with macroquad and culling]], [[09 Building drawing tools]] | done |
 | [[Undo and redo]] | [[T06 Document and history]], [[T08 Editor core and input model]], [[T11 Keymap and macros]], [[T49 Long-running stability]] | [[06 Undo and redo with a transaction log]] | done |
 | [[Drawing tools]] | [[T09 Creation tools]], [[T109 Shape recognition]] | [[09 Building drawing tools]] | done |
 | [[Editing tools]] | [[T10 Editing tools]], [[T91 Resize handles]], [[T100 Z-order keys]], [[T101 Align and distribute]], [[T107 Lock shapes]], [[T115 Copy the selection as an image]] | [[10 Selection, clipboard and fill]] | done |
-| [[Shortcuts and macros]] | [[T11 Keymap and macros]], [[T38 Left-hand tool keys]], [[T111 Command palette]], [[T113 Shortcut sheet]] | [[11 Keymaps and gesture macros]], [[38 Laying out shortcuts for one hand]] | done |
+| [[Shortcuts and macros]] | [[T11 Keymap and macros]], [[T38 Left-hand tool keys]], [[T111 Command palette]], [[T113 Shortcut sheet]], [[T122 ASCII text in the palette and the sheet]], [[T123 Menu font]] | [[11 Keymaps and gesture macros]], [[38 Laying out shortcuts for one hand]] | done |
 | [[Toolbar]] | [[T12 App shell and toolbar]] | [[12 The app loop, idle redraw and UI]] | done |
 | [[Theme and palette]] | [[T02 Palette and theme tokens]] | [[02 Palettes and design tokens]] | done |
 | [[Themes]] | [[T51 Build-time themes]] | [[51 Keeping every colour in one file]] | done |
