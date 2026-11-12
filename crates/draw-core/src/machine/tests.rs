@@ -258,7 +258,10 @@ fn core_never_reads_the_clock() {
 
     // Assert
     assert!(files.len() > 10, "the scan found the sources");
-    assert!(offenders.is_empty(), "the core reads the clock: {offenders:?}");
+    assert!(
+        offenders.is_empty(),
+        "the core reads the clock: {offenders:?}"
+    );
 }
 
 #[test]

@@ -36,6 +36,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use draw_core::machine::Effect;
+
 use crate::core::camera::Camera;
 use crate::core::command::Tool;
 use crate::core::document::ShapeId;
@@ -670,13 +672,21 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
                 dirty |= dispatch(&mut editor, event);
             }
         }
-        export_pending = (export_pending || editor.take_export_request()) && editor.can_export();
+        let effects = editor.take_effects();
+        let png_asked = effects.contains(&Effect::ExportPng);
+        export_pending = (export_pending || png_asked) && editor.can_export();
         if export_pending {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
         dirty |= laser.tick();
-        serve_requests(&mut editor, &mut frame, &mut svg_writes, &mut save_path);
+        serve_effects(
+            effects,
+            &mut editor,
+            &mut frame,
+            &mut svg_writes,
+            &mut save_path,
+        );
         let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
@@ -698,23 +708,29 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
     }
 }
 
-/// Answers the requests the editor collected this frame: an SVG export, a
-/// copy of the selection as an image and a save (ADR-T114-2, ADR-T115-1,
-/// ADR-T108-1).
-fn serve_requests(
+/// Answers the effects the editor queued this frame: an SVG export, a copy
+/// of the selection as an image and a save (ADR-T114-2, ADR-T115-1,
+/// ADR-T108-1, ADR-T137-1). The PNG export is answered by the frame loop,
+/// which waits for a fresh layer; the other effects are not the editor's to
+/// queue.
+fn serve_effects(
+    effects: Vec<Effect>,
     editor: &mut Editor,
     frame: &mut CachedFrame,
     svg_writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>,
     save_path: &mut Option<PathBuf>,
 ) {
-    if editor.take_svg_export_request() {
+    // Fixed order, as before: SVG, copy, save.
+    if effects.contains(&Effect::ExportSvg) {
         svg_writes.push(export_svg(editor));
     }
     log_finished_svg_writes(svg_writes);
-    if let Some(bounds) = editor.take_copy_image_request() {
-        copy_selection_image(editor, frame, bounds);
+    for effect in &effects {
+        if let Effect::CopyImage(bounds) = effect {
+            copy_selection_image(editor, frame, *bounds);
+        }
     }
-    if editor.take_save_request() {
+    if effects.contains(&Effect::Save) {
         save_file(editor, save_path);
     }
 }

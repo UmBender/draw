@@ -103,20 +103,9 @@ pub fn step(machine: Machine, input: Input) -> (Machine, Vec<Effect>) {
     (machine, effects)
 }
 
-/// Turns the editor's request flags and notice into effects.
+/// Moves the editor's queued effects and its notice into `effects`.
 fn collect_requests(editor: &mut Editor, effects: &mut Vec<Effect>) {
-    if editor.take_save_request() {
-        effects.push(Effect::Save);
-    }
-    if editor.take_export_request() {
-        effects.push(Effect::ExportPng);
-    }
-    if editor.take_svg_export_request() {
-        effects.push(Effect::ExportSvg);
-    }
-    if let Some(bounds) = editor.take_copy_image_request() {
-        effects.push(Effect::CopyImage(bounds));
-    }
+    effects.extend(editor.take_effects());
     if let Some(notice) = editor.take_notice() {
         effects.push(Effect::Notify(notice));
     }
