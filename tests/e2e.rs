@@ -641,11 +641,7 @@ fn backend_golden(source: &Path, name: &str, backend: Backend) -> PathBuf {
 /// the shared one.
 fn golden_path(source: &Path, name: &str, backend: Backend) -> PathBuf {
     let own = backend_golden(source, name, backend);
-    if own.exists() {
-        own
-    } else {
-        source.join(name)
-    }
+    if own.exists() { own } else { source.join(name) }
 }
 
 /// The private X11 session, checked to be the script's own.
@@ -744,7 +740,9 @@ fn x11_close(display: &str, window: u32) -> Result<(), String> {
         if reply.first() != Some(&1) {
             return Err(format!("X11 InternAtom {name} failed"));
         }
-        Ok(u32::from_le_bytes([reply[8], reply[9], reply[10], reply[11]]))
+        Ok(u32::from_le_bytes([
+            reply[8], reply[9], reply[10], reply[11],
+        ]))
     };
     let protocols = atom(&mut stream, "WM_PROTOCOLS")?;
     let delete = atom(&mut stream, "WM_DELETE_WINDOW")?;
@@ -1578,7 +1576,8 @@ fn check_images(
         let shot = run.join("actual.ppm");
         running.session.screenshot(&shot)?;
         let backend = running.session.backend;
-        let compared = compare_screenshot_for(&shot, source, backend, run, tolerance, pointer, update);
+        let compared =
+            compare_screenshot_for(&shot, source, backend, run, tolerance, pointer, update);
         if let Err(problem) = compared {
             problems.push(problem);
         }
@@ -2456,7 +2455,9 @@ mod self_tests {
     // ---- release gate (T129) ---------------------------------------------
 
     fn script_path(name: &str) -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts").join(name)
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join(name)
     }
 
     fn script_text(name: &str) -> String {
@@ -2545,7 +2546,8 @@ mod self_tests {
             Some(":97".into()),
             Some(other.into_os_string()),
         )
-        .unwrap_err();
+        .err()
+        .unwrap_or_default();
 
         assert!(err.contains("outside the private"), "{err}");
     }
@@ -2554,7 +2556,9 @@ mod self_tests {
     fn x11_guard_rejects_a_missing_display() {
         let (dir, authority) = x11_runtime("x11-nodisplay");
 
-        let err = x11_guard(Some(dir.into_os_string()), None, Some(authority)).unwrap_err();
+        let err = x11_guard(Some(dir.into_os_string()), None, Some(authority))
+            .err()
+            .unwrap_or_default();
 
         assert!(err.contains("DISPLAY is not set"), "{err}");
     }
@@ -2690,14 +2694,25 @@ mod self_tests {
         assert_eq!(
             commands,
             [[
-                "keydown", "Control_L", "keydown", "Shift_L", "key", "9", "keyup", "Shift_L",
-                "keyup", "Control_L"
+                "keydown",
+                "Control_L",
+                "keydown",
+                "Shift_L",
+                "key",
+                "9",
+                "keyup",
+                "Shift_L",
+                "keyup",
+                "Control_L"
             ]
             .map(str::to_owned)
             .to_vec()]
         );
         let text = xdotool_commands(&["a b".to_owned()]).unwrap_or_default();
-        assert_eq!(text.first().and_then(|c| c.last()).map(String::as_str), Some("a b"));
+        assert_eq!(
+            text.first().and_then(|c| c.last()).map(String::as_str),
+            Some("a b")
+        );
     }
 
     #[test]
