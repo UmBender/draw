@@ -6,6 +6,7 @@ pub mod command;
 pub mod command_palette;
 pub mod document;
 pub mod editor;
+pub mod file;
 pub mod geom;
 pub mod history;
 pub mod input;

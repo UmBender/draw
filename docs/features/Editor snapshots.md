@@ -78,6 +78,26 @@ Bug snapshots go in `tests/snapshots/regressions/` (see its README and
   text in shapes and the pen tap filter), and random or mutated text
   never panics the parser or the loaded editor (`tests/fuzz.rs`).
 
+## Document files
+
+T108 ([[ADR-T108-1 The draw file format and its promise]]) adds the file
+a user keeps, in the same text syntax but with a different header,
+`draw-file 1`, and only the document: for every non-empty page its view,
+number counter and `[document]` (shapes, text, locks), with the current
+page named. No history, selection, clipboard, tools or settings.
+
+| Action | How |
+|--------|-----|
+| Save | `Ctrl+S`: to the file named on the command line, else a new `~/draw-<date>-<time>.draw` that later presses reuse; written through a temporary file and a rename on a thread; the path is printed and logged |
+| Open | `draw file.draw`; a missing file starts empty and the first save creates it |
+| Bad file | damaged, truncated or newer: printed and logged with the line, the canvas starts empty and the file is never overwritten (the next save goes to a new default file) |
+
+`Ctrl+S` does nothing while a text block is open (every key types there):
+finish it first. Compatibility promise: every later build reads version 1
+and up; `tests/files/v1.draw` must keep loading, and the 2.0.0 refactor
+(T50) must keep it. Code: `src/core/file.rs`, `src/shell/file.rs`; tests:
+`tests/files.rs` and `file_*` in `tests/fuzz.rs`.
+
 ## Limits
 
 - Not saved: the keymap (a `fn` pointer; a loaded editor uses the

@@ -14,7 +14,9 @@ tags: [feature]
 While you draw, draw keeps an autosave of the whole editor: the drawing,
 its undo history, the view and the tools. After a crash or a stray close,
 `draw --recover` brings it back. There is no prompt at start-up and no way
-to pick a file: a normal launch always starts blank.
+to pick a file: a normal launch always starts blank. The autosave is not
+the drawing file you keep: that is `Ctrl+S` and `draw file.draw`
+([[Editor snapshots#Document files]]); they are separate and work together.
 
 ## How to use
 

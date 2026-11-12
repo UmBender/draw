@@ -311,6 +311,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ExportView,
         "Export the view to PNG",
     ),
+    (
+        KeyChord::ctrl(Key::S),
+        Command::SaveFile,
+        "Save the drawing to a .draw file",
+    ),
     // Helpers
     (
         KeyChord::bare(Key::X),
@@ -532,6 +537,7 @@ mod tests {
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
             (Key::E, CTRL, Command::ExportView),
+            (Key::S, CTRL, Command::SaveFile),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),
@@ -591,6 +597,13 @@ mod tests {
         assert_eq!(resolve(Key::Digit1, SHIFT), None);
         assert_eq!(resolve(Key::Z, SHIFT), None);
         assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn resolve_ctrl_s_saves() {
+        assert_eq!(resolve(Key::S, CTRL), Some(Command::SaveFile));
+        assert_eq!(resolve(Key::S, NONE), Some(Command::CycleSmoothing));
+        assert_eq!(resolve(Key::S, CTRL_SHIFT), None);
     }
 
     #[test]

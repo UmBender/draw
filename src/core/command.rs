@@ -156,6 +156,8 @@ pub enum Command {
     ToggleToolbar,
     /// Ask the shell to write the view to a PNG file (ADR-T92-2).
     ExportView,
+    /// Ask the shell to write the document to its `.draw` file (ADR-T108-1).
+    SaveFile,
     /// Turn smart snapping (round, sizes, alignment) on or off.
     ToggleSmartSnap,
     /// Turn snapping to the world grid on or off.

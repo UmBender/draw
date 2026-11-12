@@ -245,6 +245,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Tab` | Toolbar on / off | `Ctrl+E` | Export the view to PNG in `~` |
 | Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | | |
 | `Space` held, middle drag | Minimap in the corner | `Space`+click or drag in the minimap | Jump there |
+| `Ctrl+S` | Save to a `.draw` file | | |
 
 ### Helpers
 
@@ -486,8 +487,13 @@ patched copy of its window library for this (`vendor/miniquad`).
 
 ## Limitations
 
-- There are no files to open or save — by design, it is a scratch pad.
-  `Ctrl+E` exports the view to a PNG. The only thing kept is an autosave
+- Files are optional: `Ctrl+S` writes every page to `draw file.draw` (the
+  file named on the command line) or to `~/draw-<date>-<time>.draw`, and
+  `draw file.draw` opens it; a missing file starts empty and the first
+  `Ctrl+S` creates it. There is no file dialog, no undo history in the
+  file, and files from newer versions or damaged ones are refused (never
+  overwritten). Later versions keep reading today's files. `Ctrl+E`
+  exports the view to a PNG. Besides that there is an autosave
   for crashes: `draw --recover` brings back the last one, and
   `draw --recover prev` the one before. It is written at most every 30 s,
   on input after a change, to the state directory

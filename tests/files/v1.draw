@@ -1,0 +1,20 @@
+draw-file 1
+[pages]
+current 2
+count 2
+[page]
+index 0
+camera 10.0 20.0 2.0
+number 3
+[document]
+next-id 2
+shape 0 rect 0 3.0 100.0 100.0 300.0 200.0 - - -
+shape 1 line 0 3.0 100.0 400.0 600.0 450.0
+locked 0
+[page]
+index 2
+camera 0.0 0.0 1.0
+number 1
+[document]
+next-id 1
+shape 0 ellipse 0 3.0 400.0 100.0 550.0 250.0 - - -
