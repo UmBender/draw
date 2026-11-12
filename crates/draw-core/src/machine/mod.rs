@@ -6,6 +6,7 @@
 //! editor still does the work for the cells that say so.
 
 mod effect;
+mod gesture;
 mod input;
 mod regions;
 mod state;
@@ -15,6 +16,7 @@ mod table;
 mod tests;
 
 pub use effect::{ClipboardOp, Effect};
+pub use gesture::{End, Gesture, Press, Stage};
 pub use input::{Input, InputKind, Reply};
 pub use regions::{Modal, ModalKind, Pages, View};
 pub use state::{Interaction, InteractionKind};

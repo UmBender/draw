@@ -43,7 +43,7 @@ use crate::core::tools::layout::{self, EdgeList, GraphError, PlotError, PointLis
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
-use crate::machine::{Modal, Pages, View};
+use crate::machine::{Gesture, Modal, Pages, Stage, View};
 
 /// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
 pub const WIDTH_LADDER_PX: [f32; 10] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0];
@@ -138,51 +138,6 @@ pub enum ActiveGesture {
     Pan,
     /// A tool gesture (`Eraser` for a right drag).
     Tool(Tool),
-}
-
-/// The gesture in progress and the button that drives it.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Gesture {
-    /// Panning the view.
-    Pan {
-        /// Button whose release ends the gesture.
-        button: PointerButton,
-        /// Pan state.
-        pan: Pan,
-    },
-    /// Moving the view by a press or drag in the minimap (ADR-T110-1).
-    Minimap {
-        /// Button whose release ends the gesture.
-        button: PointerButton,
-        /// The minimap's world box at the press, kept until the release.
-        world: Aabb,
-    },
-    /// A tool gesture.
-    Tool {
-        /// Button whose release ends the gesture.
-        button: PointerButton,
-        /// Tool receiving the events.
-        tool: Tool,
-        /// No pointer motion since the press.
-        fresh: bool,
-    },
-}
-
-impl Gesture {
-    /// Whether a press of `button` replaces this gesture: a pen reports
-    /// its tip just before a held barrel button, in the same spot, so a
-    /// right or middle press takes over a left tool press that has not
-    /// moved yet.
-    fn yields_to(self, button: PointerButton) -> bool {
-        matches!(
-            self,
-            Self::Tool {
-                button: PointerButton::Left,
-                fresh: true,
-                ..
-            }
-        ) && button != PointerButton::Left
-    }
 }
 
 /// How many pages there are (ADR-T116-1).
@@ -383,12 +338,10 @@ impl Editor {
             Some(Gesture::Minimap { button, world }) => {
                 l.word("minimap").put(&button).put(&world);
             }
-            Some(Gesture::Tool {
-                button,
-                tool,
-                fresh,
-            }) => {
-                l.word("tool").put(&button).put(&tool).bool(fresh);
+            Some(gesture) => {
+                let tool = gesture.tool().unwrap_or_default();
+                let fresh = gesture.stage() == Some(Stage::Down);
+                l.word("tool").put(&gesture.button()).put(&tool).bool(fresh);
             }
         });
         w.record("reedit", |l| match &self.reedit {
@@ -1387,10 +1340,8 @@ impl Editor {
             smoothing: self.smoothing,
             cursor: self.cursor,
         };
-        let mut overlay = match self.gesture {
-            Some(Gesture::Tool { tool, .. }) if tool != Tool::Text => {
-                self.tools.preview(&view(tool))
-            }
+        let mut overlay = match self.gesture.and_then(|gesture| gesture.tool()) {
+            Some(tool) if tool != Tool::Text => self.tools.preview(&view(tool)),
             _ => Overlay::default(),
         };
         let edit = text::preview(&self.tools.text, &view(Tool::Text));
@@ -1402,10 +1353,7 @@ impl Editor {
     /// The gesture in progress, if any.
     #[must_use]
     pub fn active_gesture(&self) -> Option<ActiveGesture> {
-        self.gesture.map(|gesture| match gesture {
-            Gesture::Pan { .. } | Gesture::Minimap { .. } => ActiveGesture::Pan,
-            Gesture::Tool { tool, .. } => ActiveGesture::Tool(tool),
-        })
+        self.gesture.map(|gesture| gesture.active())
     }
 
     /// The minimap, while it shows: while `Space` is held with no text
@@ -1645,11 +1593,7 @@ impl Editor {
         } else {
             self.tool
         };
-        self.gesture = Some(Gesture::Tool {
-            button,
-            tool,
-            fresh: true,
-        });
+        self.gesture = Some(Gesture::for_tool(button, tool));
         self.tool_pointer(tool, Phase::Down, pos, mods) || committed || cancelled
     }
 
@@ -1661,10 +1605,12 @@ impl Editor {
                 let world = *world;
                 self.minimap_drag(world, pos)
             }
-            Some(Gesture::Tool { tool, fresh, .. }) => {
-                *fresh = false;
-                let tool = *tool;
-                self.tool_pointer(tool, Phase::Move, pos, mods)
+            Some(gesture) => {
+                *gesture = gesture.moved();
+                match gesture.tool() {
+                    Some(tool) => self.tool_pointer(tool, Phase::Move, pos, mods),
+                    None => false,
+                }
             }
             None => false,
         }
@@ -1681,9 +1627,10 @@ impl Editor {
                 self.gesture = None;
                 self.minimap_drag(world, pos)
             }
-            Some(Gesture::Tool {
-                button: b, tool, ..
-            }) if b == button => {
+            Some(gesture) if gesture.ends_on(button).is_some() => {
+                let Some(tool) = gesture.tool() else {
+                    return false;
+                };
                 self.gesture = None;
                 let numbering = self.helpers().numbering;
                 let next = self.helpers().next_number;
@@ -2087,14 +2034,13 @@ impl Editor {
     /// Discards the gesture in progress. Returns whether there was one.
     fn cancel_gesture(&mut self) -> bool {
         self.reedit = None;
-        match self.gesture.take() {
-            Some(Gesture::Tool { tool, .. }) => {
-                self.tools.cancel(tool);
-                true
-            }
-            Some(Gesture::Pan { .. } | Gesture::Minimap { .. }) => true,
-            None => false,
+        let Some(gesture) = self.gesture.take() else {
+            return false;
+        };
+        if let Some(tool) = gesture.tool() {
+            self.tools.cancel(tool);
         }
+        true
     }
 
     /// Sets the stroke width if `width` is `Some`, and forgets the
@@ -2519,11 +2465,14 @@ fn read_gesture(r: &mut Reader<'_>) -> Result<Option<Gesture>, SnapshotError> {
                 button: t.get()?,
                 world: t.get()?,
             }),
-            "tool" => Some(Gesture::Tool {
-                button: t.get()?,
-                tool: t.get()?,
-                fresh: t.bool("fresh")?,
-            }),
+            "tool" => {
+                let gesture = Gesture::for_tool(t.get()?, t.get()?);
+                if t.bool("fresh")? {
+                    Some(gesture)
+                } else {
+                    Some(gesture.moved())
+                }
+            }
             other => return Err(t.error(format!("unknown gesture `{other}`"))),
         }
     };
