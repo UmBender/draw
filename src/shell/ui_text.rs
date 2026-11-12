@@ -17,16 +17,22 @@ use std::cell::OnceCell;
 
 thread_local! {
     /// The menu font, loaded on first use: it needs the graphics context.
-    static FONT: OnceCell<Option<Font>> = const { OnceCell::new() };
+    /// Leaked on purpose: dropping its texture after the window is gone
+    /// (a thread-local destructor at exit) crashes.
+    static FONT: OnceCell<Option<&'static Font>> = const { OnceCell::new() };
 }
 
 /// Runs `body` with the menu font, or `None` when it did not load (the
 /// built-in font is used then).
 fn with_font<T>(body: impl FnOnce(Option<&Font>) -> T) -> T {
-    FONT.with(|cell| {
-        let font = cell.get_or_init(|| load_ttf_font_from_bytes(TEXT_FONT).ok());
-        body(font.as_ref())
-    })
+    let font = FONT.with(|cell| {
+        *cell.get_or_init(|| {
+            load_ttf_font_from_bytes(TEXT_FONT)
+                .ok()
+                .map(|font| &*Box::leak(Box::new(font)))
+        })
+    });
+    body(font)
 }
 
 /// The size of `label` at `font_size` pixels, as `measure_text` reports it.
