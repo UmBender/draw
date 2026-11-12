@@ -395,7 +395,7 @@ mod tests {
     use crate::core::palette::ColorId;
     use crate::core::shape::{Shape, Style};
     use proptest::prelude::*;
-    use std::f32::consts::{PI, TAU};
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
     /// Deterministic noise in `[-1, 1]` (a 64-bit LCG).
     struct Noise(u64);
@@ -539,6 +539,428 @@ mod tests {
             widths,
             style: style(),
         }
+    }
+
+    // ---- T117: sloppy strokes ------------------------------------------------
+
+    /// What a sloppy family should become.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Kind {
+        Line,
+        Rect,
+        Ellipse,
+    }
+
+    fn kind_of(fit: Option<Fit>) -> Option<Kind> {
+        match fit? {
+            Fit::Line { .. } => Some(Kind::Line),
+            Fit::Rect { .. } => Some(Kind::Rect),
+            Fit::Ellipse { .. } => Some(Kind::Ellipse),
+        }
+    }
+
+    /// A rectangle outline with quarter-circle corners of radius `round`
+    /// (a fraction of the shorter side), `jitter` pixels of noise.
+    fn rounded_rect(w: f32, h: f32, round: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
+        let mut noise = Noise(seed);
+        let r = round * w.min(h);
+        let (sw, sh) = (w - 2.0 * r, h - 2.0 * r);
+        let arc = FRAC_PI_2 * r;
+        let perimeter = 2.0 * (sw + sh) + 4.0 * arc;
+        let n = 200;
+        (0..=n)
+            .map(|i| {
+                let mut d = perimeter * i as f32 / n as f32;
+                // Top side, corner, right side, corner, … clockwise.
+                let p = loop {
+                    if d <= sw {
+                        break Vec2::new(r + d, 0.0);
+                    }
+                    d -= sw;
+                    if d <= arc {
+                        let a = d / r - FRAC_PI_2;
+                        break Vec2::new(w - r + r * a.cos(), r + r * a.sin());
+                    }
+                    d -= arc;
+                    if d <= sh {
+                        break Vec2::new(w, r + d);
+                    }
+                    d -= sh;
+                    if d <= arc {
+                        let a = d / r;
+                        break Vec2::new(w - r + r * a.cos(), h - r + r * a.sin());
+                    }
+                    d -= arc;
+                    if d <= sw {
+                        break Vec2::new(w - r - d, h);
+                    }
+                    d -= sw;
+                    if d <= arc {
+                        let a = d / r + FRAC_PI_2;
+                        break Vec2::new(r + r * a.cos(), h - r + r * a.sin());
+                    }
+                    d -= arc;
+                    if d <= sh {
+                        break Vec2::new(0.0, h - r - d);
+                    }
+                    d -= sh;
+                    let a = d / r + PI;
+                    break Vec2::new(r + r * a.cos(), r + r * a.sin());
+                };
+                p + Vec2::new(noise.next(), noise.next()) * jitter
+            })
+            .collect()
+    }
+
+    /// `(name, expected, builder)` of every sloppy family. The builder gets
+    /// a noise level (`1.0` is the level the family must survive) and a
+    /// seed.
+    #[allow(clippy::type_complexity)]
+    fn families() -> Vec<(&'static str, Kind, fn(f32, u64) -> Vec<Vec2>)> {
+        vec![
+            ("hurried circle", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    0.7,
+                    1.0,
+                    0.06 * k,
+                    3.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("circle that overshoots", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    1.9,
+                    1.18,
+                    0.04 * k,
+                    2.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("circle that stops short", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    4.0,
+                    0.86,
+                    0.04 * k,
+                    2.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("circle with a tail", Kind::Ellipse, |k, seed| {
+                let mut points = shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    0.7,
+                    1.0,
+                    0.04 * k,
+                    2.0 * k,
+                    0.0,
+                    seed,
+                );
+                let last = points[points.len() - 1];
+                points.extend((1..=5).map(|i| last + Vec2::new(0.0, -3.0 * i as f32)));
+                points
+            }),
+            ("squashed ellipse", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    220.0,
+                    90.0,
+                    0.2,
+                    1.1,
+                    0.05 * k,
+                    3.0 * k,
+                    0.2,
+                    seed,
+                )
+            }),
+            ("lopsided rectangle", Kind::Rect, |k, seed| {
+                shaky_rect(
+                    Vec2::ZERO,
+                    Vec2::new(260.0, 150.0),
+                    0.4,
+                    1.05,
+                    6.0 * k,
+                    0.12 * k,
+                    seed,
+                )
+            }),
+            ("rectangle that stops short", Kind::Rect, |k, seed| {
+                shaky_rect(
+                    Vec2::ZERO,
+                    Vec2::new(200.0, 200.0),
+                    0.0,
+                    0.9,
+                    4.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("rectangle that overshoots", Kind::Rect, |k, seed| {
+                shaky_rect(
+                    Vec2::ZERO,
+                    Vec2::new(240.0, 160.0),
+                    2.5,
+                    1.16,
+                    4.0 * k,
+                    0.05 * k,
+                    seed,
+                )
+            }),
+            ("rounded rectangle", Kind::Rect, |k, seed| {
+                rounded_rect(280.0, 180.0, 0.14, 3.0 * k, seed)
+            }),
+            ("wobbly line", Kind::Line, |k, seed| {
+                shaky_line(Vec2::ZERO, Vec2::new(400.0, 60.0), 0.05 * k, 4.0 * k, seed)
+            }),
+            ("curved line", Kind::Line, |k, seed| {
+                shaky_line(Vec2::ZERO, Vec2::new(300.0, 0.0), 0.09 * k, 1.0, seed)
+            }),
+        ]
+    }
+
+    /// Points on the superellipse `|x|^p + |y|^p = 1` scaled to `rx`, `ry`:
+    /// a circle at `p = 2`, a rounded square as `p` grows.
+    fn superellipse(p: f32, rx: f32, ry: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
+        let mut noise = Noise(seed);
+        (0..=120)
+            .map(|i| {
+                let a = TAU * i as f32 / 120.0;
+                let (c, s) = (a.cos(), a.sin());
+                let x = c.signum() * c.abs().powf(2.0 / p);
+                let y = s.signum() * s.abs().powf(2.0 / p);
+                Vec2::new(rx * x, ry * y) + Vec2::new(noise.next(), noise.next()) * jitter
+            })
+            .collect()
+    }
+
+    /// Asserts that the family called `name` becomes its shape at the
+    /// level `1.0` of noise, for every seed.
+    fn assert_family_is_recognised(name: &str) {
+        let Some((_, kind, build)) = families().into_iter().find(|(n, _, _)| *n == name) else {
+            panic!("no family {name}");
+        };
+        for seed in 0..16 {
+            let fit = fit(&build(1.0, seed));
+            assert_eq!(kind_of(fit), Some(kind), "{name}, seed {seed}: {fit:?}");
+        }
+    }
+
+    #[test]
+    fn fit_sloppy_hurried_circle_gives_an_ellipse() {
+        assert_family_is_recognised("hurried circle");
+    }
+
+    #[test]
+    fn fit_sloppy_circle_that_overshoots_gives_an_ellipse() {
+        assert_family_is_recognised("circle that overshoots");
+    }
+
+    #[test]
+    fn fit_sloppy_circle_that_stops_short_gives_an_ellipse() {
+        assert_family_is_recognised("circle that stops short");
+    }
+
+    #[test]
+    fn fit_sloppy_circle_with_a_tail_gives_an_ellipse() {
+        assert_family_is_recognised("circle with a tail");
+    }
+
+    #[test]
+    fn fit_sloppy_squashed_ellipse_gives_an_ellipse() {
+        assert_family_is_recognised("squashed ellipse");
+    }
+
+    #[test]
+    fn fit_sloppy_lopsided_rectangle_gives_a_rect() {
+        assert_family_is_recognised("lopsided rectangle");
+    }
+
+    #[test]
+    fn fit_sloppy_rectangle_that_stops_short_gives_a_rect() {
+        assert_family_is_recognised("rectangle that stops short");
+    }
+
+    #[test]
+    fn fit_sloppy_rectangle_that_overshoots_gives_a_rect() {
+        assert_family_is_recognised("rectangle that overshoots");
+    }
+
+    #[test]
+    fn fit_sloppy_rounded_rectangle_gives_a_rect() {
+        assert_family_is_recognised("rounded rectangle");
+    }
+
+    #[test]
+    fn fit_sloppy_wobbly_line_gives_a_line() {
+        assert_family_is_recognised("wobbly line");
+    }
+
+    #[test]
+    fn fit_sloppy_curved_line_gives_a_line() {
+        assert_family_is_recognised("curved line");
+    }
+
+    /// The first noise level (in steps of `0.1`) at which a family fails
+    /// for one of 16 seeds; `None` if it never does up to `6.0`.
+    fn first_failing_level(build: fn(f32, u64) -> Vec<Vec2>, kind: Kind) -> Option<f32> {
+        (1..=60)
+            .map(|step| step as f32 * 0.1)
+            .find(|&k| !(0..16u64).all(|seed| kind_of(fit(&build(k, seed))) == Some(kind)))
+    }
+
+    /// Where each family stops being recognised, in units of its own noise
+    /// (`1.0` is the level it must survive): ADR-T117-1 lists the same
+    /// numbers, so a change of the limits shows up here as a diff.
+    const TOLERANCE: [(&str, f32); 11] = [
+        ("hurried circle", 2.9),
+        ("circle that overshoots", 4.4),
+        ("circle that stops short", 3.6),
+        ("circle with a tail", 4.3),
+        ("squashed ellipse", 1.5),
+        ("lopsided rectangle", 2.6),
+        ("rectangle that stops short", 4.6),
+        ("rectangle that overshoots", 3.3),
+        ("rounded rectangle", 3.8),
+        ("wobbly line", 1.6),
+        ("curved line", 1.1),
+    ];
+
+    #[test]
+    fn tolerance_table_matches_the_adr() {
+        let all = families();
+        assert_eq!(all.len(), TOLERANCE.len());
+        for (name, kind, build) in all {
+            let Some(&(_, expected)) = TOLERANCE.iter().find(|(n, _)| *n == name) else {
+                panic!("{name} is not in the table");
+            };
+            let got = first_failing_level(build, kind).unwrap_or(f32::INFINITY);
+            assert!(
+                approx_eq(got, expected, 0.05),
+                "{name}: {got} vs {expected}"
+            );
+        }
+    }
+
+    /// Strokes that sit nearest the new limits and must stay strokes.
+    fn near_misses() -> Vec<(&'static str, Vec<Vec2>)> {
+        let walk = |corners: &[Vec2]| -> Vec<Vec2> {
+            let mut points = Vec::new();
+            for pair in corners.windows(2) {
+                for i in 0..30 {
+                    points.push(pair[0].lerp(pair[1], i as f32 / 30.0));
+                }
+            }
+            points.push(corners[corners.len() - 1]);
+            points
+        };
+        vec![
+            (
+                "an L",
+                walk(&[
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 200.0),
+                    Vec2::new(150.0, 200.0),
+                ]),
+            ),
+            (
+                "a U",
+                walk(&[
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 200.0),
+                    Vec2::new(200.0, 200.0),
+                    Vec2::new(200.0, 0.0),
+                ]),
+            ),
+            (
+                "an open C",
+                shaky_ellipse(Vec2::ZERO, 100.0, 100.0, 0.5, 0.7, 0.0, 0.5, 0.0, 3),
+            ),
+            (
+                "a half circle",
+                shaky_ellipse(Vec2::ZERO, 100.0, 100.0, 0.0, 0.5, 0.0, 0.5, 0.0, 4),
+            ),
+            (
+                "a line with a hook",
+                walk(&[
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(250.0, 0.0),
+                    Vec2::new(250.0, 120.0),
+                    Vec2::new(300.0, 100.0),
+                ]),
+            ),
+            (
+                "a wave",
+                (0..=60)
+                    .map(|i| {
+                        let t = i as f32 / 60.0;
+                        Vec2::new(300.0 * t, 60.0 * (TAU * t).sin())
+                    })
+                    .collect(),
+            ),
+            (
+                "a sloppy triangle",
+                walk(&[
+                    Vec2::new(0.0, 200.0),
+                    Vec2::new(100.0, 0.0),
+                    Vec2::new(210.0, 205.0),
+                    Vec2::new(5.0, 195.0),
+                ]),
+            ),
+        ]
+    }
+
+    #[test]
+    fn fit_loose_still_rejects_the_near_misses() {
+        for (name, points) in near_misses() {
+            let fit = fit(&points);
+            assert_eq!(fit, None, "{name}");
+        }
+    }
+
+    #[test]
+    fn fit_loose_still_rejects_noisy_scribbles() {
+        // The scribbles of T109 with a hand's shake on top.
+        for (name, points) in scribbles() {
+            let mut noise = Noise(11);
+            let shaken: Vec<Vec2> = points
+                .iter()
+                .map(|p| *p + Vec2::new(noise.next(), noise.next()) * 3.0)
+                .collect();
+            assert_eq!(fit(&shaken), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn fit_rounded_square_picks_the_better_fit() {
+        // A circle that squares off one step at a time: ellipse, then rect.
+        let kind = |p: f32| kind_of(fit(&superellipse(p, 100.0, 100.0, 1.0, 0)));
+        assert_eq!(kind(2.0), Some(Kind::Ellipse));
+        assert_eq!(kind(2.5), Some(Kind::Ellipse));
+        assert_eq!(kind(4.0), Some(Kind::Rect));
+        assert_eq!(kind(8.0), Some(Kind::Rect));
+    }
+
+    #[test]
+    fn fit_near_tie_gives_nothing() {
+        // Between the two, where both fit alike, the stroke stays as drawn.
+        let ties = (0..40)
+            .map(|step| 2.0 + step as f32 * 0.05)
+            .filter(|&p| fit(&superellipse(p, 100.0, 100.0, 1.0, 0)).is_none())
+            .count();
+        assert!(ties > 0, "no exponent leaves the stroke alone");
     }
 
     // ---- AC-2 lines, rectangles, ellipses ---------------------------------
