@@ -143,7 +143,7 @@ pub enum NodeName {
     Math(String),
 }
 
-/// One edge of an [`EdgeList`]; never a self-loop.
+/// One edge of an [`EdgeList`], or one of its self-loops (`from == to`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Edge {
     /// Index of its first node in [`EdgeList::names`].
@@ -157,13 +157,16 @@ pub struct Edge {
 }
 
 /// A text read as a graph (ADR-T87-1): at least one node, at most
-/// [`MAX_NODES`], no self-loop and no repeated edge.
+/// [`MAX_NODES`], no repeated edge. Self-loops are kept apart from the
+/// edges (ADR-T121-1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeList {
     /// Node names, in the order they were first named.
     names: Vec<NodeName>,
-    /// The edges, in the order they were written.
+    /// The edges, in the order they were written; never a self-loop.
     edges: Vec<Edge>,
+    /// The self-loops, in the order they were written (ADR-T121-1).
+    loops: Vec<Edge>,
     /// Whether it came from `segtree:`, drawn as boxes (ADR-T104-2).
     boxes: bool,
 }
@@ -252,12 +255,10 @@ impl EdgeList {
             node(root);
         }
         let mut edges: Vec<Edge> = Vec::new();
+        let mut loops: Vec<Edge> = Vec::new();
         let mut seen = HashSet::new();
         for raw in raws {
             let (from, to) = (node(raw.u), node(raw.v));
-            if from == to {
-                continue;
-            }
             // An undirected edge is the same edge read either way.
             let ends = if raw.directed {
                 (from, to)
@@ -265,12 +266,17 @@ impl EdgeList {
                 (from.min(to), from.max(to))
             };
             if seen.insert((ends, raw.directed, raw.weight)) {
-                edges.push(Edge {
+                let edge = Edge {
                     from,
                     to,
                     directed: raw.directed,
                     weight: raw.weight.map(str::to_owned),
-                });
+                };
+                if from == to {
+                    loops.push(edge);
+                } else {
+                    edges.push(edge);
+                }
             }
         }
         if names.len() > MAX_NODES {
@@ -279,6 +285,7 @@ impl EdgeList {
         Ok((!names.is_empty()).then_some(Self {
             names,
             edges,
+            loops,
             boxes: false,
         }))
     }
@@ -293,6 +300,12 @@ impl EdgeList {
     #[must_use]
     pub fn edges(&self) -> &[Edge] {
         &self.edges
+    }
+
+    /// The self-loops, in the order they were written (ADR-T121-1).
+    #[must_use]
+    pub fn loops(&self) -> &[Edge] {
+        &self.loops
     }
 
     /// The drawing of this graph at text size `size`, the top-left of its
