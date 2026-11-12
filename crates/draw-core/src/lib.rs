@@ -8,4 +8,5 @@
 #![cfg_attr(test, allow(clippy::wildcard_enum_match_arm))]
 
 pub mod core;
+pub mod machine;
 pub mod theme;
