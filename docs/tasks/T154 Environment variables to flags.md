@@ -1,7 +1,7 @@
 ---
 id: T154
 title: Environment variables to flags
-status: todo
+status: in-progress
 wave: 72
 branch: task/T154-environment-variables-to-flags
 depends_on: [T152, T129]
@@ -20,19 +20,22 @@ The binary reads nothing from the environment: every `DRAW_*` variable it read i
 ## Known facts (2026-11-12)
 
 - Variables read by the binary: `DRAW_LOG`, `DRAW_MSAA`, `DRAW_FRAME_TIMES`, `DRAW_BACKEND`, `DRAW_SKIP_PREFLIGHT`, `DRAW_TABLET`, `DRAW_SNAPSHOT`, `DRAW_E2E_DUMP`, `DRAW_E2E_IDLE`, `DRAW_E2E_CLIPBOARD`; the code is in `src/main.rs`, `src/shell/{app,backend,tablet,preflight}.rs` and `src/shell/diag/**`.
-- Read by test code only: `DRAW_UPDATE_SNAPSHOTS`, `DRAW_E2E_RUNTIME`, `DRAW_E2E_BACKEND`.
+- Read by test code and scripts only, so they stay: `DRAW_UPDATE_SNAPSHOTS`, `DRAW_E2E_RUNTIME`, `DRAW_E2E_BACKEND`, `DRAW_E2E_CASE`, `DRAW_E2E_IN_SCOPE`, `DRAW_RELEASE`, `DRAW_RELEASE_FAIL`.
+- `scripts/audit/frames.sh` runs the app with `DRAW_FRAME_TIMES=1` and the flatpak manifest comment names `DRAW_BACKEND=x11`.
 - [[T152 Command line and DRAW_* variables audit]] has `--help`, `--version`, `--recover` and a guard test of the documentation.
 
 ## Spec
 
 See [[ADR-T154-1 Every DRAW_ variable the binary reads becomes a flag]]. Step 1 lists every place that reads a variable or builds a command with one (`grep` over the source, `scripts/`, `.github/`, `packaging/`, `tests/`).
 
-- **AC-1** — A pure parser turns the arguments into `Options`; a bad value or an unknown flag is refused with exit 2 and a message. *Tests:* one per flag for a good value, a bad value and a missing value; `--log` and the others also in any order; `--recover` still works.
-- **AC-2** — No code in `src/` or `crates/` reads `std::env::var` for a `DRAW_` name. *Test:* a source guard `no_draw_env_in_the_binary`.
-- **AC-3** — `Options` is built once before the preflight and passed down; the preflight, the log, the backend choice, the MSAA, the tablet mode and the frame timer use it. *Tests:* the existing unit tests of each, now over `Options`; `choose` of the tablet and `backend` stay pure.
-- **AC-4** — `--help` lists the user flags and not the hidden ones; the README and `docs/` user text name only flags. *Test:* the guard of T152, updated.
-- **AC-5** — `scripts/e2e.sh`, `tests/e2e.rs`, the CI workflow, `scripts/release.sh` and the packages pass the flags and the end-to-end suite still passes on Wayland and X11. *Tests:* `scripts/e2e.sh --backend all`.
-- **AC-6** — The changelog names the change, with the old and new spelling.
+Design: `src/shell/options.rs` holds `Options` and the pure `parse(args) -> Parsed` (`Run(Options)`, `Help`, `Version`, `Refused(String)`). A flag takes its value as `--flag value` or `--flag=value`. The words left after the flags go to `Launch::from_args` (`--recover [prev]`) and `path_from_args` unchanged. `Options` is built in `main` and passed down: `diag::init`, `preflight::run`, `backend::choose`, `tablet::choose`, `app::window_conf` and `app::run` take it, and `backend::from_env`, `tablet::from_env`, `Hooks::from_env` and `diag::init_from_env` are removed.
+
+- **AC-1** — The parser turns the arguments into `Options`; a bad or missing value and an unknown flag are refused. *Tests* (`options::tests`): `defaults_without_arguments`, `log_takes_every_level`, `log_refuses_an_unknown_level`, `msaa_takes_off_and_the_counts`, `msaa_refuses_other_counts`, `backend_takes_x11_and_wayland`, `backend_refuses_an_unknown_name`, `tablet_takes_auto_on_off`, `tablet_refuses_an_unknown_mode`, `frame_times_and_skip_preflight_take_no_value`, `a_flag_without_its_value_is_refused`, `value_with_equals_sign_is_accepted`, `flags_in_any_order_and_with_a_file_and_recover`, `hidden_flags_take_paths`, `unknown_flag_is_refused`, `help_and_version_win`; in `main`, a refused parse exits 2 (the T152 test, updated).
+- **AC-2** — No code in `src/` or `crates/` reads a `DRAW_` variable. *Test:* `tests/no_draw_env.rs::the_binary_reads_no_draw_variable` (a source guard over `src/**` and `crates/**`).
+- **AC-3** — `Options` is built once and passed down. *Tests:* `backend::choose` over `Option<Backend>` and the session (`choose_defaults_to_wayland_in_a_wayland_session`, `choose_honours_the_flag`), `tablet::choose` over `TabletMode` and the device list (`choose_on_forces_pen_mode`, `choose_off_turns_it_off`, `choose_auto_detects_a_pen`), `preflight` with `skip` as a bool (`check_skips_when_asked`, hint names `--skip-preflight`), `app::startup_snapshot` over a path (`startup_snapshot_reads_the_path`), `e2e::Hooks::from_paths`, `diag::init` with the level from `Options`.
+- **AC-4** — `--help` lists the user flags and not the hidden ones, and the user documentation names no `DRAW_` variable. *Tests:* `help_lists_the_flags`, `help_hides_the_test_flags`, `readme_names_no_draw_variable` (replaces the guard of T152).
+- **AC-5** — `tests/e2e.rs`, `scripts/audit/frames.sh` and the packaging text pass the flags; the end-to-end suite passes on Wayland and X11. *Tests:* `scripts/e2e.sh --backend all`; `e2e_command_passes_flags_not_variables` in `tests/e2e.rs`.
+- **AC-6** — The README's Debugging section lists the flags; the changelog (integrator) names the change with the old and new spelling.
 
 ## Out of scope
 
@@ -41,13 +44,13 @@ See [[ADR-T154-1 Every DRAW_ variable the binary reads becomes a flag]]. Step 1 
 ## Files owned
 
 - `src/main.rs`, `src/shell/**`, `tests/e2e.rs`, `tests/e2e/**`, `tests/common/**`
-- `scripts/e2e.sh`, `scripts/release.sh`, `.github/**`, `packaging/**`
+- `scripts/audit/frames.sh`, `.github/**`, `packaging/**`, `tests/no_draw_env.rs`
 - `README.md`, `docs/features/**` (the lines naming the variables), `CHANGELOG.md` is the integrator's
 - this note, `ADR-T154-1`
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T154): specify the flags`
+- [x] spec — `docs(T154): specify the flags`
 - [ ] tests — `test(T154): add failing tests for the options`
 - [ ] models — `feat(T154): parse the arguments into Options`
 - [ ] behaviour — `refactor(T154): read Options instead of the environment`
@@ -57,3 +60,4 @@ See [[ADR-T154-1 Every DRAW_ variable the binary reads becomes a flag]]. Step 1 
 ## Log
 
 - 2026-11-12 — created after the owner chose flags over variables, with no fallback.
+- 2026-11-12 — spec: parser design and test names; `scripts/audit/frames.sh` and `tests/no_draw_env.rs` added to the files owned (the first still runs the app with the variable); `scripts/e2e.sh` and `scripts/release.sh` only use variables the binary does not read, so they are not touched.
