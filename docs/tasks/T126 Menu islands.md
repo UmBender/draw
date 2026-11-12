@@ -1,8 +1,8 @@
 ---
 id: T126
 title: Menu islands
-status: in-progress
-wave: 61
+status: done
+wave: 62
 branch: task/T126-menu-islands
 depends_on: [T123, T125]
 adrs: ["[[ADR-T126-1 Menus drawn as translucent rounded islands]]"]
@@ -33,7 +33,7 @@ The tool strip, the command palette and the shortcut sheet look like the owner's
 - **AC-3** — The tool strip is four islands (tools, colours, helpers, undo and redo) and a fifth for the page buttons when they fit; the buttons are 32 px squares inside them. The four islands, the strip and the `pen` badge fit a 1280×800 window. A click between the islands inside the strip is still swallowed.
   Tests: `islands_frame_their_groups`, `islands_fit_the_default_window`, `islands_do_not_overlap`, `page_island_frames_the_page_buttons`, and the existing layout and routing tests adapted to the new geometry.
 - **AC-4** — The palette and the sheet are islands too: rounded rows, the selected row in the active fill with the bright accent, each key of a chord as its own key cap, the sheet topics as pills. Their layouts and the keys they handle do not change.
-  Tests: `key_caps_split_a_chord`, `key_caps_fit_inside_the_row`, and the existing palette and sheet layout tests.
+  Tests: `key_caps_split_a_chord`, `key_caps_fit_inside_the_row`, the existing palette and sheet layout tests, and the e2e cases `menus-palette` and `menus-sheet` (goldens `expected.ppm`).
 
 ## Out of scope
 
@@ -49,10 +49,11 @@ The tool strip, the command palette and the shortcut sheet look like the owner's
 
 ## Subtasks
 
-- [ ] spec — `docs(T126): specify the menu islands`
-- [ ] tests and code — `feat(T126): draw the menus as rounded islands`
-- [ ] goldens and docs — `docs(T126): update the goldens and the notes`
+- [x] spec — `docs(T126): specify the menu islands`
+- [x] tests and code — `feat(T126): draw the menus as rounded islands`
+- [x] goldens and docs — `docs(T126): update the goldens and the notes`
 
 ## Log
 
 - 2026-11-12 — written from the owner's choice of proposal A.
+- 2026-11-12 — done; `scripts/check.sh` green and `scripts/e2e.sh` green with new goldens. The goldens were looked at by eye: islands, active fill, ringed swatch, key caps and topic pills match the proposal. The pages island shows only in a window taller than about 1000 px, so no golden shows it.

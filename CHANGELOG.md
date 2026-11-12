@@ -6,6 +6,14 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The menus have a new look, after the status bar: the tool strip is made of
+  translucent rounded islands, and the command palette and the shortcut
+  sheet are islands with rounded rows, key caps and topic pills. The tools
+  are still the letters of their keys, and every colour comes from the
+  theme, with new `MENU_*` tokens.
+
 ## [1.6.0] - 2026-11-12
 
 ### Added
