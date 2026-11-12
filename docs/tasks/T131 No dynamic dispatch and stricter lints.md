@@ -1,11 +1,11 @@
 ---
 id: T131
 title: No dynamic dispatch and stricter lints
-status: todo
+status: in-progress
 wave: 65
 branch: task/T131-no-dynamic-dispatch-and-stricter-lints
 depends_on: [T127]
-adrs: []
+adrs: [ADR-T131-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -23,10 +23,10 @@ The source has no `dyn` outside an allow-list that is itself an ADR, matches on 
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Decision: [[ADR-T131-1 No dyn outside an allow-list]] (file-level allow-list with reason and removing task).
 
-- **AC-1** — `tests/no_dyn.rs` fails on `dyn ` or `Box<dyn` in `src/` and `vendor/` outside `docs/decisions/ADR-T131-1`'s allow-list, with the same structure as the colour guard of `src/theme.rs`.
-  Tests: `guard_finds_dyn`, `guard_ignores_comments_and_strings`, `allow_list_entries_must_exist`.
+- **AC-1** — `tests/no_dyn.rs` fails on the word `dyn` in code under `src/` and `vendor/` outside the allow-list of ADR-T131-1, with the same structure as the colour guard of `src/theme.rs`.
+  Tests: `scanner_finds_dyn`, `scanner_ignores_comments_and_strings`, `guard_finds_no_dyn_outside_allow_list`, `allow_list_entries_must_exist` (the file exists and still has `dyn`).
 - **AC-2** — `Cargo.toml` `[lints]` denies `clippy::wildcard_enum_match_arm` and `clippy::undocumented_unsafe_blocks` and sets `unsafe_op_in_unsafe_fn`; every existing wildcard match is replaced by the listed variants.
   `scripts/check.sh` is the test.
 - **AC-3** — Existing `dyn` uses are removed or listed with a reason and a task that removes them.
@@ -43,7 +43,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T131): specify the dyn guard and the lints`
+- [x] spec — `docs(T131): specify the dyn guard and the lints`
 - [ ] tests — `test(T131): add failing tests for the dyn guard`
 - [ ] behaviour — `refactor(T131): remove wildcard arms and dyn`
 - [ ] quality — `chore(T131): pass clippy and rustfmt`
