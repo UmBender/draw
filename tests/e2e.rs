@@ -1443,22 +1443,45 @@ impl Drop for Running<'_> {
     }
 }
 
-/// Makes `command` start from the snapshot `start`: as an autosave in the
-/// `state` directory if `recover`, else through `DRAW_SNAPSHOT`.
-fn start_from(
-    command: &mut Command,
-    start: &Path,
-    recover: bool,
-    state: &Path,
-) -> Result<(), String> {
-    if recover {
-        let dir = state.join("draw");
-        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-        std::fs::copy(start, dir.join("autosave.snap")).map_err(|err| err.to_string())?;
-        command.arg("--recover");
-    } else {
-        command.env("DRAW_SNAPSHOT", start);
+/// The files the harness gives the app.
+struct AppFiles<'a> {
+    dump: &'a Path,
+    idle: &'a Path,
+    clipboard: &'a Path,
+}
+
+/// The arguments of the app under test: the harness files and settings as
+/// flags, and the snapshot `start` as an autosave if `recover`, else
+/// through `--snapshot` (ADR-T154-1).
+fn app_args(files: &AppFiles<'_>, start: Option<&Path>, recover: bool) -> Vec<OsString> {
+    let mut args: Vec<OsString> = ["--log", "info", "--tablet", "off"]
+        .into_iter()
+        .map(OsString::from)
+        .collect();
+    for (flag, path) in [
+        ("--e2e-dump", files.dump),
+        ("--e2e-idle", files.idle),
+        ("--e2e-clipboard", files.clipboard),
+    ] {
+        args.push(flag.into());
+        args.push(path.into());
     }
+    match start {
+        Some(_) if recover => args.push("--recover".into()),
+        Some(start) => {
+            args.push("--snapshot".into());
+            args.push(start.into());
+        }
+        None => {}
+    }
+    args
+}
+
+/// Puts the snapshot `start` in the autosave place of `state`, for `--recover`.
+fn stage_autosave(start: &Path, state: &Path) -> Result<(), String> {
+    let dir = state.join("draw");
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    std::fs::copy(start, dir.join("autosave.snap")).map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -1484,17 +1507,18 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     command
         .env("HOME", &home)
         .env("XDG_STATE_HOME", &state)
-        .env("DRAW_LOG", "info")
-        .env("DRAW_TABLET", "off")
         .env("LIBGL_ALWAYS_SOFTWARE", "1")
-        .env("DRAW_E2E_DUMP", &dump)
-        .env("DRAW_E2E_IDLE", &idle)
-        .env("DRAW_E2E_CLIPBOARD", &clipboard)
         .stdout(stdout)
         .stderr(stderr);
-    if let Some(start) = start {
-        start_from(&mut command, &start, case.recover, &state)?;
+    if let (Some(start), true) = (&start, case.recover) {
+        stage_autosave(start, &state)?;
     }
+    let files = AppFiles {
+        dump: &dump,
+        idle: &idle,
+        clipboard: &clipboard,
+    };
+    command.args(app_args(&files, start.as_deref(), case.recover));
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;
     if session.backend == Backend::X11 {

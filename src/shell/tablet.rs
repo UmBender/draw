@@ -1,16 +1,12 @@
 //! Pen tablet detection at start-up (T34, ADR-T34-1).
 //!
-//! [`choose`] is a pure function over the value of `DRAW_TABLET` and the
-//! text of `/proc/bus/input/devices`; [`from_env`] feeds it the real ones.
+//! [`choose`] is a pure function over the `--tablet` mode and the text of
+//! `/proc/bus/input/devices`; [`detect`] reads the real device list.
 //! With a pen attached the editor gets the tap slop of
 //! [`PEN_TAP_SLOP_PX`].
 
-use std::ffi::OsStr;
-
 use crate::core::tap::PEN_TAP_SLOP_PX;
-
-/// Environment variable forcing pen mode: `on`, `off` or `auto`.
-pub const TABLET_ENV: &str = "DRAW_TABLET";
+use crate::shell::options::TabletMode;
 
 /// The kernel's list of input devices (world-readable).
 pub const DEVICES_PATH: &str = "/proc/bus/input/devices";
@@ -22,8 +18,6 @@ pub struct Choice {
     pub pen: bool,
     /// One stderr line when pen mode is on.
     pub notice: Option<String>,
-    /// One stderr line when the value of [`TABLET_ENV`] was not understood.
-    pub warning: Option<String>,
 }
 
 impl Choice {
@@ -80,48 +74,38 @@ fn has_bit(mask: &str, bit: usize) -> bool {
         .is_some_and(|word| (word >> (bit % word_bits)) & 1 == 1)
 }
 
-/// Pen mode from `value`, the value of [`TABLET_ENV`] (`None` when unset),
-/// and `devices`, the text of [`DEVICES_PATH`] (`None` when unreadable).
+/// Pen mode for `mode` (`--tablet`) and `devices`, the text of
+/// [`DEVICES_PATH`] (`None` when unreadable).
 #[must_use]
-pub fn choose(value: Option<&OsStr>, devices: Option<&str>) -> Choice {
-    let text = value.map(OsStr::to_string_lossy);
-    let text = text.as_deref().map_or("", str::trim);
-    if text.eq_ignore_ascii_case("on") {
-        Choice {
+pub fn choose(mode: TabletMode, devices: Option<&str>) -> Choice {
+    match mode {
+        TabletMode::On => Choice {
             pen: true,
             notice: Some(format!(
-                "draw: {TABLET_ENV}=on: pen taps within {PEN_TAP_SLOP_PX} px are clicks"
+                "draw: --tablet on: pen taps within {PEN_TAP_SLOP_PX} px are clicks"
             )),
-            warning: None,
-        }
-    } else if text.eq_ignore_ascii_case("off") {
-        Choice::default()
-    } else {
-        let warning = (!text.is_empty() && !text.eq_ignore_ascii_case("auto")).then(|| {
-            format!(
-                "draw: unknown {TABLET_ENV} value {text:?}, detecting the tablet \
-                 (expected on, off or auto)"
-            )
-        });
-        let pen = devices.and_then(find_pen);
-        Choice {
-            pen: pen.is_some(),
-            notice: pen.map(|name| {
-                format!(
-                    "draw: pen tablet {name:?} found: taps within {PEN_TAP_SLOP_PX} px \
-                     are clicks; {TABLET_ENV}=off turns this off"
-                )
-            }),
-            warning,
+        },
+        TabletMode::Off => Choice::default(),
+        TabletMode::Auto => {
+            let pen = devices.and_then(find_pen);
+            Choice {
+                pen: pen.is_some(),
+                notice: pen.map(|name| {
+                    format!(
+                        "draw: pen tablet {name:?} found: taps within {PEN_TAP_SLOP_PX} px \
+                         are clicks; --tablet off turns this off"
+                    )
+                }),
+            }
         }
     }
 }
 
-/// [`choose`] applied to the real environment and device list.
+/// [`choose`] applied to the real device list.
 #[must_use]
-pub fn from_env() -> Choice {
+pub fn detect(mode: TabletMode) -> Choice {
     let devices = std::fs::read_to_string(DEVICES_PATH).ok();
-    choose(std::env::var_os(TABLET_ENV).as_deref(), devices.as_deref())
+    choose(mode, devices.as_deref())
 }
 
 #[cfg(test)]
@@ -129,7 +113,6 @@ mod tests {
     use super::*;
     use crate::core::tap::PEN_TAP_SLOP_PX;
     use proptest::prelude::*;
-    use std::ffi::OsStr;
 
     /// Blocks of the owner's `/proc/bus/input/devices` (2026-10-20, `x86_64`):
     /// keyboard, touchpad, the HUION 420 pen and its mouse interface.
@@ -192,10 +175,6 @@ B: MSC=10
             .join("\n\n")
     }
 
-    fn choose_str(value: &str, devices: Option<&str>) -> Choice {
-        choose(Some(OsStr::new(value)), devices)
-    }
-
     // ---- AC-3 detection ----------------------------------------------------
 
     #[cfg(target_pointer_width = "64")]
@@ -247,74 +226,43 @@ B: MSC=10
         // Arrange
         let others = without_pen();
 
-        for value in [None, Some(""), Some("auto")] {
-            // Act
-            let found = choose(value.map(OsStr::new), Some(OWNER_DEVICES));
-            let absent = choose(value.map(OsStr::new), Some(&others));
-            let unreadable = choose(value.map(OsStr::new), None);
+        // Act
+        let found = choose(TabletMode::Auto, Some(OWNER_DEVICES));
+        let absent = choose(TabletMode::Auto, Some(&others));
+        let unreadable = choose(TabletMode::Auto, None);
 
-            // Assert
-            assert!(found.pen, "{value:?}");
-            assert!(found.warning.is_none());
-            assert!(
-                found
-                    .notice
-                    .as_deref()
-                    .is_some_and(|n| n.contains("HUION 420 Pen")),
-                "{found:?}"
-            );
-            assert!(!absent.pen && absent.notice.is_none() && absent.warning.is_none());
-            assert!(!unreadable.pen && unreadable.warning.is_none());
-        }
+        // Assert
+        assert!(found.pen);
+        assert!(
+            found
+                .notice
+                .as_deref()
+                .is_some_and(|n| n.contains("HUION 420 Pen") && n.contains("--tablet off")),
+            "{found:?}"
+        );
+        assert!(!absent.pen && absent.notice.is_none());
+        assert!(!unreadable.pen && unreadable.notice.is_none());
     }
 
     #[test]
     fn choose_on_and_off_force_pen_mode() {
-        // Arrange
-        let empty = Some("");
-
         // Act
-        let on = choose_str("on", empty);
-        let off = choose_str("off", Some(OWNER_DEVICES));
+        let on = choose(TabletMode::On, Some(""));
+        let off = choose(TabletMode::Off, Some(OWNER_DEVICES));
 
         // Assert
-        assert!(on.pen && on.warning.is_none());
-        assert!(on.notice.as_deref().is_some_and(|n| n.contains(TABLET_ENV)));
-        assert!(!off.pen && off.notice.is_none() && off.warning.is_none());
-    }
-
-    #[test]
-    fn choose_ignores_case_and_surrounding_space() {
-        for value in ["ON", " on ", "On\n"] {
-            assert!(choose_str(value, None).pen, "{value:?}");
-        }
-        for value in ["OFF", " off", "Off "] {
-            assert!(!choose_str(value, Some(OWNER_DEVICES)).pen, "{value:?}");
-        }
-        assert!(choose_str(" AUTO ", None).warning.is_none());
-    }
-
-    #[cfg(target_pointer_width = "64")]
-    #[test]
-    fn choose_unknown_value_warns_and_detects() {
-        for value in ["yes", "1", "pen", "of"] {
-            // Act
-            let found = choose_str(value, Some(OWNER_DEVICES));
-            let absent = choose_str(value, None);
-
-            // Assert
-            assert!(found.pen, "{value:?}");
-            assert!(!absent.pen, "{value:?}");
-            for choice in [&found, &absent] {
-                let warning = choice.warning.as_deref().unwrap_or_default();
-                assert!(warning.contains(TABLET_ENV) && warning.contains(value.trim()));
-            }
-        }
+        assert!(on.pen);
+        assert!(
+            on.notice
+                .as_deref()
+                .is_some_and(|n| n.contains("--tablet on"))
+        );
+        assert!(!off.pen && off.notice.is_none());
     }
 
     #[test]
     fn choose_on_gives_the_pen_tap_slop() {
-        assert!((choose_str("on", None).tap_slop_px() - PEN_TAP_SLOP_PX).abs() < 1e-6);
-        assert!(choose_str("off", None).tap_slop_px().abs() < f32::EPSILON);
+        assert!((choose(TabletMode::On, None).tap_slop_px() - PEN_TAP_SLOP_PX).abs() < 1e-6);
+        assert!(choose(TabletMode::Off, None).tap_slop_px().abs() < f32::EPSILON);
     }
 }

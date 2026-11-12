@@ -399,24 +399,27 @@ A printable one-page version lives in
 There is no config file: shortcuts are fixed on purpose, and colours are
 set at build time (see [Theme](#theme)).
 The command line takes a file (`draw file.draw`), `--recover [prev]`,
-`--help` and `--version`; nothing else.
+`--help`, `--version` and the troubleshooting flags below; nothing else.
+A flag takes its value as `--flag value` or `--flag=value`. An unknown
+flag or a bad value is refused with exit code 2. draw has no
+settings in environment variables.
 
 ### Debugging
 
-Environment variables exist for troubleshooting only (`draw --help` lists
-them too):
+Flags for troubleshooting only (`draw --help` lists them too):
 
-| Variable | Values | Effect |
-|----------|--------|--------|
-| `DRAW_LOG` | `off`, `error`, `warn`, `info` (default), `debug`, `trace` | Diagnostics log level |
-| `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
-| `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
-| `DRAW_BACKEND` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` stays supported (see [Window backend](#window-backend)) |
-| `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries (for instance on NixOS) |
-| `DRAW_TABLET` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
+| Flag | Values | Effect |
+|------|--------|--------|
+| `--log` | `off`, `error`, `warn`, `info` (default), `debug`, `trace` | Diagnostics log level |
+| `--msaa` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
+| `--frame-times` | none | Log how long each re-render takes |
+| `--backend` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` stays supported (see [Window backend](#window-backend)) |
+| `--skip-preflight` | none | Skip the startup check for a display and libraries (for instance on NixOS) |
+| `--tablet` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
 
 ```sh
-DRAW_MSAA=off draw
+draw --msaa off
+cargo run --release -- --frame-times
 ```
 
 ### Theme

@@ -16,14 +16,18 @@ fn args(list: &[&str]) -> Vec<OsString> {
 fn run(list: &[&str]) -> Options {
     match parse(args(list)) {
         Parsed::Run(options) => options,
-        other => panic!("{list:?} gave {other:?}"),
+        other @ (Parsed::Help | Parsed::Version | Parsed::Refused(_)) => {
+            panic!("{list:?} gave {other:?}")
+        }
     }
 }
 
 fn refused(list: &[&str]) -> String {
     match parse(args(list)) {
         Parsed::Refused(message) => message,
-        other => panic!("{list:?} gave {other:?}"),
+        other @ (Parsed::Run(_) | Parsed::Help | Parsed::Version) => {
+            panic!("{list:?} gave {other:?}")
+        }
     }
 }
 

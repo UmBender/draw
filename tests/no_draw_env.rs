@@ -38,5 +38,9 @@ fn the_binary_reads_no_draw_variable() {
     }
 
     // Assert
-    assert!(hits.is_empty(), "DRAW_ variables read:\n{}", hits.join("\n"));
+    assert!(
+        hits.is_empty(),
+        "DRAW_ variables read:\n{}",
+        hits.join("\n")
+    );
 }

@@ -30,7 +30,6 @@ use macroquad::window::{
 };
 
 use std::collections::HashSet;
-use std::ffi::OsStr;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -66,6 +65,7 @@ use crate::shell::input_map::{
     wants_grid_clipboard,
 };
 use crate::shell::minimap::{self, OverviewKey};
+use crate::shell::options::Options;
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::sheet;
 use crate::shell::tablet;
@@ -78,15 +78,9 @@ const CARET_WIDTH_PX: f32 = 2.0;
 /// Viewport sizes closer than this many pixels count as unchanged.
 const RESIZE_EPS_PX: f32 = 0.5;
 
-/// MSAA samples per pixel for the cached frame unless `DRAW_MSAA` says
+/// MSAA samples per pixel for the cached frame unless `--msaa` says
 /// otherwise (ADR-T15-1).
 pub const DEFAULT_MSAA_SAMPLES: i32 = 4;
-
-/// Environment variable overriding [`DEFAULT_MSAA_SAMPLES`].
-pub const MSAA_ENV: &str = "DRAW_MSAA";
-
-/// Environment variable that turns on the frame timer (T24 AC-1).
-pub const FRAME_TIMES_ENV: &str = "DRAW_FRAME_TIMES";
 
 /// The embedded monospaced font for text blocks and labels (ADR-T29-1).
 pub const TEXT_FONT: &[u8] = include_bytes!("../../assets/fonts/AdwaitaMono-Regular-subset.ttf");
@@ -97,35 +91,6 @@ pub const MATH_FONT: &[u8] = include_bytes!("../../assets/fonts/LatinModernMath-
 /// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
 /// so nearest keeps it sharp.
 const FRAME_FILTER: FilterMode = FilterMode::Nearest;
-
-/// Sample count for a `DRAW_MSAA` value: `1`, `0` or `off` disable
-/// multisampling, `2`, `4` or `8` select that count, anything else (or unset)
-/// gives [`DEFAULT_MSAA_SAMPLES`].
-#[must_use]
-pub fn msaa_samples(setting: Option<&str>) -> i32 {
-    let Some(setting) = setting else {
-        return DEFAULT_MSAA_SAMPLES;
-    };
-    match setting.trim().to_ascii_lowercase().as_str() {
-        "0" | "1" | "off" => 1,
-        "2" => 2,
-        "4" => 4,
-        "8" => 8,
-        _ => DEFAULT_MSAA_SAMPLES,
-    }
-}
-
-/// Whether a `DRAW_FRAME_TIMES` value turns the frame timer on: `1`, `on`,
-/// `true` or `yes`, in any case and trimmed. Unset or anything else is off.
-#[must_use]
-pub fn frame_timing_enabled(setting: Option<&str>) -> bool {
-    setting.is_some_and(|setting| {
-        matches!(
-            setting.trim().to_ascii_lowercase().as_str(),
-            "1" | "on" | "true" | "yes"
-        )
-    })
-}
 
 /// The frame timer's line for one re-render: which layers, CPU time in
 /// milliseconds, the frame's text work if given (T32 AC-1) and the number
@@ -389,9 +354,6 @@ pub fn is_dump_chord(event: &InputEvent) -> bool {
 /// [`DUMP_CHORD`] (ADR-T74-1).
 pub const SNAPSHOT_CHORD: KeyChord = KeyChord::ctrl_shift(Key::S);
 
-/// Environment variable naming a snapshot file to start from.
-pub const SNAPSHOT_ENV: &str = "DRAW_SNAPSHOT";
-
 /// Whether `event` is a press of [`SNAPSHOT_CHORD`].
 #[must_use]
 pub fn is_snapshot_chord(event: &InputEvent) -> bool {
@@ -408,27 +370,26 @@ pub fn snapshot_path(state_dir: &Path, unix_secs: u64) -> PathBuf {
     ))
 }
 
-/// The snapshot to start from, given the [`SNAPSHOT_ENV`] value and a way
-/// to read files: the snapshot, or an error line for the log. Unset or
-/// empty starts empty without an error.
+/// The snapshot to start from, given the `--snapshot` path and a way to
+/// read files: the snapshot, or an error line for the log. No path starts
+/// empty without an error.
 pub fn startup_snapshot(
-    value: Option<&OsStr>,
+    path: Option<&Path>,
     read: impl FnOnce(&Path) -> std::io::Result<String>,
 ) -> (Option<Snapshot>, Option<String>) {
-    let Some(value) = value.filter(|v| !v.is_empty()) else {
+    let Some(path) = path else {
         return (None, None);
     };
-    let path = Path::new(value);
     let shown = path.display();
     match read(path).map(|text| Snapshot::parse(&text)) {
         Ok(Ok(snapshot)) => (Some(snapshot), None),
         Ok(Err(err)) => (
             None,
-            Some(format!("{SNAPSHOT_ENV}={shown}: {err}; starting empty")),
+            Some(format!("--snapshot {shown}: {err}; starting empty")),
         ),
         Err(err) => (
             None,
-            Some(format!("{SNAPSHOT_ENV}={shown}: {err}; starting empty")),
+            Some(format!("--snapshot {shown}: {err}; starting empty")),
         ),
     }
 }
@@ -522,25 +483,17 @@ pub fn on_fatal_signal(signal: FatalSignal) {
     }
 }
 
-/// Window settings used by `main`. Reads [`backend::BACKEND_ENV`] and
-/// prints its warning and the X11 deprecation notice on stderr
-/// (ADR-T28-1, ADR-T46-1).
+/// Window settings used by `main` for the chosen `backend` (ADR-T28-1,
+/// ADR-T46-1).
 #[must_use]
-pub fn window_conf() -> WindowSettings {
-    let choice = backend::from_env();
-    let warning = choice.warning.as_deref().map(|line| (Level::Warn, line));
-    let notice = choice.notice.as_deref().map(|line| (Level::Info, line));
-    for (level, line) in warning.into_iter().chain(notice) {
-        eprintln!("{line}");
-        diag::log(level, line);
-    }
+pub fn window_conf(backend: Backend) -> WindowSettings {
     WindowSettings {
         window_title: "draw".to_owned(),
         window_width: 1280,
         window_height: 800,
         window_resizable: true,
         high_dpi: true,
-        backend: choice.backend,
+        backend,
     }
 }
 
@@ -565,14 +518,17 @@ fn load_fonts() {
     }
 }
 
-/// The editor to start with: `editor`, unless `launch` or the environment
+/// The editor to start with: `editor`, unless `launch` or `--snapshot`
 /// names a snapshot that loads (ADR-T94-1).
-fn restored_editor(editor: Editor, launch: &Launch, state_dir: Option<&std::path::Path>) -> Editor {
+fn restored_editor(
+    editor: Editor,
+    launch: &Launch,
+    snapshot: Option<&Path>,
+    state_dir: Option<&Path>,
+) -> Editor {
     // A snapshot replaces the whole state, its switches included (T74).
     let (snapshot, error) = if *launch == Launch::Normal {
-        startup_snapshot(std::env::var_os(SNAPSHOT_ENV).as_deref(), |path| {
-            std::fs::read_to_string(path)
-        })
+        startup_snapshot(snapshot, |path| std::fs::read_to_string(path))
     } else {
         autosave::recover(launch, state_dir)
     };
@@ -583,7 +539,7 @@ fn restored_editor(editor: Editor, launch: &Launch, state_dir: Option<&std::path
     if let Some(snapshot) = snapshot {
         let restored = Editor::from_snapshot(snapshot);
         let source = if *launch == Launch::Normal {
-            SNAPSHOT_ENV
+            "--snapshot"
         } else {
             "autosave"
         };
@@ -593,39 +549,51 @@ fn restored_editor(editor: Editor, launch: &Launch, state_dir: Option<&std::path
     editor
 }
 
-/// Runs the application until the window is closed. `launch` says whether
-/// to start from an autosave (ADR-T94-1).
-pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
-    load_fonts();
-    let subscriber = register_input_subscriber();
+/// The input collector for `backend` and the pen mode of `tablet`: wheel
+/// units per notch, and pen tip bounces joined into the stroke
+/// (ADR-T34-1, ADR-T42-1).
+fn input_collector(backend: Backend, tablet: &tablet::Choice) -> Collector {
     let mut collector = Collector::new();
     collector.set_wheel_units_per_notch(backend::wheel_units_per_notch(
-        backend::from_env().backend,
+        backend,
         std::env::var_os(backend::WAYLAND_DISPLAY_ENV).as_deref(),
     ));
-    // Pen tablet mode is read once (ADR-T34-1).
-    let tablet = tablet::from_env();
-    for line in tablet.warning.iter().chain(&tablet.notice) {
+    if let Some(line) = &tablet.notice {
         eprintln!("{line}");
     }
     if tablet.pen {
-        // Pen tip bounces join the stroke (ADR-T42-1).
         collector.set_bounce_window(PEN_BOUNCE_WINDOW);
     }
+    collector
+}
+
+/// Runs the application until the window is closed, as `options` say, on
+/// `backend` and with the pen mode of `tablet` (ADR-T94-1, ADR-T154-1).
+pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
+    let Options {
+        launch,
+        file: file_arg,
+        snapshot,
+        msaa_samples,
+        frame_times,
+        e2e: e2e_files,
+        ..
+    } = options;
+    load_fonts();
+    let subscriber = register_input_subscriber();
+    let mut collector = input_collector(backend, &tablet);
     let mut editor = Editor::new().with_tap_slop(tablet.tap_slop_px());
     let state_dir = crate::shell::crash::state_dir(
         std::env::var_os("XDG_STATE_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
     );
-    editor = restored_editor(editor, &launch, state_dir.as_deref());
+    editor = restored_editor(editor, &launch, snapshot.as_deref(), state_dir.as_deref());
     let mut save_path = file_arg.and_then(|path| open_file_argument(&mut editor, &path));
     let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
-    let setting = std::env::var(MSAA_ENV).ok();
-    let timed = frame_timing_enabled(std::env::var(FRAME_TIMES_ENV).ok().as_deref());
-    let mut frame = CachedFrame::new(msaa_samples(setting.as_deref()), timed);
+    let mut frame = CachedFrame::new(msaa_samples, frame_times);
     let mut recorder = FrameRecorder::new(&editor);
-    // Inert unless the end-to-end suite sets its variables (ADR-T75-1).
-    let mut hooks = e2e::Hooks::from_env();
+    // Inert unless the end-to-end suite gives its files (ADR-T75-1).
+    let mut hooks = e2e::Hooks::from_files(&e2e_files);
     let mut export_pending = false;
     let mut svg_writes: Vec<mpsc::Receiver<Result<PathBuf, ExportError>>> = Vec::new();
     let mut laser = LaserLayer::new();
@@ -1505,29 +1473,9 @@ mod tests {
     }
 
     #[test]
-    fn draw_experimental_is_not_read_or_documented() {
-        // Arrange: T52 removed the switch; spelled in two parts so this
-        // test does not match itself.
-        let name = concat!("DRAW_", "EXPERIMENTAL");
-        let reads = [
-            concat!("EXPERIMENTAL", "_ENV"),
-            concat!("with_", "experimental"),
-        ];
-        let app = include_str!("app.rs");
-        let readme = include_str!("../../README.md");
-
-        // Act / Assert
-        for read in reads.into_iter().chain([name]) {
-            assert!(!app.contains(read), "the shell still uses {read}");
-        }
-        assert!(!readme.contains(name), "the README still lists {name}");
-        assert!(!readme.contains("### Experimental"));
-    }
-
-    #[test]
     fn window_conf_sets_wm_class() {
         // Arrange / Act
-        let conf = Conf::from(window_conf());
+        let conf = Conf::from(window_conf(Backend::X11));
 
         // Assert
         assert_eq!(conf.miniquad_conf.platform.linux_wm_class, WM_CLASS);
@@ -1539,7 +1487,7 @@ mod tests {
         // Arrange
         let settings = WindowSettings {
             backend: Backend::X11,
-            ..window_conf()
+            ..window_conf(Backend::X11)
         };
 
         // Act
@@ -1556,7 +1504,7 @@ mod tests {
         // Arrange
         let settings = WindowSettings {
             backend: Backend::Wayland,
-            ..window_conf()
+            ..window_conf(Backend::X11)
         };
 
         // Act
@@ -1592,41 +1540,8 @@ mod tests {
     }
 
     #[test]
-    fn msaa_samples_unset_is_default() {
-        assert_eq!(msaa_samples(None), DEFAULT_MSAA_SAMPLES);
+    fn default_msaa_is_four_samples() {
         assert_eq!(DEFAULT_MSAA_SAMPLES, 4);
-    }
-
-    #[test]
-    fn msaa_samples_valid_counts_are_used() {
-        // Arrange
-        let cases = [("2", 2), ("4", 4), ("8", 8), (" 8 ", 8)];
-
-        for (setting, expected) in cases {
-            // Act
-            let samples = msaa_samples(Some(setting));
-
-            // Assert
-            assert_eq!(samples, expected, "setting {setting:?}");
-        }
-    }
-
-    #[test]
-    fn msaa_samples_off_values_disable() {
-        for setting in ["1", "0", "off", "OFF", " Off\n"] {
-            assert_eq!(msaa_samples(Some(setting)), 1, "setting {setting:?}");
-        }
-    }
-
-    #[test]
-    fn msaa_samples_invalid_is_default() {
-        for setting in ["", "3", "16", "-4", "four", "4x", "NaN"] {
-            assert_eq!(
-                msaa_samples(Some(setting)),
-                DEFAULT_MSAA_SAMPLES,
-                "setting {setting:?}"
-            );
-        }
     }
 
     #[test]
@@ -1661,25 +1576,6 @@ mod tests {
     }
 
     // ---- T24 AC-1 frame timer ---------------------------------------------
-
-    #[test]
-    fn frame_timing_enabled_unset_is_off() {
-        assert!(!frame_timing_enabled(None));
-    }
-
-    #[test]
-    fn frame_timing_enabled_on_values_enable() {
-        for setting in ["1", "on", "ON", "true", "Yes", " yes\n"] {
-            assert!(frame_timing_enabled(Some(setting)), "setting {setting:?}");
-        }
-    }
-
-    #[test]
-    fn frame_timing_enabled_other_values_disable() {
-        for setting in ["", "0", "off", "false", "no", "2", "enable"] {
-            assert!(!frame_timing_enabled(Some(setting)), "setting {setting:?}");
-        }
-    }
 
     #[test]
     fn frame_log_line_names_layers_time_and_shapes() {
@@ -2142,12 +2038,6 @@ mod tests {
 
     proptest! {
         #[test]
-        fn msaa_samples_is_always_supported_count(setting in ".*") {
-            let samples = msaa_samples(Some(&setting));
-            prop_assert!([1, 2, 4, 8].contains(&samples), "{samples}");
-        }
-
-        #[test]
         fn blit_rect_maps_corners_through_cameras(
             ox in -1e4f32..1e4, oy in -1e4f32..1e4, z0 in ZOOM_MIN..ZOOM_MAX,
             px in -1e4f32..1e4, py in -1e4f32..1e4, z1 in ZOOM_MIN..ZOOM_MAX,
@@ -2434,10 +2324,7 @@ mod tests {
         let read = |_: &std::path::Path| -> std::io::Result<String> { panic!("nothing to read") };
 
         // Act / Assert
-        assert_eq!(SNAPSHOT_ENV, "DRAW_SNAPSHOT");
         let (snapshot, error) = startup_snapshot(None, read);
-        assert!(snapshot.is_none() && error.is_none());
-        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("")), read);
         assert!(snapshot.is_none() && error.is_none());
     }
 
@@ -2449,13 +2336,13 @@ mod tests {
         };
 
         // Act
-        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("/no/such.snap")), read);
+        let (snapshot, error) = startup_snapshot(Some(Path::new("/no/such.snap")), read);
 
         // Assert
         assert!(snapshot.is_none());
         let error = error.unwrap_or_default();
         assert!(error.contains("/no/such.snap"), "{error}");
-        assert!(error.contains("DRAW_SNAPSHOT"), "{error}");
+        assert!(error.contains("--snapshot"), "{error}");
     }
 
     #[test]
@@ -2469,7 +2356,7 @@ mod tests {
         };
 
         // Act
-        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("bad.snap")), read);
+        let (snapshot, error) = startup_snapshot(Some(Path::new("bad.snap")), read);
 
         // Assert
         assert!(snapshot.is_none());
@@ -2489,7 +2376,7 @@ mod tests {
         let read = move |_: &std::path::Path| -> std::io::Result<String> { Ok(text.clone()) };
 
         // Act
-        let (snapshot, error) = startup_snapshot(Some(std::ffi::OsStr::new("ok.snap")), read);
+        let (snapshot, error) = startup_snapshot(Some(Path::new("ok.snap")), read);
 
         // Assert
         assert!(error.is_none(), "{error:?}");

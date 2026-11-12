@@ -97,6 +97,108 @@ pub enum Parsed {
 /// `--version` win over everything else, even a bad value.
 #[must_use]
 pub fn parse(args: impl IntoIterator<Item = OsString>) -> Parsed {
-    let _ = args;
-    todo!("T154: parse the flags")
+    let args: Vec<OsString> = args.into_iter().collect();
+    if let Some(early) = args.iter().find_map(|arg| match arg.to_str() {
+        Some("--help") => Some(Parsed::Help),
+        Some("--version") => Some(Parsed::Version),
+        _ => None,
+    }) {
+        return early;
+    }
+    match read(&args) {
+        Ok(options) => Parsed::Run(options),
+        Err(message) => Parsed::Refused(message),
+    }
+}
+
+/// The flags in `args`, or why one is refused.
+fn read(args: &[OsString]) -> Result<Options, String> {
+    let mut options = Options::default();
+    // What `--recover` and the file argument read: the words that are
+    // neither a flag nor a flag's value.
+    let mut rest: Vec<OsString> = Vec::new();
+    let mut words = args.iter().peekable();
+    while let Some(arg) = words.next() {
+        let text = arg.to_string_lossy();
+        let Some(flag) = text.strip_prefix("--").filter(|name| !name.is_empty()) else {
+            if text.starts_with('-') && text.len() > 1 {
+                return Err(format!("unknown option `{text}`"));
+            }
+            rest.push(arg.clone());
+            continue;
+        };
+        let (name, inline) = match flag.split_once('=') {
+            Some((name, value)) => (name, Some(OsString::from(value))),
+            None => (flag, None),
+        };
+        match name {
+            "frame-times" | "skip-preflight" => {
+                if inline.is_some() {
+                    return Err(format!("`--{name}` takes no value"));
+                }
+                if name == "frame-times" {
+                    options.frame_times = true;
+                } else {
+                    options.skip_preflight = true;
+                }
+            }
+            "recover" => {
+                rest.push(OsString::from("--recover"));
+                let value = inline.or_else(|| {
+                    words
+                        .next_if(|next| !next.to_string_lossy().starts_with('-'))
+                        .cloned()
+                });
+                rest.extend(value);
+            }
+            "log" | "msaa" | "backend" | "tablet" | "snapshot" | "e2e-dump" | "e2e-idle"
+            | "e2e-clipboard" => {
+                let value = inline
+                    .or_else(|| words.next().cloned())
+                    .ok_or_else(|| format!("`--{name}` needs a value"))?;
+                apply(&mut options, name, &value)?;
+            }
+            _ => return Err(format!("unknown option `--{flag}`")),
+        }
+    }
+    options.launch = Launch::from_args(rest.iter().cloned());
+    options.file = crate::shell::file::path_from_args(rest);
+    Ok(options)
+}
+
+/// Sets the option `name` from `value`, or says why the value is not valid.
+fn apply(options: &mut Options, name: &str, value: &OsString) -> Result<(), String> {
+    let text = value.to_string_lossy();
+    let bad = |expected: &str| format!("`--{name}`: unknown value `{text}` (expected {expected})");
+    match name {
+        "log" => {
+            options.log = Level::from_name(&text)
+                .ok_or_else(|| bad("off, error, warn, info, debug or trace"))?;
+        }
+        "msaa" => {
+            options.msaa_samples = match text.trim().to_ascii_lowercase().as_str() {
+                "off" | "1" => 1,
+                "2" => 2,
+                "4" => 4,
+                "8" => 8,
+                _ => return Err(bad("off, 2, 4 or 8")),
+            };
+        }
+        "backend" => {
+            options.backend = Some(Backend::from_name(&text).ok_or_else(|| bad("wayland or x11"))?);
+        }
+        "tablet" => {
+            options.tablet = match text.trim().to_ascii_lowercase().as_str() {
+                "auto" => TabletMode::Auto,
+                "on" => TabletMode::On,
+                "off" => TabletMode::Off,
+                _ => return Err(bad("auto, on or off")),
+            };
+        }
+        "snapshot" => options.snapshot = Some(PathBuf::from(value)),
+        "e2e-dump" => options.e2e.dump = Some(PathBuf::from(value)),
+        "e2e-idle" => options.e2e.idle = Some(PathBuf::from(value)),
+        _ => options.e2e.clipboard = Some(PathBuf::from(value)),
+    }
+    Ok(())
 }

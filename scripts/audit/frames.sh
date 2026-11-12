@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Frame-time baseline: prints how to run the ADR-T24-5 scene and, when a
-# display and a saved scene are given, runs the app with DRAW_FRAME_TIMES=1.
+# display and a saved scene are given, runs the app with --frame-times.
 # Needs a real window; on the owner's i5-8250U this fills the report table.
 # Usage: scripts/audit/frames.sh [scene.draw]
 set -euo pipefail
@@ -12,4 +12,4 @@ if [ -z "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ]; then
 fi
 cargo build --release >/dev/null
 echo "Draw on the scene, pan, zoom and quit; frame times follow (stderr)."
-DRAW_FRAME_TIMES=1 target/release/draw ${1:+"$1"} 2>&1 >/dev/null | tail -n 40
+target/release/draw --frame-times ${1:+"$1"} 2>&1 >/dev/null | tail -n 40

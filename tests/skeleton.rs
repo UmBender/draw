@@ -35,7 +35,7 @@ fn all_modules_are_reachable() {
 
 #[test]
 fn window_conf_has_expected_title_and_size() {
-    let conf = draw::shell::app::window_conf();
+    let conf = draw::shell::app::window_conf(draw::shell::backend::Backend::X11);
 
     assert_eq!(conf.window_title, "draw");
     assert_eq!((conf.window_width, conf.window_height), (1280, 800));
