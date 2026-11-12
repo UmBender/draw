@@ -602,6 +602,51 @@ fn session_guard(
     })
 }
 
+/// The display server a run drives (T129).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Backend {
+    /// The private headless sway.
+    Wayland,
+    /// The private Xvfb.
+    X11,
+}
+
+impl Backend {
+    /// The backend called `name` by `--backend`.
+    fn from_name(name: &str) -> Result<Self, String> {
+        todo!("{name}")
+    }
+
+    /// The backend of this run, from `DRAW_E2E_BACKEND`; Wayland if unset.
+    fn from_env() -> Result<Self, String> {
+        todo!()
+    }
+}
+
+/// The golden `name` of a case: the backend's own file if it exists, else
+/// the shared one.
+fn golden_path(source: &Path, name: &str, backend: Backend) -> PathBuf {
+    todo!("{source:?} {name} {backend:?}")
+}
+
+/// The private X11 session, checked to be the script's own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct X11Guard {
+    runtime: PathBuf,
+    display: String,
+    authority: PathBuf,
+}
+
+/// The X11 session's display and authority file, or why they must not be
+/// used. Nothing may be spawned before this succeeds (ADR-T75-1).
+fn x11_guard(
+    runtime: Option<OsString>,
+    display: Option<OsString>,
+    authority: Option<OsString>,
+) -> Result<X11Guard, String> {
+    todo!("{runtime:?} {display:?} {authority:?}")
+}
+
 /// One Wayland protocol message: header and payload.
 fn wire(object: u32, opcode: u32, payload: &[u8]) -> Vec<u8> {
     let size = u32::try_from(8 + payload.len()).unwrap_or(u32::MAX);
