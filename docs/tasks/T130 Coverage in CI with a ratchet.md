@@ -1,7 +1,7 @@
 ---
 id: T130
 title: Coverage in CI with a ratchet
-status: in-progress
+status: review
 wave: 65
 branch: task/T130-coverage-in-ci-with-a-ratchet
 depends_on: [T127]
@@ -45,10 +45,12 @@ A module is a top-level directory of `src/` (`core`, `shell`); its figure is lin
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T130): specify coverage with a ratchet`
-- [ ] tests — `test(T130): add failing tests for the ratchet`
-- [ ] behaviour — `feat(T130): measure coverage in CI`
-- [ ] docs — `docs(T130): update the quality gates`
+- [x] tests — `test(T130): add failing tests for the ratchet`
+- [x] behaviour — `feat(T130): measure coverage in CI` (the Quality Gates edit went in here, so `quality_gates_name_the_coverage_ratchet` is green in this commit)
+- [x] docs — `docs(T130): update the quality gates` (task note only)
 
 ## Log
 
+- 2026-11-12 — status review. No models step (no new types) and no quality commit (`scripts/check.sh` green with no change). No feature or tutorial note (task has none).
+- 2026-11-12 — `coverage-baseline.toml` holds the T127 figures (core 98.6, shell 80.2), not a fresh run. `scripts/coverage.sh` is mode 644 (chmod refused in the batch): tests and CI call it with `bash`; run `chmod +x scripts/coverage.sh` if wanted. Owner: confirm the `coverage` job runs on GitHub (it installs cargo-llvm-cov, slow) and that a real `bash scripts/coverage.sh` passes against the baseline.
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
