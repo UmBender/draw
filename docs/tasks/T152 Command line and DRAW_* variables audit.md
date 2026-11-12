@@ -1,7 +1,7 @@
 ---
 id: T152
 title: Command line and DRAW_* variables audit
-status: todo
+status: review
 wave: 72
 branch: task/T152-command-line-and-draw-variables-audit
 depends_on: [T128, T127]
@@ -24,12 +24,18 @@ Only basic flags remain, and the `DRAW_*` variables are for debugging.
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
-
 - **AC-1** — `--version` and `--help` are the only flags besides the `draw file.draw` argument and `--recover`; `--help` lists the debugging variables in a 'Debugging' section.
-  Tests: `help_lists_debug_variables`, `unknown_flag_is_refused`.
+  Tests (in `src/main.rs`): `help_lists_debug_variables`,
+  `version_prints_package_version`, `unknown_flag_is_refused`,
+  `known_flags_and_files_are_accepted`. `--help`/`--version` act before the
+  preflight, so they work without a display; a refused flag exits with 2.
 - **AC-2** — The user documentation mentions the variables only in a Debugging section.
-  Test: a docs guard.
+  Test: `readme_names_variables_only_in_debugging_section` (reads `README.md`).
+- **AC-3** — `DRAW_EXPERIMENTAL` no longer exists in the code (nothing to
+  remove: T128 already dropped it). `DRAW_TABLET` stays, see
+  [[ADR-T152-1 Keep DRAW_TABLET as a debugging variable]]; `DRAW_MSAA` is
+  listed as a debugging variable until T146 decides.
+  Test: `help_lists_debug_variables` checks the list.
 
 ## Out of scope
 
@@ -37,16 +43,17 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `crates/draw/src/main.rs`, `README.md`, `docs/features/**` (mentions only)
+- `src/main.rs` (the note said `crates/draw/src/main.rs`; the root package kept its place in T132), `README.md`, `docs/features/**` (mentions only)
 - this note
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T152): specify the command line`
-- [ ] tests — `test(T152): add failing tests for the flags`
-- [ ] behaviour — `feat(T152): trim the command line`
-- [ ] docs — `docs(T152): move the variables to a Debugging section`
+- [x] spec — `docs(T152): specify the command line`
+- [x] tests — `test(T152): add failing tests for the flags`
+- [x] behaviour — `feat(T152): trim the command line`
+- [x] docs — `docs(T152): move the variables to a Debugging section`
 
 ## Log
 
+- 2026-11-12 — done in the batch run. The task note's `crates/draw/src/main.rs` is `src/main.rs`. `DRAW_EXPERIMENTAL` was already gone (T128). `DRAW_TABLET` kept: UNATTENDED CHOICE, [[ADR-T152-1 Keep DRAW_TABLET as a debugging variable]]. `DRAW_MSAA` listed as debugging until T146. The README docs commit came before the code commit so the README guard test is green when the code lands; models and behaviour are one commit (small task). `docs/features/**` are developer notes and were not touched. Owner: read `draw --help`.
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
