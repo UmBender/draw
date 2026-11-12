@@ -1,0 +1,22 @@
+[package]
+name = "draw-core"
+version = "1.6.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Pure editing logic of draw: no window, no GPU (ADR-T132-1)"
+license = "MIT"
+publish = false
+repository = "https://github.com/UmBender/draw"
+
+[dependencies]
+draw-types = { path = "../draw-types" }
+# Same versions the root package used: no second copy (ADR-T32-1, ADR-T92-1, ADR-T114-1).
+fontdue = "0.9"
+png = "0.17"
+ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+proptest = "1"
+
+[lints]
+workspace = true

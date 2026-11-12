@@ -71,9 +71,9 @@ gate() {
 }
 
 gate "format" cargo fmt --all -- --check
-gate "clippy" cargo clippy --all-targets -- -D warnings
-gate "tests" cargo test --all-targets
-RUSTDOCFLAGS="-D warnings" gate "docs" cargo doc --no-deps
+gate "clippy" cargo clippy --workspace --all-targets -- -D warnings
+gate "tests" cargo test --workspace --all-targets
+RUSTDOCFLAGS="-D warnings" gate "docs" cargo doc --workspace --no-deps
 
 if $fuzz; then
     if [[ -f tests/fuzz.rs ]]; then

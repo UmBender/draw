@@ -7,7 +7,7 @@ pub mod command_palette;
 pub mod document;
 pub mod editor;
 pub mod file;
-pub mod geom;
+pub use draw_types::geom;
 pub mod history;
 pub mod input;
 pub mod keymap;

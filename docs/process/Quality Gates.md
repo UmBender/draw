@@ -84,4 +84,4 @@ GitHub Actions runs the same gates on every push and pull request
 Follow the `rust-skills` skill. Most relevant categories for this project:
 `own-`, `err-`, `mem-`, `api-`, `num-` (floats/NaN!), `type-`, `pat-`,
 `name-`, `test-`, `doc-`, `perf-`, `proj-`, `lint-`, `anti-`. Not relevant:
-`async-`, `conc-`, `serde-`, `unsafe-` (no `unsafe` allowed at all).
+`async-`, `conc-`, `serde-`, `unsafe-` (`unsafe` only where [[ADR-T132-1 Workspace of five crates with unsafe levels]] lists it, checked by `tests/unsafe_levels.rs`; dependencies are checked by `tests/deps.rs`).

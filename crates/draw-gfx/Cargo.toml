@@ -1,0 +1,15 @@
+[package]
+name = "draw-gfx"
+version = "1.6.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Retained renderer of draw over an abstract GPU (ADR-T132-1)"
+license = "MIT"
+publish = false
+repository = "https://github.com/UmBender/draw"
+
+[dependencies]
+draw-types = { path = "../draw-types" }
+
+[lints]
+workspace = true

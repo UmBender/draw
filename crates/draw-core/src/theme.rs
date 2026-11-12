@@ -391,27 +391,37 @@ mod tests {
     #[test]
     fn guard_finds_no_colour_literal_outside_theme() {
         // Arrange
-        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let theme = src.join("theme.rs");
+        // The workspace root is two levels above this crate (ADR-T132-1).
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace = manifest.join("../..");
         let mut files = Vec::new();
-        rust_files(&src, &mut files);
+        rust_files(&workspace.join("src"), &mut files);
+        let crates =
+            fs::read_dir(workspace.join("crates")).unwrap_or_else(|e| panic!("crates: {e}"));
+        for entry in crates {
+            let dir = entry.unwrap_or_else(|e| panic!("crates: {e}")).path();
+            rust_files(&dir.join("src"), &mut files);
+        }
         files.sort();
 
         // Act
         let mut found = Vec::new();
-        for file in files.iter().filter(|f| **f != theme) {
+        for file in files
+            .iter()
+            .filter(|f| !f.ends_with("draw-core/src/theme.rs"))
+        {
             let source =
                 fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
             for (line, rule) in colour_literals(&source) {
-                let shown = file.strip_prefix(&src).unwrap_or(file).display();
-                found.push(format!("src/{shown}:{line}: {rule}"));
+                let shown = file.strip_prefix(&workspace).unwrap_or(file).display();
+                found.push(format!("{shown}:{line}: {rule}"));
             }
         }
 
         // Assert
         assert!(
             found.is_empty(),
-            "colours belong in src/theme.rs (ADR-T51-1):\n{}",
+            "colours belong in crates/draw-core/src/theme.rs (ADR-T51-1):\n{}",
             found.join("\n")
         );
     }
