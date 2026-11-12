@@ -51,3 +51,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — BLOCKED (batch): Files owned names `crates/draw/src/app.rs`, which does not exist (the shell is `src/shell/app.rs`). Removing the four `take_*` methods also needs `crates/draw-core/src/core/editor.rs`, and the laser and autosave timers live in `crates/draw-core/src/core/laser.rs` and `src/shell/autosave.rs`, all outside the owned paths. Recommended fix: amend Files owned (as for T135) to `machine/**`, `core/editor.rs`, `core/laser.rs`, `src/shell/app.rs`, `src/shell/autosave.rs`, then re-run.
