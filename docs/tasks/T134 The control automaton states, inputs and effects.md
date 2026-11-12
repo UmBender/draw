@@ -1,7 +1,7 @@
 ---
 id: T134
 title: The control automaton states, inputs and effects
-status: review
+status: done
 wave: 66
 branch: task/T134-the-control-automaton-states-inputs-effe
 depends_on: [T132]

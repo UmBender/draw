@@ -1,7 +1,7 @@
 ---
 id: T135
 title: Automaton modal states, pages, camera and selection
-status: review
+status: done
 wave: 67
 branch: task/T135-automaton-modal-states-pages-camera-and-
 depends_on: [T133, T134]

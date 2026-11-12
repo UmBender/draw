@@ -1,7 +1,7 @@
 ---
 id: T137
 title: Automaton effects queue and time as an input
-status: review
+status: done
 wave: 67
 branch: task/T137-automaton-effects-queue-and-time-as-an-i
 depends_on: [T133, T134]

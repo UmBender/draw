@@ -17,6 +17,16 @@ All notable changes to draw are listed here. The format follows
 - The code is a cargo workspace of five crates (`draw-types`, `draw-core`,
   `draw-gfx`, `draw-sys` and `draw`); the compiler enforces where `unsafe`
   may appear, and the module paths and the binary are unchanged.
+- `draw --help` and `--version` answer before anything else starts, unknown
+  flags are refused with exit code 2, and the `DRAW_*` variables are
+  documented in a Debugging section of the README.
+- The TeX code is split into five modules under `core/tex/`; the output is
+  unchanged.
+- Inside the core, lengths, zoom and ids have their own types, and a new
+  control automaton (`machine/`) owns the modal state, the pages, the view
+  and the gestures; the editor queues effects that the shell carries out,
+  and the core never reads the clock. A model-based test checks the
+  automaton against a reference model.
 - CI measures line coverage and fails when a module drops below its
   recorded value.
 - The menus have a new look, after the status bar: the tool strip is made of

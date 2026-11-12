@@ -1,7 +1,7 @@
 ---
 id: T152
 title: Command line and DRAW_* variables audit
-status: review
+status: done
 wave: 72
 branch: task/T152-command-line-and-draw-variables-audit
 depends_on: [T128, T127]

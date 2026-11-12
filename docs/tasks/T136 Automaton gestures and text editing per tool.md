@@ -1,7 +1,7 @@
 ---
 id: T136
 title: Automaton gestures and text editing per tool
-status: review
+status: done
 wave: 67
 branch: task/T136-automaton-gestures-and-text-editing-per-
 depends_on: [T133, T134]

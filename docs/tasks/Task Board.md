@@ -531,13 +531,13 @@ flowchart TD
 | [[T130 Coverage in CI with a ratchet]] | done | T127 | `task/T130-coverage-in-ci-with-a-ratchet` |
 | [[T131 No dynamic dispatch and stricter lints]] | done | T127 | `task/T131-no-dynamic-dispatch-and-stricter-lints` |
 | [[T132 Workspace split with unsafe levels]] | done | T131 | `task/T132-workspace-split-with-unsafe-levels` |
-| [[T133 Typed units and ids]] | todo | T132 | `task/T133-typed-units-and-ids` |
-| [[T134 The control automaton states, inputs and effects]] | todo | T132 | `task/T134-the-control-automaton-states-inputs-effe` |
-| [[T135 Automaton modal states, pages, camera and selection]] | todo | T133, T134 | `task/T135-automaton-modal-states-pages-camera-and-` |
-| [[T136 Automaton gestures and text editing per tool]] | todo | T133, T134 | `task/T136-automaton-gestures-and-text-editing-per-` |
-| [[T137 Automaton effects queue and time as an input]] | todo | T133, T134 | `task/T137-automaton-effects-queue-and-time-as-an-i` |
-| [[T138 Model-based tests of the automaton]] | todo | T135, T136, T137 | `task/T138-model-based-tests-of-the-automaton` |
-| [[T139 Split tex.rs into modules]] | todo | T132 | `task/T139-split-tex-rs-into-modules` |
+| [[T133 Typed units and ids]] | done | T132 | `task/T133-typed-units-and-ids` |
+| [[T134 The control automaton states, inputs and effects]] | done | T132 | `task/T134-the-control-automaton-states-inputs-effe` |
+| [[T135 Automaton modal states, pages, camera and selection]] | done | T133, T134 | `task/T135-automaton-modal-states-pages-camera-and-` |
+| [[T136 Automaton gestures and text editing per tool]] | done | T133, T134 | `task/T136-automaton-gestures-and-text-editing-per-` |
+| [[T137 Automaton effects queue and time as an input]] | done | T133, T134 | `task/T137-automaton-effects-queue-and-time-as-an-i` |
+| [[T138 Model-based tests of the automaton]] | done | T135, T136, T137 | `task/T138-model-based-tests-of-the-automaton` |
+| [[T139 Split tex.rs into modules]] | done | T132 | `task/T139-split-tex-rs-into-modules` |
 | [[T140 Platform and Gpu traits with recording interpreters]] | todo | T132, T137 | `task/T140-platform-and-gpu-traits-with-recording-i` |
 | [[T141 Fuzz of the shell through the recording platform]] | todo | T140 | `task/T141-fuzz-of-the-shell-through-the-recording-` |
 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] | todo | T132, T140 | `task/T142-draw-sys-foundation-dlopen-safe-wrappers` |
@@ -550,4 +550,4 @@ flowchart TD
 | [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
 | [[T151 Release 2.0.0]] | todo | T127–T149, T152 | `task/T151-release-2-0-0` |
-| [[T152 Command line and DRAW_* variables audit]] | todo | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
+| [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |

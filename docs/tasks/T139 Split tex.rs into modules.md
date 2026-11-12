@@ -1,7 +1,7 @@
 ---
 id: T139
 title: Split tex.rs into modules
-status: review
+status: done
 wave: 66
 branch: task/T139-split-tex-rs-into-modules
 depends_on: [T132]

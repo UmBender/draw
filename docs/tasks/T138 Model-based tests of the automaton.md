@@ -1,7 +1,7 @@
 ---
 id: T138
 title: Model-based tests of the automaton
-status: review
+status: done
 wave: 68
 branch: task/T138-model-based-tests-of-the-automaton
 depends_on: [T135, T136, T137]
