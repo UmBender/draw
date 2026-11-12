@@ -1,7 +1,7 @@
 ---
 id: ADR-T152-1
 title: Keep DRAW_TABLET as a debugging variable
-status: accepted
+status: superseded
 kind: decision
 date: 2026-11-12
 task: T152
@@ -9,7 +9,7 @@ builds_on: []
 amends: []
 supersedes: []
 reverts: []
-superseded_by:
+superseded_by: ADR-T154-1
 reverted_by:
 tags: [adr]
 ---

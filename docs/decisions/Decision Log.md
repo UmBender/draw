@@ -160,10 +160,11 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 149 | [[ADR-T128-1 X11 stays supported]] | accepted | decision | T28-1, T44-1 | reverts T46-1 |
 | 150 | [[ADR-T131-1 No dyn outside an allow-list]] | accepted | decision | 0010, 0014 | — |
 | 151 | [[ADR-T132-1 Workspace of five crates with unsafe levels]] | accepted | decision | T127-1, T127-2, T127-3 | — |
-| 152 | [[ADR-T152-1 Keep DRAW_TABLET as a debugging variable]] | accepted | decision | — | — |
+| 152 | [[ADR-T152-1 Keep DRAW_TABLET as a debugging variable]] | superseded | decision | — | — |
 | 153 | [[ADR-T133-1 Typed layer added beside the public API]] | accepted | decision | — | — |
 | 154 | [[ADR-T134-1 The automaton wraps the editor behind a routing table]] | accepted | decision | — | — |
 | 155 | [[ADR-T135-1 Regions live in the machine module]] | accepted | decision | — | — |
 | 156 | [[ADR-T136-1 One gesture variant per tool in the machine]] | accepted | decision | — | — |
 | 157 | [[ADR-T137-1 One effect queue and time as a parameter]] | accepted | decision | — | — |
 | 158 | [[ADR-T153-1 Text and select are sub-automata of the machine]] | accepted | decision | T134-1, T136-1 | amends T136-1 |
+| 159 | [[ADR-T154-1 Every DRAW_ variable the binary reads becomes a flag]] | accepted | decision | T152-1 | supersedes T152-1 |
