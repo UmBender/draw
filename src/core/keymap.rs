@@ -251,15 +251,6 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::Distribute(Axis::Vertical),
         "Lay out as a column, no overlap",
     ),
-    (KeyChord::alt(Key::Digit1), Command::GoToPage(0), "Page 1"),
-    (KeyChord::alt(Key::Digit2), Command::GoToPage(1), "Page 2"),
-    (KeyChord::alt(Key::Digit3), Command::GoToPage(2), "Page 3"),
-    (KeyChord::alt(Key::Digit4), Command::GoToPage(3), "Page 4"),
-    (KeyChord::alt(Key::Digit5), Command::GoToPage(4), "Page 5"),
-    (KeyChord::alt(Key::Digit6), Command::GoToPage(5), "Page 6"),
-    (KeyChord::alt(Key::Digit7), Command::GoToPage(6), "Page 7"),
-    (KeyChord::alt(Key::Digit8), Command::GoToPage(7), "Page 8"),
-    (KeyChord::alt(Key::Digit9), Command::GoToPage(8), "Page 9"),
     (
         KeyChord::bare(Key::Delete),
         Command::DeleteSelection,
@@ -316,6 +307,15 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::SaveFile,
         "Save the drawing to a .draw file",
     ),
+    (KeyChord::alt(Key::Digit1), Command::GoToPage(0), "Page 1"),
+    (KeyChord::alt(Key::Digit2), Command::GoToPage(1), "Page 2"),
+    (KeyChord::alt(Key::Digit3), Command::GoToPage(2), "Page 3"),
+    (KeyChord::alt(Key::Digit4), Command::GoToPage(3), "Page 4"),
+    (KeyChord::alt(Key::Digit5), Command::GoToPage(4), "Page 5"),
+    (KeyChord::alt(Key::Digit6), Command::GoToPage(5), "Page 6"),
+    (KeyChord::alt(Key::Digit7), Command::GoToPage(6), "Page 7"),
+    (KeyChord::alt(Key::Digit8), Command::GoToPage(7), "Page 8"),
+    (KeyChord::alt(Key::Digit9), Command::GoToPage(8), "Page 9"),
     // Helpers
     (
         KeyChord::bare(Key::X),
@@ -363,6 +363,106 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         "Grid: one less row",
     ),
 ];
+
+/// A page of the shortcut sheet (ADR-T113-1), in the order of
+/// `docs/features/Contest cheat sheet.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Topic {
+    /// Tool keys.
+    Tools,
+    /// Colours, stroke width, smoothing.
+    Style,
+    /// Undo, clipboard, selection, arrangement.
+    Edit,
+    /// Zoom, pan, fit, toolbar, export.
+    View,
+    /// Snapping, numbering, grid size.
+    Helpers,
+    /// Mouse gestures and modifiers (no key binding).
+    Gestures,
+    /// Keys inside a text block (no key binding).
+    TypingText,
+    /// Keys inside a shape or grid cell (no key binding).
+    TypingShape,
+}
+
+impl Topic {
+    /// Every topic, one sheet page group each.
+    pub const ALL: [Self; 8] = [
+        Self::Tools,
+        Self::Style,
+        Self::Edit,
+        Self::View,
+        Self::Helpers,
+        Self::Gestures,
+        Self::TypingText,
+        Self::TypingShape,
+    ];
+
+    /// The name shown on the sheet.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Tools => "Tools",
+            Self::Style => "Style",
+            Self::Edit => "Edit",
+            Self::View => "View",
+            Self::Helpers => "Helpers",
+            Self::Gestures => "Gestures",
+            Self::TypingText => "Typing in a text block",
+            Self::TypingShape => "Typing in a shape",
+        }
+    }
+}
+
+/// The sheet topic of `command`. An exhaustive `match`: a new command cannot
+/// be added without choosing its topic (ADR-T113-1).
+#[must_use]
+pub fn topic_of(command: Command) -> Topic {
+    match command {
+        Command::SetTool(_) => Topic::Tools,
+        Command::SetColor(_) | Command::WidthUp | Command::WidthDown | Command::CycleSmoothing => {
+            Topic::Style
+        }
+        Command::Undo
+        | Command::Redo
+        | Command::Copy
+        | Command::Cut
+        | Command::Paste
+        | Command::Duplicate
+        | Command::SelectAll
+        | Command::GridFromText
+        | Command::GraphFromText
+        | Command::PlotFromText
+        | Command::ScaleUp
+        | Command::ScaleDown
+        | Command::RaiseSelection
+        | Command::LowerSelection
+        | Command::SelectionToTop
+        | Command::SelectionToBottom
+        | Command::Align(_)
+        | Command::Distribute(_)
+        | Command::RecognizeShape
+        | Command::LockSelection
+        | Command::UnlockAll
+        | Command::DeleteSelection
+        | Command::ClearAll
+        | Command::Cancel => Topic::Edit,
+        Command::ResetView
+        | Command::FitView
+        | Command::GoToPage(_)
+        | Command::ToggleToolbar
+        | Command::ExportView
+        | Command::SaveFile => Topic::View,
+        Command::ToggleSmartSnap
+        | Command::ToggleGridSnap
+        | Command::ToggleNumbering
+        | Command::ResetNumbering
+        | Command::ToggleZeroBased
+        | Command::GridCols(_)
+        | Command::GridRows(_) => Topic::Helpers,
+    }
+}
 
 /// The command bound to `key` pressed with `mods`, if any.
 ///
@@ -865,6 +965,31 @@ mod tests {
         // Assert
         assert_eq!(chords.len(), BINDINGS.len());
         assert_eq!(BINDINGS.len(), documented().len());
+    }
+
+    #[test]
+    fn topic_of_matches_the_sections_of_the_keymap() {
+        // Arrange: the table is written section by section.
+        let order = [
+            Topic::Tools,
+            Topic::Style,
+            Topic::Edit,
+            Topic::View,
+            Topic::Helpers,
+        ];
+        let mut section = 0;
+
+        // Act / Assert: topics never go back to an earlier section.
+        for &(chord, command, _) in BINDINGS {
+            let topic = topic_of(command);
+            let at = order
+                .iter()
+                .position(|&t| t == topic)
+                .unwrap_or_else(|| panic!("{chord:?} has the non-key topic {topic:?}"));
+            assert!(at >= section, "{chord:?} -> {command:?} is out of order");
+            section = at;
+        }
+        assert_eq!(section, order.len() - 1);
     }
 
     #[test]

@@ -51,7 +51,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | `Alt+↑` | Align top edges | `Alt+↓` | Align bottom edges |
 | `Alt+H` | Lay out as a row, no overlap | `Alt+V` | Lay out as a column, no overlap |
 | `Z` | Last stroke to line / rectangle / ellipse | | |
-| `Ctrl+Shift+P` | Command palette: type, `Enter` runs, `Esc` closes | | |
+| `Ctrl+Shift+P` | Command palette: type, `Enter` runs, `Esc` closes | `?` | Shortcut sheet: `←`/`→` pages, `1`–`9` topic, `Esc` closes |
 
 ## View
 

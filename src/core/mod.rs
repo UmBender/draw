@@ -19,6 +19,7 @@ pub mod palette;
 pub mod pressure;
 pub mod recognize;
 pub mod shape;
+pub mod sheet;
 pub mod smoothing;
 pub mod snap;
 pub mod snapshot;

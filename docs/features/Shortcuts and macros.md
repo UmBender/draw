@@ -37,6 +37,7 @@ two-step actions.
 | Reset view / fit content | `0` / `F` |
 | Show / hide toolbar | `Tab` |
 | Command palette | `Ctrl+Shift+P` (type to filter, `↑`/`↓`, `Enter` runs, `Esc` closes) |
+| Shortcut sheet | `?` (`←`/`→` pages, `1`–`9` topic, `?` or `Esc` closes) |
 | Zoom towards cursor | Mouse wheel |
 | Pan from any tool | Middle drag, `Space` + drag |
 | Constrain (square, circle, 45°) | Hold `Shift` while drawing |
@@ -66,6 +67,19 @@ highlighted one exactly as its key would. While it is open no key or
 pointer event reaches the tools. It is a modal editor state with no
 history entry ([[ADR-T111-1 Command palette as a modal editor state]]); the
 rows come from `BINDINGS`, so a new binding appears in it automatically.
+
+### Shortcut sheet
+
+`?` opens a paged cheat sheet over the canvas, one topic per page in the
+order of [[Contest cheat sheet]]: Tools, Style, Edit, View, Helpers, Gestures,
+Typing in a text block, Typing in a shape. `←`/`→` flip pages (wrapping),
+`1`–`9` jump to a topic, `?` or `Esc` closes it. A topic with more than 14
+rows is split ("Edit 1/2"), so a page fits the default 1280×800 window. In a
+text block `?` types a `?`. Key rows come from `BINDINGS` through
+`keymap::topic_of`, an exhaustive `match` on the command, so the sheet cannot
+drift from the real keys; gesture and typing rows are one table in
+`core/sheet.rs`. Like the palette it is a modal editor state with no history
+entry ([[ADR-T113-1 Shortcut sheet as a second modal overlay]]).
 
 ## Limits
 

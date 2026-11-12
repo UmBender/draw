@@ -60,6 +60,7 @@ use crate::shell::input_map::{
 };
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::sheet;
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
 use crate::theme;
@@ -1254,6 +1255,9 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     }
     if let Some(palette) = editor.palette() {
         command_palette::draw(palette, viewport);
+    }
+    if let Some(sheet) = editor.sheet() {
+        sheet::draw(sheet, viewport);
     }
     render::draw_page_label(editor.page(), viewport);
 }

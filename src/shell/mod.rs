@@ -15,5 +15,6 @@ pub mod input_map;
 pub mod minimap;
 pub mod preflight;
 pub mod render;
+pub mod sheet;
 pub mod tablet;
 pub mod toolbar;

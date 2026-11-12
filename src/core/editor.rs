@@ -34,6 +34,7 @@ use crate::core::numbering::{self, FIRST_NUMBER};
 use crate::core::palette::ColorId;
 use crate::core::recognize;
 use crate::core::shape::{CellStep, GRID_MAX_CELLS, Shape, Style, TextSlot, stepped_cells};
+use crate::core::sheet::Sheet;
 use crate::core::smoothing::SmoothingLevel;
 use crate::core::snapshot::{self, Reader, Snapshot, SnapshotError, Writer};
 use crate::core::tap::TapFilter;
@@ -267,6 +268,9 @@ pub struct Editor {
     /// `Ctrl+S` was pressed and the shell has not collected it yet
     /// (ADR-T108-1). Not saved state.
     save_asked: bool,
+    /// The open shortcut sheet, which captures the keys while it is `Some`
+    /// (ADR-T113-1). Never open together with the palette. Not saved state.
+    sheet: Option<Sheet>,
 }
 
 impl Default for Editor {
@@ -319,6 +323,7 @@ impl Editor {
             doc_base_revision: 0,
             minimap_content: None,
             palette: None,
+            sheet: None,
             ..snapshot.0
         }
     }
@@ -509,6 +514,7 @@ impl Editor {
             minimap_content: None,
             palette: None,
             save_asked: false,
+            sheet: None,
         })
     }
 
@@ -543,6 +549,7 @@ impl Editor {
             minimap_content: None,
             palette: None,
             save_asked: false,
+            sheet: None,
         }
     }
 
@@ -886,10 +893,20 @@ impl Editor {
 
     /// [`Editor::handle`] for one event that left the tap filter.
     fn handle_filtered(&mut self, event: InputEvent) -> bool {
-        if self.palette.is_some() {
+        if self.sheet.is_some() {
+            if let Some(redraw) = self.sheet_event(&event) {
+                return redraw;
+            }
+        } else if self.palette.is_some() {
             if let Some(redraw) = self.palette_event(&event) {
                 return redraw;
             }
+        } else if matches!(
+            event,
+            InputEvent::Char { ch: '?', mods } if !mods.ctrl && !mods.alt
+        ) && self.tools.text.edit.is_none()
+        {
+            return self.open_sheet();
         } else if matches!(
             event,
             InputEvent::KeyDown {
@@ -979,6 +996,62 @@ impl Editor {
         true
     }
 
+    /// Opens the shortcut sheet over the canvas (ADR-T113-1). A gesture in
+    /// progress is cancelled first, like for the palette.
+    fn open_sheet(&mut self) -> bool {
+        self.cancel_gesture();
+        self.sheet = Some(Sheet::new());
+        true
+    }
+
+    /// Handles `event` for the open shortcut sheet (ADR-T113-1). `None` for
+    /// the events that are not about the keys and pointer (resize, pen
+    /// pressure, key releases), which the editor handles as usual.
+    fn sheet_event(&mut self, event: &InputEvent) -> Option<bool> {
+        let sheet = self.sheet.as_mut()?;
+        let redraw = match *event {
+            InputEvent::KeyDown { key, .. } => match key {
+                Key::Escape => {
+                    self.sheet = None;
+                    true
+                }
+                Key::ArrowRight => {
+                    sheet.next();
+                    true
+                }
+                Key::ArrowLeft => {
+                    sheet.prev();
+                    true
+                }
+                Key::Digit1 => sheet.jump(1),
+                Key::Digit2 => sheet.jump(2),
+                Key::Digit3 => sheet.jump(3),
+                Key::Digit4 => sheet.jump(4),
+                Key::Digit5 => sheet.jump(5),
+                Key::Digit6 => sheet.jump(6),
+                Key::Digit7 => sheet.jump(7),
+                Key::Digit8 => sheet.jump(8),
+                Key::Digit9 => sheet.jump(9),
+                _ => false,
+            },
+            InputEvent::Char { ch: '?', mods } if !mods.ctrl && !mods.alt => {
+                self.sheet = None;
+                true
+            }
+            InputEvent::Char { .. }
+            | InputEvent::PointerDown { .. }
+            | InputEvent::PointerMove { .. }
+            | InputEvent::PointerUp { .. }
+            | InputEvent::Scroll { .. }
+            | InputEvent::Paste(_)
+            | InputEvent::PasteGrid(_) => false,
+            InputEvent::KeyUp { .. } | InputEvent::Pressure { .. } | InputEvent::Resize { .. } => {
+                return None;
+            }
+        };
+        Some(redraw)
+    }
+
     /// Handles `event` for the open palette (ADR-T111-1). `None` for the
     /// events that are not about the keys and pointer (resize, pen
     /// pressure, key releases), which the editor handles as usual.
@@ -1024,7 +1097,7 @@ impl Editor {
     /// [`Command::ExportView`] leaves it alone (ADR-T92-2). Nothing runs
     /// under the open command palette (ADR-T111-1).
     pub fn apply(&mut self, command: Command) -> bool {
-        if self.palette.is_some() {
+        if self.palette.is_some() || self.sheet.is_some() {
             return false;
         }
         if self.tools.text.edit.is_some() {
@@ -1402,6 +1475,12 @@ impl Editor {
     fn ask_export(&mut self) -> bool {
         self.export_asked |= self.can_export();
         false
+    }
+
+    /// The open shortcut sheet, if any (ADR-T113-1).
+    #[must_use]
+    pub fn sheet(&self) -> Option<&Sheet> {
+        self.sheet.as_ref()
     }
 
     /// The open command palette, if any (ADR-T111-1).
@@ -2386,6 +2465,7 @@ mod tests {
     use crate::core::palette::ColorId;
     use crate::core::shape::GRID_MAX_CELLS;
     use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
+    use crate::core::sheet;
     use crate::core::smoothing::SmoothingLevel;
     use crate::core::tap::PEN_TAP_SLOP_PX;
 
@@ -9974,5 +10054,202 @@ mod tests {
         assert_eq!(fresh_counter, FIRST_NUMBER);
         assert_eq!(on_second, vec![Some(FIRST_NUMBER)]);
         assert_eq!(ed.helpers().next_number, FIRST_NUMBER + 2);
+    }
+
+    // ---- T113 shortcut sheet -------------------------------------------------
+
+    /// Editor with a viewport and the shortcut sheet open.
+    fn sheet_editor() -> Editor {
+        let mut ed = Editor::new();
+        ed.handle(InputEvent::Resize {
+            size: Vec2::new(800.0, 600.0),
+        });
+        typed(&mut ed, "?");
+        ed
+    }
+
+    #[test]
+    fn sheet_question_mark_opens_on_the_first_page() {
+        // Arrange
+        let mut ed = Editor::new();
+        assert!(ed.sheet().is_none());
+
+        // Act
+        let redraw = ed.handle(InputEvent::Char {
+            ch: '?',
+            mods: NONE,
+        });
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(ed.sheet().map(sheet::Sheet::page), Some(0));
+    }
+
+    #[test]
+    fn sheet_question_mark_and_escape_close() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act / Assert
+        typed(&mut ed, "?");
+        assert!(ed.sheet().is_none());
+        typed(&mut ed, "?");
+        assert!(ed.sheet().is_some());
+        key(&mut ed, Key::Escape);
+        assert!(ed.sheet().is_none());
+    }
+
+    #[test]
+    fn sheet_question_mark_types_in_a_text_block() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 50.0, "a");
+
+        // Act
+        typed(&mut ed, "?");
+
+        // Assert
+        assert!(ed.sheet().is_none());
+        assert_eq!(
+            ed.text_edit().map(|e| e.text().to_owned()),
+            Some("a?".to_owned())
+        );
+    }
+
+    #[test]
+    fn sheet_does_not_open_over_the_palette() {
+        // Arrange
+        let mut ed = palette_editor();
+
+        // Act
+        typed(&mut ed, "?");
+
+        // Assert: the `?` went into the palette query.
+        assert!(ed.sheet().is_none());
+        assert_eq!(ed.palette().map(CommandPalette::query), Some("?"));
+    }
+
+    #[test]
+    fn sheet_palette_chord_is_ignored_while_open() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act
+        key_with(&mut ed, Key::P, CTRL_SHIFT);
+
+        // Assert
+        assert!(ed.palette().is_none());
+        assert!(ed.sheet().is_some());
+    }
+
+    #[test]
+    fn sheet_arrows_wrap_pages() {
+        // Arrange
+        let mut ed = sheet_editor();
+        let page = |ed: &Editor| ed.sheet().map(sheet::Sheet::page);
+
+        // Act / Assert
+        key(&mut ed, Key::ArrowRight);
+        assert_eq!(page(&ed), Some(1));
+        key(&mut ed, Key::ArrowLeft);
+        key(&mut ed, Key::ArrowLeft);
+        assert_eq!(page(&ed), Some(sheet::pages().len() - 1));
+        key(&mut ed, Key::ArrowRight);
+        assert_eq!(page(&ed), Some(0));
+    }
+
+    #[test]
+    fn sheet_digits_jump_to_a_topic() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act
+        key(&mut ed, Key::Digit3);
+
+        // Assert
+        let topic = ed.sheet().map(|s| s.current().topic);
+        assert_eq!(topic, Some(keymap::Topic::Edit));
+    }
+
+    #[test]
+    fn sheet_digit_without_topic_is_ignored() {
+        // Arrange
+        let mut ed = sheet_editor();
+        key(&mut ed, Key::ArrowRight);
+
+        // Act
+        key(&mut ed, Key::Digit9);
+        key(&mut ed, Key::Digit0);
+
+        // Assert
+        assert_eq!(ed.sheet().map(sheet::Sheet::page), Some(1));
+    }
+
+    #[test]
+    fn sheet_keys_and_pointer_do_not_reach_the_tools() {
+        // Arrange
+        let mut ed = sheet_editor();
+        let before = ed.snapshot();
+
+        // Act
+        for k in [Key::R, Key::Tab, Key::Space, Key::Delete, Key::Enter] {
+            key(&mut ed, k);
+        }
+        let pos = Vec2::new(100.0, 100.0);
+        let end = Vec2::new(200.0, 160.0);
+        ed.handle(InputEvent::PointerDown {
+            pos,
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::PointerMove {
+            pos: end,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::PointerUp {
+            pos: end,
+            button: PointerButton::Left,
+            mods: NONE,
+        });
+        ed.handle(InputEvent::Scroll { pos, delta: 3.0 });
+
+        // Assert
+        assert!(ed.sheet().is_some());
+        assert!(ed.document().is_empty());
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert!(ed.active_gesture().is_none());
+        assert!(ed.toolbar_visible());
+        assert_eq!(ed.snapshot(), before);
+    }
+
+    #[test]
+    fn sheet_ignores_commands_while_open() {
+        // Arrange
+        let mut ed = sheet_editor();
+
+        // Act
+        let changed = ed.apply(Command::SetTool(Tool::Rect));
+
+        // Assert
+        assert!(!changed);
+        assert_eq!(ed.tool(), Tool::Pen);
+        assert!(ed.sheet().is_some());
+    }
+
+    #[test]
+    fn sheet_open_and_close_record_nothing() {
+        // Arrange
+        let mut ed = Editor::new();
+        let before = ed.snapshot();
+
+        // Act
+        typed(&mut ed, "?");
+        key(&mut ed, Key::ArrowRight);
+        key(&mut ed, Key::Digit4);
+        key(&mut ed, Key::Escape);
+
+        // Assert
+        assert!(!ed.can_undo());
+        assert_eq!(ed.snapshot(), before);
     }
 }
