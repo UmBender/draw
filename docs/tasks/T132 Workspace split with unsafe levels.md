@@ -1,7 +1,7 @@
 ---
 id: T132
 title: Workspace split with unsafe levels
-status: in-progress
+status: review
 wave: 65
 branch: task/T132-workspace-split-with-unsafe-levels
 depends_on: [T131]
@@ -47,10 +47,14 @@ Decision: [[ADR-T132-1 Workspace of five crates with unsafe levels]] (layout, le
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T132): specify the workspace split`
-- [ ] tests — `test(T132): add failing tests for the unsafe levels`
-- [ ] behaviour — `refactor(T132): split into crates`
-- [ ] quality — `chore(T132): pass clippy and rustfmt`
+- [x] tests — `test(T132): add failing tests for the unsafe levels`
+- [x] behaviour — `refactor(T132): split into crates`
+- [x] quality — `chore(T132): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — Layout and lists are in [[ADR-T132-1 Workspace of five crates with unsafe levels]]. `draw-types` holds `geom` (so `core/mod.rs` re-exports it), `draw-core` holds `core` and `theme`, `draw-gfx` and `draw-sys` are empty with their level. `src/shell` stays in `draw`.
+- 2026-11-12 — Deviations from *Files owned*, each needed by the move: path fixes in `core/editor.rs` (4 `include_str!`), `core/snapshot.rs` (`CARGO_MANIFEST_DIR`) and the colour guard of `theme.rs` (it now scans `src/` and `crates/*/src/`); `tests/no_dyn.rs` also scans `crates/`, or the guard would have stopped covering `core`; `scripts/coverage.sh` and `scripts/check.sh` run with `--workspace`.
+- 2026-11-12 — `draw` keeps `fontdue`, `png` and `ttf-parser` because the shell uses them until it moves; `tests/deps.rs` lists them.
+- 2026-11-12 — `geom` left the `core` coverage module, so the `core` figure of `coverage-baseline.toml` (98.6) may move by more than 0.5; not run here, run `bash scripts/coverage.sh` and `--update` if it fails. `scripts/e2e.sh` was not run (no key or drawing change). No quality commit: `check.sh` passed with the fixes inside the tests and behaviour commits.
