@@ -51,3 +51,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — BLOCKED (batch): *Files owned* names `crates/draw-core/src/editor/**`, which does not exist; the fields to migrate (`page`, `pages`, `camera`, `selection`, `palette`, `sheet`) live in `crates/draw-core/src/core/editor.rs` (about 10.5k lines), outside the owned files. Tried: checked the tree and the `Editor` struct. Recommended fix: amend *Files owned* to `crates/draw-core/src/core/editor.rs` (and any `core/*.rs` that reads those fields), then re-run T135.
