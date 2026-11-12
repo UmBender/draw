@@ -471,7 +471,12 @@ fn last_pointer(steps: &[Step], start: (i32, i32)) -> (i32, i32) {
                 [verb, x, y] if verb == "set" => Some((x.parse().ok()?, y.parse().ok()?)),
                 _ => None,
             },
-            _ => None,
+            Step::Type(_)
+            | Step::Wheel(_)
+            | Step::Output(..)
+            | Step::Checkpoint(_)
+            | Step::EndKeyboard
+            | Step::Clipboard(_) => None,
         })
         .unwrap_or(start)
 }

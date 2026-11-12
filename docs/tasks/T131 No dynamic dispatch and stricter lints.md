@@ -1,7 +1,7 @@
 ---
 id: T131
 title: No dynamic dispatch and stricter lints
-status: in-progress
+status: review
 wave: 65
 branch: task/T131-no-dynamic-dispatch-and-stricter-lints
 depends_on: [T127]
@@ -38,18 +38,20 @@ Decision: [[ADR-T131-1 No dyn outside an allow-list]] (file-level allow-list wit
 ## Files owned
 
 - `tests/no_dyn.rs`, `Cargo.toml`, `src/**` (only to remove wildcard arms and `dyn`)
+- `tests/e2e.rs`, `tests/fuzz.rs` (one wildcard arm each, listed as variants)
 - `docs/decisions/ADR-T131-1*`, `docs/process/Quality Gates.md`
 - this note
 
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T131): specify the dyn guard and the lints`
-- [ ] tests — `test(T131): add failing tests for the dyn guard`
-- [ ] behaviour — `refactor(T131): remove wildcard arms and dyn`
-- [ ] quality — `chore(T131): pass clippy and rustfmt`
+- [x] tests — `test(T131): add failing tests for the dyn guard`
+- [x] behaviour — `refactor(T131): remove wildcard arms and dyn`
+- [x] quality — `chore(T131): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-12 — UNATTENDED CHOICE: key tables over `Key` and `KeyCode` keep a scoped allow, and unit-test code is exempt via `cfg_attr(test)` in `src/lib.rs`; both recorded in [[ADR-T131-1 No dyn outside an allow-list]]. Every other wildcard arm in `src/` lists its variants; `dyn Fn` and `dyn Outlines` became generics.
 - 2026-11-12 — BLOCKED (batch): `cargo clippy --all-targets` still fails on one wildcard arm each in `tests/e2e.rs:474` (`Step`) and `tests/fuzz.rs:674` (`InputEvent`); both files are outside *Files owned*. Recommended fix: list the variants there (or add `#[allow(clippy::wildcard_enum_match_arm)]`), then run `scripts/check.sh`, tick the quality subtask and set `status: review`.
+- 2026-11-12 — UNBLOCKED by the owner: `tests/e2e.rs` and `tests/fuzz.rs` added to *Files owned*; their wildcard arms now list the `Step` and `InputEvent` variants. `scripts/check.sh --fuzz` green.

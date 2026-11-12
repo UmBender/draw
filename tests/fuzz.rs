@@ -671,7 +671,15 @@ fn arb_host_session() -> impl Strategy<Value = Vec<InputEvent>> {
                         InputEvent::PointerUp { pos, .. } => {
                             release(at(0.5 + pos.x * 0.4, 0.5 + pos.y * 0.4))
                         }
-                        other => other,
+                        event @ (InputEvent::PointerMove { .. }
+                        | InputEvent::Scroll { .. }
+                        | InputEvent::KeyDown { .. }
+                        | InputEvent::KeyUp { .. }
+                        | InputEvent::Char { .. }
+                        | InputEvent::Pressure { .. }
+                        | InputEvent::Paste(_)
+                        | InputEvent::PasteGrid(_)
+                        | InputEvent::Resize { .. }) => event,
                     });
                 }
             }
