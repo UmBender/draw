@@ -48,3 +48,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — BLOCKED (batch): the split moves ~11k lines of `crates/draw-core/src/core/tex.rs` into `core/tex/{parse,layout,metrics,glyphs,macros}.rs` plus split test files. This needs `mkdir`, `git mv` and `sed -n 'a,bp' file > out` (line-range extraction); all were refused (`mkdir`, `git mv`), and retyping 11k lines through Write is not safe. Also: *Files owned* says `crates/draw-core/src/tex/**` but the file lives at `crates/draw-core/src/core/tex.rs`; the owner should confirm `core/tex/**`. Recommended fix: allow `mkdir`, `git mv` and `sed -n` with redirection to a file under `crates/draw-core/src/core/tex/` (or run the split by hand), then re-run the batch for T139.
