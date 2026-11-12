@@ -431,7 +431,7 @@ flowchart TD
 | [[T115 Copy the selection as an image]] | done | — | `task/T115-copy-as-image` |
 | [[T116 Pages]] | done | — | `task/T116-pages` |
 | [[T53 Release 1.5.0]] | done | T46–T49, T51, T52, T54–T107, T109–T111 | `chore/release-1.5.0` |
-| [[T117 Looser shape recognition]] | todo | — | `task/T117-looser-recognition` |
+| [[T117 Looser shape recognition]] | done | — | `task/T117-looser-recognition` |
 | [[T119 Forest layout in layers]] | done | — | `task/T119-forest-layers` |
 | [[T120 Weight label on diagonal edges]] | done | — | `fix/weight-label-tie` |
 | [[T121 Self-loops and opposite edges in graphs]] | done | — | `fix/graph-loops-and-lanes` |

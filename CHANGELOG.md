@@ -24,6 +24,10 @@ All notable changes to draw are listed here. The format follows
 
 ### Changed
 
+- `Z` forgives sloppier strokes: wobbly or gently curved lines, circles that
+  do not close, overshoot or end in a tail, rectangles with rounded or
+  missing corners. It still leaves scribbles, triangles and open arcs alone,
+  and a stroke that fits a rectangle and an ellipse equally well.
 - The toolbar, command palette, shortcut sheet and page switcher are drawn
   in the bundled text font on whole pixels, sharper than before.
 - A graph typed with `Ctrl+L` that has no cycle is drawn in layers even
