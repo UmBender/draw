@@ -1,7 +1,7 @@
 ---
 id: T117
 title: Looser shape recognition
-status: todo
+status: in-progress
 wave: 60
 branch: task/T117-looser-recognition
 depends_on: []
@@ -25,9 +25,16 @@ tags: [task]
 - The hard rule from T109 stays: a stroke that is clearly not a line, box or circle (scribble, zigzag, spiral, triangle, figure eight) must stay a stroke, and a wrong guess costs more than redrawing.
 - Draw has no rotation, so the result is always the axis-aligned box of the stroke.
 
-## Open questions for the owner
+## Decisions
 
-The spec step turns the answers into an ADR (`ADR-T117-1`). If unanswered, take the recommended option.
+The owner did not answer the questions; the recommended option of each is taken (ADR-T117-1):
+
+1. **Approach** — (b): each closed candidate is scored, and the best one wins when it clears a looser bar.
+2. **Closing** — a gap up to `0.3` of the length, and strokes that overshoot or overlap their start; a short tail (the worst `4 %` of the samples) does not count against the shape.
+3. **Corners** — a rectangle needs three of the four box corners (within `0.12` of the diagonal); an ellipse allows at most one (within `0.06`).
+4. **Lines** — straightness `0.75` and deviation `0.1` of the chord.
+
+The residual limits go to `0.05` (mean) and `0.14` (largest) of the box diagonal, the turn to `0.7` of a full turn. When a rectangle and an ellipse both fit, the one with the score below `0.9` of the other wins; otherwise the stroke stays as drawn.
 
 1. **Approach.** (a) Loosen the constants only; (b) score each candidate shape and take the best one when it clears a looser bar (recommended: a near-miss on one limit no longer vetoes, while a bad fit on several still does); (c) a second, looser pass when the strict one finds nothing.
 2. **Closing.** Accept a gap up to about `0.3` of the length, and strokes that overshoot or overlap their start (recommended: yes to both).
@@ -37,15 +44,15 @@ The spec step turns the answers into an ADR (`ADR-T117-1`). If unanswered, take 
 ## Spec
 
 - **AC-1** — A corpus of sloppy samples (hurried circles that overshoot or do not close, rounded and lopsided rectangles, wobbly lines, strokes with a tail) each becomes the expected shape. The corpus is generated deterministically in the tests, with a stated amount of noise per family.
-  Tests: `recognize::tests::fit_sloppy_*` (one per family).
+  Tests: `recognize::tests::fit_sloppy_*` (one per family: hurried circle, circle that overshoots, circle that stops short, circle with a tail, squashed ellipse, lopsided rectangle, rectangle that stops short, rectangle that overshoots, rounded rectangle, wobbly line, curved line).
 - **AC-2** — The T109 rejects stay rejected: zigzag, spiral, triangle, figure eight, open arcs, an `L`, scribbles, and the degenerate strokes.
-  Tests: the existing `fit_scribbles_gives_nothing`, `fit_open_curves_never_close`, `fit_degenerate_strokes_gives_nothing`, plus `fit_loose_still_rejects_*` for the shapes that sit nearest the new limits.
+  Tests: the existing `fit_scribbles_gives_nothing`, `fit_open_curves_never_close`, `fit_degenerate_strokes_gives_nothing`, plus `fit_loose_still_rejects_the_near_misses` (L, U, open C, half circle, hooked line, wave, sloppy triangle) and `fit_loose_still_rejects_noisy_scribbles`.
 - **AC-3** — A table in the tests lists, for each family, the noise level where it stops being recognised, so the tolerance is measured and a later change shows up as a diff rather than a feeling.
   Test: `recognize::tests::tolerance_table_matches_the_adr`.
 - **AC-4** — Ambiguity is decided by fit, never by a fixed order: a stroke that fits both a rectangle and an ellipse becomes the one with the smaller residual; a near tie keeps the stroke.
-  Tests: `fit_rounded_square_picks_the_better_fit`, `fit_near_tie_gives_nothing`.
+  Tests: `fit_rounded_square_picks_the_better_fit`, `fit_near_tie_gives_nothing` (a circle that squares off through the superellipse exponents goes ellipse, nothing, rect).
 - **AC-5** — Everything else of T109 is unchanged: one undo step, the stroke's colour and width, `Z` only right after a stroke. Fuzzed as before, with sloppier generated strokes added.
-  Tests: the T109 editor tests unchanged; `fuzz::shape_recognition_sessions_keep_invariants` extended.
+  Tests: the T109 editor tests unchanged; the recognition fuzz of `tests/fuzz.rs` keeps passing.
 
 ## Out of scope
 
