@@ -2316,7 +2316,7 @@ mod tests {
         let line = line_of(&text, "current ");
 
         // Act
-        let result = Snapshot::parse(&edited(&ed, line, "current 9"));
+        let result = Snapshot::parse(&edited(&ed, line, "current 10"));
 
         // Assert
         assert!(result.is_err());

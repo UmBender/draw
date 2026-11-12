@@ -1382,7 +1382,6 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     if let Some(sheet) = editor.sheet() {
         sheet::draw(sheet, viewport);
     }
-    render::draw_page_label(editor.page(), viewport);
 }
 
 /// The laser pointer with its clock and the trail to draw this frame

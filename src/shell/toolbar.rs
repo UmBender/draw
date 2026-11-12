@@ -10,14 +10,14 @@
 
 use macroquad::color::Color;
 use macroquad::shapes::{draw_rectangle, draw_triangle};
-use macroquad::text::{draw_text, measure_text};
 
 use crate::core::command::{Command, Tool};
-use crate::core::editor::Editor;
+use crate::core::editor::{Editor, PAGE_COUNT};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
 use crate::shell::render::{hex_color, to_mq, to_mq_color};
+use crate::shell::ui_text;
 use crate::theme;
 
 /// Side of a square button in pixels.
@@ -65,6 +65,8 @@ pub enum ButtonKind {
     Undo,
     /// Redoes the last undone action.
     Redo,
+    /// Shows a page, `0` for page 1 (the switcher under undo and redo).
+    Page(usize),
 }
 
 impl ButtonKind {
@@ -81,6 +83,7 @@ impl ButtonKind {
             Self::GridRows(delta) => Command::GridRows(delta),
             Self::Undo => Command::Undo,
             Self::Redo => Command::Redo,
+            Self::Page(page) => Command::GoToPage(page),
         }
     }
 }
@@ -170,6 +173,43 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
     buttons
 }
 
+/// Cells of the page switcher per row (ADR-T124-1).
+const PAGE_COLUMNS: usize = 2;
+/// Width of a page cell: the strip's buttons split in two columns.
+const PAGE_CELL_W_PX: f32 = BUTTON_PX / PAGE_COLUMNS as f32;
+/// Height of a page cell, in pixels.
+const PAGE_CELL_H_PX: f32 = 18.0;
+/// Size of a page number, in pixels.
+const PAGE_LABEL_SIZE: u16 = 12;
+/// Height of the bar under the number of a page that holds shapes.
+const PAGE_BAR_PX: f32 = 2.0;
+/// Opacity of the number of an empty page.
+const PAGE_EMPTY_ALPHA: f32 = 0.4;
+
+/// The page switcher (ADR-T124-1): the cells of pages 1…`PAGE_COUNT` in
+/// rows of two, under the history buttons. Cells that would cross the
+/// bottom of the window are left out.
+#[must_use]
+pub fn page_layout(viewport: Vec2) -> Vec<Button> {
+    let top = layout(viewport)
+        .last()
+        .map_or(PAD_PX, |b| b.rect.max.y + GROUP_GAP_PX);
+    (0..PAGE_COUNT)
+        .map(|page| {
+            let (row, column) = (page / PAGE_COLUMNS, page % PAGE_COLUMNS);
+            let min = Vec2::new(
+                PAD_PX + column as f32 * PAGE_CELL_W_PX,
+                top + row as f32 * PAGE_CELL_H_PX,
+            );
+            Button {
+                rect: Aabb::from_corners(min, min + Vec2::new(PAGE_CELL_W_PX, PAGE_CELL_H_PX)),
+                kind: ButtonKind::Page(page),
+            }
+        })
+        .filter(|cell| cell.rect.max.y <= viewport.y)
+        .collect()
+}
+
 /// Where the `pen` badge sits while pen taps are held still (T34): the
 /// bottom of the strip, below every button.
 #[must_use]
@@ -230,7 +270,9 @@ pub fn flyout_layout(viewport: Vec2) -> Vec<Button> {
 pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> Route {
     match event {
         InputEvent::PointerDown { pos, .. } if visible && panel(viewport).contains(pos) => {
-            hit(&layout(viewport), pos).map_or(Route::Swallow, Route::Apply)
+            let mut buttons = layout(viewport);
+            buttons.extend(page_layout(viewport));
+            hit(&buttons, pos).map_or(Route::Swallow, Route::Apply)
         }
         InputEvent::PointerDown { pos, .. }
             if visible && flyout && flyout_panel(viewport).contains(pos) =>
@@ -283,6 +325,12 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
             }
             ButtonKind::Undo => draw_history_arrow(rect, -1.0, history_color(editor.can_undo())),
             ButtonKind::Redo => draw_history_arrow(rect, 1.0, history_color(editor.can_redo())),
+            ButtonKind::Page(_) => {}
+        }
+    }
+    for cell in page_layout(viewport) {
+        if let ButtonKind::Page(page) = cell.kind {
+            draw_page_cell(cell.rect, page, page_look(editor, page));
         }
     }
     if editor.tap_slop() > 0.0 {
@@ -290,6 +338,61 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
     }
     if editor.tool() == Tool::Grid {
         draw_flyout(editor, viewport);
+    }
+}
+
+/// How a page cell looks (ADR-T124-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageLook {
+    /// The page on screen: filled.
+    Current,
+    /// Another page that holds shapes: full colour and a bar.
+    Used,
+    /// Another page with nothing on it: dimmed.
+    Empty,
+}
+
+/// The look of page `page` for `editor`.
+#[must_use]
+pub fn page_look(editor: &Editor, page: usize) -> PageLook {
+    if editor.page() == page {
+        PageLook::Current
+    } else if editor.page_has_shapes(page) {
+        PageLook::Used
+    } else {
+        PageLook::Empty
+    }
+}
+
+/// Draws the cell of page `page` (zero-based) in `rect`.
+fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
+    let accent = hex_color(theme::TOOLBAR_ACTIVE);
+    let text = hex_color(theme::TOOLBAR_TEXT);
+    let label = (page + 1).to_string();
+    match look {
+        PageLook::Current => {
+            fill(rect.expand(-1.0), accent);
+            draw_label_sized(
+                rect,
+                &label,
+                hex_color(theme::TOOLBAR_BACKGROUND),
+                PAGE_LABEL_SIZE,
+            );
+        }
+        PageLook::Used => {
+            draw_label_sized(rect, &label, text, PAGE_LABEL_SIZE);
+            draw_rectangle(
+                rect.min.x + 3.0,
+                rect.max.y - 1.0 - PAGE_BAR_PX,
+                rect.width() - 6.0,
+                PAGE_BAR_PX,
+                accent,
+            );
+        }
+        PageLook::Empty => {
+            let dim = Color::new(text.r, text.g, text.b, text.a * PAGE_EMPTY_ALPHA);
+            draw_label_sized(rect, &label, dim, PAGE_LABEL_SIZE);
+        }
     }
 }
 
@@ -398,11 +501,11 @@ fn draw_label(rect: Aabb, label: &str, color: Color) {
 
 /// Draws `label` centred in `rect` at `font_size` pixels.
 fn draw_label_sized(rect: Aabb, label: &str, color: Color, font_size: u16) {
-    let size = measure_text(label, None, font_size, 1.0);
+    let size = ui_text::measure(label, font_size);
     let c = rect.center();
     let x = c.x - size.width * 0.5;
     let y = c.y + size.offset_y * 0.5;
-    draw_text(label, x, y, f32::from(font_size), color);
+    ui_text::draw(label, x, y, font_size, color);
 }
 
 /// Draws a horizontal arrow in `rect`, pointing left (`dir < 0`) or right.
@@ -530,6 +633,95 @@ mod tests {
         assert!(last.rect.max.y <= VIEWPORT.y, "{last:?}");
     }
 
+    // ---- T124 page switcher ------------------------------------------------
+
+    /// A window tall enough for the whole switcher.
+    const TALL: Vec2 = Vec2::new(1280.0, 1080.0);
+
+    #[test]
+    fn page_cells_are_two_columns_below_the_history_buttons() {
+        // Act
+        let cells = page_layout(TALL);
+
+        // Assert
+        let kinds: Vec<ButtonKind> = cells.iter().map(|c| c.kind).collect();
+        let expected: Vec<ButtonKind> = (0..PAGE_COUNT).map(ButtonKind::Page).collect();
+        assert_eq!(kinds, expected);
+        let history_bottom = layout(TALL).last().map_or(0.0, |b| b.rect.max.y);
+        for (i, cell) in cells.iter().enumerate() {
+            assert!(cell.rect.min.y > history_bottom, "{cell:?}");
+            let column = (cell.rect.min.x - PAD_PX) / PAGE_CELL_W_PX;
+            assert!(approx_eq(column, (i % 2) as f32, EPS), "{cell:?}");
+        }
+        assert!(cells[2].rect.min.y > cells[0].rect.min.y, "rows go down");
+        assert!(approx_eq(cells[0].rect.min.y, cells[1].rect.min.y, EPS));
+    }
+
+    #[test]
+    fn page_cells_do_not_overlap_buttons() {
+        let buttons = layout(TALL);
+        for cell in page_layout(TALL) {
+            for button in &buttons {
+                assert!(!cell.rect.intersects(&button.rect), "{cell:?} / {button:?}");
+            }
+        }
+        let strip = panel(TALL);
+        for cell in page_layout(TALL) {
+            assert!(strip.contains(cell.rect.min) && strip.contains(cell.rect.max));
+        }
+    }
+
+    #[test]
+    fn page_cells_that_do_not_fit_are_left_out() {
+        // Act: the default window is too short for the whole switcher.
+        let cells = page_layout(VIEWPORT);
+
+        // Assert
+        assert!(cells.len() < PAGE_COUNT);
+        assert!(cells.iter().all(|c| c.rect.max.y <= VIEWPORT.y));
+        assert_eq!(page_layout(Vec2::new(1280.0, 100.0)), []);
+    }
+
+    #[test]
+    fn page_cell_click_goes_to_its_page() {
+        // Arrange
+        let Some(cell) = page_layout(TALL).get(2).copied() else {
+            panic!("no third cell");
+        };
+
+        // Act
+        let routed = route(
+            true,
+            false,
+            TALL,
+            press(cell.rect.center(), PointerButton::Left),
+        );
+
+        // Assert
+        assert_eq!(routed, Route::Apply(Command::GoToPage(2)));
+    }
+
+    #[test]
+    fn page_cell_look_follows_the_editor() {
+        // Arrange: a rectangle on page 1.
+        let mut ed = Editor::new();
+        ed.apply(Command::SetTool(Tool::Rect));
+        let (a, b) = (Vec2::new(10.0, 10.0), Vec2::new(60.0, 40.0));
+        ed.handle(press(a, PointerButton::Left));
+        ed.handle(InputEvent::PointerUp {
+            pos: b,
+            button: PointerButton::Left,
+            mods: Modifiers::NONE,
+        });
+
+        // Assert
+        assert_eq!(page_look(&ed, 0), PageLook::Current);
+        assert_eq!(page_look(&ed, 1), PageLook::Empty);
+        ed.apply(Command::GoToPage(1));
+        assert_eq!(page_look(&ed, 1), PageLook::Current);
+        assert_eq!(page_look(&ed, 0), PageLook::Used);
+    }
+
     #[test]
     fn layout_buttons_inside_panel() {
         let strip = panel(VIEWPORT);
@@ -586,6 +778,7 @@ mod tests {
                 ButtonKind::GridRows(d) => Command::GridRows(d),
                 ButtonKind::Undo => Command::Undo,
                 ButtonKind::Redo => Command::Redo,
+                ButtonKind::Page(page) => Command::GoToPage(page),
             };
             // Act
             let got = hit(&buttons, b.rect.center());

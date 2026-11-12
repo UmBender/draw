@@ -56,9 +56,11 @@ long. If it crashes, `draw --recover` brings your drawing back.
 - **Shape recognition** — `Z` right after a pen stroke turns a shaky
   line, box or circle into a clean line, rectangle or ellipse; a scribble
   stays as drawn, and `Ctrl+Z` gives the stroke back.
-- **Nine pages** — `Alt+1`…`Alt+9` switch canvases (one per problem); each
-  keeps its own shapes, view and undo history, and the page number shows
-  top-right when it is not page 1.
+- **Ten pages** — `Alt+1`…`Alt+9` and `Alt+0` switch canvases (one per
+  problem); each keeps its own shapes, view and undo history. A switcher
+  under the undo and redo buttons shows the numbers 1–10 (current page
+  filled, pages with a drawing marked, empty ones dimmed); click one to go
+  there. It needs a window about 890 px tall to show whole.
 - **Unlimited undo / redo** of every edit, including clearing the canvas.
 - **Anti-tremor** — four smoothing levels (off, low, medium, high).
 - **Anti-aliasing** — 4× MSAA by default.
@@ -226,7 +228,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | `Ctrl+L` | Text block to graph | `Ctrl+P` | Text block to plot |
 | `Ctrl+Backspace` | Clear canvas (undoable) | `Esc` | Cancel / deselect |
 | `Ctrl+K` | Lock selection | `Ctrl+Shift+K` | Unlock every shape |
-| `Alt+1`…`Alt+9` | Go to page 1…9 | | |
+| `Alt+1`…`Alt+9`, `Alt+0` | Go to page 1…9, 10 | | |
 | `Alt+]` | Grow selection 10 % | `Alt+[` | Shrink selection 10 % |
 | `Ctrl+]` | Raise selection one step | `Ctrl+[` | Lower selection one step |
 | `Ctrl+Shift+]` | Selection to the top | `Ctrl+Shift+[` | Selection to the bottom |

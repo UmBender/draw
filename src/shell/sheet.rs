@@ -6,9 +6,9 @@
 //! everything, only while the editor holds an open sheet, and never asks for
 //! a frame of its own.
 
+use crate::shell::ui_text;
 use macroquad::color::Color;
 use macroquad::shapes::draw_rectangle;
-use macroquad::text::{draw_text, measure_text};
 
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::keymap::Topic;
@@ -33,7 +33,7 @@ const TAB_GAP_PX: f32 = 18.0;
 /// Alpha of the dimming layer under the panel.
 const DIM_ALPHA: u8 = 110;
 /// The footer: the sheet's own keys.
-const FOOTER: &str = "←/→ page    1-9 topic    ? or Esc close";
+const FOOTER: &str = "Left/Right page    1-9 topic    ? or Esc close";
 
 /// The panel's rectangle for `lines` lines of content, in a window of
 /// `viewport` pixels: centred, as wide as fits.
@@ -86,7 +86,7 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
         .collect();
     let widths: Vec<f32> = labels
         .iter()
-        .map(|l| measure_text(l, None, TEXT_PX, 1.0).width)
+        .map(|l| ui_text::measure(l, TEXT_PX).width)
         .collect();
     let inner =
         (PANEL_WIDTH_PX.min((viewport.x - 2.0 * MARGIN_PX).max(0.0)) - 2.0 * PAD_PX).max(0.0);
@@ -120,12 +120,12 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
 
 /// Draws `label` vertically centred in the row starting at `y`.
 fn draw_row_text(label: &str, x: f32, y: f32, color: Color) {
-    let size = measure_text(label, None, TEXT_PX, 1.0);
-    draw_text(
+    let size = ui_text::measure(label, TEXT_PX);
+    ui_text::draw(
         label,
         x,
         y + ROW_PX * 0.5 + size.offset_y * 0.5,
-        f32::from(TEXT_PX),
+        TEXT_PX,
         color,
     );
 }
@@ -147,6 +147,13 @@ fn outline(rect: Aabb, color: Color) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The overlays draw with the built-in font, which has no arrows
+    /// (T122).
+    #[test]
+    fn footer_is_ascii() {
+        assert!(FOOTER.is_ascii(), "{FOOTER}");
+    }
     use crate::core::geom::approx_eq;
     use crate::core::sheet::ROWS_PER_PAGE;
 

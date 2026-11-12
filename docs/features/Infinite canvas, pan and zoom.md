@@ -137,12 +137,15 @@ Decisions: [[ADR-T110-1 Minimap geometry, routing and overview cache]].
   Panning changes only the placement and the frame.
 ## Pages (T116)
 
-`Alt+1`…`Alt+9` show one of nine canvases, for example one per contest
+`Alt+1`…`Alt+9` and `Alt+0` show one of ten canvases, for example one per contest
 problem. Each page has its own shapes, selection, view (pan and zoom),
 undo history and auto-number counter; the tool, colour, width, helper
 switches and the clipboard are shared, so a copy on page 1 pastes on
-page 3. The page number shows top-right, small, only when it is not
-page 1. Pages are created lazily (empty until visited). Switching cancels
+page 3. A switcher under the undo and redo buttons lists the pages 1–10: the
+current one filled, pages with shapes in full colour with a bar, empty ones
+dimmed; a click goes there ([[ADR-T124-1 Ten pages and a switcher under undo and redo]]).
+It needs a window about 890 px tall; a shorter one shows the cells that fit,
+and the keys always work. Pages are created lazily (empty until visited). Switching cancels
 a gesture, closes an open text edit like `Esc`, is never an undo step and
 costs one re-render of the document layer. Export, snapping, numbering
 and `Ctrl+Backspace` act on the current page. See [[ADR-T116-1 Nine pages swapped into the editor]].

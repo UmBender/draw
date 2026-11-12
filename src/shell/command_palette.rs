@@ -5,9 +5,9 @@
 //! top of everything, only while the editor holds an open palette, and it
 //! never asks for a frame of its own.
 
+use crate::shell::ui_text;
 use macroquad::color::Color;
 use macroquad::shapes::draw_rectangle;
-use macroquad::text::{draw_text, measure_text};
 
 use crate::core::command_palette::{CommandPalette, VISIBLE_ROWS, chord_label, visible_window};
 use crate::core::geom::{Aabb, Vec2};
@@ -81,7 +81,7 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
         }
         draw_row_text(description, x, y, text);
         let label = chord_label(chord);
-        let width = measure_text(&label, None, TEXT_PX, 1.0).width;
+        let width = ui_text::measure(&label, TEXT_PX).width;
         draw_row_text(&label, right - width, y, accent);
         y += ROW_PX;
     }
@@ -89,12 +89,12 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
 
 /// Draws `label` vertically centred in the row starting at `y`.
 fn draw_row_text(label: &str, x: f32, y: f32, color: Color) {
-    let size = measure_text(label, None, TEXT_PX, 1.0);
-    draw_text(
+    let size = ui_text::measure(label, TEXT_PX);
+    ui_text::draw(
         label,
         x,
         y + ROW_PX * 0.5 + size.offset_y * 0.5,
-        f32::from(TEXT_PX),
+        TEXT_PX,
         color,
     );
 }

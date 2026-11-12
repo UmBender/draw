@@ -326,6 +326,7 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     (KeyChord::alt(Key::Digit7), Command::GoToPage(6), "Page 7"),
     (KeyChord::alt(Key::Digit8), Command::GoToPage(7), "Page 8"),
     (KeyChord::alt(Key::Digit9), Command::GoToPage(8), "Page 9"),
+    (KeyChord::alt(Key::Digit0), Command::GoToPage(9), "Page 10"),
     // Helpers
     (
         KeyChord::bare(Key::X),
@@ -591,6 +592,7 @@ mod tests {
             (Key::Digit7, ALT, Command::GoToPage(6)),
             (Key::Digit8, ALT, Command::GoToPage(7)),
             (Key::Digit9, ALT, Command::GoToPage(8)),
+            (Key::Digit0, ALT, Command::GoToPage(9)),
             // Tools
             (Key::D, NONE, Command::SetTool(Tool::Pen)),
             (Key::W, NONE, Command::SetTool(Tool::Line)),
@@ -766,8 +768,8 @@ mod tests {
         for (page, key) in digits.into_iter().enumerate() {
             assert_eq!(resolve(key, ALT), Some(Command::GoToPage(page)), "{key:?}");
         }
-        // Alt+0 and the bare digits keep their meaning.
-        assert_eq!(resolve(Key::Digit0, ALT), None);
+        // Alt+0 is page 10; the bare digits keep their meaning.
+        assert_eq!(resolve(Key::Digit0, ALT), Some(Command::GoToPage(9)));
         assert_eq!(resolve(Key::Digit0, NONE), Some(Command::ResetView));
         assert_eq!(resolve(Key::Digit1, NONE), Some(color(1)));
     }
