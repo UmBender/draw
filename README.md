@@ -53,9 +53,9 @@ long. If it crashes, `draw --recover` brings your drawing back.
 - **Lock shapes** — `Ctrl+K` locks the selection so a background table or
   diagram can no longer be selected, moved or erased; it still takes fills
   and text. `Ctrl+Shift+K` unlocks everything.
-- **Shape recognition** — `Z` right after a pen stroke turns a shaky
-  line, box or circle into a clean line, rectangle or ellipse; a scribble
-  stays as drawn, and `Ctrl+Z` gives the stroke back.
+- **Shape recognition** — `Z` right after a pen stroke turns a hurried
+  line, box or circle (rounded corners, an overshoot, a tail are fine) into
+  a clean line, rectangle or ellipse; a scribble stays as drawn, and `Ctrl+Z` gives the stroke back.
 - **Ten pages** — `Alt+1`…`Alt+9` and `Alt+0` switch canvases (one per
   problem); each keeps its own shapes, view and undo history. A switcher
   under the undo and redo buttons shows the numbers 1–10 (current page

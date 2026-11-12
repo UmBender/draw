@@ -1,7 +1,7 @@
 ---
 id: T117
 title: Looser shape recognition
-status: in-progress
+status: done
 wave: 60
 branch: task/T117-looser-recognition
 depends_on: []
@@ -68,12 +68,12 @@ The residual limits go to `0.05` (mean) and `0.14` (largest) of the box diagonal
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T117): specify looser shape recognition`
-- [ ] tests — `test(T117): add failing tests for looser shape recognition`
-- [ ] models — `feat(T117): add the shape scores`
-- [ ] behaviour — `feat(T117): accept sloppier strokes on Z`
-- [ ] quality — `chore(T117): pass clippy and rustfmt`
-- [ ] docs — `docs(T117): update the feature note`
+- [x] spec — `docs(T117): specify looser shape recognition`
+- [x] tests — `test(T117): add failing tests for looser shape recognition`
+- [x] models — `feat(T117): add the shape scores`
+- [x] behaviour — `feat(T117): accept sloppier strokes on Z`
+- [x] quality — `chore(T117): pass clippy and rustfmt`
+- [x] docs — `docs(T117): update the feature note`
 
 ## Learning path
 
@@ -82,3 +82,4 @@ None: it tunes an existing feature.
 ## Log
 
 - 2026-11-11 — written with the owner after trying 1.5.0.
+- 2026-11-12 — done with the recommended options; `scripts/check.sh --fuzz` run below. The tolerance table is in the ADR and pinned by `tolerance_table_matches_the_adr`. Not tried by the owner's hand yet: the corpus is generated, so real strokes may still miss.
