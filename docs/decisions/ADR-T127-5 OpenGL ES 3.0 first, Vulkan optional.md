@@ -1,7 +1,7 @@
 ---
 id: ADR-T127-5
 title: OpenGL ES 3.0 first, Vulkan optional
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-12
 task: T127

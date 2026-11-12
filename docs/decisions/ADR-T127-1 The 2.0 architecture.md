@@ -1,7 +1,7 @@
 ---
 id: ADR-T127-1
 title: The 2.0 architecture
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-12
 task: T127

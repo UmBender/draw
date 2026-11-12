@@ -1,7 +1,7 @@
 ---
 id: ADR-T127-2
 title: The unsafe policy
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-12
 task: T127

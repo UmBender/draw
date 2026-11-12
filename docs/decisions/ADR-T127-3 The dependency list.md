@@ -1,7 +1,7 @@
 ---
 id: ADR-T127-3
 title: The dependency list
-status: proposed
+status: accepted
 kind: decision
 date: 2026-11-12
 task: T127

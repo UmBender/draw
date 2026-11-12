@@ -152,10 +152,10 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 141 | [[ADR-T117-1 Scored shape recognition with looser limits]] | accepted | decision | T109-1 | amends T109-1 |
 | 142 | [[ADR-T125-1 Six pages, one button per row]] | accepted | decision | T124-1 | amends T124-1 |
 | 143 | [[ADR-T126-1 Menus drawn as translucent rounded islands]] | accepted | decision | T51-1, T123-1 | — |
-| 144 | [[ADR-T127-1 The 2.0 architecture]] | proposed | decision | 0003 | — |
-| 145 | [[ADR-T127-2 The unsafe policy]] | proposed | decision | T127-1 | amends 0014 |
-| 146 | [[ADR-T127-3 The dependency list]] | proposed | decision | T127-1, T32-1, T92-1, T114-1 | amends 0014 |
-| 147 | [[ADR-T127-4 An own backend replaces miniquad and macroquad]] | proposed | decision | T127-1, T127-2 | supersedes 0002 |
-| 148 | [[ADR-T127-5 OpenGL ES 3.0 first, Vulkan optional]] | proposed | decision | T127-1, T127-4 | — |
+| 144 | [[ADR-T127-1 The 2.0 architecture]] | accepted | decision | 0003 | — |
+| 145 | [[ADR-T127-2 The unsafe policy]] | accepted | decision | T127-1 | amends 0014 |
+| 146 | [[ADR-T127-3 The dependency list]] | accepted | decision | T127-1, T32-1, T92-1, T114-1 | amends 0014 |
+| 147 | [[ADR-T127-4 An own backend replaces miniquad and macroquad]] | accepted | decision | T127-1, T127-2 | supersedes 0002 |
+| 148 | [[ADR-T127-5 OpenGL ES 3.0 first, Vulkan optional]] | accepted | decision | T127-1, T127-4 | — |
 | 149 | [[ADR-T128-1 X11 stays supported]] | accepted | decision | T28-1, T44-1 | reverts T46-1 |
 | 150 | [[ADR-T131-1 No dyn outside an allow-list]] | accepted | decision | 0010, 0014 | — |
