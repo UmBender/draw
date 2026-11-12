@@ -2457,6 +2457,40 @@ mod self_tests {
         }
     }
 
+    // ---- flags, not variables (T154) --------------------------------------
+
+    #[test]
+    fn e2e_command_passes_flags_not_variables() {
+        // Arrange
+        let files = AppFiles {
+            dump: Path::new("/r/actual.snap"),
+            idle: Path::new("/r/idle"),
+            clipboard: Path::new("/r/clipboard"),
+        };
+
+        // Act
+        let fresh = app_args(&files, Some(Path::new("/r/start.snap")), false);
+        let recovered = app_args(&files, Some(Path::new("/r/start.snap")), true);
+        let blank = app_args(&files, None, false);
+
+        // Assert
+        let text = |args: &[OsString]| {
+            args.iter()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        assert_eq!(
+            text(&fresh),
+            "--log info --tablet off --e2e-dump /r/actual.snap --e2e-idle /r/idle \
+             --e2e-clipboard /r/clipboard --snapshot /r/start.snap"
+        );
+        assert!(text(&recovered).ends_with("--recover"), "{recovered:?}");
+        assert!(!text(&recovered).contains("--snapshot"), "{recovered:?}");
+        assert!(!text(&blank).contains("--snapshot"), "{blank:?}");
+        assert!(!text(&fresh).contains("DRAW_"), "{fresh:?}");
+    }
+
     // ---- release gate (T129) ---------------------------------------------
 
     fn script_path(name: &str) -> PathBuf {
