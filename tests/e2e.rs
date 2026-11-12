@@ -614,19 +614,38 @@ enum Backend {
 impl Backend {
     /// The backend called `name` by `--backend`.
     fn from_name(name: &str) -> Result<Self, String> {
-        todo!("{name}")
+        match name {
+            "wayland" => Ok(Self::Wayland),
+            "x11" => Ok(Self::X11),
+            other => Err(format!("unknown backend `{other}`")),
+        }
     }
 
     /// The backend of this run, from `DRAW_E2E_BACKEND`; Wayland if unset.
     fn from_env() -> Result<Self, String> {
-        todo!()
+        std::env::var("DRAW_E2E_BACKEND").map_or(Ok(Self::Wayland), |name| Self::from_name(&name))
+    }
+}
+
+/// The path a golden `name` of a case has for `backend`: `expected.x11.ppm`
+/// for `expected.ppm` on X11. Only a golden that differs by backend has
+/// such a file.
+fn backend_golden(source: &Path, name: &str, backend: Backend) -> PathBuf {
+    match (backend, name.rsplit_once('.')) {
+        (Backend::X11, Some((stem, ext))) => source.join(format!("{stem}.x11.{ext}")),
+        _ => source.join(name),
     }
 }
 
 /// The golden `name` of a case: the backend's own file if it exists, else
 /// the shared one.
 fn golden_path(source: &Path, name: &str, backend: Backend) -> PathBuf {
-    todo!("{source:?} {name} {backend:?}")
+    let own = backend_golden(source, name, backend);
+    if own.exists() {
+        own
+    } else {
+        source.join(name)
+    }
 }
 
 /// The private X11 session, checked to be the script's own.
@@ -644,7 +663,82 @@ fn x11_guard(
     display: Option<OsString>,
     authority: Option<OsString>,
 ) -> Result<X11Guard, String> {
-    todo!("{runtime:?} {display:?} {authority:?}")
+    let runtime = PathBuf::from(runtime.ok_or("DRAW_E2E_RUNTIME is not set: run scripts/e2e.sh")?);
+    if !runtime.is_absolute() {
+        return Err(format!("{} is not absolute", runtime.display()));
+    }
+    let display = display
+        .ok_or("DISPLAY is not set")?
+        .into_string()
+        .map_err(|_| "DISPLAY is not text".to_owned())?;
+    let number = display.strip_prefix(':').unwrap_or("");
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("DISPLAY={display} is not a local display"));
+    }
+    let authority = PathBuf::from(authority.ok_or("XAUTHORITY is not set")?);
+    if authority.parent() != Some(runtime.as_path()) {
+        return Err(format!(
+            "XAUTHORITY={} is outside the private {}",
+            authority.display(),
+            runtime.display()
+        ));
+    }
+    if !authority.is_file() {
+        return Err(format!("XAUTHORITY={} is not a file", authority.display()));
+    }
+    Ok(X11Guard {
+        runtime,
+        display,
+        authority,
+    })
+}
+
+/// The `xdotool` invocations that do what the `wtype` arguments `args`
+/// do: modifiers, keys, holds, pauses and literal text.
+fn xdotool_commands(args: &[String]) -> Result<Vec<Vec<String>>, String> {
+    let modifier = |name: &str| match name {
+        "ctrl" => "Control_L".to_owned(),
+        "shift" => "Shift_L".to_owned(),
+        "alt" => "Alt_L".to_owned(),
+        "logo" => "Super_L".to_owned(),
+        other => other.to_owned(),
+    };
+    let mut commands = Vec::new();
+    let mut chain: Vec<String> = Vec::new();
+    let mut words = args.iter();
+    while let Some(word) = words.next() {
+        let mut operand = |what: &str| {
+            words
+                .next()
+                .cloned()
+                .ok_or_else(|| format!("{word} needs {what}"))
+        };
+        match word.as_str() {
+            "-M" => chain.extend(["keydown".to_owned(), modifier(&operand("a modifier")?)]),
+            "-m" => chain.extend(["keyup".to_owned(), modifier(&operand("a modifier")?)]),
+            "-k" => chain.extend(["key".to_owned(), operand("a key")?]),
+            "-P" => chain.extend(["keydown".to_owned(), operand("a key")?]),
+            "-p" => chain.extend(["keyup".to_owned(), operand("a key")?]),
+            "-s" => {
+                let ms: u32 = number(&operand("milliseconds")?)?;
+                chain.extend(["sleep".to_owned(), format!("{}", f64::from(ms) / 1000.0)]);
+            }
+            text => {
+                if !chain.is_empty() {
+                    commands.push(std::mem::take(&mut chain));
+                }
+                commands.push(
+                    ["type", "--delay", "0", "--", text]
+                        .map(str::to_owned)
+                        .to_vec(),
+                );
+            }
+        }
+    }
+    if !chain.is_empty() {
+        commands.push(chain);
+    }
+    Ok(commands)
 }
 
 /// One Wayland protocol message: header and payload.
@@ -805,8 +899,13 @@ fn announce_bare_keyboard(socket: &Path) -> Result<UnixStream, String> {
 /// The running private session: tools get its sockets and nothing else.
 struct Session {
     guard: Guard,
+    backend: Backend,
+    /// The private X server, on the X11 backend.
+    x11: Option<X11Guard>,
+    /// The app's window, once it has one, on the X11 backend.
+    window: Option<String>,
     /// Holds the seat's pointer and carries wheel notches.
-    pointer: UnixStream,
+    pointer: Option<UnixStream>,
     /// `wtype` processes still alive, oldest first.
     keyboards: VecDeque<Child>,
 }
@@ -814,6 +913,33 @@ struct Session {
 impl Session {
     /// Joins the session named by the environment, after checking it.
     fn join() -> Result<Self, String> {
+        match Backend::from_env()? {
+            Backend::Wayland => Self::join_wayland(),
+            Backend::X11 => Self::join_x11(),
+        }
+    }
+
+    fn join_x11() -> Result<Self, String> {
+        let x11 = x11_guard(
+            std::env::var_os("DRAW_E2E_RUNTIME"),
+            std::env::var_os("DISPLAY"),
+            std::env::var_os("XAUTHORITY"),
+        )?;
+        Ok(Self {
+            guard: Guard {
+                runtime: x11.runtime.clone(),
+                wayland: PathBuf::new(),
+                sway: PathBuf::new(),
+            },
+            backend: Backend::X11,
+            x11: Some(x11),
+            window: None,
+            pointer: None,
+            keyboards: VecDeque::new(),
+        })
+    }
+
+    fn join_wayland() -> Result<Self, String> {
         let guard = session_guard(
             std::env::var_os("DRAW_E2E_RUNTIME"),
             std::env::var_os("WAYLAND_DISPLAY"),
@@ -822,7 +948,10 @@ impl Session {
         let pointer = announce_pointer(&guard.wayland)?;
         let mut session = Self {
             guard,
-            pointer,
+            backend: Backend::Wayland,
+            x11: None,
+            window: None,
+            pointer: Some(pointer),
             keyboards: VecDeque::new(),
         };
         // A keyboard on the seat from before the app starts.
@@ -839,24 +968,122 @@ impl Session {
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("XDG_RUNTIME_DIR", &self.guard.runtime)
-            .env("WAYLAND_DISPLAY", &self.guard.wayland)
-            .env("SWAYSOCK", &self.guard.sway)
             .stdin(Stdio::null());
+        if let Some(x11) = &self.x11 {
+            command
+                .env("DISPLAY", &x11.display)
+                .env("XAUTHORITY", &x11.authority);
+        } else {
+            command
+                .env("WAYLAND_DISPLAY", &self.guard.wayland)
+                .env("SWAYSOCK", &self.guard.sway);
+        }
         command
     }
 
-    /// Saves what the output shows to `path` as a PPM.
+    /// Saves what the output (or the app's window on X11) shows to `path`
+    /// as a PPM.
     fn screenshot(&self, path: &Path) -> Result<(), String> {
-        let status = self
-            .tool("grim")
-            .args(["-t", "ppm"])
-            .arg(path)
-            .status()
-            .map_err(|err| format!("grim: {err}"))?;
+        let (tool, status) = if let Some(window) = &self.window {
+            let target = format!("ppm:{}", path.display());
+            let status = self
+                .tool("import")
+                .args(["-window", window, &target])
+                .status();
+            ("import", status)
+        } else {
+            let status = self.tool("grim").args(["-t", "ppm"]).arg(path).status();
+            ("grim", status)
+        };
+        let status = status.map_err(|err| format!("{tool}: {err}"))?;
         if status.success() {
             Ok(())
         } else {
-            Err(format!("grim failed: {status}"))
+            Err(format!("{tool} failed: {status}"))
+        }
+    }
+
+    /// Runs `xdotool` with `args` and returns its stdout.
+    fn xdotool(&self, args: &[&str]) -> Result<String, String> {
+        let output = self
+            .tool("xdotool")
+            .args(args)
+            .output()
+            .map_err(|err| format!("xdotool: {err}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        if output.status.success() {
+            Ok(stdout)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("xdotool {args:?}: {stdout}{stderr}"))
+        }
+    }
+
+    /// Types the `wtype` arguments `args` through the backend's tool. On
+    /// Wayland the keyboard stays alive afterwards (ADR-T75-1).
+    fn type_args(&mut self, args: &[String]) -> Result<(), String> {
+        if self.backend == Backend::X11 {
+            for command in xdotool_commands(args)? {
+                let words: Vec<&str> = command.iter().map(String::as_str).collect();
+                self.xdotool(&words)?;
+            }
+            return Ok(());
+        }
+        let mut all = args.to_vec();
+        all.extend(["-s".to_owned(), KEEP_ALIVE_MS.to_owned()]);
+        let keyboard = self.spawn_wtype(&all)?;
+        self.keyboards.push_back(keyboard);
+        Ok(())
+    }
+
+    /// One pointer step: `swaymsg seat - cursor` arguments on Wayland, the
+    /// same words as `xdotool` calls on X11.
+    fn pointer_step(&self, args: &[String]) -> Result<(), String> {
+        if self.backend == Backend::Wayland {
+            let mut command = vec!["seat", "-", "cursor"];
+            command.extend(args.iter().map(String::as_str));
+            return self.swaymsg(&command).map(drop);
+        }
+        let words: Vec<&str> = args.iter().map(String::as_str).collect();
+        let number = |button: &str| button.strip_prefix("button").unwrap_or("1").to_owned();
+        let call = match words.as_slice() {
+            ["set", x, y] => vec!["mousemove".to_owned(), (*x).to_owned(), (*y).to_owned()],
+            ["press", b] => vec!["mousedown".to_owned(), number(b)],
+            ["release", b] => vec!["mouseup".to_owned(), number(b)],
+            other => return Err(format!("no X11 pointer step for {other:?}")),
+        };
+        let call: Vec<&str> = call.iter().map(String::as_str).collect();
+        self.xdotool(&call).map(drop)
+    }
+
+    /// One wheel notch: negative is up (ADR-T75-2).
+    fn wheel(&mut self, notch: i32) -> Result<(), String> {
+        if let Some(pointer) = &mut self.pointer {
+            return pointer
+                .write_all(&wheel_message(notch))
+                .map_err(|err| format!("wheel: {err}"));
+        }
+        self.xdotool(&["click", if notch < 0 { "4" } else { "5" }])
+            .map(drop)
+    }
+
+    /// Sizes the output (the window on X11) to `w` by `h`.
+    fn resize(&self, w: u32, h: u32) -> Result<(), String> {
+        if let Some(window) = &self.window {
+            return self
+                .xdotool(&["windowsize", window, &w.to_string(), &h.to_string()])
+                .map(drop);
+        }
+        let mode = format!("{w}x{h}");
+        self.swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])
+            .map(drop)
+    }
+
+    /// Asks the app's window to close.
+    fn close_window(&self) -> Result<(), String> {
+        match &self.window {
+            Some(window) => self.xdotool(&["windowquit", window]).map(drop),
+            None => self.swaymsg(&["[app_id=\"draw\"]", "kill"]).map(drop),
         }
     }
 
@@ -902,10 +1129,22 @@ impl Session {
     }
 
     /// Waits until the app's window is in the tree.
-    fn wait_for_window(&self, child: &mut Child) -> Result<(), String> {
+    fn wait_for_window(&mut self, child: &mut Child) -> Result<(), String> {
         let started = Instant::now();
         loop {
-            if self
+            if self.backend == Backend::X11 {
+                // The private server holds no other client's window.
+                let found = self
+                    .xdotool(&["search", "--onlyvisible", "--class", "draw"])
+                    .unwrap_or_default();
+                if let Some(id) = found.split_whitespace().next() {
+                    let id = id.to_owned();
+                    self.xdotool(&["windowmove", &id, "0", "0"])?;
+                    self.xdotool(&["windowfocus", &id])?;
+                    self.window = Some(id);
+                    return Ok(());
+                }
+            } else if self
                 .swaymsg(&["-t", "get_tree"])?
                 .contains("\"app_id\": \"draw\"")
             {
@@ -1023,9 +1262,7 @@ impl Running<'_> {
     fn sync_with(&mut self, args: &[String]) -> Result<(), String> {
         let mut all = args.to_vec();
         all.extend(SYNC_ARGS.iter().map(|&a| a.to_owned()));
-        all.extend(["-s".to_owned(), KEEP_ALIVE_MS.to_owned()]);
-        let keyboard = self.session.spawn_wtype(&all)?;
-        self.session.keyboards.push_back(keyboard);
+        self.session.type_args(&all)?;
         self.sent += 1;
         wait_for_sync(
             &self.idle,
@@ -1061,34 +1298,32 @@ impl Running<'_> {
         match step {
             Step::Type(args) => self.sync_with(args),
             Step::Pointer(args) => {
-                let mut command = vec!["seat", "-", "cursor"];
-                command.extend(args.iter().map(String::as_str));
-                self.session.swaymsg(&command)?;
+                self.session.pointer_step(args)?;
                 self.sync_with(&[])
             }
             Step::Wheel(notch) => {
-                self.session
-                    .pointer
-                    .write_all(&wheel_message(*notch))
-                    .map_err(|err| format!("wheel: {err}"))?;
+                self.session.wheel(*notch)?;
                 self.sync_with(&[])
             }
             Step::Output(w, h) => {
-                let mode = format!("{w}x{h}");
-                self.session
-                    .swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])?;
+                self.session.resize(*w, *h)?;
                 self.wait_for_viewport((*w, *h))
             }
             Step::Checkpoint(name) => {
                 let actual = select_sections(&self.snapshot()?, sections);
-                compare_snapshot(
+                compare_golden(
                     &actual,
-                    &source.join(format!("{name}.snap")),
+                    source,
+                    &format!("{name}.snap"),
+                    self.session.backend,
                     update_requested(),
                 )
             }
             Step::EndKeyboard => {
-                let _bare = self.session.replace_active_keyboard()?;
+                // X11 has no keymap hand-over to lose.
+                if self.session.backend == Backend::Wayland {
+                    let _bare = self.session.replace_active_keyboard()?;
+                }
                 self.sync_with(&[])
             }
             Step::Clipboard(text) => {
@@ -1099,15 +1334,19 @@ impl Running<'_> {
     }
 
     /// Puts `text` on the clipboard with `wl-copy`, or through the app's
-    /// own hook where it is not installed (ADR-T83-1).
+    /// own hook where it is not installed, and always on X11, where the
+    /// private server has no clipboard manager (ADR-T83-1).
     fn set_clipboard(&self, text: &str) -> Result<(), String> {
-        let copied = self
-            .session
-            .tool("wl-copy")
-            .arg(text)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        let copied = if self.session.backend == Backend::X11 {
+            Err(std::io::ErrorKind::NotFound.into())
+        } else {
+            self.session
+                .tool("wl-copy")
+                .arg(text)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+        };
         match copied {
             Ok(status) if status.success() => Ok(()),
             Ok(status) => Err(format!("wl-copy failed: {status}")),
@@ -1161,8 +1400,9 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     let (dump, idle) = (run.join("actual.snap"), run.join("idle"));
     let clipboard = run.join("clipboard");
     let log = state.join("draw").join("draw.log");
-    let mode = format!("{}x{}", OUTPUT.0, OUTPUT.1);
-    session.swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])?;
+    if session.backend == Backend::Wayland {
+        session.resize(OUTPUT.0, OUTPUT.1)?;
+    }
     let start = prepare_start(&case, source, run)?;
     let stdout = std::fs::File::create(run.join("draw.out")).map_err(|err| err.to_string())?;
     let stderr = stdout.try_clone().map_err(|err| err.to_string())?;
@@ -1183,6 +1423,9 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     }
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;
+    if session.backend == Backend::X11 {
+        session.resize(OUTPUT.0, OUTPUT.1)?;
+    }
     let mut running = Running {
         session,
         child,
@@ -1205,14 +1448,20 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     let update = update_requested();
     let mut problems = Vec::new();
     let actual = select_sections(&running.snapshot()?, &case.sections);
-    if let Err(problem) = compare_snapshot(&actual, &source.join("expected.snap"), update) {
+    if let Err(problem) = compare_golden(
+        &actual,
+        source,
+        "expected.snap",
+        running.session.backend,
+        update,
+    ) {
         problems.push(problem);
     }
     problems.extend(check_images(&running, &case, source, run, update)?);
 
     match case.ending {
         Ending::Close => {
-            running.session.swaymsg(&["[app_id=\"draw\"]", "kill"])?;
+            running.session.close_window()?;
         }
         Ending::Sigint => {
             let pid = running.child.id().to_string();
@@ -1257,8 +1506,9 @@ fn check_images(
     if let Some(tolerance) = case.screenshot {
         let shot = run.join("actual.ppm");
         running.session.screenshot(&shot)?;
-        let golden = source.join("expected.ppm");
-        if let Err(problem) = compare_screenshot(&shot, &golden, run, tolerance, pointer, update) {
+        let backend = running.session.backend;
+        let compared = compare_screenshot_for(&shot, source, backend, run, tolerance, pointer, update);
+        if let Err(problem) = compared {
             problems.push(problem);
         }
     }
@@ -1270,6 +1520,48 @@ fn check_images(
         }
     }
     Ok(problems)
+}
+
+/// Compares `actual` with the case's golden `name` for `backend`. On X11 an
+/// update writes the backend's own file, and only when the shared golden
+/// does not already match.
+fn compare_golden(
+    actual: &str,
+    source: &Path,
+    name: &str,
+    backend: Backend,
+    update: bool,
+) -> Result<(), String> {
+    let path = golden_path(source, name, backend);
+    if !update || backend == Backend::Wayland {
+        return compare_snapshot(actual, &path, update);
+    }
+    if compare_snapshot(actual, &path, false).is_ok() {
+        return Ok(());
+    }
+    compare_snapshot(actual, &backend_golden(source, name, backend), true)
+}
+
+/// [`compare_screenshot`] against `expected.ppm` of the case, with the
+/// same backend rule as [`compare_golden`].
+fn compare_screenshot_for(
+    shot: &Path,
+    source: &Path,
+    backend: Backend,
+    run: &Path,
+    tolerance: Tolerance,
+    pointer: (i32, i32),
+    update: bool,
+) -> Result<(), String> {
+    let path = golden_path(source, "expected.ppm", backend);
+    if !update || backend == Backend::Wayland {
+        return compare_screenshot(shot, &path, run, tolerance, pointer, update);
+    }
+    if compare_screenshot(shot, &path, run, tolerance, pointer, false).is_ok() {
+        return Ok(());
+    }
+    let own = backend_golden(source, "expected.ppm", backend);
+    compare_screenshot(shot, &own, run, tolerance, pointer, true)
 }
 
 /// Compares the screenshot at `shot`; writes `diff.ppm` into `run` on a

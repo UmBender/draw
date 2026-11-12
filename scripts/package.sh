@@ -18,6 +18,13 @@ max_binary_bytes=$((20 * 1024 * 1024))
 step() { printf '\n==> %s\n' "$*"; }
 fail() { echo "package.sh: $*" >&2; exit 1; }
 
+# T129: a release needs check.sh --fuzz and the end-to-end suite on both
+# backends first; scripts/release.sh runs them and sets DRAW_RELEASE.
+if [[ ${DRAW_RELEASE:-} != 1 ]]; then
+    echo "package.sh: this is not the release path: use scripts/release.sh X.Y.Z" >&2
+    echo "package.sh: packaging anyway; nothing here was checked by the release gate" >&2
+fi
+
 # AC-1: every lib*.so the shipped binary names is in packaging/runtime-libs.
 check_runtime_libs() {
     local listed mentioned base missing=()

@@ -18,7 +18,8 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 | Tests | `cargo test --all-targets` | all pass, including property tests |
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
 | Fuzz | `PROPTEST_CASES=20000 cargo test --release --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
-| E2E | `scripts/e2e.sh` (needs `sway`, `wtype`, `grim`; separate from `check.sh`, nightly in CI) | every case passes (see [[End-to-end tests]]) |
+| E2E | `scripts/e2e.sh [--backend wayland\|x11\|all]` (Wayland needs `sway`, `wtype`, `grim`; X11 needs `Xvfb`, `xdotool`, ImageMagick `import`; separate from `check.sh`, nightly in CI) | every case passes on the backends run (see [[End-to-end tests]]) |
+| Release | `scripts/release.sh X.Y.Z` | `check.sh --fuzz`, then e2e on Wayland and on X11, then `package.sh`; any failing step stops before packaging. `package.sh` called directly says it is not the release path. `--dry-run` prints the steps. |
 
 ## Limits
 
