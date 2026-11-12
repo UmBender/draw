@@ -6,6 +6,7 @@
 //! editor still does the work for the cells that say so.
 
 mod effect;
+mod gesture;
 mod input;
 mod regions;
 mod state;
