@@ -17,13 +17,13 @@ use crate::core::shape::Shape;
 /// Samples taken evenly along the stroke before measuring.
 pub const SAMPLES: usize = 128;
 /// A line's chord is at least this fraction of the path length.
-pub const LINE_MIN_STRAIGHTNESS: f32 = 0.8;
+pub const LINE_MIN_STRAIGHTNESS: f32 = 0.75;
 /// No sample of a line lies farther than this fraction of the chord from
 /// it.
-pub const LINE_MAX_DEVIATION: f32 = 0.05;
+pub const LINE_MAX_DEVIATION: f32 = 0.1;
 /// A loop is closed when its ends are at most this fraction of the path
 /// length apart.
-pub const CLOSED_MAX_GAP: f32 = 0.15;
+pub const CLOSED_MAX_GAP: f32 = 0.3;
 /// Rotations of the measuring box tried over a quarter turn.
 pub const ROTATION_STEPS: u32 = 90;
 /// The short side of a closed shape's box is at least this fraction of its
@@ -31,16 +31,30 @@ pub const ROTATION_STEPS: u32 = 90;
 pub const MIN_ASPECT: f32 = 0.1;
 /// A closed shape winds around its box centre at least this fraction of a
 /// full turn.
-pub const MIN_TURN: f32 = 0.8;
-/// A box corner counts when a sample lies within this fraction of the box
-/// diagonal.
-pub const CORNER_TOLERANCE: f32 = 0.08;
+pub const MIN_TURN: f32 = 0.7;
+/// A box corner counts for a rectangle when a sample lies within this
+/// fraction of the box diagonal.
+pub const RECT_CORNER_TOLERANCE: f32 = 0.12;
+/// A rectangle passes near at least this many of the four box corners.
+pub const RECT_MIN_CORNERS: usize = 3;
+/// A box corner counts against an ellipse when a sample lies within this
+/// fraction of the box diagonal.
+pub const ELLIPSE_CORNER_TOLERANCE: f32 = 0.06;
+/// An ellipse passes near at most this many of the four box corners.
+pub const ELLIPSE_MAX_CORNERS: usize = 1;
+/// When both a rectangle and an ellipse fit, the better one wins only if
+/// its score is below this fraction of the other's; otherwise the stroke
+/// stays as drawn.
+pub const NEAR_TIE: f32 = 0.9;
+/// The largest residual is read after leaving out this fraction of the
+/// worst samples, so a short tail or a flick does not veto the shape.
+pub const TAIL_ALLOWANCE: f32 = 0.04;
 /// Mean distance of the samples to the outline, as a fraction of the box
 /// diagonal.
-pub const MEAN_RESIDUAL: f32 = 0.035;
+pub const MEAN_RESIDUAL: f32 = 0.05;
 /// Largest distance of a sample to the outline, as a fraction of the box
 /// diagonal.
-pub const MAX_RESIDUAL: f32 = 0.1;
+pub const MAX_RESIDUAL: f32 = 0.14;
 
 /// The shape a stroke looks like. For [`Fit::Rect`] and [`Fit::Ellipse`],
 /// `a` and `b` are opposite corners of the stroke's axis-aligned bounding
@@ -269,16 +283,19 @@ fn bounds(points: impl Iterator<Item = P>) -> (P, P) {
     (lo, hi)
 }
 
-/// Whether the residuals of `samples` are small for a box of diagonal
-/// `diagonal`.
-fn hugs(residuals: impl Iterator<Item = f64>, count: usize, diagonal: f64) -> bool {
-    let (mut sum, mut max) = (0.0, 0.0f64);
-    for r in residuals {
-        sum += r;
-        max = max.max(r);
-    }
-    let mean = sum / count.max(1) as f64;
-    mean <= f64::from(MEAN_RESIDUAL) * diagonal && max <= f64::from(MAX_RESIDUAL) * diagonal
+/// How badly the residuals of the samples fit a box of diagonal
+/// `diagonal`: the larger of the mean and the largest residual (leaving
+/// out the [`TAIL_ALLOWANCE`] worst samples), each over its limit. A score
+/// of `1` or less passes; a lower score is a better fit (ADR-T117-1).
+fn score(residuals: impl Iterator<Item = f64>, diagonal: f64) -> f64 {
+    let mut all: Vec<f64> = residuals.collect();
+    all.sort_by(f64::total_cmp);
+    let count = all.len().max(1);
+    let mean = all.iter().sum::<f64>() / count as f64;
+    let kept = count - (count as f64 * f64::from(TAIL_ALLOWANCE)).floor() as usize;
+    let largest = all.get(kept.max(1) - 1).copied().unwrap_or(0.0);
+    (mean / (f64::from(MEAN_RESIDUAL) * diagonal))
+        .max(largest / (f64::from(MAX_RESIDUAL) * diagonal))
 }
 
 /// The rectangle or ellipse a closed loop of evenly spaced `samples`
@@ -321,44 +338,49 @@ fn closed_kind(samples: &[P]) -> Option<Closed> {
     if winding(&local, hu, hv) < f64::from(MIN_TURN) * std::f64::consts::TAU {
         return None;
     }
-    let reach = f64::from(CORNER_TOLERANCE) * diagonal;
-    let corners = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
-        .into_iter()
-        .filter(|&(sx, sy)| {
-            let corner = P {
-                x: sx * hu,
-                y: sy * hv,
-            };
-            local.iter().any(|p| p.distance(corner) <= reach)
+    let corners_within = |tolerance: f32| {
+        let reach = f64::from(tolerance) * diagonal;
+        [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
+            .into_iter()
+            .filter(|&(sx, sy)| {
+                let corner = P {
+                    x: sx * hu,
+                    y: sy * hv,
+                };
+                local.iter().any(|p| p.distance(corner) <= reach)
+            })
+            .count()
+    };
+    let rect = (corners_within(RECT_CORNER_TOLERANCE) >= RECT_MIN_CORNERS)
+        .then(|| {
+            score(
+                local
+                    .iter()
+                    .map(|p| (hu - p.x.abs()).min(hv - p.y.abs()).max(0.0)),
+                diagonal,
+            )
         })
-        .count();
-    let n = local.len();
-    match corners {
-        4 if hugs(
-            local
-                .iter()
-                .map(|p| (hu - p.x.abs()).min(hv - p.y.abs()).max(0.0)),
-            n,
-            diagonal,
-        ) =>
-        {
-            Some(Closed::Rect)
-        }
-        0 if hugs(
-            local.iter().map(|p| {
-                let r = (p.x / hu).hypot(p.y / hv);
-                if r > 0.0 {
-                    p.x.hypot(p.y) * (1.0 - 1.0 / r).abs()
-                } else {
-                    hu.min(hv)
-                }
-            }),
-            n,
-            diagonal,
-        ) =>
-        {
-            Some(Closed::Ellipse)
-        }
+        .filter(|&s| s <= 1.0);
+    let ellipse = (corners_within(ELLIPSE_CORNER_TOLERANCE) <= ELLIPSE_MAX_CORNERS)
+        .then(|| {
+            score(
+                local.iter().map(|p| {
+                    let r = (p.x / hu).hypot(p.y / hv);
+                    if r > 0.0 {
+                        p.x.hypot(p.y) * (1.0 - 1.0 / r).abs()
+                    } else {
+                        hu.min(hv)
+                    }
+                }),
+                diagonal,
+            )
+        })
+        .filter(|&s| s <= 1.0);
+    match (rect, ellipse) {
+        (Some(_), None) => Some(Closed::Rect),
+        (None, Some(_)) => Some(Closed::Ellipse),
+        (Some(r), Some(e)) if r < f64::from(NEAR_TIE) * e => Some(Closed::Rect),
+        (Some(r), Some(e)) if e < f64::from(NEAR_TIE) * r => Some(Closed::Ellipse),
         _ => None,
     }
 }
@@ -395,7 +417,7 @@ mod tests {
     use crate::core::palette::ColorId;
     use crate::core::shape::{Shape, Style};
     use proptest::prelude::*;
-    use std::f32::consts::{PI, TAU};
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
     /// Deterministic noise in `[-1, 1]` (a 64-bit LCG).
     struct Noise(u64);
@@ -539,6 +561,433 @@ mod tests {
             widths,
             style: style(),
         }
+    }
+
+    // ---- T117: sloppy strokes ------------------------------------------------
+
+    /// What a sloppy family should become.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Kind {
+        Line,
+        Rect,
+        Ellipse,
+    }
+
+    fn kind_of(fit: Option<Fit>) -> Option<Kind> {
+        match fit? {
+            Fit::Line { .. } => Some(Kind::Line),
+            Fit::Rect { .. } => Some(Kind::Rect),
+            Fit::Ellipse { .. } => Some(Kind::Ellipse),
+        }
+    }
+
+    /// The point `walked` pixels along the clockwise outline of a
+    /// `width` × `height` rectangle whose corners are quarter circles of
+    /// `radius`, starting at the top-left of the top side.
+    fn rounded_point(walked: f32, width: f32, height: f32, radius: f32) -> Vec2 {
+        let (side_w, side_h) = (width - 2.0 * radius, height - 2.0 * radius);
+        let arc = FRAC_PI_2 * radius;
+        let mut rest = walked;
+        let mut take = |length: f32| {
+            let inside = rest <= length;
+            if !inside {
+                rest -= length;
+            }
+            inside
+        };
+        let corner = |centre: Vec2, start: f32, along: f32| {
+            let angle = start + along / radius;
+            centre + Vec2::new(radius * angle.cos(), radius * angle.sin())
+        };
+        if take(side_w) {
+            return Vec2::new(radius + rest, 0.0);
+        }
+        if take(arc) {
+            return corner(Vec2::new(width - radius, radius), -FRAC_PI_2, rest);
+        }
+        if take(side_h) {
+            return Vec2::new(width, radius + rest);
+        }
+        if take(arc) {
+            return corner(Vec2::new(width - radius, height - radius), 0.0, rest);
+        }
+        if take(side_w) {
+            return Vec2::new(width - radius - rest, height);
+        }
+        if take(arc) {
+            return corner(Vec2::new(radius, height - radius), FRAC_PI_2, rest);
+        }
+        if take(side_h) {
+            return Vec2::new(0.0, height - radius - rest);
+        }
+        corner(Vec2::new(radius, radius), PI, rest)
+    }
+
+    /// A rectangle outline with quarter-circle corners of radius `round`
+    /// (a fraction of the shorter side), `jitter` pixels of noise.
+    fn rounded_rect(width: f32, height: f32, round: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
+        let mut noise = Noise(seed);
+        let radius = round * width.min(height);
+        let perimeter = 2.0 * (width + height - 4.0 * radius) + TAU * radius;
+        let steps = 200;
+        (0..=steps)
+            .map(|i| {
+                let walked = perimeter * i as f32 / steps as f32;
+                rounded_point(walked, width, height, radius)
+                    + Vec2::new(noise.next(), noise.next()) * jitter
+            })
+            .collect()
+    }
+
+    /// `(name, expected, builder)` of every sloppy family. The builder gets
+    /// a noise level (`1.0` is the level the family must survive) and a
+    /// seed.
+    #[allow(clippy::type_complexity, clippy::too_many_lines)]
+    fn families() -> Vec<(&'static str, Kind, fn(f32, u64) -> Vec<Vec2>)> {
+        vec![
+            ("hurried circle", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    0.7,
+                    1.0,
+                    0.06 * k,
+                    3.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("circle that overshoots", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    1.9,
+                    1.18,
+                    0.04 * k,
+                    2.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("circle that stops short", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    4.0,
+                    0.86,
+                    0.04 * k,
+                    2.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("circle with a tail", Kind::Ellipse, |k, seed| {
+                let mut points = shaky_ellipse(
+                    Vec2::ZERO,
+                    100.0,
+                    100.0,
+                    0.7,
+                    1.0,
+                    0.04 * k,
+                    2.0 * k,
+                    0.0,
+                    seed,
+                );
+                let last = points[points.len() - 1];
+                points.extend((1..=5).map(|i| last + Vec2::new(0.0, -3.0 * i as f32)));
+                points
+            }),
+            ("squashed ellipse", Kind::Ellipse, |k, seed| {
+                shaky_ellipse(
+                    Vec2::ZERO,
+                    220.0,
+                    90.0,
+                    0.2,
+                    1.1,
+                    0.05 * k,
+                    3.0 * k,
+                    0.2,
+                    seed,
+                )
+            }),
+            ("lopsided rectangle", Kind::Rect, |k, seed| {
+                shaky_rect(
+                    Vec2::ZERO,
+                    Vec2::new(260.0, 150.0),
+                    0.4,
+                    1.05,
+                    6.0 * k,
+                    0.12 * k,
+                    seed,
+                )
+            }),
+            ("rectangle that stops short", Kind::Rect, |k, seed| {
+                shaky_rect(
+                    Vec2::ZERO,
+                    Vec2::new(200.0, 200.0),
+                    0.0,
+                    0.9,
+                    4.0 * k,
+                    0.0,
+                    seed,
+                )
+            }),
+            ("rectangle that overshoots", Kind::Rect, |k, seed| {
+                shaky_rect(
+                    Vec2::ZERO,
+                    Vec2::new(240.0, 160.0),
+                    2.5,
+                    1.16,
+                    4.0 * k,
+                    0.05 * k,
+                    seed,
+                )
+            }),
+            ("rounded rectangle", Kind::Rect, |k, seed| {
+                rounded_rect(280.0, 180.0, 0.14, 3.0 * k, seed)
+            }),
+            ("wobbly line", Kind::Line, |k, seed| {
+                shaky_line(Vec2::ZERO, Vec2::new(400.0, 60.0), 0.05 * k, 4.0 * k, seed)
+            }),
+            ("curved line", Kind::Line, |k, seed| {
+                shaky_line(Vec2::ZERO, Vec2::new(300.0, 0.0), 0.09 * k, 1.0, seed)
+            }),
+        ]
+    }
+
+    /// Points on the superellipse `|x|^p + |y|^p = 1` scaled to `rx`, `ry`:
+    /// a circle at `p = 2`, a rounded square as `p` grows.
+    fn superellipse(power: f32, rx: f32, ry: f32, jitter: f32, seed: u64) -> Vec<Vec2> {
+        let mut noise = Noise(seed);
+        (0..=120)
+            .map(|i| {
+                let angle = TAU * i as f32 / 120.0;
+                let (cos, sin) = (angle.cos(), angle.sin());
+                let px = cos.signum() * cos.abs().powf(2.0 / power);
+                let py = sin.signum() * sin.abs().powf(2.0 / power);
+                Vec2::new(rx * px, ry * py) + Vec2::new(noise.next(), noise.next()) * jitter
+            })
+            .collect()
+    }
+
+    /// Asserts that the family called `name` becomes its shape at the
+    /// level `1.0` of noise, for every seed.
+    fn assert_family_is_recognised(name: &str) {
+        let Some((_, kind, build)) = families().into_iter().find(|(n, _, _)| *n == name) else {
+            panic!("no family {name}");
+        };
+        for seed in 0..16 {
+            let fit = fit(&build(1.0, seed));
+            assert_eq!(kind_of(fit), Some(kind), "{name}, seed {seed}: {fit:?}");
+        }
+    }
+
+    #[test]
+    fn fit_sloppy_hurried_circle_gives_an_ellipse() {
+        assert_family_is_recognised("hurried circle");
+    }
+
+    #[test]
+    fn fit_sloppy_circle_that_overshoots_gives_an_ellipse() {
+        assert_family_is_recognised("circle that overshoots");
+    }
+
+    #[test]
+    fn fit_sloppy_circle_that_stops_short_gives_an_ellipse() {
+        assert_family_is_recognised("circle that stops short");
+    }
+
+    #[test]
+    fn fit_sloppy_circle_with_a_tail_gives_an_ellipse() {
+        assert_family_is_recognised("circle with a tail");
+    }
+
+    #[test]
+    fn fit_sloppy_squashed_ellipse_gives_an_ellipse() {
+        assert_family_is_recognised("squashed ellipse");
+    }
+
+    #[test]
+    fn fit_sloppy_lopsided_rectangle_gives_a_rect() {
+        assert_family_is_recognised("lopsided rectangle");
+    }
+
+    #[test]
+    fn fit_sloppy_rectangle_that_stops_short_gives_a_rect() {
+        assert_family_is_recognised("rectangle that stops short");
+    }
+
+    #[test]
+    fn fit_sloppy_rectangle_that_overshoots_gives_a_rect() {
+        assert_family_is_recognised("rectangle that overshoots");
+    }
+
+    #[test]
+    fn fit_sloppy_rounded_rectangle_gives_a_rect() {
+        assert_family_is_recognised("rounded rectangle");
+    }
+
+    #[test]
+    fn fit_sloppy_wobbly_line_gives_a_line() {
+        assert_family_is_recognised("wobbly line");
+    }
+
+    #[test]
+    fn fit_sloppy_curved_line_gives_a_line() {
+        assert_family_is_recognised("curved line");
+    }
+
+    /// The first noise level (in steps of `0.1`) at which a family fails
+    /// for one of 16 seeds; `None` if it never does up to `6.0`.
+    fn first_failing_level(build: fn(f32, u64) -> Vec<Vec2>, kind: Kind) -> Option<f32> {
+        (1..=60)
+            .map(|step| step as f32 * 0.1)
+            .find(|&k| !(0..16u64).all(|seed| kind_of(fit(&build(k, seed))) == Some(kind)))
+    }
+
+    /// Where each family stops being recognised, in units of its own noise
+    /// (`1.0` is the level it must survive): ADR-T117-1 lists the same
+    /// numbers, so a change of the limits shows up here as a diff.
+    const TOLERANCE: [(&str, f32); 11] = [
+        ("hurried circle", 2.9),
+        ("circle that overshoots", 4.4),
+        ("circle that stops short", 3.6),
+        ("circle with a tail", 4.3),
+        ("squashed ellipse", 1.5),
+        ("lopsided rectangle", 2.6),
+        ("rectangle that stops short", 4.6),
+        ("rectangle that overshoots", 3.3),
+        ("rounded rectangle", 3.8),
+        ("wobbly line", 1.6),
+        ("curved line", 1.1),
+    ];
+
+    #[test]
+    fn tolerance_table_matches_the_adr() {
+        let all = families();
+        assert_eq!(all.len(), TOLERANCE.len());
+        for (name, kind, build) in all {
+            let Some(&(_, expected)) = TOLERANCE.iter().find(|(n, _)| *n == name) else {
+                panic!("{name} is not in the table");
+            };
+            let got = first_failing_level(build, kind).unwrap_or(f32::INFINITY);
+            assert!(
+                approx_eq(got, expected, 0.05),
+                "{name}: {got} vs {expected}"
+            );
+        }
+    }
+
+    /// Strokes that sit nearest the new limits and must stay strokes.
+    fn near_misses() -> Vec<(&'static str, Vec<Vec2>)> {
+        let walk = |corners: &[Vec2]| -> Vec<Vec2> {
+            let mut points = Vec::new();
+            for pair in corners.windows(2) {
+                for i in 0..30 {
+                    points.push(pair[0].lerp(pair[1], i as f32 / 30.0));
+                }
+            }
+            points.push(corners[corners.len() - 1]);
+            points
+        };
+        vec![
+            (
+                "an L",
+                walk(&[
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 200.0),
+                    Vec2::new(150.0, 200.0),
+                ]),
+            ),
+            (
+                "a U",
+                walk(&[
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(0.0, 200.0),
+                    Vec2::new(200.0, 200.0),
+                    Vec2::new(200.0, 0.0),
+                ]),
+            ),
+            (
+                "an open C",
+                shaky_ellipse(Vec2::ZERO, 100.0, 100.0, 0.5, 0.7, 0.0, 0.5, 0.0, 3),
+            ),
+            (
+                "a half circle",
+                shaky_ellipse(Vec2::ZERO, 100.0, 100.0, 0.0, 0.5, 0.0, 0.5, 0.0, 4),
+            ),
+            (
+                "a line with a hook",
+                walk(&[
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(250.0, 0.0),
+                    Vec2::new(250.0, 120.0),
+                    Vec2::new(300.0, 100.0),
+                ]),
+            ),
+            (
+                "a wave",
+                (0..=60)
+                    .map(|i| {
+                        let t = i as f32 / 60.0;
+                        Vec2::new(300.0 * t, 60.0 * (TAU * t).sin())
+                    })
+                    .collect(),
+            ),
+            (
+                "a sloppy triangle",
+                walk(&[
+                    Vec2::new(0.0, 200.0),
+                    Vec2::new(100.0, 0.0),
+                    Vec2::new(210.0, 205.0),
+                    Vec2::new(5.0, 195.0),
+                ]),
+            ),
+        ]
+    }
+
+    #[test]
+    fn fit_loose_still_rejects_the_near_misses() {
+        for (name, points) in near_misses() {
+            let fit = fit(&points);
+            assert_eq!(fit, None, "{name}");
+        }
+    }
+
+    #[test]
+    fn fit_loose_still_rejects_noisy_scribbles() {
+        // The scribbles of T109 with a hand's shake on top.
+        for (name, points) in scribbles() {
+            let mut noise = Noise(11);
+            let shaken: Vec<Vec2> = points
+                .iter()
+                .map(|p| *p + Vec2::new(noise.next(), noise.next()) * 3.0)
+                .collect();
+            assert_eq!(fit(&shaken), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn fit_rounded_square_picks_the_better_fit() {
+        // A circle that squares off one step at a time: ellipse, then rect.
+        let kind = |p: f32| kind_of(fit(&superellipse(p, 100.0, 100.0, 1.0, 0)));
+        assert_eq!(kind(2.0), Some(Kind::Ellipse));
+        assert_eq!(kind(2.5), Some(Kind::Ellipse));
+        assert_eq!(kind(4.0), Some(Kind::Rect));
+        assert_eq!(kind(8.0), Some(Kind::Rect));
+    }
+
+    #[test]
+    fn fit_near_tie_gives_nothing() {
+        // Between the two, where both fit alike, the stroke stays as drawn.
+        let ties = (0..40)
+            .map(|step| 2.0 + step as f32 * 0.05)
+            .filter(|&p| fit(&superellipse(p, 100.0, 100.0, 1.0, 0)).is_none())
+            .count();
+        assert!(ties > 0, "no exponent leaves the stroke alone");
     }
 
     // ---- AC-2 lines, rectangles, ellipses ---------------------------------
