@@ -96,7 +96,7 @@ fn score(query: &[char], text: &[char]) -> Option<i32> {
     best.into_iter().flatten().max()
 }
 
-/// How a chord is written in the palette: `Ctrl+Shift+]`, `Alt+←`, `D`.
+/// How a chord is written in the palette: `Ctrl+Shift+]`, `Alt+Left`, `D`.
 #[must_use]
 pub fn chord_label(chord: KeyChord) -> String {
     let Modifiers { shift, ctrl, alt } = chord.mods;
@@ -156,10 +156,10 @@ fn key_label(key: Key) -> &'static str {
         Key::Tab => "Tab",
         Key::BracketLeft => "[",
         Key::BracketRight => "]",
-        Key::ArrowLeft => "←",
-        Key::ArrowRight => "→",
-        Key::ArrowUp => "↑",
-        Key::ArrowDown => "↓",
+        Key::ArrowLeft => "Left",
+        Key::ArrowRight => "Right",
+        Key::ArrowUp => "Up",
+        Key::ArrowDown => "Down",
         Key::Enter => "Enter",
         Key::Home => "Home",
         Key::End => "End",

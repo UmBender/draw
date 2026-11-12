@@ -33,7 +33,7 @@ const TAB_GAP_PX: f32 = 18.0;
 /// Alpha of the dimming layer under the panel.
 const DIM_ALPHA: u8 = 110;
 /// The footer: the sheet's own keys.
-const FOOTER: &str = "←/→ page    1-9 topic    ? or Esc close";
+const FOOTER: &str = "Left/Right page    1-9 topic    ? or Esc close";
 
 /// The panel's rectangle for `lines` lines of content, in a window of
 /// `viewport` pixels: centred, as wide as fits.

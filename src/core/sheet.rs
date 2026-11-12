@@ -63,7 +63,7 @@ const EXTRA_ROWS: &[(Topic, &str, &str)] = &[
     (
         Topic::Gestures,
         "Shift while drawing",
-        "Square / circle, 45° lines and arrows",
+        "Square / circle, 45-degree lines and arrows",
     ),
     (Topic::Gestures, "Alt while drawing", "No snapping"),
     (
