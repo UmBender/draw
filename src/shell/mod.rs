@@ -13,6 +13,7 @@ pub mod file;
 pub mod glyphs;
 pub mod input_map;
 pub mod minimap;
+pub mod options;
 pub mod preflight;
 pub mod render;
 pub mod sheet;
