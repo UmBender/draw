@@ -548,8 +548,9 @@ fn run_coverage(test: &str, summary: &str, baseline: &str, use_flag: bool) -> Co
     let path = std::env::var("PATH").unwrap_or_else(|err| panic!("PATH: {err}"));
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/coverage.sh");
 
-    let mut command = Command::new(script);
+    let mut command = Command::new("bash");
     command
+        .arg(script)
         .arg("--baseline")
         .arg(&baseline_path)
         .env("PATH", format!("{}:{path}", tools.display()))
@@ -703,7 +704,7 @@ fn ci_coverage_job_runs_the_ratchet() {
 
     // Assert
     assert!(
-        values(&coverage, "run").contains(&"scripts/coverage.sh"),
+        values(&coverage, "run").contains(&"bash scripts/coverage.sh"),
         "the coverage job must run scripts/coverage.sh"
     );
 }
