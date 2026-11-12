@@ -33,7 +33,7 @@ One note per user-visible feature, created by the task that implements it
 | [[Diagnostics log]] | [[T47 Always-on diagnostics log]] | [[47 A flight recorder for rare bugs]] | done |
 | [[Clean exit on signals]] | [[T48 Clean exit on Ctrl-C]] | [[48 Signals, self-pipes and async-signal safety]] | done |
 | [[Editor snapshots]] | [[T74 Editor snapshots for tests]], [[T108 Save and load]] | — | done |
-| [[End-to-end tests]] | [[T75 End-to-end test suite]], [[T79 Wayland keyboard without a keymap]], [[T80 Mouse cursor in end-to-end screenshots]] | — | done |
+| [[End-to-end tests]] | [[T75 End-to-end test suite]], [[T79 Wayland keyboard without a keymap]], [[T80 Mouse cursor in end-to-end screenshots]], [[T129 Release gate with end-to-end on X11 and Wayland]] | — | done |
 | [[Contest cheat sheet]] | [[T14 Performance and release validation]] | [[14 Profiling and shipping a release build]] | done |
 | [[Crash recovery]] | [[T94 Autosave and crash recovery]] | — | done |
 | [[PNG export]] | [[T92 Export the view to PNG]], [[T114 Export to SVG]] | — | done |

@@ -1,7 +1,7 @@
 ---
 id: T131
 title: No dynamic dispatch and stricter lints
-status: review
+status: done
 wave: 65
 branch: task/T131-no-dynamic-dispatch-and-stricter-lints
 depends_on: [T127]

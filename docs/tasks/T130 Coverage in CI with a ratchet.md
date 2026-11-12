@@ -1,7 +1,7 @@
 ---
 id: T130
 title: Coverage in CI with a ratchet
-status: review
+status: done
 wave: 65
 branch: task/T130-coverage-in-ci-with-a-ratchet
 depends_on: [T127]

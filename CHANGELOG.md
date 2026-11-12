@@ -8,6 +8,14 @@ All notable changes to draw are listed here. The format follows
 
 ### Changed
 
+- X11 is supported again: the deprecation notice and the planned removal
+  are gone, and the README and the packages say so.
+- The release script `scripts/release.sh` runs the checks and the
+  end-to-end suite on Wayland and on X11 before it packages.
+- The source has no `dyn` outside a short allow-list, and matches on enums
+  list their variants; both are checked by the build.
+- CI measures line coverage and fails when a module drops below its
+  recorded value.
 - The menus have a new look, after the status bar: the tool strip is made of
   translucent rounded islands, and the command palette and the shortcut
   sheet are islands with rounded rows, key caps and topic pills. The tools

@@ -1,7 +1,7 @@
 ---
 id: T129
 title: Release gate with end-to-end on X11 and Wayland
-status: review
+status: done
 wave: 65
 branch: task/T129-release-gate-with-end-to-end-on-x11-and-
 depends_on: [T127]

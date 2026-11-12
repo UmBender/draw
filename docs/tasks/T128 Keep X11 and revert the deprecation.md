@@ -1,7 +1,7 @@
 ---
 id: T128
 title: Keep X11 and revert the deprecation
-status: review
+status: done
 wave: 65
 branch: task/T128-keep-x11-revert-the-deprecation
 depends_on: [T127]

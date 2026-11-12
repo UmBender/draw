@@ -525,11 +525,11 @@ flowchart TD
 | [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
 | [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T152 | `task/T50-v2-refactor` |
-| [[T127 2.0 audit and baseline]] | todo | T118 | `task/T127-2-0-audit-and-baseline` |
-| [[T128 Keep X11 and revert the deprecation]] | todo | T127 | `task/T128-keep-x11-revert-the-deprecation` |
-| [[T129 Release gate with end-to-end on X11 and Wayland]] | todo | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
-| [[T130 Coverage in CI with a ratchet]] | todo | T127 | `task/T130-coverage-in-ci-with-a-ratchet` |
-| [[T131 No dynamic dispatch and stricter lints]] | todo | T127 | `task/T131-no-dynamic-dispatch-and-stricter-lints` |
+| [[T127 2.0 audit and baseline]] | done | T118 | `task/T127-2-0-audit-and-baseline` |
+| [[T128 Keep X11 and revert the deprecation]] | done | T127 | `task/T128-keep-x11-revert-the-deprecation` |
+| [[T129 Release gate with end-to-end on X11 and Wayland]] | done | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
+| [[T130 Coverage in CI with a ratchet]] | done | T127 | `task/T130-coverage-in-ci-with-a-ratchet` |
+| [[T131 No dynamic dispatch and stricter lints]] | done | T127 | `task/T131-no-dynamic-dispatch-and-stricter-lints` |
 | [[T132 Workspace split with unsafe levels]] | todo | T131 | `task/T132-workspace-split-with-unsafe-levels` |
 | [[T133 Typed units and ids]] | todo | T132 | `task/T133-typed-units-and-ids` |
 | [[T134 The control automaton states, inputs and effects]] | todo | T132 | `task/T134-the-control-automaton-states-inputs-effe` |
