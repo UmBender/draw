@@ -4,7 +4,7 @@ title: Release 1.6.0
 status: todo
 wave: 62
 branch: chore/release-1.6.0
-depends_on: [T53, T108, T112, T113, T114, T115, T116, T117, T119, T120, T121, T122, T123, T124]
+depends_on: [T53, T108, T112, T113, T114, T115, T116, T117, T119, T120, T121, T122, T123, T124, T125]
 adrs: []
 feature: ""
 tutorial: ""

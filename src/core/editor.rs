@@ -185,7 +185,7 @@ impl Gesture {
 }
 
 /// How many pages there are (ADR-T116-1).
-pub const PAGE_COUNT: usize = 10;
+pub const PAGE_COUNT: usize = 6;
 
 /// What one page owns besides the shapes: the state of a page that is not
 /// the current one (ADR-T116-1).
@@ -10027,22 +10027,22 @@ mod tests {
     }
 
     #[test]
-    fn page_count_is_ten() {
-        assert_eq!(PAGE_COUNT, 10);
+    fn page_count_is_six() {
+        assert_eq!(PAGE_COUNT, 6);
     }
 
     #[test]
-    fn going_to_page_ten_works() {
+    fn going_to_the_last_page_works() {
         // Arrange
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
 
         // Act
-        let redraw = go(&mut ed, 9);
+        let redraw = go(&mut ed, PAGE_COUNT - 1);
 
         // Assert
         assert!(redraw);
-        assert_eq!(ed.page(), 9);
-        assert!(!ed.page_has_shapes(9));
+        assert_eq!(ed.page(), PAGE_COUNT - 1);
+        assert!(!ed.page_has_shapes(PAGE_COUNT - 1));
         assert!(ed.page_has_shapes(0));
     }
 

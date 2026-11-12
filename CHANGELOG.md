@@ -11,10 +11,11 @@ All notable changes to draw are listed here. The format follows
 - Files: `Ctrl+S` writes every page to `draw file.draw` (the file named on
   the command line) or to `~/draw-<date>-<time>.draw`, and `draw file.draw`
   opens it. Newer or damaged files are refused, never overwritten.
-- Ten pages: `Alt+1`…`Alt+9` and `Alt+0` switch canvases, each with its own
-  shapes, view and undo history. A switcher under the undo and redo buttons
-  shows 1–10 (current filled, pages with a drawing marked, empty dimmed) and
-  a click goes to the page; it needs a window about 890 px tall.
+- Six pages: `Alt+1`…`Alt+6` switch canvases, each with its own shapes,
+  view and undo history. A switcher under the undo and redo buttons, one
+  per row like the colours, shows 1–6 (current filled, pages with a drawing
+  marked, empty dimmed) and a click goes to the page; it needs a window
+  about 1000 px tall.
 - `Ctrl+Shift+E` exports the whole drawing to an SVG in `~`.
 - `Ctrl+Shift+C` copies the selection to the clipboard as an image.
 - User macros in formulas: `\newcommand` and `\renewcommand` with `#1`…`#9`
