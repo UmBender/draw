@@ -33,6 +33,12 @@ traits are objects).
 - `Cargo.toml` denies `clippy::wildcard_enum_match_arm` and
   `clippy::undocumented_unsafe_blocks` and sets `unsafe_op_in_unsafe_fn` to
   deny. A match on an enum lists its variants.
+- Two exceptions to the wildcard rule, each a scoped `#[allow(…, reason)]`:
+  key tables over our `Key` (editor sheet, palette and text keys) and over
+  miniquad's `KeyCode` (about 120 variants, in `src/shell/input_map.rs`),
+  where "every other key does nothing" is the meaning. Test code in `src/`
+  is exempt through `#![cfg_attr(test, allow(…))]` in `src/lib.rs`, so a
+  test can end a match with `other => panic!(…)`.
 
 ## Allow-list
 

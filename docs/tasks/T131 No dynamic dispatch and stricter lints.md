@@ -51,3 +51,5 @@ Decision: [[ADR-T131-1 No dyn outside an allow-list]] (file-level allow-list wit
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — UNATTENDED CHOICE: key tables over `Key` and `KeyCode` keep a scoped allow, and unit-test code is exempt via `cfg_attr(test)` in `src/lib.rs`; both recorded in [[ADR-T131-1 No dyn outside an allow-list]]. Every other wildcard arm in `src/` lists its variants; `dyn Fn` and `dyn Outlines` became generics.
+- 2026-11-12 — BLOCKED (batch): `cargo clippy --all-targets` still fails on one wildcard arm each in `tests/e2e.rs:474` (`Step`) and `tests/fuzz.rs:674` (`InputEvent`); both files are outside *Files owned*. Recommended fix: list the variants there (or add `#[allow(clippy::wildcard_enum_match_arm)]`), then run `scripts/check.sh`, tick the quality subtask and set `status: review`.

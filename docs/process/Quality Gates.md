@@ -15,7 +15,7 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 |------|---------|------|
 | Format | `cargo fmt --all -- --check` | no diff |
 | Lint | `cargo clippy --all-targets -- -D warnings` | zero warnings (lint levels in `Cargo.toml` `[lints]`, see [[ADR-0010 Clippy lint policy]]) |
-| Tests | `cargo test --all-targets` | all pass, including property tests |
+| Tests | `cargo test --all-targets` | all pass, including property tests; `tests/no_dyn.rs` fails on `dyn` outside the allow-list of [[ADR-T131-1 No dyn outside an allow-list]] |
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
 | Fuzz | `PROPTEST_CASES=20000 cargo test --release --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
 | E2E | `scripts/e2e.sh` (needs `sway`, `wtype`, `grim`; separate from `check.sh`, nightly in CI) | every case passes (see [[End-to-end tests]]) |
