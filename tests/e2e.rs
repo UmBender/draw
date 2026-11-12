@@ -602,6 +602,205 @@ fn session_guard(
     })
 }
 
+/// The display server a run drives (T129).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Backend {
+    /// The private headless sway.
+    Wayland,
+    /// The private Xvfb.
+    X11,
+}
+
+impl Backend {
+    /// The backend called `name` by `--backend`.
+    fn from_name(name: &str) -> Result<Self, String> {
+        match name {
+            "wayland" => Ok(Self::Wayland),
+            "x11" => Ok(Self::X11),
+            other => Err(format!("unknown backend `{other}`")),
+        }
+    }
+
+    /// The backend of this run, from `DRAW_E2E_BACKEND`; Wayland if unset.
+    fn from_env() -> Result<Self, String> {
+        std::env::var("DRAW_E2E_BACKEND").map_or(Ok(Self::Wayland), |name| Self::from_name(&name))
+    }
+}
+
+/// The path a golden `name` of a case has for `backend`: `expected.x11.ppm`
+/// for `expected.ppm` on X11. Only a golden that differs by backend has
+/// such a file.
+fn backend_golden(source: &Path, name: &str, backend: Backend) -> PathBuf {
+    match (backend, name.rsplit_once('.')) {
+        (Backend::X11, Some((stem, ext))) => source.join(format!("{stem}.x11.{ext}")),
+        _ => source.join(name),
+    }
+}
+
+/// The golden `name` of a case: the backend's own file if it exists, else
+/// the shared one.
+fn golden_path(source: &Path, name: &str, backend: Backend) -> PathBuf {
+    let own = backend_golden(source, name, backend);
+    if own.exists() { own } else { source.join(name) }
+}
+
+/// The private X11 session, checked to be the script's own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct X11Guard {
+    runtime: PathBuf,
+    display: String,
+    authority: PathBuf,
+}
+
+/// The X11 session's display and authority file, or why they must not be
+/// used. Nothing may be spawned before this succeeds (ADR-T75-1).
+fn x11_guard(
+    runtime: Option<OsString>,
+    display: Option<OsString>,
+    authority: Option<OsString>,
+) -> Result<X11Guard, String> {
+    let runtime = PathBuf::from(runtime.ok_or("DRAW_E2E_RUNTIME is not set: run scripts/e2e.sh")?);
+    if !runtime.is_absolute() {
+        return Err(format!("{} is not absolute", runtime.display()));
+    }
+    let display = display
+        .ok_or("DISPLAY is not set")?
+        .into_string()
+        .map_err(|_| "DISPLAY is not text".to_owned())?;
+    let number = display.strip_prefix(':').unwrap_or("");
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("DISPLAY={display} is not a local display"));
+    }
+    let authority = PathBuf::from(authority.ok_or("XAUTHORITY is not set")?);
+    if authority.parent() != Some(runtime.as_path()) {
+        return Err(format!(
+            "XAUTHORITY={} is outside the private {}",
+            authority.display(),
+            runtime.display()
+        ));
+    }
+    if !authority.is_file() {
+        return Err(format!("XAUTHORITY={} is not a file", authority.display()));
+    }
+    Ok(X11Guard {
+        runtime,
+        display,
+        authority,
+    })
+}
+
+/// X11 `InternAtom` (only-if-exists off) for `name`, little endian.
+fn x11_intern_request(name: &str) -> Vec<u8> {
+    let len = u16::try_from(name.len()).unwrap_or(u16::MAX);
+    let words = 2 + name.len().div_ceil(4);
+    let mut request = vec![16, 0];
+    request.extend(u16::try_from(words).unwrap_or(u16::MAX).to_le_bytes());
+    request.extend(len.to_le_bytes());
+    request.extend([0, 0]);
+    request.extend(name.as_bytes());
+    request.resize(words * 4, 0);
+    request
+}
+
+/// X11 `SendEvent` of a `WM_PROTOCOLS` client message that asks `window` to
+/// close (`WM_DELETE_WINDOW`), little endian.
+fn x11_delete_request(window: u32, protocols: u32, delete: u32) -> Vec<u8> {
+    let mut request = vec![25, 0, 11, 0];
+    request.extend(window.to_le_bytes());
+    request.extend(0u32.to_le_bytes());
+    request.extend([33, 32, 0, 0]);
+    for word in [window, protocols, delete, 0, 0, 0, 0] {
+        request.extend(word.to_le_bytes());
+    }
+    request
+}
+
+/// Asks the window `window` of the local `display` to close, as a window
+/// manager does: the private server has none.
+fn x11_close(display: &str, window: u32) -> Result<(), String> {
+    let number = display.strip_prefix(':').unwrap_or("0");
+    let path = format!("/tmp/.X11-unix/X{number}");
+    let mut stream = UnixStream::connect(&path).map_err(|err| format!("{path}: {err}"))?;
+    let io = |err: std::io::Error| format!("X11 {path}: {err}");
+    // Handshake without authorisation: byte order, version 11.0.
+    stream
+        .write_all(&[b'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        .map_err(io)?;
+    let mut head = [0u8; 8];
+    stream.read_exact(&mut head).map_err(io)?;
+    if head.first() != Some(&1) {
+        return Err(format!("the X server at {path} refused the connection"));
+    }
+    let extra = usize::from(u16::from_le_bytes([head[6], head[7]])) * 4;
+    stream.read_exact(&mut vec![0u8; extra]).map_err(io)?;
+    let atom = |stream: &mut UnixStream, name: &str| -> Result<u32, String> {
+        stream.write_all(&x11_intern_request(name)).map_err(io)?;
+        let mut reply = [0u8; 32];
+        stream.read_exact(&mut reply).map_err(io)?;
+        if reply.first() != Some(&1) {
+            return Err(format!("X11 InternAtom {name} failed"));
+        }
+        Ok(u32::from_le_bytes([
+            reply[8], reply[9], reply[10], reply[11],
+        ]))
+    };
+    let protocols = atom(&mut stream, "WM_PROTOCOLS")?;
+    let delete = atom(&mut stream, "WM_DELETE_WINDOW")?;
+    stream
+        .write_all(&x11_delete_request(window, protocols, delete))
+        .map_err(io)?;
+    // A round trip: the server has handled the event when it answers.
+    atom(&mut stream, "WM_PROTOCOLS").map(drop)
+}
+
+/// The `xdotool` invocations that do what the `wtype` arguments `args`
+/// do: modifiers, keys, holds, pauses and literal text.
+fn xdotool_commands(args: &[String]) -> Result<Vec<Vec<String>>, String> {
+    let modifier = |name: &str| match name {
+        "ctrl" => "Control_L".to_owned(),
+        "shift" => "Shift_L".to_owned(),
+        "alt" => "Alt_L".to_owned(),
+        "logo" => "Super_L".to_owned(),
+        other => other.to_owned(),
+    };
+    let mut commands = Vec::new();
+    let mut chain: Vec<String> = Vec::new();
+    let mut words = args.iter();
+    while let Some(word) = words.next() {
+        let mut operand = |what: &str| {
+            words
+                .next()
+                .cloned()
+                .ok_or_else(|| format!("{word} needs {what}"))
+        };
+        match word.as_str() {
+            "-M" => chain.extend(["keydown".to_owned(), modifier(&operand("a modifier")?)]),
+            "-m" => chain.extend(["keyup".to_owned(), modifier(&operand("a modifier")?)]),
+            "-k" => chain.extend(["key".to_owned(), operand("a key")?]),
+            "-P" => chain.extend(["keydown".to_owned(), operand("a key")?]),
+            "-p" => chain.extend(["keyup".to_owned(), operand("a key")?]),
+            "-s" => {
+                let ms: u32 = number(&operand("milliseconds")?)?;
+                chain.extend(["sleep".to_owned(), format!("{}", f64::from(ms) / 1000.0)]);
+            }
+            text => {
+                if !chain.is_empty() {
+                    commands.push(std::mem::take(&mut chain));
+                }
+                commands.push(
+                    ["type", "--delay", "0", "--", text]
+                        .map(str::to_owned)
+                        .to_vec(),
+                );
+            }
+        }
+    }
+    if !chain.is_empty() {
+        commands.push(chain);
+    }
+    Ok(commands)
+}
+
 /// One Wayland protocol message: header and payload.
 fn wire(object: u32, opcode: u32, payload: &[u8]) -> Vec<u8> {
     let size = u32::try_from(8 + payload.len()).unwrap_or(u32::MAX);
@@ -760,8 +959,13 @@ fn announce_bare_keyboard(socket: &Path) -> Result<UnixStream, String> {
 /// The running private session: tools get its sockets and nothing else.
 struct Session {
     guard: Guard,
+    backend: Backend,
+    /// The private X server, on the X11 backend.
+    x11: Option<X11Guard>,
+    /// The app's window, once it has one, on the X11 backend.
+    window: Option<String>,
     /// Holds the seat's pointer and carries wheel notches.
-    pointer: UnixStream,
+    pointer: Option<UnixStream>,
     /// `wtype` processes still alive, oldest first.
     keyboards: VecDeque<Child>,
 }
@@ -769,6 +973,33 @@ struct Session {
 impl Session {
     /// Joins the session named by the environment, after checking it.
     fn join() -> Result<Self, String> {
+        match Backend::from_env()? {
+            Backend::Wayland => Self::join_wayland(),
+            Backend::X11 => Self::join_x11(),
+        }
+    }
+
+    fn join_x11() -> Result<Self, String> {
+        let x11 = x11_guard(
+            std::env::var_os("DRAW_E2E_RUNTIME"),
+            std::env::var_os("DISPLAY"),
+            std::env::var_os("XAUTHORITY"),
+        )?;
+        Ok(Self {
+            guard: Guard {
+                runtime: x11.runtime.clone(),
+                wayland: PathBuf::new(),
+                sway: PathBuf::new(),
+            },
+            backend: Backend::X11,
+            x11: Some(x11),
+            window: None,
+            pointer: None,
+            keyboards: VecDeque::new(),
+        })
+    }
+
+    fn join_wayland() -> Result<Self, String> {
         let guard = session_guard(
             std::env::var_os("DRAW_E2E_RUNTIME"),
             std::env::var_os("WAYLAND_DISPLAY"),
@@ -777,7 +1008,10 @@ impl Session {
         let pointer = announce_pointer(&guard.wayland)?;
         let mut session = Self {
             guard,
-            pointer,
+            backend: Backend::Wayland,
+            x11: None,
+            window: None,
+            pointer: Some(pointer),
             keyboards: VecDeque::new(),
         };
         // A keyboard on the seat from before the app starts.
@@ -794,24 +1028,131 @@ impl Session {
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("XDG_RUNTIME_DIR", &self.guard.runtime)
-            .env("WAYLAND_DISPLAY", &self.guard.wayland)
-            .env("SWAYSOCK", &self.guard.sway)
             .stdin(Stdio::null());
+        if let Some(x11) = &self.x11 {
+            command
+                .env("DISPLAY", &x11.display)
+                .env("XAUTHORITY", &x11.authority);
+        } else {
+            command
+                .env("WAYLAND_DISPLAY", &self.guard.wayland)
+                .env("SWAYSOCK", &self.guard.sway);
+        }
         command
     }
 
-    /// Saves what the output shows to `path` as a PPM.
+    /// Saves what the output (or the app's window on X11) shows to `path`
+    /// as a PPM.
     fn screenshot(&self, path: &Path) -> Result<(), String> {
-        let status = self
-            .tool("grim")
-            .args(["-t", "ppm"])
-            .arg(path)
-            .status()
-            .map_err(|err| format!("grim: {err}"))?;
+        let (tool, status) = if let Some(window) = &self.window {
+            let target = format!("ppm:{}", path.display());
+            let status = self
+                .tool("import")
+                .args(["-depth", "8", "-window", window, &target])
+                .status();
+            ("import", status)
+        } else {
+            let status = self.tool("grim").args(["-t", "ppm"]).arg(path).status();
+            ("grim", status)
+        };
+        let status = status.map_err(|err| format!("{tool}: {err}"))?;
         if status.success() {
             Ok(())
         } else {
-            Err(format!("grim failed: {status}"))
+            Err(format!("{tool} failed: {status}"))
+        }
+    }
+
+    /// Runs `xdotool` with `args` and returns its stdout.
+    fn xdotool(&self, args: &[&str]) -> Result<String, String> {
+        let output = self
+            .tool("xdotool")
+            .args(args)
+            .output()
+            .map_err(|err| format!("xdotool: {err}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+        if output.status.success() {
+            Ok(stdout)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("xdotool {args:?}: {stdout}{stderr}"))
+        }
+    }
+
+    /// Types the `wtype` arguments `args` through the backend's tool. On
+    /// Wayland the keyboard stays alive afterwards (ADR-T75-1).
+    fn type_args(&mut self, args: &[String]) -> Result<(), String> {
+        if self.backend == Backend::X11 {
+            for command in xdotool_commands(args)? {
+                let words: Vec<&str> = command.iter().map(String::as_str).collect();
+                self.xdotool(&words)?;
+            }
+            return Ok(());
+        }
+        let mut all = args.to_vec();
+        all.extend(["-s".to_owned(), KEEP_ALIVE_MS.to_owned()]);
+        let keyboard = self.spawn_wtype(&all)?;
+        self.keyboards.push_back(keyboard);
+        Ok(())
+    }
+
+    /// One pointer step: `swaymsg seat - cursor` arguments on Wayland, the
+    /// same words as `xdotool` calls on X11.
+    fn pointer_step(&self, args: &[String]) -> Result<(), String> {
+        if self.backend == Backend::Wayland {
+            let mut command = vec!["seat", "-", "cursor"];
+            command.extend(args.iter().map(String::as_str));
+            return self.swaymsg(&command).map(drop);
+        }
+        let words: Vec<&str> = args.iter().map(String::as_str).collect();
+        let number = |button: &str| button.strip_prefix("button").unwrap_or("1").to_owned();
+        let call = match words.as_slice() {
+            ["set", x, y] => vec!["mousemove".to_owned(), (*x).to_owned(), (*y).to_owned()],
+            ["press", b] => vec!["mousedown".to_owned(), number(b)],
+            ["release", b] => vec!["mouseup".to_owned(), number(b)],
+            other => return Err(format!("no X11 pointer step for {other:?}")),
+        };
+        let call: Vec<&str> = call.iter().map(String::as_str).collect();
+        self.xdotool(&call).map(drop)
+    }
+
+    /// One wheel notch: negative is up (ADR-T75-2).
+    fn wheel(&mut self, notch: i32) -> Result<(), String> {
+        if let Some(pointer) = &mut self.pointer {
+            return pointer
+                .write_all(&wheel_message(notch))
+                .map_err(|err| format!("wheel: {err}"));
+        }
+        self.xdotool(&["click", if notch < 0 { "4" } else { "5" }])
+            .map(drop)
+    }
+
+    /// Sizes the output (the window on X11) to `w` by `h`.
+    fn resize(&self, w: u32, h: u32) -> Result<(), String> {
+        if let Some(window) = &self.window {
+            return self
+                .xdotool(&["windowsize", window, &w.to_string(), &h.to_string()])
+                .map(drop);
+        }
+        let mode = format!("{w}x{h}");
+        self.swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])
+            .map(drop)
+    }
+
+    /// Asks the app's window to close.
+    fn close_window(&self) -> Result<(), String> {
+        match (&self.window, &self.x11) {
+            (Some(_), Some(x11)) => {
+                // Every window of the app: the private server has no others.
+                let found = self.xdotool(&["search", "--class", "draw"])?;
+                for id in found.split_whitespace() {
+                    let id = id.parse().map_err(|_| format!("bad window id {id}"))?;
+                    x11_close(&x11.display, id)?;
+                }
+                Ok(())
+            }
+            (Some(_), None) => Err("a window without an X11 session".to_owned()),
+            (None, _) => self.swaymsg(&["[app_id=\"draw\"]", "kill"]).map(drop),
         }
     }
 
@@ -857,10 +1198,22 @@ impl Session {
     }
 
     /// Waits until the app's window is in the tree.
-    fn wait_for_window(&self, child: &mut Child) -> Result<(), String> {
+    fn wait_for_window(&mut self, child: &mut Child) -> Result<(), String> {
         let started = Instant::now();
         loop {
-            if self
+            if self.backend == Backend::X11 {
+                // The private server holds no other client's window.
+                let found = self
+                    .xdotool(&["search", "--onlyvisible", "--class", "draw"])
+                    .unwrap_or_default();
+                if let Some(id) = found.split_whitespace().next() {
+                    let id = id.to_owned();
+                    self.xdotool(&["windowmove", &id, "0", "0"])?;
+                    self.xdotool(&["windowfocus", &id])?;
+                    self.window = Some(id);
+                    return Ok(());
+                }
+            } else if self
                 .swaymsg(&["-t", "get_tree"])?
                 .contains("\"app_id\": \"draw\"")
             {
@@ -978,9 +1331,7 @@ impl Running<'_> {
     fn sync_with(&mut self, args: &[String]) -> Result<(), String> {
         let mut all = args.to_vec();
         all.extend(SYNC_ARGS.iter().map(|&a| a.to_owned()));
-        all.extend(["-s".to_owned(), KEEP_ALIVE_MS.to_owned()]);
-        let keyboard = self.session.spawn_wtype(&all)?;
-        self.session.keyboards.push_back(keyboard);
+        self.session.type_args(&all)?;
         self.sent += 1;
         wait_for_sync(
             &self.idle,
@@ -1016,34 +1367,32 @@ impl Running<'_> {
         match step {
             Step::Type(args) => self.sync_with(args),
             Step::Pointer(args) => {
-                let mut command = vec!["seat", "-", "cursor"];
-                command.extend(args.iter().map(String::as_str));
-                self.session.swaymsg(&command)?;
+                self.session.pointer_step(args)?;
                 self.sync_with(&[])
             }
             Step::Wheel(notch) => {
-                self.session
-                    .pointer
-                    .write_all(&wheel_message(*notch))
-                    .map_err(|err| format!("wheel: {err}"))?;
+                self.session.wheel(*notch)?;
                 self.sync_with(&[])
             }
             Step::Output(w, h) => {
-                let mode = format!("{w}x{h}");
-                self.session
-                    .swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])?;
+                self.session.resize(*w, *h)?;
                 self.wait_for_viewport((*w, *h))
             }
             Step::Checkpoint(name) => {
                 let actual = select_sections(&self.snapshot()?, sections);
-                compare_snapshot(
+                compare_golden(
                     &actual,
-                    &source.join(format!("{name}.snap")),
+                    source,
+                    &format!("{name}.snap"),
+                    self.session.backend,
                     update_requested(),
                 )
             }
             Step::EndKeyboard => {
-                let _bare = self.session.replace_active_keyboard()?;
+                // X11 has no keymap hand-over to lose.
+                if self.session.backend == Backend::Wayland {
+                    let _bare = self.session.replace_active_keyboard()?;
+                }
                 self.sync_with(&[])
             }
             Step::Clipboard(text) => {
@@ -1054,15 +1403,19 @@ impl Running<'_> {
     }
 
     /// Puts `text` on the clipboard with `wl-copy`, or through the app's
-    /// own hook where it is not installed (ADR-T83-1).
+    /// own hook where it is not installed, and always on X11, where the
+    /// private server has no clipboard manager (ADR-T83-1).
     fn set_clipboard(&self, text: &str) -> Result<(), String> {
-        let copied = self
-            .session
-            .tool("wl-copy")
-            .arg(text)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        let copied = if self.session.backend == Backend::X11 {
+            Err(std::io::ErrorKind::NotFound.into())
+        } else {
+            self.session
+                .tool("wl-copy")
+                .arg(text)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+        };
         match copied {
             Ok(status) if status.success() => Ok(()),
             Ok(status) => Err(format!("wl-copy failed: {status}")),
@@ -1116,8 +1469,9 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     let (dump, idle) = (run.join("actual.snap"), run.join("idle"));
     let clipboard = run.join("clipboard");
     let log = state.join("draw").join("draw.log");
-    let mode = format!("{}x{}", OUTPUT.0, OUTPUT.1);
-    session.swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])?;
+    if session.backend == Backend::Wayland {
+        session.resize(OUTPUT.0, OUTPUT.1)?;
+    }
     let start = prepare_start(&case, source, run)?;
     let stdout = std::fs::File::create(run.join("draw.out")).map_err(|err| err.to_string())?;
     let stderr = stdout.try_clone().map_err(|err| err.to_string())?;
@@ -1138,6 +1492,9 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     }
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;
+    if session.backend == Backend::X11 {
+        session.resize(OUTPUT.0, OUTPUT.1)?;
+    }
     let mut running = Running {
         session,
         child,
@@ -1160,14 +1517,20 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
     let update = update_requested();
     let mut problems = Vec::new();
     let actual = select_sections(&running.snapshot()?, &case.sections);
-    if let Err(problem) = compare_snapshot(&actual, &source.join("expected.snap"), update) {
+    if let Err(problem) = compare_golden(
+        &actual,
+        source,
+        "expected.snap",
+        running.session.backend,
+        update,
+    ) {
         problems.push(problem);
     }
     problems.extend(check_images(&running, &case, source, run, update)?);
 
     match case.ending {
         Ending::Close => {
-            running.session.swaymsg(&["[app_id=\"draw\"]", "kill"])?;
+            running.session.close_window()?;
         }
         Ending::Sigint => {
             let pid = running.child.id().to_string();
@@ -1212,8 +1575,10 @@ fn check_images(
     if let Some(tolerance) = case.screenshot {
         let shot = run.join("actual.ppm");
         running.session.screenshot(&shot)?;
-        let golden = source.join("expected.ppm");
-        if let Err(problem) = compare_screenshot(&shot, &golden, run, tolerance, pointer, update) {
+        let backend = running.session.backend;
+        let compared =
+            compare_screenshot_for(&shot, source, backend, run, tolerance, pointer, update);
+        if let Err(problem) = compared {
             problems.push(problem);
         }
     }
@@ -1225,6 +1590,48 @@ fn check_images(
         }
     }
     Ok(problems)
+}
+
+/// Compares `actual` with the case's golden `name` for `backend`. On X11 an
+/// update writes the backend's own file, and only when the shared golden
+/// does not already match.
+fn compare_golden(
+    actual: &str,
+    source: &Path,
+    name: &str,
+    backend: Backend,
+    update: bool,
+) -> Result<(), String> {
+    let path = golden_path(source, name, backend);
+    if !update || backend == Backend::Wayland {
+        return compare_snapshot(actual, &path, update);
+    }
+    if compare_snapshot(actual, &path, false).is_ok() {
+        return Ok(());
+    }
+    compare_snapshot(actual, &backend_golden(source, name, backend), true)
+}
+
+/// [`compare_screenshot`] against `expected.ppm` of the case, with the
+/// same backend rule as [`compare_golden`].
+fn compare_screenshot_for(
+    shot: &Path,
+    source: &Path,
+    backend: Backend,
+    run: &Path,
+    tolerance: Tolerance,
+    pointer: (i32, i32),
+    update: bool,
+) -> Result<(), String> {
+    let path = golden_path(source, "expected.ppm", backend);
+    if !update || backend == Backend::Wayland {
+        return compare_screenshot(shot, &path, run, tolerance, pointer, update);
+    }
+    if compare_screenshot(shot, &path, run, tolerance, pointer, false).is_ok() {
+        return Ok(());
+    }
+    let own = backend_golden(source, "expected.ppm", backend);
+    compare_screenshot(shot, &own, run, tolerance, pointer, true)
 }
 
 /// Compares the screenshot at `shot`; writes `diff.ppm` into `run` on a
@@ -2039,9 +2446,280 @@ mod self_tests {
             "export WAYLAND_DISPLAY=$socket",
             "refusing to run",
             "MemoryMax=",
+            "--backend",
         ] {
             assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
         }
+    }
+
+    // ---- release gate (T129) ---------------------------------------------
+
+    fn script_path(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join(name)
+    }
+
+    fn script_text(name: &str) -> String {
+        let path = script_path(name);
+        std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("{}: {err}", path.display()))
+    }
+
+    /// Runs a script with `args` and extra `env`; returns success, stdout
+    /// and stderr.
+    fn run_script(name: &str, args: &[&str], env: &[(&str, &str)]) -> (bool, String, String) {
+        let output = Command::new("bash")
+            .arg(script_path(name))
+            .args(args)
+            .envs(env.iter().copied())
+            .stdin(Stdio::null())
+            .output()
+            .unwrap_or_else(|err| panic!("bash {name}: {err}"));
+        (
+            output.status.success(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    fn cargo_version() -> String {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        let text = std::fs::read_to_string(manifest).unwrap_or_default();
+        text.lines()
+            .find_map(|l| l.strip_prefix("version = \"")?.strip_suffix('"'))
+            .unwrap_or("0.0.0")
+            .to_owned()
+    }
+
+    #[test]
+    fn script_rejects_an_unknown_backend() {
+        let (ok, _, err) = run_script("e2e.sh", &["--backend", "bogus"], &[]);
+
+        assert!(!ok);
+        assert!(err.contains("unknown backend"), "{err}");
+    }
+
+    #[test]
+    fn script_x11_run_is_private() {
+        let script = script_text("e2e.sh");
+
+        for needle in [
+            "Xvfb",
+            "-nolisten tcp",
+            "-displayfd",
+            "export XAUTHORITY=",
+            "unset DISPLAY WAYLAND_DISPLAY",
+            "refusing to run: DISPLAY",
+        ] {
+            assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
+        }
+    }
+
+    fn x11_runtime(name: &str) -> (PathBuf, OsString) {
+        let dir = temp_dir(name);
+        let authority = dir.join("Xauthority");
+        std::fs::write(&authority, b"").unwrap_or_else(|err| panic!("{err}"));
+        (dir, authority.into_os_string())
+    }
+
+    #[test]
+    fn x11_guard_accepts_the_private_display() {
+        let (dir, authority) = x11_runtime("x11-ok");
+
+        let guard = x11_guard(
+            Some(dir.clone().into_os_string()),
+            Some(":97".into()),
+            Some(authority),
+        );
+
+        assert_eq!(guard.map(|g| g.display), Ok(":97".to_owned()));
+    }
+
+    #[test]
+    fn x11_guard_rejects_an_authority_outside_the_runtime() {
+        let (dir, _) = x11_runtime("x11-outside");
+        let other = temp_dir("x11-other").join("Xauthority");
+        std::fs::write(&other, b"").unwrap_or_else(|err| panic!("{err}"));
+
+        let err = x11_guard(
+            Some(dir.into_os_string()),
+            Some(":97".into()),
+            Some(other.into_os_string()),
+        )
+        .err()
+        .unwrap_or_default();
+
+        assert!(err.contains("outside the private"), "{err}");
+    }
+
+    #[test]
+    fn x11_guard_rejects_a_missing_display() {
+        let (dir, authority) = x11_runtime("x11-nodisplay");
+
+        let err = x11_guard(Some(dir.into_os_string()), None, Some(authority))
+            .err()
+            .unwrap_or_default();
+
+        assert!(err.contains("DISPLAY is not set"), "{err}");
+    }
+
+    #[test]
+    fn release_dry_run_lists_the_steps_in_order() {
+        let version = cargo_version();
+
+        let (ok, out, err) = run_script("release.sh", &["--dry-run", &version], &[]);
+
+        assert!(ok, "{err}");
+        let at = |step: &str| {
+            out.find(&format!("==> {step}"))
+                .unwrap_or_else(|| panic!("no step {step} in {out}"))
+        };
+        assert!(at("check") < at("e2e-wayland"));
+        assert!(at("e2e-wayland") < at("e2e-x11"));
+        assert!(at("e2e-x11") < at("package"));
+    }
+
+    #[test]
+    fn release_stops_on_a_failing_step() {
+        let version = cargo_version();
+
+        let (ok, out, err) = run_script(
+            "release.sh",
+            &["--dry-run", &version],
+            &[("DRAW_RELEASE_FAIL", "e2e-x11")],
+        );
+
+        assert!(!ok);
+        assert!(err.contains("step e2e-x11 failed"), "{err}");
+        assert!(out.contains("==> e2e-wayland"), "{out}");
+        assert!(!out.contains("==> package"), "{out}");
+    }
+
+    #[test]
+    fn release_rejects_a_malformed_version() {
+        for bad in ["2.0", "v2.0.0", "2.0.0-rc1", ""] {
+            let (ok, out, err) = run_script("release.sh", &["--dry-run", bad], &[]);
+
+            assert!(!ok, "{bad}: {out}");
+            assert!(err.contains("X.Y.Z"), "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn release_rejects_a_version_that_is_not_the_manifest_one() {
+        let (ok, _, err) = run_script("release.sh", &["--dry-run", "999.0.0"], &[]);
+
+        assert!(!ok);
+        assert!(err.contains("Cargo.toml"), "{err}");
+    }
+
+    #[test]
+    fn package_script_says_it_is_not_the_release_path() {
+        let script = script_text("package.sh");
+
+        assert!(script.contains("not the release path"));
+        assert!(script.contains("DRAW_RELEASE"));
+        assert!(script_text("release.sh").contains("DRAW_RELEASE=1"));
+    }
+
+    #[test]
+    fn quality_gates_lists_the_release_gate() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/process/Quality Gates.md");
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+
+        assert!(text.contains("scripts/release.sh"), "no release gate row");
+        assert!(text.contains("check.sh --fuzz"));
+    }
+
+    #[test]
+    fn golden_path_prefers_the_backend_file() {
+        let dir = temp_dir("golden-prefers");
+        std::fs::write(dir.join("expected.ppm"), b"w").unwrap_or_else(|err| panic!("{err}"));
+        std::fs::write(dir.join("expected.x11.ppm"), b"x").unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(
+            golden_path(&dir, "expected.ppm", Backend::X11),
+            dir.join("expected.x11.ppm")
+        );
+        assert_eq!(
+            golden_path(&dir, "expected.ppm", Backend::Wayland),
+            dir.join("expected.ppm")
+        );
+    }
+
+    #[test]
+    fn golden_path_falls_back_to_the_shared_file() {
+        let dir = temp_dir("golden-fallback");
+        std::fs::write(dir.join("expected.snap"), b"w").unwrap_or_else(|err| panic!("{err}"));
+
+        assert_eq!(
+            golden_path(&dir, "expected.snap", Backend::X11),
+            dir.join("expected.snap")
+        );
+    }
+
+    #[test]
+    fn x11_intern_request_pads_the_name_to_four_bytes() {
+        let request = x11_intern_request("WM_PROTOCOLS");
+
+        // Opcode 16, only-if-exists 0, 2 + 12/4 words, name length.
+        assert_eq!(request.get(..4), Some(&[16, 0, 5, 0][..]));
+        assert_eq!(request.get(4..6), Some(&[12, 0][..]));
+        assert_eq!(request.len(), 20);
+        assert_eq!(x11_intern_request("abc").len(), 12);
+    }
+
+    #[test]
+    fn x11_delete_request_is_a_client_message_to_the_window() {
+        let request = x11_delete_request(0x0020_0001, 300, 301);
+
+        // SendEvent: opcode 25, 11 words, destination, empty mask.
+        assert_eq!(request.len(), 44);
+        assert_eq!(request.get(..4), Some(&[25, 0, 11, 0][..]));
+        assert_eq!(request.get(4..8), Some(&0x0020_0001u32.to_le_bytes()[..]));
+        assert_eq!(request.get(8..12), Some(&[0, 0, 0, 0][..]));
+        // The event: ClientMessage (33), format 32, window, type, data.
+        assert_eq!(request.get(12..14), Some(&[33, 32][..]));
+        assert_eq!(request.get(16..20), Some(&0x0020_0001u32.to_le_bytes()[..]));
+        assert_eq!(request.get(20..24), Some(&300u32.to_le_bytes()[..]));
+        assert_eq!(request.get(24..28), Some(&301u32.to_le_bytes()[..]));
+    }
+
+    #[test]
+    fn xdotool_commands_translate_a_chord_and_text() {
+        let chord = chord(&["ctrl", "shift", "9"]).unwrap_or_default();
+
+        let commands = xdotool_commands(&chord).unwrap_or_default();
+
+        assert_eq!(
+            commands,
+            [[
+                "keydown",
+                "Control_L",
+                "keydown",
+                "Shift_L",
+                "key",
+                "9",
+                "keyup",
+                "Shift_L",
+                "keyup",
+                "Control_L"
+            ]
+            .map(str::to_owned)
+            .to_vec()]
+        );
+        let text = xdotool_commands(&["a b".to_owned()]).unwrap_or_default();
+        assert_eq!(
+            text.first().and_then(|c| c.last()).map(String::as_str),
+            Some("a b")
+        );
+    }
+
+    #[test]
+    fn backend_from_name_knows_both_and_rejects_others() {
+        assert_eq!(Backend::from_name("x11"), Ok(Backend::X11));
+        assert_eq!(Backend::from_name("wayland"), Ok(Backend::Wayland));
+        assert!(Backend::from_name("mir").is_err());
     }
 
     // ---- wire format ----------------------------------------------------
