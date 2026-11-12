@@ -152,6 +152,26 @@ fn text_scene() -> Vec<Shape> {
     ]
 }
 
+/// Rewrites every golden: `cargo test --test svg -- --ignored regenerate`.
+#[test]
+#[ignore = "rewrites the goldens; run on purpose"]
+fn regenerate_goldens() {
+    let scenes = [
+        ("shapes", shapes_scene()),
+        ("grid", grid_scene()),
+        ("text", text_scene()),
+        ("empty", Vec::new()),
+    ];
+    for (name, scene) in scenes {
+        let path = golden_path(name);
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).unwrap_or_else(|err| panic!("{err}"));
+        }
+        std::fs::write(&path, render(&scene))
+            .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+    }
+}
+
 #[test]
 fn golden_shapes() {
     check(&render(&shapes_scene()), "shapes");

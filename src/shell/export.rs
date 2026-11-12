@@ -30,6 +30,8 @@ pub enum ExportError {
     Pixels,
     /// The PNG encoder failed.
     Encode(png::EncodingError),
+    /// The SVG could not be built or its thread not started.
+    Fonts(String),
     /// The file could not be created or written.
     Write {
         /// The file.
@@ -45,6 +47,7 @@ impl fmt::Display for ExportError {
             Self::NoHome => f.write_str("HOME is not set"),
             Self::Pixels => f.write_str("the view's pixels could not be read"),
             Self::Encode(err) => write!(f, "cannot encode the PNG: {err}"),
+            Self::Fonts(message) => write!(f, "cannot build the SVG: {message}"),
             Self::Write { path, source } => write!(f, "{}: {source}", path.display()),
         }
     }
@@ -53,7 +56,7 @@ impl fmt::Display for ExportError {
 impl Error for ExportError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::NoHome | Self::Pixels => None,
+            Self::NoHome | Self::Pixels | Self::Fonts(_) => None,
             Self::Encode(err) => Some(err),
             Self::Write { source, .. } => Some(source),
         }
@@ -143,14 +146,19 @@ pub fn home_dir(value: Option<&OsStr>) -> Result<PathBuf, ExportError> {
 /// in `home`, with `-<attempt>` before the extension unless `attempt` is 0.
 #[must_use]
 pub fn export_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
+    stamped_path(home, unix_secs, attempt, "png")
+}
+
+/// [`export_path`] with the extension `extension`.
+fn stamped_path(home: &Path, unix_secs: u64, attempt: u32, extension: &str) -> PathBuf {
     // `20261109T143005Z` to `20261109-143005`.
     let stamp = diag::file::utc_stamp(unix_secs)
         .trim_end_matches('Z')
         .replacen('T', "-", 1);
     let name = if attempt == 0 {
-        format!("draw-{stamp}.png")
+        format!("draw-{stamp}.{extension}")
     } else {
-        format!("draw-{stamp}-{attempt}.png")
+        format!("draw-{stamp}-{attempt}.{extension}")
     };
     home.join(name)
 }
@@ -162,8 +170,18 @@ pub fn export_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
 ///
 /// [`ExportError::Write`] if no file could be created or written.
 pub fn write_new(home: &Path, unix_secs: u64, bytes: &[u8]) -> Result<PathBuf, ExportError> {
+    write_new_as(home, unix_secs, "png", bytes)
+}
+
+/// [`write_new`] for files with the extension `extension`.
+fn write_new_as(
+    home: &Path,
+    unix_secs: u64,
+    extension: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, ExportError> {
     for attempt in 0..MAX_ATTEMPTS {
-        let path = export_path(home, unix_secs, attempt);
+        let path = stamped_path(home, unix_secs, attempt, extension);
         match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(mut file) => {
                 return match file.write_all(bytes) {
@@ -180,7 +198,7 @@ pub fn write_new(home: &Path, unix_secs: u64, bytes: &[u8]) -> Result<PathBuf, E
         }
     }
     Err(ExportError::Write {
-        path: export_path(home, unix_secs, MAX_ATTEMPTS),
+        path: stamped_path(home, unix_secs, MAX_ATTEMPTS, extension),
         source: ErrorKind::AlreadyExists.into(),
     })
 }
@@ -206,8 +224,7 @@ pub fn save(
 /// the extension `.svg`.
 #[must_use]
 pub fn svg_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
-    let _ = (home, unix_secs, attempt);
-    todo!("name the file")
+    stamped_path(home, unix_secs, attempt, "svg")
 }
 
 /// Writes `svg` to a new [`svg_path`] in the directory named by `home`, the
@@ -218,15 +235,37 @@ pub fn svg_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
 ///
 /// As [`home_dir`] and [`write_new`].
 pub fn save_svg(svg: &str, home: Option<&OsStr>, unix_secs: u64) -> Result<PathBuf, ExportError> {
-    let _ = (svg, home, unix_secs);
-    todo!("write the file")
+    let home = home_dir(home)?;
+    let temp = home.join(format!(".draw-{}-{unix_secs}.svg.tmp", std::process::id()));
+    if std::fs::write(&temp, svg).is_err() {
+        // No room for a second copy, or no temporary files: write in place.
+        let _ = std::fs::remove_file(&temp);
+        return write_new_as(&home, unix_secs, "svg", svg.as_bytes());
+    }
+    let mut result = None;
+    for attempt in 0..MAX_ATTEMPTS {
+        let path = svg_path(&home, unix_secs, attempt);
+        match std::fs::hard_link(&temp, &path) {
+            Ok(()) => {
+                result = Some(Ok(path));
+                break;
+            }
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {}
+            // A file system without links: write in place.
+            Err(_) => break,
+        }
+    }
+    let _ = std::fs::remove_file(&temp);
+    result.unwrap_or_else(|| write_new_as(&home, unix_secs, "svg", svg.as_bytes()))
 }
 
 /// The diagnostics log's level and line for the outcome of an SVG export.
 #[must_use]
 pub fn svg_log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
-    let _ = result;
-    todo!("describe the outcome")
+    match result {
+        Ok(path) => (Level::Info, format!("SVG exported to {}", path.display())),
+        Err(err) => (Level::Error, format!("SVG not exported: {err}")),
+    }
 }
 
 /// The diagnostics log's level and line for the outcome of an export.

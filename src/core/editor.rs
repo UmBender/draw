@@ -687,7 +687,8 @@ impl Editor {
     ///
     /// An open text block is committed first, except that
     /// [`Command::Undo`] cancels it instead (ADR-T29-2) and
-    /// [`Command::ExportView`] leaves it alone (ADR-T92-2). Nothing runs
+    /// [`Command::ExportView`] and [`Command::ExportSvg`] leave it alone
+    /// (ADR-T92-2, ADR-T114-2). Nothing runs
     /// under the open command palette (ADR-T111-1).
     pub fn apply(&mut self, command: Command) -> bool {
         if self.palette.is_some() {
@@ -697,7 +698,7 @@ impl Editor {
             if command == Command::Undo {
                 return self.cancel_text();
             }
-            if command == Command::ExportView {
+            if matches!(command, Command::ExportView | Command::ExportSvg) {
                 return false;
             }
             let committed = self.finish_text();

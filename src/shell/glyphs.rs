@@ -15,7 +15,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use macroquad::texture::{FilterMode, Image, Texture2D};
 
 use crate::core::geom::Vec2;
-use crate::core::svg::{Outline, Outlines};
+use crate::core::svg::{Outline, Outlines, number};
 use crate::core::tex::Face;
 
 /// Side of one atlas page in texels.
@@ -514,15 +514,75 @@ impl<'a> FontOutlines<'a> {
     ///
     /// The parser's message if either font cannot be parsed.
     pub fn new(text: &'a [u8], math: &'a [u8]) -> Result<Self, String> {
-        let _ = (text, math);
-        todo!("parse the fonts")
+        let parse = |bytes| ttf_parser::Face::parse(bytes, 0).map_err(|err| err.to_string());
+        Ok(Self {
+            text: parse(text)?,
+            math: parse(math)?,
+        })
+    }
+}
+
+/// Collects an outline as SVG path data with y flipped (font units are y
+/// up, SVG is y down).
+struct PathBuilder(String);
+
+impl PathBuilder {
+    /// Appends command `op` with the points `coords`, as `x y` pairs.
+    fn push(&mut self, op: char, coords: &[(f32, f32)]) {
+        if !self.0.is_empty() {
+            self.0.push(' ');
+        }
+        self.0.push(op);
+        for (i, (x, y)) in coords.iter().enumerate() {
+            if i > 0 {
+                self.0.push(' ');
+            }
+            self.0.push_str(&number(*x));
+            self.0.push(' ');
+            self.0.push_str(&number(-*y));
+        }
+    }
+}
+
+impl ttf_parser::OutlineBuilder for PathBuilder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.push('M', &[(x, y)]);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.push('L', &[(x, y)]);
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.push('Q', &[(x1, y1), (x, y)]);
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.push('C', &[(x1, y1), (x2, y2), (x, y)]);
+    }
+
+    fn close(&mut self) {
+        self.push('Z', &[]);
     }
 }
 
 impl Outlines for FontOutlines<'_> {
     fn outline(&self, face: Face, ch: char) -> Option<Outline> {
-        let _ = (face, ch);
-        todo!("read the outline")
+        let font = match face {
+            Face::Text => &self.text,
+            Face::Math => &self.math,
+        };
+        let id = font.glyph_index(ch)?;
+        let mut builder = PathBuilder(String::new());
+        let bounds = font.outline_glyph(id, &mut builder)?;
+        let units = f32::from(font.units_per_em());
+        let advance = f32::from(font.glyph_hor_advance(id).unwrap_or(0));
+        (units > 0.0 && !builder.0.is_empty()).then(|| Outline {
+            path: builder.0,
+            units_per_em: units,
+            advance,
+            ink_top: f32::from(bounds.y_max),
+        })
     }
 }
 

@@ -6,10 +6,16 @@
 //! through the same layout the renderer uses and are written as outlines,
 //! each glyph defined once and reused.
 
-use crate::core::geom::Vec2;
-use crate::core::palette::Rgba;
-use crate::core::shape::Shape;
-use crate::core::tex::Face;
+use std::collections::{HashMap, HashSet};
+
+use crate::core::geom::{Aabb, Vec2};
+use crate::core::palette::{ColorId, Rgba, palette};
+use crate::core::shape::{
+    GRID_MAX_CELLS, Shape, TextSlot, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
+};
+use crate::core::tex::{Face, Ink};
+use crate::core::text_layout;
+use crate::theme;
 
 /// The outline of one character, as an SVG path.
 #[derive(Debug, Clone, PartialEq)]
@@ -40,16 +46,439 @@ pub fn to_svg<'a>(
     background: Rgba,
     outlines: &dyn Outlines,
 ) -> String {
-    let _ = (shapes, background, outlines);
-    todo!("write the document")
+    let mut writer = Writer::new(outlines);
+    let mut bounds: Option<Aabb> = None;
+    for shape in shapes {
+        if !shape.is_finite() {
+            continue;
+        }
+        let b = shape.bounds();
+        bounds = Some(bounds.map_or(b, |all| all.union(&b)));
+        writer.shape(shape);
+    }
+    let view = bounds
+        .map_or(Aabb::from_corners(Vec2::ZERO, Vec2::new(64.0, 64.0)), |b| {
+            b.expand(MARGIN)
+        });
+    let (x, y, w, h) = (view.min.x, view.min.y, view.width(), view.height());
+    let mut out = String::new();
+    out.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" \
+         width=\"{w}\" height=\"{h}\" viewBox=\"{x} {y} {w} {h}\">\n",
+        w = number(w),
+        h = number(h),
+        x = number(x),
+        y = number(y),
+    ));
+    if !writer.defs.is_empty() {
+        out.push_str("<defs>\n");
+        for def in &writer.defs {
+            out.push_str(def);
+            out.push('\n');
+        }
+        out.push_str("</defs>\n");
+    }
+    out.push_str(&format!(
+        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
+        number(x),
+        number(y),
+        number(w),
+        number(h),
+        hex(background),
+    ));
+    out.push_str(&writer.body);
+    out.push_str("</svg>\n");
+    out
+}
+
+/// World units of canvas around the shapes.
+const MARGIN: f32 = 24.0;
+
+/// Decimals of a glyph scale, which is far smaller than a world unit.
+const SCALE_DECIMALS: i32 = 5;
+
+/// A label's height as a fraction of its area's height (the renderer's
+/// `LABEL_HEIGHT_RATIO`).
+const LABEL_HEIGHT_RATIO: f32 = 0.6;
+
+/// A label's width as a fraction of its area's width (the renderer's
+/// `LABEL_WIDTH_RATIO`).
+const LABEL_WIDTH_RATIO: f32 = 0.8;
+
+/// Width of one label character per unit of size (the renderer's
+/// `LABEL_CHAR_ASPECT`).
+const LABEL_CHAR_ASPECT: f32 = 0.6;
+
+/// `#rrggbb` of `color`.
+fn hex(color: Rgba) -> String {
+    format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b)
+}
+
+/// The colour of a shape's own ink.
+fn ink(id: ColorId) -> Rgba {
+    palette(id)
+}
+
+/// The colour of text on a shape with this `fill`: the outline colour, or
+/// the dark text colour on a filled shape (the renderer's `label_color`).
+fn text_color(fill: Option<ColorId>, outline: Rgba) -> Rgba {
+    if fill.is_some() {
+        Rgba::from_hex(theme::TEXT_ON_FILL)
+    } else {
+        outline
+    }
+}
+
+/// The colour of formula source outside the subset (the renderer's
+/// `warn_color`).
+fn warn_color(color: Rgba) -> Rgba {
+    let source = Rgba::from_hex(theme::FORMULA_SOURCE);
+    if color.r == source.r && color.g == source.g && color.b == source.b {
+        Rgba::from_hex(theme::FORMULA_SOURCE_ALT)
+    } else {
+        source
+    }
+}
+
+/// Builds the body of the document and the glyph definitions it uses.
+struct Writer<'o> {
+    /// Where the glyph outlines come from.
+    outlines: &'o dyn Outlines,
+    /// The `<path>` of each defined glyph, in definition order.
+    defs: Vec<String>,
+    /// The glyphs seen so far: their definition, or `None` without ink.
+    glyphs: HashMap<(Face, char), Option<(usize, Outline)>>,
+    /// The shapes written so far.
+    body: String,
+}
+
+impl<'o> Writer<'o> {
+    fn new(outlines: &'o dyn Outlines) -> Self {
+        Self {
+            outlines,
+            defs: Vec::new(),
+            glyphs: HashMap::new(),
+            body: String::new(),
+        }
+    }
+
+    /// The definition number and outline of `ch`, defining it on first use.
+    fn glyph(&mut self, face: Face, ch: char) -> Option<(usize, Outline)> {
+        if let Some(known) = self.glyphs.get(&(face, ch)) {
+            return known.clone();
+        }
+        let found = self.outlines.outline(face, ch).and_then(|outline| {
+            let valid = outline.units_per_em.is_finite()
+                && outline.units_per_em > 0.0
+                && outline.advance.is_finite()
+                && outline.ink_top.is_finite();
+            valid.then(|| {
+                let id = self.defs.len();
+                self.defs
+                    .push(format!("<path id=\"g{id}\" d=\"{}\"/>", outline.path));
+                (id, outline)
+            })
+        });
+        self.glyphs.insert((face, ch), found.clone());
+        found
+    }
+
+    /// One glyph with the left end of its baseline at `pos`, `size` world
+    /// units per em. Returns its advance in world units.
+    fn put_glyph(&mut self, face: Face, ch: char, pos: Vec2, size: f32, color: Rgba) -> f32 {
+        let Some((id, outline)) = self.glyph(face, ch) else {
+            return 0.0;
+        };
+        let scale = size / outline.units_per_em;
+        self.body.push_str(&format!(
+            "<use xlink:href=\"#g{id}\" transform=\"translate({} {}) scale({})\" fill=\"{}\"/>\n",
+            number(pos.x),
+            number(pos.y),
+            fixed(scale, SCALE_DECIMALS),
+            hex(color),
+        ));
+        outline.advance * scale
+    }
+
+    /// A text block at `origin`, laid out as the renderer lays it out.
+    fn text_block(&mut self, origin: Vec2, text: &str, size: f32, color: Rgba) {
+        if !(size.is_finite() && size > 0.0) || text.trim().is_empty() {
+            return;
+        }
+        let layout = text_layout::typeset(text);
+        let warn = warn_color(color);
+        for item in &layout.ink {
+            match *item {
+                Ink::Glyph {
+                    ch,
+                    face,
+                    pos,
+                    scale,
+                    warn: warned,
+                } => {
+                    let at = origin + pos * size;
+                    let glyph_color = if warned { warn } else { color };
+                    self.put_glyph(face, ch, at, size * scale, glyph_color);
+                }
+                Ink::Rule { a, b, width } => {
+                    self.line(origin + a * size, origin + b * size, width * size, color, "butt");
+                }
+            }
+        }
+    }
+
+    /// A text of the text face centred in `rect`: its advance box
+    /// horizontally and its ink vertically.
+    fn centered(&mut self, text: &str, rect: Aabb, size: f32, color: Rgba) {
+        let faces: Vec<Option<(usize, Outline)>> = text
+            .chars()
+            .map(|ch| self.glyph(Face::Text, ch))
+            .collect();
+        let advance = |entry: &Outline| entry.advance / entry.units_per_em * size;
+        let width: f32 = faces.iter().flatten().map(|(_, o)| advance(o)).sum();
+        let top = faces
+            .iter()
+            .flatten()
+            .map(|(_, o)| o.ink_top / o.units_per_em * size)
+            .fold(0.0, f32::max);
+        let c = rect.center();
+        let mut pen = Vec2::new(c.x - width * 0.5, c.y + top * 0.5);
+        for ch in text.chars() {
+            pen.x += self.put_glyph(Face::Text, ch, pen, size, color);
+        }
+    }
+
+    /// The label or axis index `text` of `size` in `rect`.
+    fn label(&mut self, text: &str, rect: Aabb, ellipse: bool, color: Rgba) {
+        let mut area = Vec2::new(rect.width(), rect.height());
+        if ellipse {
+            area = area * std::f32::consts::FRAC_1_SQRT_2;
+        }
+        if let Some(size) = label_size(text.len(), area) {
+            self.centered(text, rect, size, color);
+        }
+    }
+
+    fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Rgba, cap: &str) {
+        self.body.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\" \
+             stroke-linecap=\"{cap}\"/>\n",
+            number(a.x),
+            number(a.y),
+            number(b.x),
+            number(b.y),
+            hex(color),
+            number(width),
+        ));
+    }
+
+    fn shape(&mut self, shape: &Shape) {
+        let style = shape.style();
+        let width = style.width;
+        let color = ink(style.color);
+        match shape {
+            Shape::Stroke {
+                points, widths, ..
+            } => self.stroke(points, widths.as_deref(), width, color),
+            Shape::Line { a, b, .. } => self.line(*a, *b, width, color, "round"),
+            Shape::Arrow { a, b, .. } => {
+                let [tip, left, right] = arrow_head(*a, *b, width);
+                self.line(*a, left.lerp(right, 0.5), width, color, "round");
+                self.body.push_str(&format!(
+                    "<polygon points=\"{},{} {},{} {},{}\" fill=\"{}\"/>\n",
+                    number(tip.x),
+                    number(tip.y),
+                    number(left.x),
+                    number(left.y),
+                    number(right.x),
+                    number(right.y),
+                    hex(color),
+                ));
+            }
+            Shape::Rect { a, b, fill, .. } => {
+                let rect = Aabb::from_corners(*a, *b);
+                self.body.push_str(&format!(
+                    "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" \
+                     stroke=\"{}\" stroke-width=\"{}\"/>\n",
+                    number(rect.min.x),
+                    number(rect.min.y),
+                    number(rect.width()),
+                    number(rect.height()),
+                    fill_attr(*fill),
+                    hex(color),
+                    number(width),
+                ));
+                let on = text_color(*fill, color);
+                self.shown_label(shape, rect, false, on);
+                self.shape_texts(shape, |_| on);
+            }
+            Shape::Ellipse { a, b, fill, .. } => {
+                let rect = Aabb::from_corners(*a, *b);
+                let c = rect.center();
+                self.body.push_str(&format!(
+                    "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"{}\" \
+                     stroke=\"{}\" stroke-width=\"{}\"/>\n",
+                    number(c.x),
+                    number(c.y),
+                    number(rect.width() * 0.5),
+                    number(rect.height() * 0.5),
+                    fill_attr(*fill),
+                    hex(color),
+                    number(width),
+                ));
+                let on = text_color(*fill, color);
+                self.shown_label(shape, rect, true, on);
+                self.shape_texts(shape, |_| on);
+            }
+            Shape::Grid {
+                a,
+                b,
+                cols,
+                rows,
+                axes,
+                fills,
+                ..
+            } => {
+                // Cell fills first, so the lines stay on top.
+                for fill in fills {
+                    let cell = grid_cell_rect(*a, *b, *cols, *rows, fill.col, fill.row);
+                    self.body.push_str(&format!(
+                        "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
+                        number(cell.min.x),
+                        number(cell.min.y),
+                        number(cell.width()),
+                        number(cell.height()),
+                        hex(ink(fill.color)),
+                    ));
+                }
+                for [start, end] in grid_lines(*a, *b, *cols, *rows) {
+                    self.line(start, end, width, color, "square");
+                }
+                if *axes {
+                    self.axis_labels(*a, *b, *cols, *rows, color);
+                }
+                self.shape_texts(shape, |p| {
+                    let filled = shape
+                        .grid_cell_at(p)
+                        .and_then(|(col, row)| shape.cell_fill(col, row));
+                    text_color(filled, color)
+                });
+            }
+            Shape::Text {
+                origin, text, size, ..
+            } => self.text_block(*origin, text, *size, color),
+        }
+    }
+
+    /// A stroke: a round polyline, or one segment per pair of points when
+    /// the pen had pressure.
+    fn stroke(&mut self, points: &[Vec2], widths: Option<&[f32]>, width: f32, color: Rgba) {
+        let factor = |i: usize| widths.and_then(|w| w.get(i)).copied().unwrap_or(1.0);
+        match points {
+            [] => {}
+            [p] => self.body.push_str(&format!(
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>\n",
+                number(p.x),
+                number(p.y),
+                number(width * factor(0) * 0.5),
+                hex(color),
+            )),
+            _ if widths.is_some() => {
+                for (i, pair) in points.windows(2).enumerate() {
+                    let mean = width * (factor(i) + factor(i + 1)) * 0.5;
+                    self.line(pair[0], pair[1], mean, color, "round");
+                }
+            }
+            _ => {
+                let list: Vec<String> = points
+                    .iter()
+                    .map(|p| format!("{},{}", number(p.x), number(p.y)))
+                    .collect();
+                self.body.push_str(&format!(
+                    "<polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" \
+                     stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n",
+                    list.join(" "),
+                    hex(color),
+                    number(width),
+                ));
+            }
+        }
+    }
+
+    /// The label of `shape` unless it has text, which is drawn instead.
+    fn shown_label(&mut self, shape: &Shape, rect: Aabb, ellipse: bool, color: Rgba) {
+        if shape.slot_text(TextSlot::Shape).is_some() {
+            return;
+        }
+        if let Some(label) = shape.label() {
+            self.label(&label.to_string(), rect, ellipse, color);
+        }
+    }
+
+    /// Every text of a rectangle, ellipse or grid, in the colour
+    /// `color_at` gives for the world centre of its block.
+    fn shape_texts(&mut self, shape: &Shape, color_at: impl Fn(Vec2) -> Rgba) {
+        for placed in shape.placed_texts() {
+            let center = text_layout::bounds(placed.origin, placed.text, placed.size).center();
+            self.text_block(placed.origin, placed.text, placed.size, color_at(center));
+        }
+    }
+
+    /// The axis indices of a grid, all at one size.
+    fn axis_labels(&mut self, a: Vec2, b: Vec2, cols: u32, rows: u32, color: Rgba) {
+        let Some(first) = grid_axis_labels(a, b, cols, rows).next() else {
+            return;
+        };
+        let longest = cols.max(rows).clamp(1, GRID_MAX_CELLS) - 1;
+        let cell = Vec2::new(first.rect.width(), first.rect.height());
+        let Some(size) = label_size(longest.to_string().len(), cell) else {
+            return;
+        };
+        for label in grid_axis_labels(a, b, cols, rows) {
+            self.centered(&label.index.to_string(), label.rect, size, color);
+        }
+    }
+}
+
+/// The font size of a label of `chars` characters in `area`: as tall as
+/// [`LABEL_HEIGHT_RATIO`] of its height, narrowed to fit
+/// [`LABEL_WIDTH_RATIO`] of its width. `None` unless it is finite and
+/// positive.
+fn label_size(chars: usize, area: Vec2) -> Option<f32> {
+    if !area.is_finite() {
+        return None;
+    }
+    let text_width = chars.max(1) as f32 * LABEL_CHAR_ASPECT;
+    let size = (area.y * LABEL_HEIGHT_RATIO).min(area.x * LABEL_WIDTH_RATIO / text_width);
+    (size.is_finite() && size > 0.0).then_some(size)
+}
+
+/// The `fill` attribute value of a shape.
+fn fill_attr(fill: Option<ColorId>) -> String {
+    fill.map_or_else(|| "none".to_owned(), |id| hex(ink(id)))
+}
+
+/// `value` rounded to `decimals` places, without trailing zeros; `0` when
+/// not finite.
+fn fixed(value: f32, decimals: i32) -> String {
+    let value = f64::from(value);
+    if !value.is_finite() {
+        return "0".to_owned();
+    }
+    let factor = 10f64.powi(decimals);
+    let rounded = (value * factor).round() / factor;
+    if rounded == 0.0 || !rounded.is_finite() {
+        "0".to_owned()
+    } else {
+        format!("{rounded}")
+    }
 }
 
 /// `value` with at most 2 decimals and no trailing zeros; 0 when it is not
 /// finite or rounds to zero.
 #[must_use]
 pub fn number(value: f32) -> String {
-    let _ = value;
-    todo!("format a number")
+    fixed(value, 2)
 }
 
 /// Whether `xml` is one well-formed element tree: balanced and matching
@@ -57,8 +486,122 @@ pub fn number(value: f32) -> String {
 /// no entities or comments beyond `<?…?>` declarations.
 #[must_use]
 pub fn is_well_formed(xml: &str) -> bool {
-    let _ = xml;
-    todo!("check the markup")
+    let mut cursor = Cursor {
+        rest: xml,
+        stack: Vec::new(),
+        roots: 0,
+    };
+    cursor.run()
+}
+
+/// A position in the markup being checked.
+struct Cursor<'a> {
+    /// What is left to read.
+    rest: &'a str,
+    /// The open elements.
+    stack: Vec<&'a str>,
+    /// The elements that were opened at the top level.
+    roots: usize,
+}
+
+/// Whether `c` may be in a tag or attribute name.
+fn is_name_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-' | '.')
+}
+
+impl<'a> Cursor<'a> {
+    /// Reads the whole text; true if it is one well-formed element.
+    fn run(&mut self) -> bool {
+        loop {
+            let Some(at) = self.rest.find('<') else {
+                // Only blanks may follow the last tag, and the tree is whole.
+                return self.rest.trim().is_empty() && self.stack.is_empty() && self.roots == 1;
+            };
+            let (text, tag) = self.rest.split_at(at);
+            if self.stack.is_empty() && !text.trim().is_empty() {
+                return false;
+            }
+            if text.contains('>') {
+                return false;
+            }
+            self.rest = tag;
+            if !self.tag() {
+                return false;
+            }
+        }
+    }
+
+    /// Reads one tag at the start of the rest.
+    fn tag(&mut self) -> bool {
+        if let Some(after) = self.rest.strip_prefix("<?") {
+            let Some(end) = after.find("?>") else {
+                return false;
+            };
+            self.rest = &after[end + 2..];
+            return true;
+        }
+        if let Some(after) = self.rest.strip_prefix("</") {
+            let Some(end) = after.find('>') else {
+                return false;
+            };
+            let name = after[..end].trim_end();
+            self.rest = &after[end + 1..];
+            return self.stack.pop() == Some(name) && !name.is_empty();
+        }
+        self.rest = &self.rest[1..];
+        let name_len = self.rest.find(|c| !is_name_char(c)).unwrap_or(self.rest.len());
+        let (name, after) = self.rest.split_at(name_len);
+        if name.is_empty() {
+            return false;
+        }
+        self.rest = after;
+        let Some(self_closing) = self.attributes() else {
+            return false;
+        };
+        if self.stack.is_empty() {
+            self.roots += 1;
+            if self.roots > 1 {
+                return false;
+            }
+        }
+        if !self_closing {
+            self.stack.push(name);
+        }
+        true
+    }
+
+    /// Reads the attributes up to the end of the tag. `Some(true)` for
+    /// `/>`, `Some(false)` for `>`, `None` when they are malformed.
+    fn attributes(&mut self) -> Option<bool> {
+        let mut seen = HashSet::new();
+        loop {
+            let trimmed = self.rest.trim_start();
+            let blank = trimmed.len() != self.rest.len();
+            self.rest = trimmed;
+            if let Some(after) = self.rest.strip_prefix("/>") {
+                self.rest = after;
+                return Some(true);
+            }
+            if let Some(after) = self.rest.strip_prefix('>') {
+                self.rest = after;
+                return Some(false);
+            }
+            // An attribute needs a blank before it.
+            if !blank {
+                return None;
+            }
+            let name_len = self.rest.find(|c| !is_name_char(c))?;
+            let (name, after) = self.rest.split_at(name_len);
+            let after = after.strip_prefix('=')?;
+            let quote = after.chars().next().filter(|q| matches!(q, '"' | '\''))?;
+            let value = &after[1..];
+            let end = value.find(quote)?;
+            if name.is_empty() || value[..end].contains('<') || !seen.insert(name) {
+                return None;
+            }
+            self.rest = &value[end + 1..];
+        }
+    }
 }
 
 #[cfg(test)]

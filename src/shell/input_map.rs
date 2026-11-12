@@ -466,8 +466,12 @@ impl EventHandler for Collector {
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
-            // Holding the chord writes one file (ADR-T92-2).
-            if !repeat || keymap::resolve(key, mods) != Some(Command::ExportView) {
+            // Holding the chord writes one file (ADR-T92-2, ADR-T114-2).
+            let exports = matches!(
+                keymap::resolve(key, mods),
+                Some(Command::ExportView | Command::ExportSvg)
+            );
+            if !repeat || !exports {
                 self.events.push(InputEvent::KeyDown { key, mods });
             }
         }
