@@ -111,8 +111,8 @@ fn every_truncation_of_the_fixture_is_handled() {
 #[test]
 fn page_out_of_order_or_range_is_refused() {
     assert!(DocFile::parse(&V1.replacen("index 2", "index 0", 1)).is_err());
-    assert!(DocFile::parse(&V1.replacen("index 2", "index 9", 1)).is_err());
-    assert!(DocFile::parse(&V1.replacen("current 2", "current 9", 1)).is_err());
+    assert!(DocFile::parse(&V1.replacen("index 2", "index 10", 1)).is_err());
+    assert!(DocFile::parse(&V1.replacen("current 2", "current 10", 1)).is_err());
     assert!(DocFile::parse(&V1.replacen("count 2", "count 3", 1)).is_err());
 }
 

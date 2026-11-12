@@ -35,7 +35,6 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
-use crate::shell::ui_text;
 use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
@@ -898,30 +897,6 @@ fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAt
         sum.rasterized += rasterized;
         stats.set(sum);
     });
-}
-
-/// The page indicator: the page number, only when it is not page 1
-/// (ADR-T116-1). `page` is zero-based.
-#[must_use]
-pub fn page_label(page: usize) -> Option<String> {
-    (page != 0).then(|| (page + 1).to_string())
-}
-
-/// Size of the page indicator's text, in pixels.
-const PAGE_LABEL_PX: u16 = 18;
-/// Gap between the page indicator and the window's top and right edges.
-const PAGE_LABEL_MARGIN_PX: f32 = 12.0;
-
-/// Draws the page indicator top-right when `page` is not page 1.
-pub fn draw_page_label(page: usize, viewport: Vec2) {
-    let Some(label) = page_label(page) else {
-        return;
-    };
-    let size = ui_text::measure(&label, PAGE_LABEL_PX);
-    let x = viewport.x - PAGE_LABEL_MARGIN_PX - size.width;
-    let y = PAGE_LABEL_MARGIN_PX + size.offset_y;
-    let color = to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT));
-    ui_text::draw(&label, x, y, PAGE_LABEL_PX, color);
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
@@ -2828,16 +2803,5 @@ mod tests {
         assert!(centers[2].approx_eq(rect.max, EPS));
         assert!(centers[1].approx_eq(Vec2::new(rect.max.x, rect.min.y), EPS));
         assert!(centers[3].approx_eq(Vec2::new(rect.min.x, rect.max.y), EPS));
-    }
-
-    #[test]
-    fn page_label_is_absent_on_page_one() {
-        assert_eq!(page_label(0), None);
-    }
-
-    #[test]
-    fn page_label_shows_the_number_off_page_one() {
-        assert_eq!(page_label(1).as_deref(), Some("2"));
-        assert_eq!(page_label(8).as_deref(), Some("9"));
     }
 }

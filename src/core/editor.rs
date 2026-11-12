@@ -185,7 +185,7 @@ impl Gesture {
 }
 
 /// How many pages there are (ADR-T116-1).
-pub const PAGE_COUNT: usize = 9;
+pub const PAGE_COUNT: usize = 10;
 
 /// What one page owns besides the shapes: the state of a page that is not
 /// the current one (ADR-T116-1).
@@ -726,6 +726,19 @@ impl Editor {
             }
         }
         Ok(ed)
+    }
+
+    /// Whether page `page` (`0` is page 1) holds a shape; `false` for a
+    /// page out of range (ADR-T124-1).
+    #[must_use]
+    pub fn page_has_shapes(&self, page: usize) -> bool {
+        if page == self.page {
+            return !self.doc.is_empty();
+        }
+        self.pages
+            .get(page)
+            .and_then(Option::as_ref)
+            .is_some_and(|stored| !stored.doc.is_empty())
     }
 
     /// The current page, `0` for page 1 (ADR-T116-1).
@@ -10011,6 +10024,45 @@ mod tests {
         assert!(!redraw);
         assert_eq!(ed, before);
         assert_eq!(ed.document_revision(), before.document_revision());
+    }
+
+    #[test]
+    fn page_count_is_ten() {
+        assert_eq!(PAGE_COUNT, 10);
+    }
+
+    #[test]
+    fn going_to_page_ten_works() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+
+        // Act
+        let redraw = go(&mut ed, 9);
+
+        // Assert
+        assert!(redraw);
+        assert_eq!(ed.page(), 9);
+        assert!(!ed.page_has_shapes(9));
+        assert!(ed.page_has_shapes(0));
+    }
+
+    #[test]
+    fn page_has_shapes_follows_the_documents() {
+        // Arrange: a shape on page 1, page 3 untouched.
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
+
+        // Assert: current page, another page, out of range.
+        assert!(ed.page_has_shapes(0));
+        assert!(!ed.page_has_shapes(2));
+        assert!(!ed.page_has_shapes(PAGE_COUNT));
+        // A page that was left keeps its answer, and an emptied one flips.
+        go(&mut ed, 2);
+        assert!(ed.page_has_shapes(0));
+        assert!(!ed.page_has_shapes(2));
+        ed.apply(Command::SetTool(Tool::Rect));
+        ed.apply(Command::SelectAll);
+        go(&mut ed, 0);
+        assert!(ed.page_has_shapes(0));
     }
 
     #[test]
