@@ -48,8 +48,8 @@ spell their own paths as `crate::core::…` about 400 times.
   `crates/draw-gfx/src/gpu/gl.rs`. Nothing else.
 - **The dependency list** of [[ADR-T127-3 The dependency list]] is checked by
   `tests/deps.rs`: `draw-types` none; `draw-core` `fontdue`, `png`,
-  `ttf-parser`; `draw-gfx` and `draw-sys` none yet; `draw` `macroquad` and
-  the four `draw-*` crates; dev dependency `proptest` only. A path
+  `ttf-parser`; `draw-gfx` and `draw-sys` none yet; `draw` `macroquad`, `fontdue`, `png`, `ttf-parser`
+  (the shell uses them until it moves) and the four `draw-*` crates; dev dependency `proptest` only. A path
   dependency is allowed only between the `draw-*` crates.
 - Shared lints live in `[workspace.lints]`; every member has
   `[lints] workspace = true`.

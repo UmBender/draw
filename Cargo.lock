@@ -93,11 +93,44 @@ dependencies = [
 name = "draw"
 version = "1.6.0"
 dependencies = [
+ "draw-core",
+ "draw-gfx",
+ "draw-sys",
+ "draw-types",
  "fontdue",
  "macroquad",
  "png",
  "proptest",
  "ttf-parser",
+]
+
+[[package]]
+name = "draw-core"
+version = "1.6.0"
+dependencies = [
+ "draw-types",
+ "fontdue",
+ "png",
+ "proptest",
+ "ttf-parser",
+]
+
+[[package]]
+name = "draw-gfx"
+version = "1.6.0"
+dependencies = [
+ "draw-types",
+]
+
+[[package]]
+name = "draw-sys"
+version = "1.6.0"
+
+[[package]]
+name = "draw-types"
+version = "1.6.0"
+dependencies = [
+ "proptest",
 ]
 
 [[package]]

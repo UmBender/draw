@@ -59,7 +59,7 @@ measure() {
     if command -v ionice >/dev/null; then
         priority+=(ionice -c "$IO_CLASS_IDLE" -t)
     fi
-    local cmd=(cargo llvm-cov --summary-only --json --output-path "$out")
+    local cmd=(cargo llvm-cov --workspace --summary-only --json --output-path "$out")
     mkdir -p "$(dirname "$out")"
     if systemd-run --user --scope -q "${limits[@]}" -- true >/dev/null 2>&1; then
         systemd-run --user --scope -q "${limits[@]}" -- "${priority[@]}" "${cmd[@]}" >&2

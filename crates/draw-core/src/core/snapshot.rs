@@ -1561,7 +1561,7 @@ mod tests {
     }
 
     fn fixtures() -> Vec<std::path::PathBuf> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/snapshots");
         let mut found = Vec::new();
         for dir in [root.clone(), root.join("regressions")] {
             let Ok(entries) = std::fs::read_dir(&dir) else {

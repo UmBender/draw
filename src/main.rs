@@ -3,6 +3,8 @@
 //! control to the shell. A quit signal closes the window in order and
 //! then ends the process by that signal (ADR-T48-1).
 
+#![forbid(unsafe_code)]
+
 use draw::shell::app;
 use draw::shell::autosave::Launch;
 use draw::shell::diag::{self, Level};

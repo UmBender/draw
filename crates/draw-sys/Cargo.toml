@@ -1,0 +1,12 @@
+[package]
+name = "draw-sys"
+version = "1.6.0"
+edition = "2024"
+rust-version = "1.99"
+description = "The platform layer of draw: windows, input, GL context (ADR-T132-1)"
+license = "MIT"
+publish = false
+repository = "https://github.com/UmBender/draw"
+
+[lints]
+workspace = true

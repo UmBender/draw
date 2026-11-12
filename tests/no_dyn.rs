@@ -226,6 +226,8 @@ fn guard_finds_no_dyn_outside_allow_list() {
     let mut files = Vec::new();
     rust_files(&root().join("src"), &mut files);
     rust_files(&root().join("vendor"), &mut files);
+    // The pure logic moved to `crates/` (ADR-T132-1); keep it guarded.
+    rust_files(&root().join("crates"), &mut files);
     files.sort();
 
     // Act

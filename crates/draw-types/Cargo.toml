@@ -1,0 +1,15 @@
+[package]
+name = "draw-types"
+version = "1.6.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Units and plain value types of draw (ADR-T132-1)"
+license = "MIT"
+publish = false
+repository = "https://github.com/UmBender/draw"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+proptest = "1"

@@ -6352,7 +6352,7 @@ mod tests {
     fn regression_t81_formula_box_while_editing() {
         // Arrange: a block with a formula, selected, not being edited.
         let snapshot = Snapshot::parse(include_str!(
-            "../../tests/snapshots/regressions/T81-formula-box-while-editing.snap"
+            "../../../../tests/snapshots/regressions/T81-formula-box-while-editing.snap"
         ))
         .unwrap_or_else(|err| panic!("{err}"));
         let mut ed = Editor::from_snapshot(snapshot);
@@ -6435,7 +6435,7 @@ mod tests {
         // Arrange: the seed's block, 419 characters of formula source with
         // no `$`, still open.
         let snapshot = Snapshot::parse(include_str!(
-            "../../tests/snapshots/regressions/T78-formula-ink-outside-box.snap"
+            "../../../../tests/snapshots/regressions/T78-formula-ink-outside-box.snap"
         ))
         .unwrap_or_else(|err| panic!("{err}"));
         let mut ed = Editor::from_snapshot(snapshot);
@@ -6488,7 +6488,7 @@ mod tests {
         // Arrange: `Ctrl+[` to 16 px at zoom 1, then a zoom to `ZOOM_MAX`
         // with the block still open.
         let snapshot = Snapshot::parse(include_str!(
-            "../../tests/snapshots/regressions/T76-remembered-size-past-the-ladder.snap"
+            "../../../../tests/snapshots/regressions/T76-remembered-size-past-the-ladder.snap"
         ))
         .unwrap_or_else(|err| panic!("{err}"));
         let mut ed = Editor::from_snapshot(snapshot);
@@ -7896,7 +7896,7 @@ mod tests {
         // Arrange: a selected grid so tall that 10 % more leaves both of
         // its corners finite but the length of its side past `f32`.
         let snapshot = Snapshot::parse(include_str!(
-            "../../tests/snapshots/regressions/T91-scaled-box-side-overflow.snap"
+            "../../../../tests/snapshots/regressions/T91-scaled-box-side-overflow.snap"
         ))
         .unwrap_or_else(|err| panic!("{err}"));
         let mut ed = Editor::from_snapshot(snapshot);

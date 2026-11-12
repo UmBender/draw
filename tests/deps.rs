@@ -15,6 +15,9 @@ fn runtime_allowed(krate: &str) -> &'static [&'static str] {
     match krate {
         "draw" => &[
             "macroquad",
+            "fontdue",
+            "png",
+            "ttf-parser",
             "draw-types",
             "draw-core",
             "draw-gfx",
@@ -22,7 +25,8 @@ fn runtime_allowed(krate: &str) -> &'static [&'static str] {
         ],
         "draw-core" => &["fontdue", "png", "ttf-parser", "draw-types"],
         "draw-gfx" => &["draw-types"],
-        "draw-types" | "draw-sys" => &[],
+        // `draw-types` and `draw-sys` have none, and a crate not listed may not
+        // have any either.
         _ => &[],
     }
 }
@@ -95,10 +99,10 @@ fn read_deps(manifest: &str) -> Vec<Dep> {
         let key = key.trim();
         match named {
             Some(_) => {
-                if key == "path" {
-                    if let Some(last) = deps.last_mut() {
-                        last.path = true;
-                    }
+                if key == "path"
+                    && let Some(last) = deps.last_mut()
+                {
+                    last.path = true;
                 }
             }
             None => deps.push(Dep {
