@@ -1,8 +1,7 @@
-//! Window backend chosen at start-up from `DRAW_BACKEND` and the session
-//! (T28, ADR-T28-1, T46, ADR-T46-1).
+//! Window backend chosen at start-up from `--backend` and the session
+//! (T28, ADR-T28-1, T46, ADR-T46-1, T154).
 //!
-//! [`choose`] is a pure function over the variable's value and
-//! `WAYLAND_DISPLAY`; [`from_env`] feeds it the real ones. Native Wayland
+//! [`choose`] is a pure function over the flag and `WAYLAND_DISPLAY`. Native Wayland
 //! is the default on Wayland sessions and falls back to X11 when it
 //! cannot connect; X11 (Xwayland on Wayland sessions) stays supported
 //! (ADR-T128-1).
@@ -10,9 +9,6 @@
 use std::ffi::OsStr;
 
 use macroquad::miniquad::conf::LinuxBackend;
-
-/// Environment variable naming the window backend.
-pub const BACKEND_ENV: &str = "DRAW_BACKEND";
 
 /// Environment variable set in a Wayland session.
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
@@ -27,19 +23,6 @@ pub enum Backend {
     Wayland,
 }
 
-/// The backend picked from [`BACKEND_ENV`] and the session, and what to
-/// tell the user.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Choice {
-    /// The backend to use.
-    pub backend: Backend,
-    /// One stderr line when the value was not understood.
-    pub warning: Option<String>,
-    /// One stderr line of information; always `None` since X11 is
-    /// supported (ADR-T128-1), kept for the start-up printing in `app`.
-    pub notice: Option<String>,
-}
-
 impl Backend {
     /// The miniquad setting for this backend.
     #[must_use]
@@ -50,7 +33,16 @@ impl Backend {
         }
     }
 
-    /// The value of [`BACKEND_ENV`] that names this backend.
+    /// The backend called `name` (any case, trimmed), if there is one.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        let name = name.trim();
+        [Self::X11, Self::Wayland]
+            .into_iter()
+            .find(|backend| backend.name().eq_ignore_ascii_case(name))
+    }
+
+    /// The name `--backend` takes for this backend.
     #[must_use]
     pub fn name(self) -> &'static str {
         match self {
@@ -60,53 +52,22 @@ impl Backend {
     }
 }
 
-/// Picks the backend from the value of [`BACKEND_ENV`] (`None` when
-/// unset) in a session whose [`WAYLAND_DISPLAY_ENV`] is
-/// `wayland_display`.
+/// The backend for `requested` (`--backend`, `None` when not given) in a
+/// session whose [`WAYLAND_DISPLAY_ENV`] is `wayland_display`: the flag
+/// when there is one, else Wayland in a Wayland session and X11 elsewhere.
 #[must_use]
-pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice {
-    let session = is_wayland_session(wayland_display);
-    let default = if session {
+pub fn choose(requested: Option<Backend>, wayland_display: Option<&OsStr>) -> Backend {
+    requested.unwrap_or(if is_wayland_session(wayland_display) {
         Backend::Wayland
     } else {
         Backend::X11
-    };
-    let text = value.map(OsStr::to_string_lossy).unwrap_or_default();
-    let text = text.trim();
-    let (backend, warning) = if text.is_empty() {
-        (default, None)
-    } else if text.eq_ignore_ascii_case(Backend::X11.name()) {
-        (Backend::X11, None)
-    } else if text.eq_ignore_ascii_case(Backend::Wayland.name()) {
-        (Backend::Wayland, None)
-    } else {
-        let warning = format!(
-            "draw: unknown {BACKEND_ENV} value {text:?}, using {} \
-             (expected x11 or wayland)",
-            default.name()
-        );
-        (default, Some(warning))
-    };
-    Choice {
-        backend,
-        warning,
-        notice: None,
-    }
+    })
 }
 
 /// Whether `wayland_display` (the value of [`WAYLAND_DISPLAY_ENV`])
 /// names a Wayland session.
 fn is_wayland_session(wayland_display: Option<&OsStr>) -> bool {
     wayland_display.is_some_and(|value| !value.is_empty())
-}
-
-/// [`choose`] applied to the real environment.
-#[must_use]
-pub fn from_env() -> Choice {
-    choose(
-        std::env::var_os(BACKEND_ENV).as_deref(),
-        std::env::var_os(WAYLAND_DISPLAY_ENV).as_deref(),
-    )
 }
 
 /// Wheel units a native Wayland compositor reports per wheel notch.
@@ -139,139 +100,35 @@ mod tests {
         OsStr::new("wayland-1")
     }
 
-    fn choose_str(value: &str, wayland_display: Option<&OsStr>) -> Choice {
-        choose(Some(OsStr::new(value)), wayland_display)
+    #[test]
+    fn choose_without_flag_follows_the_session() {
+        // Arrange, Act, Assert
+        assert_eq!(choose(None, Some(display())), Backend::Wayland);
+        assert_eq!(choose(None, None), Backend::X11);
+        assert_eq!(choose(None, Some(OsStr::new(""))), Backend::X11);
     }
 
     #[test]
-    fn choose_unset_on_wayland_session_is_wayland() {
-        // Arrange / Act
-        let choices = [
-            choose(None, Some(display())),
-            choose_str("", Some(display())),
-            choose_str("  ", Some(display())),
-        ];
-
-        // Assert
-        for choice in choices {
-            assert_eq!(choice.backend, Backend::Wayland);
-            assert_eq!(choice.warning, None);
-            assert_eq!(choice.notice, None);
-        }
+    fn choose_honours_the_flag_in_any_session() {
+        // Arrange, Act, Assert
+        assert_eq!(choose(Some(Backend::X11), Some(display())), Backend::X11);
+        assert_eq!(choose(Some(Backend::X11), None), Backend::X11);
+        assert_eq!(
+            choose(Some(Backend::Wayland), Some(display())),
+            Backend::Wayland
+        );
+        // miniquad falls back to X11 here
+        assert_eq!(choose(Some(Backend::Wayland), None), Backend::Wayland);
     }
 
     #[test]
-    fn choose_unset_without_wayland_session_is_x11_without_notice() {
-        // Arrange / Act
-        let choices = [
-            choose(None, None),
-            choose(None, Some(OsStr::new(""))),
-            choose_str("", None),
-        ];
-
-        // Assert
-        for choice in choices {
-            assert_eq!(choice.backend, Backend::X11);
-            assert_eq!(choice.warning, None);
-            assert_eq!(choice.notice, None);
-        }
-    }
-
-    #[test]
-    fn choose_x11_on_wayland_session_is_x11_without_notice() {
-        // Arrange / Act
-        let choice = choose_str("x11", Some(display()));
-
-        // Assert
-        assert_eq!(choice.backend, Backend::X11);
-        assert_eq!(choice.warning, None);
-        assert_eq!(choice.notice, None);
-    }
-
-    #[test]
-    fn choose_wayland_on_wayland_session_has_no_notice() {
-        // Arrange / Act
-        let choice = choose_str("wayland", Some(display()));
-
-        // Assert
-        assert_eq!(choice.backend, Backend::Wayland);
-        assert_eq!(choice.warning, None);
-        assert_eq!(choice.notice, None);
-    }
-
-    #[test]
-    fn choose_wayland_without_wayland_session_has_no_notice() {
-        // Arrange / Act: miniquad falls back to X11 here
-        let choice = choose_str("wayland", None);
-
-        // Assert
-        assert_eq!(choice.backend, Backend::Wayland);
-        assert_eq!(choice.warning, None);
-        assert_eq!(choice.notice, None);
-    }
-
-    #[test]
-    fn choose_ignores_case_and_surrounding_space() {
-        // Arrange
-        let cases = [
-            (" Wayland ", Backend::Wayland),
-            ("WAYLAND", Backend::Wayland),
-            ("\tX11\n", Backend::X11),
-        ];
-
-        for (value, expected) in cases {
-            // Act
-            let choice = choose_str(value, Some(display()));
-
-            // Assert
-            assert_eq!(choice.backend, expected, "{value:?}");
-            assert_eq!(choice.warning, None, "{value:?}");
-            assert_eq!(choice.notice, None, "{value:?}");
-        }
-    }
-
-    #[test]
-    fn choose_unknown_value_warns_and_uses_session_default() {
-        // Arrange
-        let cases = ["wl", "xwayland", "way land", "1", "wayland,x11"];
-
-        for value in cases {
-            // Act
-            let on_wayland = choose_str(value, Some(display()));
-            let on_x11 = choose_str(value, None);
-
-            // Assert
-            assert_eq!(on_wayland.backend, Backend::Wayland, "{value:?}");
-            assert_eq!(on_x11.backend, Backend::X11, "{value:?}");
-            let warning = on_wayland.warning.unwrap_or_default();
-            assert!(warning.contains(BACKEND_ENV), "{warning}");
-            assert!(warning.contains(value.trim()), "{warning}");
-            assert!(warning.contains("using wayland"), "{warning}");
-            let warning = on_x11.warning.unwrap_or_default();
-            assert!(warning.contains("using x11"), "{warning}");
-        }
-    }
-
-    #[test]
-    fn choose_non_utf8_value_warns_and_uses_session_default() {
-        // Arrange
-        #[cfg(unix)]
-        let value = {
-            use std::os::unix::ffi::OsStrExt;
-            OsStr::from_bytes(b"way\xffland")
-        };
-        #[cfg(not(unix))]
-        let value = OsStr::new("\u{fffd}");
-
-        // Act
-        let on_wayland = choose(Some(value), Some(display()));
-        let on_x11 = choose(Some(value), None);
-
-        // Assert
-        assert_eq!(on_wayland.backend, Backend::Wayland);
-        assert!(on_wayland.warning.is_some());
-        assert_eq!(on_x11.backend, Backend::X11);
-        assert!(on_x11.warning.is_some());
+    fn from_name_ignores_case_and_surrounding_space() {
+        // Arrange, Act, Assert
+        assert_eq!(Backend::from_name(" Wayland "), Some(Backend::Wayland));
+        assert_eq!(Backend::from_name("WAYLAND"), Some(Backend::Wayland));
+        assert_eq!(Backend::from_name("\tX11\n"), Some(Backend::X11));
+        assert_eq!(Backend::from_name("wl"), None);
+        assert_eq!(Backend::from_name(""), None);
     }
 
     #[test]
@@ -282,22 +139,6 @@ mod tests {
             Backend::Wayland.linux_backend(),
             LinuxBackend::WaylandWithX11Fallback
         );
-    }
-
-    #[test]
-    fn warning_is_one_line() {
-        // Arrange
-        let lines = [
-            choose_str("bogus", Some(display())).warning,
-            choose_str("bogus", None).warning,
-        ];
-
-        for line in lines {
-            // Assert
-            let line = line.unwrap_or_default();
-            assert!(line.starts_with("draw: "), "{line}");
-            assert!(!line.contains('\n'), "{line}");
-        }
     }
 
     #[test]
@@ -334,7 +175,7 @@ mod tests {
         // Act
         let row = readme
             .lines()
-            .find(|line| line.starts_with(&format!("| `{BACKEND_ENV}` |")))
+            .find(|line| line.starts_with("| `--backend` |"))
             .unwrap_or_default();
         let experimental = readme
             .split("### Experimental")
@@ -348,7 +189,7 @@ mod tests {
         assert!(!row.contains("removed"), "{row}");
         assert!(!row.contains("experimental"), "{row}");
         assert!(
-            !experimental.contains(BACKEND_ENV),
+            !experimental.contains("--backend"),
             "native Wayland is not experimental"
         );
     }
@@ -379,20 +220,13 @@ mod tests {
 
     proptest! {
         #[test]
-        fn choose_any_value_follows_session(value in ".*", session in any::<bool>()) {
+        fn choose_follows_flag_then_session(
+            flag in proptest::option::of(prop_oneof![Just(Backend::X11), Just(Backend::Wayland)]),
+            session in any::<bool>(),
+        ) {
             let display = session.then_some(OsStr::new("wayland-0"));
-            let choice = choose_str(&value, display);
-            let lowered = value.trim().to_ascii_lowercase();
-            let known = matches!(lowered.as_str(), "" | "x11" | "wayland");
-            prop_assert_eq!(choice.warning.is_none(), known);
-            let expected = match lowered.as_str() {
-                "x11" => Backend::X11,
-                "wayland" => Backend::Wayland,
-                _ if session => Backend::Wayland,
-                _ => Backend::X11,
-            };
-            prop_assert_eq!(choice.backend, expected);
-            prop_assert_eq!(choice.notice, None);
+            let expected = flag.unwrap_or(if session { Backend::Wayland } else { Backend::X11 });
+            prop_assert_eq!(choose(flag, display), expected);
         }
     }
 }

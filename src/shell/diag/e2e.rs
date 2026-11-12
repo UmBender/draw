@@ -1,26 +1,16 @@
 //! Test-only hooks for the end-to-end suite (T75, ADR-T75-1).
 //!
-//! Inert unless [`DUMP_ENV`] or [`IDLE_ENV`] is set. The harness sends
+//! Inert unless `--e2e-dump` or `--e2e-idle` is given. The harness sends
 //! [`SYNC_CHORD`] after each input step. Wayland keeps a client's events in
 //! order, so once the app has answered that chord it has handled everything
 //! sent before it. The answer is the editor snapshot in the dump file, then
 //! the count of syncs in the idle file, written after the frame is on screen.
 
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use crate::core::input::{InputEvent, Key};
 use crate::core::keymap::KeyChord;
-
-/// Environment variable naming the file that receives the snapshot.
-pub const DUMP_ENV: &str = "DRAW_E2E_DUMP";
-
-/// Environment variable naming the file that receives the sync count.
-pub const IDLE_ENV: &str = "DRAW_E2E_IDLE";
-
-/// Environment variable naming the file whose text goes on the system
-/// clipboard, for runs without `wl-copy` (ADR-T83-1).
-pub const CLIPBOARD_ENV: &str = "DRAW_E2E_CLIPBOARD";
+use crate::shell::options::E2eFiles;
 
 /// The chord the harness sends after each input step. Not in the keymap.
 pub const SYNC_CHORD: KeyChord = KeyChord::ctrl_shift(Key::Digit9);
@@ -47,11 +37,6 @@ fn write_atomic(path: &Path, text: &str) {
     }
 }
 
-/// The value of a variable, if it is set and not empty.
-fn path_of(value: Option<&OsStr>) -> Option<PathBuf> {
-    value.filter(|v| !v.is_empty()).map(PathBuf::from)
-}
-
 /// The hooks of one session.
 #[derive(Debug)]
 pub struct Hooks {
@@ -68,39 +53,18 @@ pub struct Hooks {
 }
 
 impl Hooks {
-    /// Hooks for these variable values; `None` when both are unset or
-    /// empty, which leaves the app as it is without them.
+    /// Hooks for the files of `files`; `None` when neither the dump nor
+    /// the idle file is given, which leaves the app as it is without them.
     #[must_use]
-    pub fn from_values(dump: Option<&OsStr>, idle: Option<&OsStr>) -> Option<Self> {
-        let (dump, idle) = (path_of(dump), path_of(idle));
-        (dump.is_some() || idle.is_some()).then_some(Self {
-            dump,
-            idle,
+    pub fn from_files(files: &E2eFiles) -> Option<Self> {
+        (files.dump.is_some() || files.idle.is_some()).then(|| Self {
+            dump: files.dump.clone(),
+            idle: files.idle.clone(),
             seen: 0,
             answered: 0,
             armed: None,
-            clipboard: None,
+            clipboard: files.clipboard.clone(),
         })
-    }
-
-    /// Hooks from the environment.
-    #[must_use]
-    pub fn from_env() -> Option<Self> {
-        let clipboard = std::env::var_os(CLIPBOARD_ENV);
-        Self::from_values(
-            std::env::var_os(DUMP_ENV).as_deref(),
-            std::env::var_os(IDLE_ENV).as_deref(),
-        )
-        .map(|hooks| hooks.with_clipboard(clipboard.as_deref()))
-    }
-
-    /// Sets the file [`Self::take_clipboard`] reads.
-    #[must_use]
-    pub fn with_clipboard(self, path: Option<&OsStr>) -> Self {
-        Self {
-            clipboard: path_of(path),
-            ..self
-        }
     }
 
     /// The text the harness left for the clipboard, once.
@@ -157,7 +121,6 @@ impl Hooks {
 mod tests {
     use super::*;
     use crate::core::input::{InputEvent, Key, Modifiers};
-    use std::ffi::OsStr;
     use std::path::Path;
 
     const CTRL_SHIFT: Modifiers = Modifiers {
@@ -174,37 +137,32 @@ mod tests {
         Ok(dir)
     }
 
+    fn files(dump: Option<&str>, idle: Option<&str>) -> E2eFiles {
+        E2eFiles {
+            dump: dump.map(PathBuf::from),
+            idle: idle.map(PathBuf::from),
+            clipboard: None,
+        }
+    }
+
     fn hooks(dir: &Path) -> Hooks {
-        let (dump, idle) = (dir.join("dump.snap"), dir.join("idle"));
-        Hooks::from_values(Some(dump.as_os_str()), Some(idle.as_os_str()))
-            .unwrap_or_else(|| panic!("both variables are set"))
+        let files = E2eFiles {
+            dump: Some(dir.join("dump.snap")),
+            idle: Some(dir.join("idle")),
+            clipboard: None,
+        };
+        Hooks::from_files(&files).unwrap_or_else(|| panic!("both files are given"))
     }
 
     #[test]
-    fn env_names_are_stable() {
-        assert_eq!(DUMP_ENV, "DRAW_E2E_DUMP");
-        assert_eq!(IDLE_ENV, "DRAW_E2E_IDLE");
+    fn hooks_without_files_are_none() {
+        assert!(Hooks::from_files(&E2eFiles::default()).is_none());
     }
 
     #[test]
-    fn hooks_from_env_unset_is_none() {
-        assert!(Hooks::from_values(None, None).is_none());
-    }
-
-    #[test]
-    fn hooks_from_env_empty_is_none() {
-        let empty = Some(OsStr::new(""));
-
-        assert!(Hooks::from_values(empty, empty).is_none());
-        assert!(Hooks::from_values(empty, None).is_none());
-    }
-
-    #[test]
-    fn hooks_from_env_one_variable_is_enough() {
-        let path = Some(OsStr::new("/tmp/file"));
-
-        assert!(Hooks::from_values(path, None).is_some());
-        assert!(Hooks::from_values(None, path).is_some());
+    fn hooks_one_file_is_enough() {
+        assert!(Hooks::from_files(&files(Some("/tmp/file"), None)).is_some());
+        assert!(Hooks::from_files(&files(None, Some("/tmp/file"))).is_some());
     }
 
     #[test]
@@ -320,17 +278,17 @@ mod tests {
     }
 
     #[test]
-    fn env_name_of_the_clipboard_is_stable() {
-        assert_eq!(CLIPBOARD_ENV, "DRAW_E2E_CLIPBOARD");
-    }
-
-    #[test]
     fn hooks_take_clipboard_returns_the_text_once() -> std::io::Result<()> {
         // Arrange
         let dir = temp_dir("clipboard")?;
         let path = dir.join("clipboard");
         std::fs::write(&path, "hello\n")?;
-        let hooks = hooks(&dir).with_clipboard(Some(path.as_os_str()));
+        let hooks = Hooks::from_files(&E2eFiles {
+            dump: Some(dir.join("dump.snap")),
+            idle: None,
+            clipboard: Some(path.clone()),
+        })
+        .unwrap_or_else(|| panic!("a dump file is given"));
 
         // Act
         let first = hooks.take_clipboard();
@@ -348,7 +306,12 @@ mod tests {
         // Arrange
         let dir = temp_dir("no-clipboard")?;
         let unset = hooks(&dir);
-        let missing = hooks(&dir).with_clipboard(Some(dir.join("absent").as_os_str()));
+        let missing = Hooks::from_files(&E2eFiles {
+            dump: Some(dir.join("dump.snap")),
+            idle: None,
+            clipboard: Some(dir.join("absent")),
+        })
+        .unwrap_or_else(|| panic!("a dump file is given"));
 
         // Act / Assert
         assert_eq!(unset.take_clipboard(), None);
@@ -360,8 +323,12 @@ mod tests {
     fn hooks_unwritable_path_does_not_panic() {
         // Arrange
         let bad = Path::new("/nonexistent-dir/deep/file");
-        let mut hooks = Hooks::from_values(Some(bad.as_os_str()), Some(bad.as_os_str()))
-            .unwrap_or_else(|| panic!("both variables are set"));
+        let mut hooks = Hooks::from_files(&E2eFiles {
+            dump: Some(bad.to_path_buf()),
+            idle: Some(bad.to_path_buf()),
+            clipboard: None,
+        })
+        .unwrap_or_else(|| panic!("both files are given"));
         hooks.note_sync();
 
         // Act / Assert: a failed write only loses the signal.

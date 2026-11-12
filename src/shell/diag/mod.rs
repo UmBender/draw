@@ -26,10 +26,7 @@ use crate::shell::diag::file::{
     LOG_CAP, MAX_DUMPS, SessionLog, dump_name, log_line, prune_dumps, utc,
 };
 use crate::shell::diag::ring::Ring;
-use crate::shell::{backend, crash, tablet};
-
-/// Environment variable that sets the [`Level`].
-pub const LEVEL_ENV: &str = "DRAW_LOG";
+use crate::shell::{backend, crash};
 
 /// Name of the session log in the state directory.
 pub const LOG_FILE: &str = "draw.log";
@@ -74,7 +71,7 @@ impl Level {
         Self::Trace,
     ];
 
-    /// The level's name as `DRAW_LOG` spells it.
+    /// The level's name as `--log` spells it.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -85,6 +82,15 @@ impl Level {
             Self::Debug => "debug",
             Self::Trace => "trace",
         }
+    }
+
+    /// The level called `name` (any case, trimmed), if there is one.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        let name = name.trim();
+        Self::ALL
+            .into_iter()
+            .find(|level| level.name().eq_ignore_ascii_case(name))
     }
 
     /// The name in a log line: `ERROR`, `WARN`, …
@@ -98,27 +104,6 @@ impl Level {
             Self::Debug => "DEBUG",
             Self::Trace => "TRACE",
         }
-    }
-}
-
-/// The level a `DRAW_LOG` value asks for, and a warning for an unknown
-/// one. Unset or blank is [`Level::Info`].
-#[must_use]
-pub fn parse_level(value: Option<&str>) -> (Level, Option<String>) {
-    let Some(value) = value.map(str::trim).filter(|v| !v.is_empty()) else {
-        return (Level::Info, None);
-    };
-    match Level::ALL
-        .into_iter()
-        .find(|level| level.name().eq_ignore_ascii_case(value))
-    {
-        Some(level) => (level, None),
-        None => (
-            Level::Info,
-            Some(format!(
-                "{LEVEL_ENV}={value} is not off, error, warn, info, debug or trace; using info"
-            )),
-        ),
     }
 }
 
@@ -498,11 +483,11 @@ pub fn try_with<R>(f: impl FnOnce(&mut Diag) -> R) -> Option<R> {
     try_with_in(&RECORDER, f)
 }
 
-/// Starts the session's recorder from the environment (`DRAW_LOG`, the
-/// state directory, backend and tablet mode) and writes the start-up line.
-/// Call once in `main`, after the panic hook.
-pub fn init_from_env() {
-    let (level, warning) = parse_level(std::env::var(LEVEL_ENV).ok().as_deref());
+/// Starts the session's recorder at `level` (`--log`), with the state
+/// directory from the environment, and writes the start-up line naming the
+/// `backend` and whether a pen is `pen`. Call once in `main`, after the
+/// panic hook.
+pub fn init(level: Level, backend: backend::Backend, pen: bool) {
     let dir = crash::state_dir(
         std::env::var_os("XDG_STATE_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
@@ -517,28 +502,20 @@ pub fn init_from_env() {
         capacity: RING_CAPACITY,
     });
     let build_id = crash::running_build_id();
-    let backend = format!("{:?}", backend::from_env().backend).to_lowercase();
+    let backend = backend.name();
     let session = std::env::var("XDG_SESSION_TYPE").ok();
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").ok();
-    let tablet = if tablet::from_env().pen {
-        "pen"
-    } else {
-        "mouse"
-    };
+    let tablet = if pen { "pen" } else { "mouse" };
     diag.log_start(&StartInfo {
         version: env!("CARGO_PKG_VERSION"),
         build_id: build_id.as_deref(),
         pid: std::process::id(),
-        backend: &backend,
+        backend,
         session: session.as_deref(),
         desktop: desktop.as_deref(),
         tablet,
         level,
     });
-    if let Some(warning) = warning {
-        eprintln!("draw: {warning}");
-        diag.log(Level::Warn, &warning);
-    }
     *RECORDER.lock().unwrap_or_else(PoisonError::into_inner) = Some(diag);
 }
 
@@ -664,13 +641,6 @@ mod tests {
     }
 
     #[test]
-    fn level_unset_is_info() {
-        // Arrange / Act / Assert
-        assert_eq!(parse_level(None), (Level::Info, None));
-        assert_eq!(parse_level(Some("  ")), (Level::Info, None));
-    }
-
-    #[test]
     fn level_names_parse_any_case() {
         // Arrange
         let cases = [
@@ -684,20 +654,16 @@ mod tests {
 
         for (value, level) in cases {
             // Act / Assert
-            assert_eq!(parse_level(Some(value)), (level, None), "{value}");
+            assert_eq!(Level::from_name(value), Some(level), "{value}");
+            assert_eq!(Level::from_name(level.name()), Some(level));
         }
     }
 
     #[test]
-    fn level_unknown_is_info_with_warning() {
-        // Arrange / Act
-        let (level, warning) = parse_level(Some("loud"));
-
-        // Assert
-        assert_eq!(level, Level::Info);
-        let warning = warning.unwrap_or_default();
-        assert!(warning.contains(LEVEL_ENV), "{warning}");
-        assert!(warning.contains("loud"), "{warning}");
+    fn level_unknown_name_is_none() {
+        // Arrange / Act / Assert
+        assert_eq!(Level::from_name("loud"), None);
+        assert_eq!(Level::from_name(""), None);
     }
 
     #[test]

@@ -12,13 +12,10 @@
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 
-use crate::shell::backend::{self, Backend};
+use crate::shell::backend::Backend;
 
 /// The library list `packaging/runtime-libs`, embedded at build time.
 pub const RUNTIME_LIBS: &str = include_str!("../../packaging/runtime-libs");
-
-/// Environment variable that skips the preflight when set and non-empty.
-pub const SKIP_ENV: &str = "DRAW_SKIP_PREFLIGHT";
 
 /// What a library in [`RUNTIME_LIBS`] is to the running app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,8 +64,8 @@ pub struct Environment {
     pub display: Option<OsString>,
     /// `WAYLAND_DISPLAY`: set in a Wayland session.
     pub wayland_display: Option<OsString>,
-    /// [`SKIP_ENV`].
-    pub skip: Option<OsString>,
+    /// `--skip-preflight`.
+    pub skip: bool,
 }
 
 /// Why the window cannot open.
@@ -165,7 +162,7 @@ pub fn check(
     libs: &[RuntimeLib],
     found: impl Fn(&str) -> bool,
 ) -> Result<(), Problem> {
-    if is_set(env.skip.as_ref()) {
+    if env.skip {
         return Ok(());
     }
     if backend == Backend::Wayland && is_set(env.wayland_display.as_ref()) {
@@ -247,14 +244,14 @@ fn library_installed(cache: &[u8], ld_library_path: Option<&OsStr>, soname: &str
 /// # Errors
 ///
 /// The [`Problem`] found by [`check`].
-pub fn run() -> Result<(), Problem> {
+pub fn run(skip: bool, backend: Backend) -> Result<(), Problem> {
     if !cfg!(target_os = "linux") {
         return Ok(());
     }
     let env = Environment {
         display: std::env::var_os("DISPLAY"),
         wayland_display: std::env::var_os("WAYLAND_DISPLAY"),
-        skip: std::env::var_os(SKIP_ENV),
+        skip,
     };
     // A broken list is caught by the tests; never block startup on it.
     let Ok(libs) = parse_runtime_libs(RUNTIME_LIBS) else {
@@ -262,7 +259,7 @@ pub fn run() -> Result<(), Problem> {
     };
     let cache = std::fs::read("/etc/ld.so.cache").unwrap_or_default();
     let ld_library_path = std::env::var_os("LD_LIBRARY_PATH");
-    check(&env, backend::from_env().backend, &libs, |soname| {
+    check(&env, backend, &libs, |soname| {
         library_installed(&cache, ld_library_path.as_deref(), soname)
     })
 }
@@ -278,7 +275,7 @@ impl std::error::Error for ParseError {}
 impl fmt::Display for Problem {
     /// One line naming what is missing and the packages to install.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let hint = format!("(set {SKIP_ENV}=1 to start anyway)");
+        let hint = "(pass --skip-preflight to start anyway)";
         match self {
             Self::NoDisplay => write!(
                 f,
@@ -355,7 +352,7 @@ libc.so.6            linked    glibc           libc6
         Environment {
             display: Some(OsString::from(":0")),
             wayland_display: None,
-            skip: None,
+            skip: false,
         }
     }
 
@@ -433,7 +430,7 @@ libc.so.6            linked    glibc           libc6
         let env = Environment {
             display: None,
             wayland_display: Some(OsString::new()),
-            skip: None,
+            skip: false,
         };
 
         // Act
@@ -449,7 +446,7 @@ libc.so.6            linked    glibc           libc6
         let env = Environment {
             display: None,
             wayland_display: Some(OsString::from("wayland-0")),
-            skip: None,
+            skip: false,
         };
 
         // Act
@@ -533,12 +530,12 @@ libc.so.6            linked    glibc           libc6
     }
 
     #[test]
-    fn check_skip_variable_skips_everything() {
+    fn check_skip_flag_skips_everything() {
         // Arrange
         let env = Environment {
             display: None,
             wayland_display: None,
-            skip: Some(OsString::from("1")),
+            skip: true,
         };
 
         // Act
@@ -584,7 +581,7 @@ libc.so.6            linked    glibc           libc6
         Environment {
             display: None,
             wayland_display: Some(OsString::from("wayland-0")),
-            skip: None,
+            skip: false,
         }
     }
 
