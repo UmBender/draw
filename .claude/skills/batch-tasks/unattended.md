@@ -20,6 +20,14 @@ override anything that would make you wait for a person.
   already allowed). Never try to get around a deny rule. If no allowed way
   exists, block the task (below) and name the exact command and why it is
   needed, so the owner can allow it.
+- The allow rules match one plain command each. A compound command is
+  refused as a whole: no `cd x && …`, `;`, `&&`, `git -C <dir> …` or
+  `python3 -I - <<EOF` heredocs. You already start in the repository, so
+  run one simple command per call (`git status`, `git switch …`,
+  `cargo test …`), filtering output with a plain pipe at most. When a
+  call is refused, retry it as a simpler command before giving up; block
+  the task only if no simple form can do the job. Edit files with the
+  Edit/Write tools, not with scripts.
 
 ## Resume, never redo
 
