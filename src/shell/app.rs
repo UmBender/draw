@@ -673,15 +673,10 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
             }
         }
         let effects = editor.take_effects();
-        let png_asked = effects.contains(&Effect::ExportPng);
-        export_pending = (export_pending || png_asked) && editor.can_export();
-        if export_pending {
-            // Never a layer left from an older camera (ADR-T92-2).
-            frame.rerender = true;
-        }
+        export_pending = arm_export(export_pending, &effects, &editor, &mut frame);
         dirty |= laser.tick();
         serve_effects(
-            effects,
+            &effects,
             &mut editor,
             &mut frame,
             &mut svg_writes,
@@ -708,13 +703,24 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
     }
 }
 
+/// Whether a PNG export is waiting after this frame's `effects`: asked now
+/// or before, and still allowed. A waiting export forces a fresh layer, never
+/// one left from an older camera (ADR-T92-2).
+fn arm_export(pending: bool, effects: &[Effect], editor: &Editor, frame: &mut CachedFrame) -> bool {
+    let waiting = (pending || effects.contains(&Effect::ExportPng)) && editor.can_export();
+    if waiting {
+        frame.rerender = true;
+    }
+    waiting
+}
+
 /// Answers the effects the editor queued this frame: an SVG export, a copy
 /// of the selection as an image and a save (ADR-T114-2, ADR-T115-1,
 /// ADR-T108-1, ADR-T137-1). The PNG export is answered by the frame loop,
 /// which waits for a fresh layer; the other effects are not the editor's to
 /// queue.
 fn serve_effects(
-    effects: Vec<Effect>,
+    effects: &[Effect],
     editor: &mut Editor,
     frame: &mut CachedFrame,
     svg_writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>,
@@ -725,7 +731,7 @@ fn serve_effects(
         svg_writes.push(export_svg(editor));
     }
     log_finished_svg_writes(svg_writes);
-    for effect in &effects {
+    for effect in effects {
         if let Effect::CopyImage(bounds) = effect {
             copy_selection_image(editor, frame, *bounds);
         }

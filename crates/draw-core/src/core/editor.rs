@@ -5798,7 +5798,11 @@ mod tests {
         assert!(!redraw);
         assert_eq!(ed, before);
         assert_eq!(ed.take_effects(), vec![Effect::ExportPng]);
-        assert!(ed.take_effects().is_empty(), "a request is answered once");
+        assert_eq!(
+            ed.take_effects(),
+            Vec::<Effect>::new(),
+            "a request is answered once"
+        );
     }
 
     #[test]
@@ -5845,8 +5849,12 @@ mod tests {
         assert!(!redraw);
         assert_eq!(ed, before);
         assert_eq!(ed.take_effects(), vec![Effect::Save]);
-        assert!(ed.take_effects().is_empty(), "a request is answered once");
-        assert!(Editor::new().take_effects().is_empty());
+        assert_eq!(
+            ed.take_effects(),
+            Vec::<Effect>::new(),
+            "a request is answered once"
+        );
+        assert_eq!(Editor::new().take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5859,7 +5867,7 @@ mod tests {
         key_with(&mut ed, Key::S, CTRL);
 
         assert!(ed.text_edit().is_some(), "the block stays open");
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5888,7 +5896,7 @@ mod tests {
 
     #[test]
     fn export_view_is_not_requested_by_default() {
-        assert!(Editor::new().take_effects().is_empty());
+        assert_eq!(Editor::new().take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5902,7 +5910,7 @@ mod tests {
         ctrl_e(&mut ed);
 
         // Assert
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.text_edit().is_some(), "the block stays open");
     }
 
@@ -5917,7 +5925,7 @@ mod tests {
 
         // Assert
         assert!(!redraw);
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.text_edit().is_some(), "the block is not committed");
         assert!(ed.document().is_empty());
     }
@@ -5934,7 +5942,7 @@ mod tests {
         ctrl_e(&mut ed);
 
         // Assert
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
@@ -5972,12 +5980,16 @@ mod tests {
             vec![Effect::ExportSvg],
             "not a PNG export"
         );
-        assert!(ed.take_effects().is_empty(), "a request is answered once");
+        assert_eq!(
+            ed.take_effects(),
+            Vec::<Effect>::new(),
+            "a request is answered once"
+        );
     }
 
     #[test]
     fn export_svg_is_not_requested_by_default() {
-        assert!(Editor::new().take_effects().is_empty());
+        assert_eq!(Editor::new().take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5991,7 +6003,7 @@ mod tests {
 
         // Assert
         assert!(!redraw);
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.text_edit().is_some(), "the block stays open");
     }
 
@@ -6006,7 +6018,7 @@ mod tests {
         ed.apply(Command::ExportSvg);
 
         // Assert
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
@@ -6033,7 +6045,7 @@ mod tests {
         // Assert
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -6041,19 +6053,20 @@ mod tests {
         // Arrange
         let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
         key_with(&mut ed, Key::A, CTRL);
-        let expected = ed.selection_bounds();
-        assert!(expected.is_some());
+        let expected: Vec<Effect> = ed
+            .selection_bounds()
+            .map(Effect::CopyImage)
+            .into_iter()
+            .collect();
+        assert_eq!(expected.len(), 1, "something is selected");
 
         // Act
         let redraw = ctrl_shift_c(&mut ed);
 
         // Assert
         assert!(!redraw, "a copy needs no redraw");
-        assert_eq!(
-            ed.take_effects(),
-            vec![Effect::CopyImage(expected.unwrap())]
-        );
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), expected);
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -6068,7 +6081,7 @@ mod tests {
 
         // Assert
         assert!(ed.text_edit().is_some(), "the block stays open");
-        assert!(ed.take_effects().is_empty());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     // ---- T35 pressure -------------------------------------------------------
