@@ -1988,6 +1988,8 @@ proptest! {
     fn copy_image_requests_never_change_the_editor(session in arb_session()) {
         // Arrange
         let mut editor = run_session_on(Editor::new(), &session)?;
+        // The session may have asked already.
+        let _ = editor.take_copy_image_request();
         let before = editor.clone();
 
         // Act

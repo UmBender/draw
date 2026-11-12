@@ -697,7 +697,7 @@ impl Editor {
             if command == Command::Undo {
                 return self.cancel_text();
             }
-            if command == Command::ExportView {
+            if matches!(command, Command::ExportView | Command::CopyImage) {
                 return false;
             }
             let committed = self.finish_text();
@@ -1070,7 +1070,12 @@ impl Editor {
     /// the view may be exported now and something is selected. Needs no
     /// redraw, so this returns `false` (ADR-T115-1).
     fn ask_copy_image(&mut self) -> bool {
-        todo!("T115")
+        if self.can_export()
+            && let Some(bounds) = self.selection_bounds()
+        {
+            self.copy_image_asked = Some(bounds);
+        }
+        false
     }
 
     /// The world box of the selection to copy as an image, if it was asked
@@ -5459,8 +5464,8 @@ mod tests {
     #[test]
     fn copy_image_during_text_edit_is_ignored() {
         // Arrange
-        let mut ed = Editor::new();
-        place(&mut ed, 50.0, 50.0, "abc");
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
         assert!(ed.text_edit().is_some());
 
         // Act

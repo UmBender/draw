@@ -17,7 +17,9 @@ use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::pen;
 use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
-use macroquad::miniquad::window::{clipboard_get, clipboard_set, schedule_update};
+use macroquad::miniquad::window::{
+    clipboard_get, clipboard_set, clipboard_set_png, schedule_update,
+};
 use macroquad::shapes::{draw_circle, draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::texture::{
     DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
@@ -44,6 +46,7 @@ use crate::core::laser::{self, EditorState, Laser, Routed, Segment};
 use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::{Rgba, palette};
 use crate::core::snapshot::Snapshot;
+use crate::core::snapshot_image::{self, ImagePlan};
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::autosave::{self, Autosaver, Launch};
@@ -666,6 +669,9 @@ pub async fn run(launch: Launch) {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
+        if let Some(bounds) = editor.take_copy_image_request() {
+            copy_selection_image(&editor, &mut frame, bounds);
+        }
         dirty |= laser.tick();
         let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
@@ -720,6 +726,51 @@ fn export_view(frame: &CachedFrame) {
     let (level, line) = export::log_line(&result);
     eprintln!("draw: {line}");
     diag::log(level, &line);
+}
+
+/// Renders the selected shapes alone and offers them on the clipboard as a
+/// PNG; a failure is logged and never panics (ADR-T115-1).
+fn copy_selection_image(editor: &Editor, frame: &mut CachedFrame, bounds: Aabb) {
+    let Some(plan) = snapshot_image::plan(bounds, editor.camera().zoom()) else {
+        return;
+    };
+    let result = render_selection(editor, frame, &plan).and_then(|rgba| {
+        let png = export::encode_png(plan.size.0, plan.size.1, &rgba)?;
+        clipboard_set_png(&png);
+        Ok(())
+    });
+    let (level, line) = export::copy_log_line(&result, plan.size, plan.scaled_down);
+    eprintln!("draw: {line}");
+    diag::log(level, &line);
+}
+
+/// The selection of `editor` as RGBA rows from the top, `plan.size` pixels.
+fn render_selection(
+    editor: &Editor,
+    frame: &CachedFrame,
+    plan: &ImagePlan,
+) -> Result<Vec<u8>, ExportError> {
+    let camera = Camera::new(plan.world.min, plan.scale);
+    let extent = Vec2::new(plan.size.0 as f32, plan.size.1 as f32);
+    let target = frame.new_target(plan.size);
+    // Start from an atlas with room, so no glyph is dropped.
+    let _ = render::begin_text_frame();
+    let selected: HashSet<ShapeId> = editor.selection().iter().copied().collect();
+    render_into(&target, extent, || {
+        clear_background(hex_color(theme::CANVAS));
+        let shapes = editor
+            .document()
+            .shapes()
+            .filter(|(id, _)| selected.contains(id))
+            .map(|(_, shape)| shape);
+        render::draw_shapes(shapes, &camera, extent);
+    });
+    if render::text_overflowed() {
+        return Err(ExportError::Pixels);
+    }
+    let image = target.texture.get_texture_data();
+    let layer = (u32::from(image.width), u32::from(image.height));
+    export::view_pixels(&image.bytes, layer, plan.size, 0)
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is
