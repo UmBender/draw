@@ -1,6 +1,40 @@
+//! Crop box and size limit of the selection image `Ctrl+Shift+C` puts on the
+//! clipboard (ADR-T115-1). Pure geometry: the shell renders and encodes.
+
+use crate::core::geom::Aabb;
+
+/// Margin around the selection's box, in image pixels.
+pub const MARGIN_PX: f32 = 16.0;
+
+/// Largest width or height of the image, in pixels.
+pub const MAX_SIDE_PX: u32 = 4096;
+
+/// Where and how large the selection image is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ImagePlan {
+    /// World rectangle the image shows: the selection's box plus the margin.
+    pub world: Aabb,
+    /// Image pixels per world unit: the zoom (at least 1), scaled down if
+    /// the image would exceed [`MAX_SIDE_PX`].
+    pub scale: f32,
+    /// Width and height in pixels, each in `1..=MAX_SIDE_PX`.
+    pub size: (u32, u32),
+    /// Whether the limit forced `scale` below the zoom.
+    pub scaled_down: bool,
+}
+
+/// The image of the world box `bounds` at camera `zoom`. `None` if `bounds`
+/// is not finite; a non-finite or non-positive `zoom` counts as 1.
+#[must_use]
+pub fn plan(bounds: Aabb, zoom: f32) -> Option<ImagePlan> {
+    let _ = (bounds, zoom);
+    todo!("T115")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::geom::{Vec2, approx_eq};
 
     fn bounds(w: f32, h: f32) -> Aabb {
         Aabb::from_corners(Vec2::new(10.0, 20.0), Vec2::new(10.0 + w, 20.0 + h))

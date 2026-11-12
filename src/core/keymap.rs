@@ -302,6 +302,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ExportView,
         "Export the view to PNG",
     ),
+    (
+        KeyChord::ctrl_shift(Key::C),
+        Command::CopyImage,
+        "Copy the selection as an image",
+    ),
     // Helpers
     (
         KeyChord::bare(Key::X),
@@ -513,6 +518,7 @@ mod tests {
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
             (Key::E, CTRL, Command::ExportView),
+            (Key::C, CTRL_SHIFT, Command::CopyImage),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),

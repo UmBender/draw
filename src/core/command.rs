@@ -153,6 +153,9 @@ pub enum Command {
     ToggleToolbar,
     /// Ask the shell to write the view to a PNG file (ADR-T92-2).
     ExportView,
+    /// Ask the shell to put the selection on the clipboard as a PNG
+    /// (ADR-T115-1).
+    CopyImage,
     /// Turn smart snapping (round, sizes, alignment) on or off.
     ToggleSmartSnap,
     /// Turn snapping to the world grid on or off.

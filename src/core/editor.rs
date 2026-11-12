@@ -221,6 +221,9 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// `Ctrl+Shift+C` was pressed with a selection: its world box, until
+    /// the shell collects it (ADR-T115-1). Not saved state.
+    copy_image_asked: Option<Aabb>,
     /// The content bounds the minimap shows and the document revision they
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
@@ -462,6 +465,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            copy_image_asked: None,
             minimap_content: None,
             palette: None,
         })
@@ -493,6 +497,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            copy_image_asked: None,
             minimap_content: None,
             palette: None,
         }
@@ -793,6 +798,7 @@ impl Editor {
                 self.resize_selected_grid(0, delta)
             }
             Command::ExportView => self.ask_export(),
+            Command::CopyImage => self.ask_copy_image(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -1058,6 +1064,19 @@ impl Editor {
     fn ask_export(&mut self) -> bool {
         self.export_asked |= self.can_export();
         false
+    }
+
+    /// Records the selection's box for the shell to copy as an image, if
+    /// the view may be exported now and something is selected. Needs no
+    /// redraw, so this returns `false` (ADR-T115-1).
+    fn ask_copy_image(&mut self) -> bool {
+        todo!("T115")
+    }
+
+    /// The world box of the selection to copy as an image, if it was asked
+    /// for since the last call (ADR-T115-1).
+    pub fn take_copy_image_request(&mut self) -> Option<Aabb> {
+        self.copy_image_asked.take()
     }
 
     /// The open command palette, if any (ADR-T111-1).
