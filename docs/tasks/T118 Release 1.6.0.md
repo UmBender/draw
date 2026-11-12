@@ -1,7 +1,7 @@
 ---
 id: T118
 title: Release 1.6.0
-status: todo
+status: done
 wave: 62
 branch: chore/release-1.6.0
 depends_on: [T53, T108, T112, T113, T114, T115, T116, T117, T119, T120, T121, T122, T123, T124, T125]
@@ -42,10 +42,11 @@ draw 1.6.0 is tagged and packaged: the features that were not ready for [[T53 Re
 
 ## Subtasks
 
-- [ ] checks — manual checks recorded in *Log*
-- [ ] release — `chore: release 1.6.0`, tag `v1.6.0`
-- [ ] packages — built and checksummed
+- [x] checks — manual checks recorded in *Log*
+- [x] release — `chore: release 1.6.0`, tag `v1.6.0`
+- [x] packages — built and checksummed
 
 ## Log
 
 - 2026-11-11 — planned at the owner's request: 1.5.0 shipped what was done; the rest of the batch (T108, T112–T116) and T117 go in 1.6.0.
+- 2026-11-12 — released: `chore: release 1.6.0`, tag `v1.6.0`, packages (deb, rpm, tar.gz, Flatpak, `draw.debug`, `SHA256SUMS`) built by `scripts/package.sh`. `scripts/check.sh --fuzz` and `scripts/e2e.sh` green. Not pushed yet. Checks by hand are the owner's, on the Flatpak.

@@ -441,5 +441,5 @@ flowchart TD
 | [[T123 Menu font]] | done | T122 | `task/T123-menu-font` |
 | [[T124 Page switcher in the toolbar]] | done | T116, T123 | `task/T124-page-switcher` |
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
-| [[T118 Release 1.6.0]] | todo | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
+| [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |
