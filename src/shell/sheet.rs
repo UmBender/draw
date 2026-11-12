@@ -147,6 +147,13 @@ fn outline(rect: Aabb, color: Color) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The overlays draw with the built-in font, which has no arrows
+    /// (T122).
+    #[test]
+    fn footer_is_ascii() {
+        assert!(FOOTER.is_ascii(), "{FOOTER}");
+    }
     use crate::core::geom::approx_eq;
     use crate::core::sheet::ROWS_PER_PAGE;
 

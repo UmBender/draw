@@ -351,7 +351,7 @@ mod tests {
             chord_label(KeyChord::ctrl_shift(Key::BracketRight)),
             "Ctrl+Shift+]"
         );
-        assert_eq!(chord_label(KeyChord::alt(Key::ArrowLeft)), "Alt+←");
+        assert_eq!(chord_label(KeyChord::alt(Key::ArrowLeft)), "Alt+Left");
         assert_eq!(chord_label(KeyChord::shift(Key::Tab)), "Shift+Tab");
         assert_eq!(chord_label(KeyChord::bare(Key::Backspace)), "Backspace");
         assert_eq!(chord_label(KeyChord::bare(Key::Delete)), "Del");
@@ -368,6 +368,16 @@ mod tests {
             }),
             "Ctrl+Alt+Shift+P"
         );
+    }
+
+    /// The overlays draw with the built-in font, which has no arrows or
+    /// accents (T122).
+    #[test]
+    fn every_binding_label_and_description_is_ascii() {
+        for &(chord, _, description) in BINDINGS {
+            assert!(chord_label(chord).is_ascii(), "{chord:?}");
+            assert!(description.is_ascii(), "{description}");
+        }
     }
 
     #[test]

@@ -206,6 +206,18 @@ impl Sheet {
 mod tests {
     use super::*;
 
+    /// The overlays draw with the built-in font, which has no arrows or
+    /// accents (T122).
+    #[test]
+    fn every_sheet_row_is_ascii() {
+        for topic in Topic::ALL {
+            for row in topic_rows(topic) {
+                assert!(row.keys.is_ascii(), "{}", row.keys);
+                assert!(row.text.is_ascii(), "{}", row.text);
+            }
+        }
+    }
+
     /// The topic of each page, in order, without repeats.
     fn page_topics() -> Vec<Topic> {
         let mut topics: Vec<Topic> = Vec::new();
