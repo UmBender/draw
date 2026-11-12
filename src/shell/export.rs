@@ -393,6 +393,68 @@ mod tests {
         assert_eq!(decode(&bytes), (3, 2, rgba));
     }
 
+    // ---- T114 SVG ------------------------------------------------------------
+
+    #[test]
+    fn svg_path_uses_the_svg_extension_and_the_attempt_suffix() {
+        assert_eq!(
+            svg_path(Path::new("/h"), 1_794_234_605, 0),
+            Path::new("/h/draw-20261109-143005.svg")
+        );
+        assert_eq!(
+            svg_path(Path::new("/h"), 0, 2),
+            Path::new("/h/draw-19700101-000000-2.svg")
+        );
+    }
+
+    #[test]
+    fn save_svg_writes_the_text_and_leaves_no_partial_file() {
+        // Arrange
+        let dir = temp_dir("svg");
+
+        // Act
+        let path = save_svg("<svg/>\n", Some(dir.as_os_str()), 0).unwrap_or_else(|err| panic!("{err}"));
+
+        // Assert
+        assert_eq!(std::fs::read_to_string(&path).ok().as_deref(), Some("<svg/>\n"));
+        assert_eq!(files_in(&dir), ["draw-19700101-000000.svg"]);
+    }
+
+    #[test]
+    fn save_svg_never_replaces_a_file() {
+        // Arrange
+        let dir = temp_dir("svg-twice");
+
+        // Act
+        let first = save_svg("one", Some(dir.as_os_str()), 0).unwrap_or_else(|err| panic!("{err}"));
+        let second = save_svg("two", Some(dir.as_os_str()), 0).unwrap_or_else(|err| panic!("{err}"));
+
+        // Assert
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read_to_string(&first).ok().as_deref(), Some("one"));
+        assert_eq!(std::fs::read_to_string(&second).ok().as_deref(), Some("two"));
+        assert_eq!(files_in(&dir).len(), 2);
+    }
+
+    #[test]
+    fn save_svg_without_home_is_an_error() {
+        let result = save_svg("<svg/>", None, 0);
+
+        assert!(matches!(result, Err(ExportError::NoHome)), "{result:?}");
+    }
+
+    #[test]
+    fn svg_log_line_names_the_file_or_the_reason() {
+        let ok = svg_log_line(&Ok(PathBuf::from("/h/draw-1.svg")));
+        let err = svg_log_line(&Err(ExportError::NoHome));
+
+        assert_eq!(ok, (Level::Info, "SVG exported to /h/draw-1.svg".to_owned()));
+        assert_eq!(
+            err,
+            (Level::Error, "SVG not exported: HOME is not set".to_owned())
+        );
+    }
+
     #[test]
     fn log_line_success_is_info_with_the_path() {
         // Arrange

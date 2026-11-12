@@ -682,6 +682,25 @@ mod tests {
     // AC-1b
 
     #[test]
+    fn svg_export_chord_repeat_is_dropped() {
+        // Arrange
+        let mut c = Collector::new();
+        let mods = KeyMods {
+            ctrl: true,
+            shift: true,
+            ..NO_MODS
+        };
+
+        // Act: a press, then what holding the keys sends.
+        c.key_down_event(KeyCode::E, mods, false);
+        c.key_down_event(KeyCode::E, mods, true);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(events.len(), 1, "{events:?}");
+    }
+
+    #[test]
     fn export_chord_repeat_is_dropped() {
         // Arrange
         let mut c = Collector::new();

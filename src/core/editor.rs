@@ -5394,6 +5394,60 @@ mod tests {
         assert!(!typing.can_export());
     }
 
+    // ---- T114 export to SVG -------------------------------------------------
+
+    #[test]
+    fn export_svg_when_idle_asks_once_and_leaves_the_png_request_alone() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = key_with(&mut ed, Key::E, CTRL_SHIFT);
+
+        // Assert
+        assert!(!redraw);
+        assert_eq!(ed, before, "nothing but the request changes");
+        assert!(!ed.take_export_request(), "not a PNG export");
+        assert!(ed.take_svg_export_request());
+        assert!(!ed.take_svg_export_request(), "a request is answered once");
+    }
+
+    #[test]
+    fn export_svg_is_not_requested_by_default() {
+        assert!(!Editor::new().take_svg_export_request());
+    }
+
+    #[test]
+    fn export_svg_during_text_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hi");
+
+        // Act
+        let redraw = ed.apply(Command::ExportSvg);
+
+        // Assert
+        assert!(!redraw);
+        assert!(!ed.take_svg_export_request());
+        assert!(ed.text_edit().is_some(), "the block stays open");
+    }
+
+    #[test]
+    fn export_svg_during_gesture_is_ignored() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 20.0, 20.0);
+
+        // Act
+        ed.apply(Command::ExportSvg);
+
+        // Assert
+        assert!(!ed.take_svg_export_request());
+        assert!(ed.active_gesture().is_some(), "the stroke goes on");
+    }
+
     // ---- T35 pressure -------------------------------------------------------
 
     fn press(ed: &mut Editor, pressure: Option<f32>) -> bool {

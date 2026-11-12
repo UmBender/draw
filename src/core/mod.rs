@@ -21,6 +21,7 @@ pub mod shape;
 pub mod smoothing;
 pub mod snap;
 pub mod snapshot;
+pub mod svg;
 pub mod tap;
 pub mod tex;
 pub mod text_layout;

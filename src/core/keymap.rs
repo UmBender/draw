@@ -513,6 +513,7 @@ mod tests {
             (Key::F, NONE, Command::FitView),
             (Key::Tab, NONE, Command::ToggleToolbar),
             (Key::E, CTRL, Command::ExportView),
+            (Key::E, CTRL_SHIFT, Command::ExportSvg),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),
@@ -578,7 +579,12 @@ mod tests {
     fn resolve_ctrl_e_exports_the_view() {
         assert_eq!(resolve(Key::E, CTRL), Some(Command::ExportView));
         assert_eq!(resolve(Key::E, NONE), Some(Command::SetTool(Tool::Eraser)));
-        assert_eq!(resolve(Key::E, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn resolve_ctrl_shift_e_exports_svg() {
+        assert_eq!(resolve(Key::E, CTRL_SHIFT), Some(Command::ExportSvg));
+        assert_eq!(resolve(Key::E, SHIFT), None);
     }
 
     #[test]

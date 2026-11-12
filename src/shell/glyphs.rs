@@ -980,4 +980,75 @@ mod tests {
             assert!(approx_eq((b.ymin + b.height) / px, m.y_max, tol), "{ch:?}");
         }
     }
+
+    // ---- T114 outlines -------------------------------------------------
+
+    fn outlines() -> FontOutlines<'static> {
+        FontOutlines::new(TEXT_FONT, MATH_FONT).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[test]
+    fn outline_of_a_letter_is_a_closed_path_in_font_units() {
+        let outline = outlines().outline(Face::Text, 'a');
+
+        let Some(outline) = outline else {
+            panic!("the text font has an 'a'");
+        };
+        assert!(outline.path.starts_with('M'), "{}", outline.path);
+        assert!(outline.path.contains('Z'), "{}", outline.path);
+        assert!(outline.units_per_em > 0.0);
+        assert!(approx_eq(outline.advance / outline.units_per_em, 0.6, 1e-3));
+        assert!(outline.ink_top > 0.0);
+    }
+
+    #[test]
+    fn outline_path_is_y_down_so_ink_sits_above_the_baseline() {
+        let Some(outline) = outlines().outline(Face::Text, 'l') else {
+            panic!("the text font has an 'l'");
+        };
+
+        // The tallest ink point has the most negative y.
+        let lowest = outline
+            .path
+            .split(|c: char| !(c.is_ascii_digit() || c == '-' || c == '.'))
+            .filter_map(|n| n.parse::<f32>().ok())
+            .fold(f32::MAX, f32::min);
+        assert!(lowest < 0.0, "{}", outline.path);
+    }
+
+    #[test]
+    fn outline_of_a_space_or_a_missing_character_is_none() {
+        let outlines = outlines();
+
+        assert!(outlines.outline(Face::Text, ' ').is_none());
+        assert!(outlines.outline(Face::Text, '\u{10FFFF}').is_none());
+    }
+
+    #[test]
+    fn outline_of_a_math_character_comes_from_the_math_font() {
+        let outlines = outlines();
+        let ch = '\u{2211}';
+        assert!(math_metrics::get(ch).is_some(), "the subset has a sum sign");
+
+        let math = outlines.outline(Face::Math, ch);
+
+        assert!(math.is_some_and(|o| !o.path.is_empty()));
+    }
+
+    #[test]
+    fn outline_numbers_are_finite() {
+        let outlines = outlines();
+        for (ch, _) in math_metrics::TABLE.iter().take(40) {
+            if let Some(o) = outlines.outline(Face::Math, *ch) {
+                assert!(!o.path.contains("NaN") && !o.path.contains("inf"), "{ch:?}");
+                assert!(o.units_per_em.is_finite() && o.advance.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn font_outlines_new_rejects_garbage() {
+        assert!(FontOutlines::new(b"not a font", MATH_FONT).is_err());
+        assert!(FontOutlines::new(TEXT_FONT, b"not a font").is_err());
+    }
 }
