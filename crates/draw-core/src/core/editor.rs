@@ -28,6 +28,7 @@ use crate::core::file::DocFile;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+use crate::machine::{Modal, Pages, View};
 use crate::core::keymap;
 use crate::core::minimap::{self, Minimap};
 use crate::core::numbering::{self, FIRST_NUMBER};
@@ -190,7 +191,7 @@ pub const PAGE_COUNT: usize = draw_types::ids::PAGE_COUNT;
 /// What one page owns besides the shapes: the state of a page that is not
 /// the current one (ADR-T116-1).
 #[derive(Debug, Clone, PartialEq)]
-struct Page {
+pub(crate) struct Page {
     doc: Document,
     history: History,
     camera: Camera,
@@ -222,14 +223,14 @@ struct SvgAsk(bool);
 pub struct Editor {
     /// The current page's document, history, camera and selection live in
     /// the fields below; the other pages wait in `pages` (ADR-T116-1).
-    page: usize,
-    /// One slot per page; the current page's slot and the slots of pages
-    /// never touched are `None`.
-    pages: PageSlots,
+    /// The page region: the current index and one slot per page; the
+    /// current page's slot and the slots of pages never touched are `None`
+    /// (ADR-T135-1).
+    pages: Pages,
     doc: Document,
     history: History,
-    camera: Camera,
-    selection: Vec<ShapeId>,
+    /// The view region: camera and selection of the current page.
+    view: View,
     clipboard: Clipboard,
     tools: ToolStates,
     tool: Tool,
@@ -272,15 +273,12 @@ pub struct Editor {
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
     minimap_content: Option<(u64, Option<Aabb>)>,
-    /// The open command palette, which captures the keys while it is
-    /// `Some` (ADR-T111-1). Not saved state.
-    palette: Option<CommandPalette>,
+    /// The modal region: the open palette or sheet, which captures the keys
+    /// (ADR-T111-1, ADR-T113-1, ADR-T135-1). Not saved state.
+    modal: Modal,
     /// `Ctrl+S` was pressed and the shell has not collected it yet
     /// (ADR-T108-1). Not saved state.
     save_asked: bool,
-    /// The open shortcut sheet, which captures the keys while it is `Some`
-    /// (ADR-T113-1). Never open together with the palette. Not saved state.
-    sheet: Option<Sheet>,
 }
 
 impl Default for Editor {
@@ -294,12 +292,10 @@ impl PartialEq for Editor {
     /// revisions and the history's change count and byte estimate are not
     /// part of it.
     fn eq(&self, other: &Self) -> bool {
-        self.page == other.page
-            && self.pages == other.pages
+        self.pages == other.pages
             && self.doc == other.doc
             && self.history == other.history
-            && self.camera == other.camera
-            && self.selection == other.selection
+            && self.view == other.view
             && self.clipboard == other.clipboard
             && self.tools == other.tools
             && self.tool == other.tool
@@ -332,8 +328,7 @@ impl Editor {
             doc_revision: 0,
             doc_base_revision: 0,
             minimap_content: None,
-            palette: None,
-            sheet: None,
+            modal: Modal::default(),
             ..snapshot.0
         }
     }
@@ -405,10 +400,10 @@ impl Editor {
             }
         });
         w.record("camera", |l| {
-            l.put(&self.camera.offset()).f32(self.camera.zoom());
+            l.put(&self.view.camera.offset()).f32(self.view.camera.zoom());
         });
         w.record("selection", |l| {
-            for id in &self.selection {
+            for id in &self.view.selection {
                 l.put(id);
             }
         });
@@ -497,12 +492,13 @@ impl Editor {
         };
 
         Ok(Self {
-            page,
-            pages,
+            pages: Pages {
+                current: page,
+                slots: pages,
+            },
             doc,
             history,
-            camera,
-            selection,
+            view: View { camera, selection },
             clipboard,
             tools,
             tool,
@@ -524,9 +520,8 @@ impl Editor {
             svg_export_asked: SvgAsk::default(),
             copy_image_asked: None,
             minimap_content: None,
-            palette: None,
+            modal: Modal::default(),
             save_asked: false,
-            sheet: None,
         })
     }
 
@@ -534,12 +529,10 @@ impl Editor {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            page: 0,
-            pages: empty_pages(),
+            pages: Pages::new(),
             doc: Document::new(),
             history: History::new(),
-            camera: Camera::default(),
-            selection: Vec::new(),
+            view: View::default(),
             clipboard: Clipboard::default(),
             tools: ToolStates::default(),
             tool: Tool::default(),
@@ -561,9 +554,8 @@ impl Editor {
             svg_export_asked: SvgAsk::default(),
             copy_image_asked: None,
             minimap_content: None,
-            palette: None,
+            modal: Modal::default(),
             save_asked: false,
-            sheet: None,
         }
     }
 
@@ -573,12 +565,13 @@ impl Editor {
         // Only the document parts are copied: no history, clipboard or
         // tool state, so a save costs one document clone.
         let mut kept = Self::new();
-        kept.page = self.page;
+        kept.pages.current = self.pages.current;
         kept.doc = self.doc.clone();
-        kept.camera = Camera::new(self.camera.offset(), self.camera.zoom());
+        kept.view.camera = Camera::new(self.view.camera.offset(), self.view.camera.zoom());
         kept.style.helpers.next_number = self.style.helpers.next_number;
-        kept.pages = self
+        kept.pages.slots = self
             .pages
+            .slots
             .iter()
             .map(|slot| {
                 slot.as_ref().map(|p| {
@@ -605,15 +598,14 @@ impl Editor {
         self.cancel_gesture();
         let first = self.style.helpers.first_number();
         let loaded = file.0;
-        self.page = loaded.page;
         self.pages = loaded.pages;
-        for page in self.pages.iter_mut().flatten() {
+        for page in self.pages.slots.iter_mut().flatten() {
             page.next_number = page.next_number.max(first);
         }
         self.doc = loaded.doc;
-        self.camera = loaded.camera;
+        self.view.camera = loaded.view.camera;
         self.history = History::new();
-        self.selection.clear();
+        self.view.selection.clear();
         self.reedit = None;
         self.style.helpers.next_number = loaded.style.helpers.next_number.max(first);
         self.doc_revision = self.doc_revision.wrapping_add(1);
@@ -634,17 +626,17 @@ impl Editor {
         let current = Page {
             doc: self.doc.clone(),
             history: History::new(),
-            camera: Camera::new(self.camera.offset(), self.camera.zoom()),
+            camera: Camera::new(self.view.camera.offset(), self.view.camera.zoom()),
             selection: Vec::new(),
             next_number: self.style.helpers.next_number,
         };
         let blank = Page::fresh(FIRST_NUMBER);
         let written: Vec<(usize, &Page)> = (0..PAGE_COUNT)
             .filter_map(|index| {
-                let page = if index == self.page {
+                let page = if index == self.pages.current {
                     &current
                 } else {
-                    self.pages.get(index)?.as_deref()?
+                    self.pages.slots.get(index)?.as_deref()?
                 };
                 let empty = page.doc == blank.doc
                     && page.camera == blank.camera
@@ -654,7 +646,7 @@ impl Editor {
             .collect();
         w.section("pages");
         w.record("current", |l| {
-            l.word(self.page);
+            l.word(self.pages.current);
         });
         w.record("count", |l| {
             l.word(written.len());
@@ -695,7 +687,7 @@ impl Editor {
             return Err(t.error(format!("{count} pages")));
         }
         let mut ed = Self::new();
-        ed.page = current;
+        ed.pages.current = current;
         let mut last: Option<usize> = None;
         for _ in 0..count {
             r.section("page")?;
@@ -713,10 +705,10 @@ impl Editor {
             let doc = read_numbered_document(r)?;
             if index == current {
                 ed.doc = doc;
-                ed.camera = camera;
+                ed.view.camera = camera;
                 ed.style.helpers.next_number = next_number;
             } else {
-                ed.pages[index] = Some(Box::new(Page {
+                ed.pages.slots[index] = Some(Box::new(Page {
                     doc,
                     history: History::new(),
                     camera,
@@ -732,10 +724,10 @@ impl Editor {
     /// page out of range (ADR-T124-1).
     #[must_use]
     pub fn page_has_shapes(&self, page: usize) -> bool {
-        if page == self.page {
+        if page == self.pages.current {
             return !self.doc.is_empty();
         }
-        self.pages
+        self.pages.slots
             .get(page)
             .and_then(Option::as_ref)
             .is_some_and(|stored| !stored.doc.is_empty())
@@ -744,27 +736,27 @@ impl Editor {
     /// The current page, `0` for page 1 (ADR-T116-1).
     #[must_use]
     pub fn page(&self) -> usize {
-        self.page
+        self.pages.current
     }
 
     /// Shows page `page` (`0..PAGE_COUNT`): cancels the gesture, closes an
     /// open text edit and swaps the page states (ADR-T116-1). Returns
     /// whether the view needs a redraw.
     fn go_to_page(&mut self, page: usize) -> bool {
-        if page >= PAGE_COUNT || page == self.page {
+        if page >= PAGE_COUNT || page == self.pages.current {
             return false;
         }
         self.cancel_gesture();
         let first = self.style.helpers.first_number();
-        let incoming = match self.pages[page].take() {
+        let incoming = match self.pages.slots[page].take() {
             Some(stored) => *stored,
             None => Page::fresh(first),
         };
         let outgoing = Page {
             doc: std::mem::replace(&mut self.doc, incoming.doc),
             history: std::mem::replace(&mut self.history, incoming.history),
-            camera: std::mem::replace(&mut self.camera, incoming.camera),
-            selection: std::mem::replace(&mut self.selection, incoming.selection),
+            camera: std::mem::replace(&mut self.view.camera, incoming.camera),
+            selection: std::mem::replace(&mut self.view.selection, incoming.selection),
             // The first number may have changed (zero-based) while the
             // page was away.
             next_number: std::mem::replace(
@@ -773,8 +765,8 @@ impl Editor {
             ),
         };
         // A page left as it was found takes no slot.
-        self.pages[self.page] = (outgoing != Page::fresh(first)).then(|| Box::new(outgoing));
-        self.page = page;
+        self.pages.slots[self.pages.current] = (outgoing != Page::fresh(first)).then(|| Box::new(outgoing));
+        self.pages.current = page;
         // A different document: the shell redraws its cached layer.
         self.doc_revision = self.doc_revision.wrapping_add(1);
         self.doc_base_revision = self.doc_revision;
@@ -786,13 +778,13 @@ impl Editor {
     fn write_pages(&self, w: &mut Writer) {
         w.section("pages");
         w.record("current", |l| {
-            l.word(self.page);
+            l.word(self.pages.current);
         });
-        let stored = self.pages.iter().flatten().count();
+        let stored = self.pages.slots.iter().flatten().count();
         w.record("stored", |l| {
             l.word(stored);
         });
-        for (index, page) in self.pages.iter().enumerate() {
+        for (index, page) in self.pages.slots.iter().enumerate() {
             let Some(page) = page else { continue };
             w.section("page");
             w.record("index", |l| {
@@ -920,11 +912,11 @@ impl Editor {
 
     /// [`Editor::handle`] for one event that left the tap filter.
     fn handle_filtered(&mut self, event: InputEvent) -> bool {
-        if self.sheet.is_some() {
+        if self.modal.sheet().is_some() {
             if let Some(redraw) = self.sheet_event(&event) {
                 return redraw;
             }
-        } else if self.palette.is_some() {
+        } else if self.modal.palette().is_some() {
             if let Some(redraw) = self.palette_event(&event) {
                 return redraw;
             }
@@ -962,7 +954,7 @@ impl Editor {
                     return false;
                 }
                 self.track_cursor(pos)
-                    .is_some_and(|pos| navigate::zoom(&mut self.camera, pos, delta))
+                    .is_some_and(|pos| navigate::zoom(&mut self.view.camera, pos, delta))
             }
             InputEvent::KeyDown { key, mods } if self.tools.text.edit.is_some() => {
                 self.text_key(key, mods)
@@ -1019,7 +1011,7 @@ impl Editor {
     fn open_palette(&mut self) -> bool {
         self.cancel_gesture();
         self.finish_text();
-        self.palette = Some(CommandPalette::new());
+        self.modal.open_palette();
         true
     }
 
@@ -1027,7 +1019,7 @@ impl Editor {
     /// progress is cancelled first, like for the palette.
     fn open_sheet(&mut self) -> bool {
         self.cancel_gesture();
-        self.sheet = Some(Sheet::new());
+        self.modal.open_sheet();
         true
     }
 
@@ -1036,11 +1028,11 @@ impl Editor {
     /// pressure, key releases), which the editor handles as usual.
     #[allow(clippy::wildcard_enum_match_arm, reason = "key table, ADR-T131-1")]
     fn sheet_event(&mut self, event: &InputEvent) -> Option<bool> {
-        let sheet = self.sheet.as_mut()?;
+        let sheet = self.modal.sheet_mut()?;
         let redraw = match *event {
             InputEvent::KeyDown { key, .. } => match key {
                 Key::Escape => {
-                    self.sheet = None;
+                    self.modal.close();
                     true
                 }
                 Key::ArrowRight => {
@@ -1063,7 +1055,7 @@ impl Editor {
                 _ => false,
             },
             InputEvent::Char { ch: '?', mods } if !mods.ctrl && !mods.alt => {
-                self.sheet = None;
+                self.modal.close();
                 true
             }
             InputEvent::Char { .. }
@@ -1085,16 +1077,16 @@ impl Editor {
     /// pressure, key releases), which the editor handles as usual.
     #[allow(clippy::wildcard_enum_match_arm, reason = "key table, ADR-T131-1")]
     fn palette_event(&mut self, event: &InputEvent) -> Option<bool> {
-        let palette = self.palette.as_mut()?;
+        let palette = self.modal.palette_mut()?;
         let redraw = match *event {
             InputEvent::KeyDown { key, .. } => match key {
                 Key::Escape => {
-                    self.palette = None;
+                    self.modal.close();
                     true
                 }
                 Key::Enter => {
                     let row = palette.highlighted();
-                    self.palette = None;
+                    self.modal.close();
                     if let Some((_, command, _)) = row {
                         self.apply(command);
                     }
@@ -1127,7 +1119,7 @@ impl Editor {
     /// (ADR-T92-2, ADR-T114-2). Nothing runs
     /// under the open command palette (ADR-T111-1).
     pub fn apply(&mut self, command: Command) -> bool {
-        if self.palette.is_some() || self.sheet.is_some() {
+        if self.modal.palette().is_some() || self.modal.sheet().is_some() {
             return false;
         }
         if self.tools.text.edit.is_some() {
@@ -1213,17 +1205,17 @@ impl Editor {
             Command::Cancel => {
                 if self.cancel_gesture() {
                     true
-                } else if self.selection.is_empty() {
+                } else if self.view.selection.is_empty() {
                     false
                 } else {
-                    self.selection.clear();
+                    self.view.selection.clear();
                     true
                 }
             }
             Command::ResetView => {
-                let before = self.camera;
-                self.camera.reset();
-                self.camera != before
+                let before = self.view.camera;
+                self.view.camera.reset();
+                self.view.camera != before
             }
             Command::FitView => self.fit_view(),
             Command::ToggleToolbar => {
@@ -1275,17 +1267,17 @@ impl Editor {
     /// Frames all content, or resets the view of an empty document. Returns
     /// whether the camera moved.
     fn fit_view(&mut self) -> bool {
-        let before = self.camera;
+        let before = self.view.camera;
         let content = self
             .doc
             .shapes()
             .map(|(_, shape)| shape.bounds())
             .reduce(|a, b| a.union(&b));
         match content {
-            Some(bounds) => self.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
-            None => self.camera.reset(),
+            Some(bounds) => self.view.camera.fit(bounds, self.viewport, FIT_MARGIN_PX),
+            None => self.view.camera.reset(),
         }
-        self.camera != before
+        self.view.camera != before
     }
 
     /// The document.
@@ -1314,7 +1306,7 @@ impl Editor {
     /// The camera.
     #[must_use]
     pub fn camera(&self) -> &Camera {
-        &self.camera
+        &self.view.camera
     }
 
     /// The active tool (what a left drag does).
@@ -1344,7 +1336,7 @@ impl Editor {
     /// Selected shape ids; every id exists in the document.
     #[must_use]
     pub fn selection(&self) -> &[ShapeId] {
-        &self.selection
+        &self.view.selection
     }
 
     /// World bounds of the selected shapes, `None` if nothing is selected.
@@ -1353,7 +1345,7 @@ impl Editor {
     #[must_use]
     pub fn selection_bounds(&self) -> Option<Aabb> {
         let editing = self.text_edit().and_then(TextEdit::target);
-        self.selection
+        self.view.selection
             .iter()
             .filter(|id| Some(**id) != editing)
             .filter_map(|id| self.doc.get(*id))
@@ -1369,7 +1361,7 @@ impl Editor {
         if self.tool != Tool::Select || self.gesture.is_some() || self.text_edit().is_some() {
             return None;
         }
-        select::handle_centers(&self.doc, &self.selection, &self.camera)
+        select::handle_centers(&self.doc, &self.view.selection, &self.view.camera)
     }
 
     /// The first shape of [`Editor::overlay`]: the shape being drawn, if any.
@@ -1384,8 +1376,8 @@ impl Editor {
     pub fn overlay(&self) -> Overlay {
         let view = |tool| ToolView {
             doc: &self.doc,
-            camera: &self.camera,
-            selection: &self.selection,
+            camera: &self.view.camera,
+            selection: &self.view.selection,
             tool,
             style: self.style,
             smoothing: self.smoothing,
@@ -1425,7 +1417,7 @@ impl Editor {
         if let Some(Gesture::Minimap { world, .. }) = self.gesture {
             return Minimap::with_world(self.viewport, content, world);
         }
-        let view = self.camera.visible_world_rect(self.viewport);
+        let view = self.view.camera.visible_world_rect(self.viewport);
         Minimap::new(self.viewport, content, view)
     }
 
@@ -1465,10 +1457,10 @@ impl Editor {
     /// Pans so that `world` is at the centre of the viewport. Returns
     /// whether the camera changed.
     fn center_view(&mut self, world: Vec2) -> bool {
-        let before = self.camera;
-        let delta = self.viewport * 0.5 - self.camera.world_to_screen(world);
-        self.camera.pan_by_screen(delta);
-        self.camera != before
+        let before = self.view.camera;
+        let delta = self.viewport * 0.5 - self.view.camera.world_to_screen(world);
+        self.view.camera.pan_by_screen(delta);
+        self.view.camera != before
     }
 
     /// Centres the view on the point of the minimap under `pos`, with the
@@ -1515,7 +1507,7 @@ impl Editor {
     /// The open shortcut sheet, if any (ADR-T113-1).
     #[must_use]
     pub fn sheet(&self) -> Option<&Sheet> {
-        self.sheet.as_ref()
+        self.modal.sheet()
     }
 
     /// Records an SVG export request if the drawing may be exported now
@@ -1552,7 +1544,7 @@ impl Editor {
     /// The open command palette, if any (ADR-T111-1).
     #[must_use]
     pub fn palette(&self) -> Option<&CommandPalette> {
-        self.palette.as_ref()
+        self.modal.palette()
     }
 
     /// Whether an export was asked for since the last call (ADR-T92-2).
@@ -1623,8 +1615,8 @@ impl Editor {
         };
         let mut committed = false;
         if !pans {
-            let world = self.camera.screen_to_world(pos);
-            let tol = self.camera.world_len(select::HIT_TOLERANCE_PX);
+            let world = self.view.camera.screen_to_world(pos);
+            let tol = self.view.camera.world_len(select::HIT_TOLERANCE_PX);
             if let Some(edit) = &mut self.tools.text.edit {
                 if button == PointerButton::Left && edit.bounds().expand(tol).contains(world) {
                     edit.set_caret_at(world);
@@ -1660,7 +1652,7 @@ impl Editor {
     /// Continues the gesture in progress, if any.
     fn pointer_move(&mut self, pos: Vec2, mods: Modifiers) -> bool {
         match &mut self.gesture {
-            Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.camera, pos),
+            Some(Gesture::Pan { pan, .. }) => pan.drag(&mut self.view.camera, pos),
             Some(Gesture::Minimap { world, .. }) => {
                 let world = *world;
                 self.minimap_drag(world, pos)
@@ -1679,7 +1671,7 @@ impl Editor {
         match self.gesture {
             Some(Gesture::Pan { button: b, mut pan }) if b == button => {
                 self.gesture = None;
-                pan.drag(&mut self.camera, pos)
+                pan.drag(&mut self.view.camera, pos)
             }
             Some(Gesture::Minimap { button: b, world }) if b == button => {
                 self.gesture = None;
@@ -1752,9 +1744,9 @@ impl Editor {
         let mut ctx = ToolCtx {
             doc: &mut self.doc,
             history: &mut self.history,
-            selection: &mut self.selection,
+            selection: &mut self.view.selection,
             clipboard: &mut self.clipboard,
-            camera: &self.camera,
+            camera: &self.view.camera,
             tool,
             style: self.style,
             smoothing: self.smoothing,
@@ -1770,9 +1762,9 @@ impl Editor {
         let mut ctx = ToolCtx {
             doc: &mut self.doc,
             history: &mut self.history,
-            selection: &mut self.selection,
+            selection: &mut self.view.selection,
             clipboard: &mut self.clipboard,
-            camera: &self.camera,
+            camera: &self.view.camera,
             tool: self.tool,
             style: self.style,
             smoothing: self.smoothing,
@@ -1786,7 +1778,7 @@ impl Editor {
     /// Replaces the only selected text block by the grid of its text, as
     /// one undo step (ADR-T84-1). Returns whether a redraw is needed.
     fn grid_from_selection(&mut self) -> bool {
-        let &[id] = self.selection.as_slice() else {
+        let &[id] = self.view.selection.as_slice() else {
             return false;
         };
         let Some(Shape::Text {
@@ -1839,7 +1831,7 @@ impl Editor {
         what: &str,
         build: impl FnOnce(&str, Vec2, f32, Style) -> Result<Option<Vec<Shape>>, E>,
     ) -> bool {
-        let &[id] = self.selection.as_slice() else {
+        let &[id] = self.view.selection.as_slice() else {
             return false;
         };
         let Some(Shape::Text {
@@ -1853,7 +1845,7 @@ impl Editor {
         };
         let style = Style {
             color: style.color,
-            width: self.camera.world_len(self.style.width_px),
+            width: self.view.camera.world_len(self.style.width_px),
         };
         match build(text, *origin, *size, style) {
             Ok(Some(shapes)) => self.run_edit(|ctx| layout::replace_block(ctx, id, shapes)),
@@ -1871,9 +1863,9 @@ impl Editor {
         if self.tools.text.edit.is_some() {
             return false;
         }
-        let corner = self.camera.screen_to_world(self.cursor);
+        let corner = self.view.camera.screen_to_world(self.cursor);
         let new_size = self.tools.text.new_size_px(self.style.width_px);
-        let size = self.camera.world_len(new_size);
+        let size = self.view.camera.world_len(new_size);
         let parsed = TextTable::parse(text);
         let Some(grid) = self.table_grid(parsed, corner, size, self.style.color) else {
             return false;
@@ -1898,7 +1890,7 @@ impl Editor {
             .ok()??;
         let style = Style {
             color,
-            width: self.camera.world_len(self.style.width_px),
+            width: self.view.camera.world_len(self.style.width_px),
         };
         table.shape(corner, text_size, style, self.style.helpers.numbering)
     }
@@ -1945,7 +1937,7 @@ impl Editor {
         match key {
             // ADR-T29-3: grow or shrink the open block.
             Key::BracketLeft | Key::BracketRight if mods == ctrl_only => {
-                edit.step_size(key == Key::BracketRight, self.camera.zoom())
+                edit.step_size(key == Key::BracketRight, self.view.camera.zoom())
             }
             Key::Enter => edit.insert('\n'),
             Key::Tab => edit.tab(),
@@ -1970,7 +1962,7 @@ impl Editor {
         let Some(edit) = self.tools.text.edit.take() else {
             return false;
         };
-        let px = edit.size * self.camera.zoom();
+        let px = edit.size * self.view.camera.zoom();
         if edit.resized() && px.is_finite() && px > 0.0 {
             let lowest = text::text_size_px(MIN_WIDTH_PX);
             let highest = text::text_size_px(MAX_WIDTH_PX);
@@ -2046,7 +2038,7 @@ impl Editor {
     /// topmost shape there and the only selected one; also the only
     /// selected shape if it can host text at `p` (ADR-T31-1, ADR-T52-1).
     fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
-        let &[selected] = self.selection.as_slice() else {
+        let &[selected] = self.view.selection.as_slice() else {
             return None;
         };
         match self.doc.topmost_where(|shape| shape.hit(p, tol)) {
@@ -2070,11 +2062,12 @@ impl Editor {
         let Some((start, id)) = self.reedit.take() else {
             return false;
         };
-        if start.distance(pos) >= select::CLICK_SLOP_PX || self.selection != [id] {
+        if start.distance(pos) >= select::CLICK_SLOP_PX || self.view.selection != [id] {
             return false;
         }
-        let at = self.camera.screen_to_world(pos);
+        let at = self.view.camera.screen_to_world(pos);
         let size = self
+            .view
             .camera
             .world_len(self.tools.text.new_size_px(self.style.width_px));
         self.tools.text.edit = self
@@ -2120,7 +2113,7 @@ impl Editor {
             return cancelled;
         }
         let changed = self.history.commit(&mut self.doc, tx).is_ok();
-        self.selection.clear();
+        self.view.selection.clear();
         changed || cancelled
     }
 
@@ -2130,10 +2123,10 @@ impl Editor {
     fn lock_selection(&mut self) -> bool {
         let cancelled = self.cancel_gesture();
         self.prune_selection();
-        let tx = tx_lock(&self.doc, &self.selection);
+        let tx = tx_lock(&self.doc, &self.view.selection);
         let locked = !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok();
-        let deselected = !self.selection.is_empty();
-        self.selection.clear();
+        let deselected = !self.view.selection.is_empty();
+        self.view.selection.clear();
         locked || deselected || cancelled
     }
 
@@ -2149,7 +2142,7 @@ impl Editor {
     /// The id and shape of the grid the arrow keys resize: the Select tool
     /// is active and that grid is the whole selection (ADR-T85-1).
     fn resizable_grid(&self) -> Option<(ShapeId, &Shape)> {
-        let [id] = *self.selection.as_slice() else {
+        let [id] = *self.view.selection.as_slice() else {
             return None;
         };
         let shape = self.doc.get(id)?;
@@ -2184,7 +2177,7 @@ impl Editor {
         let Some(bounds) = self.selection_bounds() else {
             return false;
         };
-        let selected: IdSet = self.selection.iter().copied().collect();
+        let selected: IdSet = self.view.selection.iter().copied().collect();
         let is_selected = |(_, (id, _)): &(usize, (ShapeId, &Shape))| selected.contains(id);
         let (lowest, highest) = {
             let mut indices = self
@@ -2234,7 +2227,7 @@ impl Editor {
                 index
             }
         };
-        let tx = tx_restack(&self.doc, &self.selection, below);
+        let tx = tx_restack(&self.doc, &self.view.selection, below);
         !tx.is_empty() && self.history.commit(&mut self.doc, tx).is_ok()
     }
 
@@ -2284,7 +2277,7 @@ impl Editor {
     /// Removes selected ids that are no longer in the document or are
     /// locked (ADR-T107-1).
     fn prune_selection(&mut self) {
-        select::prune(&mut self.selection, &self.doc);
+        select::prune(&mut self.view.selection, &self.doc);
     }
 }
 
@@ -2661,7 +2654,7 @@ mod tests {
             rect(100.0, 100.0, 10.0, 10.0),
         ]);
         let all = ids(&ed);
-        ed.selection = vec![all[0], all[1]];
+        ed.view.selection =vec![all[0], all[1]];
 
         // Act
         let Some(bounds) = ed.selection_bounds() else {
@@ -3074,7 +3067,7 @@ mod tests {
     #[test]
     fn undo_prunes_selection() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.selection = ids(&ed);
+        ed.view.selection =ids(&ed);
 
         ed.apply(Command::Undo);
 
@@ -3137,7 +3130,7 @@ mod tests {
     #[test]
     fn clear_all_clears_selection() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.selection = ids(&ed);
+        ed.view.selection =ids(&ed);
 
         ed.apply(Command::ClearAll);
 
@@ -3147,7 +3140,7 @@ mod tests {
     #[test]
     fn cancel_ends_gesture_first() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.selection = ids(&ed);
+        ed.view.selection =ids(&ed);
         down(&mut ed, PointerButton::Middle, 0.0, 0.0);
 
         assert!(ed.apply(Command::Cancel));
@@ -3159,7 +3152,7 @@ mod tests {
     #[test]
     fn cancel_clears_selection_when_idle() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.selection = ids(&ed);
+        ed.view.selection =ids(&ed);
 
         assert!(ed.apply(Command::Cancel));
 
@@ -3566,7 +3559,7 @@ mod tests {
         let mut nothing = editor_with(vec![plain_grid(4, 4)]);
         nothing.apply(Command::SetTool(Tool::Select));
         let mut other = selected_editor(vec![plain_grid(4, 4), rect(0.0, 0.0, 10.0, 10.0)]);
-        other.selection.remove(0);
+        other.view.selection.remove(0);
         let mut two = selected_editor(vec![plain_grid(4, 4), plain_grid(4, 4)]);
 
         for ed in [&mut nothing, &mut other, &mut two] {
@@ -6401,7 +6394,7 @@ mod tests {
         key(&mut ed, Key::Escape);
         place(&mut ed, 100.0, 200.0, "b");
         key(&mut ed, Key::Escape);
-        ed.selection = ids(&ed);
+        ed.view.selection =ids(&ed);
 
         // Act: the Text tool re-opens the first.
         click(&mut ed, 105.0, 60.0);
@@ -6929,7 +6922,7 @@ mod tests {
             Tool::Select,
         );
         let id = ids(&ed)[1];
-        ed.selection = vec![id];
+        ed.view.selection =vec![id];
 
         // Act
         ctrl_t(&mut ed);
@@ -7100,7 +7093,7 @@ mod tests {
     fn grid_from_clipboard_puts_the_corner_at_the_cursor() {
         // Arrange: a camera that is not the identity.
         let mut ed = shape_text_editor(Vec::new(), Tool::Select);
-        ed.camera = Camera::new(Vec2::new(100.0, 50.0), 2.0);
+        ed.view.camera =Camera::new(Vec2::new(100.0, 50.0), 2.0);
         move_to(&mut ed, 300.0, 200.0);
         let world = ed.camera().screen_to_world(Vec2::new(300.0, 200.0));
 
@@ -7139,7 +7132,7 @@ mod tests {
     fn grid_from_clipboard_uses_the_new_text_size_on_screen() {
         // Arrange: at zoom 2 a new block is half as big in the world.
         let mut ed = shape_text_editor(Vec::new(), Tool::Select);
-        ed.camera = Camera::new(Vec2::ZERO, 2.0);
+        ed.view.camera =Camera::new(Vec2::ZERO, 2.0);
         let expected = ed
             .camera()
             .world_len(text::text_size_px(ed.style().width_px));
@@ -7275,7 +7268,7 @@ mod tests {
             Tool::Select,
         );
         let (bottom, top) = (ids(&ed)[0], ids(&ed)[2]);
-        ed.selection = vec![ids(&ed)[1]];
+        ed.view.selection =vec![ids(&ed)[1]];
 
         // Act
         ctrl_l(&mut ed);
@@ -7549,7 +7542,7 @@ mod tests {
     fn graph_from_text_without_one_text_block_does_nothing() {
         // Arrange: nothing selected, two blocks, a rectangle, blank text.
         let mut none = selected_block("1-2");
-        none.selection.clear();
+        none.view.selection.clear();
         let mut two = shape_text_editor(
             vec![block(0.0, 0.0, "1-2"), block(90.0, 0.0, "3-4")],
             Tool::Select,
@@ -7788,7 +7781,7 @@ mod tests {
     /// An editor in `tool` with one selected 100 × 100 square at the origin.
     fn selected_square(tool: Tool) -> Editor {
         let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 100.0, 100.0)], tool);
-        ed.selection = ids(&ed);
+        ed.view.selection =ids(&ed);
         ed
     }
 
@@ -7995,7 +7988,7 @@ mod tests {
             Tool::Select,
         );
         let (bottom, top) = (ids(&ed)[0], ids(&ed)[2]);
-        ed.selection = vec![ids(&ed)[1]];
+        ed.view.selection =vec![ids(&ed)[1]];
 
         // Act
         ctrl_p(&mut ed);
@@ -8185,7 +8178,7 @@ mod tests {
     fn plot_from_text_without_one_text_block_does_nothing() {
         // Arrange: nothing selected, two blocks, a rectangle, blank text.
         let mut none = selected_block("1 2");
-        none.selection.clear();
+        none.view.selection.clear();
         let mut two = shape_text_editor(
             vec![block(0.0, 0.0, "1 2"), block(90.0, 0.0, "3 4")],
             Tool::Select,
@@ -8239,7 +8232,7 @@ mod tests {
     fn ctrl_bracket_right_raises_selection_one_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(80.0)]);
-        ed.selection = vec![id[0]];
+        ed.view.selection =vec![id[0]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketRight, CTRL);
@@ -8253,7 +8246,7 @@ mod tests {
     fn ctrl_bracket_left_lowers_selection_one_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(80.0)]);
-        ed.selection = vec![id[2]];
+        ed.view.selection =vec![id[2]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketLeft, CTRL);
@@ -8272,7 +8265,7 @@ mod tests {
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
         let id = ids(&ed);
         place(&mut ed, 600.0, 500.0, "a");
-        ed.selection = vec![id[0]];
+        ed.view.selection =vec![id[0]];
         let size = open_size(&ed);
 
         // Act
@@ -8289,7 +8282,7 @@ mod tests {
         // Arrange: a far shape, then two overlapping ones above the
         // selection.
         let (mut ed, id) = stacked(vec![square(0.0), far(), square(50.0), square(60.0)]);
-        ed.selection = vec![id[0]];
+        ed.view.selection =vec![id[0]];
 
         // Act
         assert!(ed.apply(Command::RaiseSelection));
@@ -8302,7 +8295,7 @@ mod tests {
     fn lower_passes_only_the_nearest_overlapping_shape() {
         // Arrange: mirror of the raise case.
         let (mut ed, id) = stacked(vec![square(60.0), square(50.0), far(), square(0.0)]);
-        ed.selection = vec![id[3]];
+        ed.view.selection =vec![id[3]];
 
         // Act
         assert!(ed.apply(Command::LowerSelection));
@@ -8315,7 +8308,7 @@ mod tests {
     fn raise_with_no_overlapping_shape_above_adds_no_undo_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(60.0), square(0.0), far()]);
-        ed.selection = vec![id[1]];
+        ed.view.selection =vec![id[1]];
         let undo = ed.history.undo_len();
 
         // Act
@@ -8331,7 +8324,7 @@ mod tests {
     fn lower_with_no_overlapping_shape_below_adds_no_undo_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![far(), square(0.0), square(60.0)]);
-        ed.selection = vec![id[1]];
+        ed.view.selection =vec![id[1]];
         let undo = ed.history.undo_len();
 
         // Act
@@ -8347,7 +8340,7 @@ mod tests {
     fn ctrl_shift_bracket_right_moves_selection_to_top_keeping_order() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), far(), square(20.0), square(30.0)]);
-        ed.selection = vec![id[2], id[0]];
+        ed.view.selection =vec![id[2], id[0]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketRight, CTRL_SHIFT);
@@ -8361,7 +8354,7 @@ mod tests {
     fn ctrl_shift_bracket_left_moves_selection_to_bottom_keeping_order() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), far(), square(20.0), square(30.0)]);
-        ed.selection = vec![id[3], id[1]];
+        ed.view.selection =vec![id[3], id[1]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketLeft, CTRL_SHIFT);
@@ -8375,12 +8368,12 @@ mod tests {
     fn to_top_when_already_on_top_adds_no_undo_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(20.0), square(30.0)]);
-        ed.selection = vec![id[2], id[1]];
+        ed.view.selection =vec![id[2], id[1]];
         let undo = ed.history.undo_len();
 
         // Act
         let top = ed.apply(Command::SelectionToTop);
-        ed.selection = vec![id[0]];
+        ed.view.selection =vec![id[0]];
         let bottom = ed.apply(Command::SelectionToBottom);
 
         // Assert
@@ -8394,7 +8387,7 @@ mod tests {
     fn restack_is_one_undo_step_and_keeps_selection() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(70.0)]);
-        ed.selection = vec![id[1], id[0]];
+        ed.view.selection =vec![id[1], id[0]];
         let undo = ed.history.undo_len();
         let revision = ed.document_revision();
 
@@ -8419,7 +8412,7 @@ mod tests {
         // Arrange: a pen stroke in progress, a square selected.
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0)]);
         ed.apply(Command::SetTool(Tool::Pen));
-        ed.selection = vec![id[0]];
+        ed.view.selection =vec![id[0]];
         down(&mut ed, PointerButton::Left, 700.0, 700.0);
         move_to(&mut ed, 720.0, 730.0);
         assert!(ed.gesture.is_some());
@@ -8498,7 +8491,7 @@ mod tests {
     /// their ids bottom first.
     fn arranged(shapes: Vec<Shape>) -> (Editor, Vec<ShapeId>) {
         let (mut ed, id) = stacked(shapes);
-        ed.selection = id.clone();
+        ed.view.selection =id.clone();
         (ed, id)
     }
 
@@ -8791,7 +8784,7 @@ mod tests {
     fn align_is_one_undo_step_and_keeps_selection() {
         // Arrange
         let (mut ed, id) = arranged(uneven());
-        ed.selection = vec![id[2], id[0], id[1]];
+        ed.view.selection =vec![id[2], id[0], id[1]];
         let before = shapes_of(&ed);
         let undo = ed.history.undo_len();
         let revision = ed.document_revision();
@@ -8818,7 +8811,7 @@ mod tests {
         // Arrange: a pen stroke in progress, three shapes selected.
         let (mut ed, id) = arranged(uneven());
         ed.apply(Command::SetTool(Tool::Pen));
-        ed.selection = id.clone();
+        ed.view.selection =id.clone();
         down(&mut ed, PointerButton::Left, 700.0, 700.0);
         move_to(&mut ed, 720.0, 730.0);
         assert!(ed.gesture.is_some());
@@ -8848,7 +8841,7 @@ mod tests {
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
         let id = ids(&ed);
         place(&mut ed, 600.0, 500.0, "ab");
-        ed.selection = id.clone();
+        ed.view.selection =id.clone();
         let rects: Vec<Shape> = id
             .iter()
             .filter_map(|&i| ed.document().get(i).cloned())
@@ -8884,7 +8877,7 @@ mod tests {
     fn locked_editor(shapes: Vec<Shape>, lock: &[usize], tool: Tool) -> Editor {
         let mut ed = shape_text_editor(shapes, Tool::Select);
         let all = ids(&ed);
-        ed.selection = lock.iter().map(|&i| all[i]).collect();
+        ed.view.selection =lock.iter().map(|&i| all[i]).collect();
         assert!(ed.apply(Command::LockSelection));
         ed.apply(Command::SetTool(tool));
         ed
@@ -8903,7 +8896,7 @@ mod tests {
         // Arrange
         let mut ed = shape_text_editor(three_rects(), Tool::Select);
         let all = ids(&ed);
-        ed.selection = vec![all[2], all[0]];
+        ed.view.selection =vec![all[2], all[0]];
 
         // Act
         let redraw = key_with(&mut ed, Key::K, CTRL);
@@ -9059,7 +9052,7 @@ mod tests {
         let mut ed = locked_editor(three_rects(), &[0], Tool::Select);
         let all = ids(&ed);
         ed.apply(Command::Undo);
-        ed.selection = all.clone();
+        ed.view.selection =all.clone();
 
         // Act
         ed.apply(Command::Redo);
@@ -10117,19 +10110,19 @@ mod tests {
     fn pages_keep_their_own_shapes_selection_and_view() {
         // Arrange: page 1 has a selected rectangle and a panned, zoomed view.
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.selection = ids(&ed);
-        ed.camera = Camera::new(Vec2::new(40.0, 30.0), 2.0);
+        ed.view.selection =ids(&ed);
+        ed.view.camera =Camera::new(Vec2::new(40.0, 30.0), 2.0);
         let first = ids(&ed);
 
         // Act: a new page is empty with the default view and no selection.
         assert!(go(&mut ed, 4));
-        let fresh = (ed.document().len(), ed.selection().len(), ed.camera);
+        let fresh = (ed.document().len(), ed.selection().len(), ed.view.camera);
         let tx = tx_insert(
             &mut ed.doc,
             vec![rect(9.0, 9.0, 1.0, 1.0), rect(5.0, 5.0, 1.0, 1.0)],
         );
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
-        ed.camera = Camera::new(Vec2::new(-7.0, 8.0), 0.5);
+        ed.view.camera =Camera::new(Vec2::new(-7.0, 8.0), 0.5);
         go(&mut ed, 0);
 
         // Assert
@@ -10137,10 +10130,10 @@ mod tests {
         assert_eq!(fresh, (0, 0, Camera::default()));
         assert_eq!(ids(&ed), first);
         assert_eq!(ed.selection(), first.as_slice());
-        assert_eq!(ed.camera, Camera::new(Vec2::new(40.0, 30.0), 2.0));
+        assert_eq!(ed.view.camera,Camera::new(Vec2::new(40.0, 30.0), 2.0));
         go(&mut ed, 4);
         assert_eq!(ed.document().len(), 2);
-        assert_eq!(ed.camera, Camera::new(Vec2::new(-7.0, 8.0), 0.5));
+        assert_eq!(ed.view.camera,Camera::new(Vec2::new(-7.0, 8.0), 0.5));
     }
 
     #[test]
