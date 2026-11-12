@@ -571,7 +571,12 @@ mod tests {
         assert_eq!(resolve(Key::R, SHIFT), None);
         assert_eq!(resolve(Key::Digit1, ALT), None);
         assert_eq!(resolve(Key::Z, SHIFT), None);
-        assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn resolve_ctrl_shift_c_copies_the_selection_as_an_image() {
+        assert_eq!(resolve(Key::C, CTRL_SHIFT), Some(Command::CopyImage));
+        assert_eq!(resolve(Key::C, CTRL), Some(Command::Copy));
     }
 
     #[test]

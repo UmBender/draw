@@ -5394,6 +5394,64 @@ mod tests {
         assert!(!typing.can_export());
     }
 
+    // ---- T115 copy the selection as an image --------------------------------
+
+    fn ctrl_shift_c(ed: &mut Editor) -> bool {
+        let mods = Modifiers {
+            ctrl: true,
+            shift: true,
+            ..NONE
+        };
+        key_with(ed, Key::C, mods)
+    }
+
+    #[test]
+    fn copy_image_with_nothing_selected_does_nothing() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = ctrl_shift_c(&mut ed);
+
+        // Assert
+        assert!(!redraw);
+        assert_eq!(ed, before);
+        assert!(ed.take_copy_image_request().is_none());
+    }
+
+    #[test]
+    fn copy_image_with_a_selection_asks_once_for_its_box() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        key_with(&mut ed, Key::A, CTRL);
+        let expected = ed.selection_bounds();
+        assert!(expected.is_some());
+
+        // Act
+        let redraw = ctrl_shift_c(&mut ed);
+
+        // Assert
+        assert!(!redraw, "a copy needs no redraw");
+        assert_eq!(ed.take_copy_image_request(), expected);
+        assert!(ed.take_copy_image_request().is_none());
+    }
+
+    #[test]
+    fn copy_image_during_text_edit_is_ignored() {
+        // Arrange
+        let mut ed = Editor::new();
+        place(&mut ed, 50.0, 50.0, "abc");
+        assert!(ed.text_edit().is_some());
+
+        // Act
+        ctrl_shift_c(&mut ed);
+
+        // Assert
+        assert!(ed.text_edit().is_some(), "the block stays open");
+        assert!(ed.take_copy_image_request().is_none());
+    }
+
     // ---- T35 pressure -------------------------------------------------------
 
     fn press(ed: &mut Editor, pressure: Option<f32>) -> bool {

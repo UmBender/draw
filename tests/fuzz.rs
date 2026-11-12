@@ -1985,6 +1985,22 @@ proptest! {
     }
 
     #[test]
+    fn copy_image_requests_never_change_the_editor(session in arb_session()) {
+        // Arrange
+        let mut editor = run_session_on(Editor::new(), &session)?;
+        let before = editor.clone();
+
+        // Act
+        let redraw = editor.apply(Command::CopyImage);
+
+        // Assert: only the pending request may differ, and it is a box.
+        prop_assert!(!redraw, "a copy needs no redraw");
+        let asked = editor.take_copy_image_request();
+        prop_assert!(asked.is_none() || before.selection_bounds().is_some());
+        prop_assert!(editor == before, "the copy changed the editor");
+    }
+
+    #[test]
     fn export_requests_never_change_the_editor(session in arb_session()) {
         // Arrange
         let mut editor = run_session_on(Editor::new(), &session)?;
