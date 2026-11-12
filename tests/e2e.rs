@@ -693,6 +693,68 @@ fn x11_guard(
     })
 }
 
+/// X11 `InternAtom` (only-if-exists off) for `name`, little endian.
+fn x11_intern_request(name: &str) -> Vec<u8> {
+    let len = u16::try_from(name.len()).unwrap_or(u16::MAX);
+    let words = 2 + name.len().div_ceil(4);
+    let mut request = vec![16, 0];
+    request.extend(u16::try_from(words).unwrap_or(u16::MAX).to_le_bytes());
+    request.extend(len.to_le_bytes());
+    request.extend([0, 0]);
+    request.extend(name.as_bytes());
+    request.resize(words * 4, 0);
+    request
+}
+
+/// X11 `SendEvent` of a `WM_PROTOCOLS` client message that asks `window` to
+/// close (`WM_DELETE_WINDOW`), little endian.
+fn x11_delete_request(window: u32, protocols: u32, delete: u32) -> Vec<u8> {
+    let mut request = vec![25, 0, 11, 0];
+    request.extend(window.to_le_bytes());
+    request.extend(0u32.to_le_bytes());
+    request.extend([33, 32, 0, 0]);
+    for word in [window, protocols, delete, 0, 0, 0, 0] {
+        request.extend(word.to_le_bytes());
+    }
+    request
+}
+
+/// Asks the window `window` of the local `display` to close, as a window
+/// manager does: the private server has none.
+fn x11_close(display: &str, window: u32) -> Result<(), String> {
+    let number = display.strip_prefix(':').unwrap_or("0");
+    let path = format!("/tmp/.X11-unix/X{number}");
+    let mut stream = UnixStream::connect(&path).map_err(|err| format!("{path}: {err}"))?;
+    let io = |err: std::io::Error| format!("X11 {path}: {err}");
+    // Handshake without authorisation: byte order, version 11.0.
+    stream
+        .write_all(&[b'l', 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        .map_err(io)?;
+    let mut head = [0u8; 8];
+    stream.read_exact(&mut head).map_err(io)?;
+    if head.first() != Some(&1) {
+        return Err(format!("the X server at {path} refused the connection"));
+    }
+    let extra = usize::from(u16::from_le_bytes([head[6], head[7]])) * 4;
+    stream.read_exact(&mut vec![0u8; extra]).map_err(io)?;
+    let atom = |stream: &mut UnixStream, name: &str| -> Result<u32, String> {
+        stream.write_all(&x11_intern_request(name)).map_err(io)?;
+        let mut reply = [0u8; 32];
+        stream.read_exact(&mut reply).map_err(io)?;
+        if reply.first() != Some(&1) {
+            return Err(format!("X11 InternAtom {name} failed"));
+        }
+        Ok(u32::from_le_bytes([reply[8], reply[9], reply[10], reply[11]]))
+    };
+    let protocols = atom(&mut stream, "WM_PROTOCOLS")?;
+    let delete = atom(&mut stream, "WM_DELETE_WINDOW")?;
+    stream
+        .write_all(&x11_delete_request(window, protocols, delete))
+        .map_err(io)?;
+    // A round trip: the server has handled the event when it answers.
+    atom(&mut stream, "WM_PROTOCOLS").map(drop)
+}
+
 /// The `xdotool` invocations that do what the `wtype` arguments `args`
 /// do: modifiers, keys, holds, pauses and literal text.
 fn xdotool_commands(args: &[String]) -> Result<Vec<Vec<String>>, String> {
@@ -988,7 +1050,7 @@ impl Session {
             let target = format!("ppm:{}", path.display());
             let status = self
                 .tool("import")
-                .args(["-window", window, &target])
+                .args(["-depth", "8", "-window", window, &target])
                 .status();
             ("import", status)
         } else {
@@ -1081,9 +1143,18 @@ impl Session {
 
     /// Asks the app's window to close.
     fn close_window(&self) -> Result<(), String> {
-        match &self.window {
-            Some(window) => self.xdotool(&["windowquit", window]).map(drop),
-            None => self.swaymsg(&["[app_id=\"draw\"]", "kill"]).map(drop),
+        match (&self.window, &self.x11) {
+            (Some(_), Some(x11)) => {
+                // Every window of the app: the private server has no others.
+                let found = self.xdotool(&["search", "--class", "draw"])?;
+                for id in found.split_whitespace() {
+                    let id = id.parse().map_err(|_| format!("bad window id {id}"))?;
+                    x11_close(&x11.display, id)?;
+                }
+                Ok(())
+            }
+            (Some(_), None) => Err("a window without an X11 session".to_owned()),
+            (None, _) => self.swaymsg(&["[app_id=\"draw\"]", "kill"]).map(drop),
         }
     }
 
