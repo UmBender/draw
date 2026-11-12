@@ -18,4 +18,5 @@ pub mod render;
 pub mod sheet;
 pub mod tablet;
 pub mod toolbar;
+pub mod ui_shapes;
 pub mod ui_text;

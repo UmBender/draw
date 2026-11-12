@@ -83,6 +83,28 @@ pub const TOOLBAR_ACTIVE_FILL: u32 = 0x2d4f67;
 /// Opacity of undo/redo when there is nothing to undo or redo.
 pub const TOOLBAR_DISABLED_ALPHA: u8 = 76;
 
+// ---- Menu islands (ADR-T126-1) ----------------------------------------------
+
+/// Fill of an island: a group of toolbar buttons, the palette, the sheet.
+pub const MENU_ISLAND: u32 = 0x181616;
+/// Opacity of a toolbar island.
+pub const MENU_ISLAND_ALPHA: u8 = 191;
+/// Opacity of the command palette and the sheet, which sit over a dimmed
+/// canvas.
+pub const MENU_PANEL_ALPHA: u8 = 235;
+/// The thin ring around an island and around a key cap.
+pub const MENU_BORDER: u32 = 0x343332;
+/// Opacity of that ring.
+pub const MENU_BORDER_ALPHA: u8 = 204;
+/// Fill of a key cap.
+pub const MENU_KEY_FILL: u32 = 0x222120;
+/// Text of an empty page and of a hint: the quietest text.
+pub const MENU_MUTED: u32 = 0x666765;
+/// Text of a key cap and of secondary lines.
+pub const MENU_DIM_TEXT: u32 = 0xa6a69c;
+/// The active item's text, brighter than the accent.
+pub const MENU_ACTIVE_BRIGHT: u32 = 0x75b8d3;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +146,30 @@ mod tests {
         assert_eq!(TOOLBAR_ACTIVE, 0x7fa8bc);
         assert_eq!(TOOLBAR_ACTIVE_FILL, 0x2d4f67);
         assert_eq!(TOOLBAR_DISABLED_ALPHA, 76);
+        // Menu islands.
+        assert_eq!((MENU_ISLAND, MENU_ISLAND_ALPHA), (0x181616, 191));
+        assert_eq!(MENU_PANEL_ALPHA, 235);
+        assert_eq!((MENU_BORDER, MENU_BORDER_ALPHA), (0x343332, 204));
+        assert_eq!(MENU_KEY_FILL, 0x222120);
+        assert_eq!(
+            [MENU_MUTED, MENU_DIM_TEXT, MENU_ACTIVE_BRIGHT],
+            [0x666765, 0xa6a69c, 0x75b8d3]
+        );
+    }
+
+    #[test]
+    fn menu_text_contrasts_with_canvas() {
+        for (name, hex) in [
+            ("MENU_MUTED", MENU_MUTED),
+            ("MENU_DIM_TEXT", MENU_DIM_TEXT),
+            ("MENU_ACTIVE_BRIGHT", MENU_ACTIVE_BRIGHT),
+        ] {
+            let ratio = contrast_ratio(Rgba::from_hex(hex), Rgba::from_hex(CANVAS));
+            assert!(
+                ratio >= MIN_CONTRAST,
+                "{name} on CANVAS has contrast {ratio:.2}:1, below {MIN_CONTRAST}:1"
+            );
+        }
     }
 
     // ---- AC-3 sanity: what any theme should keep ---------------------------
