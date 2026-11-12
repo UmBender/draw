@@ -18,6 +18,7 @@ scripts/check.sh --fuzz   # same + long fuzz run (PROPTEST_CASES=20000)
 | Tests | `cargo test --all-targets` | all pass, including property tests |
 | Docs | `cargo doc --no-deps` with `RUSTDOCFLAGS=-D warnings` | no broken intra-doc links |
 | Fuzz | `PROPTEST_CASES=20000 cargo test --release --test fuzz` | no failure (see [[ADR-0009 Fuzzing with proptest]]) |
+| Coverage | `bash scripts/coverage.sh` (needs `cargo-llvm-cov`; separate from `check.sh`, the `coverage` job of `ci.yml`) | line coverage of each `src/` module within 0.5 points of its value in `coverage-baseline.toml`; a rise is recorded with `scripts/coverage.sh --update` (T130) |
 | E2E | `scripts/e2e.sh [--backend wayland\|x11\|all]` (Wayland needs `sway`, `wtype`, `grim`; X11 needs `Xvfb`, `xdotool`, ImageMagick `import`; separate from `check.sh`, nightly in CI) | every case passes on the backends run (see [[End-to-end tests]]) |
 | Release | `scripts/release.sh X.Y.Z` | `check.sh --fuzz`, then e2e on Wayland and on X11, then `package.sh`; any failing step stops before packaging. `package.sh` called directly says it is not the release path. `--dry-run` prints the steps. |
 
@@ -50,7 +51,7 @@ GitHub Actions runs the same gates on every push and pull request
 
 | Workflow | When | Jobs |
 |----------|------|------|
-| `.github/workflows/ci.yml` | push (any branch), pull request to `main` | `gates`: `scripts/check.sh` on stable; `msrv`: `cargo check --all-targets --locked` on `rust-version` |
+| `.github/workflows/ci.yml` | push (any branch), pull request to `main` | `gates`: `scripts/check.sh` on stable; `coverage`: `bash scripts/coverage.sh`; `msrv`: `cargo check --all-targets --locked` on `rust-version` |
 | `.github/workflows/nightly.yml` | daily 04:17 UTC, or *Run workflow* by hand | `fuzz`: `scripts/check.sh --fuzz`, uploads `tests/fuzz.proptest-regressions` on failure; `soak`: ignored soak tests; `e2e`: `scripts/e2e.sh`, uploads `target/e2e/` on failure; `perf`: ignored perf tests, report only |
 
 - CI calls `scripts/check.sh`, so a new gate is added there, once.
@@ -71,6 +72,7 @@ GitHub Actions runs the same gates on every push and pull request
       once T74 is done) committed red before the fix (see
       [[Workflow#Bug fixes: regression step]]).
 - [ ] `scripts/check.sh` is green on the branch head.
+- [ ] Coverage ratchet holds: no `src/` module fell, and a rise updated `coverage-baseline.toml` (`bash scripts/coverage.sh`, run by CI).
 - [ ] Only files in *Files owned* were touched.
 - [ ] Feature note + tutorial note written; learning-path position stated.
 - [ ] New architecture choices recorded as ADRs.

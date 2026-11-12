@@ -1,0 +1,6 @@
+# Line coverage per module in percent (scripts/coverage.sh, T130).
+# CI fails when a module falls or rises by more than 0.5 points.
+# Measured by T127 (docs/architecture/2.0 baseline.md); refresh with
+# `scripts/coverage.sh --update` after raising coverage.
+core = 98.6
+shell = 80.2
