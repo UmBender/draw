@@ -205,3 +205,84 @@ fn regression_T120_weight_label_diagonal() {
         }
     }
 }
+
+// ---- T121: self-loops and opposite edges ------------------------------------
+
+/// The editor just before `Ctrl+L`: a text block holding the owner's
+/// `dgraph:` with a self-loop (`1 1 12`) and opposite edges (`1 3`, `3 1`).
+fn loops_and_lanes_scene() -> Editor {
+    use draw::core::command::Tool;
+    let mut ed = scenes::editor();
+    ed.apply(Command::SetTool(Tool::Text));
+    scenes::click(&mut ed, scenes::v(100.0, 100.0));
+    for line in [
+        "dgraph:", "1 2 1", "1 3 4", "1 1 12", "3 4 1", "3 1 2", "4 5 1", "5 1 10",
+    ] {
+        scenes::type_text(&mut ed, line);
+        scenes::key(&mut ed, draw::core::input::Key::Enter);
+    }
+    scenes::key(&mut ed, draw::core::input::Key::Escape);
+    ed.apply(Command::SetTool(Tool::Select));
+    ed.apply(Command::SelectAll);
+    ed
+}
+
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_fixture_T121_is_the_built_scene() {
+    assert_snapshot_with(
+        &loops_and_lanes_scene(),
+        "regressions/T121-dgraph-loops-and-opposite-edges",
+        common::snapshots::update_requested(),
+    );
+}
+
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T121_dgraph_loops_and_opposite_edges() {
+    use draw::core::input::{InputEvent, Key, Modifiers};
+    use draw::core::shape::Shape;
+
+    // Arrange: the state just before `Ctrl+L`.
+    let mut ed = load_fixture("regressions/T121-dgraph-loops-and-opposite-edges");
+
+    // Act
+    ed.handle(InputEvent::KeyDown {
+        key: Key::L,
+        mods: Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        },
+    });
+
+    // Assert: the loop is drawn, and every weight is readable.
+    let shapes: Vec<&Shape> = ed.document().shapes().map(|(_, s)| s).collect();
+    let circles: Vec<_> = shapes
+        .iter()
+        .filter(|s| matches!(s, Shape::Ellipse { .. }))
+        .map(|s| s.bounds())
+        .collect();
+    let weights: Vec<_> = shapes
+        .iter()
+        .filter(|s| matches!(s, Shape::Text { .. }))
+        .map(|s| s.bounds())
+        .collect();
+    assert_eq!(circles.len(), 5, "the graph was drawn");
+    assert_eq!(
+        shapes
+            .iter()
+            .filter(|s| matches!(s, Shape::Stroke { .. }))
+            .count(),
+        1,
+        "the self-loop 1 1 is drawn"
+    );
+    assert_eq!(weights.len(), 7, "one weight per edge, loop included");
+    for (i, weight) in weights.iter().enumerate() {
+        for circle in &circles {
+            assert!(!weight.intersects(circle), "{weight:?} overlaps {circle:?}");
+        }
+        for other in &weights[i + 1..] {
+            assert!(!weight.intersects(other), "{weight:?} overlaps {other:?}");
+        }
+    }
+}
