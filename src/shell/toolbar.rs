@@ -173,22 +173,16 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
     buttons
 }
 
-/// Cells of the page switcher per row (ADR-T124-1).
-const PAGE_COLUMNS: usize = 2;
-/// Width of a page cell: the strip's buttons split in two columns.
-const PAGE_CELL_W_PX: f32 = BUTTON_PX / PAGE_COLUMNS as f32;
-/// Height of a page cell, in pixels.
-const PAGE_CELL_H_PX: f32 = 18.0;
 /// Size of a page number, in pixels.
-const PAGE_LABEL_SIZE: u16 = 12;
+const PAGE_LABEL_SIZE: u16 = 20;
 /// Height of the bar under the number of a page that holds shapes.
 const PAGE_BAR_PX: f32 = 2.0;
 /// Opacity of the number of an empty page.
 const PAGE_EMPTY_ALPHA: f32 = 0.4;
 
-/// The page switcher (ADR-T124-1): the cells of pages 1…`PAGE_COUNT` in
-/// rows of two, under the history buttons. Cells that would cross the
-/// bottom of the window are left out.
+/// The page switcher (ADR-T125-1): one square button per page, 1…`PAGE_COUNT`,
+/// one per row like the colours, under the history buttons. Buttons that
+/// would cross the bottom of the window are left out.
 #[must_use]
 pub fn page_layout(viewport: Vec2) -> Vec<Button> {
     let top = layout(viewport)
@@ -196,13 +190,9 @@ pub fn page_layout(viewport: Vec2) -> Vec<Button> {
         .map_or(PAD_PX, |b| b.rect.max.y + GROUP_GAP_PX);
     (0..PAGE_COUNT)
         .map(|page| {
-            let (row, column) = (page / PAGE_COLUMNS, page % PAGE_COLUMNS);
-            let min = Vec2::new(
-                PAD_PX + column as f32 * PAGE_CELL_W_PX,
-                top + row as f32 * PAGE_CELL_H_PX,
-            );
+            let min = Vec2::new(PAD_PX, top + page as f32 * (BUTTON_PX + GAP_PX));
             Button {
-                rect: Aabb::from_corners(min, min + Vec2::new(PAGE_CELL_W_PX, PAGE_CELL_H_PX)),
+                rect: Aabb::from_corners(min, min + Vec2::new(BUTTON_PX, BUTTON_PX)),
                 kind: ButtonKind::Page(page),
             }
         })
@@ -371,7 +361,7 @@ fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
     let label = (page + 1).to_string();
     match look {
         PageLook::Current => {
-            fill(rect.expand(-1.0), accent);
+            fill(rect, accent);
             draw_label_sized(
                 rect,
                 &label,
@@ -382,9 +372,9 @@ fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
         PageLook::Used => {
             draw_label_sized(rect, &label, text, PAGE_LABEL_SIZE);
             draw_rectangle(
-                rect.min.x + 3.0,
-                rect.max.y - 1.0 - PAGE_BAR_PX,
-                rect.width() - 6.0,
+                rect.min.x + 8.0,
+                rect.max.y - 4.0 - PAGE_BAR_PX,
+                rect.width() - 16.0,
                 PAGE_BAR_PX,
                 accent,
             );
@@ -639,7 +629,7 @@ mod tests {
     const TALL: Vec2 = Vec2::new(1280.0, 1080.0);
 
     #[test]
-    fn page_cells_are_two_columns_below_the_history_buttons() {
+    fn page_cells_are_one_column_below_the_history_buttons() {
         // Act
         let cells = page_layout(TALL);
 
@@ -649,12 +639,14 @@ mod tests {
         assert_eq!(kinds, expected);
         let history_bottom = layout(TALL).last().map_or(0.0, |b| b.rect.max.y);
         for (i, cell) in cells.iter().enumerate() {
+            assert!(approx_eq(cell.rect.min.x, PAD_PX, EPS), "{cell:?}");
+            assert!(approx_eq(cell.rect.width(), BUTTON_PX, EPS), "{cell:?}");
+            assert!(approx_eq(cell.rect.height(), BUTTON_PX, EPS), "{cell:?}");
             assert!(cell.rect.min.y > history_bottom, "{cell:?}");
-            let column = (cell.rect.min.x - PAD_PX) / PAGE_CELL_W_PX;
-            assert!(approx_eq(column, (i % 2) as f32, EPS), "{cell:?}");
+            if i > 0 {
+                assert!(cell.rect.min.y > cells[i - 1].rect.max.y, "one per row");
+            }
         }
-        assert!(cells[2].rect.min.y > cells[0].rect.min.y, "rows go down");
-        assert!(approx_eq(cells[0].rect.min.y, cells[1].rect.min.y, EPS));
     }
 
     #[test]

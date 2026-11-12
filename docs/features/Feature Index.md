@@ -9,7 +9,7 @@ One note per user-visible feature, created by the task that implements it
 
 | Feature | Task | Tutorial | Status |
 |---------|------|----------|--------|
-| [[Infinite canvas, pan and zoom]] | [[T03 Camera]], [[T08 Editor core and input model]], [[T106 Fading laser pointer]], [[T110 Minimap]], [[T116 Pages]], [[T124 Page switcher in the toolbar]] | [[03 Cameras - world space vs screen space]], [[08 An editor as an input-driven state machine]] | done |
+| [[Infinite canvas, pan and zoom]] | [[T03 Camera]], [[T08 Editor core and input model]], [[T106 Fading laser pointer]], [[T110 Minimap]], [[T116 Pages]], [[T124 Page switcher in the toolbar]], [[T125 Six pages, one per row]] | [[03 Cameras - world space vs screen space]], [[08 An editor as an input-driven state machine]] | done |
 | [[Anti-tremor strokes]] | [[T04 Stroke smoothing]], [[T09 Creation tools]] | [[04 Taming shaky input]], [[09 Building drawing tools]] | done |
 | [[Shapes]] | [[T05 Shape model]], [[T07 Renderer]], [[T09 Creation tools]], [[T93 Coordinate plane from points]], [[T95 Labels on plotted points]] | [[05 Modelling shapes and hit-testing]], [[07 Rendering with macroquad and culling]], [[09 Building drawing tools]] | done |
 | [[Undo and redo]] | [[T06 Document and history]], [[T08 Editor core and input model]], [[T11 Keymap and macros]], [[T49 Long-running stability]] | [[06 Undo and redo with a transaction log]] | done |

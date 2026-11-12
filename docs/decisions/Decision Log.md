@@ -150,3 +150,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 139 | [[ADR-T123-1 Menus use the bundled font on whole pixels]] | accepted | decision | T29-1 | — |
 | 140 | [[ADR-T124-1 Ten pages and a switcher under undo and redo]] | accepted | decision | T116-1, T123-1 | amends T116-1 |
 | 141 | [[ADR-T117-1 Scored shape recognition with looser limits]] | accepted | decision | T109-1 | amends T109-1 |
+| 142 | [[ADR-T125-1 Six pages, one button per row]] | accepted | decision | T124-1 | amends T124-1 |

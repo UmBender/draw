@@ -323,10 +323,6 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
     (KeyChord::alt(Key::Digit4), Command::GoToPage(3), "Page 4"),
     (KeyChord::alt(Key::Digit5), Command::GoToPage(4), "Page 5"),
     (KeyChord::alt(Key::Digit6), Command::GoToPage(5), "Page 6"),
-    (KeyChord::alt(Key::Digit7), Command::GoToPage(6), "Page 7"),
-    (KeyChord::alt(Key::Digit8), Command::GoToPage(7), "Page 8"),
-    (KeyChord::alt(Key::Digit9), Command::GoToPage(8), "Page 9"),
-    (KeyChord::alt(Key::Digit0), Command::GoToPage(9), "Page 10"),
     // Helpers
     (
         KeyChord::bare(Key::X),
@@ -589,10 +585,6 @@ mod tests {
             (Key::Digit4, ALT, Command::GoToPage(3)),
             (Key::Digit5, ALT, Command::GoToPage(4)),
             (Key::Digit6, ALT, Command::GoToPage(5)),
-            (Key::Digit7, ALT, Command::GoToPage(6)),
-            (Key::Digit8, ALT, Command::GoToPage(7)),
-            (Key::Digit9, ALT, Command::GoToPage(8)),
-            (Key::Digit0, ALT, Command::GoToPage(9)),
             // Tools
             (Key::D, NONE, Command::SetTool(Tool::Pen)),
             (Key::W, NONE, Command::SetTool(Tool::Line)),
@@ -761,15 +753,15 @@ mod tests {
             Key::Digit4,
             Key::Digit5,
             Key::Digit6,
-            Key::Digit7,
-            Key::Digit8,
-            Key::Digit9,
         ];
         for (page, key) in digits.into_iter().enumerate() {
             assert_eq!(resolve(key, ALT), Some(Command::GoToPage(page)), "{key:?}");
         }
-        // Alt+0 is page 10; the bare digits keep their meaning.
-        assert_eq!(resolve(Key::Digit0, ALT), Some(Command::GoToPage(9)));
+        // There are six pages: Alt+7…Alt+0 are free; the bare digits keep
+        // their meaning.
+        for key in [Key::Digit7, Key::Digit8, Key::Digit9, Key::Digit0] {
+            assert_eq!(resolve(key, ALT), None, "{key:?}");
+        }
         assert_eq!(resolve(Key::Digit0, NONE), Some(Command::ResetView));
         assert_eq!(resolve(Key::Digit1, NONE), Some(color(1)));
     }
