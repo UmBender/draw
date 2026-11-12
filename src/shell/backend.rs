@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn choose_unset_without_wayland_session_is_x11_with_deprecation() {
+    fn choose_unset_without_wayland_session_is_x11_without_notice() {
         // Arrange / Act
         let choices = [
             choose(None, None),
@@ -198,24 +198,19 @@ mod tests {
         for choice in choices {
             assert_eq!(choice.backend, Backend::X11);
             assert_eq!(choice.warning, None);
-            let notice = notice(&choice);
-            assert!(notice.contains(REMOVAL_VERSION), "{notice}");
-            assert!(notice.contains("Wayland session"), "{notice}");
+            assert_eq!(choice.notice, None);
         }
     }
 
     #[test]
-    fn choose_x11_on_wayland_session_is_x11_with_deprecation() {
+    fn choose_x11_on_wayland_session_is_x11_without_notice() {
         // Arrange / Act
         let choice = choose_str("x11", Some(display()));
 
         // Assert
         assert_eq!(choice.backend, Backend::X11);
         assert_eq!(choice.warning, None);
-        let notice = notice(&choice);
-        assert!(notice.contains("deprecated"), "{notice}");
-        assert!(notice.contains(REMOVAL_VERSION), "{notice}");
-        assert!(notice.contains(BACKEND_ENV), "{notice}");
+        assert_eq!(choice.notice, None);
     }
 
     #[test]
@@ -230,16 +225,14 @@ mod tests {
     }
 
     #[test]
-    fn choose_wayland_without_wayland_session_warns_of_deprecation() {
+    fn choose_wayland_without_wayland_session_has_no_notice() {
         // Arrange / Act: miniquad falls back to X11 here
         let choice = choose_str("wayland", None);
 
         // Assert
         assert_eq!(choice.backend, Backend::Wayland);
         assert_eq!(choice.warning, None);
-        let notice = notice(&choice);
-        assert!(notice.contains(REMOVAL_VERSION), "{notice}");
-        assert!(!notice.contains("experimental"), "{notice}");
+        assert_eq!(choice.notice, None);
     }
 
     #[test]
@@ -258,11 +251,7 @@ mod tests {
             // Assert
             assert_eq!(choice.backend, expected, "{value:?}");
             assert_eq!(choice.warning, None, "{value:?}");
-            assert_eq!(
-                choice.notice.is_some(),
-                expected == Backend::X11,
-                "{value:?}"
-            );
+            assert_eq!(choice.notice, None, "{value:?}");
         }
     }
 
@@ -321,14 +310,11 @@ mod tests {
     }
 
     #[test]
-    fn warning_and_notice_are_one_line() {
+    fn warning_is_one_line() {
         // Arrange
         let lines = [
             choose_str("bogus", Some(display())).warning,
             choose_str("bogus", None).warning,
-            choose_str("x11", Some(display())).notice,
-            choose(None, None).notice,
-            choose_str("wayland", None).notice,
         ];
 
         for line in lines {
@@ -340,7 +326,33 @@ mod tests {
     }
 
     #[test]
-    fn readme_documents_wayland_default_and_x11_deprecation() {
+    fn x11_is_not_marked_deprecated() {
+        // Arrange
+        let texts = [
+            include_str!("../../README.md"),
+            include_str!("../../packaging/flatpak/io.github.UmBender.draw.yml"),
+            include_str!("../../packaging/runtime-libs"),
+            include_str!("../../docs/features/Native Wayland.md")
+                .split("## Rollback")
+                .next()
+                .unwrap_or_default(),
+        ];
+
+        // Act / Assert
+        for text in texts {
+            // Titles of linked notes keep the word; the prose must not.
+            let hit = text.lines().find(|line| {
+                let prose = line.split("[[").next().unwrap_or_default();
+                !line.starts_with("task:")
+                    && !line.starts_with("adrs:")
+                    && prose.to_lowercase().contains("deprecat")
+            });
+            assert_eq!(hit, None);
+        }
+    }
+
+    #[test]
+    fn readme_documents_wayland_default_and_x11_supported() {
         // Arrange
         let readme = include_str!("../../README.md");
 
@@ -357,7 +369,8 @@ mod tests {
 
         // Assert
         assert!(row.contains("`wayland` (default"), "{row}");
-        assert!(row.contains(REMOVAL_VERSION), "{row}");
+        assert!(row.contains("`x11`"), "{row}");
+        assert!(!row.contains("removed"), "{row}");
         assert!(!row.contains("experimental"), "{row}");
         assert!(
             !experimental.contains(BACKEND_ENV),
