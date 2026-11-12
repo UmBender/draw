@@ -1,7 +1,7 @@
 ---
 id: T128
 title: Keep X11 and revert the deprecation
-status: in-progress
+status: review
 wave: 65
 branch: task/T128-keep-x11-revert-the-deprecation
 depends_on: [T127]
@@ -41,10 +41,12 @@ X11 is a supported backend again: the deprecation of ADR-T46-1 is reverted and t
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T128): specify keeping X11`
-- [ ] behaviour — `fix(T128): stop calling X11 deprecated`
-- [ ] docs — `docs(T128): update the notes`
+- [x] spec — `docs(T128): specify keeping X11`
+- [x] behaviour — `fix(T128): stop calling X11 deprecated`
+- [x] docs — `docs(T128): update the notes`
 
 ## Log
 
+- 2026-11-12 — done in the batch run; `scripts/check.sh` green. `ADR-T128-1` (rollback of ADR-T46-1) added as `accepted`. The `Choice::notice` field stays, always `None`, because `src/shell/app.rs` (not owned) still prints it; its doc comment there still says "X11 deprecation notice" and `REMOVAL_VERSION` is gone — a follow-up (T131 or the backend rewrite) can drop the field and fix the comment. Preflight and `--help` had no deprecation wording. AC-3 is T129's. No separate models/quality commits: no new types, nothing to restructure.
+- Owner to check by hand: the README wording (Window backend section).
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
