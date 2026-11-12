@@ -1,7 +1,7 @@
 ---
 id: T134
 title: The control automaton states, inputs and effects
-status: in-progress
+status: review
 wave: 66
 branch: task/T134-the-control-automaton-states-inputs-effe
 depends_on: [T132]
@@ -47,13 +47,16 @@ Design in [[ADR-T134-1 The automaton wraps the editor behind a routing table]].
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T134): specify the control automaton`
-- [ ] tests — `test(T134): add failing tests for the machine`
-- [ ] models — `feat(T134): add the inputs, effects and states`
-- [ ] behaviour — `feat(T134): implement step with the adapter`
-- [ ] quality — `chore(T134): pass clippy and rustfmt`
-- [ ] docs — `docs(T134): add the architecture note`
+- [x] tests — `test(T134): add failing tests for the machine`
+- [x] models — merged into the behaviour commit (see Log)
+- [x] behaviour — `feat(T134): implement step with the adapter`
+- [x] quality — `chore(T134): pass clippy and rustfmt`
+- [x] docs — `docs(T134): add the architecture note`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-12 — UNATTENDED CHOICE: `pub mod machine;` added to `crates/draw-core/src/lib.rs` (not in *Files owned*, unavoidable); see ADR-T134-1.
+- 2026-11-12 — Deviation: the models and behaviour steps are one commit (`feat(T134): implement step with the adapter`); the types and the table are small. The architecture note `docs/architecture/Control automaton.md` was written in that commit because `diagram_matches_the_table` reads it.
+- 2026-11-12 — Scope: the table ignores only `Tick` and `Reply` for now; every other cell is forwarded to the editor, so `machine_and_editor_agree` holds by construction. `Clipboard` and `Schedule` effects are defined but not produced yet (T137). The proptest uses its own event generator in `machine/tests.rs` (the fuzz generators live in `tests/fuzz.rs`, outside the files owned).
+- 2026-11-12 — `scripts/check.sh` green. Status set to `review`.
