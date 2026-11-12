@@ -1,7 +1,7 @@
 ---
 id: T154
 title: Environment variables to flags
-status: review
+status: done
 wave: 72
 branch: task/T154-environment-variables-to-flags
 depends_on: [T152, T129]

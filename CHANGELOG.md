@@ -27,6 +27,13 @@ All notable changes to draw are listed here. The format follows
   and the gestures; the editor queues effects that the shell carries out,
   and the core never reads the clock. A model-based test checks the
   automaton against a reference model.
+- The settings that were environment variables are command-line flags, and
+  draw reads no `DRAW_*` variable any more: `DRAW_LOG=debug` is `--log
+  debug`, `DRAW_MSAA=off` is `--msaa off`, `DRAW_FRAME_TIMES=1` is
+  `--frame-times`, `DRAW_BACKEND=x11` is `--backend x11`,
+  `DRAW_SKIP_PREFLIGHT=1` is `--skip-preflight` and `DRAW_TABLET=off` is
+  `--tablet off`. A bad value or an unknown flag is refused with exit code 2
+  instead of being replaced by the default.
 - CI measures line coverage and fails when a module drops below its
   recorded value.
 - The menus have a new look, after the status bar: the tool strip is made of
