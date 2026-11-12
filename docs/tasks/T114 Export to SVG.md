@@ -44,6 +44,7 @@ Owner decisions are marked (owner); the spec step settles the rest in an ADR.
 - `src/shell/export.rs`, `src/shell/glyphs.rs` (glyph outlines)
 - `docs/features/PNG export.md`, `docs/features/Contest cheat sheet.md`, `README.md`
 - `tests/fuzz.rs`, `tests/` SVG goldens
+- `src/shell/app.rs`, `src/shell/input_map.rs`, `src/shell/render.rs`, `Cargo.toml`, `Cargo.lock` (owner added after the batch blocked on them; `ttf-parser` 0.25 as a direct dependency is approved, it is already in `Cargo.lock` as 0.25.1 — record it in an ADR)
 - this note, and new `ADR-T114-<n>` notes
 
 ## Subtasks (one commit each)
