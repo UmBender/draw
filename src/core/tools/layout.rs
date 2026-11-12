@@ -1742,6 +1742,242 @@ mod tests {
         }
     }
 
+    // ---- T121: self-loops and lanes ------------------------------------------
+
+    /// The polyline points of every stroke (the loops).
+    fn strokes(shapes: &[Shape]) -> Vec<Vec<Vec2>> {
+        shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Stroke { points, .. } => Some(points.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The box of every text block (the weights).
+    fn weight_boxes(shapes: &[Shape]) -> Vec<crate::core::geom::Aabb> {
+        shapes
+            .iter()
+            .filter(|shape| matches!(shape, Shape::Text { .. }))
+            .map(Shape::bounds)
+            .collect()
+    }
+
+    /// Distance from `p` to the infinite line through `a` and `b`.
+    fn line_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+        let d = (b - a) / (b - a).length();
+        let v = p - a;
+        (v.x * d.y - v.y * d.x).abs()
+    }
+
+    #[test]
+    fn parse_keeps_a_self_loop_apart_from_the_edges() {
+        // Act
+        let parsed = list("1-1\n2 2\n1 2");
+
+        // Assert
+        assert_eq!(parsed.loops().len(), 2);
+        assert_eq!(edges(&parsed), [(1, 2, false, None)]);
+        assert_eq!(parsed.loops()[0].from, parsed.loops()[0].to);
+    }
+
+    #[test]
+    fn parse_draws_a_repeated_self_loop_once() {
+        assert_eq!(list("1>1 1>1").loops().len(), 1);
+        assert_eq!(list("1 1 5\n1 1 5").loops().len(), 1);
+        assert_eq!(list("1 1 5\n1 1 7").loops().len(), 2);
+        assert_eq!(list("1>1 1-1").loops().len(), 2);
+    }
+
+    #[test]
+    fn loop_is_drawn_outside_its_node() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2\n1 1");
+
+        // Assert: one stroke, from the circle's outline round to it again.
+        let loops = strokes(&shapes);
+        assert_eq!(loops.len(), 1);
+        let node = centre(&shapes, 1);
+        let points = &loops[0];
+        let (first, last) = (points[0], points[points.len() - 1]);
+        let rim = RADIUS + WIDTH;
+        assert!(approx_eq(first.distance(node), rim, 0.1), "{first:?}");
+        for p in points {
+            assert!(p.distance(node) >= rim - 0.1, "{p:?} is inside the node");
+            assert!(p.distance(node) <= 3.0 * RADIUS, "{p:?} is far away");
+        }
+        assert!(
+            last.distance(node) <= rim + 0.1 + WIDTH,
+            "ends on the circle"
+        );
+    }
+
+    #[test]
+    fn loop_leaves_the_widest_gap_between_edges() {
+        // Arrange: node 1 is the root of a layered tree: its edge goes down.
+        let shapes = drawn("1 2\n1 1");
+
+        // Act
+        let loops = strokes(&shapes);
+        let above = mean(&loops[0]).y < centre(&shapes, 1).y;
+
+        // Assert: the loop is on the free side.
+        assert!(above, "the loop points into the edge");
+
+        // And on a ring, away from the other nodes.
+        let ring_shapes = drawn(&format!("{}\n3-3", ring(6)));
+        let middle = mean(&nodes(&ring_shapes).iter().map(|n| n.1).collect::<Vec<_>>());
+        let loop_mean = mean(&strokes(&ring_shapes)[0]);
+        let node = centre(&ring_shapes, 3);
+        assert!(loop_mean.distance(middle) > node.distance(middle));
+    }
+
+    #[test]
+    fn directed_loop_ends_in_an_arrow() {
+        // Act
+        let directed = drawn("1>1");
+        let plain = drawn("1-1");
+
+        // Assert
+        let arrows = |shapes: &[Shape]| {
+            shapes
+                .iter()
+                .filter(|shape| matches!(shape, Shape::Arrow { .. }))
+                .count()
+        };
+        assert_eq!(arrows(&directed), 1);
+        assert_eq!(arrows(&plain), 0);
+        assert_eq!(strokes(&plain).len(), 1);
+    }
+
+    #[test]
+    fn loop_weight_is_beyond_the_loop() {
+        // Act: a lone node, so the loop points up.
+        let shapes = drawn("1 1 7");
+
+        // Assert
+        let loops = strokes(&shapes);
+        let top = loops[0].iter().map(|p| p.y).fold(f32::MAX, f32::min);
+        let weights = weight_boxes(&shapes);
+        assert_eq!(weights.len(), 1);
+        assert!(weights[0].max.y <= top + 0.5, "{:?} vs {top}", weights[0]);
+    }
+
+    #[test]
+    fn loops_of_one_node_do_not_overlap() {
+        // Act
+        let shapes = drawn("1 1 5\n1 1 7");
+
+        // Assert: two loops, two weights, none on another.
+        assert_eq!(strokes(&shapes).len(), 2);
+        let weights = weight_boxes(&shapes);
+        assert_eq!(weights.len(), 2);
+        assert!(!weights[0].intersects(&weights[1]));
+        let outer = |points: &[Vec2]| points.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+        let loops = strokes(&shapes);
+        assert!(
+            (outer(&loops[0]) - outer(&loops[1])).abs() > WIDTH,
+            "the loops are the same"
+        );
+    }
+
+    #[test]
+    fn opposite_edges_are_drawn_on_two_lanes() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2\n2 1");
+
+        // Assert: two arrows, parallel, a lane apart, pointing opposite ways.
+        let arrows = segments(&shapes);
+        assert_eq!(arrows.len(), 2);
+        let ((a1, b1), (a2, b2)) = (arrows[0], arrows[1]);
+        let apart = line_distance(a2, a1, b1);
+        assert!(apart > 0.5 * RADIUS, "{apart}");
+        assert!(line_distance(b2, a1, b1) > 0.5 * RADIUS);
+        let (d1, d2) = (
+            (b1 - a1) / (b1 - a1).length(),
+            (b2 - a2) / (b2 - a2).length(),
+        );
+        assert!(d1.dot(d2) < -0.99, "not opposite: {d1:?} {d2:?}");
+    }
+
+    #[test]
+    fn weights_of_opposite_edges_do_not_overlap() {
+        for text in [
+            "dgraph:\n1 2 4\n2 1 2",
+            "dgraph:\n1 3 4\n3 1 2\n1 2 1",
+            "1 2 4\n2 1 2",
+            "dgraph:\n1 2 4\n1 2 5\n2 1 6",
+        ] {
+            // Act
+            let shapes = drawn(text);
+
+            // Assert
+            let weights = weight_boxes(&shapes);
+            for (i, weight) in weights.iter().enumerate() {
+                for other in &weights[i + 1..] {
+                    assert!(!weight.intersects(other), "{text}: {weight:?} {other:?}");
+                }
+                for (_, c) in nodes(&shapes) {
+                    assert!(!weight.contains(c), "{text}: {weight:?} over a node");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lone_edge_is_not_moved() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2");
+
+        // Assert: exactly between the circles' outlines, on the centres' line.
+        let (a, b) = segments(&shapes)[0];
+        let (c1, c2) = (centre(&shapes, 1), centre(&shapes, 2));
+        let reach = RADIUS + WIDTH;
+        assert!(approx_eq(a.distance(c1), reach, 1e-3));
+        assert!(approx_eq(b.distance(c2), reach, 1e-3));
+        assert!(line_distance(a, c1, c2) < 1e-3);
+        assert!(line_distance(b, c1, c2) < 1e-3);
+    }
+
+    #[test]
+    fn lanes_end_on_the_circles() {
+        // Act
+        let shapes = drawn("dgraph:\n1 2\n2 1\n1 2 5");
+
+        // Assert
+        let (c1, c2) = (centre(&shapes, 1), centre(&shapes, 2));
+        let reach = RADIUS + WIDTH;
+        for (a, b) in segments(&shapes) {
+            let near = |p: Vec2| p.distance(c1).min(p.distance(c2));
+            assert!(approx_eq(near(a), reach, 1e-2), "{a:?}");
+            assert!(approx_eq(near(b), reach, 1e-2), "{b:?}");
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn loops_and_lanes_layout_never_panics_and_stays_finite(
+            edges in prop::collection::vec((1_u32..6, 1_u32..6, any::<bool>(), 0_u8..3), 1..30),
+        ) {
+            // Arrange: loops, opposite and repeated edges all show up.
+            let text = edges
+                .iter()
+                .map(|(u, v, directed, weight)| {
+                    let weight = if *weight == 0 { String::new() } else { format!(" {weight}") };
+                    format!("{u}{}{v}{weight}", if *directed { ">" } else { "-" })
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            // Act
+            let shapes = drawn(&text);
+
+            // Assert
+            prop_assert!(shapes.iter().all(Shape::is_finite));
+        }
+    }
+
     // ---- T120: the side of a weight ------------------------------------------
 
     /// Where the weight's box centre lies relative to the edge's middle.
