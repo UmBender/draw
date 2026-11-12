@@ -28,7 +28,7 @@ A graph input draws every edge it lists: a self-loop (`1 1 12`) appears as a loo
 - **AC-1** — A self-loop is kept in a new list `EdgeList::loops` (never in `edges`, so the layout and the tree test do not change). Repeats with the same direction and weight are still dropped.
   Tests: `parse_keeps_a_self_loop_apart_from_the_edges`, `parse_draws_a_repeated_self_loop_once`.
 - **AC-2** — A loop is drawn outside its node, on the side with the most room between the other edges of that node (up if it has none), as a stroke that starts and ends on the circle; an arrow head ends it when the loop is directed. Its weight sits beyond the far side of the loop.
-  Tests: `loop_is_drawn_outside_its_node`, `loop_leaves_the_widest_gap_between_edges`, `directed_loop_ends_in_an_arrow`, `loop_weight_is_beyond_the_loop`, `loops_of_one_node_do_not_overlap`.
+  Tests: `loop_is_drawn_outside_its_node`, `loop_leaves_the_widest_gap_between_edges`, `directed_loop_ends_in_an_arrow`, `loop_weight_is_beyond_the_loop`, `loops_of_one_node_do_not_overlap` (they take the next widest gap).
 - **AC-3** — Edges between the same two nodes are drawn on parallel lanes, centred on the line between the nodes; each weight is on the outer side of its lane. A lone edge is drawn exactly as before.
   Tests: `opposite_edges_are_drawn_on_two_lanes`, `weights_of_opposite_edges_do_not_overlap`, `lone_edge_is_not_moved`, `lanes_end_on_the_circles`.
 - **AC-4** — No panic and every shape finite, whatever the input.

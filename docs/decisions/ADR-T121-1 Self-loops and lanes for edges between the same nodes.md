@@ -23,7 +23,7 @@ tags: [adr]
 ## Decision
 
 - A self-loop is **kept**, in `EdgeList::loops`, apart from `edges`: it is no edge for the tree test or the layers, so no layout changes. It is drawn for `graph:` and `dgraph:` alike (an undirected loop has no arrow head). A repeat with the same direction and weight is dropped, as before; a node named only by a loop still exists.
-- A loop is a stroke on a circle of `0.6` node radii, tangent-ish to its node (centre `1.24` radii out) so that it starts and ends on the node's outline. It points into the widest angular gap between the other edges of its node, up if there is none. A directed loop ends in an arrow head. Further loops on the same node are drawn larger, one step each, so they nest.
+- A loop is a stroke on a circle of `0.6` node radii whose centre is `0.4` loop radii beyond the node's outline, so it starts and ends on that outline. It points into the widest angular gap between the other edges of its node and the loops already drawn on it, up if there is none. A directed loop ends in an arrow head (its last four of 24 segments).
 - Its weight is placed beyond the far side of the loop, in line with the direction it points.
 - Edges between the same two nodes (either direction) share the line as **lanes**: `k` lanes are spaced by `1.6 r / max(k − 1, 2)`, centred on the line, each parallel to it, in the order the edges were written. A lone edge has one lane at offset `0` and is drawn exactly as before.
 - On a lane off the centre the weight is on the outer side of its lane; the centre lane keeps the upper-right rule of [[ADR-T87-1 Graph from an edge list key and layout rules]] and T120.
