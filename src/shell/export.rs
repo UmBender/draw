@@ -30,6 +30,8 @@ pub enum ExportError {
     Pixels,
     /// The PNG encoder failed.
     Encode(png::EncodingError),
+    /// The SVG could not be built or its thread not started.
+    Fonts(String),
     /// The file could not be created or written.
     Write {
         /// The file.
@@ -45,6 +47,7 @@ impl fmt::Display for ExportError {
             Self::NoHome => f.write_str("HOME is not set"),
             Self::Pixels => f.write_str("the view's pixels could not be read"),
             Self::Encode(err) => write!(f, "cannot encode the PNG: {err}"),
+            Self::Fonts(message) => write!(f, "cannot build the SVG: {message}"),
             Self::Write { path, source } => write!(f, "{}: {source}", path.display()),
         }
     }
@@ -53,7 +56,7 @@ impl fmt::Display for ExportError {
 impl Error for ExportError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::NoHome | Self::Pixels => None,
+            Self::NoHome | Self::Pixels | Self::Fonts(_) => None,
             Self::Encode(err) => Some(err),
             Self::Write { source, .. } => Some(source),
         }
@@ -143,14 +146,19 @@ pub fn home_dir(value: Option<&OsStr>) -> Result<PathBuf, ExportError> {
 /// in `home`, with `-<attempt>` before the extension unless `attempt` is 0.
 #[must_use]
 pub fn export_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
+    stamped_path(home, unix_secs, attempt, "png")
+}
+
+/// [`export_path`] with the extension `extension`.
+fn stamped_path(home: &Path, unix_secs: u64, attempt: u32, extension: &str) -> PathBuf {
     // `20261109T143005Z` to `20261109-143005`.
     let stamp = diag::file::utc_stamp(unix_secs)
         .trim_end_matches('Z')
         .replacen('T', "-", 1);
     let name = if attempt == 0 {
-        format!("draw-{stamp}.png")
+        format!("draw-{stamp}.{extension}")
     } else {
-        format!("draw-{stamp}-{attempt}.png")
+        format!("draw-{stamp}-{attempt}.{extension}")
     };
     home.join(name)
 }
@@ -162,8 +170,18 @@ pub fn export_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
 ///
 /// [`ExportError::Write`] if no file could be created or written.
 pub fn write_new(home: &Path, unix_secs: u64, bytes: &[u8]) -> Result<PathBuf, ExportError> {
+    write_new_as(home, unix_secs, "png", bytes)
+}
+
+/// [`write_new`] for files with the extension `extension`.
+fn write_new_as(
+    home: &Path,
+    unix_secs: u64,
+    extension: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, ExportError> {
     for attempt in 0..MAX_ATTEMPTS {
-        let path = export_path(home, unix_secs, attempt);
+        let path = stamped_path(home, unix_secs, attempt, extension);
         match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(mut file) => {
                 return match file.write_all(bytes) {
@@ -180,7 +198,7 @@ pub fn write_new(home: &Path, unix_secs: u64, bytes: &[u8]) -> Result<PathBuf, E
         }
     }
     Err(ExportError::Write {
-        path: export_path(home, unix_secs, MAX_ATTEMPTS),
+        path: stamped_path(home, unix_secs, MAX_ATTEMPTS, extension),
         source: ErrorKind::AlreadyExists.into(),
     })
 }
@@ -200,6 +218,54 @@ pub fn save(
     let home = home_dir(home)?;
     let bytes = encode_png(size.0, size.1, rgba)?;
     write_new(&home, unix_secs, &bytes)
+}
+
+/// Where an SVG export taken at `unix_secs` goes: as [`export_path`] with
+/// the extension `.svg`.
+#[must_use]
+pub fn svg_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
+    stamped_path(home, unix_secs, attempt, "svg")
+}
+
+/// Writes `svg` to a new [`svg_path`] in the directory named by `home`, the
+/// value of `HOME`, never replacing a file: the text goes to a temporary
+/// file first, so the name never holds a partial file.
+///
+/// # Errors
+///
+/// As [`home_dir`] and [`write_new`].
+pub fn save_svg(svg: &str, home: Option<&OsStr>, unix_secs: u64) -> Result<PathBuf, ExportError> {
+    let home = home_dir(home)?;
+    let temp = home.join(format!(".draw-{}-{unix_secs}.svg.tmp", std::process::id()));
+    if std::fs::write(&temp, svg).is_err() {
+        // No room for a second copy, or no temporary files: write in place.
+        let _ = std::fs::remove_file(&temp);
+        return write_new_as(&home, unix_secs, "svg", svg.as_bytes());
+    }
+    let mut result = None;
+    for attempt in 0..MAX_ATTEMPTS {
+        let path = svg_path(&home, unix_secs, attempt);
+        match std::fs::hard_link(&temp, &path) {
+            Ok(()) => {
+                result = Some(Ok(path));
+                break;
+            }
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {}
+            // A file system without links: write in place.
+            Err(_) => break,
+        }
+    }
+    let _ = std::fs::remove_file(&temp);
+    result.unwrap_or_else(|| write_new_as(&home, unix_secs, "svg", svg.as_bytes()))
+}
+
+/// The diagnostics log's level and line for the outcome of an SVG export.
+#[must_use]
+pub fn svg_log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
+    match result {
+        Ok(path) => (Level::Info, format!("SVG exported to {}", path.display())),
+        Err(err) => (Level::Error, format!("SVG not exported: {err}")),
+    }
 }
 
 /// The diagnostics log's level and line for the outcome of an export.
@@ -391,6 +457,79 @@ mod tests {
         // Assert
         let bytes = std::fs::read(&path).unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(decode(&bytes), (3, 2, rgba));
+    }
+
+    // ---- T114 SVG ------------------------------------------------------------
+
+    #[test]
+    fn svg_path_uses_the_svg_extension_and_the_attempt_suffix() {
+        assert_eq!(
+            svg_path(Path::new("/h"), 1_794_234_605, 0),
+            Path::new("/h/draw-20261109-143005.svg")
+        );
+        assert_eq!(
+            svg_path(Path::new("/h"), 0, 2),
+            Path::new("/h/draw-19700101-000000-2.svg")
+        );
+    }
+
+    #[test]
+    fn save_svg_writes_the_text_and_leaves_no_partial_file() {
+        // Arrange
+        let dir = temp_dir("svg");
+
+        // Act
+        let path =
+            save_svg("<svg/>\n", Some(dir.as_os_str()), 0).unwrap_or_else(|err| panic!("{err}"));
+
+        // Assert
+        assert_eq!(
+            std::fs::read_to_string(&path).ok().as_deref(),
+            Some("<svg/>\n")
+        );
+        assert_eq!(files_in(&dir), ["draw-19700101-000000.svg"]);
+    }
+
+    #[test]
+    fn save_svg_never_replaces_a_file() {
+        // Arrange
+        let dir = temp_dir("svg-twice");
+
+        // Act
+        let first = save_svg("one", Some(dir.as_os_str()), 0).unwrap_or_else(|err| panic!("{err}"));
+        let second =
+            save_svg("two", Some(dir.as_os_str()), 0).unwrap_or_else(|err| panic!("{err}"));
+
+        // Assert
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read_to_string(&first).ok().as_deref(), Some("one"));
+        assert_eq!(
+            std::fs::read_to_string(&second).ok().as_deref(),
+            Some("two")
+        );
+        assert_eq!(files_in(&dir).len(), 2);
+    }
+
+    #[test]
+    fn save_svg_without_home_is_an_error() {
+        let result = save_svg("<svg/>", None, 0);
+
+        assert!(matches!(result, Err(ExportError::NoHome)), "{result:?}");
+    }
+
+    #[test]
+    fn svg_log_line_names_the_file_or_the_reason() {
+        let ok = svg_log_line(&Ok(PathBuf::from("/h/draw-1.svg")));
+        let err = svg_log_line(&Err(ExportError::NoHome));
+
+        assert_eq!(
+            ok,
+            (Level::Info, "SVG exported to /h/draw-1.svg".to_owned())
+        );
+        assert_eq!(
+            err,
+            (Level::Error, "SVG not exported: HOME is not set".to_owned())
+        );
     }
 
     #[test]

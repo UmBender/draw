@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="320.5" height="230.5" viewBox="-25.5 -25.5 320.5 230.5">
+<defs>
+<path id="g0" d="M182 0 L425 -662 L88 -662 L88 -735 L512 -735 L512 -662 L269 0 L182 0 Z"/>
+<path id="g1" d="M289 0 L289 -646 L154 -539 L107 -591 L289 -735 L371 -735 L371 0 L289 0 Z"/>
+<path id="g2" d="M88 0 L88 -74 L347 -371 Q362 -390 378 -408.5 Q394 -427 406.5 -448 Q419 -469 426 -492.5 Q433 -516 433 -541 Q433 -567 425 -592.5 Q417 -618 398 -636 Q379 -654 353 -661.5 Q327 -669 301 -669 Q277 -669 252.5 -663.5 Q228 -658 209 -643.5 Q190 -629 179.5 -606 Q169 -583 169 -559 L169 -555 L86 -555 L86 -561 Q86 -588 93.5 -613.5 Q101 -639 115.5 -661 Q130 -683 151.5 -699.5 Q173 -716 197.5 -726 Q222 -736 248 -739.5 Q274 -743 301 -743 Q329 -743 357 -738.5 Q385 -734 410.5 -722.5 Q436 -711 457 -692 Q478 -673 491.5 -648.5 Q505 -624 510.5 -596.5 Q516 -569 516 -541 Q516 -510 508 -480 Q500 -450 485 -423.5 Q470 -397 450.5 -373 Q431 -349 411 -326 L410 -325 Q410 -324 409.5 -324 Q409 -324 409 -323 L192 -73 L512 -73 L512 0 L88 0 Z"/>
+</defs>
+<rect x="-25.5" y="-25.5" width="320.5" height="230.5" fill="#181616"/>
+<polyline points="0,0 20,12.5 45,8 60,30" fill="none" stroke="#c5c9c5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="80" y1="0" x2="180" y2="40" stroke="#8aa86e" stroke-width="2" stroke-linecap="round"/>
+<line x1="80" y1="60" x2="184" y2="60" stroke="#7fa8bc" stroke-width="4" stroke-linecap="round"/>
+<polygon points="200,60 184,68 184,52" fill="#7fa8bc"/>
+<rect x="0" y="100" width="120" height="80" fill="#d16961" stroke="#c5c9c5" stroke-width="2"/>
+<use xlink:href="#g0" transform="translate(45.6 157.64) scale(0.048)" fill="#181616"/>
+<ellipse cx="210" cy="140" rx="60" ry="40" fill="none" stroke="#ceb680" stroke-width="2"/>
+<use xlink:href="#g1" transform="translate(189.64 152.61) scale(0.03394)" fill="#ceb680"/>
+<use xlink:href="#g2" transform="translate(210 152.61) scale(0.03394)" fill="#ceb680"/>
+</svg>

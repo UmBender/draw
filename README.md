@@ -243,7 +243,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | Wheel | Zoom at cursor | `0` | Reset view |
 | Middle drag, `Space`+drag | Pan | `F` | Fit to content |
 | `Tab` | Toolbar on / off | `Ctrl+E` | Export the view to PNG in `~` |
-| Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | | |
+| Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | `Ctrl+Shift+E` | Export the whole drawing to SVG in `~` |
 | `Space` held, middle drag | Minimap in the corner | `Space`+click or drag in the minimap | Jump there |
 | `Ctrl+S` | Save to a `.draw` file | | |
 
@@ -494,7 +494,8 @@ patched copy of its window library for this (`vendor/miniquad`).
   `Ctrl+S` creates it. There is no file dialog, no undo history in the
   file, and files from newer versions or damaged ones are refused (never
   overwritten). Later versions keep reading today's files. `Ctrl+E`
-  exports the view to a PNG. Besides that there is an autosave
+  exports the view to a PNG and `Ctrl+Shift+E` the whole drawing to an
+  SVG. Besides that there is an autosave
   for crashes: `draw --recover` brings back the last one, and
   `draw --recover prev` the one before. It is written at most every 30 s,
   on input after a change, to the state directory

@@ -211,6 +211,10 @@ impl Page {
         }
     }
 }
+/// A request the shell collects once (ADR-T114-2): kept apart from the
+/// editor's own flags.
+#[derive(Debug, Clone, Copy, Default)]
+struct SvgAsk(bool);
 
 /// All editor state: document, history, view, tools and settings.
 #[derive(Debug, Clone)]
@@ -258,6 +262,9 @@ pub struct Editor {
     /// `Ctrl+E` was pressed and the shell has not collected it yet
     /// (ADR-T92-2). Not saved state: the shell collects it every frame.
     export_asked: bool,
+    /// `Ctrl+Shift+E` was pressed and the shell has not collected it yet
+    /// (ADR-T114-2). Not saved state.
+    svg_export_asked: SvgAsk,
     /// The content bounds the minimap shows and the document revision they
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
@@ -511,6 +518,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            svg_export_asked: SvgAsk::default(),
             minimap_content: None,
             palette: None,
             save_asked: false,
@@ -546,6 +554,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
+            svg_export_asked: SvgAsk::default(),
             minimap_content: None,
             palette: None,
             save_asked: false,
@@ -1094,7 +1103,8 @@ impl Editor {
     ///
     /// An open text block is committed first, except that
     /// [`Command::Undo`] cancels it instead (ADR-T29-2) and
-    /// [`Command::ExportView`] leaves it alone (ADR-T92-2). Nothing runs
+    /// [`Command::ExportView`] and [`Command::ExportSvg`] leave it alone
+    /// (ADR-T92-2, ADR-T114-2). Nothing runs
     /// under the open command palette (ADR-T111-1).
     pub fn apply(&mut self, command: Command) -> bool {
         if self.palette.is_some() || self.sheet.is_some() {
@@ -1104,7 +1114,7 @@ impl Editor {
             if command == Command::Undo {
                 return self.cancel_text();
             }
-            if command == Command::ExportView {
+            if matches!(command, Command::ExportView | Command::ExportSvg) {
                 return false;
             }
             let committed = self.finish_text();
@@ -1210,6 +1220,7 @@ impl Editor {
                 self.save_asked = true;
                 false
             }
+            Command::ExportSvg => self.ask_svg_export(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -1481,6 +1492,19 @@ impl Editor {
     #[must_use]
     pub fn sheet(&self) -> Option<&Sheet> {
         self.sheet.as_ref()
+    }
+
+    /// Records an SVG export request if the drawing may be exported now
+    /// (no open text block, no gesture); never needs a redraw.
+    fn ask_svg_export(&mut self) -> bool {
+        self.svg_export_asked.0 |= self.can_export();
+        false
+    }
+
+    /// Whether an SVG export was asked for since the last call
+    /// (ADR-T114-2).
+    pub fn take_svg_export_request(&mut self) -> bool {
+        std::mem::take(&mut self.svg_export_asked).0
     }
 
     /// The open command palette, if any (ADR-T111-1).
@@ -5887,6 +5911,60 @@ mod tests {
         assert!(idle.can_export());
         assert!(!drawing.can_export());
         assert!(!typing.can_export());
+    }
+
+    // ---- T114 export to SVG -------------------------------------------------
+
+    #[test]
+    fn export_svg_when_idle_asks_once_and_leaves_the_png_request_alone() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = key_with(&mut ed, Key::E, CTRL_SHIFT);
+
+        // Assert
+        assert!(!redraw);
+        assert_eq!(ed, before, "nothing but the request changes");
+        assert!(!ed.take_export_request(), "not a PNG export");
+        assert!(ed.take_svg_export_request());
+        assert!(!ed.take_svg_export_request(), "a request is answered once");
+    }
+
+    #[test]
+    fn export_svg_is_not_requested_by_default() {
+        assert!(!Editor::new().take_svg_export_request());
+    }
+
+    #[test]
+    fn export_svg_during_text_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "hi");
+
+        // Act
+        let redraw = ed.apply(Command::ExportSvg);
+
+        // Assert
+        assert!(!redraw);
+        assert!(!ed.take_svg_export_request());
+        assert!(ed.text_edit().is_some(), "the block stays open");
+    }
+
+    #[test]
+    fn export_svg_during_gesture_is_ignored() {
+        // Arrange
+        let mut ed = Editor::new();
+        down(&mut ed, PointerButton::Left, 10.0, 10.0);
+        move_to(&mut ed, 20.0, 20.0);
+
+        // Act
+        ed.apply(Command::ExportSvg);
+
+        // Assert
+        assert!(!ed.take_svg_export_request());
+        assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
     // ---- T35 pressure -------------------------------------------------------

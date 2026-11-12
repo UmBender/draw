@@ -158,6 +158,8 @@ pub enum Command {
     ExportView,
     /// Ask the shell to write the document to its `.draw` file (ADR-T108-1).
     SaveFile,
+    /// Ask the shell to write the whole drawing to an SVG file (ADR-T114-2).
+    ExportSvg,
     /// Turn smart snapping (round, sizes, alignment) on or off.
     ToggleSmartSnap,
     /// Turn snapping to the world grid on or off.

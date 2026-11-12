@@ -18,14 +18,19 @@ use draw::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use draw::core::keymap::BINDINGS;
 use draw::core::laser::{EditorState, FADE_SECS, Laser, MAX_POINTS, Routed};
 use draw::core::minimap;
+use draw::core::palette::Rgba;
 use draw::core::pressure::{MAX_WIDTH_FACTOR, MIN_WIDTH_FACTOR};
 use draw::core::shape::{GRID_MAX_CELLS, Shape, TextSlot};
 use draw::core::smoothing::{Smoother, SmoothingParams, simplify_rdp};
 use draw::core::snapshot::Snapshot;
+use draw::core::svg::{is_well_formed, to_svg};
 use draw::core::tap::PEN_TAP_SLOP_PX;
 use draw::core::tex;
 use draw::core::tex::{MACRO_SIZE, MacroTable, expand_macros};
 use draw::core::text_layout::{set_macros, typeset};
+use draw::shell::app::{MATH_FONT, TEXT_FONT};
+use draw::shell::glyphs::FontOutlines;
+use draw::theme;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
@@ -2070,6 +2075,26 @@ proptest! {
         // Assert
         prop_assert!(!redraw, "an export needs no redraw");
         prop_assert!(editor == before, "the export changed the editor");
+    }
+
+    #[test]
+    fn any_document_exports_to_svg(session in arb_session()) {
+        // Arrange
+        let editor = run_session_on(Editor::new(), &session)?;
+        let Ok(outlines) = FontOutlines::new(TEXT_FONT, MATH_FONT) else {
+            return Err(TestCaseError::fail("the embedded fonts do not parse"));
+        };
+
+        // Act: no panic, and a file any viewer reads.
+        let svg = to_svg(
+            editor.document().shapes().map(|(_, shape)| shape),
+            Rgba::from_hex(theme::CANVAS),
+            &outlines,
+        );
+
+        // Assert
+        prop_assert!(is_well_formed(&svg), "not well formed");
+        prop_assert!(!svg.contains("NaN") && !svg.contains("inf"), "a number is not finite");
     }
 
     #[test]

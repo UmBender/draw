@@ -31,6 +31,7 @@ use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -44,6 +45,7 @@ use crate::core::laser::{self, EditorState, Laser, Routed, Segment};
 use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::{Rgba, palette};
 use crate::core::snapshot::Snapshot;
+use crate::core::svg::to_svg;
 use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::autosave::{self, Autosaver, Launch};
@@ -53,7 +55,7 @@ use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
 use crate::shell::file::{self, Opened};
-use crate::shell::glyphs::GlyphAtlas;
+use crate::shell::glyphs::{FontOutlines, GlyphAtlas};
 use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
     wants_grid_clipboard,
@@ -620,6 +622,7 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
     // Inert unless the end-to-end suite sets its variables (ADR-T75-1).
     let mut hooks = e2e::Hooks::from_env();
     let mut export_pending = false;
+    let mut svg_writes: Vec<mpsc::Receiver<Result<PathBuf, ExportError>>> = Vec::new();
     let mut laser = LaserLayer::new();
     loop {
         let viewport = Vec2::new(screen_width(), screen_height());
@@ -669,6 +672,10 @@ pub async fn run(launch: Launch, file_arg: Option<PathBuf>) {
             // Never a layer left from an older camera (ADR-T92-2).
             frame.rerender = true;
         }
+        if editor.take_svg_export_request() {
+            svg_writes.push(export_svg(&editor));
+        }
+        log_finished_svg_writes(&mut svg_writes);
         dirty |= laser.tick();
         if editor.take_save_request() {
             save_file(&editor, &mut save_path);
@@ -795,6 +802,59 @@ fn export_view(frame: &CachedFrame) {
     let (level, line) = export::log_line(&result);
     eprintln!("draw: {line}");
     diag::log(level, &line);
+}
+
+/// Builds the SVG of the whole drawing now and writes it to a new file in
+/// the home directory on a thread, so the frame never waits for the disk
+/// (ADR-T114-2). The receiver gets the outcome.
+fn export_svg(editor: &Editor) -> mpsc::Receiver<Result<PathBuf, ExportError>> {
+    let (sender, receiver) = mpsc::channel();
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let home = std::env::var_os("HOME");
+    let svg = FontOutlines::new(TEXT_FONT, MATH_FONT).map(|outlines| {
+        to_svg(
+            editor.document().shapes().map(|(_, shape)| shape),
+            Rgba::from_hex(theme::CANVAS),
+            &outlines,
+        )
+    });
+    let spawned = std::thread::Builder::new()
+        .name("svg-export".to_owned())
+        .spawn({
+            let sender = sender.clone();
+            move || {
+                let result = match svg {
+                    Ok(svg) => export::save_svg(&svg, home.as_deref(), unix),
+                    Err(message) => Err(ExportError::Fonts(message)),
+                };
+                // The loop may be gone: nobody to tell.
+                let _ = sender.send(result);
+            }
+        });
+    if let Err(err) = spawned {
+        let _ = sender.send(Err(ExportError::Fonts(format!("no thread: {err}"))));
+    }
+    receiver
+}
+
+/// Logs the outcome of every SVG write that has finished, and keeps the
+/// loop awake while one is still running.
+fn log_finished_svg_writes(writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>) {
+    writes.retain(|receiver| match receiver.try_recv() {
+        Ok(result) => {
+            let (level, line) = export::svg_log_line(&result);
+            eprintln!("draw: {line}");
+            diag::log(level, &line);
+            false
+        }
+        Err(mpsc::TryRecvError::Empty) => true,
+        Err(mpsc::TryRecvError::Disconnected) => false,
+    });
+    if !writes.is_empty() {
+        schedule_update();
+    }
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is

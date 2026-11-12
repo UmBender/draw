@@ -15,6 +15,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use macroquad::texture::{FilterMode, Image, Texture2D};
 
 use crate::core::geom::Vec2;
+use crate::core::svg::{Outline, Outlines, number};
 use crate::core::tex::Face;
 
 /// Side of one atlas page in texels.
@@ -495,6 +496,94 @@ pub fn raster_px(raster: u16, dpi: f32) -> u16 {
 #[must_use]
 pub fn glyph_scale(px: f32, raster_px: u16) -> f32 {
     px / f32::from(raster_px.max(1))
+}
+
+/// Glyph outlines of the embedded text and math fonts, read with
+/// ttf-parser for the SVG export (ADR-T114-1, ADR-T114-2).
+pub struct FontOutlines<'a> {
+    /// The text font.
+    text: ttf_parser::Face<'a>,
+    /// The math font; the text font stands in without it.
+    math: ttf_parser::Face<'a>,
+}
+
+impl<'a> FontOutlines<'a> {
+    /// The outlines of the fonts in `text` and `math`.
+    ///
+    /// # Errors
+    ///
+    /// The parser's message if either font cannot be parsed.
+    pub fn new(text: &'a [u8], math: &'a [u8]) -> Result<Self, String> {
+        let parse = |bytes| ttf_parser::Face::parse(bytes, 0).map_err(|err| err.to_string());
+        Ok(Self {
+            text: parse(text)?,
+            math: parse(math)?,
+        })
+    }
+}
+
+/// Collects an outline as SVG path data with y flipped (font units are y
+/// up, SVG is y down).
+struct PathBuilder(String);
+
+impl PathBuilder {
+    /// Appends command `op` with the points `coords`, as `x y` pairs.
+    fn push(&mut self, op: char, coords: &[(f32, f32)]) {
+        if !self.0.is_empty() {
+            self.0.push(' ');
+        }
+        self.0.push(op);
+        for (i, (x, y)) in coords.iter().enumerate() {
+            if i > 0 {
+                self.0.push(' ');
+            }
+            self.0.push_str(&number(*x));
+            self.0.push(' ');
+            self.0.push_str(&number(-*y));
+        }
+    }
+}
+
+impl ttf_parser::OutlineBuilder for PathBuilder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.push('M', &[(x, y)]);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.push('L', &[(x, y)]);
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.push('Q', &[(x1, y1), (x, y)]);
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.push('C', &[(x1, y1), (x2, y2), (x, y)]);
+    }
+
+    fn close(&mut self) {
+        self.push('Z', &[]);
+    }
+}
+
+impl Outlines for FontOutlines<'_> {
+    fn outline(&self, face: Face, ch: char) -> Option<Outline> {
+        let font = match face {
+            Face::Text => &self.text,
+            Face::Math => &self.math,
+        };
+        let id = font.glyph_index(ch)?;
+        let mut builder = PathBuilder(String::new());
+        let bounds = font.outline_glyph(id, &mut builder)?;
+        let units = f32::from(font.units_per_em());
+        let advance = f32::from(font.glyph_hor_advance(id).unwrap_or(0));
+        (units > 0.0 && !builder.0.is_empty()).then(|| Outline {
+            path: builder.0,
+            units_per_em: units,
+            advance,
+            ink_top: f32::from(bounds.y_max),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -979,5 +1068,76 @@ mod tests {
             assert!(approx_eq(b.ymin / px, m.y_min, tol), "{ch:?}");
             assert!(approx_eq((b.ymin + b.height) / px, m.y_max, tol), "{ch:?}");
         }
+    }
+
+    // ---- T114 outlines -------------------------------------------------
+
+    fn outlines() -> FontOutlines<'static> {
+        FontOutlines::new(TEXT_FONT, MATH_FONT).unwrap_or_else(|err| panic!("{err}"))
+    }
+
+    #[test]
+    fn outline_of_a_letter_is_a_closed_path_in_font_units() {
+        let outline = outlines().outline(Face::Text, 'a');
+
+        let Some(outline) = outline else {
+            panic!("the text font has an 'a'");
+        };
+        assert!(outline.path.starts_with('M'), "{}", outline.path);
+        assert!(outline.path.contains('Z'), "{}", outline.path);
+        assert!(outline.units_per_em > 0.0);
+        assert!(approx_eq(outline.advance / outline.units_per_em, 0.6, 1e-3));
+        assert!(outline.ink_top > 0.0);
+    }
+
+    #[test]
+    fn outline_path_is_y_down_so_ink_sits_above_the_baseline() {
+        let Some(outline) = outlines().outline(Face::Text, 'l') else {
+            panic!("the text font has an 'l'");
+        };
+
+        // The tallest ink point has the most negative y.
+        let lowest = outline
+            .path
+            .split(|c: char| !(c.is_ascii_digit() || c == '-' || c == '.'))
+            .filter_map(|n| n.parse::<f32>().ok())
+            .fold(f32::MAX, f32::min);
+        assert!(lowest < 0.0, "{}", outline.path);
+    }
+
+    #[test]
+    fn outline_of_a_space_or_a_missing_character_is_none() {
+        let outlines = outlines();
+
+        assert!(outlines.outline(Face::Text, ' ').is_none());
+        assert!(outlines.outline(Face::Text, '\u{10FFFF}').is_none());
+    }
+
+    #[test]
+    fn outline_of_a_math_character_comes_from_the_math_font() {
+        let outlines = outlines();
+        let ch = '\u{2211}';
+        assert!(math_metrics::get(ch).is_some(), "the subset has a sum sign");
+
+        let math = outlines.outline(Face::Math, ch);
+
+        assert!(math.is_some_and(|o| !o.path.is_empty()));
+    }
+
+    #[test]
+    fn outline_numbers_are_finite() {
+        let outlines = outlines();
+        for (ch, _) in math_metrics::TABLE.iter().take(40) {
+            if let Some(o) = outlines.outline(Face::Math, *ch) {
+                assert!(!o.path.contains("NaN") && !o.path.contains("inf"), "{ch:?}");
+                assert!(o.units_per_em.is_finite() && o.advance.is_finite());
+            }
+        }
+    }
+
+    #[test]
+    fn font_outlines_new_rejects_garbage() {
+        assert!(FontOutlines::new(b"not a font", MATH_FONT).is_err());
+        assert!(FontOutlines::new(TEXT_FONT, b"not a font").is_err());
     }
 }

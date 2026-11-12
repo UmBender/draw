@@ -466,8 +466,12 @@ impl EventHandler for Collector {
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
-            // Holding the chord writes one file (ADR-T92-2).
-            if !repeat || keymap::resolve(key, mods) != Some(Command::ExportView) {
+            // Holding the chord writes one file (ADR-T92-2, ADR-T114-2).
+            let exports = matches!(
+                keymap::resolve(key, mods),
+                Some(Command::ExportView | Command::ExportSvg)
+            );
+            if !repeat || !exports {
                 self.events.push(InputEvent::KeyDown { key, mods });
             }
         }
@@ -680,6 +684,25 @@ mod tests {
     }
 
     // AC-1b
+
+    #[test]
+    fn svg_export_chord_repeat_is_dropped() {
+        // Arrange
+        let mut c = Collector::new();
+        let mods = KeyMods {
+            ctrl: true,
+            shift: true,
+            ..NO_MODS
+        };
+
+        // Act: a press, then what holding the keys sends.
+        c.key_down_event(KeyCode::E, mods, false);
+        c.key_down_event(KeyCode::E, mods, true);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(events.len(), 1, "{events:?}");
+    }
 
     #[test]
     fn export_chord_repeat_is_dropped() {

@@ -307,6 +307,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::SaveFile,
         "Save the drawing to a .draw file",
     ),
+    (
+        KeyChord::ctrl_shift(Key::E),
+        Command::ExportSvg,
+        "Export the drawing to SVG",
+    ),
     (KeyChord::alt(Key::Digit1), Command::GoToPage(0), "Page 1"),
     (KeyChord::alt(Key::Digit2), Command::GoToPage(1), "Page 2"),
     (KeyChord::alt(Key::Digit3), Command::GoToPage(2), "Page 3"),
@@ -453,6 +458,7 @@ pub fn topic_of(command: Command) -> Topic {
         | Command::GoToPage(_)
         | Command::ToggleToolbar
         | Command::ExportView
+        | Command::ExportSvg
         | Command::SaveFile => Topic::View,
         Command::ToggleSmartSnap
         | Command::ToggleGridSnap
@@ -638,6 +644,7 @@ mod tests {
             (Key::Tab, NONE, Command::ToggleToolbar),
             (Key::E, CTRL, Command::ExportView),
             (Key::S, CTRL, Command::SaveFile),
+            (Key::E, CTRL_SHIFT, Command::ExportSvg),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),
@@ -710,7 +717,12 @@ mod tests {
     fn resolve_ctrl_e_exports_the_view() {
         assert_eq!(resolve(Key::E, CTRL), Some(Command::ExportView));
         assert_eq!(resolve(Key::E, NONE), Some(Command::SetTool(Tool::Eraser)));
-        assert_eq!(resolve(Key::E, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn resolve_ctrl_shift_e_exports_svg() {
+        assert_eq!(resolve(Key::E, CTRL_SHIFT), Some(Command::ExportSvg));
+        assert_eq!(resolve(Key::E, SHIFT), None);
     }
 
     #[test]
