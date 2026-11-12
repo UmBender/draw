@@ -1,7 +1,7 @@
 ---
 id: T138
 title: Model-based tests of the automaton
-status: in-progress
+status: review
 wave: 68
 branch: task/T138-model-based-tests-of-the-automaton
 depends_on: [T135, T136, T137]
@@ -50,9 +50,10 @@ Location (owner's batch decision): the repo-level `tests/model.rs`, next to `tes
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T138): specify the model-based tests`
-- [ ] tests — `test(T138): add the model and the exploration`
-- [ ] fixes — one `fix(T138)` commit per bug found, each with its regression test
+- [x] tests — `test(T138): add the model and the exploration`
+- [x] fixes — none needed: no bug found (model and exploration pass)
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — UNATTENDED CHOICE: tests live in the repo-level `tests/model.rs` (where the fuzz suite runs), not `crates/draw-core/tests/`; no `[[test]]` entry needed. The model tracks shape ids per page, selection and undo history; early mismatches were model imprecision (a draw keeps the selection; undo keeps the selected shapes that still exist), not machine bugs. Exploration depth 3 over 20 actions (tools, pages, drag, Ctrl+A, Delete, Undo, Escape, palette, sheet). No bug found, no `fix` commits. The 20000-case run (`PROPTEST_CASES=20000 cargo test --release --test model`) was refused by the batch permissions: the owner should run it once; `scripts/check.sh --fuzz` only runs `--test fuzz` (not owned here to change).
