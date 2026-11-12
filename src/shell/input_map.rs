@@ -466,12 +466,13 @@ impl EventHandler for Collector {
         self.held.set(code, true);
         if let Some(key) = map_key(code) {
             let mods = map_mods(mods);
-            // Holding the chord writes one file (ADR-T92-2, ADR-T114-2).
-            let exports = matches!(
+            // Holding the chord writes one file (ADR-T92-2, ADR-T114-2,
+            // ADR-T115-1).
+            let once = matches!(
                 keymap::resolve(key, mods),
-                Some(Command::ExportView | Command::ExportSvg)
+                Some(Command::ExportView | Command::ExportSvg | Command::CopyImage)
             );
-            if !repeat || !exports {
+            if !repeat || !once {
                 self.events.push(InputEvent::KeyDown { key, mods });
             }
         }
@@ -727,6 +728,25 @@ mod tests {
                 mods: CTRL,
             }]
         );
+    }
+
+    #[test]
+    fn copy_image_chord_repeat_is_dropped() {
+        // Arrange
+        let mut c = Collector::new();
+        let mods = KeyMods {
+            ctrl: true,
+            shift: true,
+            ..NO_MODS
+        };
+
+        // Act
+        c.key_down_event(KeyCode::C, mods, false);
+        c.key_down_event(KeyCode::C, mods, true);
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(events.len(), 1);
     }
 
     #[test]

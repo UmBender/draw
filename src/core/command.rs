@@ -160,6 +160,9 @@ pub enum Command {
     SaveFile,
     /// Ask the shell to write the whole drawing to an SVG file (ADR-T114-2).
     ExportSvg,
+    /// Ask the shell to put the selection on the clipboard as a PNG
+    /// (ADR-T115-1).
+    CopyImage,
     /// Turn smart snapping (round, sizes, alignment) on or off.
     ToggleSmartSnap,
     /// Turn snapping to the world grid on or off.

@@ -859,6 +859,10 @@ declare_atoms!(
     clipboard: "CLIPBOARD",
     xsel_data: "XSEL_DATA",
     incr: "INCR",
+    // draw patch (ADR-T115-1): image on the clipboard
+    image_png: "image/png",
+    targets: "TARGETS",
+    atom: "ATOM",
     // drag_n_drop related
     xdnd_action_copy: "XdndActionCopy",
     xdnd_aware: "XdndAware",

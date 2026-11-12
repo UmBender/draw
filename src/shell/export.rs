@@ -277,10 +277,54 @@ pub fn log_line(result: &Result<PathBuf, ExportError>) -> (Level, String) {
     }
 }
 
+/// The diagnostics log's level and line for the outcome of copying the
+/// selection as an image of `size`, which `scaled_down` says the size limit
+/// shrank (ADR-T115-1).
+#[must_use]
+pub fn copy_log_line(
+    result: &Result<(), ExportError>,
+    size: (u32, u32),
+    scaled_down: bool,
+) -> (Level, String) {
+    match result {
+        Ok(()) => {
+            let note = if scaled_down {
+                ", scaled down to the size limit"
+            } else {
+                ""
+            };
+            (
+                Level::Info,
+                format!("selection copied as a {} x {} image{note}", size.0, size.1),
+            )
+        }
+        Err(err) => (Level::Error, format!("selection not copied: {err}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn copy_log_line_mentions_the_size_limit_only_when_it_applied() {
+        let (level, plain) = copy_log_line(&Ok(()), (10, 20), false);
+        let (_, scaled) = copy_log_line(&Ok(()), (10, 20), true);
+
+        assert_eq!(level, Level::Info);
+        assert!(plain.contains("10 x 20"));
+        assert!(!plain.contains("scaled"));
+        assert!(scaled.contains("scaled down"));
+    }
+
+    #[test]
+    fn copy_log_line_of_a_failure_is_an_error() {
+        let (level, line) = copy_log_line(&Err(ExportError::Pixels), (1, 1), false);
+
+        assert_eq!(level, Level::Error);
+        assert!(line.starts_with("selection not copied"));
+    }
 
     /// A fresh, empty directory of this test run.
     fn temp_dir(name: &str) -> PathBuf {

@@ -312,6 +312,11 @@ pub const BINDINGS: &[(KeyChord, Command, &str)] = &[
         Command::ExportSvg,
         "Export the drawing to SVG",
     ),
+    (
+        KeyChord::ctrl_shift(Key::C),
+        Command::CopyImage,
+        "Copy the selection as an image",
+    ),
     (KeyChord::alt(Key::Digit1), Command::GoToPage(0), "Page 1"),
     (KeyChord::alt(Key::Digit2), Command::GoToPage(1), "Page 2"),
     (KeyChord::alt(Key::Digit3), Command::GoToPage(2), "Page 3"),
@@ -459,6 +464,7 @@ pub fn topic_of(command: Command) -> Topic {
         | Command::ToggleToolbar
         | Command::ExportView
         | Command::ExportSvg
+        | Command::CopyImage
         | Command::SaveFile => Topic::View,
         Command::ToggleSmartSnap
         | Command::ToggleGridSnap
@@ -645,6 +651,7 @@ mod tests {
             (Key::E, CTRL, Command::ExportView),
             (Key::S, CTRL, Command::SaveFile),
             (Key::E, CTRL_SHIFT, Command::ExportSvg),
+            (Key::C, CTRL_SHIFT, Command::CopyImage),
             // Helpers
             (Key::X, NONE, Command::ToggleSmartSnap),
             (Key::G, SHIFT, Command::ToggleGridSnap),
@@ -703,7 +710,12 @@ mod tests {
         assert_eq!(resolve(Key::R, SHIFT), None);
         assert_eq!(resolve(Key::Digit1, SHIFT), None);
         assert_eq!(resolve(Key::Z, SHIFT), None);
-        assert_eq!(resolve(Key::C, CTRL_SHIFT), None);
+    }
+
+    #[test]
+    fn resolve_ctrl_shift_c_copies_the_selection_as_an_image() {
+        assert_eq!(resolve(Key::C, CTRL_SHIFT), Some(Command::CopyImage));
+        assert_eq!(resolve(Key::C, CTRL), Some(Command::Copy));
     }
 
     #[test]

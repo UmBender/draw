@@ -61,6 +61,7 @@ One page to print and keep next to the keyboard. Source of truth:
 | Middle drag, `Space`+drag | Pan | `F` | Fit to content |
 | `Tab` | Toolbar on / off | `Ctrl+E` | Export the view to PNG in `~` |
 | Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | `Ctrl+Shift+E` | Export the whole drawing to SVG in `~` |
+| `Ctrl+Shift+C` | Copy the selection as an image | | |
 | `Space` held, middle drag | Minimap in the corner | `Space`+click or drag in the minimap | Jump there |
 | `Ctrl+S` | Save to a `.draw` file | | |
 

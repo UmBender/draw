@@ -377,6 +377,12 @@ pub mod window {
         let mut d = native_display().lock().unwrap();
         d.clipboard.set(data)
     }
+    /// draw patch (ADR-T115-1): save a PNG image to the OS clipboard,
+    /// offered as `image/png`. Only the Linux backends support it.
+    pub fn clipboard_set_png(png: &[u8]) {
+        let mut d = native_display().lock().unwrap();
+        d.clipboard.set_png(png)
+    }
     pub fn dropped_file_count() -> usize {
         let d = native_display().lock().unwrap();
         d.dropped_files.bytes.len()

@@ -48,6 +48,7 @@ what the tools do with them.
 | Duplicate selection (16 px right and down) | `Ctrl+D` |
 | Lock the selection (and deselect it) | `Ctrl+K` |
 | Unlock every shape | `Ctrl+Shift+K` |
+| Copy the selection to the system clipboard as a PNG | `Ctrl+Shift+C` |
 
 ## How it works
 
@@ -151,3 +152,13 @@ what the tools do with them.
   unlocked shapes, and emptying a locked text block keeps its old text.
   The eraser cannot clear the fill of a locked shape; repaint it with the
   bucket instead.
+- **Copy as an image** (T115, [[ADR-T115-1 Selection image on the clipboard]]):
+  `Ctrl+Shift+C` renders only the selected shapes on the canvas
+  background, 16 px of margin around their box, at the current zoom but
+  at least 1:1, and offers a PNG as `image/png` through the vendored
+  miniquad (Wayland `wl_data_source`, X11 `CLIPBOARD` selection). Limits:
+  at most 4096 × 4096 px (larger is scaled down and the log says so); it
+  does nothing with no selection or while a text block is open; the
+  underlay (grid dots) is not drawn; there is no text fallback, and the
+  clipboard is served only while draw runs. Not covered by automated
+  tests: check it by hand on Hyprland and on X11.

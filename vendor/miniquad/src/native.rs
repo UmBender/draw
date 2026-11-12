@@ -83,6 +83,9 @@ pub(crate) enum Request {
 pub trait Clipboard: Send + Sync {
     fn get(&mut self) -> Option<String>;
     fn set(&mut self, string: &str);
+    /// draw patch (ADR-T115-1): offers `png` as `image/png`, replacing any
+    /// text. Backends without support ignore it.
+    fn set_png(&mut self, _png: &[u8]) {}
 }
 
 pub mod module;

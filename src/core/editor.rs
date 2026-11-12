@@ -265,6 +265,9 @@ pub struct Editor {
     /// `Ctrl+Shift+E` was pressed and the shell has not collected it yet
     /// (ADR-T114-2). Not saved state.
     svg_export_asked: SvgAsk,
+    /// `Ctrl+Shift+C` was pressed with a selection: its world box, until
+    /// the shell collects it (ADR-T115-1). Not saved state.
+    copy_image_asked: Option<Aabb>,
     /// The content bounds the minimap shows and the document revision they
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
@@ -519,6 +522,7 @@ impl Editor {
             notice: None,
             export_asked: false,
             svg_export_asked: SvgAsk::default(),
+            copy_image_asked: None,
             minimap_content: None,
             palette: None,
             save_asked: false,
@@ -555,6 +559,7 @@ impl Editor {
             notice: None,
             export_asked: false,
             svg_export_asked: SvgAsk::default(),
+            copy_image_asked: None,
             minimap_content: None,
             palette: None,
             save_asked: false,
@@ -1114,7 +1119,10 @@ impl Editor {
             if command == Command::Undo {
                 return self.cancel_text();
             }
-            if matches!(command, Command::ExportView | Command::ExportSvg) {
+            if matches!(
+                command,
+                Command::ExportView | Command::ExportSvg | Command::CopyImage
+            ) {
                 return false;
             }
             let committed = self.finish_text();
@@ -1221,6 +1229,7 @@ impl Editor {
                 false
             }
             Command::ExportSvg => self.ask_svg_export(),
+            Command::CopyImage => self.ask_copy_image(),
             // Helper commands never cancel the gesture, so they act live
             // during a drag (ADR-T16-2).
             Command::ToggleSmartSnap
@@ -1505,6 +1514,24 @@ impl Editor {
     /// (ADR-T114-2).
     pub fn take_svg_export_request(&mut self) -> bool {
         std::mem::take(&mut self.svg_export_asked).0
+    }
+
+    /// Records the selection's box for the shell to copy as an image, if
+    /// the view may be exported now and something is selected. Needs no
+    /// redraw, so this returns `false` (ADR-T115-1).
+    fn ask_copy_image(&mut self) -> bool {
+        if self.can_export()
+            && let Some(bounds) = self.selection_bounds()
+        {
+            self.copy_image_asked = Some(bounds);
+        }
+        false
+    }
+
+    /// The world box of the selection to copy as an image, if it was asked
+    /// for since the last call (ADR-T115-1).
+    pub fn take_copy_image_request(&mut self) -> Option<Aabb> {
+        self.copy_image_asked.take()
     }
 
     /// The open command palette, if any (ADR-T111-1).
@@ -5965,6 +5992,64 @@ mod tests {
         // Assert
         assert!(!ed.take_svg_export_request());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
+    }
+
+    // ---- T115 copy the selection as an image --------------------------------
+
+    fn ctrl_shift_c(ed: &mut Editor) -> bool {
+        let mods = Modifiers {
+            ctrl: true,
+            shift: true,
+            ..NONE
+        };
+        key_with(ed, Key::C, mods)
+    }
+
+    #[test]
+    fn copy_image_with_nothing_selected_does_nothing() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        let before = ed.clone();
+
+        // Act
+        let redraw = ctrl_shift_c(&mut ed);
+
+        // Assert
+        assert!(!redraw);
+        assert_eq!(ed, before);
+        assert!(ed.take_copy_image_request().is_none());
+    }
+
+    #[test]
+    fn copy_image_with_a_selection_asks_once_for_its_box() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        key_with(&mut ed, Key::A, CTRL);
+        let expected = ed.selection_bounds();
+        assert!(expected.is_some());
+
+        // Act
+        let redraw = ctrl_shift_c(&mut ed);
+
+        // Assert
+        assert!(!redraw, "a copy needs no redraw");
+        assert_eq!(ed.take_copy_image_request(), expected);
+        assert!(ed.take_copy_image_request().is_none());
+    }
+
+    #[test]
+    fn copy_image_during_text_edit_is_ignored() {
+        // Arrange
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abc");
+        assert!(ed.text_edit().is_some());
+
+        // Act
+        ctrl_shift_c(&mut ed);
+
+        // Assert
+        assert!(ed.text_edit().is_some(), "the block stays open");
+        assert!(ed.take_copy_image_request().is_none());
     }
 
     // ---- T35 pressure -------------------------------------------------------

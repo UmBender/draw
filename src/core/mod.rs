@@ -23,6 +23,7 @@ pub mod sheet;
 pub mod smoothing;
 pub mod snap;
 pub mod snapshot;
+pub mod snapshot_image;
 pub mod svg;
 pub mod tap;
 pub mod tex;
