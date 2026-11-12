@@ -50,3 +50,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-12 — BLOCKED (batch): the gesture state (`Gesture`, `Editor.gesture`, press/move/release handling) is private to `crates/draw-core/src/core/editor.rs`, which is not in *Files owned*; the owned path `crates/draw-core/src/tools/**` also does not exist (the code is in `core/tools/**`). Moving the gestures into `machine/gesture/` needs edits to `editor.rs`. Recommended fix: add `crates/draw-core/src/core/editor.rs` and `crates/draw-core/src/core/tools/**` to *Files owned* (as T135 did), then re-run T136.
