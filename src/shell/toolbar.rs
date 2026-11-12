@@ -10,7 +10,6 @@
 
 use macroquad::color::Color;
 use macroquad::shapes::{draw_rectangle, draw_triangle};
-use macroquad::text::{draw_text, measure_text};
 
 use crate::core::command::{Command, Tool};
 use crate::core::editor::Editor;
@@ -18,6 +17,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
 use crate::shell::render::{hex_color, to_mq, to_mq_color};
+use crate::shell::ui_text;
 use crate::theme;
 
 /// Side of a square button in pixels.
@@ -398,11 +398,11 @@ fn draw_label(rect: Aabb, label: &str, color: Color) {
 
 /// Draws `label` centred in `rect` at `font_size` pixels.
 fn draw_label_sized(rect: Aabb, label: &str, color: Color, font_size: u16) {
-    let size = measure_text(label, None, font_size, 1.0);
+    let size = ui_text::measure(label, font_size);
     let c = rect.center();
     let x = c.x - size.width * 0.5;
     let y = c.y + size.offset_y * 0.5;
-    draw_text(label, x, y, f32::from(font_size), color);
+    ui_text::draw(label, x, y, font_size, color);
 }
 
 /// Draws a horizontal arrow in `rect`, pointing left (`dir < 0`) or right.

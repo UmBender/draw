@@ -35,6 +35,7 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
+use crate::shell::ui_text;
 use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
@@ -913,15 +914,14 @@ const PAGE_LABEL_MARGIN_PX: f32 = 12.0;
 
 /// Draws the page indicator top-right when `page` is not page 1.
 pub fn draw_page_label(page: usize, viewport: Vec2) {
-    use macroquad::text::{draw_text, measure_text};
     let Some(label) = page_label(page) else {
         return;
     };
-    let size = measure_text(&label, None, PAGE_LABEL_PX, 1.0);
+    let size = ui_text::measure(&label, PAGE_LABEL_PX);
     let x = viewport.x - PAGE_LABEL_MARGIN_PX - size.width;
     let y = PAGE_LABEL_MARGIN_PX + size.offset_y;
     let color = to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT));
-    draw_text(&label, x, y, f32::from(PAGE_LABEL_PX), color);
+    ui_text::draw(&label, x, y, PAGE_LABEL_PX, color);
 }
 
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
