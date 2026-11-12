@@ -37,6 +37,9 @@ All notable changes to draw are listed here. The format follows
 
 ### Fixed
 
+- The command palette and the shortcut sheet showed empty boxes for the
+  arrow keys and the degree sign; they now read `Left`, `Right`, `Up`,
+  `Down` and `45-degree`.
 - On a circle layout, the weight of an edge running exactly from the
   upper right to the lower left could land on a node; it now always sits
   above the edge.
