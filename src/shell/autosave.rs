@@ -386,6 +386,35 @@ mod tests {
         assert!(!policy.is_due(start + ALMOST, 1, false));
     }
 
+    /// Replays one scripted session on fake time: an input every 7 s, the
+    /// document changing every other input. Returns the capture times.
+    fn scripted_captures() -> Vec<u64> {
+        let start = Instant::now();
+        let mut policy = Policy::new(start, 0);
+        let mut captures = Vec::new();
+        for step in 1..=20_u64 {
+            let now = start + Duration::from_secs(7 * step);
+            let revision = step / 2;
+            if policy.is_due(now, revision, false) {
+                policy.captured(now, revision);
+                captures.push(7 * step);
+            }
+        }
+        captures
+    }
+
+    #[test]
+    fn autosave_schedule_with_fake_time_is_reproducible() {
+        // Arrange / Act
+        let first = scripted_captures();
+        let second = scripted_captures();
+
+        // Assert: the same schedule twice, at the inputs after 30 s of
+        // silence on the saved revision.
+        assert_eq!(first, second);
+        assert_eq!(first, vec![35, 70, 105, 140]);
+    }
+
     #[test]
     fn policy_is_due_after_the_interval_with_a_change() {
         // Arrange

@@ -43,7 +43,7 @@ use crate::core::tools::layout::{self, EdgeList, GraphError, PlotError, PointLis
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
-use crate::machine::{Gesture, Modal, Pages, Stage, View};
+use crate::machine::{Effect, Gesture, Modal, Pages, Stage, View};
 
 /// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
 pub const WIDTH_LADDER_PX: [f32; 10] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0];
@@ -167,11 +167,6 @@ impl Page {
         }
     }
 }
-/// A request the shell collects once (ADR-T114-2): kept apart from the
-/// editor's own flags.
-#[derive(Debug, Clone, Copy, Default)]
-struct SvgAsk(bool);
-
 /// All editor state: document, history, view, tools and settings.
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)]
@@ -215,15 +210,10 @@ pub struct Editor {
     /// Why the latest key refused to act, for the shell's log (ADR-T84-1).
     /// Transient: not part of the saved state.
     notice: Option<String>,
-    /// `Ctrl+E` was pressed and the shell has not collected it yet
-    /// (ADR-T92-2). Not saved state: the shell collects it every frame.
-    export_asked: bool,
-    /// `Ctrl+Shift+E` was pressed and the shell has not collected it yet
-    /// (ADR-T114-2). Not saved state.
-    svg_export_asked: SvgAsk,
-    /// `Ctrl+Shift+C` was pressed with a selection: its world box, until
-    /// the shell collects it (ADR-T115-1). Not saved state.
-    copy_image_asked: Option<Aabb>,
+    /// What the shell was asked to do (save, exports, copy as an image) and
+    /// has not collected yet (ADR-T137-1). Not saved state: the shell
+    /// collects it every frame.
+    effects: Vec<Effect>,
     /// The content bounds the minimap shows and the document revision they
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
@@ -231,9 +221,6 @@ pub struct Editor {
     /// The modal region: the open palette or sheet, which captures the keys
     /// (ADR-T111-1, ADR-T113-1, ADR-T135-1). Not saved state.
     modal: Modal,
-    /// `Ctrl+S` was pressed and the shell has not collected it yet
-    /// (ADR-T108-1). Not saved state.
-    save_asked: bool,
 }
 
 impl Default for Editor {
@@ -470,12 +457,9 @@ impl Editor {
             doc_revision: 0,
             doc_base_revision: 0,
             notice: None,
-            export_asked: false,
-            svg_export_asked: SvgAsk::default(),
-            copy_image_asked: None,
+            effects: Vec::new(),
             minimap_content: None,
             modal: Modal::default(),
-            save_asked: false,
         })
     }
 
@@ -504,12 +488,9 @@ impl Editor {
             doc_revision: 0,
             doc_base_revision: 0,
             notice: None,
-            export_asked: false,
-            svg_export_asked: SvgAsk::default(),
-            copy_image_asked: None,
+            effects: Vec::new(),
             minimap_content: None,
             modal: Modal::default(),
-            save_asked: false,
         }
     }
 
@@ -566,9 +547,18 @@ impl Editor {
         self.doc_base_revision = self.doc_revision;
     }
 
-    /// Whether `Ctrl+S` was pressed since the last call (ADR-T108-1).
-    pub fn take_save_request(&mut self) -> bool {
-        std::mem::take(&mut self.save_asked)
+    /// Queues `effect` for the shell unless it is already queued
+    /// (ADR-T137-1).
+    fn ask(&mut self, effect: Effect) {
+        if !self.effects.contains(&effect) {
+            self.effects.push(effect);
+        }
+    }
+
+    /// What the shell was asked to do since the last call, in the order
+    /// of the requests: save, exports and copy as an image (ADR-T137-1).
+    pub fn take_effects(&mut self) -> Vec<Effect> {
+        std::mem::take(&mut self.effects)
     }
 
     /// Writes the pages for a document file (ADR-T108-1).
@@ -1188,7 +1178,7 @@ impl Editor {
             Command::GoToPage(page) => self.go_to_page(page),
             Command::ExportView => self.ask_export(),
             Command::SaveFile => {
-                self.save_asked = true;
+                self.ask(Effect::Save);
                 false
             }
             Command::ExportSvg => self.ask_svg_export(),
@@ -1452,7 +1442,9 @@ impl Editor {
     /// Records an export request if the view may be exported now. An
     /// export never needs a redraw of its own, so this returns `false`.
     fn ask_export(&mut self) -> bool {
-        self.export_asked |= self.can_export();
+        if self.can_export() {
+            self.ask(Effect::ExportPng);
+        }
         false
     }
 
@@ -1465,14 +1457,10 @@ impl Editor {
     /// Records an SVG export request if the drawing may be exported now
     /// (no open text block, no gesture); never needs a redraw.
     fn ask_svg_export(&mut self) -> bool {
-        self.svg_export_asked.0 |= self.can_export();
+        if self.can_export() {
+            self.ask(Effect::ExportSvg);
+        }
         false
-    }
-
-    /// Whether an SVG export was asked for since the last call
-    /// (ADR-T114-2).
-    pub fn take_svg_export_request(&mut self) -> bool {
-        std::mem::take(&mut self.svg_export_asked).0
     }
 
     /// Records the selection's box for the shell to copy as an image, if
@@ -1482,26 +1470,18 @@ impl Editor {
         if self.can_export()
             && let Some(bounds) = self.selection_bounds()
         {
-            self.copy_image_asked = Some(bounds);
+            // A newer box replaces an older request not yet collected.
+            self.effects
+                .retain(|effect| !matches!(effect, Effect::CopyImage(_)));
+            self.effects.push(Effect::CopyImage(bounds));
         }
         false
-    }
-
-    /// The world box of the selection to copy as an image, if it was asked
-    /// for since the last call (ADR-T115-1).
-    pub fn take_copy_image_request(&mut self) -> Option<Aabb> {
-        self.copy_image_asked.take()
     }
 
     /// The open command palette, if any (ADR-T111-1).
     #[must_use]
     pub fn palette(&self) -> Option<&CommandPalette> {
         self.modal.palette()
-    }
-
-    /// Whether an export was asked for since the last call (ADR-T92-2).
-    pub fn take_export_request(&mut self) -> bool {
-        std::mem::take(&mut self.export_asked)
     }
 
     /// Whether there is an action to undo.
@@ -2517,6 +2497,7 @@ mod tests {
     use crate::core::sheet;
     use crate::core::smoothing::SmoothingLevel;
     use crate::core::tap::PEN_TAP_SLOP_PX;
+    use crate::machine::Effect;
 
     const NONE: Modifiers = Modifiers::NONE;
 
@@ -5816,8 +5797,46 @@ mod tests {
         // Assert: nothing but the request changes.
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_export_request());
-        assert!(!ed.take_export_request(), "a request is answered once");
+        assert_eq!(ed.take_effects(), vec![Effect::ExportPng]);
+        assert_eq!(
+            ed.take_effects(),
+            Vec::<Effect>::new(),
+            "a request is answered once"
+        );
+    }
+
+    #[test]
+    fn take_effects_repeated_request_is_queued_once() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+
+        // Act
+        ctrl_e(&mut ed);
+        ctrl_e(&mut ed);
+        key_with(&mut ed, Key::S, CTRL);
+        key_with(&mut ed, Key::S, CTRL);
+
+        // Assert
+        assert_eq!(ed.take_effects(), vec![Effect::ExportPng, Effect::Save]);
+    }
+
+    #[test]
+    fn take_effects_keeps_request_order() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        key_with(&mut ed, Key::A, CTRL);
+
+        // Act
+        ed.apply(Command::CopyImage);
+        ed.apply(Command::SaveFile);
+        ed.apply(Command::ExportSvg);
+
+        // Assert
+        let effects = ed.take_effects();
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::CopyImage(_), Effect::Save, Effect::ExportSvg]
+        ));
     }
 
     #[test]
@@ -5829,9 +5848,13 @@ mod tests {
 
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_save_request());
-        assert!(!ed.take_save_request(), "a request is answered once");
-        assert!(!Editor::new().take_save_request());
+        assert_eq!(ed.take_effects(), vec![Effect::Save]);
+        assert_eq!(
+            ed.take_effects(),
+            Vec::<Effect>::new(),
+            "a request is answered once"
+        );
+        assert_eq!(Editor::new().take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5844,7 +5867,7 @@ mod tests {
         key_with(&mut ed, Key::S, CTRL);
 
         assert!(ed.text_edit().is_some(), "the block stays open");
-        assert!(!ed.take_save_request());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5857,7 +5880,7 @@ mod tests {
 
         assert!(ed.text_edit().is_none(), "the block was committed");
         assert_eq!(ed.document().shapes().count(), 1);
-        assert!(ed.take_save_request());
+        assert_eq!(ed.take_effects(), vec![Effect::Save]);
     }
 
     #[test]
@@ -5868,12 +5891,12 @@ mod tests {
 
         key_with(&mut ed, Key::S, CTRL);
 
-        assert!(ed.take_save_request());
+        assert_eq!(ed.take_effects(), vec![Effect::Save]);
     }
 
     #[test]
     fn export_view_is_not_requested_by_default() {
-        assert!(!Editor::new().take_export_request());
+        assert_eq!(Editor::new().take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5887,7 +5910,7 @@ mod tests {
         ctrl_e(&mut ed);
 
         // Assert
-        assert!(!ed.take_export_request());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.text_edit().is_some(), "the block stays open");
     }
 
@@ -5902,7 +5925,7 @@ mod tests {
 
         // Assert
         assert!(!redraw);
-        assert!(!ed.take_export_request());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.text_edit().is_some(), "the block is not committed");
         assert!(ed.document().is_empty());
     }
@@ -5919,7 +5942,7 @@ mod tests {
         ctrl_e(&mut ed);
 
         // Assert
-        assert!(!ed.take_export_request());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
@@ -5952,14 +5975,21 @@ mod tests {
         // Assert
         assert!(!redraw);
         assert_eq!(ed, before, "nothing but the request changes");
-        assert!(!ed.take_export_request(), "not a PNG export");
-        assert!(ed.take_svg_export_request());
-        assert!(!ed.take_svg_export_request(), "a request is answered once");
+        assert_eq!(
+            ed.take_effects(),
+            vec![Effect::ExportSvg],
+            "not a PNG export"
+        );
+        assert_eq!(
+            ed.take_effects(),
+            Vec::<Effect>::new(),
+            "a request is answered once"
+        );
     }
 
     #[test]
     fn export_svg_is_not_requested_by_default() {
-        assert!(!Editor::new().take_svg_export_request());
+        assert_eq!(Editor::new().take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -5973,7 +6003,7 @@ mod tests {
 
         // Assert
         assert!(!redraw);
-        assert!(!ed.take_svg_export_request());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.text_edit().is_some(), "the block stays open");
     }
 
@@ -5988,7 +6018,7 @@ mod tests {
         ed.apply(Command::ExportSvg);
 
         // Assert
-        assert!(!ed.take_svg_export_request());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
@@ -6015,7 +6045,7 @@ mod tests {
         // Assert
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_copy_image_request().is_none());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -6023,16 +6053,20 @@ mod tests {
         // Arrange
         let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
         key_with(&mut ed, Key::A, CTRL);
-        let expected = ed.selection_bounds();
-        assert!(expected.is_some());
+        let expected: Vec<Effect> = ed
+            .selection_bounds()
+            .map(Effect::CopyImage)
+            .into_iter()
+            .collect();
+        assert_eq!(expected.len(), 1, "something is selected");
 
         // Act
         let redraw = ctrl_shift_c(&mut ed);
 
         // Assert
         assert!(!redraw, "a copy needs no redraw");
-        assert_eq!(ed.take_copy_image_request(), expected);
-        assert!(ed.take_copy_image_request().is_none());
+        assert_eq!(ed.take_effects(), expected);
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     #[test]
@@ -6047,7 +6081,7 @@ mod tests {
 
         // Assert
         assert!(ed.text_edit().is_some(), "the block stays open");
-        assert!(ed.take_copy_image_request().is_none());
+        assert_eq!(ed.take_effects(), Vec::<Effect>::new());
     }
 
     // ---- T35 pressure -------------------------------------------------------

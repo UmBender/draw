@@ -205,6 +205,65 @@ fn table_has_no_wildcard_arm() {
     );
 }
 
+/// The `.rs` files under `dir`, recursively.
+fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            rust_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            out.push(path);
+        }
+    }
+}
+
+#[test]
+fn core_never_reads_the_clock() {
+    // Arrange: every source of the crate; time comes in as a value
+    // (ADR-T137-1), so test code is the only place a clock may be read.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    rust_files(&root, &mut files);
+    let needles = ["Instant::", "SystemTime", "UNIX_EPOCH", "get_time"].map(|n| {
+        // Not spelled in one piece, so this file never matches itself.
+        n.to_owned()
+    });
+
+    // Act
+    let mut offenders = Vec::new();
+    for path in &files {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name == "tests.rs" {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let code = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for needle in &needles {
+            // `Instant::` as a type path in a signature is not a read.
+            let reads = code
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .any(|line| line.contains(needle.as_str()) && line.contains("now"));
+            let other = needle != "Instant::" && code.contains(needle.as_str());
+            if reads || other {
+                offenders.push(format!("{}: {needle}", path.display()));
+            }
+        }
+    }
+
+    // Assert
+    assert!(files.len() > 10, "the scan found the sources");
+    assert!(
+        offenders.is_empty(),
+        "the core reads the clock: {offenders:?}"
+    );
+}
+
 #[test]
 fn diagram_matches_the_table() {
     // Arrange
