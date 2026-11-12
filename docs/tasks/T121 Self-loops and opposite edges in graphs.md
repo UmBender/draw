@@ -1,7 +1,7 @@
 ---
 id: T121
 title: Self-loops and opposite edges in graphs
-status: in-progress
+status: done
 wave: 60
 branch: fix/graph-loops-and-lanes
 depends_on: []
@@ -49,13 +49,14 @@ A graph input draws every edge it lists: a self-loop (`1 1 12`) appears as a loo
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T121): specify self-loops and lanes`
-- [ ] regression — `test(T121): add regression test for loops and opposite edges`
-- [ ] tests — `test(T121): add failing tests for loops and lanes`
-- [ ] behaviour — `fix(T121): draw self-loops and lanes`
-- [ ] quality — `chore(T121): pass clippy and rustfmt`
-- [ ] docs — `docs(T121): update the feature note`
+- [x] spec — `docs(T121): specify self-loops and lanes`
+- [x] regression — `test(T121): add regression test for loops and opposite edges`
+- [x] tests — `test(T121): add failing tests for loops and lanes`
+- [x] behaviour — `fix(T121): draw self-loops and lanes`
+- [x] quality — `chore(T121): pass clippy and rustfmt`
+- [x] docs — `docs(T121): update the feature note`
 
 ## Log
 
 - 2026-11-11 — written from the owner's bug report.
+- 2026-11-11 — fixed; `scripts/check.sh --fuzz` green. Loops of one node take successive widest gaps instead of nesting (nested weights overlapped). The old editor test that expected a loop to be skipped was updated (ADR-T121-1 amends it).

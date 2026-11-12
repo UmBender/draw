@@ -55,8 +55,12 @@ first node named in it, the trees side by side in the order they were named
 ([[ADR-T119-1 Forests drawn in layers]]); a cycle sends the whole graph to a
 circle. Sizes follow the block's text size, and the
 spacing grows with the node count so that circles never overlap. A self-loop
-is skipped, though its node is drawn; an edge repeated with the same
-direction and weight is drawn once. With more than 200 nodes, or a line that
+(`1 1 12`) is drawn as a loop on its node, leaving into the widest gap
+between its edges, with its weight beyond it
+([[ADR-T121-1 Self-loops and lanes for edges between the same nodes]]);
+edges between the same two nodes (`1 3 4` with `3 1 2`) are drawn side by
+side, each weight on the outer side of its line. An edge repeated with the
+same direction and weight is drawn once. With more than 200 nodes, or a line that
 is not an edge, nothing changes and the reason, with the line number, goes
 to the diagnostics log.
 
