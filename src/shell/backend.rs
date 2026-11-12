@@ -4,8 +4,8 @@
 //! [`choose`] is a pure function over the variable's value and
 //! `WAYLAND_DISPLAY`; [`from_env`] feeds it the real ones. Native Wayland
 //! is the default on Wayland sessions and falls back to X11 when it
-//! cannot connect; X11 (Xwayland on Wayland sessions) is deprecated and
-//! goes away in draw [`REMOVAL_VERSION`].
+//! cannot connect; X11 (Xwayland on Wayland sessions) stays supported
+//! (ADR-T128-1).
 
 use std::ffi::OsStr;
 
@@ -17,13 +17,10 @@ pub const BACKEND_ENV: &str = "DRAW_BACKEND";
 /// Environment variable set in a Wayland session.
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 
-/// The draw release that removes the X11 backend (ADR-T46-1).
-pub const REMOVAL_VERSION: &str = "2.0.0";
-
 /// The window backend draw asks miniquad for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Backend {
-    /// X11 only, through Xwayland on Wayland sessions (deprecated).
+    /// X11 only, through Xwayland on Wayland sessions.
     X11,
     /// Native Wayland, falling back to X11 (the default on Wayland
     /// sessions).
@@ -38,7 +35,8 @@ pub struct Choice {
     pub backend: Backend,
     /// One stderr line when the value was not understood.
     pub warning: Option<String>,
-    /// One stderr line when draw will run on the deprecated X11 backend.
+    /// One stderr line of information; always `None` since X11 is
+    /// supported (ADR-T128-1), kept for the start-up printing in `app`.
     pub notice: Option<String>,
 }
 
@@ -92,7 +90,7 @@ pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice 
     Choice {
         backend,
         warning,
-        notice: deprecation_notice(backend, session),
+        notice: None,
     }
 }
 
@@ -100,25 +98,6 @@ pub fn choose(value: Option<&OsStr>, wayland_display: Option<&OsStr>) -> Choice 
 /// names a Wayland session.
 fn is_wayland_session(wayland_display: Option<&OsStr>) -> bool {
     wayland_display.is_some_and(|value| !value.is_empty())
-}
-
-/// The deprecation line when `backend` in this session ends up on X11:
-/// [`Backend::X11`] anywhere, or [`Backend::Wayland`] whose fallback
-/// miniquad takes without a Wayland session.
-fn deprecation_notice(backend: Backend, wayland_session: bool) -> Option<String> {
-    if !wayland_session {
-        Some(format!(
-            "draw: X11 is deprecated and will be removed in draw \
-             {REMOVAL_VERSION}, which needs a Wayland session"
-        ))
-    } else if backend == Backend::X11 {
-        Some(format!(
-            "draw: X11 (Xwayland) is deprecated and will be removed in draw \
-             {REMOVAL_VERSION}; unset {BACKEND_ENV} to use native Wayland"
-        ))
-    } else {
-        None
-    }
 }
 
 /// [`choose`] applied to the real environment.
@@ -162,10 +141,6 @@ mod tests {
 
     fn choose_str(value: &str, wayland_display: Option<&OsStr>) -> Choice {
         choose(Some(OsStr::new(value)), wayland_display)
-    }
-
-    fn notice(choice: &Choice) -> String {
-        choice.notice.clone().unwrap_or_default()
     }
 
     #[test]
@@ -417,8 +392,7 @@ mod tests {
                 _ => Backend::X11,
             };
             prop_assert_eq!(choice.backend, expected);
-            let on_x11 = choice.backend == Backend::X11 || !session;
-            prop_assert_eq!(choice.notice.is_some(), on_x11);
+            prop_assert_eq!(choice.notice, None);
         }
     }
 }
