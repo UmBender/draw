@@ -45,7 +45,7 @@ pub trait Outlines {
 pub fn to_svg<'a>(
     shapes: impl IntoIterator<Item = &'a Shape>,
     background: Rgba,
-    outlines: &dyn Outlines,
+    outlines: &impl Outlines,
 ) -> String {
     let mut writer = Writer::new(outlines);
     let mut bounds: Option<Aabb> = None;
@@ -141,9 +141,9 @@ fn warn_color(color: Rgba) -> Rgba {
 }
 
 /// Builds the body of the document and the glyph definitions it uses.
-struct Writer<'o> {
+struct Writer<'o, O: Outlines> {
     /// Where the glyph outlines come from.
-    outlines: &'o dyn Outlines,
+    outlines: &'o O,
     /// The `<path>` of each defined glyph, in definition order.
     defs: Vec<String>,
     /// The glyphs seen so far: their definition, or `None` without ink.
@@ -152,14 +152,14 @@ struct Writer<'o> {
     body: String,
 }
 
-impl<'o> Writer<'o> {
+impl<'o, O: Outlines> Writer<'o, O> {
     /// Appends formatted text to the body; writing to a `String` cannot
     /// fail.
     fn emit(&mut self, args: std::fmt::Arguments<'_>) {
         let _ = self.body.write_fmt(args);
     }
 
-    fn new(outlines: &'o dyn Outlines) -> Self {
+    fn new(outlines: &'o O) -> Self {
         Self {
             outlines,
             defs: Vec::new(),

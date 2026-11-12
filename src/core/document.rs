@@ -266,11 +266,11 @@ impl Run {
     fn at(edits: &[Edit]) -> Self {
         let remove_index = |edit: &Edit| match edit {
             Edit::Remove { index, .. } => Some(*index),
-            _ => None,
+            Edit::Insert { .. } | Edit::Replace { .. } | Edit::Lock { .. } => None,
         };
         let insert_index = |edit: &Edit| match edit {
             Edit::Insert { index, .. } => Some(*index),
-            _ => None,
+            Edit::Remove { .. } | Edit::Replace { .. } | Edit::Lock { .. } => None,
         };
         let removes = run_length(edits, remove_index, |prev, next| next < prev);
         if removes > 1 {
@@ -362,7 +362,12 @@ impl Document {
     fn build_macros(&self) -> MacroTable {
         MacroTable::from_texts(self.shapes.iter().filter_map(|(_, shape)| match shape {
             Shape::Text { text, .. } => Some(text.as_str()),
-            _ => None,
+            Shape::Stroke { .. }
+            | Shape::Line { .. }
+            | Shape::Arrow { .. }
+            | Shape::Rect { .. }
+            | Shape::Ellipse { .. }
+            | Shape::Grid { .. } => None,
         }))
     }
 
@@ -514,7 +519,7 @@ impl Document {
         let mut doomed = vec![false; len];
         let edits = run.iter().filter_map(|edit| match edit {
             Edit::Remove { index, id, shape } => Some((index, id, shape)),
-            _ => None,
+            Edit::Insert { .. } | Edit::Replace { .. } | Edit::Lock { .. } => None,
         });
         for (done, (index, id, shape)) in edits.enumerate() {
             let Some((stored_id, stored)) = self.shapes.get(*index) else {
@@ -556,7 +561,7 @@ impl Document {
         let mut inserts = Vec::with_capacity(run.len());
         let edits = run.iter().filter_map(|edit| match edit {
             Edit::Insert { index, id, shape } => Some((index, id, shape)),
-            _ => None,
+            Edit::Remove { .. } | Edit::Replace { .. } | Edit::Lock { .. } => None,
         });
         for (done, (index, id, shape)) in edits.enumerate() {
             let current = len + done;

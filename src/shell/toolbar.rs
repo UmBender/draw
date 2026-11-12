@@ -320,7 +320,17 @@ pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> 
         {
             hit(&flyout_layout(viewport), pos).map_or(Route::Swallow, Route::Apply)
         }
-        _ => Route::Forward(event),
+        InputEvent::PointerDown { .. }
+        | InputEvent::PointerMove { .. }
+        | InputEvent::PointerUp { .. }
+        | InputEvent::Scroll { .. }
+        | InputEvent::KeyDown { .. }
+        | InputEvent::KeyUp { .. }
+        | InputEvent::Char { .. }
+        | InputEvent::Pressure { .. }
+        | InputEvent::Paste(_)
+        | InputEvent::PasteGrid(_)
+        | InputEvent::Resize { .. } => Route::Forward(event),
     }
 }
 
@@ -469,7 +479,14 @@ fn draw_flyout(editor: &Editor, viewport: Vec2) {
         let (delta, name, value) = match button.kind {
             ButtonKind::GridCols(delta) => (delta, "cols", helpers.grid_cols),
             ButtonKind::GridRows(delta) => (delta, "rows", helpers.grid_rows),
-            _ => continue,
+            ButtonKind::Tool(_)
+            | ButtonKind::Color(_)
+            | ButtonKind::SmartSnap
+            | ButtonKind::GridSnap
+            | ButtonKind::Numbering
+            | ButtonKind::Undo
+            | ButtonKind::Redo
+            | ButtonKind::Page(_) => continue,
         };
         draw_label(rect, step_label(delta), text);
         if delta < 0 {

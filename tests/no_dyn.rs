@@ -104,11 +104,10 @@ fn is_raw_start(chars: &[char], i: usize) -> bool {
 
 /// A quote at `i` that opens a character literal, not a lifetime.
 fn is_char_literal(chars: &[char], i: usize) -> bool {
-    match (chars.get(i + 1), chars.get(i + 2)) {
-        (Some('\\'), _) => true,
-        (Some(_), Some('\'')) => true,
-        _ => false,
-    }
+    matches!(
+        (chars.get(i + 1), chars.get(i + 2)),
+        (Some('\\'), _) | (Some(_), Some('\''))
+    )
 }
 
 /// Line numbers (1-based) of every `dyn` keyword in the code of `source`.
@@ -236,8 +235,7 @@ fn guard_finds_no_dyn_outside_allow_list() {
         if allowed.contains(&shown) {
             continue;
         }
-        let source =
-            fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+        let source = fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
         for line in dyn_uses(&source) {
             found.push(format!("{shown}:{line}"));
         }
