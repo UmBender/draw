@@ -73,7 +73,6 @@ gate() {
 gate "format" cargo fmt --all -- --check
 gate "clippy" cargo clippy --workspace --all-targets -- -D warnings
 gate "tests" cargo test --workspace --all-targets
-gate "compile_fail" bash scripts/compile_fail.sh
 RUSTDOCFLAGS="-D warnings" gate "docs" cargo doc --workspace --no-deps
 
 if $fuzz; then

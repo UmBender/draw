@@ -1143,9 +1143,10 @@ impl Snap for Shape {
 fn read_stroke(tokens: &mut Tokens<'_>, style: Style) -> Result<Shape, SnapshotError> {
     let points: Vec<Vec2> = tokens.get()?;
     let widths: Option<Vec<f32>> = tokens.opt()?;
-    if points.is_empty() {
+    // Parse, don't validate: the rest of the reader holds a `NonEmpty`.
+    let Some(points) = draw_types::nonempty::NonEmpty::from_vec(points) else {
         return Err(tokens.error("stroke without points"));
-    }
+    };
     if let Some(widths) = &widths {
         if widths.len() != points.len() {
             return Err(tokens.error("stroke widths out of step with its points"));
@@ -1155,7 +1156,7 @@ fn read_stroke(tokens: &mut Tokens<'_>, style: Style) -> Result<Shape, SnapshotE
         }
     }
     Ok(Shape::Stroke {
-        points,
+        points: points.into_vec(),
         widths,
         style,
     })
@@ -1930,20 +1931,16 @@ mod tests {
         // Arrange
         let ed = busy_editor();
         let text = ed.snapshot().to_text();
-        let line = line_of(&text, "stroke ");
-        let original = text.lines().nth(line).unwrap_or_default().to_owned();
-        let mut tokens: Vec<&str> = original.split(' ').collect();
-        let at = tokens.iter().position(|t| *t == "stroke");
+        let line = line_of(&text, "shape stroke ");
 
-        // Act
-        let result = at.map(|i| {
-            tokens.truncate(i + 1);
-            tokens.push("0");
-            Snapshot::parse(&edited(&ed, line, &tokens.join(" ")))
-        });
+        // Act: the clipboard stroke keeps its style and loses its points.
+        let result = Snapshot::parse(&edited(&ed, line, "shape stroke 0 3.0 0 -"));
 
-        // Assert: whatever the line now is, an empty stroke never loads.
-        assert!(!matches!(result, Some(Ok(_))), "empty stroke accepted");
+        // Assert
+        let err = result
+            .err()
+            .unwrap_or_else(|| panic!("empty stroke accepted"));
+        assert!(err.to_string().contains("stroke without points"), "{err}");
     }
 
     #[test]

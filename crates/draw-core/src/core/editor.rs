@@ -185,7 +185,7 @@ impl Gesture {
 }
 
 /// How many pages there are (ADR-T116-1).
-pub const PAGE_COUNT: usize = 6;
+pub const PAGE_COUNT: usize = draw_types::ids::PAGE_COUNT;
 
 /// What one page owns besides the shapes: the state of a page that is not
 /// the current one (ADR-T116-1).

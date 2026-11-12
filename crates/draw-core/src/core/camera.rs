@@ -14,11 +14,13 @@
 //! state is always finite.
 
 use crate::core::geom::{Aabb, Vec2};
+use draw_types::units::{Len, Point, Rect, Screen, World};
+use draw_types::zoom::Zoom;
 
 /// Smallest allowed zoom (pixels per world unit).
-pub const ZOOM_MIN: f32 = 0.05;
+pub const ZOOM_MIN: f32 = Zoom::MIN;
 /// Largest allowed zoom (pixels per world unit).
-pub const ZOOM_MAX: f32 = 20.0;
+pub const ZOOM_MAX: f32 = Zoom::MAX;
 /// Zoom factor per scroll notch.
 pub const ZOOM_STEP: f32 = 1.15;
 
@@ -32,7 +34,7 @@ pub struct Camera {
     /// World point shown at the screen origin.
     offset: Vec2,
     /// Pixels per world unit.
-    zoom: f32,
+    zoom: Zoom,
 }
 
 impl Default for Camera {
@@ -40,7 +42,7 @@ impl Default for Camera {
     fn default() -> Self {
         Self {
             offset: Vec2::ZERO,
-            zoom: 1.0,
+            zoom: Zoom::ONE,
         }
     }
 }
@@ -53,11 +55,7 @@ impl Camera {
     pub fn new(offset: Vec2, zoom: f32) -> Self {
         Self {
             offset: offset.sanitize().unwrap_or(Vec2::ZERO),
-            zoom: if zoom.is_finite() {
-                clamp_zoom(zoom)
-            } else {
-                1.0
-            },
+            zoom: Zoom::clamped(zoom),
         }
     }
 
@@ -70,6 +68,12 @@ impl Camera {
     /// Pixels per world unit, within [`ZOOM_MIN`]`..=`[`ZOOM_MAX`].
     #[must_use]
     pub fn zoom(&self) -> f32 {
+        self.zoom.get()
+    }
+
+    /// The zoom as its checked type.
+    #[must_use]
+    pub fn zoom_level(&self) -> Zoom {
         self.zoom
     }
 
@@ -77,14 +81,45 @@ impl Camera {
     /// non-finite result.
     #[must_use]
     pub fn world_to_screen(&self, world: Vec2) -> Vec2 {
-        (world - self.offset) * self.zoom
+        (world - self.offset) * self.zoom.get()
     }
 
     /// Maps screen pixels to a world point. Non-finite input gives a
     /// non-finite result.
     #[must_use]
     pub fn screen_to_world(&self, screen: Vec2) -> Vec2 {
-        screen / self.zoom + self.offset
+        screen / self.zoom.get() + self.offset
+    }
+
+    /// Typed [`Camera::world_to_screen`]: the only way a world point becomes
+    /// a screen point.
+    #[must_use]
+    pub fn point_to_screen(&self, world: Point<World>) -> Point<Screen> {
+        Point::from_vec2(self.world_to_screen(world.vec2()))
+    }
+
+    /// Typed [`Camera::screen_to_world`].
+    #[must_use]
+    pub fn point_to_world(&self, screen: Point<Screen>) -> Point<World> {
+        Point::from_vec2(self.screen_to_world(screen.vec2()))
+    }
+
+    /// Typed [`Camera::visible_world_rect`].
+    #[must_use]
+    pub fn visible_rect(&self, viewport: Point<Screen>) -> Rect<World> {
+        Rect::from_aabb(self.visible_world_rect(viewport.vec2()))
+    }
+
+    /// Typed [`Camera::world_len`].
+    #[must_use]
+    pub fn len_to_world(&self, px: Len<Screen>) -> Len<World> {
+        Len::new(self.world_len(px.get()))
+    }
+
+    /// Typed [`Camera::screen_len`].
+    #[must_use]
+    pub fn len_to_screen(&self, world: Len<World>) -> Len<Screen> {
+        Len::new(self.screen_len(world.get()))
     }
 
     /// Pans so that content moves by `delta` pixels on screen.
@@ -94,7 +129,7 @@ impl Camera {
         let Some(delta) = delta.sanitize() else {
             return;
         };
-        self.set_offset(self.offset - delta / self.zoom);
+        self.set_offset(self.offset - delta / self.zoom.get());
     }
 
     /// Zooms by [`ZOOM_STEP`]`^notches` (positive zooms in), clamped to the
@@ -109,10 +144,10 @@ impl Camera {
             return;
         }
         // powf may overflow to +inf or underflow to 0; clamping handles both.
-        let zoom = clamp_zoom(self.zoom * ZOOM_STEP.powf(notches));
+        let zoom = clamp_zoom(self.zoom.get() * ZOOM_STEP.powf(notches));
         let anchor_world = self.screen_to_world(anchor);
         if self.set_offset(anchor_world - anchor / zoom) {
-            self.zoom = zoom;
+            self.zoom = Zoom::clamped(zoom);
         }
     }
 
@@ -127,13 +162,13 @@ impl Camera {
     /// Converts a screen length (pixels) to world units.
     #[must_use]
     pub fn world_len(&self, px: f32) -> f32 {
-        px / self.zoom
+        px / self.zoom.get()
     }
 
     /// Converts a world length to screen pixels.
     #[must_use]
     pub fn screen_len(&self, world: f32) -> f32 {
-        world * self.zoom
+        world * self.zoom.get()
     }
 
     /// Centres `bounds` in the viewport at the largest zoom (clamped) that
@@ -160,10 +195,10 @@ impl Camera {
         let zoom = match (fit_x, fit_y) {
             (Some(x), Some(y)) => clamp_zoom(x.min(y)),
             (Some(z), None) | (None, Some(z)) => clamp_zoom(z),
-            (None, None) => self.zoom,
+            (None, None) => self.zoom.get(),
         };
         if self.set_offset(bounds.center() - viewport * 0.5 / zoom) {
-            self.zoom = zoom;
+            self.zoom = Zoom::clamped(zoom);
         }
     }
 
