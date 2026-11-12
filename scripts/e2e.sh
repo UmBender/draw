@@ -39,7 +39,7 @@ case $backend in
         ;;
 esac
 # What the scope re-runs: the parsed options, then the case.
-set -- --backend "$backend" "$@"
+scope_args=(--backend "$backend" "$@")
 
 readonly JOBS=3
 readonly MEMORY_MAX=1G
@@ -70,7 +70,7 @@ if [[ ${DRAW_E2E_IN_SCOPE:-} != 1 ]]; then
         unit="draw-e2e-$$.scope"
         status=0
         systemd-run --user --scope -q --unit="$unit" "${limits[@]}" -- \
-            "${priority[@]}" "$0" "$@" || status=$?
+            "${priority[@]}" "$0" "${scope_args[@]}" || status=$?
         if ((status != 0)); then
             if [[ $(systemctl --user show -P Result "$unit" 2>/dev/null) == oom-kill ]]; then
                 echo "e2e.sh: went over the $MEMORY_MAX memory limit" >&2
@@ -80,7 +80,7 @@ if [[ ${DRAW_E2E_IN_SCOPE:-} != 1 ]]; then
         exit "$status"
     fi
     echo "e2e.sh: systemd-run --user is not usable, the memory cap is not enforced" >&2
-    exec "${priority[@]}" "$0" "$@"
+    exec "${priority[@]}" "$0" "${scope_args[@]}"
 fi
 
 die() {

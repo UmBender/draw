@@ -2584,6 +2584,52 @@ mod self_tests {
     }
 
     #[test]
+    fn x11_intern_request_pads_the_name_to_four_bytes() {
+        let request = x11_intern_request("WM_PROTOCOLS");
+
+        // Opcode 16, only-if-exists 0, 2 + 12/4 words, name length.
+        assert_eq!(request.get(..4), Some(&[16, 0, 5, 0][..]));
+        assert_eq!(request.get(4..6), Some(&[12, 0][..]));
+        assert_eq!(request.len(), 20);
+        assert_eq!(x11_intern_request("abc").len(), 12);
+    }
+
+    #[test]
+    fn x11_delete_request_is_a_client_message_to_the_window() {
+        let request = x11_delete_request(0x0020_0001, 300, 301);
+
+        // SendEvent: opcode 25, 11 words, destination, empty mask.
+        assert_eq!(request.len(), 44);
+        assert_eq!(request.get(..4), Some(&[25, 0, 11, 0][..]));
+        assert_eq!(request.get(4..8), Some(&0x0020_0001u32.to_le_bytes()[..]));
+        assert_eq!(request.get(8..12), Some(&[0, 0, 0, 0][..]));
+        // The event: ClientMessage (33), format 32, window, type, data.
+        assert_eq!(request.get(12..14), Some(&[33, 32][..]));
+        assert_eq!(request.get(16..20), Some(&0x0020_0001u32.to_le_bytes()[..]));
+        assert_eq!(request.get(20..24), Some(&300u32.to_le_bytes()[..]));
+        assert_eq!(request.get(24..28), Some(&301u32.to_le_bytes()[..]));
+    }
+
+    #[test]
+    fn xdotool_commands_translate_a_chord_and_text() {
+        let chord = chord(&["ctrl", "shift", "9"]).unwrap_or_default();
+
+        let commands = xdotool_commands(&chord).unwrap_or_default();
+
+        assert_eq!(
+            commands,
+            [[
+                "keydown", "Control_L", "keydown", "Shift_L", "key", "9", "keyup", "Shift_L",
+                "keyup", "Control_L"
+            ]
+            .map(str::to_owned)
+            .to_vec()]
+        );
+        let text = xdotool_commands(&["a b".to_owned()]).unwrap_or_default();
+        assert_eq!(text.first().and_then(|c| c.last()).map(String::as_str), Some("a b"));
+    }
+
+    #[test]
     fn backend_from_name_knows_both_and_rejects_others() {
         assert_eq!(Backend::from_name("x11"), Ok(Backend::X11));
         assert_eq!(Backend::from_name("wayland"), Ok(Backend::Wayland));
