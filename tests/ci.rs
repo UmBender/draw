@@ -285,6 +285,12 @@ printf '%s | jobs=%s | threads=%s | nice=%s | io=%s | scope=%s\n' "$*" \
     "${CARGO_BUILD_JOBS:-}" "${RUST_TEST_THREADS:-}" "$(nice)" "$(ionice)" \
     "${GATE_SCOPE:-}" >>"$GATE_LOG"
 [[ "$1" != "${FAKE_CARGO_FAILS:-}" ]] || exit 101
+if [[ "$1" == llvm-cov && -n "${FAKE_SUMMARY:-}" ]]; then
+    while (($#)); do
+        if [[ "$1" == --output-path ]]; then cp "$FAKE_SUMMARY" "$2"; fi
+        shift
+    done
+fi
 "#;
 
 /// Runs the command after `--`, passing its own options on to it.
@@ -495,4 +501,230 @@ fn gates_blame_no_limit_for_an_ordinary_failure() {
     assert_eq!(run.code, Some(101), "{}", run.output);
     assert_eq!(subcommands(&run), ["fmt", "clippy"]);
     assert!(!run.output.contains("memory limit"), "{}", run.output);
+}
+
+// ---- coverage ratchet (T130) ----
+
+/// A `cargo llvm-cov --json` summary: `(file, lines, covered)`.
+fn summary_json(files: &[(&str, u32, u32)]) -> String {
+    let files: Vec<String> = files
+        .iter()
+        .map(|(name, count, covered)| {
+            format!(
+                r#"{{"filename":"/work/draw/{name}","summary":{{"lines":{{"count":{count},"covered":{covered}}}}}}}"#
+            )
+        })
+        .collect();
+    format!(r#"{{"data":[{{"files":[{}]}}]}}"#, files.join(","))
+}
+
+/// What one run of `coverage.sh` did.
+struct CoverageRun {
+    code: Option<i32>,
+    /// Standard output followed by standard error.
+    output: String,
+    /// The recorded `cargo` steps.
+    steps: Vec<String>,
+}
+
+/// Runs `coverage.sh` with the stand-ins. `summary` is the JSON the fake
+/// `cargo llvm-cov` writes (when `use_flag` is false) or the file passed
+/// with `--summary`; `baseline` is the content of the baseline file.
+fn run_coverage(test: &str, summary: &str, baseline: &str, use_flag: bool) -> CoverageRun {
+    let tools = fake_tools();
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("coverage-{test}"));
+    std::fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("{}: {err}", dir.display()));
+    let write = |name: &str, text: &str| {
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+        path
+    };
+    let summary_path = write("summary.json", summary);
+    let baseline_path = write("baseline.toml", baseline);
+    let log = dir.join("cargo.log");
+    if log.exists() {
+        std::fs::remove_file(&log).unwrap_or_else(|err| panic!("{}: {err}", log.display()));
+    }
+    let path = std::env::var("PATH").unwrap_or_else(|err| panic!("PATH: {err}"));
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/coverage.sh");
+
+    let mut command = Command::new(script);
+    command
+        .arg("--baseline")
+        .arg(&baseline_path)
+        .env("PATH", format!("{}:{path}", tools.display()))
+        .env("GATE_LOG", &log)
+        .env("FAKE_SUMMARY", &summary_path)
+        .env_remove("CARGO_BUILD_JOBS")
+        .env_remove("RUST_TEST_THREADS");
+    if use_flag {
+        command.arg("--summary").arg(&summary_path);
+    }
+    let result = command
+        .output()
+        .unwrap_or_else(|err| panic!("coverage.sh: {err}"));
+
+    let steps = std::fs::read_to_string(&log).unwrap_or_default();
+    CoverageRun {
+        code: result.status.code(),
+        output: format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        ),
+        steps: steps.lines().map(str::to_owned).collect(),
+    }
+}
+
+/// Two `core` files at 90 % together, one `shell` file at 50 %, and a
+/// file outside `src/` that is ignored.
+fn sample_summary() -> String {
+    summary_json(&[
+        ("src/core/a.rs", 100, 90),
+        ("src/core/tools/b.rs", 100, 90),
+        ("src/shell/c.rs", 200, 100),
+        ("tests/ci.rs", 50, 50),
+    ])
+}
+
+#[test]
+fn coverage_summary_is_parsed() {
+    // Arrange, Act
+    let run = run_coverage(
+        "parsed",
+        &sample_summary(),
+        "core = 90.0\nshell = 50.0\n",
+        true,
+    );
+
+    // Assert
+    assert_eq!(run.code, Some(0), "{}", run.output);
+    let lines: Vec<&str> = run.output.lines().map(str::trim).collect();
+    assert!(lines.contains(&"core 90.0"), "{}", run.output);
+    assert!(lines.contains(&"shell 50.0"), "{}", run.output);
+    assert!(!run.output.contains("tests"), "{}", run.output);
+    assert!(run.steps.is_empty(), "--summary must skip cargo");
+}
+
+#[test]
+fn coverage_script_runs_under_the_caps() {
+    // Arrange, Act
+    let run = run_coverage(
+        "caps",
+        &sample_summary(),
+        "core = 90.0\nshell = 50.0\n",
+        false,
+    );
+
+    // Assert
+    assert_eq!(run.code, Some(0), "{}", run.output);
+    assert_eq!(run.steps.len(), 1, "{:?}", run.steps);
+    let step = &run.steps[0];
+    assert_eq!(subcommand(step), "llvm-cov");
+    assert_eq!(field(step, "jobs"), "2");
+    assert_eq!(field(step, "threads"), "3");
+    assert_eq!(field(step, "nice"), "19");
+    assert!(field(step, "scope").contains("MemoryMax=1536M"), "{step}");
+}
+
+#[test]
+fn ratchet_fails_when_a_module_falls() {
+    // Arrange: core is 90.0, the baseline says 91.0.
+    let run = run_coverage(
+        "falls",
+        &sample_summary(),
+        "core = 91.0\nshell = 50.0\n",
+        true,
+    );
+
+    // Assert
+    assert_eq!(run.code, Some(1), "{}", run.output);
+    assert!(
+        run.output.contains("core") && run.output.contains("fell"),
+        "{}",
+        run.output
+    );
+}
+
+#[test]
+fn ratchet_asks_to_raise_the_baseline() {
+    // Arrange: shell is 50.0, the baseline says 49.0.
+    let run = run_coverage(
+        "raise",
+        &sample_summary(),
+        "core = 90.0\nshell = 49.0\n",
+        true,
+    );
+
+    // Assert
+    assert_eq!(run.code, Some(1), "{}", run.output);
+    assert!(
+        run.output.contains("shell") && run.output.contains("coverage-baseline.toml"),
+        "{}",
+        run.output
+    );
+}
+
+#[test]
+fn ratchet_passes_within_the_tolerance() {
+    // Arrange: 0.5 below and 0.5 above are both accepted.
+    let run = run_coverage(
+        "tolerance",
+        &sample_summary(),
+        "core = 90.5\nshell = 49.5\n",
+        true,
+    );
+
+    // Assert
+    assert_eq!(run.code, Some(0), "{}", run.output);
+}
+
+#[test]
+fn ratchet_fails_for_a_module_without_a_baseline() {
+    // Arrange, Act
+    let run = run_coverage("missing", &sample_summary(), "core = 90.0\n", true);
+
+    // Assert
+    assert_eq!(run.code, Some(1), "{}", run.output);
+    assert!(
+        run.output.contains("shell") && run.output.contains("no baseline"),
+        "{}",
+        run.output
+    );
+}
+
+#[test]
+fn ci_coverage_job_runs_the_ratchet() {
+    // Arrange
+    let text = read(CI);
+
+    // Act
+    let coverage = job(&text, "coverage");
+
+    // Assert
+    assert!(
+        values(&coverage, "run").contains(&"scripts/coverage.sh"),
+        "the coverage job must run scripts/coverage.sh"
+    );
+}
+
+#[test]
+fn quality_gates_name_the_coverage_ratchet() {
+    // Arrange, Act
+    let gates = read("docs/process/Quality Gates.md");
+
+    // Assert
+    assert!(gates.contains("scripts/coverage.sh"), "gate not listed");
+    assert!(
+        gates.contains("coverage-baseline.toml"),
+        "baseline not named"
+    );
+    let done = gates
+        .split("## Definition of Done")
+        .nth(1)
+        .unwrap_or_default();
+    assert!(
+        done.contains("coverage"),
+        "Definition of Done does not name coverage"
+    );
 }
