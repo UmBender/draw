@@ -28,7 +28,6 @@ use crate::core::file::DocFile;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::history::History;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
-use crate::machine::{Modal, Pages, View};
 use crate::core::keymap;
 use crate::core::minimap::{self, Minimap};
 use crate::core::numbering::{self, FIRST_NUMBER};
@@ -44,6 +43,7 @@ use crate::core::tools::layout::{self, EdgeList, GraphError, PlotError, PointLis
 use crate::core::tools::navigate::{self, Pan};
 use crate::core::tools::text::{self, TextEdit};
 use crate::core::tools::{Overlay, Phase, Pointer, ToolCtx, ToolStates, ToolView, select};
+use crate::machine::{Modal, Pages, View};
 
 /// Stroke widths offered by `[` / `]`, in screen pixels, ascending.
 pub const WIDTH_LADDER_PX: [f32; 10] = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0];
@@ -400,7 +400,8 @@ impl Editor {
             }
         });
         w.record("camera", |l| {
-            l.put(&self.view.camera.offset()).f32(self.view.camera.zoom());
+            l.put(&self.view.camera.offset())
+                .f32(self.view.camera.zoom());
         });
         w.record("selection", |l| {
             for id in &self.view.selection {
@@ -727,7 +728,8 @@ impl Editor {
         if page == self.pages.current {
             return !self.doc.is_empty();
         }
-        self.pages.slots
+        self.pages
+            .slots
             .get(page)
             .and_then(Option::as_ref)
             .is_some_and(|stored| !stored.doc.is_empty())
@@ -765,7 +767,8 @@ impl Editor {
             ),
         };
         // A page left as it was found takes no slot.
-        self.pages.slots[self.pages.current] = (outgoing != Page::fresh(first)).then(|| Box::new(outgoing));
+        self.pages.slots[self.pages.current] =
+            (outgoing != Page::fresh(first)).then(|| Box::new(outgoing));
         self.pages.current = page;
         // A different document: the shell redraws its cached layer.
         self.doc_revision = self.doc_revision.wrapping_add(1);
@@ -1345,7 +1348,8 @@ impl Editor {
     #[must_use]
     pub fn selection_bounds(&self) -> Option<Aabb> {
         let editing = self.text_edit().and_then(TextEdit::target);
-        self.view.selection
+        self.view
+            .selection
             .iter()
             .filter(|id| Some(**id) != editing)
             .filter_map(|id| self.doc.get(*id))
@@ -2654,7 +2658,7 @@ mod tests {
             rect(100.0, 100.0, 10.0, 10.0),
         ]);
         let all = ids(&ed);
-        ed.view.selection =vec![all[0], all[1]];
+        ed.view.selection = vec![all[0], all[1]];
 
         // Act
         let Some(bounds) = ed.selection_bounds() else {
@@ -3067,7 +3071,7 @@ mod tests {
     #[test]
     fn undo_prunes_selection() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.view.selection =ids(&ed);
+        ed.view.selection = ids(&ed);
 
         ed.apply(Command::Undo);
 
@@ -3130,7 +3134,7 @@ mod tests {
     #[test]
     fn clear_all_clears_selection() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.view.selection =ids(&ed);
+        ed.view.selection = ids(&ed);
 
         ed.apply(Command::ClearAll);
 
@@ -3140,7 +3144,7 @@ mod tests {
     #[test]
     fn cancel_ends_gesture_first() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.view.selection =ids(&ed);
+        ed.view.selection = ids(&ed);
         down(&mut ed, PointerButton::Middle, 0.0, 0.0);
 
         assert!(ed.apply(Command::Cancel));
@@ -3152,7 +3156,7 @@ mod tests {
     #[test]
     fn cancel_clears_selection_when_idle() {
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.view.selection =ids(&ed);
+        ed.view.selection = ids(&ed);
 
         assert!(ed.apply(Command::Cancel));
 
@@ -6394,7 +6398,7 @@ mod tests {
         key(&mut ed, Key::Escape);
         place(&mut ed, 100.0, 200.0, "b");
         key(&mut ed, Key::Escape);
-        ed.view.selection =ids(&ed);
+        ed.view.selection = ids(&ed);
 
         // Act: the Text tool re-opens the first.
         click(&mut ed, 105.0, 60.0);
@@ -6922,7 +6926,7 @@ mod tests {
             Tool::Select,
         );
         let id = ids(&ed)[1];
-        ed.view.selection =vec![id];
+        ed.view.selection = vec![id];
 
         // Act
         ctrl_t(&mut ed);
@@ -7093,7 +7097,7 @@ mod tests {
     fn grid_from_clipboard_puts_the_corner_at_the_cursor() {
         // Arrange: a camera that is not the identity.
         let mut ed = shape_text_editor(Vec::new(), Tool::Select);
-        ed.view.camera =Camera::new(Vec2::new(100.0, 50.0), 2.0);
+        ed.view.camera = Camera::new(Vec2::new(100.0, 50.0), 2.0);
         move_to(&mut ed, 300.0, 200.0);
         let world = ed.camera().screen_to_world(Vec2::new(300.0, 200.0));
 
@@ -7132,7 +7136,7 @@ mod tests {
     fn grid_from_clipboard_uses_the_new_text_size_on_screen() {
         // Arrange: at zoom 2 a new block is half as big in the world.
         let mut ed = shape_text_editor(Vec::new(), Tool::Select);
-        ed.view.camera =Camera::new(Vec2::ZERO, 2.0);
+        ed.view.camera = Camera::new(Vec2::ZERO, 2.0);
         let expected = ed
             .camera()
             .world_len(text::text_size_px(ed.style().width_px));
@@ -7268,7 +7272,7 @@ mod tests {
             Tool::Select,
         );
         let (bottom, top) = (ids(&ed)[0], ids(&ed)[2]);
-        ed.view.selection =vec![ids(&ed)[1]];
+        ed.view.selection = vec![ids(&ed)[1]];
 
         // Act
         ctrl_l(&mut ed);
@@ -7781,7 +7785,7 @@ mod tests {
     /// An editor in `tool` with one selected 100 × 100 square at the origin.
     fn selected_square(tool: Tool) -> Editor {
         let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 100.0, 100.0)], tool);
-        ed.view.selection =ids(&ed);
+        ed.view.selection = ids(&ed);
         ed
     }
 
@@ -7988,7 +7992,7 @@ mod tests {
             Tool::Select,
         );
         let (bottom, top) = (ids(&ed)[0], ids(&ed)[2]);
-        ed.view.selection =vec![ids(&ed)[1]];
+        ed.view.selection = vec![ids(&ed)[1]];
 
         // Act
         ctrl_p(&mut ed);
@@ -8232,7 +8236,7 @@ mod tests {
     fn ctrl_bracket_right_raises_selection_one_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(80.0)]);
-        ed.view.selection =vec![id[0]];
+        ed.view.selection = vec![id[0]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketRight, CTRL);
@@ -8246,7 +8250,7 @@ mod tests {
     fn ctrl_bracket_left_lowers_selection_one_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(80.0)]);
-        ed.view.selection =vec![id[2]];
+        ed.view.selection = vec![id[2]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketLeft, CTRL);
@@ -8265,7 +8269,7 @@ mod tests {
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
         let id = ids(&ed);
         place(&mut ed, 600.0, 500.0, "a");
-        ed.view.selection =vec![id[0]];
+        ed.view.selection = vec![id[0]];
         let size = open_size(&ed);
 
         // Act
@@ -8282,7 +8286,7 @@ mod tests {
         // Arrange: a far shape, then two overlapping ones above the
         // selection.
         let (mut ed, id) = stacked(vec![square(0.0), far(), square(50.0), square(60.0)]);
-        ed.view.selection =vec![id[0]];
+        ed.view.selection = vec![id[0]];
 
         // Act
         assert!(ed.apply(Command::RaiseSelection));
@@ -8295,7 +8299,7 @@ mod tests {
     fn lower_passes_only_the_nearest_overlapping_shape() {
         // Arrange: mirror of the raise case.
         let (mut ed, id) = stacked(vec![square(60.0), square(50.0), far(), square(0.0)]);
-        ed.view.selection =vec![id[3]];
+        ed.view.selection = vec![id[3]];
 
         // Act
         assert!(ed.apply(Command::LowerSelection));
@@ -8308,7 +8312,7 @@ mod tests {
     fn raise_with_no_overlapping_shape_above_adds_no_undo_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(60.0), square(0.0), far()]);
-        ed.view.selection =vec![id[1]];
+        ed.view.selection = vec![id[1]];
         let undo = ed.history.undo_len();
 
         // Act
@@ -8324,7 +8328,7 @@ mod tests {
     fn lower_with_no_overlapping_shape_below_adds_no_undo_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![far(), square(0.0), square(60.0)]);
-        ed.view.selection =vec![id[1]];
+        ed.view.selection = vec![id[1]];
         let undo = ed.history.undo_len();
 
         // Act
@@ -8340,7 +8344,7 @@ mod tests {
     fn ctrl_shift_bracket_right_moves_selection_to_top_keeping_order() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), far(), square(20.0), square(30.0)]);
-        ed.view.selection =vec![id[2], id[0]];
+        ed.view.selection = vec![id[2], id[0]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketRight, CTRL_SHIFT);
@@ -8354,7 +8358,7 @@ mod tests {
     fn ctrl_shift_bracket_left_moves_selection_to_bottom_keeping_order() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), far(), square(20.0), square(30.0)]);
-        ed.view.selection =vec![id[3], id[1]];
+        ed.view.selection = vec![id[3], id[1]];
 
         // Act
         let changed = key_with(&mut ed, Key::BracketLeft, CTRL_SHIFT);
@@ -8368,12 +8372,12 @@ mod tests {
     fn to_top_when_already_on_top_adds_no_undo_step() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(20.0), square(30.0)]);
-        ed.view.selection =vec![id[2], id[1]];
+        ed.view.selection = vec![id[2], id[1]];
         let undo = ed.history.undo_len();
 
         // Act
         let top = ed.apply(Command::SelectionToTop);
-        ed.view.selection =vec![id[0]];
+        ed.view.selection = vec![id[0]];
         let bottom = ed.apply(Command::SelectionToBottom);
 
         // Assert
@@ -8387,7 +8391,7 @@ mod tests {
     fn restack_is_one_undo_step_and_keeps_selection() {
         // Arrange
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0), square(70.0)]);
-        ed.view.selection =vec![id[1], id[0]];
+        ed.view.selection = vec![id[1], id[0]];
         let undo = ed.history.undo_len();
         let revision = ed.document_revision();
 
@@ -8412,7 +8416,7 @@ mod tests {
         // Arrange: a pen stroke in progress, a square selected.
         let (mut ed, id) = stacked(vec![square(0.0), square(50.0)]);
         ed.apply(Command::SetTool(Tool::Pen));
-        ed.view.selection =vec![id[0]];
+        ed.view.selection = vec![id[0]];
         down(&mut ed, PointerButton::Left, 700.0, 700.0);
         move_to(&mut ed, 720.0, 730.0);
         assert!(ed.gesture.is_some());
@@ -8491,7 +8495,7 @@ mod tests {
     /// their ids bottom first.
     fn arranged(shapes: Vec<Shape>) -> (Editor, Vec<ShapeId>) {
         let (mut ed, id) = stacked(shapes);
-        ed.view.selection =id.clone();
+        ed.view.selection = id.clone();
         (ed, id)
     }
 
@@ -8784,7 +8788,7 @@ mod tests {
     fn align_is_one_undo_step_and_keeps_selection() {
         // Arrange
         let (mut ed, id) = arranged(uneven());
-        ed.view.selection =vec![id[2], id[0], id[1]];
+        ed.view.selection = vec![id[2], id[0], id[1]];
         let before = shapes_of(&ed);
         let undo = ed.history.undo_len();
         let revision = ed.document_revision();
@@ -8811,7 +8815,7 @@ mod tests {
         // Arrange: a pen stroke in progress, three shapes selected.
         let (mut ed, id) = arranged(uneven());
         ed.apply(Command::SetTool(Tool::Pen));
-        ed.view.selection =id.clone();
+        ed.view.selection = id.clone();
         down(&mut ed, PointerButton::Left, 700.0, 700.0);
         move_to(&mut ed, 720.0, 730.0);
         assert!(ed.gesture.is_some());
@@ -8841,7 +8845,7 @@ mod tests {
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
         let id = ids(&ed);
         place(&mut ed, 600.0, 500.0, "ab");
-        ed.view.selection =id.clone();
+        ed.view.selection = id.clone();
         let rects: Vec<Shape> = id
             .iter()
             .filter_map(|&i| ed.document().get(i).cloned())
@@ -8877,7 +8881,7 @@ mod tests {
     fn locked_editor(shapes: Vec<Shape>, lock: &[usize], tool: Tool) -> Editor {
         let mut ed = shape_text_editor(shapes, Tool::Select);
         let all = ids(&ed);
-        ed.view.selection =lock.iter().map(|&i| all[i]).collect();
+        ed.view.selection = lock.iter().map(|&i| all[i]).collect();
         assert!(ed.apply(Command::LockSelection));
         ed.apply(Command::SetTool(tool));
         ed
@@ -8896,7 +8900,7 @@ mod tests {
         // Arrange
         let mut ed = shape_text_editor(three_rects(), Tool::Select);
         let all = ids(&ed);
-        ed.view.selection =vec![all[2], all[0]];
+        ed.view.selection = vec![all[2], all[0]];
 
         // Act
         let redraw = key_with(&mut ed, Key::K, CTRL);
@@ -9052,7 +9056,7 @@ mod tests {
         let mut ed = locked_editor(three_rects(), &[0], Tool::Select);
         let all = ids(&ed);
         ed.apply(Command::Undo);
-        ed.view.selection =all.clone();
+        ed.view.selection = all.clone();
 
         // Act
         ed.apply(Command::Redo);
@@ -10110,8 +10114,8 @@ mod tests {
     fn pages_keep_their_own_shapes_selection_and_view() {
         // Arrange: page 1 has a selected rectangle and a panned, zoomed view.
         let mut ed = editor_with(vec![rect(0.0, 0.0, 1.0, 1.0)]);
-        ed.view.selection =ids(&ed);
-        ed.view.camera =Camera::new(Vec2::new(40.0, 30.0), 2.0);
+        ed.view.selection = ids(&ed);
+        ed.view.camera = Camera::new(Vec2::new(40.0, 30.0), 2.0);
         let first = ids(&ed);
 
         // Act: a new page is empty with the default view and no selection.
@@ -10122,7 +10126,7 @@ mod tests {
             vec![rect(9.0, 9.0, 1.0, 1.0), rect(5.0, 5.0, 1.0, 1.0)],
         );
         assert!(ed.history.commit(&mut ed.doc, tx).is_ok());
-        ed.view.camera =Camera::new(Vec2::new(-7.0, 8.0), 0.5);
+        ed.view.camera = Camera::new(Vec2::new(-7.0, 8.0), 0.5);
         go(&mut ed, 0);
 
         // Assert
@@ -10130,10 +10134,10 @@ mod tests {
         assert_eq!(fresh, (0, 0, Camera::default()));
         assert_eq!(ids(&ed), first);
         assert_eq!(ed.selection(), first.as_slice());
-        assert_eq!(ed.view.camera,Camera::new(Vec2::new(40.0, 30.0), 2.0));
+        assert_eq!(ed.view.camera, Camera::new(Vec2::new(40.0, 30.0), 2.0));
         go(&mut ed, 4);
         assert_eq!(ed.document().len(), 2);
-        assert_eq!(ed.view.camera,Camera::new(Vec2::new(-7.0, 8.0), 0.5));
+        assert_eq!(ed.view.camera, Camera::new(Vec2::new(-7.0, 8.0), 0.5));
     }
 
     #[test]

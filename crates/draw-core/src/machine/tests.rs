@@ -295,7 +295,10 @@ fn modal_captures_input() {
                 button: PointerButton::Left,
                 mods: Modifiers::NONE,
             }),
-            Input::from_event(InputEvent::Scroll { pos: at, delta: 3.0 }),
+            Input::from_event(InputEvent::Scroll {
+                pos: at,
+                delta: 3.0,
+            }),
             key(Key::Z, CTRL),
             key(Key::A, CTRL),
             key(Key::Delete, Modifiers::NONE),
@@ -345,7 +348,7 @@ fn view_starts_empty_at_the_default_camera() {
     let view = View::default();
 
     // Assert
-    assert!(view.selection().is_empty());
+    assert_eq!(view.selection(), []);
     assert_eq!(*view.camera(), crate::core::camera::Camera::default());
 }
 
