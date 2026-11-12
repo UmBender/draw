@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1e0cf0aa7d5a50210ed42226f632eea5cb1d92521a2a6a131739595d64a77f29 # shrinks to actions = [DrawRect(0), DrawRect(0), SelectAll, Undo]
+cc e59a494566980773e299903bef08ff1a977f240881ccdb5168ca7869a63d9a87 # shrinks to actions = [DrawRect(0), SelectAll, DrawRect(0)]
+cc 12aa842cd5cf68ca5b7002e3857b3258ea66ee85fd63855f738a817bfa19c117 # shrinks to actions = [DrawRect(0), SelectAll, DrawRect(0), DrawRect(0), Delete, SelectAll, Undo, Undo]
