@@ -116,3 +116,4 @@ Decided per child task.
   only.
 - 2026-11-03 — 1.5.0 (T53) now also carries T54–T72; T50 moves to
   wave 52.
+- 2026-11-12 — owner's decisions after the 1.6.0 release (see [[2.0 Architecture proposal]]): **X11 stays** (goal 1 above is reversed and the deprecation of T46 is reverted by a new ADR); the patched miniquad, and so macroquad, are replaced by a backend of our own; the release depends on the e2e suite; `unsafe` is allowed in confined modules with full unit, integration and regression tests per primitive; threads only with a measured gain; all the quality proposals are accepted; no dynamic dispatch where avoidable, with tagless final, GADT-like encodings and type states; the control engine is an automaton. Still no new features.
