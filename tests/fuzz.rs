@@ -2076,7 +2076,7 @@ proptest! {
         // Arrange
         let mut editor = run_session_on(Editor::new(), &session)?;
         // The session may have asked already.
-        let _ = editor.take_copy_image_request();
+        let _ = editor.take_effects();
         let before = editor.clone();
 
         // Act
@@ -2084,8 +2084,8 @@ proptest! {
 
         // Assert: only the pending request may differ, and it is a box.
         prop_assert!(!redraw, "a copy needs no redraw");
-        let asked = editor.take_copy_image_request();
-        prop_assert!(asked.is_none() || before.selection_bounds().is_some());
+        let asked = editor.take_effects();
+        prop_assert!(asked.is_empty() || before.selection_bounds().is_some());
         prop_assert!(editor == before, "the copy changed the editor");
     }
 

@@ -2510,6 +2510,7 @@ mod tests {
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::history::HISTORY_LIMIT;
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
+    use crate::machine::Effect;
     use crate::core::numbering::FIRST_NUMBER;
     use crate::core::palette::ColorId;
     use crate::core::shape::GRID_MAX_CELLS;
@@ -5816,8 +5817,42 @@ mod tests {
         // Assert: nothing but the request changes.
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_export_request());
-        assert!(!ed.take_export_request(), "a request is answered once");
+        assert_eq!(ed.take_effects(), vec![Effect::ExportPng]);
+        assert!(ed.take_effects().is_empty(), "a request is answered once");
+    }
+
+    #[test]
+    fn take_effects_repeated_request_is_queued_once() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+
+        // Act
+        ctrl_e(&mut ed);
+        ctrl_e(&mut ed);
+        key_with(&mut ed, Key::S, CTRL);
+        key_with(&mut ed, Key::S, CTRL);
+
+        // Assert
+        assert_eq!(ed.take_effects(), vec![Effect::ExportPng, Effect::Save]);
+    }
+
+    #[test]
+    fn take_effects_keeps_request_order() {
+        // Arrange
+        let mut ed = editor_with(vec![rect(0.0, 0.0, 10.0, 10.0)]);
+        key_with(&mut ed, Key::A, CTRL);
+
+        // Act
+        ed.apply(Command::CopyImage);
+        ed.apply(Command::SaveFile);
+        ed.apply(Command::ExportSvg);
+
+        // Assert
+        let effects = ed.take_effects();
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::CopyImage(_), Effect::Save, Effect::ExportSvg]
+        ));
     }
 
     #[test]
@@ -5829,9 +5864,9 @@ mod tests {
 
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_save_request());
-        assert!(!ed.take_save_request(), "a request is answered once");
-        assert!(!Editor::new().take_save_request());
+        assert_eq!(ed.take_effects(), vec![Effect::Save]);
+        assert!(ed.take_effects().is_empty(), "a request is answered once");
+        assert!(Editor::new().take_effects().is_empty());
     }
 
     #[test]
@@ -5844,7 +5879,7 @@ mod tests {
         key_with(&mut ed, Key::S, CTRL);
 
         assert!(ed.text_edit().is_some(), "the block stays open");
-        assert!(!ed.take_save_request());
+        assert!(ed.take_effects().is_empty());
     }
 
     #[test]
@@ -5857,7 +5892,7 @@ mod tests {
 
         assert!(ed.text_edit().is_none(), "the block was committed");
         assert_eq!(ed.document().shapes().count(), 1);
-        assert!(ed.take_save_request());
+        assert_eq!(ed.take_effects(), vec![Effect::Save]);
     }
 
     #[test]
@@ -5868,12 +5903,12 @@ mod tests {
 
         key_with(&mut ed, Key::S, CTRL);
 
-        assert!(ed.take_save_request());
+        assert_eq!(ed.take_effects(), vec![Effect::Save]);
     }
 
     #[test]
     fn export_view_is_not_requested_by_default() {
-        assert!(!Editor::new().take_export_request());
+        assert!(Editor::new().take_effects().is_empty());
     }
 
     #[test]
@@ -5887,7 +5922,7 @@ mod tests {
         ctrl_e(&mut ed);
 
         // Assert
-        assert!(!ed.take_export_request());
+        assert!(ed.take_effects().is_empty());
         assert!(ed.text_edit().is_some(), "the block stays open");
     }
 
@@ -5902,7 +5937,7 @@ mod tests {
 
         // Assert
         assert!(!redraw);
-        assert!(!ed.take_export_request());
+        assert!(ed.take_effects().is_empty());
         assert!(ed.text_edit().is_some(), "the block is not committed");
         assert!(ed.document().is_empty());
     }
@@ -5919,7 +5954,7 @@ mod tests {
         ctrl_e(&mut ed);
 
         // Assert
-        assert!(!ed.take_export_request());
+        assert!(ed.take_effects().is_empty());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
@@ -5952,14 +5987,13 @@ mod tests {
         // Assert
         assert!(!redraw);
         assert_eq!(ed, before, "nothing but the request changes");
-        assert!(!ed.take_export_request(), "not a PNG export");
-        assert!(ed.take_svg_export_request());
-        assert!(!ed.take_svg_export_request(), "a request is answered once");
+        assert_eq!(ed.take_effects(), vec![Effect::ExportSvg], "not a PNG export");
+        assert!(ed.take_effects().is_empty(), "a request is answered once");
     }
 
     #[test]
     fn export_svg_is_not_requested_by_default() {
-        assert!(!Editor::new().take_svg_export_request());
+        assert!(Editor::new().take_effects().is_empty());
     }
 
     #[test]
@@ -5973,7 +6007,7 @@ mod tests {
 
         // Assert
         assert!(!redraw);
-        assert!(!ed.take_svg_export_request());
+        assert!(ed.take_effects().is_empty());
         assert!(ed.text_edit().is_some(), "the block stays open");
     }
 
@@ -5988,7 +6022,7 @@ mod tests {
         ed.apply(Command::ExportSvg);
 
         // Assert
-        assert!(!ed.take_svg_export_request());
+        assert!(ed.take_effects().is_empty());
         assert!(ed.active_gesture().is_some(), "the stroke goes on");
     }
 
@@ -6015,7 +6049,7 @@ mod tests {
         // Assert
         assert!(!redraw);
         assert_eq!(ed, before);
-        assert!(ed.take_copy_image_request().is_none());
+        assert!(ed.take_effects().is_empty());
     }
 
     #[test]
@@ -6031,8 +6065,8 @@ mod tests {
 
         // Assert
         assert!(!redraw, "a copy needs no redraw");
-        assert_eq!(ed.take_copy_image_request(), expected);
-        assert!(ed.take_copy_image_request().is_none());
+        assert_eq!(ed.take_effects(), vec![Effect::CopyImage(expected.unwrap())]);
+        assert!(ed.take_effects().is_empty());
     }
 
     #[test]
@@ -6047,7 +6081,7 @@ mod tests {
 
         // Assert
         assert!(ed.text_edit().is_some(), "the block stays open");
-        assert!(ed.take_copy_image_request().is_none());
+        assert!(ed.take_effects().is_empty());
     }
 
     // ---- T35 pressure -------------------------------------------------------

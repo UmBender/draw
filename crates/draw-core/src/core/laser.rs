@@ -872,4 +872,34 @@ mod tests {
         assert!(points[0].pos.approx_eq(v(300.0, 300.0), EPS));
         assert!(!points[0].joined);
     }
+
+    /// Runs one scripted laser session on fake time and returns what a
+    /// shell would draw at each tick: the point count and the alphas.
+    fn scripted_laser_run() -> Vec<(usize, Vec<f32>)> {
+        let mut laser = Laser::new();
+        laser.route(&q_down(), IDLE, 0.0);
+        let mut seen = Vec::new();
+        for step in 0..30_u32 {
+            let now = f64::from(step) * 0.1;
+            if step < 10 {
+                laser.route(&mv(10.0 * step as f32, 5.0), IDLE, now);
+            }
+            laser.tick(now);
+            let alphas = laser.segments(now).map(|s| s.alpha).collect();
+            seen.push((laser.points().len(), alphas));
+        }
+        seen
+    }
+
+    #[test]
+    fn laser_scripted_run_with_fake_time_is_reproducible() {
+        // Arrange / Act
+        let first = scripted_laser_run();
+        let second = scripted_laser_run();
+
+        // Assert: same script, same trail; the trail has faded at the end.
+        assert_eq!(first, second);
+        assert!(first.iter().any(|(n, _)| *n > 1), "a trail was drawn");
+        assert_eq!(first.last().map(|(n, _)| *n), Some(0), "it faded away");
+    }
 }
