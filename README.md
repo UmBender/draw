@@ -103,8 +103,8 @@ On a Wayland session the window talks to the compositor directly; the
 falls back to X11 through XWayland. On an X11 session draw uses X11, which
 stays supported (see [Window backend](#window-backend)). If a display or a library is missing,
 draw says which and what to install instead of opening a window;
-`DRAW_SKIP_PREFLIGHT=1 draw` skips that check (for instance when libraries
-live somewhere unusual, as on NixOS).
+the check can be skipped when libraries live somewhere unusual, as on
+NixOS (see [Debugging](#debugging)).
 
 If draw crashes, it prints a short report and appends it to
 `~/.local/state/draw/crash.log` (`$XDG_STATE_HOME/draw/crash.log` when that
@@ -398,14 +398,21 @@ A printable one-page version lives in
 
 There is no config file: shortcuts are fixed on purpose, and colours are
 set at build time (see [Theme](#theme)).
-Five environment variables exist for troubleshooting:
+The command line takes a file (`draw file.draw`), `--recover [prev]`,
+`--help` and `--version`; nothing else.
+
+### Debugging
+
+Environment variables exist for troubleshooting only (`draw --help` lists
+them too):
 
 | Variable | Values | Effect |
 |----------|--------|--------|
+| `DRAW_LOG` | `off`, `error`, `warn`, `info` (default), `debug`, `trace` | Diagnostics log level |
 | `DRAW_MSAA` | `off`/`1`, `2`, `4` (default), `8` | Anti-aliasing samples; lower it on a very weak GPU |
 | `DRAW_FRAME_TIMES` | `1`, `on`, `true`, `yes` | Log how long each re-render takes |
 | `DRAW_BACKEND` | `wayland` (default on Wayland sessions), `x11` | Window backend on Linux; `x11` stays supported (see [Window backend](#window-backend)) |
-| `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries |
+| `DRAW_SKIP_PREFLIGHT` | any non-empty value | Skip the startup check for a display and libraries (for instance on NixOS) |
 | `DRAW_TABLET` | `auto` (default), `on`, `off` | Pen mode: hold pen taps still (see [Pen tablets](#pen-tablets)) |
 
 ```sh
@@ -445,12 +452,8 @@ GNOME.
 
 **X11 is supported**, both XWayland on Wayland sessions and plain X11
 sessions, and is not scheduled for removal. Native Wayland stays the
-default on Wayland sessions; `DRAW_BACKEND=x11` forces X11 (for instance if
-text looks blurrier under fractional scaling).
-
-```sh
-DRAW_BACKEND=x11 draw
-```
+default on Wayland sessions; X11 can be forced (for instance if text looks
+blurrier under fractional scaling), see [Debugging](#debugging).
 
 ### Pen tablets
 
@@ -466,12 +469,8 @@ the bottom of the toolbar. In this pen mode a tap that stays within 16 px of
 where it landed is a clean click: it selects with Select, places the caret
 with Text, and draws nothing with Rect or Ellipse. Strokes start once the
 pen has moved 16 px and then catch up. A mouse on the same machine gets the
-same 16 px, so `DRAW_TABLET=off` turns pen mode off and `DRAW_TABLET=on`
-forces it on.
-
-```sh
-DRAW_TABLET=off draw
-```
+same 16 px, so if the guess is wrong you can force pen mode on or off (see
+[Debugging](#debugging)).
 
 Map the tablet to **one monitor** in your compositor, otherwise strokes are
 stretched and taps slip further. On Hyprland put `output = current` (or a
