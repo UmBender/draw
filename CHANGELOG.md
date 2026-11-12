@@ -11,6 +11,11 @@ All notable changes to draw are listed here. The format follows
 - A graph typed with `Ctrl+L` that has no cycle is drawn in layers even
   when it is a forest: each tree from its first node, side by side. Only
   a cycle sends it to the circle.
+- A self-loop in a graph (`1 1 12`) is drawn as a loop on its node, with
+  its weight beyond it; before, it was skipped.
+- Edges between the same two nodes (`1 3 4` with `3 1 2`) are drawn side
+  by side, each weight on the outer side of its line, so the arrows and
+  weights no longer overlap.
 
 ### Fixed
 
