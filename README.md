@@ -239,7 +239,7 @@ Modifiers match exactly: `Shift+R` does nothing, `R` picks the rectangle.
 | Wheel | Zoom at cursor | `0` | Reset view |
 | Middle drag, `Space`+drag | Pan | `F` | Fit to content |
 | `Tab` | Toolbar on / off | `Ctrl+E` | Export the view to PNG in `~` |
-| Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | | |
+| Hold `Q` + move | Laser pointer, fades in 1 s (`q` in a text block) | `Ctrl+Shift+C` | Copy the selection as an image |
 | `Space` held, middle drag | Minimap in the corner | `Space`+click or drag in the minimap | Jump there |
 
 ### Helpers
