@@ -18,7 +18,7 @@ One note per user-visible feature, created by the task that implements it
 | [[Shortcuts and macros]] | [[T11 Keymap and macros]], [[T38 Left-hand tool keys]], [[T111 Command palette]], [[T113 Shortcut sheet]], [[T122 ASCII text in the palette and the sheet]], [[T123 Menu font]] | [[11 Keymaps and gesture macros]], [[38 Laying out shortcuts for one hand]] | done |
 | [[Toolbar]] | [[T12 App shell and toolbar]] | [[12 The app loop, idle redraw and UI]] | done |
 | [[Theme and palette]] | [[T02 Palette and theme tokens]] | [[02 Palettes and design tokens]] | done |
-| [[Themes]] | [[T51 Build-time themes]] | [[51 Keeping every colour in one file]] | done |
+| [[Themes]] | [[T51 Build-time themes]], [[T126 Menu islands]] | [[51 Keeping every colour in one file]] | done |
 | [[Anti-aliasing]] | [[T15 Anti-aliasing]] | [[15 Anti-aliasing and multisampling]] | done |
 | [[Snapping]] | [[T17 Snapping]], [[T20 Outline snapping]] | [[17 Snapping and alignment guides]], [[20 Snapping to outlines]] | done |
 | [[Grid tool]] | [[T16 Shape model v2 and helper skeleton]], [[T18 Grid tool]], [[T22 Numbering drives grid indices]], [[T84 Grid from text]], [[T85 Resize a committed grid]] | [[18 A grid tool with live parameters]] | done |

@@ -5,7 +5,7 @@
 //! top of everything, only while the editor holds an open palette, and it
 //! never asks for a frame of its own.
 
-use crate::shell::ui_text;
+use crate::shell::{ui_shapes, ui_text};
 use macroquad::color::Color;
 use macroquad::shapes::draw_rectangle;
 
@@ -42,6 +42,41 @@ pub fn panel(viewport: Vec2, rows: usize) -> Aabb {
     }
 }
 
+/// Corner radius of the panel, in pixels.
+const PANEL_RADIUS_PX: f32 = 8.0;
+/// Corner radius of the selected row and of a key cap, in pixels.
+const ROW_RADIUS_PX: f32 = 6.0;
+/// Text size inside a key cap, in pixels.
+const CAP_TEXT_PX: u16 = 14;
+/// Space left and right of the text inside a key cap, in pixels.
+const CAP_PAD_PX: f32 = 6.0;
+/// Space between two key caps, in pixels.
+const CAP_GAP_PX: f32 = 4.0;
+/// Space above and below a key cap inside its row, in pixels.
+const CAP_MARGIN_PX: f32 = 5.0;
+
+/// The keys of a chord label (`Ctrl+Shift+[`), one per key cap.
+#[must_use]
+pub fn chord_keys(label: &str) -> Vec<&str> {
+    label.split('+').filter(|key| !key.is_empty()).collect()
+}
+
+/// The key caps for keys of the given text `widths`, in a row whose content
+/// ends at `right`, laid right to left: each as `(left, width)`.
+#[must_use]
+pub fn key_caps(widths: &[f32], right: f32) -> Vec<(f32, f32)> {
+    let mut caps = Vec::with_capacity(widths.len());
+    let mut edge = right;
+    for text in widths.iter().rev() {
+        let width = text + 2.0 * CAP_PAD_PX;
+        edge -= width;
+        caps.push((edge, width));
+        edge -= CAP_GAP_PX;
+    }
+    caps.reverse();
+    caps
+}
+
 /// Draws the palette over the canvas of `viewport` pixels.
 pub fn draw(palette: &CommandPalette, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
@@ -55,8 +90,13 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
     );
     let window = visible_window(palette.selected(), palette.len(), VISIBLE_ROWS);
     let rect = panel(viewport, window.len().max(1));
-    fill(rect, hex_color(theme::TOOLBAR_BACKGROUND));
-    outline(rect, hex_color(theme::TOOLBAR_BORDER));
+    ui_shapes::fill(
+        rect,
+        PANEL_RADIUS_PX,
+        hex_color_alpha(theme::MENU_ISLAND, theme::MENU_PANEL_ALPHA),
+    );
+    let edge = hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA);
+    ui_shapes::ring(rect, PANEL_RADIUS_PX, 1.0, edge);
 
     let x = rect.min.x + PAD_PX;
     let right = rect.max.x - PAD_PX;
@@ -64,26 +104,63 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
     let query = format!("> {}_", palette.query());
     draw_row_text(&query, x, y, accent);
     y += ROW_PX;
+    // A thin line under the query.
+    draw_rectangle(x, y - 1.0, right - x, 1.0, edge);
     if palette.is_empty() {
-        draw_row_text("No matching command", x, y, text);
+        draw_row_text("No matching command", x, y, hex_color(theme::MENU_DIM_TEXT));
         return;
     }
     for (offset, (chord, _, description)) in palette.rows().skip(window.start).enumerate() {
         if offset >= window.len() {
             break;
         }
-        if window.start + offset == palette.selected() {
+        let selected = window.start + offset == palette.selected();
+        if selected {
             let band = Aabb {
-                min: Vec2::new(rect.min.x + 2.0, y),
-                max: Vec2::new(rect.max.x - 2.0, y + ROW_PX),
+                min: Vec2::new(rect.min.x + 4.0, y),
+                max: Vec2::new(rect.max.x - 4.0, y + ROW_PX),
             };
-            fill(band, hex_color(theme::TOOLBAR_ACTIVE_FILL));
+            ui_shapes::fill(band, ROW_RADIUS_PX, hex_color(theme::TOOLBAR_ACTIVE_FILL));
         }
-        draw_row_text(description, x, y, text);
-        let label = chord_label(chord);
-        let width = ui_text::measure(&label, TEXT_PX).width;
-        draw_row_text(&label, right - width, y, accent);
+        let color = if selected {
+            hex_color(theme::MENU_ACTIVE_BRIGHT)
+        } else {
+            text
+        };
+        draw_row_text(description, x, y, color);
+        draw_key_caps(&chord_label(chord), right, y);
         y += ROW_PX;
+    }
+}
+
+/// Draws the keys of `label` as key caps ending at `right`, in the row
+/// starting at `y`.
+fn draw_key_caps(label: &str, right: f32, y: f32) {
+    let keys = chord_keys(label);
+    let widths: Vec<f32> = keys
+        .iter()
+        .map(|key| ui_text::measure(key, CAP_TEXT_PX).width)
+        .collect();
+    for (key, (left, width)) in keys.iter().zip(key_caps(&widths, right)) {
+        let cap = Aabb {
+            min: Vec2::new(left, y + CAP_MARGIN_PX),
+            max: Vec2::new(left + width, y + ROW_PX - CAP_MARGIN_PX),
+        };
+        ui_shapes::fill(cap, ROW_RADIUS_PX - 2.0, hex_color(theme::MENU_KEY_FILL));
+        ui_shapes::ring(
+            cap,
+            ROW_RADIUS_PX - 2.0,
+            1.0,
+            hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA),
+        );
+        let size = ui_text::measure(key, CAP_TEXT_PX);
+        ui_text::draw(
+            key,
+            left + CAP_PAD_PX,
+            cap.center().y + size.offset_y * 0.5,
+            CAP_TEXT_PX,
+            hex_color(theme::MENU_DIM_TEXT),
+        );
     }
 }
 
@@ -97,20 +174,6 @@ fn draw_row_text(label: &str, x: f32, y: f32, color: Color) {
         TEXT_PX,
         color,
     );
-}
-
-/// Fills a screen rectangle.
-fn fill(rect: Aabb, color: Color) {
-    draw_rectangle(rect.min.x, rect.min.y, rect.width(), rect.height(), color);
-}
-
-/// Draws a 1 px outline just inside a screen rectangle.
-fn outline(rect: Aabb, color: Color) {
-    let (w, h) = (rect.width(), rect.height());
-    draw_rectangle(rect.min.x, rect.min.y, w, 1.0, color);
-    draw_rectangle(rect.min.x, rect.max.y - 1.0, w, 1.0, color);
-    draw_rectangle(rect.min.x, rect.min.y, 1.0, h, color);
-    draw_rectangle(rect.max.x - 1.0, rect.min.y, 1.0, h, color);
 }
 
 #[cfg(test)]
@@ -137,6 +200,37 @@ mod tests {
         // Assert
         assert!(approx_eq(rect.width(), 300.0 - 2.0 * MARGIN_PX, 1e-3));
         assert!(rect.min.x >= 0.0 && rect.max.x <= 300.0);
+    }
+
+    #[test]
+    fn key_caps_split_a_chord() {
+        assert_eq!(chord_keys("Ctrl+Shift+["), ["Ctrl", "Shift", "["]);
+        assert_eq!(chord_keys("D"), ["D"]);
+        assert_eq!(chord_keys("Alt+Left"), ["Alt", "Left"]);
+        assert_eq!(chord_keys("").len(), 0);
+    }
+
+    #[test]
+    fn key_caps_fit_inside_the_row() {
+        // Arrange: three keys ending at the right edge of the content.
+        let right = 500.0;
+        let widths = [30.0, 40.0, 8.0];
+
+        // Act
+        let caps = key_caps(&widths, right);
+
+        // Assert: in order, apart, the last ending exactly at `right`.
+        assert_eq!(caps.len(), 3);
+        let (last_left, last_width) = caps[2];
+        assert!(approx_eq(last_left + last_width, right, 1e-3));
+        for pair in caps.windows(2) {
+            let (left, width) = pair[0];
+            assert!(left + width + CAP_GAP_PX <= pair[1].0 + 1e-3, "{pair:?}");
+        }
+        for (&(_, width), text) in caps.iter().zip(widths) {
+            assert!(approx_eq(width, text + 2.0 * CAP_PAD_PX, 1e-3));
+        }
+        assert_eq!(key_caps(&[], right).len(), 0);
     }
 
     #[test]

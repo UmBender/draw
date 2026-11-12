@@ -233,6 +233,8 @@ flowchart TD
   T123 --> T118
   T124 --> T118
   T125[T125 Six pages, one per row] --> T118
+  T123 --> T126[T126 Menu islands]
+  T125 --> T126
   T124 --> T125
   T53 --> T118
   T108 --> T118
@@ -310,7 +312,7 @@ flowchart TD
 | 59 | [[T105 Display mode]] · [[T106 Fading laser pointer]] · [[T107 Lock shapes]] · [[T109 Shape recognition]] · [[T110 Minimap]] · [[T111 Command palette]] · [[T114 Export to SVG]] · [[T115 Copy the selection as an image]] · [[T116 Pages]] |
 | 60 | [[T108 Save and load]] · [[T112 User macros]] · [[T113 Shortcut sheet]] · [[T117 Looser shape recognition]] · [[T119 Forest layout in layers]] · [[T120 Weight label on diagonal edges]] · [[T121 Self-loops and opposite edges in graphs]] · [[T122 ASCII text in the palette and the sheet]] · [[T123 Menu font]] · [[T124 Page switcher in the toolbar]] · [[T125 Six pages, one per row]] |
 | 61 | [[T53 Release 1.5.0]] |
-| 62 | [[T118 Release 1.6.0]] |
+| 62 | [[T118 Release 1.6.0]] · [[T126 Menu islands]] |
 | 63 | [[T50 Version 2.0.0 refactor]] |
 
 ## Status
@@ -441,5 +443,6 @@ flowchart TD
 | [[T123 Menu font]] | done | T122 | `task/T123-menu-font` |
 | [[T124 Page switcher in the toolbar]] | done | T116, T123 | `task/T124-page-switcher` |
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
+| [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
 | [[T50 Version 2.0.0 refactor]] | todo | T46–T49, T51–T72 | `task/T50-v2-refactor` |

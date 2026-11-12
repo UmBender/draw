@@ -58,6 +58,19 @@ and docs list the bindings from the same source.
 editor handles them directly in its input state machine (T08), and the tools
 read `Shift`/`Alt` from pointer events (T09, T10).
 
+### How the menus look
+
+The tool strip, the command palette and the shortcut sheet are drawn as
+translucent rounded islands with a thin border, after the owner's status
+bar: four islands in the strip (tools, colours, helpers, undo and redo)
+and a fifth for the page buttons when the window is tall enough; the
+active tool, the selected palette row and the current sheet topic sit on
+the blue selection fill with the bright accent text; the palette shows each
+key of a chord as a key cap. The tools stay the letters of their keys. All
+colours are theme tokens ([[Themes]]), and the rounded shapes are built
+from non-overlapping triangles in `shell::ui_shapes`
+([[ADR-T126-1 Menus drawn as translucent rounded islands]]).
+
 ### Command palette
 
 `Ctrl+Shift+P` opens a prompt over the canvas listing every keymap command

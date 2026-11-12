@@ -16,8 +16,8 @@ use crate::core::editor::{Editor, PAGE_COUNT};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
-use crate::shell::render::{hex_color, to_mq, to_mq_color};
-use crate::shell::ui_text;
+use crate::shell::render::{hex_color, hex_color_alpha, to_mq, to_mq_color};
+use crate::shell::{ui_shapes, ui_text};
 use crate::theme;
 
 /// Side of a square button in pixels.
@@ -26,8 +26,24 @@ pub const BUTTON_PX: f32 = 32.0;
 pub const PAD_PX: f32 = 4.0;
 /// Space between buttons of one group, in pixels.
 pub const GAP_PX: f32 = 2.0;
-/// Space between groups (tools, colours, helpers, history), in pixels.
-pub const GROUP_GAP_PX: f32 = 12.0;
+/// Space between the window edge and the first island, in pixels.
+pub const OUTER_PX: f32 = 3.0;
+/// Width of an island's border ring, in pixels (ADR-T126-1).
+const ISLAND_BORDER_PX: f32 = 1.0;
+/// Space between an island's border and its buttons, in pixels.
+const ISLAND_PAD_PX: f32 = 3.0;
+/// Space between two islands, in pixels.
+const ISLAND_GAP_PX: f32 = 3.0;
+/// Corner radius of an island, in pixels.
+const ISLAND_RADIUS_PX: f32 = 8.0;
+/// Corner radius of an active button, in pixels.
+const BUTTON_RADIUS_PX: f32 = 6.0;
+/// Corner radius of a colour swatch, in pixels.
+const SWATCH_RADIUS_PX: f32 = 4.0;
+/// Border plus padding: how far an island's frame lies outside its buttons.
+const INSET_PX: f32 = ISLAND_BORDER_PX + ISLAND_PAD_PX;
+/// Left edge of the button column.
+const COLUMN_X_PX: f32 = OUTER_PX + INSET_PX;
 
 /// Tools in toolbar order (the keymap's order).
 pub const TOOLS: [Tool; 11] = [
@@ -109,10 +125,12 @@ pub enum Route {
 }
 
 /// Width of the toolbar strip in pixels.
-pub const STRIP_PX: f32 = BUTTON_PX + 2.0 * PAD_PX;
+pub const STRIP_PX: f32 = BUTTON_PX + 2.0 * COLUMN_X_PX;
 
 /// Width in pixels of the active-item outline.
 const OUTLINE_PX: f32 = 2.0;
+/// Space between a colour swatch and the ring of the current colour.
+const SWATCH_RING_GAP_PX: f32 = 3.0;
 /// Inset in pixels of a colour swatch inside its button.
 const SWATCH_INSET_PX: f32 = 6.0;
 /// Size of a tool letter, in pixels.
@@ -125,7 +143,7 @@ const FLY_LABEL_PX: f32 = 40.0;
 const FLY_VALUE_PX: f32 = 28.0;
 /// Height of the `pen` badge, in pixels: it fits the 20 px left under the
 /// buttons in the default 800 px window.
-const BADGE_PX: f32 = 16.0;
+const BADGE_PX: f32 = 14.0;
 /// Gap between the `pen` badge and the bottom of the strip, in pixels.
 const BADGE_INSET_PX: f32 = 2.0;
 /// Size of the `pen` badge's text, in pixels.
@@ -139,15 +157,44 @@ pub fn panel(viewport: Vec2) -> Aabb {
     Aabb::from_corners(Vec2::ZERO, Vec2::new(STRIP_PX, viewport.y))
 }
 
-/// The buttons, top to bottom: tools, colours, helpers, undo, redo.
-///
-/// The layout is fixed; the viewport is taken for symmetry with [`panel`].
-#[must_use]
-pub fn layout(_viewport: Vec2) -> Vec<Button> {
+/// The buttons of one island stacked from `top` (the island's own top
+/// edge), and the `top` of the next island.
+fn stack(kinds: impl IntoIterator<Item = ButtonKind>, top: f32) -> (Vec<Button>, f32) {
+    let mut y = top + INSET_PX;
+    let buttons: Vec<Button> = kinds
+        .into_iter()
+        .map(|kind| {
+            let min = Vec2::new(COLUMN_X_PX, y);
+            y += BUTTON_PX + GAP_PX;
+            Button {
+                rect: Aabb::from_corners(min, min + Vec2::new(BUTTON_PX, BUTTON_PX)),
+                kind,
+            }
+        })
+        .collect();
+    let bottom = buttons.last().map_or(top, |b| b.rect.max.y + INSET_PX);
+    (buttons, bottom + ISLAND_GAP_PX)
+}
+
+/// The frame of an island around `buttons`; `None` for no buttons.
+fn frame(buttons: &[Button]) -> Option<Aabb> {
+    let (first, last) = (buttons.first()?, buttons.last()?);
+    Some(Aabb::from_corners(
+        Vec2::new(OUTER_PX, first.rect.min.y - INSET_PX),
+        Vec2::new(
+            OUTER_PX + BUTTON_PX + 2.0 * INSET_PX,
+            last.rect.max.y + INSET_PX,
+        ),
+    ))
+}
+
+/// The four islands of the strip, top to bottom: tools, colours, helpers,
+/// undo and redo; and the top of the island that would follow.
+fn groups() -> (Vec<Vec<Button>>, f32) {
     let colors = (0..PALETTE_LEN)
         .filter_map(|i| u8::try_from(i).ok().and_then(ColorId::new))
         .map(ButtonKind::Color);
-    let groups: [Vec<ButtonKind>; 4] = [
+    let kinds: [Vec<ButtonKind>; 4] = [
         TOOLS.map(ButtonKind::Tool).to_vec(),
         colors.collect(),
         vec![
@@ -157,54 +204,58 @@ pub fn layout(_viewport: Vec2) -> Vec<Button> {
         ],
         vec![ButtonKind::Undo, ButtonKind::Redo],
     ];
-    let mut buttons = Vec::with_capacity(groups.iter().map(Vec::len).sum());
-    let mut y = PAD_PX;
-    for (g, group) in groups.into_iter().enumerate() {
-        if g > 0 {
-            y += GROUP_GAP_PX - GAP_PX;
-        }
-        for kind in group {
-            let min = Vec2::new(PAD_PX, y);
-            let rect = Aabb::from_corners(min, min + Vec2::new(BUTTON_PX, BUTTON_PX));
-            buttons.push(Button { rect, kind });
-            y += BUTTON_PX + GAP_PX;
-        }
+    let mut top = OUTER_PX;
+    let mut groups = Vec::with_capacity(kinds.len());
+    for group in kinds {
+        let (buttons, next) = stack(group, top);
+        groups.push(buttons);
+        top = next;
     }
-    buttons
+    (groups, top)
 }
 
-/// Size of a page number, in pixels.
-const PAGE_LABEL_SIZE: u16 = 20;
+/// The buttons, top to bottom: tools, colours, helpers, undo, redo.
+///
+/// The layout is fixed; the viewport is taken for symmetry with [`panel`].
+#[must_use]
+pub fn layout(_viewport: Vec2) -> Vec<Button> {
+    groups().0.into_iter().flatten().collect()
+}
+
 /// Height of the bar under the number of a page that holds shapes.
 const PAGE_BAR_PX: f32 = 2.0;
-/// Opacity of the number of an empty page.
-const PAGE_EMPTY_ALPHA: f32 = 0.4;
+/// Space between the bar of a used page and the cell's left and right.
+const PAGE_BAR_INSET_PX: f32 = 9.0;
+/// Space between that bar and the bottom of the cell.
+const PAGE_BAR_LIFT_PX: f32 = 4.0;
 
 /// The page switcher (ADR-T125-1): one square button per page, 1…`PAGE_COUNT`,
-/// one per row like the colours, under the history buttons. Buttons that
-/// would cross the bottom of the window are left out.
+/// one per row like the colours, in an island under the history buttons.
+/// Buttons whose island would cross the bottom of the window are left out.
 #[must_use]
 pub fn page_layout(viewport: Vec2) -> Vec<Button> {
-    let top = layout(viewport)
-        .last()
-        .map_or(PAD_PX, |b| b.rect.max.y + GROUP_GAP_PX);
-    (0..PAGE_COUNT)
-        .map(|page| {
-            let min = Vec2::new(PAD_PX, top + page as f32 * (BUTTON_PX + GAP_PX));
-            Button {
-                rect: Aabb::from_corners(min, min + Vec2::new(BUTTON_PX, BUTTON_PX)),
-                kind: ButtonKind::Page(page),
-            }
-        })
-        .filter(|cell| cell.rect.max.y <= viewport.y)
+    let (_, top) = groups();
+    let (buttons, _) = stack((0..PAGE_COUNT).map(ButtonKind::Page), top);
+    buttons
+        .into_iter()
+        .filter(|cell| cell.rect.max.y + INSET_PX <= viewport.y)
         .collect()
+}
+
+/// The frames of the islands: the four of the strip and, when any page
+/// button fits, the one around the page buttons (ADR-T126-1).
+#[must_use]
+pub fn islands(viewport: Vec2) -> Vec<Aabb> {
+    let mut frames: Vec<Aabb> = groups().0.iter().filter_map(|g| frame(g)).collect();
+    frames.extend(frame(&page_layout(viewport)));
+    frames
 }
 
 /// Where the `pen` badge sits while pen taps are held still (T34): the
 /// bottom of the strip, below every button.
 #[must_use]
 pub fn pen_badge(viewport: Vec2) -> Aabb {
-    let max = Vec2::new(PAD_PX + BUTTON_PX, viewport.y - BADGE_INSET_PX);
+    let max = Vec2::new(COLUMN_X_PX + BUTTON_PX, viewport.y - BADGE_INSET_PX);
     Aabb::from_corners(max - Vec2::new(BUTTON_PX, BADGE_PX), max)
 }
 
@@ -273,14 +324,28 @@ pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> 
     }
 }
 
+/// Draws one island: its translucent fill and its thin border ring
+/// (ADR-T126-1).
+fn draw_island(frame: Aabb) {
+    ui_shapes::fill(
+        frame,
+        ISLAND_RADIUS_PX,
+        hex_color_alpha(theme::MENU_ISLAND, theme::MENU_ISLAND_ALPHA),
+    );
+    ui_shapes::ring(
+        frame,
+        ISLAND_RADIUS_PX,
+        ISLAND_BORDER_PX,
+        hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA),
+    );
+}
+
 /// Draws the toolbar for `editor` in a viewport of `viewport` pixels, with
 /// the grid size flyout while the grid tool is active.
 pub fn draw(editor: &Editor, viewport: Vec2) {
-    let strip = panel(viewport);
-    fill(strip, hex_color(theme::TOOLBAR_BACKGROUND));
-    let border = hex_color(theme::TOOLBAR_BORDER);
-    draw_rectangle(strip.max.x - 1.0, 0.0, 1.0, strip.height(), border);
-
+    for frame in islands(viewport) {
+        draw_island(frame);
+    }
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     let text = hex_color(theme::TOOLBAR_TEXT);
     for button in layout(viewport) {
@@ -290,9 +355,11 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                 draw_toggle(rect, tool_label(tool), editor.tool() == tool, accent, text);
             }
             ButtonKind::Color(id) => {
-                fill(rect.expand(-SWATCH_INSET_PX), to_mq_color(palette(id)));
+                let swatch = rect.expand(-SWATCH_INSET_PX);
+                ui_shapes::fill(swatch, SWATCH_RADIUS_PX, to_mq_color(palette(id)));
                 if editor.style().color == id {
-                    outline(rect, accent);
+                    let ring = swatch.expand(SWATCH_RING_GAP_PX);
+                    ui_shapes::ring(ring, BUTTON_RADIUS_PX, OUTLINE_PX, accent);
                 }
             }
             ButtonKind::SmartSnap => {
@@ -357,32 +424,27 @@ pub fn page_look(editor: &Editor, page: usize) -> PageLook {
 /// Draws the cell of page `page` (zero-based) in `rect`.
 fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
-    let text = hex_color(theme::TOOLBAR_TEXT);
     let label = (page + 1).to_string();
     match look {
         PageLook::Current => {
-            fill(rect, accent);
-            draw_label_sized(
+            ui_shapes::fill(
                 rect,
-                &label,
-                hex_color(theme::TOOLBAR_BACKGROUND),
-                PAGE_LABEL_SIZE,
+                BUTTON_RADIUS_PX,
+                hex_color(theme::TOOLBAR_ACTIVE_FILL),
             );
+            draw_label(rect, &label, hex_color(theme::MENU_ACTIVE_BRIGHT));
         }
         PageLook::Used => {
-            draw_label_sized(rect, &label, text, PAGE_LABEL_SIZE);
+            draw_label(rect, &label, hex_color(theme::TOOLBAR_TEXT));
             draw_rectangle(
-                rect.min.x + 8.0,
-                rect.max.y - 4.0 - PAGE_BAR_PX,
-                rect.width() - 16.0,
+                rect.min.x + PAGE_BAR_INSET_PX,
+                rect.max.y - PAGE_BAR_LIFT_PX - PAGE_BAR_PX,
+                rect.width() - 2.0 * PAGE_BAR_INSET_PX,
                 PAGE_BAR_PX,
                 accent,
             );
         }
-        PageLook::Empty => {
-            let dim = Color::new(text.r, text.g, text.b, text.a * PAGE_EMPTY_ALPHA);
-            draw_label_sized(rect, &label, dim, PAGE_LABEL_SIZE);
-        }
+        PageLook::Empty => draw_label(rect, &label, hex_color(theme::MENU_MUTED)),
     }
 }
 
@@ -390,8 +452,8 @@ fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
 /// `editor`.
 fn draw_flyout(editor: &Editor, viewport: Vec2) {
     let fly = flyout_panel(viewport);
-    fill(fly, hex_color(theme::TOOLBAR_BACKGROUND));
-    let border = hex_color(theme::TOOLBAR_BORDER);
+    draw_island(fly);
+    let border = hex_color(theme::MENU_BORDER);
     let text = hex_color(theme::TOOLBAR_TEXT);
     let helpers = editor.helpers();
     // The row's name, left of its first button.
@@ -403,7 +465,7 @@ fn draw_flyout(editor: &Editor, viewport: Vec2) {
     };
     for button in flyout_layout(viewport) {
         let rect = button.rect;
-        outline(rect, border);
+        ui_shapes::ring(rect, BUTTON_RADIUS_PX, ISLAND_BORDER_PX, border);
         let (delta, name, value) = match button.kind {
             ButtonKind::GridCols(delta) => (delta, "cols", helpers.grid_cols),
             ButtonKind::GridRows(delta) => (delta, "rows", helpers.grid_rows),
@@ -448,13 +510,17 @@ fn tool_label(tool: Tool) -> &'static str {
     }
 }
 
-/// Draws a labelled button, highlighted with `accent` when `on`.
-fn draw_toggle(rect: Aabb, label: &str, on: bool, accent: Color, text: Color) {
+/// Draws a labelled button: a rounded fill and the bright accent when `on`.
+fn draw_toggle(rect: Aabb, label: &str, on: bool, _accent: Color, text: Color) {
     if on {
-        fill(rect, hex_color(theme::TOOLBAR_ACTIVE_FILL));
-        outline(rect, accent);
+        ui_shapes::fill(
+            rect,
+            BUTTON_RADIUS_PX,
+            hex_color(theme::TOOLBAR_ACTIVE_FILL),
+        );
     }
-    draw_label(rect, label, if on { accent } else { text });
+    let bright = hex_color(theme::MENU_ACTIVE_BRIGHT);
+    draw_label(rect, label, if on { bright } else { text });
 }
 
 /// Colour of an undo/redo arrow: the toolbar text colour, faded by
@@ -466,22 +532,6 @@ fn history_color(enabled: bool) -> Color {
     } else {
         to_mq_color(text.faded(theme::TOOLBAR_DISABLED_ALPHA))
     }
-}
-
-/// Fills a screen rectangle.
-fn fill(rect: Aabb, color: Color) {
-    draw_rectangle(rect.min.x, rect.min.y, rect.width(), rect.height(), color);
-}
-
-/// Draws an [`OUTLINE_PX`] outline just inside a screen rectangle.
-fn outline(rect: Aabb, color: Color) {
-    let Aabb { min, max } = rect;
-    let (width, height) = (rect.width(), rect.height());
-    let band = OUTLINE_PX;
-    draw_rectangle(min.x, min.y, width, band, color);
-    draw_rectangle(min.x, max.y - band, width, band, color);
-    draw_rectangle(min.x, min.y, band, height, color);
-    draw_rectangle(max.x - band, min.y, band, height, color);
 }
 
 /// Draws `label` centred in `rect`.
@@ -639,7 +689,7 @@ mod tests {
         assert_eq!(kinds, expected);
         let history_bottom = layout(TALL).last().map_or(0.0, |b| b.rect.max.y);
         for (i, cell) in cells.iter().enumerate() {
-            assert!(approx_eq(cell.rect.min.x, PAD_PX, EPS), "{cell:?}");
+            assert!(approx_eq(cell.rect.min.x, COLUMN_X_PX, EPS), "{cell:?}");
             assert!(approx_eq(cell.rect.width(), BUTTON_PX, EPS), "{cell:?}");
             assert!(approx_eq(cell.rect.height(), BUTTON_PX, EPS), "{cell:?}");
             assert!(cell.rect.min.y > history_bottom, "{cell:?}");
@@ -712,6 +762,97 @@ mod tests {
         ed.apply(Command::GoToPage(1));
         assert_eq!(page_look(&ed, 1), PageLook::Current);
         assert_eq!(page_look(&ed, 0), PageLook::Used);
+    }
+
+    // ---- T126 islands ------------------------------------------------------
+
+    #[test]
+    fn islands_frame_their_groups() {
+        // Act
+        let frames = islands(TALL);
+        let buttons = layout(TALL);
+
+        // Assert: four islands for the strip, a fifth for the pages; each
+        // holds its buttons with the border and padding around them.
+        assert_eq!(frames.len(), 5);
+        let counts = [11, 6, 3, 2];
+        let mut at = 0;
+        for (frame, count) in frames.iter().zip(counts) {
+            let group = &buttons[at..at + count];
+            at += count;
+            for b in group {
+                assert!(
+                    frame.contains(b.rect.min) && frame.contains(b.rect.max),
+                    "{b:?}"
+                );
+            }
+            assert!(approx_eq(frame.min.y, group[0].rect.min.y - INSET_PX, EPS));
+            assert!(approx_eq(
+                frame.max.y,
+                group[count - 1].rect.max.y + INSET_PX,
+                EPS
+            ));
+            assert!(approx_eq(frame.min.x, OUTER_PX, EPS));
+            assert!(approx_eq(frame.width(), BUTTON_PX + 2.0 * INSET_PX, EPS));
+        }
+    }
+
+    #[test]
+    fn islands_fit_the_default_window() {
+        // Act
+        let frames = islands(VIEWPORT);
+
+        // Assert: the four islands of the strip, no page island in 800 px.
+        assert_eq!(frames.len(), 4);
+        for frame in &frames {
+            assert!(frame.max.y <= VIEWPORT.y, "{frame:?}");
+            assert!(frame.max.x <= STRIP_PX + EPS, "{frame:?}");
+        }
+        let badge = pen_badge(VIEWPORT);
+        assert!(
+            badge.min.y >= frames[3].max.y - EPS,
+            "{badge:?} under the last island"
+        );
+    }
+
+    #[test]
+    fn islands_do_not_overlap() {
+        let frames = islands(TALL);
+        for pair in frames.windows(2) {
+            assert!(
+                pair[1].min.y >= pair[0].max.y + ISLAND_GAP_PX - EPS,
+                "{pair:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn page_island_frames_the_page_buttons() {
+        let cells = page_layout(TALL);
+        let frames = islands(TALL);
+        let Some(last) = frames.last() else {
+            panic!("no islands");
+        };
+        for cell in &cells {
+            assert!(last.contains(cell.rect.min) && last.contains(cell.rect.max));
+        }
+        assert!(last.max.y <= TALL.y);
+        // A window too short for any page button has no fifth island.
+        assert_eq!(islands(Vec2::new(1280.0, 790.0)).len(), 4);
+    }
+
+    #[test]
+    fn strip_swallows_a_press_between_islands() {
+        // Arrange: the gap between the tools and the colours.
+        let frames = islands(VIEWPORT);
+        let pos = Vec2::new(
+            OUTER_PX + 4.0,
+            f32::midpoint(frames[0].max.y, frames[1].min.y),
+        );
+
+        // Act / Assert
+        let routed = route(true, false, VIEWPORT, press(pos, PointerButton::Left));
+        assert_eq!(routed, Route::Swallow);
     }
 
     #[test]

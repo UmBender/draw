@@ -6,7 +6,7 @@
 //! everything, only while the editor holds an open sheet, and never asks for
 //! a frame of its own.
 
-use crate::shell::ui_text;
+use crate::shell::{ui_shapes, ui_text};
 use macroquad::color::Color;
 use macroquad::shapes::draw_rectangle;
 
@@ -29,9 +29,19 @@ const TEXT_PX: u16 = 18;
 /// Width of the key column, in pixels.
 const KEY_COLUMN_PX: f32 = 300.0;
 /// Space between two topic names, in pixels.
-const TAB_GAP_PX: f32 = 18.0;
+const TAB_GAP_PX: f32 = 4.0;
 /// Alpha of the dimming layer under the panel.
 const DIM_ALPHA: u8 = 110;
+/// Opacity of the stripe behind every second row of the sheet.
+const STRIPE_ALPHA: u8 = 140;
+/// Corner radius of the panel, in pixels.
+const PANEL_RADIUS_PX: f32 = 8.0;
+/// Corner radius of a topic pill, in pixels.
+const PILL_RADIUS_PX: f32 = 6.0;
+/// Space left and right of a topic name inside its pill, in pixels.
+const PILL_PAD_PX: f32 = 8.0;
+/// Space above and below a topic pill inside its line, in pixels.
+const PILL_MARGIN_PX: f32 = 3.0;
 /// The footer: the sheet's own keys.
 const FOOTER: &str = "Left/Right page    1-9 topic    ? or Esc close";
 
@@ -86,7 +96,7 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
         .collect();
     let widths: Vec<f32> = labels
         .iter()
-        .map(|l| ui_text::measure(l, TEXT_PX).width)
+        .map(|l| ui_text::measure(l, TEXT_PX).width + 2.0 * PILL_PAD_PX)
         .collect();
     let inner =
         (PANEL_WIDTH_PX.min((viewport.x - 2.0 * MARGIN_PX).max(0.0)) - 2.0 * PAD_PX).max(0.0);
@@ -94,28 +104,53 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
     let tab_lines = tabs.last().map_or(1, |&(_, line)| line + 1);
     // Tabs, title, rows, footer.
     let rect = panel(viewport, tab_lines + 1 + rows.len().max(1) + 1);
-    fill(rect, hex_color(theme::TOOLBAR_BACKGROUND));
-    outline(rect, hex_color(theme::TOOLBAR_BORDER));
+    ui_shapes::fill(
+        rect,
+        PANEL_RADIUS_PX,
+        hex_color_alpha(theme::MENU_ISLAND, theme::MENU_PANEL_ALPHA),
+    );
+    let edge = hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA);
+    ui_shapes::ring(rect, PANEL_RADIUS_PX, 1.0, edge);
 
     let x = rect.min.x + PAD_PX;
     let mut y = rect.min.y + PAD_PX;
-    for (i, (label, &(dx, line))) in labels.iter().zip(&tabs).enumerate() {
-        let color = if Topic::ALL.get(i) == Some(&page.topic) {
-            accent
+    for (i, ((label, &(dx, line)), width)) in labels.iter().zip(&tabs).zip(&widths).enumerate() {
+        let current = Topic::ALL.get(i) == Some(&page.topic);
+        let top = y + line as f32 * ROW_PX;
+        if current {
+            let pill = Aabb {
+                min: Vec2::new(x + dx, top + PILL_MARGIN_PX),
+                max: Vec2::new(x + dx + width, top + ROW_PX - PILL_MARGIN_PX),
+            };
+            ui_shapes::fill(pill, PILL_RADIUS_PX, hex_color(theme::TOOLBAR_ACTIVE_FILL));
+        }
+        let color = if current {
+            hex_color(theme::MENU_ACTIVE_BRIGHT)
         } else {
-            text
+            hex_color(theme::MENU_DIM_TEXT)
         };
-        draw_row_text(label, x + dx, y + line as f32 * ROW_PX, color);
+        draw_row_text(label, x + dx + PILL_PAD_PX, top, color);
     }
     y += tab_lines as f32 * ROW_PX;
-    draw_row_text(&page.title(), x, y, accent);
+    draw_row_text(&page.title(), x, y, hex_color(theme::MENU_ACTIVE_BRIGHT));
     y += ROW_PX;
-    for row in &rows {
+    for (i, row) in rows.iter().enumerate() {
+        if i % 2 == 1 {
+            let stripe = Aabb {
+                min: Vec2::new(rect.min.x + 4.0, y),
+                max: Vec2::new(rect.max.x - 4.0, y + ROW_PX),
+            };
+            ui_shapes::fill(
+                stripe,
+                PILL_RADIUS_PX,
+                hex_color_alpha(theme::MENU_KEY_FILL, STRIPE_ALPHA),
+            );
+        }
         draw_row_text(&row.keys, x, y, accent);
         draw_row_text(row.text, x + KEY_COLUMN_PX, y, text);
         y += ROW_PX;
     }
-    draw_row_text(FOOTER, x, y, text);
+    draw_row_text(FOOTER, x, y, hex_color(theme::MENU_MUTED));
 }
 
 /// Draws `label` vertically centred in the row starting at `y`.
@@ -128,20 +163,6 @@ fn draw_row_text(label: &str, x: f32, y: f32, color: Color) {
         TEXT_PX,
         color,
     );
-}
-
-/// Fills a screen rectangle.
-fn fill(rect: Aabb, color: Color) {
-    draw_rectangle(rect.min.x, rect.min.y, rect.width(), rect.height(), color);
-}
-
-/// Draws a 1 px outline just inside a screen rectangle.
-fn outline(rect: Aabb, color: Color) {
-    let (w, h) = (rect.width(), rect.height());
-    draw_rectangle(rect.min.x, rect.min.y, w, 1.0, color);
-    draw_rectangle(rect.min.x, rect.max.y - 1.0, w, 1.0, color);
-    draw_rectangle(rect.min.x, rect.min.y, 1.0, h, color);
-    draw_rectangle(rect.max.x - 1.0, rect.min.y, 1.0, h, color);
 }
 
 #[cfg(test)]

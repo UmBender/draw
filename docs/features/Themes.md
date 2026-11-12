@@ -39,7 +39,8 @@ Cargo feature or configuration file for colours.
 | Selection and marquee | `SELECTION_OUTLINE`, `MARQUEE_OUTLINE`, `MARQUEE_FILL`, `MARQUEE_FILL_ALPHA` | Selection / edit box outline, the drag-to-select box |
 | Snapping | `GUIDE`, `DOT_GRID`, `DOT_GRID_ALPHA` | Alignment guides, snap grid dots |
 | Formulas | `FORMULA_SOURCE`, `FORMULA_SOURCE_ALT` | Formula source that does not parse |
-| Toolbar | `TOOLBAR_BACKGROUND`, `TOOLBAR_BORDER`, `TOOLBAR_TEXT`, `TOOLBAR_ACTIVE`, `TOOLBAR_ACTIVE_FILL`, `TOOLBAR_DISABLED_ALPHA` | Strip, flyout, letters, active tool, disabled undo/redo |
+| Toolbar | `TOOLBAR_BACKGROUND`, `TOOLBAR_BORDER`, `TOOLBAR_TEXT`, `TOOLBAR_ACTIVE`, `TOOLBAR_ACTIVE_FILL`, `TOOLBAR_DISABLED_ALPHA` | Letters, active tool, disabled undo/redo, active fill |
+| Menu islands | `MENU_ISLAND` (+ `_ALPHA`), `MENU_PANEL_ALPHA`, `MENU_BORDER` (+ `_ALPHA`), `MENU_KEY_FILL`, `MENU_MUTED`, `MENU_DIM_TEXT`, `MENU_ACTIVE_BRIGHT` | The rounded islands of the strip, the palette and the sheet, their ring, key caps, quiet and bright text ([[ADR-T126-1 Menus drawn as translucent rounded islands]]) |
 
 ### Worked example: a lighter background, darker ink
 

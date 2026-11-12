@@ -151,3 +151,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 140 | [[ADR-T124-1 Ten pages and a switcher under undo and redo]] | accepted | decision | T116-1, T123-1 | amends T116-1 |
 | 141 | [[ADR-T117-1 Scored shape recognition with looser limits]] | accepted | decision | T109-1 | amends T109-1 |
 | 142 | [[ADR-T125-1 Six pages, one button per row]] | accepted | decision | T124-1 | amends T124-1 |
+| 143 | [[ADR-T126-1 Menus drawn as translucent rounded islands]] | accepted | decision | T51-1, T123-1 | — |
