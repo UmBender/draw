@@ -7,6 +7,7 @@
 //! each glyph defined once and reused.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::palette::{ColorId, Rgba, palette};
@@ -56,13 +57,12 @@ pub fn to_svg<'a>(
         bounds = Some(bounds.map_or(b, |all| all.union(&b)));
         writer.shape(shape);
     }
-    let view = bounds
-        .map_or(Aabb::from_corners(Vec2::ZERO, Vec2::new(64.0, 64.0)), |b| {
-            b.expand(MARGIN)
-        });
+    let view = bounds.map_or(Aabb::from_corners(Vec2::ZERO, Vec2::new(64.0, 64.0)), |b| {
+        b.expand(MARGIN)
+    });
     let (x, y, w, h) = (view.min.x, view.min.y, view.width(), view.height());
     let mut out = String::new();
-    out.push_str(&format!(
+    let _ = out.write_fmt(format_args!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" \
          width=\"{w}\" height=\"{h}\" viewBox=\"{x} {y} {w} {h}\">\n",
         w = number(w),
@@ -78,7 +78,7 @@ pub fn to_svg<'a>(
         }
         out.push_str("</defs>\n");
     }
-    out.push_str(&format!(
+    let _ = out.write_fmt(format_args!(
         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
         number(x),
         number(y),
@@ -153,6 +153,12 @@ struct Writer<'o> {
 }
 
 impl<'o> Writer<'o> {
+    /// Appends formatted text to the body; writing to a `String` cannot
+    /// fail.
+    fn emit(&mut self, args: std::fmt::Arguments<'_>) {
+        let _ = self.body.write_fmt(args);
+    }
+
     fn new(outlines: &'o dyn Outlines) -> Self {
         Self {
             outlines,
@@ -190,7 +196,7 @@ impl<'o> Writer<'o> {
             return 0.0;
         };
         let scale = size / outline.units_per_em;
-        self.body.push_str(&format!(
+        self.emit(format_args!(
             "<use xlink:href=\"#g{id}\" transform=\"translate({} {}) scale({})\" fill=\"{}\"/>\n",
             number(pos.x),
             number(pos.y),
@@ -221,7 +227,13 @@ impl<'o> Writer<'o> {
                     self.put_glyph(face, ch, at, size * scale, glyph_color);
                 }
                 Ink::Rule { a, b, width } => {
-                    self.line(origin + a * size, origin + b * size, width * size, color, "butt");
+                    self.line(
+                        origin + a * size,
+                        origin + b * size,
+                        width * size,
+                        color,
+                        "butt",
+                    );
                 }
             }
         }
@@ -230,10 +242,8 @@ impl<'o> Writer<'o> {
     /// A text of the text face centred in `rect`: its advance box
     /// horizontally and its ink vertically.
     fn centered(&mut self, text: &str, rect: Aabb, size: f32, color: Rgba) {
-        let faces: Vec<Option<(usize, Outline)>> = text
-            .chars()
-            .map(|ch| self.glyph(Face::Text, ch))
-            .collect();
+        let faces: Vec<Option<(usize, Outline)>> =
+            text.chars().map(|ch| self.glyph(Face::Text, ch)).collect();
         let advance = |entry: &Outline| entry.advance / entry.units_per_em * size;
         let width: f32 = faces.iter().flatten().map(|(_, o)| advance(o)).sum();
         let top = faces
@@ -260,7 +270,7 @@ impl<'o> Writer<'o> {
     }
 
     fn line(&mut self, a: Vec2, b: Vec2, width: f32, color: Rgba, cap: &str) {
-        self.body.push_str(&format!(
+        self.emit(format_args!(
             "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\" \
              stroke-linecap=\"{cap}\"/>\n",
             number(a.x),
@@ -277,14 +287,14 @@ impl<'o> Writer<'o> {
         let width = style.width;
         let color = ink(style.color);
         match shape {
-            Shape::Stroke {
-                points, widths, ..
-            } => self.stroke(points, widths.as_deref(), width, color),
+            Shape::Stroke { points, widths, .. } => {
+                self.stroke(points, widths.as_deref(), width, color);
+            }
             Shape::Line { a, b, .. } => self.line(*a, *b, width, color, "round"),
             Shape::Arrow { a, b, .. } => {
                 let [tip, left, right] = arrow_head(*a, *b, width);
                 self.line(*a, left.lerp(right, 0.5), width, color, "round");
-                self.body.push_str(&format!(
+                self.emit(format_args!(
                     "<polygon points=\"{},{} {},{} {},{}\" fill=\"{}\"/>\n",
                     number(tip.x),
                     number(tip.y),
@@ -297,7 +307,7 @@ impl<'o> Writer<'o> {
             }
             Shape::Rect { a, b, fill, .. } => {
                 let rect = Aabb::from_corners(*a, *b);
-                self.body.push_str(&format!(
+                self.emit(format_args!(
                     "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\" \
                      stroke=\"{}\" stroke-width=\"{}\"/>\n",
                     number(rect.min.x),
@@ -315,7 +325,7 @@ impl<'o> Writer<'o> {
             Shape::Ellipse { a, b, fill, .. } => {
                 let rect = Aabb::from_corners(*a, *b);
                 let c = rect.center();
-                self.body.push_str(&format!(
+                self.emit(format_args!(
                     "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"{}\" \
                      stroke=\"{}\" stroke-width=\"{}\"/>\n",
                     number(c.x),
@@ -342,7 +352,7 @@ impl<'o> Writer<'o> {
                 // Cell fills first, so the lines stay on top.
                 for fill in fills {
                     let cell = grid_cell_rect(*a, *b, *cols, *rows, fill.col, fill.row);
-                    self.body.push_str(&format!(
+                    self.emit(format_args!(
                         "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>\n",
                         number(cell.min.x),
                         number(cell.min.y),
@@ -376,7 +386,7 @@ impl<'o> Writer<'o> {
         let factor = |i: usize| widths.and_then(|w| w.get(i)).copied().unwrap_or(1.0);
         match points {
             [] => {}
-            [p] => self.body.push_str(&format!(
+            [p] => self.emit(format_args!(
                 "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>\n",
                 number(p.x),
                 number(p.y),
@@ -394,7 +404,7 @@ impl<'o> Writer<'o> {
                     .iter()
                     .map(|p| format!("{},{}", number(p.x), number(p.y)))
                     .collect();
-                self.body.push_str(&format!(
+                self.emit(format_args!(
                     "<polyline points=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" \
                      stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n",
                     list.join(" "),
@@ -509,7 +519,7 @@ fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-' | '.')
 }
 
-impl<'a> Cursor<'a> {
+impl Cursor<'_> {
     /// Reads the whole text; true if it is one well-formed element.
     fn run(&mut self) -> bool {
         loop {
@@ -549,7 +559,10 @@ impl<'a> Cursor<'a> {
             return self.stack.pop() == Some(name) && !name.is_empty();
         }
         self.rest = &self.rest[1..];
-        let name_len = self.rest.find(|c| !is_name_char(c)).unwrap_or(self.rest.len());
+        let name_len = self
+            .rest
+            .find(|c| !is_name_char(c))
+            .unwrap_or(self.rest.len());
         let (name, after) = self.rest.split_at(name_len);
         if name.is_empty() {
             return false;
@@ -702,7 +715,10 @@ mod tests {
         let n: Vec<f32> = view.split(' ').filter_map(|s| s.parse().ok()).collect();
         assert_eq!(n.len(), 4, "viewBox {view}");
         assert!(n[0] <= -200.0 && n[1] <= 0.0, "origin {view}");
-        assert!(n[0] + n[2] >= 100.0 && n[1] + n[3] >= 400.0, "extent {view}");
+        assert!(
+            n[0] + n[2] >= 100.0 && n[1] + n[3] >= 400.0,
+            "extent {view}"
+        );
     }
 
     #[test]
@@ -759,7 +775,10 @@ mod tests {
             style: style(2.0),
         }]);
 
-        assert!(svg.contains("<line x1=\"0\" y1=\"0\" x2=\"100\" y2=\"50\""), "{svg}");
+        assert!(
+            svg.contains("<line x1=\"0\" y1=\"0\" x2=\"100\" y2=\"50\""),
+            "{svg}"
+        );
         assert!(svg.contains("stroke=\"#c5c9c5\""), "{svg}");
         assert!(svg.contains("stroke-width=\"2\""), "{svg}");
         assert!(svg.contains("stroke-linecap=\"round\""), "{svg}");
@@ -783,7 +802,10 @@ mod tests {
         let red = ColorId::new(1);
         let svg = render(&[rect(None, red)]);
 
-        assert!(svg.contains("<rect x=\"0\" y=\"0\" width=\"100\" height=\"60\""), "{svg}");
+        assert!(
+            svg.contains("<rect x=\"0\" y=\"0\" width=\"100\" height=\"60\""),
+            "{svg}"
+        );
         assert!(svg.contains("fill=\"#d16961\""), "{svg}");
         assert!(svg.contains("stroke=\"#c5c9c5\""), "{svg}");
     }
@@ -839,7 +861,11 @@ mod tests {
         let svg = render(&[grid]);
 
         assert_eq!(count(&svg, "<line"), (3 + 1) + (2 + 1), "{svg}");
-        assert_eq!(count(&svg, "<rect"), 2, "background and one filled cell: {svg}");
+        assert_eq!(
+            count(&svg, "<rect"),
+            2,
+            "background and one filled cell: {svg}"
+        );
         // 0, 1, 2 over the columns and 0, 1 beside the rows.
         assert_eq!(count(&svg, "<use"), 5, "{svg}");
     }
@@ -903,7 +929,10 @@ mod tests {
         }]);
 
         assert_eq!(count(&svg, "<line"), 2, "{svg}");
-        assert!(svg.contains("stroke-width=\"1.5\""), "mean of 0.5 and 1.0: {svg}");
+        assert!(
+            svg.contains("stroke-width=\"1.5\""),
+            "mean of 0.5 and 1.0: {svg}"
+        );
     }
 
     // ---- AC-3: glyph outlines ------------------------------------------

@@ -203,7 +203,10 @@ fn every_scene_is_deterministic() {
 fn text_scene_needs_no_font_and_defines_each_glyph_once() {
     let svg = render(&text_scene());
 
-    assert!(!svg.contains("font-family") && !svg.contains("<text"), "outlines only");
+    assert!(
+        !svg.contains("font-family") && !svg.contains("<text"),
+        "outlines only"
+    );
     let ids: Vec<&str> = svg.split("<path id=\"").skip(1).collect();
     let mut names: Vec<&str> = ids
         .iter()

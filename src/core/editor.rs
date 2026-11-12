@@ -182,6 +182,11 @@ impl Gesture {
     }
 }
 
+/// A request the shell collects once (ADR-T114-2): kept apart from the
+/// editor's own flags.
+#[derive(Debug, Clone, Copy, Default)]
+struct SvgAsk(bool);
+
 /// All editor state: document, history, view, tools and settings.
 #[derive(Debug, Clone)]
 pub struct Editor {
@@ -223,7 +228,7 @@ pub struct Editor {
     export_asked: bool,
     /// `Ctrl+Shift+E` was pressed and the shell has not collected it yet
     /// (ADR-T114-2). Not saved state.
-    svg_export_asked: bool,
+    svg_export_asked: SvgAsk,
     /// The content bounds the minimap shows and the document revision they
     /// were computed for; refreshed only while it shows (ADR-T110-1). Not
     /// saved state.
@@ -465,7 +470,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
-            svg_export_asked: false,
+            svg_export_asked: SvgAsk::default(),
             minimap_content: None,
             palette: None,
         })
@@ -497,7 +502,7 @@ impl Editor {
             doc_base_revision: 0,
             notice: None,
             export_asked: false,
-            svg_export_asked: false,
+            svg_export_asked: SvgAsk::default(),
             minimap_content: None,
             palette: None,
         }
@@ -1070,14 +1075,14 @@ impl Editor {
     /// Records an SVG export request if the drawing may be exported now
     /// (no open text block, no gesture); never needs a redraw.
     fn ask_svg_export(&mut self) -> bool {
-        self.svg_export_asked |= self.can_export();
+        self.svg_export_asked.0 |= self.can_export();
         false
     }
 
     /// Whether an SVG export was asked for since the last call
     /// (ADR-T114-2).
     pub fn take_svg_export_request(&mut self) -> bool {
-        std::mem::take(&mut self.svg_export_asked)
+        std::mem::take(&mut self.svg_export_asked).0
     }
 
     /// The open command palette, if any (ADR-T111-1).
