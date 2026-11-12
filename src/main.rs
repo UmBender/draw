@@ -10,6 +10,81 @@ use draw::shell::autosave::Launch;
 use draw::shell::diag::{self, Level};
 use macroquad::miniquad::signal;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    fn args(list: &[&str]) -> Vec<OsString> {
+        list.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn help_lists_debug_variables() {
+        let text = help_text();
+
+        assert!(text.contains("Debugging"), "{text}");
+        for name in [
+            "DRAW_LOG",
+            "DRAW_FRAME_TIMES",
+            "DRAW_SKIP_PREFLIGHT",
+            "DRAW_BACKEND",
+            "DRAW_MSAA",
+            "DRAW_TABLET",
+        ] {
+            assert!(text.contains(name), "{name} missing: {text}");
+        }
+        assert!(!text.contains("DRAW_EXPERIMENTAL"));
+        assert!(text.contains("--recover"));
+    }
+
+    #[test]
+    fn version_prints_package_version() {
+        assert_eq!(parse_cli(args(&["--version"])), Cli::Version);
+        assert!(version_text().contains(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn help_flag_asks_for_help() {
+        assert_eq!(parse_cli(args(&["--help"])), Cli::Help);
+    }
+
+    #[test]
+    fn unknown_flag_is_refused() {
+        for flag in ["--other", "--experimental", "-x"] {
+            let parsed = parse_cli(args(&["a.draw", flag]));
+            assert!(matches!(parsed, Cli::Refused(ref m) if m.contains(flag)), "{parsed:?}");
+        }
+    }
+
+    #[test]
+    fn known_flags_and_files_are_accepted() {
+        assert_eq!(parse_cli(args(&[])), Cli::Run);
+        assert_eq!(parse_cli(args(&["a.draw"])), Cli::Run);
+        assert_eq!(parse_cli(args(&["--recover"])), Cli::Run);
+        assert_eq!(parse_cli(args(&["--recover", "prev", "a.draw"])), Cli::Run);
+    }
+
+    #[test]
+    fn readme_names_variables_only_in_debugging_section() {
+        let readme = include_str!("../README.md");
+        let mut in_debugging = false;
+        for line in readme.lines() {
+            if line.starts_with('#') && !line.starts_with("# ") {
+                in_debugging = line.trim_start_matches('#').trim() == "Debugging";
+            }
+            if line.starts_with("```") || line.starts_with('#') {
+                continue;
+            }
+            assert!(
+                in_debugging || !line.contains("DRAW_"),
+                "DRAW_ variable outside the Debugging section: {line}"
+            );
+        }
+        assert!(readme.contains("\n### Debugging\n"));
+    }
+}
+
 fn main() {
     draw::shell::crash::install_hook();
     diag::init_from_env();
