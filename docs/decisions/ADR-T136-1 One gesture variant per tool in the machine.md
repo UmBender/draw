@@ -33,7 +33,9 @@ or matched on its own.
 - A gesture ends in an `End` (`Commit` on the release of its button,
   `Cancel` on any command, mode switch or Escape), never in a third state.
   The editor ends a gesture only through these two paths.
-- `ActiveGesture` moves to the same module and keeps its public path.
+- `ActiveGesture` stays in `core/editor.rs` (its public path); `Gesture::active`
+  produces it. `Gesture::ends_on` names the commit path; a cancel is the
+  editor's `cancel_gesture`.
 - The sub-states a tool keeps inside itself (select's marquee, move and
   resize; the text caret) stay in `core/tools/**`. Their tests pass
   unchanged. UNATTENDED CHOICE: the tool sub-automata are not rewritten
