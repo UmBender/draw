@@ -9,14 +9,13 @@
 //! marking the active tool, colour and the helpers that are on with `accent`.
 
 use macroquad::color::Color;
-use macroquad::shapes::{draw_rectangle, draw_triangle};
 
 use crate::core::command::{Command, Tool};
 use crate::core::editor::{Editor, PAGE_COUNT};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
-use crate::shell::render::{hex_color, hex_color_alpha, to_mq, to_mq_color};
+use crate::shell::render::{Batch, GlSink, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::{ui_shapes, ui_text};
 use crate::theme;
 
@@ -446,7 +445,7 @@ fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
         }
         PageLook::Used => {
             draw_label(rect, &label, hex_color(theme::TOOLBAR_TEXT));
-            draw_rectangle(
+            ui_shapes::rect_xywh(
                 rect.min.x + PAGE_BAR_INSET_PX,
                 rect.max.y - PAGE_BAR_LIFT_PX - PAGE_BAR_PX,
                 rect.width() - 2.0 * PAGE_BAR_INSET_PX,
@@ -574,19 +573,21 @@ fn draw_history_arrow(rect: Aabb, dir: f32, color: Color) {
     let base = Vec2::new(tip.x - dir * head, c.y);
     let tail = c.x - dir * half;
     let bar = 2.0;
-    draw_rectangle(
-        base.x.min(tail),
-        c.y - bar * 0.5,
-        (base.x - tail).abs(),
-        bar,
+    let mut batch = Batch::new(GlSink);
+    batch.rect(
+        Aabb::from_corners(
+            Vec2::new(base.x.min(tail), c.y - bar * 0.5),
+            Vec2::new(base.x.min(tail) + (base.x - tail).abs(), c.y + bar * 0.5),
+        ),
         color,
     );
-    draw_triangle(
-        to_mq(tip),
-        to_mq(Vec2::new(base.x, c.y - head)),
-        to_mq(Vec2::new(base.x, c.y + head)),
+    batch.triangle(
+        tip,
+        Vec2::new(base.x, c.y - head),
+        Vec2::new(base.x, c.y + head),
         color,
     );
+    batch.finish();
 }
 
 #[cfg(test)]

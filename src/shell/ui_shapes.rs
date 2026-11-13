@@ -6,9 +6,8 @@
 //! [`ring`] only hand the triangles to macroquad.
 
 use crate::core::geom::{Aabb, Vec2};
-use crate::shell::render::to_mq;
+use crate::shell::render::{Batch, GlSink, MeshSink};
 use macroquad::color::Color;
-use macroquad::shapes::draw_triangle;
 use std::f32::consts::FRAC_PI_2;
 
 /// Segments of the arc of one rounded corner.
@@ -141,21 +140,51 @@ pub fn rounded_ring(rect: Aabb, radius: f32, width: f32) -> Vec<Triangle> {
     out
 }
 
-/// Draws `triangles` in `color`.
-fn draw_all(triangles: &[Triangle], color: Color) {
+/// Adds `triangles` in `color` to `batch`.
+fn push_all<S: MeshSink>(batch: &mut Batch<S>, triangles: &[Triangle], color: Color) {
     for [a, b, c] in triangles {
-        draw_triangle(to_mq(*a), to_mq(*b), to_mq(*c), color);
+        batch.triangle(*a, *b, *c, color);
     }
+}
+
+/// Adds the fill of `rect` with rounded corners to `batch`.
+pub fn push_fill<S: MeshSink>(batch: &mut Batch<S>, rect: Aabb, radius: f32, color: Color) {
+    push_all(batch, &rounded_fill(rect, radius), color);
+}
+
+/// Adds the `width` px border of `rect` with rounded corners to `batch`.
+pub fn push_ring<S: MeshSink>(
+    batch: &mut Batch<S>,
+    rect: Aabb,
+    radius: f32,
+    width: f32,
+    color: Color,
+) {
+    push_all(batch, &rounded_ring(rect, radius, width), color);
+}
+
+/// Fills the axis-aligned rectangle at (`x`, `y`) of `w` × `h` pixels.
+pub fn rect_xywh(x: f32, y: f32, w: f32, h: f32, color: Color) {
+    let mut batch = Batch::new(GlSink);
+    batch.rect(
+        Aabb::from_corners(Vec2::new(x, y), Vec2::new(x + w, y + h)),
+        color,
+    );
+    batch.finish();
 }
 
 /// Fills `rect` with rounded corners.
 pub fn fill(rect: Aabb, radius: f32, color: Color) {
-    draw_all(&rounded_fill(rect, radius), color);
+    let mut batch = Batch::new(GlSink);
+    push_fill(&mut batch, rect, radius, color);
+    batch.finish();
 }
 
 /// Draws the `width` px border of `rect` with rounded corners.
 pub fn ring(rect: Aabb, radius: f32, width: f32, color: Color) {
-    draw_all(&rounded_ring(rect, radius, width), color);
+    let mut batch = Batch::new(GlSink);
+    push_ring(&mut batch, rect, radius, width, color);
+    batch.finish();
 }
 
 #[cfg(test)]
@@ -167,7 +196,8 @@ mod tests {
 
     const EPS: f32 = 1e-2;
 
-    use crate::shell::render::{Batch, MeshSink, Vertex};
+    use draw_gfx::gpu::Vertex;
+    use crate::shell::render::{Batch, MeshSink};
 
     /// A sink that counts the triangles sent to it.
     #[derive(Default)]
