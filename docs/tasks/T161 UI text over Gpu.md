@@ -1,7 +1,7 @@
 ---
 id: T161
 title: UI text over Gpu
-status: todo
+status: in-progress
 wave: 68
 branch: task/T161-ui-text-over-gpu
 depends_on: [T160]
@@ -24,10 +24,11 @@ Slice S5 of [[T155 Gpu migration of the drawing]]: `ui_text.rs`: UI text as glyp
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+- **AC-1** — `ui_text.rs` uses no macroquad draw call (`draw_text_ex` and the calls of the goal): a label is drawn as glyph quads of a glyph atlas through a `Batch` that ends in the `Gpu` interpreter (T158). Test `ui_text_uses_no_macroquad_draw_calls` (source scan).
+- **AC-2** — The quads are pure: `label_quads` places each glyph of a label at the snapped pen position, advancing by the atlas advance, and emits nothing for spaces. Tests `label_quads_place_glyphs_along_the_baseline`, `label_quads_skip_spaces`, `label_quads_snap_the_origin_to_physical_pixels`. Metrics do not change: `measure` still reports `measure_text` of the same font (existing behaviour, kept).
+- **AC-3** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
 
-- **AC-1** — The slice's code emits `Gpu` calls only, as described in the goal.
-- **AC-2** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
+Design (no new ADR): the UI font is the bundled text font, so the atlas is a `GlyphAtlas` over `TEXT_FONT` owned by `ui_text.rs`, rasterized at `raster_px(font_size, dpi)` (exactly what macroquad's `draw_text_ex` rasterizes: font size times DPI), drawn at scale `glyph_scale`. Its pages are uploaded with `GlyphTextures<MqGpu>`; the chunks go through `render::draw_inline` (made `pub`: the shared-interpreter accessor).
 
 ## Out of scope
 
@@ -43,7 +44,7 @@ Draft: the spec step refines each criterion into named tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T161): specify the slice`
+- [x] spec — `docs(T161): specify the slice`
 - [ ] tests — `test(T161): add failing tests`
 - [ ] models — `feat(T161): add the types`
 - [ ] behaviour — `refactor(T161): migrate the slice`
