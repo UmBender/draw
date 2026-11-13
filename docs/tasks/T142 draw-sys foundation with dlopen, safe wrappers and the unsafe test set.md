@@ -1,11 +1,11 @@
 ---
 id: T142
 title: draw-sys foundation with dlopen, safe wrappers and the unsafe test set
-status: todo
+status: in-progress
 wave: 69
 branch: task/T142-draw-sys-foundation-dlopen-safe-wrappers
 depends_on: [T132, T140]
-adrs: []
+adrs: [ADR-T142-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -23,13 +23,15 @@ The first `unsafe` code: loading C libraries at run time and the contract every 
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Decisions: [[ADR-T142-1 dlopen through libc symbols and TEST markers]].
 
 - **AC-1** — `Library` and `Symbol<F>` wrap `dlopen`/`dlsym`: a missing library or symbol is an error value, a symbol cannot outlive its library, and the function type is fixed at load.
   Unit tests for every error path; Miri where the build allows it; regression tests per bug.
+  Tests in `loader.rs`: `open_missing_library_returns_not_found`, `open_name_with_nul_returns_invalid_name`, `open_existing_library_succeeds`, `symbol_missing_returns_symbol_not_found`, `symbol_name_with_nul_returns_invalid_name`, `symbol_of_wrong_size_returns_bad_type`, `symbol_present_can_be_called`, `error_messages_name_the_library_or_symbol`; a `compile_fail` doctest `symbol_cannot_outlive_library`. Integration test `crates/draw-sys/tests/loader.rs`: `libm_cos_through_the_public_api`.
 - **AC-2** — A checklist file `docs/process/Unsafe primitives.md` lists the six obligations (safe wrapper, `# Safety`, unit tests, integration tests, regression suite, sanitizers and fuzz); a script checks that each `unsafe` block names its test.
-  Test: `every_unsafe_block_has_a_test_reference`.
+  Test: `every_unsafe_block_has_a_test_reference` in `crates/draw-sys/tests/unsafe_refs.rs`, plus checker tests `marker_missing_is_reported`, `marker_naming_unknown_test_is_reported`, `marker_on_previous_lines_is_accepted`, `unsafe_in_comment_is_ignored`. `scripts/unsafe-tests.sh` runs it.
 - **AC-3** — The nightly job runs the address and thread sanitizers on the integration tests of `draw-sys`.
+  Test: `tests/ci.rs` is untouched; `scripts/unsafe-sanitizers.sh` is the job's one command, and the job `sanitizers` is added to `nightly.yml`. Nightly toolchain is present locally (Miri runs); the sanitizer run is tried locally and recorded in the log.
 
 ## Out of scope
 
