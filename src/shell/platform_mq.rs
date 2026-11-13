@@ -1,3 +1,248 @@
+//! Translation from miniquad's events to [`RawEvent`] (ADR-T162-1).
+//!
+//! The only module outside the window setup that names miniquad's input
+//! types: the collector, the flight recorder and the detectors see
+//! [`RawEvent`], [`RawKey`], [`RawMods`] and [`RawButton`] only.
+
+use std::cell::RefCell;
+
+use draw_sys::platform::{
+    BackendEvent, BackendRecord, Device, RawButton, RawEvent, RawKey, RawMods,
+};
+use macroquad::input::{KeyCode, MouseButton};
+use macroquad::miniquad::diag as mq_diag;
+use macroquad::miniquad::{EventHandler, KeyMods};
+
+use crate::shell::input_map::Collector;
+
+/// The platform key for a miniquad key code. Keys without a variant keep
+/// miniquad's code (an X11 keysym) in [`RawKey::Other`], so the flight
+/// recorder's privacy rule still tells text keys from the others.
+#[must_use]
+#[allow(
+    clippy::wildcard_enum_match_arm,
+    reason = "KeyCode is miniquad's, about 120 keys; ADR-T131-1"
+)]
+pub const fn raw_key(code: KeyCode) -> RawKey {
+    match code {
+        KeyCode::A => RawKey::Letter('A'),
+        KeyCode::B => RawKey::Letter('B'),
+        KeyCode::C => RawKey::Letter('C'),
+        KeyCode::D => RawKey::Letter('D'),
+        KeyCode::E => RawKey::Letter('E'),
+        KeyCode::F => RawKey::Letter('F'),
+        KeyCode::G => RawKey::Letter('G'),
+        KeyCode::H => RawKey::Letter('H'),
+        KeyCode::I => RawKey::Letter('I'),
+        KeyCode::J => RawKey::Letter('J'),
+        KeyCode::K => RawKey::Letter('K'),
+        KeyCode::L => RawKey::Letter('L'),
+        KeyCode::M => RawKey::Letter('M'),
+        KeyCode::N => RawKey::Letter('N'),
+        KeyCode::O => RawKey::Letter('O'),
+        KeyCode::P => RawKey::Letter('P'),
+        KeyCode::Q => RawKey::Letter('Q'),
+        KeyCode::R => RawKey::Letter('R'),
+        KeyCode::S => RawKey::Letter('S'),
+        KeyCode::T => RawKey::Letter('T'),
+        KeyCode::U => RawKey::Letter('U'),
+        KeyCode::V => RawKey::Letter('V'),
+        KeyCode::W => RawKey::Letter('W'),
+        KeyCode::X => RawKey::Letter('X'),
+        KeyCode::Y => RawKey::Letter('Y'),
+        KeyCode::Z => RawKey::Letter('Z'),
+        KeyCode::Key0 => RawKey::Digit(0),
+        KeyCode::Key1 => RawKey::Digit(1),
+        KeyCode::Key2 => RawKey::Digit(2),
+        KeyCode::Key3 => RawKey::Digit(3),
+        KeyCode::Key4 => RawKey::Digit(4),
+        KeyCode::Key5 => RawKey::Digit(5),
+        KeyCode::Key6 => RawKey::Digit(6),
+        KeyCode::Key7 => RawKey::Digit(7),
+        KeyCode::Key8 => RawKey::Digit(8),
+        KeyCode::Key9 => RawKey::Digit(9),
+        KeyCode::Escape => RawKey::Escape,
+        KeyCode::Space => RawKey::Space,
+        KeyCode::Tab => RawKey::Tab,
+        KeyCode::Backspace => RawKey::Backspace,
+        KeyCode::Delete => RawKey::Delete,
+        KeyCode::Enter | KeyCode::KpEnter => RawKey::Enter,
+        KeyCode::Home => RawKey::Home,
+        KeyCode::End => RawKey::End,
+        KeyCode::Left => RawKey::ArrowLeft,
+        KeyCode::Right => RawKey::ArrowRight,
+        KeyCode::Up => RawKey::ArrowUp,
+        KeyCode::Down => RawKey::ArrowDown,
+        KeyCode::LeftBracket => RawKey::BracketLeft,
+        KeyCode::RightBracket => RawKey::BracketRight,
+        KeyCode::LeftShift => RawKey::LeftShift,
+        KeyCode::RightShift => RawKey::RightShift,
+        KeyCode::LeftControl => RawKey::LeftControl,
+        KeyCode::RightControl => RawKey::RightControl,
+        KeyCode::LeftAlt => RawKey::LeftAlt,
+        KeyCode::RightAlt => RawKey::RightAlt,
+        other => RawKey::Other(other as u32),
+    }
+}
+
+/// The platform modifiers for miniquad's; the logo key is dropped.
+#[must_use]
+pub const fn raw_mods(mods: KeyMods) -> RawMods {
+    RawMods {
+        shift: mods.shift,
+        ctrl: mods.ctrl,
+        alt: mods.alt,
+    }
+}
+
+/// The platform button for a miniquad mouse button.
+#[must_use]
+pub const fn raw_button(button: MouseButton) -> RawButton {
+    match button {
+        MouseButton::Left => RawButton::Left,
+        MouseButton::Middle => RawButton::Middle,
+        MouseButton::Right => RawButton::Right,
+        MouseButton::Unknown => RawButton::Other,
+    }
+}
+
+/// Replays miniquad's events into a [`Collector`] as [`RawEvent`]s.
+#[derive(Debug)]
+pub struct MqInput<'a>(pub &'a mut Collector);
+
+impl EventHandler for MqInput<'_> {
+    fn update(&mut self) {}
+
+    fn draw(&mut self) {}
+
+    fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        self.0.handle(RawEvent::PointerMove { x, y });
+    }
+
+    fn mouse_wheel_event(&mut self, x: f32, y: f32) {
+        self.0.handle(RawEvent::Wheel { dx: x, dy: y });
+    }
+
+    fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        self.0.handle(RawEvent::Button {
+            button: raw_button(button),
+            x,
+            y,
+            down: true,
+        });
+    }
+
+    fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        self.0.handle(RawEvent::Button {
+            button: raw_button(button),
+            x,
+            y,
+            down: false,
+        });
+    }
+
+    fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, repeat: bool) {
+        self.0.handle(RawEvent::Key {
+            key: raw_key(code),
+            mods: raw_mods(mods),
+            down: true,
+            repeat,
+        });
+    }
+
+    fn char_event(&mut self, ch: char, mods: KeyMods, repeat: bool) {
+        self.0.handle(RawEvent::Char {
+            ch,
+            mods: raw_mods(mods),
+            repeat,
+        });
+    }
+
+    fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
+        self.0.handle(RawEvent::Key {
+            key: raw_key(code),
+            mods: raw_mods(mods),
+            down: false,
+            repeat: false,
+        });
+    }
+}
+
+/// The platform device for miniquad's.
+const fn device(device: mq_diag::Device) -> Device {
+    match device {
+        mq_diag::Device::Keyboard => Device::Keyboard,
+        mq_diag::Device::Pointer => Device::Pointer,
+        mq_diag::Device::Touch => Device::Touch,
+    }
+}
+
+/// The platform backend event for miniquad's.
+const fn backend_event(event: mq_diag::BackendEvent) -> BackendEvent {
+    match event {
+        mq_diag::BackendEvent::Capabilities {
+            keyboard,
+            pointer,
+            touch,
+        } => BackendEvent::Capabilities {
+            keyboard,
+            pointer,
+            touch,
+        },
+        mq_diag::BackendEvent::DeviceCreated(d) => BackendEvent::DeviceCreated(device(d)),
+        mq_diag::BackendEvent::DeviceReleased(d) => BackendEvent::DeviceReleased(device(d)),
+        mq_diag::BackendEvent::KeyboardEnter => BackendEvent::KeyboardEnter,
+        mq_diag::BackendEvent::KeyboardLeave => BackendEvent::KeyboardLeave,
+        mq_diag::BackendEvent::Key {
+            code,
+            state,
+            ctrl,
+            alt,
+        } => BackendEvent::Key {
+            code,
+            state,
+            ctrl,
+            alt,
+        },
+        mq_diag::BackendEvent::RepeatInfo { rate, delay } => {
+            BackendEvent::RepeatInfo { rate, delay }
+        }
+        mq_diag::BackendEvent::RepeatTimer { expirations } => {
+            BackendEvent::RepeatTimer { expirations }
+        }
+        mq_diag::BackendEvent::Keymap => BackendEvent::Keymap,
+        mq_diag::BackendEvent::KeymapIgnored { format, size } => {
+            BackendEvent::KeymapIgnored { format, size }
+        }
+        mq_diag::BackendEvent::ToolAdded => BackendEvent::ToolAdded,
+        mq_diag::BackendEvent::ToolRemoved => BackendEvent::ToolRemoved,
+        mq_diag::BackendEvent::ProximityIn => BackendEvent::ProximityIn,
+        mq_diag::BackendEvent::ProximityOut => BackendEvent::ProximityOut,
+        mq_diag::BackendEvent::ProtocolError { errno } => BackendEvent::ProtocolError { errno },
+    }
+}
+
+thread_local! {
+    /// miniquad's records between taking and converting them; reused so a
+    /// frame does not allocate.
+    static SCRATCH: RefCell<Vec<mq_diag::BackendRecord>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Moves miniquad's queued backend records, oldest first, into `out`
+/// (cleared first) and returns how many the queue dropped since the last
+/// call.
+pub fn take_backend_into(out: &mut Vec<BackendRecord>) -> u64 {
+    out.clear();
+    SCRATCH.with_borrow_mut(|scratch| {
+        let dropped = mq_diag::take_events_into(scratch);
+        out.extend(scratch.drain(..).map(|r| BackendRecord {
+            at: r.at,
+            event: backend_event(r.event),
+        }));
+        dropped
+    })
+}
+
 #[cfg(test)]
 pub(crate) mod keys {
     //! Test helpers: build [`RawEvent`]s with miniquad's key code names.

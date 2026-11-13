@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::{EventHandler, KeyMods};
 
+use draw_sys::platform::RawEvent;
+
 use crate::core::command::Command;
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
@@ -384,6 +386,12 @@ impl Collector {
             self.events.push(InputEvent::Pressure { pressure });
         }
         pressure.is_some()
+    }
+
+    /// Takes one platform event, in arrival order (ADR-T162-1).
+    pub fn handle(&mut self, event: RawEvent) {
+        let _ = event;
+        todo!("T162 behaviour step")
     }
 
     /// Converts a physical position and remembers it as the pointer.
