@@ -1,7 +1,7 @@
 ---
 id: T160
 title: Toolbar and menus over Gpu
-status: todo
+status: in-progress
 wave: 68
 branch: task/T160-toolbar-and-menus-over-gpu
 depends_on: [T159]
@@ -24,10 +24,11 @@ Slice S4 of [[T155 Gpu migration of the drawing]]: `toolbar`, `sheet`, `command_
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+- **AC-1** — `toolbar.rs`, `sheet.rs`, `command_palette.rs` and `ui_shapes.rs` use no macroquad draw call (`draw_rectangle`, `draw_triangle`, `draw_line`, `draw_mesh`, `draw_texture_ex`): rectangles and triangles go through `Batch` and the `MeshSink` that ends in the `Gpu` interpreter (T158). Test `toolbar_and_menus_use_no_macroquad_draw_calls` (source scan, in `ui_shapes.rs`).
+- **AC-2** — The rounded fill and ring are tessellated by `push_fill` / `push_ring` into any `Batch`, so they can be checked over a recording sink: tests `push_fill_emits_the_triangles_of_the_fill`, `push_ring_emits_the_triangles_of_the_ring`.
+- **AC-3** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
 
-- **AC-1** — The slice's code emits `Gpu` calls only, as described in the goal.
-- **AC-2** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
+Design: no new ADR. Each draw function opens a `Batch<GlSink>`, adds its shapes and `finish`es it before any text is drawn, so the draw order of shapes and text is unchanged (same as the minimap in T159).
 
 ## Out of scope
 
