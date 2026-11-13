@@ -1481,12 +1481,91 @@ mod tests {
     }
 
     #[test]
-    fn pen_samples_are_empty_without_a_window() {
-        // Arrange / Act: no backend has run, so nothing was pushed.
-        let samples = pen_samples();
+    fn app_names_no_window_clipboard_pen_or_loop_function() {
+        // Arrange: the source above the tests; a call through the platform
+        // has a `.` before the name.
+        let source = include_str!("app.rs");
+        let (code, _) = source.split_once("#[cfg(test)]").expect("tests module");
+        let names = [
+            "screen_width",
+            "screen_height",
+            "screen_dpi_scale",
+            "clipboard_get",
+            "clipboard_set",
+            "schedule_update",
+            "next_frame",
+            "take_samples",
+            "repeat_all_miniquad_input",
+            "register_input_subscriber",
+        ];
+
+        // Act
+        let direct: Vec<&str> = names
+            .into_iter()
+            .filter(|name| {
+                code.match_indices(name)
+                    .any(|(at, _)| !code[..at].ends_with('.'))
+            })
+            .collect();
 
         // Assert
-        assert_eq!(samples, []);
+        assert_eq!(direct, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn frames_over_the_recording_platform_resize_and_dispatch_input() {
+        use crate::shell::recording::{PlatformCall, RecordingPlatform};
+        use draw_sys::platform::{RawKey, RawMods, WindowMetrics};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let mut platform = RecordingPlatform::new(metrics);
+        platform.queue(RawEvent::Key {
+            key: RawKey::Letter('R'),
+            mods: RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let mut editor = Editor::new();
+        let mut collector = Collector::new();
+        let mut recorder = FrameRecorder::new(&editor);
+        let mut laser = LaserLayer::new();
+        let mut state = InputState::default();
+
+        // Act: three frames; the key arrives in the first only.
+        for _ in 0..3 {
+            let _ = gather_input(
+                &mut platform,
+                &mut collector,
+                &mut editor,
+                &mut state,
+                &mut laser,
+                &mut recorder,
+            );
+            let mut next = pin!(platform.next_frame());
+            let mut cx = Context::from_waker(Waker::noop());
+            assert_eq!(next.as_mut().poll(&mut cx), Poll::Ready(()));
+        }
+
+        // Assert
+        assert_eq!(editor.tool(), Tool::Rect);
+        assert!(editor.viewport().approx_eq(Vec2::new(640.0, 480.0), 0.5));
+        let calls = platform.take_calls();
+        let frames = calls
+            .iter()
+            .filter(|call| **call == PlatformCall::NextFrame)
+            .count();
+        let windows = calls
+            .iter()
+            .filter(|call| **call == PlatformCall::Window)
+            .count();
+        assert_eq!((frames, windows), (3, 3));
     }
 
     #[test]
