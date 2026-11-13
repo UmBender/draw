@@ -52,3 +52,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-13 — BLOCKED (batch): `crates/draw-sys/src/loader.rs` cannot compile or be tested without `pub mod loader;` in `crates/draw-sys/src/lib.rs` (which has `#![deny(unsafe_code)]`; the module needs a local `#![allow(unsafe_code)]`). `lib.rs` is not in *Files owned*, and `crates/draw-sys/tests/` (integration tests for AC-3) is not either. Also, `rustup`/`git`-compound commands were refused, so nightly/Miri availability was not checked. Recommended fix: add `crates/draw-sys/src/lib.rs` and `crates/draw-sys/tests/` to *Files owned*, then re-run the task.
