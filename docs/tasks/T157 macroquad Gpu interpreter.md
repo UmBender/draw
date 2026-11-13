@@ -1,7 +1,7 @@
 ---
 id: T157
 title: macroquad Gpu interpreter
-status: todo
+status: review
 wave: 68
 branch: task/T157-macroquad-gpu-interpreter
 depends_on: [T140]
@@ -60,12 +60,17 @@ the geometry chunker and the pass checker. Nothing else in the shell uses
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T157): specify the slice`
-- [ ] tests — `test(T157): add failing tests`
-- [ ] models — `feat(T157): add the types`
-- [ ] behaviour — `refactor(T157): migrate the slice`
-- [ ] quality — `chore(T157): pass clippy and rustfmt`
+- [x] spec — `docs(T157): specify the slice`
+- [x] tests — `test(T157): add failing tests`
+- [x] models — `feat(T157): add the types`
+- [x] behaviour — `feat(T157): implement the macroquad Gpu interpreter`
+- [x] quality — `chore(T157): pass clippy and rustfmt`
 
 ## Log
+
+- 2026-11-13 — implemented `src/shell/gpu_mq.rs`: `MqGpu` plus the pure, tested `Table`, `chunks` and `PassChecker`. `submit` validates the whole list (passes, handles, ranges) before drawing. Nothing else uses it yet, so no pixel change; `e2e.sh --backend all` was not run (no drawing code changed).
+- 2026-11-13 — UNATTENDED CHOICE: `Blend::Opaque` is rejected with `GpuError::Backend` (macroquad's `draw_mesh` has no blend switch without a custom material and no caller needs it yet). Add it in the slice that first needs it.
+- 2026-11-13 — UNATTENDED CHOICE: `MqGpu` itself (needs a GL context) has no unit test; S2 exercises it through `e2e.sh`. The window-free logic is covered by the tests above.
+- 2026-11-13 — `status: review`.
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
