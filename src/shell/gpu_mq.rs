@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
-use macroquad::color::{Color, WHITE};
+use macroquad::color::Color;
 use macroquad::math::Rect;
 use macroquad::models::{Mesh, Vertex as MqVertex, draw_mesh};
 use macroquad::texture::{
@@ -479,7 +479,8 @@ fn to_mq_vertex(vertex: &Vertex) -> MqVertex {
         0.0,
         vertex.uv[0],
         vertex.uv[1],
-        WHITE,
+        // Replaced by the exact bytes below.
+        Color::default(),
     );
     out.color = vertex.color;
     out
