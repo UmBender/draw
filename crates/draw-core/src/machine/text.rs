@@ -43,10 +43,7 @@ impl Anchor {
     /// # Errors
     ///
     /// [`TargetWithHost`] if both are set.
-    pub fn from_parts(
-        target: Option<ShapeId>,
-        host: Option<Host>,
-    ) -> Result<Self, TargetWithHost> {
+    pub fn from_parts(target: Option<ShapeId>, host: Option<Host>) -> Result<Self, TargetWithHost> {
         match (target, host) {
             (None, None) => Ok(Self::New),
             (Some(id), None) => Ok(Self::Block(id)),

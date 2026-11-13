@@ -2500,7 +2500,10 @@ mod tests {
                 alt: false,
             },
         });
-        assert!(ed.text_edit().is_some_and(crate::core::tools::text::TextEdit::resized));
+        assert!(
+            ed.text_edit()
+                .is_some_and(crate::core::tools::text::TextEdit::resized)
+        );
 
         assert_round_trips("text resized", ed);
     }

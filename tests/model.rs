@@ -189,8 +189,8 @@ fn marquee(x0: f32, y0: f32, x1: f32, y1: f32) -> Vec<Input> {
                 pos,
                 mods: Modifiers::NONE,
             },
-            (x0 + x1) / 2.0,
-            (y0 + y1) / 2.0,
+            f32::midpoint(x0, x1),
+            f32::midpoint(y0, y1),
         ),
         left_up(x1, y1),
     ]

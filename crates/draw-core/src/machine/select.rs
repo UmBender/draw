@@ -119,6 +119,7 @@ impl Select {
     }
 
     /// Leaves the gesture, returning it and going `Idle`.
+    #[must_use]
     pub fn take(&mut self) -> Self {
         std::mem::take(self)
     }

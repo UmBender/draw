@@ -16,8 +16,8 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
 use crate::core::snapshot::{Reader, Snap, SnapshotError, Writer, check_ids};
 use crate::core::{snap, text_layout};
-pub use crate::machine::text::{Anchor, Host};
 use crate::machine::text::TargetWithHost;
+pub use crate::machine::text::{Anchor, Host};
 
 /// On-screen font size, in pixels, of a new block at stroke width 0.
 pub const TEXT_BASE_PX: f32 = 12.0;
@@ -1211,7 +1211,7 @@ mod tests {
         let e = TextEdit::open(id, &block, Vec2::ZERO);
 
         // Assert
-        assert_eq!(e.map(|e| e.anchor().clone()), Some(Anchor::Block(id)));
+        assert_eq!(e.map(|e| *e.anchor()), Some(Anchor::Block(id)));
     }
 
     #[test]
@@ -1223,7 +1223,7 @@ mod tests {
         let e = TextEdit::open_in(id, &host_rect(), TextSlot::Shape, 10.0);
 
         // Assert
-        let anchor = e.map(|e| e.anchor().clone());
+        let anchor = e.map(|e| *e.anchor());
         assert!(
             matches!(anchor, Some(Anchor::Slot(h)) if h.id == id && h.slot == TextSlot::Shape),
             "{anchor:?}"
@@ -1234,7 +1234,7 @@ mod tests {
     fn edit_resize_keeps_the_anchor() {
         // Arrange
         let mut e = edit("ab", 1);
-        let before = e.anchor().clone();
+        let before = *e.anchor();
 
         // Act
         let stepped = e.step_size(true, 1.0);
