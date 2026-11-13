@@ -1,7 +1,7 @@
 ---
 id: T158
 title: Render batch over Gpu
-status: todo
+status: in-progress
 wave: 68
 branch: task/T158-render-batch-over-gpu
 depends_on: [T157]
@@ -24,10 +24,14 @@ Slice S2 of [[T155 Gpu migration of the drawing]]: `render.rs`: `Batch` emits `V
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+Design (decided here, see the Log): `MeshSink::draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>)` with `draw_gfx::gpu::Vertex`; `Batch` keeps its `Color` API and converts colours with macroquad's own byte conversion, so pixels do not change. `GpuSink<G>` collects `Command::Draw` (page → texture handle) and wraps them in one pass. `GlSink` submits each chunk through one thread-local `MqGpu`. `GlyphTextures<G: Gpu>` holds `G::Texture` handles. `BeginPass { target: None }` keeps the current macroquad camera (T159 restores the reset).
 
-- **AC-1** — The slice's code emits `Gpu` calls only, as described in the goal.
-- **AC-2** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
+- **AC-1** — `Batch` emits `Vertex` and `u32` indices with the colour bytes macroquad used, in chunks within the limits. Tests: the existing `batch_*` tests (their `Recorder` now takes `Vertex`), `batch_over_recording_gpu_splits_chunks_at_the_limits`.
+- **AC-2** — A batch over `GpuSink<RecordingGpu>` yields `BeginPass`, one `Draw` per chunk bound to its page texture, `EndPass`. Tests: `scene_over_recording_gpu_emits_begin_draws_end`, `gpu_sink_binds_the_page_texture`.
+- **AC-3** — `GlyphTextures` holds `Gpu` handles: `glyph_textures_sync_creates_one_texture_per_page`, `glyph_textures_sync_writes_pending_uploads`.
+- **AC-4** — Guides are tessellated quads: `push_guides_emits_one_quad_per_guide` (selection already is).
+- **AC-5** — `BeginPass { target: None }` and its `EndPass` leave the macroquad camera alone; a target pass owns it: `pass_without_target_keeps_the_camera`, `pass_with_target_owns_the_camera`.
+- **AC-6** — `tests/perf.rs`'s `CountingSink` takes `Vertex`/`u32`; `scripts/check.sh` green; `e2e.sh --backend all` green with no pixel change (checked by the runner or owner if the tools are missing here).
 
 ## Out of scope
 
