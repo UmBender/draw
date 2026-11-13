@@ -1,7 +1,7 @@
 ---
 id: T158
 title: Render batch over Gpu
-status: in-progress
+status: review
 wave: 68
 branch: task/T158-render-batch-over-gpu
 depends_on: [T157]
@@ -46,11 +46,11 @@ Design (decided here, see the Log): `MeshSink::draw(&mut self, vertices: &[Verte
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T158): specify the slice`
-- [ ] tests — `test(T158): add failing tests`
-- [ ] models — `feat(T158): add the types`
-- [ ] behaviour — `refactor(T158): migrate the slice`
-- [ ] quality — `chore(T158): pass clippy and rustfmt`
+- [x] spec — `docs(T158): specify the slice`
+- [x] tests — `test(T158): add failing tests`
+- [x] models — merged into the behaviour commit: the `MeshSink` signature change cannot compile half-done
+- [x] behaviour — `refactor(T158): migrate the slice`
+- [x] quality — `chore(T158): pass clippy and rustfmt`
 
 ## Log
 
@@ -61,3 +61,6 @@ Design (decided here, see the Log): `MeshSink::draw(&mut self, vertices: &[Verte
   3. **Callers outside the owned files** use the API that would change: `tests/perf.rs` implements `MeshSink::draw(&mut Mesh, …)`; `minimap.rs`, `sheet.rs`, `command_palette.rs`, `toolbar.rs`, `app.rs` and `ui_shapes.rs` use `Batch`, `GlSink`, `hex_color`, `to_mq_color`.
   Recommended fix: owner decides one of (a) add to T158's files `src/shell/gpu_mq.rs` and make `BeginPass { target: None }` keep the current macroquad camera until T159 moves the frame cache to passes (then restore the reset in T159); or (b) swap the order: do the frame cache (T159) first. Also add `tests/perf.rs` to the files owned (its `CountingSink` must take `Vertex`/`Command::Draw`) and keep `Batch`'s `Color` API so the other shell files compile until T159–T161. The named tests (`scene_over_recording_gpu_emits_begin_draws_end`, `batch_over_recording_gpu_splits_chunks_at_the_limits`) can use `RecordingGpu` from `src/shell/recording.rs`.
 - 2026-11-13 — UNBLOCKED by the owner: option (a) of the blocker. `gpu_mq.rs` and `tests/perf.rs` added to *Files owned*; keep `Batch`'s `Color` API so the other shell files compile until T159–T161. T159 must restore the camera reset in `BeginPass { target: None }`.
+- 2026-11-13 — implemented. `MeshSink::draw(&[Vertex], &[u32], Option<u32>)`; `GpuSink<G>` (tested over `RecordingGpu`); `GlSink` submits each chunk through a thread-local `MqGpu`; `GlyphTextures<G: Gpu>`; `push_guides`; `gpu_mq::pass_owns_camera` (a pass without a target no longer touches the camera; `submit` resets it only after a target pass). `scripts/check.sh` green and `scripts/e2e.sh --backend all` green (no snapshot changed).
+- 2026-11-13 — UNATTENDED CHOICE: the sink contract is the `Vertex`/`u32` slice form above, not a `CommandList`, so `Batch` stays generic and `perf.rs`'s `CountingSink` stays trivial; the `Command::Draw` form is `GpuSink`. Glyph upload errors are printed with `eprintln!` and drop the upload (no panic).
+- 2026-11-13 — `status: review`.
