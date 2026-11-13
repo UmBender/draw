@@ -8,11 +8,18 @@
 
 use std::collections::HashMap;
 
-use macroquad::models::Mesh;
-use macroquad::texture::{RenderTarget, Texture2D};
+use macroquad::camera::{Camera2D, set_camera, set_default_camera};
+use macroquad::color::{Color, WHITE};
+use macroquad::math::Rect;
+use macroquad::models::{Mesh, Vertex as MqVertex, draw_mesh};
+use macroquad::texture::{
+    FilterMode, Image, RenderTarget, RenderTargetParams, Texture2D, render_target_ex,
+};
+use macroquad::window::clear_background;
 
 use draw_gfx::gpu::{
-    CommandList, Gpu, GpuError, PipelineDesc, TargetDesc, TextureDesc, Vertex,
+    Blend, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
+    TextureDesc, Vertex,
 };
 
 use super::render::{BATCH_MAX_INDICES, BATCH_MAX_VERTICES};
@@ -38,8 +45,59 @@ pub struct Chunk {
 /// # Errors
 /// [`GpuError::Backend`] if `indices` is not a whole number of triangles or
 /// names a vertex that does not exist.
-pub fn chunks(_vertices: &[Vertex], _indices: &[u32]) -> Result<Vec<Chunk>, GpuError> {
-    todo!()
+pub fn chunks(vertices: &[Vertex], indices: &[u32]) -> Result<Vec<Chunk>, GpuError> {
+    if indices.len() % 3 != 0 {
+        return Err(backend("indices are not whole triangles"));
+    }
+    let mut out = Vec::new();
+    let mut chunk = Chunk {
+        vertices: Vec::new(),
+        indices: Vec::new(),
+    };
+    let mut local: HashMap<u32, u16> = HashMap::new();
+    for triangle in indices.chunks_exact(3) {
+        if triangle.iter().any(|&i| i as usize >= vertices.len()) {
+            return Err(backend("index out of range"));
+        }
+        let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
+        let mut fresh = usize::from(!local.contains_key(&a));
+        fresh += usize::from(b != a && !local.contains_key(&b));
+        fresh += usize::from(c != a && c != b && !local.contains_key(&c));
+        let full = chunk.vertices.len() + fresh > CHUNK_MAX_VERTICES
+            || chunk.indices.len() + 3 > CHUNK_MAX_INDICES;
+        if full && !chunk.indices.is_empty() {
+            out.push(std::mem::replace(
+                &mut chunk,
+                Chunk {
+                    vertices: Vec::new(),
+                    indices: Vec::new(),
+                },
+            ));
+            local.clear();
+        }
+        for &i in triangle {
+            let slot = match local.get(&i) {
+                Some(&slot) => slot,
+                None => {
+                    let slot = u16::try_from(chunk.vertices.len())
+                        .map_err(|_| backend("chunk too large"))?;
+                    chunk.vertices.push(vertices[i as usize]);
+                    local.insert(i, slot);
+                    slot
+                }
+            };
+            chunk.indices.push(slot);
+        }
+    }
+    if !chunk.indices.is_empty() {
+        out.push(chunk);
+    }
+    Ok(out)
+}
+
+/// A [`GpuError::Backend`] with `text`.
+fn backend(text: &str) -> GpuError {
+    GpuError::Backend(text.to_owned())
 }
 
 /// Handles of one kind: ids to values.
@@ -60,16 +118,19 @@ impl<T> Table<T> {
     }
 
     /// Stores `value` and returns its id.
-    pub fn insert(&mut self, _value: T) -> u32 {
-        todo!()
+    pub fn insert(&mut self, value: T) -> u32 {
+        let id = self.next;
+        self.next = self.next.saturating_add(1);
+        self.items.insert(id, value);
+        id
     }
 
     /// The value of `id`.
     ///
     /// # Errors
     /// [`GpuError::UnknownHandle`] if `id` was never handed out.
-    pub fn get(&self, _id: u32) -> Result<&T, GpuError> {
-        todo!()
+    pub fn get(&self, id: u32) -> Result<&T, GpuError> {
+        self.items.get(&id).ok_or(GpuError::UnknownHandle)
     }
 }
 
@@ -102,8 +163,16 @@ impl PassChecker {
     /// # Errors
     /// [`GpuError::Backend`] for a draw or end outside a pass, or a begin
     /// inside one.
-    pub fn step(&mut self, _step: Step) -> Result<(), GpuError> {
-        todo!()
+    pub fn step(&mut self, step: Step) -> Result<(), GpuError> {
+        match (step, self.open) {
+            (Step::Begin, false) => self.open = true,
+            (Step::End, true) => self.open = false,
+            (Step::Draw, true) => {}
+            (Step::Begin, true) => return Err(backend("BeginPass inside a pass")),
+            (Step::End, false) => return Err(backend("EndPass outside a pass")),
+            (Step::Draw, false) => return Err(backend("Draw outside a pass")),
+        }
+        Ok(())
     }
 
     /// Checks that no pass is left open.
@@ -111,7 +180,11 @@ impl PassChecker {
     /// # Errors
     /// [`GpuError::Backend`] if a pass is open.
     pub fn finish(&self) -> Result<(), GpuError> {
-        todo!()
+        if self.open {
+            Err(backend("pass left open"))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -157,39 +230,262 @@ impl Gpu for MqGpu {
 
     fn create_buffer(
         &mut self,
-        _vertices: &[Vertex],
-        _indices: &[u32],
+        vertices: &[Vertex],
+        indices: &[u32],
     ) -> Result<MqBuffer, GpuError> {
-        todo!()
+        if indices.len() % 3 != 0 || indices.iter().any(|&i| i as usize >= vertices.len()) {
+            return Err(backend("buffer indices do not fit its vertices"));
+        }
+        let id = self.buffers.insert((vertices.to_vec(), indices.to_vec()));
+        Ok(MqBuffer { id })
     }
 
-    fn create_texture(&mut self, _desc: TextureDesc, _rgba: &[u8]) -> Result<MqTexture, GpuError> {
-        todo!()
+    fn create_texture(&mut self, desc: TextureDesc, rgba: &[u8]) -> Result<MqTexture, GpuError> {
+        let expected = desc.byte_len().ok_or(GpuError::BadSize)?;
+        if desc.width == 0 || desc.height == 0 {
+            return Err(GpuError::BadSize);
+        }
+        if rgba.len() != expected {
+            return Err(GpuError::BadPixelData {
+                expected,
+                got: rgba.len(),
+            });
+        }
+        let width = u16::try_from(desc.width).map_err(|_| GpuError::BadSize)?;
+        let height = u16::try_from(desc.height).map_err(|_| GpuError::BadSize)?;
+        let texture = Texture2D::from_rgba8(width, height, rgba);
+        texture.set_filter(filter_mode(desc.filter));
+        Ok(MqTexture {
+            id: self.textures.insert(texture),
+        })
     }
 
     fn write_texture(
         &mut self,
-        _texture: &MqTexture,
-        _rect: [u32; 4],
-        _rgba: &[u8],
+        texture: &MqTexture,
+        rect: [u32; 4],
+        rgba: &[u8],
     ) -> Result<(), GpuError> {
-        todo!()
+        let target = self.textures.get(texture.id)?;
+        let [x, y, width, height] = rect;
+        let size = TextureDesc {
+            width,
+            height,
+            filter: Filter::Nearest,
+        };
+        let expected = size.byte_len().ok_or(GpuError::BadSize)?;
+        if rgba.len() != expected {
+            return Err(GpuError::BadPixelData {
+                expected,
+                got: rgba.len(),
+            });
+        }
+        let fits = |origin: u32, extent: u32, whole: f32| {
+            origin
+                .checked_add(extent)
+                .is_some_and(|end| end as f32 <= whole)
+        };
+        if width == 0 || height == 0 || !fits(x, width, target.width()) || !fits(y, height, target.height())
+        {
+            return Err(GpuError::BadSize);
+        }
+        let side = |value: u32| u16::try_from(value).map_err(|_| GpuError::BadSize);
+        let image = Image {
+            bytes: rgba.to_vec(),
+            width: side(width)?,
+            height: side(height)?,
+        };
+        let int = |value: u32| i32::try_from(value).map_err(|_| GpuError::BadSize);
+        target.update_part(&image, int(x)?, int(y)?, int(width)?, int(height)?);
+        Ok(())
     }
 
-    fn create_target(&mut self, _desc: TargetDesc) -> Result<MqTarget, GpuError> {
-        todo!()
+    fn create_target(&mut self, desc: TargetDesc) -> Result<MqTarget, GpuError> {
+        if desc.width == 0 || desc.height == 0 || desc.samples == 0 {
+            return Err(GpuError::BadSize);
+        }
+        let target = render_target_ex(
+            desc.width,
+            desc.height,
+            RenderTargetParams {
+                sample_count: i32::from(desc.samples),
+                depth: false,
+            },
+        );
+        let texture = self.textures.insert(target.texture.clone());
+        let id = self.targets.insert(target);
+        Ok(MqTarget { id, texture })
     }
 
-    fn target_texture(&self, _target: &MqTarget) -> MqTexture {
-        todo!()
+    fn target_texture(&self, target: &MqTarget) -> MqTexture {
+        MqTexture { id: target.texture }
     }
 
-    fn pipeline(&mut self, _desc: PipelineDesc) -> MqPipeline {
-        todo!()
+    fn pipeline(&mut self, desc: PipelineDesc) -> MqPipeline {
+        MqPipeline {
+            id: self.pipelines.insert(desc),
+        }
     }
 
-    fn submit(&mut self, _list: &CommandList<Self>) -> Result<(), GpuError> {
-        todo!()
+    fn submit(&mut self, list: &CommandList<Self>) -> Result<(), GpuError> {
+        self.validate(list)?;
+        let result = self.execute(list);
+        set_default_camera();
+        result
+    }
+}
+
+impl MqGpu {
+    /// An interpreter with no resource yet.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Checks pass structure, handles and ranges of the whole `list`, so a
+    /// bad list draws nothing.
+    fn validate(&self, list: &CommandList<Self>) -> Result<(), GpuError> {
+        let mut passes = PassChecker::default();
+        for command in list.commands() {
+            match command {
+                Command::BeginPass { target, .. } => {
+                    passes.step(Step::Begin)?;
+                    if let Some(target) = target {
+                        self.targets.get(target.id)?;
+                    }
+                }
+                Command::Draw {
+                    pipeline,
+                    texture,
+                    geometry,
+                } => {
+                    passes.step(Step::Draw)?;
+                    if self.pipelines.get(pipeline.id)?.blend != Blend::Alpha {
+                        return Err(backend("opaque blend is not supported yet"));
+                    }
+                    if let Some(texture) = texture {
+                        self.textures.get(texture.id)?;
+                    }
+                    if let Geometry::Buffer {
+                        buffer,
+                        first,
+                        count,
+                    } = geometry
+                    {
+                        let (_, indices) = self.buffers.get(buffer.id)?;
+                        buffer_range(indices, *first, *count)?;
+                    }
+                }
+                Command::EndPass => passes.step(Step::End)?,
+            }
+        }
+        passes.finish()
+    }
+
+    /// Runs a validated `list`.
+    fn execute(&self, list: &CommandList<Self>) -> Result<(), GpuError> {
+        for command in list.commands() {
+            match command {
+                Command::BeginPass {
+                    target,
+                    view,
+                    clear,
+                } => {
+                    match target {
+                        Some(target) => {
+                            let render_target = self.targets.get(target.id)?;
+                            let mut camera = Camera2D::from_display_rect(Rect::new(
+                                0.0,
+                                0.0,
+                                view.width,
+                                view.height,
+                            ));
+                            camera.render_target = Some(render_target.clone());
+                            set_camera(&camera);
+                        }
+                        None => set_default_camera(),
+                    }
+                    if let Some(color) = clear {
+                        clear_background(Color::new(color.r, color.g, color.b, color.a));
+                    }
+                }
+                Command::Draw {
+                    texture, geometry, ..
+                } => {
+                    let texture = match texture {
+                        Some(texture) => Some(self.textures.get(texture.id)?.clone()),
+                        None => None,
+                    };
+                    match geometry {
+                        Geometry::Inline { vertices, indices } => {
+                            draw_chunks(vertices, indices, &texture)?;
+                        }
+                        Geometry::Buffer {
+                            buffer,
+                            first,
+                            count,
+                        } => {
+                            let (vertices, indices) = self.buffers.get(buffer.id)?;
+                            let range = buffer_range(indices, *first, *count)?;
+                            draw_chunks(vertices, range, &texture)?;
+                        }
+                    }
+                }
+                Command::EndPass => set_default_camera(),
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The `count` indices of `indices` from `first`.
+fn buffer_range(indices: &[u32], first: u32, count: u32) -> Result<&[u32], GpuError> {
+    let start = first as usize;
+    let end = start
+        .checked_add(count as usize)
+        .ok_or_else(|| backend("index range overflows"))?;
+    indices
+        .get(start..end)
+        .ok_or_else(|| backend("index range out of the buffer"))
+}
+
+/// Draws the triangles in chunks macroquad can hold.
+fn draw_chunks(
+    vertices: &[Vertex],
+    indices: &[u32],
+    texture: &Option<Texture2D>,
+) -> Result<(), GpuError> {
+    for chunk in chunks(vertices, indices)? {
+        let mesh = Mesh {
+            vertices: chunk.vertices.iter().map(to_mq_vertex).collect(),
+            indices: chunk.indices,
+            texture: texture.clone(),
+        };
+        draw_mesh(&mesh);
+    }
+    Ok(())
+}
+
+/// The macroquad vertex with the same position, texture coordinate and
+/// colour bytes.
+fn to_mq_vertex(vertex: &Vertex) -> MqVertex {
+    let mut out = MqVertex::new(
+        vertex.pos[0],
+        vertex.pos[1],
+        0.0,
+        vertex.uv[0],
+        vertex.uv[1],
+        WHITE,
+    );
+    out.color = vertex.color;
+    out
+}
+
+/// The macroquad sampling filter of `filter`.
+fn filter_mode(filter: Filter) -> FilterMode {
+    match filter {
+        Filter::Nearest => FilterMode::Nearest,
+        Filter::Linear => FilterMode::Linear,
     }
 }
 
