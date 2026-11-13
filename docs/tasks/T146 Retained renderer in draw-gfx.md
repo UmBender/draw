@@ -4,7 +4,7 @@ title: Retained renderer in draw-gfx
 status: todo
 wave: 71
 branch: task/T146-retained-renderer-in-draw-gfx
-depends_on: [T145, T135, T136, T153, T155]
+depends_on: [T145, T135, T136, T153, T161]
 adrs: []
 feature: ""
 tutorial: ""

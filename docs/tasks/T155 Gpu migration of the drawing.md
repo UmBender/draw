@@ -1,10 +1,10 @@
 ---
 id: T155
 title: Gpu migration of the drawing
-status: in-progress
+status: done
 wave: 68
 branch: task/T155-gpu-migration-of-the-drawing
-depends_on: [T140]
+depends_on: [T157, T158, T159, T160, T161]
 adrs: []
 feature: ""
 tutorial: ""
@@ -56,13 +56,14 @@ Slices (each ends with `e2e.sh --backend all` green; no pixel change):
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T155): specify the Gpu migration of the drawing`
-- [ ] tests — `test(T155): add failing tests for the drawing over the recorder`
-- [ ] models — `feat(T155): add the macroquad Gpu interpreter`
-- [ ] behaviour — `refactor(T155): draw through the Gpu trait`
-- [ ] quality — `chore(T155): pass clippy and rustfmt`
+- [x] tests — moved to the slices
+- [x] models — moved to the slices
+- [x] behaviour — moved to the slices
+- [x] quality — moved to the slices
 
 ## Log
 
 - 2026-11-13 — split from T140 AC-2 by the owner, following the batch's recommendation.
 - 2026-11-13 — spec committed (slices S1–S5 in *Spec*).
 - 2026-11-13 — BLOCKED (batch): the migration touches about 7 000 lines (`render.rs` 2 800, `toolbar.rs` 1 200, `glyphs.rs` 1 100, `app.rs` frame cache, minimap, sheet, palette, UI text) and every `draw_*` helper and sink test is typed on macroquad's `Mesh`/`Color`. A rewrite that keeps pixel parity needs an `e2e.sh --backend all` run after each slice, which one unattended session cannot do without leaving the tree half-migrated. I stopped after the spec rather than commit untestable partial work. Recommended fix: split T155 into one task per slice S1–S5 (S1 first: the macroquad `Gpu` interpreter is independent and testable), then re-run the batch with one slice per task.
+- 2026-11-13 — closed by the owner: the spec is done and the migration is split into [[T157 macroquad Gpu interpreter]] (S1), [[T158 Render batch over Gpu]] (S2), [[T159 Minimap and frame cache over Gpu]] (S3), [[T160 Toolbar and menus over Gpu]] (S4) and [[T161 UI text over Gpu]] (S5). AC-1 is checked by T161; AC-2 by T158; AC-3 by every slice.
