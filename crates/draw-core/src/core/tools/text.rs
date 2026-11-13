@@ -16,6 +16,8 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::shape::{Shape, ShapeText, Style, TextSlot};
 use crate::core::snapshot::{Reader, Snap, SnapshotError, Writer, check_ids};
 use crate::core::{snap, text_layout};
+pub use crate::machine::text::{Anchor, Host};
+use crate::machine::text::TargetWithHost;
 
 /// On-screen font size, in pixels, of a new block at stroke width 0.
 pub const TEXT_BASE_PX: f32 = 12.0;
@@ -60,19 +62,6 @@ pub fn text_size_px(width_px: f32) -> f32 {
     TEXT_BASE_PX + TEXT_PX_PER_WIDTH * width_px
 }
 
-/// The shape whose text an edit changes (ADR-T31-1).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Host {
-    /// The rectangle, ellipse or grid.
-    pub id: ShapeId,
-    /// Its interior or the grid cell.
-    pub slot: TextSlot,
-    /// The world box the text is fitted into ([`Shape::text_frame`]).
-    pub frame: Aabb,
-    /// The slot is filled, so its text is drawn in the background colour.
-    pub filled: bool,
-}
-
 /// A text block being edited: its text, caret and placement.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextEdit {
@@ -82,12 +71,10 @@ pub struct TextEdit {
     pub size: f32,
     /// Text colour (`width` unused).
     pub style: Style,
-    /// The document block being re-edited, `None` for a new block.
-    target: Option<ShapeId>,
-    /// The shape whose text this is, `None` for a text block. Its edit is
-    /// re-fitted into the host's frame as it is typed; `size` is then the
-    /// largest size.
-    host: Option<Host>,
+    /// What the block is attached to. For a slot the edit is re-fitted
+    /// into the host's frame as it is typed; `size` is then the largest
+    /// size.
+    anchor: Anchor,
     /// The text.
     text: String,
     /// Byte index of the caret, always on a `char` boundary.
@@ -104,8 +91,7 @@ impl TextEdit {
             origin,
             size,
             style,
-            target: None,
-            host: None,
+            anchor: Anchor::New,
             text: String::new(),
             caret: 0,
             resized: false,
@@ -133,8 +119,7 @@ impl TextEdit {
                 color: shape.style().color,
                 width: 0.0,
             },
-            target: None,
-            host: Some(Host {
+            anchor: Anchor::Slot(Host {
                 id,
                 slot,
                 frame,
@@ -163,8 +148,7 @@ impl TextEdit {
             origin: *origin,
             size: *size,
             style: *style,
-            target: Some(id),
-            host: None,
+            anchor: Anchor::Block(id),
             text: text.clone(),
             caret: 0,
             resized: false,
@@ -176,13 +160,19 @@ impl TextEdit {
     /// The document block being re-edited, `None` for a new block.
     #[must_use]
     pub fn target(&self) -> Option<ShapeId> {
-        self.target
+        self.anchor.target()
     }
 
     /// The shape whose text this is, `None` for a text block.
     #[must_use]
     pub fn host(&self) -> Option<&Host> {
-        self.host.as_ref()
+        self.anchor.host()
+    }
+
+    /// What the block is attached to.
+    #[must_use]
+    pub fn anchor(&self) -> &Anchor {
+        &self.anchor
     }
 
     /// The edited text as shape text; `None` when blank.
@@ -194,7 +184,7 @@ impl TextEdit {
     /// Top-left corner and font size the block is shown at: `origin` and
     /// `size`, or fitted into the host's frame (ADR-T31-1).
     fn placed(&self) -> (Vec2, f32) {
-        self.host
+        self.host()
             .and_then(|host| text_layout::fit_source(&self.text, host.frame, self.size))
             .unwrap_or((self.origin, self.size))
     }
@@ -453,7 +443,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     let Some(edit) = &state.edit else {
         return Overlay::default();
     };
-    let host = edit.host.and_then(|host| {
+    let host = edit.host().and_then(|host| {
         let shape = view.doc.get(host.id)?.clone();
         Some((host.id, shape.with_slot_text(host.slot, None)))
     });
@@ -461,7 +451,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     shapes.push(edit.shape());
     Overlay {
         shapes,
-        hidden: edit.target.into_iter().chain(hidden).collect(),
+        hidden: edit.target().into_iter().chain(hidden).collect(),
         ..Overlay::default()
     }
 }
@@ -507,8 +497,8 @@ impl State {
                 l.put(&edit.origin)
                     .f32(edit.size)
                     .put(&edit.style)
-                    .opt(edit.target.as_ref())
-                    .opt(edit.host.as_ref())
+                    .opt(edit.anchor.target().as_ref())
+                    .opt(edit.anchor.host())
                     .string(&edit.text)
                     .word(edit.caret)
                     .bool(edit.resized);
@@ -546,6 +536,8 @@ impl State {
             if caret > text.len() || !text.is_char_boundary(caret) {
                 return Err(t.error(format!("caret {caret} is not on a character boundary")));
             }
+            let anchor = Anchor::from_parts(target, host)
+                .map_err(|TargetWithHost| t.error("text block has both a target and a host"))?;
             check_ids(&t, doc, target.as_slice())?;
             if let Some(host) = &host {
                 check_ids(&t, doc, &[host.id])?;
@@ -564,8 +556,7 @@ impl State {
                 origin,
                 size,
                 style,
-                target,
-                host,
+                anchor,
                 text,
                 caret,
                 resized,
