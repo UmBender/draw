@@ -1,10 +1,10 @@
 ---
 id: T156
 title: Platform migration of input and the loop
-status: todo
+status: done
 wave: 68
 branch: task/T156-platform-migration-of-input-and-the-loop
-depends_on: [T140, T161]
+depends_on: [T162, T163, T164]
 adrs: []
 feature: ""
 tutorial: ""
@@ -48,14 +48,15 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T156): specify the Platform migration`
-- [ ] tests — `test(T156): move the input tests to RawEvent`
-- [ ] models — `feat(T156): add the macroquad Platform interpreter`
-- [ ] behaviour — `refactor(T156): run the shell over Platform and Gpu`
-- [ ] quality — `chore(T156): pass clippy and rustfmt`
+- [x] spec — moved to the slices
+- [x] tests — moved to the slices
+- [x] models — moved to the slices
+- [x] behaviour — moved to the slices
+- [x] quality — moved to the slices
 
 ## Log
 
 - 2026-11-13 — split from T140 AC-2 by the owner, following the batch's recommendation.
 - 2026-11-13 — planned for a batch by the owner: *Files owned* widened in advance. The diag records travel as a `RawEvent::Backend` variant (one ordered stream, lossless), recorded in an ADR amending ADR-T140-1. `vendor/miniquad` stays as it is. AC-4 (tablet) is the owner's: the batch stops at `review`.
 - 2026-11-13 — BLOCKED (batch): the task is too large for one unattended session and AC-3 hides a second migration. Findings: (1) `Collector` (1,736 lines, ~1,200 of tests) keys on `KeyCode` and `KeyMods` through `KeyWatch`, `HeldMods`, `diag::event::key_tag`, `map_key`; all must move to `RawKey`/`RawMods`, and `RawEvent` lacks the diag `BackendRecord` variant and a wheel/pen pairing shape that keeps `pair_pen` lossless. (2) `app::run` still reads `screen_width`, `screen_dpi_scale`, `clipboard_*`, `schedule_update`, `next_frame`, `pen::take_samples` and `repeat_all_miniquad_input` directly. (3) Rendering still reaches `MqGpu` through a thread-local (`render::with_gpu`, `render::submit`, `ui_text`, `CachedFrame`, `blit*`), so `fn run<P: Platform, G: Gpu>()` needs `CachedFrame`, the toolbar, the minimap, export and `ui_text` made generic over `G` first; T155/T157–T161 wrapped the drawing in `wrap_pass::<MqGpu>` but did not remove the thread-local. Nothing was changed in code. Recommended fix: split into T156a (RawEvent in `draw-sys` incl. `Backend` variant and the ADR; `Collector` and `diag` on `RawEvent`; the tests moved), T156b (macroquad `Platform` interpreter and `app::run` over `P`), T156c (drop the `MqGpu` thread-local, `run<P, G>` and the `match` in `main`, `e2e.sh --backend all`), then AC-4 by hand.
+- 2026-11-13 — closed by the owner: split into [[T162 RawEvent and the input collector]] (AC-1 input side, AC-2), [[T163 macroquad Platform interpreter and the loop]] (AC-1 loop, clipboard, pen) and [[T164 Generic run over Platform and Gpu]] (AC-3, and AC-4 by hand at its end).
