@@ -7,15 +7,29 @@
 //! of the canvas text), and every string is placed on a whole physical
 //! pixel.
 
+use crate::core::geom::Vec2;
 use crate::shell::app::TEXT_FONT;
+use crate::shell::glyphs::{GlyphAtlas, GlyphQuad, GlyphTextures, glyph_quad, glyph_scale, raster_px};
+use crate::shell::gpu_mq::{MqGpu, MqTexture};
+use crate::shell::render::{Batch, MeshSink, draw_inline, with_gpu};
+use draw_gfx::gpu::Vertex;
 use macroquad::color::Color;
 use macroquad::miniquad;
-use macroquad::text::{
-    Font, TextDimensions, TextParams, draw_text_ex, load_ttf_font_from_bytes, measure_text,
-};
-use std::cell::OnceCell;
+use macroquad::text::{Font, TextDimensions, load_ttf_font_from_bytes, measure_text};
+use std::cell::{OnceCell, RefCell};
+
+/// The atlas of the menu font and its pages on the GPU.
+struct Glyphs {
+    /// Glyphs of the bundled text font, rasterized at the sizes asked.
+    atlas: GlyphAtlas,
+    /// The pages of `atlas` on the shared interpreter.
+    textures: GlyphTextures<MqGpu>,
+}
 
 thread_local! {
+    /// The menu glyphs; `None` until first used, and for good when the font
+    /// does not parse.
+    static GLYPHS: RefCell<Option<Glyphs>> = const { RefCell::new(None) };
     /// The menu font, loaded on first use: it needs the graphics context.
     /// Leaked on purpose: dropping its texture after the window is gone
     /// (a thread-local destructor at exit) crashes.
@@ -55,19 +69,99 @@ pub fn snap(value: f32, dpi: f32) -> f32 {
 /// snapped to whole physical pixels.
 pub fn draw(label: &str, x: f32, y: f32, font_size: u16, color: Color) {
     let dpi = miniquad::window::dpi_scale();
-    with_font(|font| {
-        draw_text_ex(
-            label,
-            snap(x, dpi),
-            snap(y, dpi),
-            TextParams {
-                font,
-                font_size,
-                color,
-                ..TextParams::default()
-            },
-        );
-    });
+    let Some((quads, pages)) = prepare(label, x, y, font_size, dpi) else {
+        return;
+    };
+    let mut batch = Batch::new(PageSink { pages });
+    for (quad, page) in &quads {
+        batch.glyph(quad, *page, color);
+    }
+    batch.finish();
+}
+
+/// Rasterizes the glyphs of `label` into the menu atlas, puts them on the
+/// GPU and returns their quads with the pages' textures. `None` when the
+/// font did not load.
+fn prepare(
+    label: &str,
+    x: f32,
+    y: f32,
+    font_size: u16,
+    dpi: f32,
+) -> Option<(Vec<(GlyphQuad, u32)>, Vec<MqTexture>)> {
+    GLYPHS.with(|cell| {
+        let mut guard = cell.borrow_mut();
+        if guard.is_none() {
+            *guard = GlyphAtlas::new(TEXT_FONT).ok().map(|atlas| Glyphs {
+                atlas,
+                textures: GlyphTextures::default(),
+            });
+        }
+        let glyphs = guard.as_mut()?;
+        if glyphs.atlas.overflowed() {
+            glyphs.atlas.clear();
+        }
+        let px = raster_px(font_size, dpi);
+        for ch in label.chars() {
+            glyphs.atlas.prepare(ch, px);
+        }
+        let synced = with_gpu(|gpu| glyphs.textures.sync(gpu, &mut glyphs.atlas));
+        if let Err(err) = synced {
+            eprintln!("menu glyph textures: {err}");
+        }
+        glyphs.atlas.take_rasterized();
+        let quads = label_quads(&glyphs.atlas, label, x, y, font_size, dpi);
+        let pages = (0..glyphs.atlas.page_count())
+            .filter_map(|page| u32::try_from(page).ok())
+            .filter_map(|page| glyphs.textures.get(page).cloned())
+            .collect();
+        Some((quads, pages))
+    })
+}
+
+/// The glyph quads of `label` with its baseline at `y` and its left edge at
+/// `x` (snapped to whole physical pixels at `dpi`), each with the atlas page
+/// it samples. Glyphs missing from `atlas` and blank ones (spaces) add no
+/// quad; every glyph advances the pen.
+#[must_use]
+pub fn label_quads(
+    atlas: &GlyphAtlas,
+    label: &str,
+    x: f32,
+    y: f32,
+    font_size: u16,
+    dpi: f32,
+) -> Vec<(GlyphQuad, u32)> {
+    let px = raster_px(font_size, dpi);
+    let scale = glyph_scale(f32::from(font_size), px);
+    let mut pen = Vec2::new(snap(x, dpi), snap(y, dpi));
+    let mut out = Vec::new();
+    for ch in label.chars() {
+        let Some(entry) = atlas.get(ch, px) else {
+            continue;
+        };
+        if let Some(quad) = glyph_quad(pen, &entry, scale) {
+            out.push((quad, entry.page));
+        }
+        pen.x += entry.advance * scale;
+    }
+    out
+}
+
+/// Sends the chunks of a label to the shared interpreter, binding the
+/// atlas page each one samples.
+struct PageSink {
+    /// The textures of the atlas pages, by page index.
+    pages: Vec<MqTexture>,
+}
+
+impl MeshSink for PageSink {
+    fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
+        let texture = page
+            .and_then(|page| usize::try_from(page).ok())
+            .and_then(|page| self.pages.get(page).cloned());
+        draw_inline(vertices, indices, texture);
+    }
 }
 
 #[cfg(test)]
