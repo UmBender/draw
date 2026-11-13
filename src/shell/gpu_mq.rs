@@ -333,8 +333,12 @@ impl Gpu for MqGpu {
 
     fn submit(&mut self, list: &CommandList<Self>) -> Result<(), GpuError> {
         self.validate(list)?;
-        let result = self.execute(list);
-        set_default_camera();
+        let mut in_target = false;
+        let result = self.execute(list, &mut in_target);
+        if in_target {
+            // A failed pass must not leave the target as the camera.
+            set_default_camera();
+        }
         result
     }
 }
@@ -386,8 +390,9 @@ impl MqGpu {
         passes.finish()
     }
 
-    /// Runs a validated `list`.
-    fn execute(&self, list: &CommandList<Self>) -> Result<(), GpuError> {
+    /// Runs a validated `list`. `in_target` tells whether a target pass
+    /// is open (it owns the camera, [`pass_owns_camera`]).
+    fn execute(&self, list: &CommandList<Self>, in_target: &mut bool) -> Result<(), GpuError> {
         for command in list.commands() {
             match command {
                 Command::BeginPass {
@@ -395,6 +400,7 @@ impl MqGpu {
                     view,
                     clear,
                 } => {
+                    *in_target = pass_owns_camera(target.is_some());
                     match target {
                         Some(target) => {
                             let render_target = self.targets.get(target.id)?;
@@ -407,7 +413,9 @@ impl MqGpu {
                             camera.render_target = Some(render_target.clone());
                             set_camera(&camera);
                         }
-                        None => set_default_camera(),
+                        // Until T159 moves the frame cache to passes, the
+                        // caller's macroquad camera stays (T158).
+                        None => {}
                     }
                     if let Some(color) = clear {
                         clear_background(Color::new(color.r, color.g, color.b, color.a));
@@ -435,11 +443,24 @@ impl MqGpu {
                         }
                     }
                 }
-                Command::EndPass => set_default_camera(),
+                Command::EndPass => {
+                    if *in_target {
+                        set_default_camera();
+                        *in_target = false;
+                    }
+                }
             }
         }
         Ok(())
     }
+}
+
+/// Whether a pass with (`true`) or without a render target sets the
+/// macroquad camera itself. A pass without one draws with whatever camera
+/// the caller set, until T159 moves the frame cache to passes.
+#[must_use]
+pub fn pass_owns_camera(has_target: bool) -> bool {
+    has_target
 }
 
 /// The `count` indices of `indices` from `first`.

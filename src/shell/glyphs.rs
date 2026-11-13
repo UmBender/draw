@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hasher};
 
-use macroquad::texture::{FilterMode, Image, Texture2D};
+use draw_gfx::gpu::{Filter, Gpu, GpuError, TextureDesc};
 
 use crate::core::geom::Vec2;
 use crate::core::svg::{Outline, Outlines, number};
@@ -392,46 +392,51 @@ impl GlyphAtlas {
 }
 
 /// The GPU side of the atlas: one texture per page.
-#[derive(Default)]
-pub struct GlyphTextures {
+pub struct GlyphTextures<G: Gpu> {
     /// Page textures, by page index.
-    pages: Vec<Texture2D>,
+    pages: Vec<G::Texture>,
 }
 
-impl GlyphTextures {
+impl<G: Gpu> Default for GlyphTextures<G> {
+    fn default() -> Self {
+        Self { pages: Vec::new() }
+    }
+}
+
+impl<G: Gpu> GlyphTextures<G> {
     /// Creates textures for new pages and applies `atlas`'s pending
-    /// uploads. Needs the GL context (main thread).
-    pub fn sync(&mut self, atlas: &mut GlyphAtlas) {
+    /// uploads through `gpu`.
+    ///
+    /// # Errors
+    ///
+    /// The first [`GpuError`] of `gpu`; the uploads not yet applied are
+    /// dropped, so their glyphs stay blank.
+    pub fn sync(&mut self, gpu: &mut G, atlas: &mut GlyphAtlas) -> Result<(), GpuError> {
         let side = usize::from(PAGE_SIDE);
+        let desc = TextureDesc {
+            width: u32::from(PAGE_SIDE),
+            height: u32::from(PAGE_SIDE),
+            filter: Filter::Linear,
+        };
         while self.pages.len() < atlas.page_count() {
             // Transparent black, like macroquad's font atlas.
-            let texture = Texture2D::from_rgba8(PAGE_SIDE, PAGE_SIDE, &vec![0; 4 * side * side]);
-            texture.set_filter(FilterMode::Linear);
-            self.pages.push(texture);
+            self.pages
+                .push(gpu.create_texture(desc, &vec![0; 4 * side * side])?);
         }
         for upload in atlas.take_uploads() {
             let Some(texture) = self.get(upload.page) else {
                 continue;
             };
             let r = upload.rect;
-            let image = Image {
-                bytes: upload.rgba,
-                width: r.w,
-                height: r.h,
-            };
-            texture.update_part(
-                &image,
-                i32::from(r.x),
-                i32::from(r.y),
-                i32::from(r.w),
-                i32::from(r.h),
-            );
+            let rect = [u32::from(r.x), u32::from(r.y), u32::from(r.w), u32::from(r.h)];
+            gpu.write_texture(texture, rect, &upload.rgba)?;
         }
+        Ok(())
     }
 
     /// The texture of `page`, if it exists.
     #[must_use]
-    pub fn get(&self, page: u32) -> Option<&Texture2D> {
+    pub fn get(&self, page: u32) -> Option<&G::Texture> {
         usize::try_from(page).ok().and_then(|i| self.pages.get(i))
     }
 }
