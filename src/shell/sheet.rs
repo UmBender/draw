@@ -8,7 +8,6 @@
 
 use crate::shell::{ui_shapes, ui_text};
 use macroquad::color::Color;
-use macroquad::shapes::draw_rectangle;
 
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::keymap::Topic;
@@ -80,7 +79,7 @@ fn tab_layout(labels: &[String], widths: &[f32], width: f32) -> Vec<(f32, usize)
 pub fn draw(sheet: &Sheet, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
-    draw_rectangle(
+    ui_shapes::rect_xywh(
         0.0,
         0.0,
         viewport.x,

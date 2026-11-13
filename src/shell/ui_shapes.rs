@@ -6,9 +6,8 @@
 //! [`ring`] only hand the triangles to macroquad.
 
 use crate::core::geom::{Aabb, Vec2};
-use crate::shell::render::to_mq;
+use crate::shell::render::{Batch, GlSink, MeshSink};
 use macroquad::color::Color;
-use macroquad::shapes::draw_triangle;
 use std::f32::consts::FRAC_PI_2;
 
 /// Segments of the arc of one rounded corner.
@@ -141,21 +140,51 @@ pub fn rounded_ring(rect: Aabb, radius: f32, width: f32) -> Vec<Triangle> {
     out
 }
 
-/// Draws `triangles` in `color`.
-fn draw_all(triangles: &[Triangle], color: Color) {
+/// Adds `triangles` in `color` to `batch`.
+fn push_all<S: MeshSink>(batch: &mut Batch<S>, triangles: &[Triangle], color: Color) {
     for [a, b, c] in triangles {
-        draw_triangle(to_mq(*a), to_mq(*b), to_mq(*c), color);
+        batch.triangle(*a, *b, *c, color);
     }
+}
+
+/// Adds the fill of `rect` with rounded corners to `batch`.
+pub fn push_fill<S: MeshSink>(batch: &mut Batch<S>, rect: Aabb, radius: f32, color: Color) {
+    push_all(batch, &rounded_fill(rect, radius), color);
+}
+
+/// Adds the `width` px border of `rect` with rounded corners to `batch`.
+pub fn push_ring<S: MeshSink>(
+    batch: &mut Batch<S>,
+    rect: Aabb,
+    radius: f32,
+    width: f32,
+    color: Color,
+) {
+    push_all(batch, &rounded_ring(rect, radius, width), color);
+}
+
+/// Fills the axis-aligned rectangle at (`x`, `y`) of `w` × `h` pixels.
+pub fn rect_xywh(x: f32, y: f32, w: f32, h: f32, color: Color) {
+    let mut batch = Batch::new(GlSink);
+    batch.rect(
+        Aabb::from_corners(Vec2::new(x, y), Vec2::new(x + w, y + h)),
+        color,
+    );
+    batch.finish();
 }
 
 /// Fills `rect` with rounded corners.
 pub fn fill(rect: Aabb, radius: f32, color: Color) {
-    draw_all(&rounded_fill(rect, radius), color);
+    let mut batch = Batch::new(GlSink);
+    push_fill(&mut batch, rect, radius, color);
+    batch.finish();
 }
 
 /// Draws the `width` px border of `rect` with rounded corners.
 pub fn ring(rect: Aabb, radius: f32, width: f32, color: Color) {
-    draw_all(&rounded_ring(rect, radius, width), color);
+    let mut batch = Batch::new(GlSink);
+    push_ring(&mut batch, rect, radius, width, color);
+    batch.finish();
 }
 
 #[cfg(test)]
@@ -166,6 +195,82 @@ mod tests {
     use std::f32::consts::PI;
 
     const EPS: f32 = 1e-2;
+
+    use crate::shell::render::{Batch, MeshSink};
+    use draw_gfx::gpu::Vertex;
+
+    /// A sink that counts the triangles sent to it.
+    #[derive(Default)]
+    struct Counter {
+        triangles: usize,
+    }
+
+    impl MeshSink for Counter {
+        fn draw(&mut self, _vertices: &[Vertex], indices: &[u32], _page: Option<u32>) {
+            self.triangles += indices.len() / 3;
+        }
+    }
+
+    #[test]
+    fn push_fill_emits_the_triangles_of_the_fill() {
+        // Arrange
+        let r = rect(80.0, 40.0);
+        let expected = rounded_fill(r, 8.0).len();
+        let mut batch = Batch::new(Counter::default());
+
+        // Act
+        push_fill(&mut batch, r, 8.0, Color::new(1.0, 0.0, 0.0, 1.0));
+        let sink = batch.finish();
+
+        // Assert
+        assert!(expected > 0);
+        assert_eq!(sink.triangles, expected);
+    }
+
+    #[test]
+    fn push_ring_emits_the_triangles_of_the_ring() {
+        // Arrange
+        let r = rect(80.0, 40.0);
+        let expected = rounded_ring(r, 8.0, 2.0).len();
+        let mut batch = Batch::new(Counter::default());
+
+        // Act
+        push_ring(&mut batch, r, 8.0, 2.0, Color::new(0.0, 1.0, 0.0, 1.0));
+        let sink = batch.finish();
+
+        // Assert
+        assert!(expected > 0);
+        assert_eq!(sink.triangles, expected);
+    }
+
+    #[test]
+    fn toolbar_and_menus_use_no_macroquad_draw_calls() {
+        // Arrange: the code of the four files, without their test modules.
+        let code = |source: &'static str| source.split("#[cfg(test)]").next().unwrap_or("");
+        let files = [
+            ("toolbar.rs", code(include_str!("toolbar.rs"))),
+            ("sheet.rs", code(include_str!("sheet.rs"))),
+            (
+                "command_palette.rs",
+                code(include_str!("command_palette.rs")),
+            ),
+            ("ui_shapes.rs", code(include_str!("ui_shapes.rs"))),
+        ];
+        let forbidden = [
+            "draw_rectangle(",
+            "draw_triangle(",
+            "draw_line(",
+            "draw_mesh(",
+            "draw_texture_ex(",
+        ];
+
+        // Act / Assert
+        for (name, source) in files {
+            for call in forbidden {
+                assert!(!source.contains(call), "{name} uses {call}");
+            }
+        }
+    }
 
     fn rect(w: f32, h: f32) -> Aabb {
         Aabb::from_corners(Vec2::new(10.0, 20.0), Vec2::new(10.0 + w, 20.0 + h))

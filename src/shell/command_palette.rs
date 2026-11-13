@@ -7,7 +7,6 @@
 
 use crate::shell::{ui_shapes, ui_text};
 use macroquad::color::Color;
-use macroquad::shapes::draw_rectangle;
 
 use crate::core::command_palette::{CommandPalette, VISIBLE_ROWS, chord_label, visible_window};
 use crate::core::geom::{Aabb, Vec2};
@@ -81,7 +80,7 @@ pub fn key_caps(widths: &[f32], right: f32) -> Vec<(f32, f32)> {
 pub fn draw(palette: &CommandPalette, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
-    draw_rectangle(
+    ui_shapes::rect_xywh(
         0.0,
         0.0,
         viewport.x,
@@ -105,7 +104,7 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
     draw_row_text(&query, x, y, accent);
     y += ROW_PX;
     // A thin line under the query.
-    draw_rectangle(x, y - 1.0, right - x, 1.0, edge);
+    ui_shapes::rect_xywh(x, y - 1.0, right - x, 1.0, edge);
     if palette.is_empty() {
         draw_row_text("No matching command", x, y, hex_color(theme::MENU_DIM_TEXT));
         return;
