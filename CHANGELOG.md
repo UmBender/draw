@@ -46,6 +46,12 @@ All notable changes to draw are listed here. The format follows
   sheet are islands with rounded rows, key caps and topic pills. The tools
   are still the letters of their keys, and every colour comes from the
   theme, with new `MENU_*` tokens.
+- Everything draw puts on screen (the drawing, the minimap, the frame
+  cache, the menus and the UI text) goes through one `Gpu` interface, with
+  macroquad as its only implementation; the pixels are unchanged.
+- `draw-sys` loads system libraries with `dlopen` behind safe wrappers;
+  every `unsafe` block is covered by a test, and a nightly CI job runs
+  them under the address and thread sanitizers.
 
 ## [1.6.0] - 2026-11-12
 

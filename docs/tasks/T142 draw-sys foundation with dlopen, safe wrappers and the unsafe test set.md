@@ -1,7 +1,7 @@
 ---
 id: T142
 title: draw-sys foundation with dlopen, safe wrappers and the unsafe test set
-status: review
+status: done
 wave: 69
 branch: task/T142-draw-sys-foundation-dlopen-safe-wrappers
 depends_on: [T132, T140]

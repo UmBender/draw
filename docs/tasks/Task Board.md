@@ -563,7 +563,7 @@ flowchart TD
 | [[T139 Split tex.rs into modules]] | done | T132 | `task/T139-split-tex-rs-into-modules` |
 | [[T140 Platform and Gpu traits with recording interpreters]] | done | T132, T137 | `task/T140-platform-and-gpu-traits-with-recording-i` |
 | [[T141 Fuzz of the shell through the recording platform]] | todo | T140, T156 | `task/T141-fuzz-of-the-shell-through-the-recording-` |
-| [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] | todo | T132, T140 | `task/T142-draw-sys-foundation-dlopen-safe-wrappers` |
+| [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] | done | T132, T140 | `task/T142-draw-sys-foundation-dlopen-safe-wrappers` |
 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | todo | T142, T145 | `task/T143-wayland-backend-window-keyboard-pointer-` |
 | [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | todo | T142, T145 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
 | [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | todo | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
@@ -578,8 +578,8 @@ flowchart TD
 | [[T154 Environment variables to flags]] | done | T152, T129 | `task/T154-environment-variables-to-flags` |
 | [[T155 Gpu migration of the drawing]] | done | T157–T161 | `task/T155-gpu-migration-of-the-drawing` |
 | [[T156 Platform migration of input and the loop]] | todo | T140, T161 | `task/T156-platform-migration-of-input-and-the-loop` |
-| [[T157 macroquad Gpu interpreter]] | todo | T140 | `task/T157-macroquad-gpu-interpreter` |
-| [[T158 Render batch over Gpu]] | todo | T157 | `task/T158-render-batch-over-gpu` |
-| [[T159 Minimap and frame cache over Gpu]] | todo | T158 | `task/T159-minimap-and-frame-cache-over-gpu` |
-| [[T160 Toolbar and menus over Gpu]] | todo | T159 | `task/T160-toolbar-and-menus-over-gpu` |
-| [[T161 UI text over Gpu]] | todo | T160 | `task/T161-ui-text-over-gpu` |
+| [[T157 macroquad Gpu interpreter]] | done | T140 | `task/T157-macroquad-gpu-interpreter` |
+| [[T158 Render batch over Gpu]] | done | T157 | `task/T158-render-batch-over-gpu` |
+| [[T159 Minimap and frame cache over Gpu]] | done | T158 | `task/T159-minimap-and-frame-cache-over-gpu` |
+| [[T160 Toolbar and menus over Gpu]] | done | T159 | `task/T160-toolbar-and-menus-over-gpu` |
+| [[T161 UI text over Gpu]] | done | T160 | `task/T161-ui-text-over-gpu` |

@@ -169,3 +169,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 158 | [[ADR-T153-1 Text and select are sub-automata of the machine]] | accepted | decision | T134-1, T136-1 | amends T136-1 |
 | 159 | [[ADR-T154-1 Every DRAW_ variable the binary reads becomes a flag]] | accepted | decision | T152-1 | supersedes T152-1 |
 | 160 | [[ADR-T140-1 The Gpu and Platform traits]] | accepted | decision | T127-5, T131-1, T132-1 | — |
+| 161 | [[ADR-T142-1 dlopen through libc symbols and TEST markers]] | accepted | decision | T132-1 | — |
+| 162 | [[ADR-T159-1 Texture filter and readback in the Gpu trait]] | accepted | decision | T140-1 | amends T140-1 |

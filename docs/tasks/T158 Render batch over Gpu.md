@@ -1,7 +1,7 @@
 ---
 id: T158
 title: Render batch over Gpu
-status: review
+status: done
 wave: 68
 branch: task/T158-render-batch-over-gpu
 depends_on: [T157]

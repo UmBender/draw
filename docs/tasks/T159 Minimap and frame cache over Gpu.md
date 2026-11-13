@@ -1,7 +1,7 @@
 ---
 id: T159
 title: Minimap and frame cache over Gpu
-status: review
+status: done
 wave: 68
 branch: task/T159-minimap-and-frame-cache-over-gpu
 depends_on: [T158]

@@ -1,7 +1,7 @@
 ---
 id: T157
 title: macroquad Gpu interpreter
-status: review
+status: done
 wave: 68
 branch: task/T157-macroquad-gpu-interpreter
 depends_on: [T140]

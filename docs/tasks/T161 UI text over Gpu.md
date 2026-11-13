@@ -1,7 +1,7 @@
 ---
 id: T161
 title: UI text over Gpu
-status: review
+status: done
 wave: 68
 branch: task/T161-ui-text-over-gpu
 depends_on: [T160]

@@ -1,7 +1,7 @@
 ---
 id: T160
 title: Toolbar and menus over Gpu
-status: review
+status: done
 wave: 68
 branch: task/T160-toolbar-and-menus-over-gpu
 depends_on: [T159]
