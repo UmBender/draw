@@ -64,3 +64,5 @@ Slices (each ends with `e2e.sh --backend all` green; no pixel change):
 ## Log
 
 - 2026-11-13 — split from T140 AC-2 by the owner, following the batch's recommendation.
+- 2026-11-13 — spec committed (slices S1–S5 in *Spec*).
+- 2026-11-13 — BLOCKED (batch): the migration touches about 7 000 lines (`render.rs` 2 800, `toolbar.rs` 1 200, `glyphs.rs` 1 100, `app.rs` frame cache, minimap, sheet, palette, UI text) and every `draw_*` helper and sink test is typed on macroquad's `Mesh`/`Color`. A rewrite that keeps pixel parity needs an `e2e.sh --backend all` run after each slice, which one unattended session cannot do without leaving the tree half-migrated. I stopped after the spec rather than commit untestable partial work. Recommended fix: split T155 into one task per slice S1–S5 (S1 first: the macroquad `Gpu` interpreter is independent and testable), then re-run the batch with one slice per task.
