@@ -1,7 +1,7 @@
 ---
 id: T163
 title: macroquad Platform interpreter and the loop
-status: todo
+status: in-progress
 wave: 68
 branch: task/T163-macroquad-platform-interpreter-and-the-loop
 depends_on: [T162]
@@ -25,12 +25,15 @@ Slice 2 of [[T156 Platform migration of input and the loop]]: a macroquad `Platf
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
-
-- **AC-1** — `MqPlatform` implements `Platform`; the recording and null platforms keep working with the same trait.
-- **AC-2** — `app::run` is generic over `P: Platform` and calls no macroquad window, clipboard, pen or loop function; a source scan test checks it (only `platform_mq.rs` and `gpu_mq.rs` may).
-- **AC-3** — A test runs a few frames of the app logic over the recording platform.
+- **AC-1** — `MqPlatform` implements `Platform`; the recording platform keeps working with the same trait. Tests: `mq_platform_is_a_platform` (platform_mq.rs, a generic bound), `mq_events_collect_raw_events_in_arrival_order` (platform_mq.rs, the miniquad handler fills a `Vec<RawEvent>`), `tablet_events_are_empty_without_a_window` (platform_mq.rs, replaces `pen_samples_are_empty_without_a_window`, same assertion), `recording_platform_replays_queued_events` (recording.rs).
+- **AC-2** — `app::run` is generic over `P: Platform` and calls no macroquad window, clipboard, pen or loop function. Test: `app_names_no_window_clipboard_pen_or_loop_function` (app.rs, scans the non-test source for the names; a call through the platform has a `.` before it).
+- **AC-3** — A few frames of the app logic run over the recording platform. Test: `frames_over_the_recording_platform_resize_and_dispatch_input` (app.rs): a `Resize` and an `R` key become an editor resize and the rectangle tool; the calls are `Window`, `NextFrame` per frame.
 - **AC-4** — `e2e.sh --backend all` green.
+
+## Decisions
+
+- Backend records and pen samples reach the collector as `RawEvent::Backend` and `RawEvent::Tablet` from `MqPlatform::poll`, in order with the input (ADR-T162-1). The count of records the queue dropped is logged to `diag` by `MqPlatform`, since `RawEvent` has no variant for it.
+- The input phase of the loop is a function over `P: Platform` so a test can run it without a window. `ui_text` and `render` keep their own DPI reads: they draw through the macroquad context and belong to [[T164 Generic run over Platform and Gpu]].
 
 ## Out of scope
 
