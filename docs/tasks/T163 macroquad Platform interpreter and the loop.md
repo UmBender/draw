@@ -1,7 +1,7 @@
 ---
 id: T163
 title: macroquad Platform interpreter and the loop
-status: in-progress
+status: review
 wave: 68
 branch: task/T163-macroquad-platform-interpreter-and-the-loop
 depends_on: [T162]
@@ -49,12 +49,19 @@ Slice 2 of [[T156 Platform migration of input and the loop]]: a macroquad `Platf
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T163): specify the slice`
-- [ ] tests — `test(T163): add failing tests`
-- [ ] models — `feat(T163): add the types`
-- [ ] behaviour — `refactor(T163): migrate the slice`
-- [ ] quality — `chore(T163): pass clippy and rustfmt`
+- [x] spec — `docs(T163): specify the slice`
+- [x] tests — `test(T163): add failing tests`
+- [x] models — merged into the behaviour commit (see Log)
+- [x] behaviour — `refactor(T163): migrate the slice`
+- [x] quality — `chore(T163): pass clippy and rustfmt`
 
 ## Log
+
+- 2026-11-13 — done, `status: review`. `scripts/check.sh` and `scripts/e2e.sh --backend all` green.
+  - Deviation: no separate `feat` models commit; `app::run`'s signature and the platform types changed together, so a stubbed step would not have built. The tests commit came first and did not compile.
+  - `app::run` opens `MqPlatform` and calls the generic `run_on<P: Platform>`; the input phase is `gather_input`. `CachedFrame` has a `wake` flag and `LaserLayer::fading` for the wake-ups that called `schedule_update`.
+  - Kept as is: `render.rs` and `ui_text.rs` read the DPI from macroquad when they draw; they go with the Gpu migration ([[T164 Generic run over Platform and Gpu]]).
+  - Test change: `pen_samples_are_empty_without_a_window` became `tablet_events_are_empty_without_a_window` (same assertion); `mq_input_replays_events_in_order` feeds the collector from a `Vec<RawEvent>`.
+  - Owner check: pen and tablet by hand (pen samples now arrive as `RawEvent::Tablet`).
 
 - 2026-11-13 — split from T156 by the owner, following the batch's recommendation.
