@@ -5,4 +5,5 @@
 
 #![deny(unsafe_code)]
 
+pub mod loader;
 pub mod platform;
