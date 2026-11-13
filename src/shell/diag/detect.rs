@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use macroquad::input::KeyCode;
+use draw_sys::platform::RawKey;
 
 use crate::shell::diag::event::{Anomaly, Device, Event};
 
@@ -26,7 +26,7 @@ const HELD_KEYS: usize = 32;
 #[derive(Debug, Clone, Default)]
 pub struct KeyWatch {
     /// Keys down without a key up since.
-    held: Vec<KeyCode>,
+    held: Vec<RawKey>,
     /// Non-repeat chars since the last non-repeat key down; `None` after a
     /// repeat or before the first press.
     chars: Option<u8>,
@@ -44,7 +44,7 @@ impl KeyWatch {
 
     /// A key went down. A non-repeat press of a held key is
     /// [`Anomaly::HeldKeyPressedAgain`].
-    pub fn key_down(&mut self, code: KeyCode, repeat: bool) -> Option<Anomaly> {
+    pub fn key_down(&mut self, code: RawKey, repeat: bool) -> Option<Anomaly> {
         if repeat {
             self.chars = None;
             return None;
@@ -60,7 +60,7 @@ impl KeyWatch {
     }
 
     /// A key went up.
-    pub fn key_up(&mut self, code: KeyCode) {
+    pub fn key_up(&mut self, code: RawKey) {
         self.held.retain(|held| *held != code);
     }
 

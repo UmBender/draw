@@ -48,6 +48,7 @@ use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::autosave::{self, Autosaver, Launch};
 use crate::shell::backend::{self, Backend};
+use crate::shell::platform_mq::MqInput;
 use crate::shell::command_palette;
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
@@ -608,7 +609,7 @@ pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
         collector.set_pen_samples(pen_samples());
         collector.set_now(Instant::now());
         recorder.begin(&mut collector);
-        repeat_all_miniquad_input(&mut collector, subscriber);
+        repeat_all_miniquad_input(&mut MqInput(&mut collector), subscriber);
         if collector.flush_bounce() {
             // Wake again to hand the held release on (ADR-T42-1).
             schedule_update();
@@ -930,7 +931,7 @@ fn answer_sync(
 /// frame.
 struct FrameRecorder {
     records: Vec<(Instant, Event)>,
-    backend: Vec<macroquad::miniquad::diag::BackendRecord>,
+    backend: Vec<draw_sys::platform::BackendRecord>,
     tool: Tool,
     revision: u64,
 }

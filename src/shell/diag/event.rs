@@ -8,10 +8,8 @@
 
 use std::fmt;
 
-use macroquad::input::KeyCode;
-use macroquad::miniquad::KeyMods;
-use macroquad::miniquad::diag::BackendEvent;
-pub use macroquad::miniquad::diag::Device;
+pub use draw_sys::platform::Device;
+use draw_sys::platform::{BackendEvent, RawKey, RawMods};
 
 use crate::core::command::Tool;
 use crate::core::input::PointerButton;
@@ -26,7 +24,7 @@ pub enum KeyTag {
     /// A letter, digit, punctuation or space key without `Ctrl` or `Alt`.
     Text,
     /// Any other key, or a text key held with `Ctrl` or `Alt`.
-    Named(KeyCode),
+    Named(RawKey),
 }
 
 /// A `wl_keyboard.key` code as recorded: the same rule as [`KeyTag`].
@@ -434,10 +432,25 @@ impl fmt::Display for Record {
 
 /// The recorded form of a key `code` pressed with `mods`.
 #[must_use]
-pub fn key_tag(code: KeyCode, mods: KeyMods) -> KeyTag {
-    // The key codes follow X11 keysyms (`KeyCode` is `repr(u16)`): printable
-    // ASCII, the two "world" keys and the keypad's digits and operators.
-    let text = matches!(code as u16, 0x0020..=0x0060 | 0x0100..=0x0101 | 0xffaa..=0xffb9 | 0xffbd);
+#[allow(
+    clippy::wildcard_enum_match_arm,
+    reason = "only the text keys are hidden; ADR-T131-1"
+)]
+pub fn key_tag(code: RawKey, mods: RawMods) -> KeyTag {
+    // Letters, digits, space and the brackets are text; `Other` holds an
+    // X11 keysym (ADR-T162-1): printable ASCII, the two "world" keys and
+    // the keypad's digits and operators.
+    let text = match code {
+        RawKey::Letter(_)
+        | RawKey::Digit(_)
+        | RawKey::Space
+        | RawKey::BracketLeft
+        | RawKey::BracketRight => true,
+        RawKey::Other(sym) => {
+            matches!(sym, 0x0020..=0x0060 | 0x0100..=0x0101 | 0xffaa..=0xffb9 | 0xffbd)
+        }
+        _ => false,
+    };
     if text && !mods.ctrl && !mods.alt {
         KeyTag::Text
     } else {

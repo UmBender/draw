@@ -267,8 +267,8 @@ pub(crate) mod keys {
         A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, Key0, Key1,
         Key2, Key3, Key4, Key5, Key6, Key7, Key8, Key9, Backspace, Comma, Delete, Down, End, Enter,
         Escape, F1, F5, F6, GraveAccent, Home, Kp1, Kp7, KpAdd, KpEnter, Left, LeftAlt,
-        LeftBracket, LeftControl, LeftShift, LeftSuper, Minus, PrintScreen, Right, RightAlt,
-        RightBracket, RightControl, RightShift, Space, Tab, Unknown, Up,
+        LeftBracket, LeftControl, LeftShift, LeftSuper, Minus, PrintScreen, Right, RightBracket,
+        RightControl, Space, Tab, Unknown, Up,
     );
 
     /// Feeds a [`Collector`] with the calls miniquad's event handler has.
