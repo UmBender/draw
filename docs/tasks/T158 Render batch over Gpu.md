@@ -36,6 +36,8 @@ Draft: the spec step refines each criterion into named tests.
 ## Files owned
 
 - `src/shell/render.rs`, `src/shell/glyphs.rs`
+- `src/shell/gpu_mq.rs` (`BeginPass { target: None }` keeps the current macroquad camera until T159 moves the frame cache to passes; T159 restores the reset)
+- `tests/perf.rs` (`CountingSink` takes `Vertex`/`Command::Draw`)
 - this note
 
 ## Subtasks (one commit each)
@@ -54,3 +56,4 @@ Draft: the spec step refines each criterion into named tests.
   2. **Texture handles.** `MqTexture` keeps only an id into the interpreter's private table, so `GlyphTextures` over `Gpu` handles forces `GlSink` to submit through one shared `MqGpu`; it cannot be done half-way without dead code.
   3. **Callers outside the owned files** use the API that would change: `tests/perf.rs` implements `MeshSink::draw(&mut Mesh, …)`; `minimap.rs`, `sheet.rs`, `command_palette.rs`, `toolbar.rs`, `app.rs` and `ui_shapes.rs` use `Batch`, `GlSink`, `hex_color`, `to_mq_color`.
   Recommended fix: owner decides one of (a) add to T158's files `src/shell/gpu_mq.rs` and make `BeginPass { target: None }` keep the current macroquad camera until T159 moves the frame cache to passes (then restore the reset in T159); or (b) swap the order: do the frame cache (T159) first. Also add `tests/perf.rs` to the files owned (its `CountingSink` must take `Vertex`/`Command::Draw`) and keep `Batch`'s `Color` API so the other shell files compile until T159–T161. The named tests (`scene_over_recording_gpu_emits_begin_draws_end`, `batch_over_recording_gpu_splits_chunks_at_the_limits`) can use `RecordingGpu` from `src/shell/recording.rs`.
+- 2026-11-13 — UNBLOCKED by the owner: option (a) of the blocker. `gpu_mq.rs` and `tests/perf.rs` added to *Files owned*; keep `Batch`'s `Color` API so the other shell files compile until T159–T161. T159 must restore the camera reset in `BeginPass { target: None }`.
