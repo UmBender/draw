@@ -1,7 +1,7 @@
 ---
 id: T157
 title: macroquad Gpu interpreter
-status: todo
+status: review
 wave: 68
 branch: task/T157-macroquad-gpu-interpreter
 depends_on: [T140]
@@ -24,10 +24,30 @@ Slice S1 of [[T155 Gpu migration of the drawing]]: `src/shell/gpu_mq.rs`: buffer
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+`MqGpu` implements `Gpu` over macroquad. It needs a GL context, so the logic
+that can be tested without a window is separate and pure: a handle `Table`,
+the geometry chunker and the pass checker. Nothing else in the shell uses
+`MqGpu` yet (S2 onwards), so there is no pixel change.
 
-- **AC-1** — The slice's code emits `Gpu` calls only, as described in the goal.
-- **AC-2** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
+- **AC-1** — Geometry is split into chunks that fit macroquad's `u16` indices and
+  `render::BATCH_MAX_VERTICES` / `BATCH_MAX_INDICES`, keeping triangles whole
+  and the vertices in order. Tests: `chunks_of_small_geometry_is_one_chunk`,
+  `chunks_split_at_the_index_limit`, `chunks_split_at_the_vertex_limit`,
+  `chunks_remap_indices_to_local_vertices`, `chunks_of_empty_geometry_is_empty`,
+  `chunks_reject_index_out_of_range`, `chunks_reject_partial_triangle`,
+  plus proptest `chunks_cover_every_triangle_within_limits`.
+- **AC-2** — Handles are checked: `table_get_unknown_id_is_unknown_handle`,
+  `table_get_after_insert_returns_value`, `table_ids_are_unique`.
+- **AC-3** — Pass structure is checked: `passes_draw_outside_pass_is_error`,
+  `passes_nested_begin_is_error`, `passes_end_without_begin_is_error`,
+  `passes_unfinished_list_is_error`, `passes_balanced_list_is_ok`.
+- **AC-4** — `MqGpu` implements `Gpu` (buffers, textures, targets, pipelines,
+  `submit` through `draw_mesh` and `RenderPass`); it compiles and passes
+  clippy. `Blend::Opaque` is rejected with `GpuError::Backend` (no caller
+  uses it yet). Check: `cargo build`.
+- **AC-5** — `scripts/check.sh` green and no other shell file changes, so no
+  pixel change (the `e2e.sh --backend all` run is for S2 onwards, where
+  drawing changes).
 
 ## Out of scope
 
@@ -40,12 +60,17 @@ Draft: the spec step refines each criterion into named tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T157): specify the slice`
-- [ ] tests — `test(T157): add failing tests`
-- [ ] models — `feat(T157): add the types`
-- [ ] behaviour — `refactor(T157): migrate the slice`
-- [ ] quality — `chore(T157): pass clippy and rustfmt`
+- [x] spec — `docs(T157): specify the slice`
+- [x] tests — `test(T157): add failing tests`
+- [x] models — `feat(T157): add the types`
+- [x] behaviour — `feat(T157): implement the macroquad Gpu interpreter`
+- [x] quality — `chore(T157): pass clippy and rustfmt`
 
 ## Log
+
+- 2026-11-13 — implemented `src/shell/gpu_mq.rs`: `MqGpu` plus the pure, tested `Table`, `chunks` and `PassChecker`. `submit` validates the whole list (passes, handles, ranges) before drawing. Nothing else uses it yet, so no pixel change; `e2e.sh --backend all` was not run (no drawing code changed).
+- 2026-11-13 — UNATTENDED CHOICE: `Blend::Opaque` is rejected with `GpuError::Backend` (macroquad's `draw_mesh` has no blend switch without a custom material and no caller needs it yet). Add it in the slice that first needs it.
+- 2026-11-13 — UNATTENDED CHOICE: `MqGpu` itself (needs a GL context) has no unit test; S2 exercises it through `e2e.sh`. The window-free logic is covered by the tests above.
+- 2026-11-13 — `status: review`.
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
