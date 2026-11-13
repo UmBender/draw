@@ -74,6 +74,7 @@ pub fn draw(label: &str, x: f32, y: f32, font_size: u16, color: Color) {
 mod tests {
     use super::*;
     use crate::core::geom::approx_eq;
+    use crate::shell::glyphs::raster_px;
 
     #[test]
     fn snap_rounds_to_physical_pixels() {
@@ -87,6 +88,76 @@ mod tests {
         assert!(snap(f32::NAN, 1.0).is_nan());
         assert!(approx_eq(snap(3.7, 0.0), 3.7, 1e-6));
         assert!(approx_eq(snap(3.7, f32::NAN), 3.7, 1e-6));
+    }
+
+    /// An atlas over the menu font with `label` rasterized at `dpi`.
+    fn atlas_with(label: &str, font_size: u16, dpi: f32) -> GlyphAtlas {
+        let mut atlas = GlyphAtlas::new(TEXT_FONT).expect("the text font parses");
+        let px = raster_px(font_size, dpi);
+        for ch in label.chars() {
+            atlas.prepare(ch, px);
+        }
+        atlas
+    }
+
+    #[test]
+    fn label_quads_place_glyphs_along_the_baseline() {
+        let atlas = atlas_with("ab", 16, 1.0);
+        let quads = label_quads(&atlas, "ab", 10.0, 40.0, 16, 1.0);
+        assert_eq!(quads.len(), 2);
+        let advance = atlas.get('a', 16).expect("a is prepared").advance;
+        let (a, b) = (&quads[0].0, &quads[1].0);
+        // Both glyphs sit above the baseline; the second starts one
+        // advance after the first, give or take their own bearings.
+        assert!(a.max.y <= 40.0 + 4.0 && b.max.y <= 40.0 + 4.0);
+        assert!(b.min.x > a.min.x);
+        let entry_b = atlas.get('b', 16).expect("b is prepared");
+        assert!(approx_eq(b.min.x, 10.0 + advance + entry_b.xmin, 1e-3));
+    }
+
+    #[test]
+    fn label_quads_skip_spaces() {
+        let atlas = atlas_with("a b", 16, 1.0);
+        let quads = label_quads(&atlas, "a b", 0.0, 20.0, 16, 1.0);
+        assert_eq!(quads.len(), 2);
+        let space = atlas.get(' ', 16).expect("space is prepared").advance;
+        let a = atlas.get('a', 16).expect("a is prepared");
+        let b = atlas.get('b', 16).expect("b is prepared");
+        assert!(approx_eq(
+            quads[1].0.min.x,
+            a.advance + space + b.xmin,
+            1e-3
+        ));
+    }
+
+    #[test]
+    fn label_quads_snap_the_origin_to_physical_pixels() {
+        let atlas = atlas_with("a", 16, 2.0);
+        let exact = label_quads(&atlas, "a", 10.5, 20.5, 16, 2.0);
+        let shifted = label_quads(&atlas, "a", 10.51, 20.49, 16, 2.0);
+        assert_eq!(exact, shifted);
+    }
+
+    #[test]
+    fn label_quads_of_an_unprepared_label_are_empty() {
+        let atlas = GlyphAtlas::new(TEXT_FONT).expect("the text font parses");
+        assert!(label_quads(&atlas, "abc", 0.0, 0.0, 16, 1.0).is_empty());
+    }
+
+    /// AC-1 of T161: no macroquad draw call in this file.
+    #[test]
+    fn ui_text_uses_no_macroquad_draw_calls() {
+        let source = include_str!("ui_text.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        for call in [
+            "draw_text_ex(",
+            "draw_text(",
+            "draw_mesh(",
+            "draw_texture_ex(",
+            "draw_rectangle(",
+        ] {
+            assert!(!production.contains(call), "{call} is still used");
+        }
     }
 
     /// Every character the menus show is in the bundled font (T123).
