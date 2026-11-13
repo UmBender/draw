@@ -5,15 +5,25 @@
 //! [`RawEvent`], [`RawKey`], [`RawMods`] and [`RawButton`] only.
 
 use std::cell::RefCell;
+use std::future::Future;
 
 use draw_sys::platform::{
-    BackendEvent, BackendRecord, Device, RawButton, RawEvent, RawKey, RawMods,
+    BackendEvent, BackendRecord, Device, Platform, RawButton, RawEvent, RawKey, RawMods,
+    WindowMetrics,
 };
+use std::time::Instant;
+
+use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::input::{KeyCode, MouseButton};
 use macroquad::miniquad::diag as mq_diag;
+use macroquad::miniquad::pen;
+use macroquad::miniquad::window::{
+    clipboard_get, clipboard_set, clipboard_set_png, schedule_update,
+};
 use macroquad::miniquad::{EventHandler, KeyMods};
+use macroquad::window::{next_frame, screen_dpi_scale, screen_height, screen_width};
 
-use crate::shell::input_map::Collector;
+use crate::shell::diag::{self, event::Event};
 
 /// The platform key for a miniquad key code. Keys without a variant keep
 /// miniquad's code (an X11 keysym) in [`RawKey::Other`], so the flight
@@ -106,9 +116,9 @@ pub const fn raw_button(button: MouseButton) -> RawButton {
     }
 }
 
-/// Replays miniquad's events into a [`Collector`] as [`RawEvent`]s.
+/// Collects miniquad's events as [`RawEvent`]s, oldest first.
 #[derive(Debug)]
-pub struct MqInput<'a>(pub &'a mut Collector);
+pub struct MqInput<'a>(pub &'a mut Vec<RawEvent>);
 
 impl EventHandler for MqInput<'_> {
     fn update(&mut self) {}
@@ -116,15 +126,15 @@ impl EventHandler for MqInput<'_> {
     fn draw(&mut self) {}
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
-        self.0.handle(RawEvent::PointerMove { x, y });
+        self.0.push(RawEvent::PointerMove { x, y });
     }
 
     fn mouse_wheel_event(&mut self, x: f32, y: f32) {
-        self.0.handle(RawEvent::Wheel { dx: x, dy: y });
+        self.0.push(RawEvent::Wheel { dx: x, dy: y });
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
-        self.0.handle(RawEvent::Button {
+        self.0.push(RawEvent::Button {
             button: raw_button(button),
             x,
             y,
@@ -133,7 +143,7 @@ impl EventHandler for MqInput<'_> {
     }
 
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
-        self.0.handle(RawEvent::Button {
+        self.0.push(RawEvent::Button {
             button: raw_button(button),
             x,
             y,
@@ -142,7 +152,7 @@ impl EventHandler for MqInput<'_> {
     }
 
     fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, repeat: bool) {
-        self.0.handle(RawEvent::Key {
+        self.0.push(RawEvent::Key {
             key: raw_key(code),
             mods: raw_mods(mods),
             down: true,
@@ -151,7 +161,7 @@ impl EventHandler for MqInput<'_> {
     }
 
     fn char_event(&mut self, ch: char, mods: KeyMods, repeat: bool) {
-        self.0.handle(RawEvent::Char {
+        self.0.push(RawEvent::Char {
             ch,
             mods: raw_mods(mods),
             repeat,
@@ -159,7 +169,7 @@ impl EventHandler for MqInput<'_> {
     }
 
     fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
-        self.0.handle(RawEvent::Key {
+        self.0.push(RawEvent::Key {
             key: raw_key(code),
             mods: raw_mods(mods),
             down: false,
@@ -219,6 +229,93 @@ const fn backend_event(event: mq_diag::BackendEvent) -> BackendEvent {
         mq_diag::BackendEvent::ProximityIn => BackendEvent::ProximityIn,
         mq_diag::BackendEvent::ProximityOut => BackendEvent::ProximityOut,
         mq_diag::BackendEvent::ProtocolError { errno } => BackendEvent::ProtocolError { errno },
+    }
+}
+
+/// Appends the pen samples miniquad queued since the last call to `out`
+/// as [`RawEvent::Tablet`] (ADR-T35-1).
+pub fn push_tablet_events(out: &mut Vec<RawEvent>) {
+    out.extend(
+        pen::take_samples()
+            .into_iter()
+            .map(|s| RawEvent::Tablet {
+                x: s.x,
+                y: s.y,
+                pressure: s.pressure,
+            }),
+    );
+}
+
+/// The miniquad and macroquad window as a [`Platform`] (ADR-T140-1): the
+/// window metrics, the clipboard, the wake-up and the frame loop, and the
+/// input, pen samples and backend records as [`RawEvent`]s.
+#[derive(Debug)]
+pub struct MqPlatform {
+    /// macroquad's input subscriber for this window.
+    subscriber: usize,
+    /// Backend records between taking and converting them.
+    backend: Vec<BackendRecord>,
+}
+
+impl MqPlatform {
+    /// A platform that reads the input of `subscriber`
+    /// (`register_input_subscriber`).
+    #[must_use]
+    pub fn new(subscriber: usize) -> Self {
+        Self {
+            subscriber,
+            backend: Vec::with_capacity(256),
+        }
+    }
+
+    /// A platform on the running window: registers an input subscriber, so
+    /// call it once the window exists.
+    #[must_use]
+    pub fn open() -> Self {
+        Self::new(register_input_subscriber())
+    }
+}
+
+impl Platform for MqPlatform {
+    fn poll(&mut self, out: &mut Vec<RawEvent>) {
+        let dropped = take_backend_into(&mut self.backend);
+        if dropped > 0 {
+            // `RawEvent` has no variant for the count: log it here.
+            let count = u32::try_from(dropped).unwrap_or(u32::MAX);
+            let mut record = vec![(Instant::now(), Event::BackendDropped { count })];
+            diag::record_all(&mut record);
+        }
+        out.extend(self.backend.drain(..).map(RawEvent::Backend));
+        push_tablet_events(out);
+        repeat_all_miniquad_input(&mut MqInput(out), self.subscriber);
+    }
+
+    fn window(&mut self) -> WindowMetrics {
+        WindowMetrics {
+            width: screen_width(),
+            height: screen_height(),
+            scale: screen_dpi_scale(),
+        }
+    }
+
+    fn clipboard_text(&mut self) -> Option<String> {
+        clipboard_get()
+    }
+
+    fn set_clipboard_text(&mut self, text: &str) {
+        clipboard_set(text);
+    }
+
+    fn set_clipboard_png(&mut self, png: &[u8]) {
+        clipboard_set_png(png);
+    }
+
+    fn schedule_update(&mut self) {
+        schedule_update();
+    }
+
+    fn next_frame(&mut self) -> impl Future<Output = ()> {
+        next_frame()
     }
 }
 
