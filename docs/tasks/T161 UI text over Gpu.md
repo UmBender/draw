@@ -1,7 +1,7 @@
 ---
 id: T161
 title: UI text over Gpu
-status: in-progress
+status: review
 wave: 68
 branch: task/T161-ui-text-over-gpu
 depends_on: [T160]
@@ -45,12 +45,13 @@ Design (no new ADR): the UI font is the bundled text font, so the atlas is a `Gl
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T161): specify the slice`
-- [ ] tests — `test(T161): add failing tests`
-- [ ] models — `feat(T161): add the types`
-- [ ] behaviour — `refactor(T161): migrate the slice`
-- [ ] quality — `chore(T161): pass clippy and rustfmt`
+- [x] tests — `test(T161): add failing tests`
+- [x] models — merged into the behaviour commit
+- [x] behaviour — `refactor(T161): migrate the slice`, plus `refactor(T161): move the overlay draws to Batch and scan for draw calls`
+- [x] quality — `chore(T161): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
 - 2026-11-13 — widened in advance by the owner after T158 and T159 blocked on *Files owned*: `glyphs.rs`, call sites in other shell files, the `render.rs` accessor and the scan test are allowed; the `Gpu` trait is not.
+- 2026-11-13 — done: `ui_text::draw` emits glyph quads of a menu `GlyphAtlas` (own atlas over `TEXT_FONT`, rasterized at `raster_px(size, dpi)`, so the same size macroquad used) through `Batch` and the shared interpreter; `measure` is unchanged (`measure_text`). `render::draw_inline` made `pub`. UNATTENDED CHOICE: the shared canvas atlas has no public accessor and quantizes label sizes, so the menus keep their own atlas (exact sizes, pixel parity). The remaining macroquad draw calls (text-edit caret, marquee, laser trail in `app.rs`) moved to `Batch`; the marquee outline is now `ui_shapes::push_ring` (1 px inside) instead of `draw_rectangle_lines`, and the laser end uses `Batch::disc` (segment count from `circle_segments`): owner to check by eye. `no_macroquad_draw_calls_outside_the_interpreter` passes. `scripts/check.sh` and `e2e.sh --backend all` green. No feature or tutorial note (task has none).
