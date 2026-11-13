@@ -1,7 +1,7 @@
 ---
 id: T162
 title: RawEvent and the input collector
-status: in-progress
+status: review
 wave: 68
 branch: task/T162-rawevent-and-the-input-collector
 depends_on: [T140, T161]
@@ -52,11 +52,13 @@ Decisions are in [[ADR-T162-1 RawEvent carries the backend records and the pen s
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T162): specify the slice`
-- [ ] tests — `test(T162): add failing tests`
-- [ ] models — `feat(T162): add the types`
-- [ ] behaviour — `refactor(T162): migrate the slice`
-- [ ] quality — `chore(T162): pass clippy and rustfmt`
+- [x] tests — `test(T162): add failing tests`
+- [x] models — `feat(T162): add the types`
+- [x] behaviour — `refactor(T162): migrate the slice`
+- [x] quality — `chore(T162): pass clippy and rustfmt`
 
 ## Log
+
+- 2026-11-13 — done, `scripts/check.sh` green, `e2e.sh --backend all` green (30 cases). Decisions in [[ADR-T162-1 RawEvent carries the backend records and the pen samples]]. Deviations: the migrated tests drive `RawEvent` through `platform_mq::keys` (`KeyCode` constants and a `Drive` trait with miniquad's method names), so their text is unchanged except `MouseButton::Unknown` → `Other` and `logo` fields; `map_mods_drops_logo` moved to `platform_mq::raw_mods_drop_logo` (`map_mods_keeps_shift_ctrl_and_alt` stays). `Collector` still receives pen samples through `set_pen_samples` from `app.rs`; `RawEvent::Tablet` is handled too, for T163. `FrameRecorder` still drains backend records with `diag::take_backend`; `RawEvent::Backend` is handled by the collector for T163. Dump names of letters, digits and unlisted keys changed (`Letter('Z')`, `Other(n)`). The quality step changed only formatting.
 
 - 2026-11-13 — split from T156 by the owner, following the batch's recommendation.
