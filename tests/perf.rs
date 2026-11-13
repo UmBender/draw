@@ -36,8 +36,8 @@ use draw::shell::glyphs::GlyphAtlas;
 use draw::shell::render::{
     Batch, MeshSink, cull_rect, is_visible, prepare_text_block, push_text_block,
 };
-use macroquad::color::WHITE;
 use draw_gfx::gpu::Vertex;
+use macroquad::color::WHITE;
 
 /// Shapes in the benchmark document.
 const SHAPES: usize = 10_000;

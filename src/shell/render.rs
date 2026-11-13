@@ -64,7 +64,11 @@ impl MeshSink for GlSink {
         let texture = page.and_then(|page| TEXTURES.with(|t| t.borrow().get(page).cloned()));
         let pipeline = PIPELINE.with(|cell| {
             *cell.get_or_init(|| {
-                GPU.with(|gpu| gpu.borrow_mut().pipeline(PipelineDesc { blend: Blend::Alpha }))
+                GPU.with(|gpu| {
+                    gpu.borrow_mut().pipeline(PipelineDesc {
+                        blend: Blend::Alpha,
+                    })
+                })
             })
         });
         let mut list = CommandList::<MqGpu>::new();
@@ -1542,7 +1546,9 @@ mod tests {
         // Arrange: 2 000 quads, 800 per chunk by the index limit.
         let mut gpu = RecordingGpu::new();
         let textures = page_textures(&mut gpu);
-        let pipeline = gpu.pipeline(PipelineDesc { blend: Blend::Alpha });
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
         let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
 
         // Act
@@ -1550,9 +1556,10 @@ mod tests {
             let x = f32::from(i);
             batch.rect(aabb(x, 0.0, x + 1.0, 1.0), RED);
         }
-        let list = batch
-            .finish()
-            .into_list(View { width: 100.0, height: 100.0 });
+        let list = batch.finish().into_list(View {
+            width: 100.0,
+            height: 100.0,
+        });
 
         // Assert
         let counts = draw_counts(&list);
@@ -1565,8 +1572,13 @@ mod tests {
         // Arrange: a shape chunk, then a glyph chunk bound to page 0.
         let mut gpu = RecordingGpu::new();
         let textures = page_textures(&mut gpu);
-        let pipeline = gpu.pipeline(PipelineDesc { blend: Blend::Alpha });
-        let view = View { width: 640.0, height: 480.0 };
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
+        let view = View {
+            width: 640.0,
+            height: 480.0,
+        };
         let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
 
         // Act
@@ -1576,12 +1588,16 @@ mod tests {
         let list = batch.finish().into_list(view);
 
         // Assert
-        let page = textures.get(0).cloned();
+        let page = textures.get(0).copied();
         let commands = list.commands();
         assert_eq!(commands.len(), 4);
         assert_eq!(
             commands[0],
-            Command::BeginPass { target: None, view, clear: None }
+            Command::BeginPass {
+                target: None,
+                view,
+                clear: None
+            }
         );
         assert!(matches!(&commands[1], Command::Draw { texture: None, .. }));
         assert!(matches!(&commands[2], Command::Draw { texture, .. } if *texture == page));
@@ -1593,15 +1609,23 @@ mod tests {
         // Arrange
         let mut gpu = RecordingGpu::new();
         let textures = page_textures(&mut gpu);
-        let pipeline = gpu.pipeline(PipelineDesc { blend: Blend::Alpha });
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
         let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
 
         // Act: a glyph alone in the batch, then an empty batch.
         batch.glyph(&quad(), 0, RED);
-        let list = batch.finish().into_list(View { width: 1.0, height: 1.0 });
+        let list = batch.finish().into_list(View {
+            width: 1.0,
+            height: 1.0,
+        });
         let empty = Batch::new(GpuSink::new(pipeline, &textures))
             .finish()
-            .into_list(View { width: 1.0, height: 1.0 });
+            .into_list(View {
+                width: 1.0,
+                height: 1.0,
+            });
 
         // Assert
         assert!(matches!(

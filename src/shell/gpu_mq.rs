@@ -401,21 +401,18 @@ impl MqGpu {
                     clear,
                 } => {
                     *in_target = pass_owns_camera(target.is_some());
-                    match target {
-                        Some(target) => {
-                            let render_target = self.targets.get(target.id)?;
-                            let mut camera = Camera2D::from_display_rect(Rect::new(
-                                0.0,
-                                0.0,
-                                view.width,
-                                view.height,
-                            ));
-                            camera.render_target = Some(render_target.clone());
-                            set_camera(&camera);
-                        }
-                        // Until T159 moves the frame cache to passes, the
-                        // caller's macroquad camera stays (T158).
-                        None => {}
+                    // Without a target the caller's macroquad camera stays,
+                    // until T159 moves the frame cache to passes (T158).
+                    if let Some(target) = target {
+                        let render_target = self.targets.get(target.id)?;
+                        let mut camera = Camera2D::from_display_rect(Rect::new(
+                            0.0,
+                            0.0,
+                            view.width,
+                            view.height,
+                        ));
+                        camera.render_target = Some(render_target.clone());
+                        set_camera(&camera);
                     }
                     if let Some(color) = clear {
                         clear_background(Color::new(color.r, color.g, color.b, color.a));

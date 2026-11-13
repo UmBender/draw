@@ -428,7 +428,12 @@ impl<G: Gpu> GlyphTextures<G> {
                 continue;
             };
             let r = upload.rect;
-            let rect = [u32::from(r.x), u32::from(r.y), u32::from(r.w), u32::from(r.h)];
+            let rect = [
+                u32::from(r.x),
+                u32::from(r.y),
+                u32::from(r.w),
+                u32::from(r.h),
+            ];
             gpu.write_texture(texture, rect, &upload.rgba)?;
         }
         Ok(())
@@ -1165,7 +1170,11 @@ mod tests {
             .count();
         assert_eq!(created, atlas.page_count());
         assert!(textures.get(0).is_some());
-        assert!(textures.get(u32::try_from(atlas.page_count()).unwrap_or(u32::MAX)).is_none());
+        assert!(
+            textures
+                .get(u32::try_from(atlas.page_count()).unwrap_or(u32::MAX))
+                .is_none()
+        );
     }
 
     #[test]
@@ -1177,9 +1186,11 @@ mod tests {
         let Some(page) = textures.get(0) else {
             panic!("page 0 exists");
         };
-        assert!(gpu.calls().iter().any(
-            |call| matches!(call, GpuCall::WriteTexture { texture, .. } if texture == page)
-        ));
+        assert!(
+            gpu.calls().iter().any(
+                |call| matches!(call, GpuCall::WriteTexture { texture, .. } if texture == page)
+            )
+        );
     }
 
     #[test]
