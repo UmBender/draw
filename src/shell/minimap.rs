@@ -9,16 +9,16 @@
 //! not part of the key, so panning never re-renders the overview.
 
 use macroquad::color::Color;
-use macroquad::math::vec2;
-use macroquad::shapes::draw_rectangle;
-use macroquad::texture::{DrawTextureParams, Texture2D, draw_texture_ex};
 
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::minimap::{Fit, Minimap};
-use crate::core::palette::{Rgba, palette};
+use crate::core::palette::palette;
 use crate::core::shape::{Shape, grid_cell_rect};
-use crate::shell::render::{Batch, GlSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::gpu_mq::MqTexture;
+use crate::shell::render::{
+    Batch, GlSink, draw_texture_quad, hex_color, hex_color_alpha, to_mq_color,
+};
 use crate::theme;
 
 /// Content drawn smaller than this, in pixels on its longer side, gets a
@@ -192,60 +192,58 @@ fn outline(batch: &mut Batch, rect: Aabb, color: Color) {
     batch.polyline(corners, LINE_PX, color);
 }
 
-/// Draws the border of `rect` on the window as four bars `width` pixels
-/// wide, inside the rectangle.
-fn draw_border(rect: Aabb, width: f32, color: Color) {
-    let (min, size) = (rect.min, rect.max - rect.min);
-    draw_rectangle(min.x, min.y, size.x, width, color);
-    draw_rectangle(min.x, rect.max.y - width, size.x, width, color);
-    draw_rectangle(min.x, min.y, width, size.y, color);
-    draw_rectangle(rect.max.x - width, min.y, width, size.y, color);
+/// The border of `rect` as four bars `width` pixels wide, inside the
+/// rectangle: top, bottom, left, right.
+#[must_use]
+pub fn border_rects(rect: Aabb, width: f32) -> [Aabb; 4] {
+    let (min, max) = (rect.min, rect.max);
+    let bar = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        Aabb::from_corners(Vec2::new(x0, y0), Vec2::new(x1, y1))
+    };
+    [
+        bar(min.x, min.y, max.x, min.y + width),
+        bar(min.x, max.y - width, max.x, max.y),
+        bar(min.x, min.y, min.x + width, max.y),
+        bar(max.x - width, min.y, max.x, max.y),
+    ]
+}
+
+/// Adds the border of `rect` to `batch`, `width` pixels wide.
+fn border(batch: &mut Batch, rect: Aabb, width: f32, color: Color) {
+    for bar in border_rects(rect, width) {
+        batch.rect(bar, color);
+    }
 }
 
 /// Draws the minimap on the window: the panel, the cached `overview`
 /// (its texture and the map it was rendered through), the content marker
 /// and the frame of the visible world rectangle `view`.
-pub fn draw_panel(map: &Minimap, view: Aabb, overview: Option<(&Texture2D, &Fit)>) {
+pub fn draw_panel(map: &Minimap, view: Aabb, overview: Option<(&MqTexture, &Fit)>) {
     let panel = map.panel();
-    let background = hex_color_alpha(theme::TOOLBAR_BACKGROUND, PANEL_ALPHA);
-    draw_rectangle(
-        panel.min.x,
-        panel.min.y,
-        panel.width(),
-        panel.height(),
-        background,
+    let mut batch = Batch::new(GlSink);
+    batch.rect(
+        panel,
+        hex_color_alpha(theme::TOOLBAR_BACKGROUND, PANEL_ALPHA),
     );
-    draw_border(panel, LINE_PX, hex_color(theme::TOOLBAR_BORDER));
+    border(&mut batch, panel, LINE_PX, hex_color(theme::TOOLBAR_BORDER));
+    batch.finish();
     if let Some((texture, image)) = overview
         && let Some(dest) = map.place(image)
     {
-        draw_texture_ex(
-            texture,
-            dest.min.x,
-            dest.min.y,
-            to_mq_color(Rgba::NO_TINT),
-            DrawTextureParams {
-                dest_size: Some(vec2(dest.width(), dest.height())),
-                // GL textures start at the bottom row.
-                flip_y: true,
-                ..DrawTextureParams::default()
-            },
-        );
+        // GL textures start at the bottom row.
+        draw_texture_quad(texture, dest, true);
     }
+    let mut batch = Batch::new(GlSink);
     if let Some(marker) = marker_rect(map) {
-        draw_rectangle(
-            marker.min.x,
-            marker.min.y,
-            marker.width(),
-            marker.height(),
-            hex_color(theme::TOOLBAR_TEXT),
-        );
+        batch.rect(marker, hex_color(theme::TOOLBAR_TEXT));
     }
-    draw_border(
+    border(
+        &mut batch,
         map.frame(view),
         LINE_PX,
         hex_color(theme::SELECTION_OUTLINE),
     );
+    batch.finish();
 }
 
 /// The colour an overview target is cleared to: the panel background,
@@ -304,7 +302,7 @@ mod tests {
             "render_target_ex(",
             "set_camera(",
             "get_texture_data(",
-            ".set_filter(",
+            ".texture.set_filter(",
             "clear_background(",
         ];
 
