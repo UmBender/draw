@@ -106,7 +106,17 @@ impl Library {
     /// [`LoadError::InvalidName`] if `name` has a NUL byte, and
     /// [`LoadError::LibraryNotFound`] if `dlopen` fails.
     pub fn open(name: &str) -> Result<Self, LoadError> {
-        todo!("dlopen {name}")
+        let c_name = c_string(name)?;
+        // TEST: open_existing_library_succeeds
+        // SAFETY: `c_name` is a valid NUL-terminated string that lives
+        // through the call; `RTLD_NOW` is a valid flag.
+        let raw = unsafe { dlopen(c_name.as_ptr(), RTLD_NOW) };
+        NonNull::new(raw)
+            .map(|handle| Self { handle })
+            .ok_or_else(|| LoadError::LibraryNotFound {
+                name: name.to_owned(),
+                reason: last_error(),
+            })
     }
 
     /// Looks up the symbol `name` and gives it the type `F`.
@@ -125,7 +135,64 @@ impl Library {
     /// be a function. Calling it through a wrong type is undefined behaviour.
     // TEST: symbol_present_can_be_called
     pub unsafe fn symbol<F: Copy>(&self, name: &str) -> Result<Symbol<'_, F>, LoadError> {
-        todo!("dlsym {name}")
+        let c_name = c_string(name)?;
+        if size_of::<F>() != size_of::<*mut c_void>() {
+            return Err(LoadError::BadSymbolType {
+                name: name.to_owned(),
+                size: size_of::<F>(),
+            });
+        }
+        // TEST: symbol_present_can_be_called
+        // SAFETY: the handle is live (`self` owns it) and `c_name` is a
+        // valid NUL-terminated string that lives through the call.
+        let raw = unsafe { dlsym(self.handle.as_ptr(), c_name.as_ptr()) };
+        if raw.is_null() {
+            return Err(LoadError::SymbolNotFound {
+                name: name.to_owned(),
+                reason: last_error(),
+            });
+        }
+        // TEST: symbol_present_can_be_called
+        // SAFETY: `F` has the size of a pointer (checked above), and the
+        // caller promised in the contract of this function that `F` is a
+        // function pointer type matching the symbol.
+        let value = unsafe { std::mem::transmute_copy::<*mut c_void, F>(&raw) };
+        Ok(Symbol {
+            value,
+            library: PhantomData,
+        })
+    }
+}
+
+impl Drop for Library {
+    fn drop(&mut self) {
+        // TEST: open_existing_library_succeeds
+        // SAFETY: the handle came from a successful `dlopen` and is closed
+        // once, here. Symbols borrow the library, so none outlives it.
+        // A failure to close is not actionable.
+        let _ = unsafe { dlclose(self.handle.as_ptr()) };
+    }
+}
+
+/// Converts a name to a C string, or reports the NUL byte.
+fn c_string(name: &str) -> Result<CString, LoadError> {
+    CString::new(name).map_err(|_| LoadError::InvalidName {
+        name: name.to_owned(),
+    })
+}
+
+/// The text of the last `dlerror` of this thread.
+fn last_error() -> String {
+    // TEST: symbol_missing_returns_symbol_not_found
+    // SAFETY: `dlerror` returns null or a NUL-terminated string that stays
+    // valid until the next `dl*` call of this thread; it is copied at once.
+    unsafe {
+        let text = dlerror();
+        if text.is_null() {
+            "unknown error".to_owned()
+        } else {
+            CStr::from_ptr(text).to_string_lossy().into_owned()
+        }
     }
 }
 
