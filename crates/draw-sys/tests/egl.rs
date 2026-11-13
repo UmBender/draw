@@ -19,7 +19,9 @@ fn egl_context_resolves_gl_entry_points() {
 
     assert!(ctx.proc_address("glClear").is_some());
     assert!(ctx.proc_address("glDrawElements").is_some());
-    assert!(ctx.proc_address("glNoSuchFunction").is_none());
+    // Mesa answers any `gl*` name with a dispatch stub, so the unknown
+    // name has no such prefix.
+    assert!(ctx.proc_address("draw_no_such_function").is_none());
 }
 
 #[test]

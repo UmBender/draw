@@ -318,7 +318,9 @@ fn bad_gl_call_is_reported_with_its_name() {
 
     let error = gl.take_error();
     assert!(
-        error.as_deref().is_some_and(|e| e.contains("glBindTexture")),
+        error
+            .as_deref()
+            .is_some_and(|e| e.contains("glBindTexture")),
         "{error:?}"
     );
     assert_eq!(gl.take_error(), None);

@@ -32,7 +32,9 @@ impl Xvfb {
             .stderr(Stdio::null())
             .spawn()
             .unwrap_or_else(|e| {
-                panic!("Xvfb is required for the GLX tests (package xvfb or xorg-x11-server-Xvfb): {e}")
+                panic!(
+                    "Xvfb is required for the GLX tests (package xvfb or xorg-x11-server-Xvfb): {e}"
+                )
             });
         let stdout = child.stdout.take().expect("piped stdout");
         let mut line = String::new();
