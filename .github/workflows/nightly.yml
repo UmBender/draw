@@ -72,6 +72,26 @@ jobs:
           path: target/e2e/
           if-no-files-found: ignore
 
+  # The unsafe primitives of draw-sys (T142): the marker check, Miri on the
+  # unit tests, and the address and thread sanitizers on the integration tests.
+  sanitizers:
+    name: unsafe (miri and sanitizers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: nightly
+          components: rust-src, miri
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - run: scripts/unsafe-tests.sh
+      - run: scripts/unsafe-sanitizers.sh
+
   perf:
     name: perf (report only)
     runs-on: ubuntu-latest
