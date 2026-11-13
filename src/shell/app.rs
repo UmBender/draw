@@ -19,7 +19,6 @@ use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
 use macroquad::miniquad::window::{
     clipboard_get, clipboard_set, clipboard_set_png, schedule_update,
 };
-use macroquad::shapes::{draw_circle, draw_line, draw_rectangle, draw_rectangle_lines};
 use macroquad::window::{next_frame, screen_dpi_scale, screen_height, screen_width};
 
 use draw_gfx::gpu::{Filter, Gpu, TargetDesc, View};
@@ -62,10 +61,13 @@ use crate::shell::input_map::{
 };
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::Options;
-use crate::shell::render::{self, TextStats, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::render::{
+    self, Batch, GlSink, TextStats, hex_color, hex_color_alpha, to_mq_color,
+};
 use crate::shell::sheet;
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
+use crate::shell::ui_shapes;
 use crate::theme;
 
 /// Width of the text caret in pixels.
@@ -1346,7 +1348,9 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         } else {
             to_mq_color(palette(edit.style.color))
         };
-        draw_line(top.x, top.y, bottom.x, bottom.y, CARET_WIDTH_PX, color);
+        let mut batch = Batch::new(GlSink);
+        batch.line(top, bottom, CARET_WIDTH_PX, color);
+        batch.finish();
     }
     if editor.active_gesture().is_none()
         && let Some(bounds) = editor.selection_bounds()
@@ -1362,15 +1366,16 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
             camera.world_to_screen(marquee.max),
         );
         let fill = hex_color_alpha(theme::MARQUEE_FILL, theme::MARQUEE_FILL_ALPHA);
-        draw_rectangle(rect.min.x, rect.min.y, rect.width(), rect.height(), fill);
-        draw_rectangle_lines(
-            rect.min.x,
-            rect.min.y,
-            rect.width(),
-            rect.height(),
+        let mut batch = Batch::new(GlSink);
+        batch.rect(rect, fill);
+        ui_shapes::push_ring(
+            &mut batch,
+            rect,
+            0.0,
             1.0,
             hex_color(theme::MARQUEE_OUTLINE),
         );
+        batch.finish();
     }
     if editor.toolbar_visible() {
         toolbar::draw(editor, viewport);
@@ -1437,14 +1442,16 @@ impl LaserLayer {
 /// its opacity (ADR-T106-2).
 fn draw_laser(trail: &[Segment]) {
     let radius = laser::WIDTH_PX / 2.0;
+    let mut batch = Batch::new(GlSink);
     for segment in trail.iter().filter(|s| s.alpha > 0.0) {
         let color = hex_color_alpha(theme::RED, alpha_byte(segment.alpha));
         let (from, to) = (segment.from, segment.to);
         if from != to {
-            draw_line(from.x, from.y, to.x, to.y, laser::WIDTH_PX, color);
+            batch.line(from, to, laser::WIDTH_PX, color);
         }
-        draw_circle(to.x, to.y, radius, color);
+        batch.disc(to, radius, color);
     }
+    batch.finish();
 }
 
 /// An opacity in `[0, 1]` as a byte; out-of-range or NaN values clamp.

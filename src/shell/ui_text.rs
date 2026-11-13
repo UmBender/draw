@@ -270,6 +270,38 @@ mod tests {
         }
     }
 
+    /// Goal of T161 (and T155 AC-1): macroquad draw calls appear only in
+    /// the `Gpu` interpreter, `gpu_mq.rs`.
+    #[test]
+    fn no_macroquad_draw_calls_outside_the_interpreter() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shell");
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            panic!("cannot read {dir:?}");
+        };
+        for path in entries.filter_map(|e| e.ok().map(|e| e.path())) {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let is_rust = path.extension().is_some_and(|ext| ext == "rs");
+            if !is_rust || name == "gpu_mq.rs" {
+                continue;
+            }
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                panic!("cannot read {path:?}");
+            };
+            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+            for call in [
+                "draw_mesh(",
+                "draw_line(",
+                "draw_rectangle(",
+                "draw_texture_ex(",
+                "draw_text_ex(",
+                "render_target_ex(",
+                "set_camera(",
+            ] {
+                assert!(!production.contains(call), "{name} calls {call}");
+            }
+        }
+    }
+
     /// Every character the menus show is in the bundled font (T123).
     #[test]
     fn menu_font_has_every_printable_ascii_character() {
