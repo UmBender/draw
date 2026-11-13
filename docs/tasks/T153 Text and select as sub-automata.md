@@ -1,7 +1,7 @@
 ---
 id: T153
 title: Text and select as sub-automata
-status: in-progress
+status: review
 wave: 69
 branch: task/T153-text-and-select-as-sub-automata
 depends_on: [T136, T138]
@@ -107,11 +107,22 @@ test in the tool), `drag` (marquee and move follow the pointer; resize also
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T153): map the text and select states`
-- [ ] tests — `test(T153): add failing tests for the states`
-- [ ] behaviour — `refactor(T153): move text and select into the machine`
-- [ ] quality — `chore(T153): pass clippy and rustfmt`
-- [ ] docs — `docs(T153): update the architecture note`
+- [x] tests — `test(T153): add failing tests for the states`
+- [x] behaviour — `refactor(T153): move text and select into the machine`
+- [x] quality — `chore(T153): pass clippy and rustfmt`
+- [x] docs — `docs(T153): update the architecture note`
 
 ## Log
 
 - 2026-11-12 — created after the owner reviewed ADR-T136-1 and chose to rewrite the sub-states of text and select, not all tools.
+- 2026-11-12 — spec, tests, behaviour and quality committed. `Anchor` and
+  `Host` moved to `machine/text.rs` (`tools::text` re-exports them);
+  `Select` and `ResizeFrame` moved to `machine/select.rs`. `TextEdit` keeps
+  `target()` and `host()` as accessors, so callers and the existing tests
+  are unchanged. Snapshot format stays at version 3; the reader rejects a
+  text record with both a target and a host, which no writer produced.
+  `scripts/check.sh` green. No tutorial or feature note: the task has none
+  (no user-facing change).
+- 2026-11-12 — AC-4: the model test passed before the refactor, as it pins
+  behaviour the refactor keeps. Not run with `PROPTEST_CASES=20000`
+  (`check.sh --fuzz`); do that before merging.

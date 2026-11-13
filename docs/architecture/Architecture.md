@@ -60,6 +60,7 @@ flowchart LR
 | `core::input`, `core::command`, `core::editor`, `core::tools::{mod,navigate}` ([[T08 Editor core and input model]]) | Input model, command enum, editor state + dispatch, pan/zoom |
 | `core::tools::{pen,shape_tool}` ([[T09 Creation tools]]) | Pen, rectangle, ellipse, line, arrow |
 | `core::tools::{eraser,bucket,select}`, `core::clipboard` ([[T10 Editing tools]]) | Erase, fill, select/move, copy/paste/duplicate |
+| `machine::{text,select}` ([[T153 Text and select as sub-automata]]) | The sub-states of two tools as enums: `text::Anchor` (`New`, `Block`, `Slot`) is what an open `TextEdit` is attached to, so a block that is both a document block and a shape slot cannot be built; `select::Select` (`Idle`, `Marquee`, `Move`, `Resize`) is the select gesture, with exhaustive transitions and no wildcard arm. The snapshot format is unchanged ([[ADR-T153-1 Text and select are sub-automata of the machine]]) |
 | `core::keymap` ([[T11 Keymap and macros]]) | Key chords → `Command` |
 | `core::editor::Helpers` ([[T16 Shape model v2 and helper skeleton]]) | Snap flags, numbering counter, grid size; carried in `DrawStyle` ([[ADR-T16-3 Helper settings and hooks]]) |
 | `core::snap` ([[T17 Snapping]]) | Snap dragged points: grid → size → align → round, alignment guides ([[ADR-T17-1 Snapping order and tolerances]]) |
