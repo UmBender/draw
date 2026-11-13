@@ -518,8 +518,8 @@ mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
-    use macroquad::input::{KeyCode, MouseButton};
-    use macroquad::miniquad::{EventHandler, KeyMods};
+    use crate::shell::platform_mq::keys::{Drive, KeyCode};
+    use draw_sys::platform::{RawButton as MouseButton, RawMods as KeyMods};
 
     const EPS: f32 = 1e-5;
 
@@ -527,7 +527,6 @@ mod tests {
         shift: false,
         ctrl: false,
         alt: false,
-        logo: false,
     };
 
     const CTRL: Modifiers = Modifiers {
@@ -653,17 +652,16 @@ mod tests {
         assert_eq!(map_button(MouseButton::Left), Some(PointerButton::Left));
         assert_eq!(map_button(MouseButton::Middle), Some(PointerButton::Middle));
         assert_eq!(map_button(MouseButton::Right), Some(PointerButton::Right));
-        assert_eq!(map_button(MouseButton::Unknown), None);
+        assert_eq!(map_button(MouseButton::Other), None);
     }
 
     #[test]
-    fn map_mods_drops_logo() {
+    fn map_mods_keeps_shift_ctrl_and_alt() {
         // Arrange
         let mods = KeyMods {
             shift: true,
             ctrl: false,
             alt: true,
-            logo: true,
         };
         // Act
         let mapped = map_mods(mods);
@@ -890,8 +888,8 @@ mod tests {
         // Act
         c.key_down_event(KeyCode::F5, NO_MODS, false);
         c.key_up_event(KeyCode::F6, NO_MODS);
-        c.mouse_button_down_event(MouseButton::Unknown, 1.0, 1.0);
-        c.mouse_button_up_event(MouseButton::Unknown, 1.0, 1.0);
+        c.mouse_button_down_event(MouseButton::Other, 1.0, 1.0);
+        c.mouse_button_up_event(MouseButton::Other, 1.0, 1.0);
         // Assert
         assert_eq!(drain(&mut c), []);
     }
@@ -1139,7 +1137,7 @@ mod tests {
 
     // ---- T40 copied wl_pointer input on Wayland ---------------------------
 
-    use macroquad::miniquad::pen::pointer_shadowed_by_pen;
+    use draw_sys::platform::pointer_shadowed_by_pen;
 
     /// A `wl_pointer.motion` the compositor copied from the pen, as the
     /// Wayland backend forwards it given each tool's proximity.
@@ -1468,7 +1466,7 @@ mod tests {
 
     // ---- T44 one device per Wayland seat capability ----------------------
 
-    use macroquad::miniquad::seat::{DeviceChange, device_change, has_release_request};
+    use draw_sys::platform::{DeviceChange, device_change, has_release_request};
 
     /// Replays `capabilities` events for one device, each saying whether
     /// the capability is announced, as the Wayland backend applies them.
@@ -1728,6 +1726,81 @@ mod tests {
 
         // Assert
         let recorded = records(&mut collector);
+        assert!(
+            !recorded.iter().any(|e| matches!(e, Event::Anomaly(_))),
+            "{recorded:?}"
+        );
+    }
+
+    // ---- T162 the collector takes RawEvent -------------------------------
+
+    use draw_sys::platform::{BackendEvent, BackendRecord, RawEvent};
+
+    #[test]
+    fn collector_tablet_event_pairs_pressure_with_pointer_event() {
+        // Arrange
+        let mut c = Collector::new();
+
+        // Act: the pen sample, then the pointer move at the same spot.
+        c.handle(RawEvent::Tablet {
+            x: 5.0,
+            y: 6.0,
+            pressure: 0.5,
+        });
+        c.handle(RawEvent::PointerMove { x: 5.0, y: 6.0 });
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                InputEvent::Pressure {
+                    pressure: Some(0.5)
+                },
+                InputEvent::PointerMove {
+                    pos: Vec2::new(5.0, 6.0),
+                    mods: Modifiers::NONE,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_backend_event_is_recorded_at_its_time() {
+        // Arrange
+        use crate::shell::diag::event::Event;
+        let mut c = Collector::new();
+        let at = Instant::now();
+
+        // Act
+        c.handle(RawEvent::Backend(BackendRecord {
+            at,
+            event: BackendEvent::ProximityIn,
+        }));
+        let mut out = Vec::new();
+        c.take_records(&mut out);
+
+        // Assert
+        assert_eq!(out, [(at, Event::ProximityIn)]);
+        assert_eq!(drain(&mut c), []);
+    }
+
+    #[test]
+    fn collector_backend_focus_event_forgets_held_keys() {
+        // Arrange
+        use crate::shell::diag::event::Event;
+        let mut c = Collector::new();
+        c.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Act
+        c.handle(RawEvent::Backend(BackendRecord {
+            at: Instant::now(),
+            event: BackendEvent::KeyboardLeave,
+        }));
+        c.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Assert
+        let recorded = records(&mut c);
         assert!(
             !recorded.iter().any(|e| matches!(e, Event::Anomaly(_))),
             "{recorded:?}"

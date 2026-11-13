@@ -192,3 +192,96 @@ pub trait Platform {
     /// Presents the frame and waits until the next one is due.
     fn next_frame(&mut self) -> impl Future<Output = ()>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn device_change_announced_without_device_creates() {
+        // Act
+        let change = device_change(false, true);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Create);
+    }
+
+    #[test]
+    fn device_change_announced_with_device_keeps() {
+        // Act
+        let change = device_change(true, true);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Keep);
+    }
+
+    #[test]
+    fn device_change_withdrawn_with_device_releases() {
+        // Act
+        let change = device_change(true, false);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Release);
+    }
+
+    #[test]
+    fn device_change_withdrawn_without_device_keeps() {
+        // Act
+        let change = device_change(false, false);
+
+        // Assert
+        assert_eq!(change, DeviceChange::Keep);
+    }
+
+    #[test]
+    fn has_release_request_needs_version_three() {
+        // Act / Assert
+        assert!(!has_release_request(2));
+        assert!(has_release_request(3));
+        assert!(has_release_request(9));
+    }
+
+    #[test]
+    fn pointer_shadowed_by_pen_with_a_tool_in_proximity_is_true() {
+        // Arrange: a pen in proximity, its eraser end not.
+        let tools = [false, true];
+
+        // Act
+        let dropped = pointer_shadowed_by_pen(tools);
+
+        // Assert
+        assert!(dropped);
+    }
+
+    #[test]
+    fn pointer_shadowed_by_pen_without_tools_in_proximity_is_false() {
+        // Arrange
+        let none: [bool; 0] = [];
+        let away = [false, false];
+
+        // Act / Assert
+        assert!(!pointer_shadowed_by_pen(none));
+        assert!(!pointer_shadowed_by_pen(away));
+    }
+
+    #[test]
+    fn raw_event_backend_keeps_the_record() {
+        // Arrange
+        let record = BackendRecord {
+            at: Instant::now(),
+            event: BackendEvent::Key {
+                code: 44,
+                state: 1,
+                ctrl: true,
+                alt: false,
+            },
+        };
+
+        // Act
+        let event = RawEvent::Backend(record);
+
+        // Assert
+        assert_eq!(event, RawEvent::Backend(record));
+    }
+}

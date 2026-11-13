@@ -525,24 +525,17 @@ mod tests {
     use super::*;
     use crate::core::command::Tool;
     use crate::core::input::PointerButton;
-    use macroquad::input::KeyCode;
-    use macroquad::miniquad::KeyMods;
-    use macroquad::miniquad::diag::{BackendEvent, Device};
+    use crate::shell::platform_mq::keys::KeyCode;
+    use draw_sys::platform::{BackendEvent, Device, RawMods as KeyMods};
 
     fn mods(shift: bool, ctrl: bool, alt: bool) -> KeyMods {
-        KeyMods {
-            shift,
-            ctrl,
-            alt,
-            logo: false,
-        }
+        KeyMods { shift, ctrl, alt }
     }
 
     const NONE: KeyMods = KeyMods {
         shift: false,
         ctrl: false,
         alt: false,
-        logo: false,
     };
 
     #[test]

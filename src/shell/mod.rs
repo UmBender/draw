@@ -15,6 +15,7 @@ pub mod gpu_mq;
 pub mod input_map;
 pub mod minimap;
 pub mod options;
+pub mod platform_mq;
 pub mod preflight;
 pub mod recording;
 pub mod render;

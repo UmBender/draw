@@ -588,8 +588,8 @@ mod tests {
     use super::*;
     use crate::shell::diag::event::{Anomaly, CharClass, Event, FrameKind, KeyTag};
     use crate::shell::input_map::Collector;
-    use macroquad::input::KeyCode;
-    use macroquad::miniquad::{EventHandler, KeyMods};
+    use crate::shell::platform_mq::keys::{Drive, KeyCode};
+    use draw_sys::platform::RawMods as KeyMods;
     use std::io;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
@@ -599,7 +599,6 @@ mod tests {
         shift: false,
         ctrl: false,
         alt: false,
-        logo: false,
     };
 
     /// An empty directory of its own for one test.

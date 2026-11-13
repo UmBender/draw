@@ -223,8 +223,8 @@ impl Limiter {
 mod tests {
     use super::*;
     use crate::shell::diag::event::{Anomaly, Event};
-    use macroquad::input::KeyCode;
-    use macroquad::miniquad::diag::Device;
+    use crate::shell::platform_mq::keys::KeyCode;
+    use draw_sys::platform::Device;
     use std::time::Duration;
 
     fn micros(duration: Duration) -> u64 {
