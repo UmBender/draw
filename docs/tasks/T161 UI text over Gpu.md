@@ -1,7 +1,7 @@
 ---
 id: T161
 title: UI text over Gpu
-status: todo
+status: review
 wave: 68
 branch: task/T161-ui-text-over-gpu
 depends_on: [T160]
@@ -24,10 +24,11 @@ Slice S5 of [[T155 Gpu migration of the drawing]]: `ui_text.rs`: UI text as glyp
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+- **AC-1** — `ui_text.rs` uses no macroquad draw call (`draw_text_ex` and the calls of the goal): a label is drawn as glyph quads of a glyph atlas through a `Batch` that ends in the `Gpu` interpreter (T158). Test `ui_text_uses_no_macroquad_draw_calls` (source scan).
+- **AC-2** — The quads are pure: `label_quads` places each glyph of a label at the snapped pen position, advancing by the atlas advance, and emits nothing for spaces. Tests `label_quads_place_glyphs_along_the_baseline`, `label_quads_skip_spaces`, `label_quads_snap_the_origin_to_physical_pixels`. Metrics do not change: `measure` still reports `measure_text` of the same font (existing behaviour, kept).
+- **AC-3** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
 
-- **AC-1** — The slice's code emits `Gpu` calls only, as described in the goal.
-- **AC-2** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
+Design (no new ADR): the UI font is the bundled text font, so the atlas is a `GlyphAtlas` over `TEXT_FONT` owned by `ui_text.rs`, rasterized at `raster_px(font_size, dpi)` (exactly what macroquad's `draw_text_ex` rasterizes: font size times DPI), drawn at scale `glyph_scale`. Its pages are uploaded with `GlyphTextures<MqGpu>`; the chunks go through `render::draw_inline` (made `pub`: the shared-interpreter accessor).
 
 ## Out of scope
 
@@ -43,13 +44,14 @@ Draft: the spec step refines each criterion into named tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T161): specify the slice`
-- [ ] tests — `test(T161): add failing tests`
-- [ ] models — `feat(T161): add the types`
-- [ ] behaviour — `refactor(T161): migrate the slice`
-- [ ] quality — `chore(T161): pass clippy and rustfmt`
+- [x] spec — `docs(T161): specify the slice`
+- [x] tests — `test(T161): add failing tests`
+- [x] models — merged into the behaviour commit
+- [x] behaviour — `refactor(T161): migrate the slice`, plus `refactor(T161): move the overlay draws to Batch and scan for draw calls`
+- [x] quality — `chore(T161): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
 - 2026-11-13 — widened in advance by the owner after T158 and T159 blocked on *Files owned*: `glyphs.rs`, call sites in other shell files, the `render.rs` accessor and the scan test are allowed; the `Gpu` trait is not.
+- 2026-11-13 — done: `ui_text::draw` emits glyph quads of a menu `GlyphAtlas` (own atlas over `TEXT_FONT`, rasterized at `raster_px(size, dpi)`, so the same size macroquad used) through `Batch` and the shared interpreter; `measure` is unchanged (`measure_text`). `render::draw_inline` made `pub`. UNATTENDED CHOICE: the shared canvas atlas has no public accessor and quantizes label sizes, so the menus keep their own atlas (exact sizes, pixel parity). The remaining macroquad draw calls (text-edit caret, marquee, laser trail in `app.rs`) moved to `Batch`; the marquee outline is now `ui_shapes::push_ring` (1 px inside) instead of `draw_rectangle_lines`, and the laser end uses `Batch::disc` (segment count from `circle_segments`): owner to check by eye. `no_macroquad_draw_calls_outside_the_interpreter` passes. `scripts/check.sh` and `e2e.sh --backend all` green. No feature or tutorial note (task has none).

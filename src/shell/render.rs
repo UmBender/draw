@@ -71,7 +71,7 @@ impl MeshSink for GlSink {
 
 /// Sends one inline draw with `texture`: collected into the open
 /// [`render_to`] scope, else a pass of its own on the window.
-fn draw_inline(vertices: &[Vertex], indices: &[u32], texture: Option<MqTexture>) {
+pub fn draw_inline(vertices: &[Vertex], indices: &[u32], texture: Option<MqTexture>) {
     let draw = Command::Draw {
         pipeline: alpha_pipeline(),
         texture,
