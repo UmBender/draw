@@ -1,7 +1,7 @@
 ---
 id: T145
 title: OpenGL ES 3.0 context and loader (EGL and GLX)
-status: todo
+status: in-progress
 wave: 69
 branch: task/T145-opengl-es-3-0-context-and-loader-egl-and
 depends_on: [T142]
@@ -25,12 +25,15 @@ A GL context on a native window handle, with the GL functions loaded and a typed
 
 Draft: the spec step refines each criterion into named tests and ADRs.
 
+Decisions: [[ADR-T145-1 GL context, function table and Gpu over OpenGL ES 3.0]].
+
 - **AC-1** — EGL context creation (Wayland and X11 platforms) and GLX as a fallback return errors as values; the context is a typed value that owns its surface.
   Integration tests on a headless surface; unit tests for every failure; regression tests per bug.
+  Tests (`crates/draw-sys/tests/egl.rs`, `glx.rs`): `egl_headless_context_makes_current`, `egl_context_resolves_gl_entry_points`, `egl_missing_library_is_an_error_value` (`EglContext::headless_with_library("libdraw-none.so")`), `egl_zero_size_pbuffer_is_an_error_value`, `glx_pbuffer_context_makes_current_under_xvfb`, `glx_bad_display_is_an_error_value`.
 - **AC-2** — A GL function table is loaded once, checked for the entry points draw needs, and each call is wrapped to check `glGetError` in debug builds.
-  Test: `missing_entry_point_is_reported`.
+  Test: `missing_entry_point_is_reported`; also `all_entry_points_present_loads` and `gl_error_is_reported_with_the_call_name` (debug builds).
 - **AC-3** — `Gpu` is implemented for it: buffers, textures, programs, one command list per frame; a test draws a known triangle set and reads back the pixels.
-  Test: `triangle_set_reads_back_exactly`.
+  Test: `triangle_set_reads_back_exactly`; also `texture_round_trips_through_write_and_read`, `alpha_blend_matches_straight_alpha_over`, `foreign_handle_is_unknown`, `bad_pixel_data_is_reported`, `zero_size_target_is_bad_size`, `multisampled_target_resolves`, `set_filter_changes_sampling`, `buffer_geometry_matches_inline_geometry`, and the same set over GLX (`glx_gpu_draws_triangle`).
 
 ## Out of scope
 
