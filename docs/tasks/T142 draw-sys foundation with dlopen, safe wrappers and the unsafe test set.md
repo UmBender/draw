@@ -37,7 +37,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `crates/draw-sys/src/loader.rs`, `docs/process/Unsafe primitives.md`, `.github/workflows/nightly.yml`, `scripts/`
+- `crates/draw-sys/src/loader.rs`, `crates/draw-sys/src/lib.rs` (the `pub mod loader;` line only), `crates/draw-sys/tests/`, `docs/process/Unsafe primitives.md`, `.github/workflows/nightly.yml`, `scripts/`
 - this note
 
 ## Subtasks (one commit each)
@@ -53,3 +53,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-13 — BLOCKED (batch): `crates/draw-sys/src/loader.rs` cannot compile or be tested without `pub mod loader;` in `crates/draw-sys/src/lib.rs` (which has `#![deny(unsafe_code)]`; the module needs a local `#![allow(unsafe_code)]`). `lib.rs` is not in *Files owned*, and `crates/draw-sys/tests/` (integration tests for AC-3) is not either. Also, `rustup`/`git`-compound commands were refused, so nightly/Miri availability was not checked. Recommended fix: add `crates/draw-sys/src/lib.rs` and `crates/draw-sys/tests/` to *Files owned*, then re-run the task.
+- 2026-11-13 — Files owned amended by the owner after the batch blocked: `lib.rs` (one `pub mod loader;` line) and `crates/draw-sys/tests/` (AC-3 integration tests) added.
