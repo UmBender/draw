@@ -39,6 +39,11 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Files owned
 
 - `crates/draw-sys/src/egl.rs`, `crates/draw-sys/src/glx.rs`, `crates/draw-gfx/src/gpu/gl.rs`
+- the module lines in `crates/draw-sys/src/lib.rs`, `crates/draw-gfx/src/lib.rs` and `crates/draw-gfx/src/gpu.rs` (`pub mod gl;`)
+- `crates/draw-gfx/Cargo.toml` (path dependency on `draw-sys`) and `tests/deps.rs`, `tests/unsafe_levels.rs` if they must learn it
+- `crates/draw-sys/tests/`, `crates/draw-gfx/tests/` (GL integration tests, an Xvfb helper)
+- `.github/workflows/ci.yml`: install the packages the GL tests need (`libegl1`, `libgl1-mesa-dri`, `xvfb`)
+- the ADRs this task writes
 - this note
 
 ## Subtasks (one commit each)
@@ -52,3 +57,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-13 — planned for a batch by the owner: *Files owned* widened in advance (module lines, Cargo, tests, CI). GL tests run in `scripts/check.sh` (headless EGL, surfaceless with a pbuffer fallback), and CI installs mesa so they run there too. GLX gets a real integration test: the test starts its own Xvfb (`-displayfd`) and fails, never skips, when it is missing.

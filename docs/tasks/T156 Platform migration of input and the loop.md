@@ -40,6 +40,10 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Files owned
 
 - `src/shell/input_map.rs`, `diag/`, pen, seat and clipboard code, the loop in `app.rs`, `src/main.rs`
+- `crates/draw-sys/src/platform.rs`: `RawEvent::Backend(BackendRecord)` with the record types copied into `draw-sys`, plus the pure seat and pen helpers (`device_change`, `pointer_shadowed_by_pen`) if the shell still needs them
+- a new macroquad `Platform` interpreter file in `src/shell/` (e.g. `platform_mq.rs`), `src/shell/recording.rs` (recording and null platforms), `src/shell/backend.rs`, `src/shell/tablet.rs`, `src/shell/mod.rs`
+- call sites of the migrated API in other `src/shell/` files and in `tests/`
+- the ADR this task writes (amending ADR-T140-1)
 - this note
 
 ## Subtasks (one commit each)
@@ -53,3 +57,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-13 — split from T140 AC-2 by the owner, following the batch's recommendation.
+- 2026-11-13 — planned for a batch by the owner: *Files owned* widened in advance. The diag records travel as a `RawEvent::Backend` variant (one ordered stream, lossless), recorded in an ADR amending ADR-T140-1. `vendor/miniquad` stays as it is. AC-4 (tablet) is the owner's: the batch stops at `review`.
