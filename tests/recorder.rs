@@ -86,6 +86,8 @@ fn recorder_keeps_the_call_order() -> Result<(), GpuError> {
             GpuCall::WriteTexture { .. } => "write",
             GpuCall::CreateTarget { .. } => "target",
             GpuCall::Pipeline { .. } => "pipeline",
+            GpuCall::SetFilter { .. } => "filter",
+            GpuCall::ReadTexture { .. } => "read",
             GpuCall::Submit { .. } => "submit",
         })
         .collect();
