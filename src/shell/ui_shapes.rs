@@ -167,6 +167,78 @@ mod tests {
 
     const EPS: f32 = 1e-2;
 
+    use crate::shell::render::{Batch, MeshSink, Vertex};
+
+    /// A sink that counts the triangles sent to it.
+    #[derive(Default)]
+    struct Counter {
+        triangles: usize,
+    }
+
+    impl MeshSink for Counter {
+        fn draw(&mut self, _vertices: &[Vertex], indices: &[u32], _page: Option<u32>) {
+            self.triangles += indices.len() / 3;
+        }
+    }
+
+    #[test]
+    fn push_fill_emits_the_triangles_of_the_fill() {
+        // Arrange
+        let r = rect(80.0, 40.0);
+        let expected = rounded_fill(r, 8.0).len();
+        let mut batch = Batch::new(Counter::default());
+
+        // Act
+        push_fill(&mut batch, r, 8.0, Color::new(1.0, 0.0, 0.0, 1.0));
+        let sink = batch.finish();
+
+        // Assert
+        assert!(expected > 0);
+        assert_eq!(sink.triangles, expected);
+    }
+
+    #[test]
+    fn push_ring_emits_the_triangles_of_the_ring() {
+        // Arrange
+        let r = rect(80.0, 40.0);
+        let expected = rounded_ring(r, 8.0, 2.0).len();
+        let mut batch = Batch::new(Counter::default());
+
+        // Act
+        push_ring(&mut batch, r, 8.0, 2.0, Color::new(0.0, 1.0, 0.0, 1.0));
+        let sink = batch.finish();
+
+        // Assert
+        assert!(expected > 0);
+        assert_eq!(sink.triangles, expected);
+    }
+
+    #[test]
+    fn toolbar_and_menus_use_no_macroquad_draw_calls() {
+        // Arrange: the code of the four files, without their test modules.
+        let code = |source: &'static str| source.split("#[cfg(test)]").next().unwrap_or("");
+        let files = [
+            ("toolbar.rs", code(include_str!("toolbar.rs"))),
+            ("sheet.rs", code(include_str!("sheet.rs"))),
+            ("command_palette.rs", code(include_str!("command_palette.rs"))),
+            ("ui_shapes.rs", code(include_str!("ui_shapes.rs"))),
+        ];
+        let forbidden = [
+            "draw_rectangle(",
+            "draw_triangle(",
+            "draw_line(",
+            "draw_mesh(",
+            "draw_texture_ex(",
+        ];
+
+        // Act / Assert
+        for (name, source) in files {
+            for call in forbidden {
+                assert!(!source.contains(call), "{name} uses {call}");
+            }
+        }
+    }
+
     fn rect(w: f32, h: f32) -> Aabb {
         Aabb::from_corners(Vec2::new(10.0, 20.0), Vec2::new(10.0 + w, 20.0 + h))
     }
