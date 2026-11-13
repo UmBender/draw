@@ -145,7 +145,7 @@ fn set_filter_changes_sampling() {
             indices: vec![0, 1, 2, 0, 2, 3],
         }
     };
-    let mut render = |gpu: &mut GlGpu<EglContext>| {
+    let render = |gpu: &mut GlGpu<EglContext>| {
         let mut list = CommandList::<GlGpu<EglContext>>::new();
         list.push(Command::BeginPass {
             target: Some(target.clone()),
@@ -317,7 +317,10 @@ fn bad_gl_call_is_reported_with_its_name() {
     unsafe { gl.bind_texture(0xFFFF, 0) };
 
     let error = gl.take_error();
-    assert!(error.is_some_and(|e| e.contains("glBindTexture")), "{error:?}");
+    assert!(
+        error.as_deref().is_some_and(|e| e.contains("glBindTexture")),
+        "{error:?}"
+    );
     assert_eq!(gl.take_error(), None);
 }
 

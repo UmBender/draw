@@ -9,6 +9,8 @@
 
 use std::fmt;
 
+pub mod gl;
+
 /// A colour with channels in `0..=1`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
