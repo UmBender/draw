@@ -196,8 +196,8 @@ mod tests {
 
     const EPS: f32 = 1e-2;
 
-    use draw_gfx::gpu::Vertex;
     use crate::shell::render::{Batch, MeshSink};
+    use draw_gfx::gpu::Vertex;
 
     /// A sink that counts the triangles sent to it.
     #[derive(Default)]
@@ -250,7 +250,10 @@ mod tests {
         let files = [
             ("toolbar.rs", code(include_str!("toolbar.rs"))),
             ("sheet.rs", code(include_str!("sheet.rs"))),
-            ("command_palette.rs", code(include_str!("command_palette.rs"))),
+            (
+                "command_palette.rs",
+                code(include_str!("command_palette.rs")),
+            ),
             ("ui_shapes.rs", code(include_str!("ui_shapes.rs"))),
         ];
         let forbidden = [
