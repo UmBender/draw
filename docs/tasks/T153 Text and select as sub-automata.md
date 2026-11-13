@@ -1,7 +1,7 @@
 ---
 id: T153
 title: Text and select as sub-automata
-status: review
+status: done
 wave: 69
 branch: task/T153-text-and-select-as-sub-automata
 depends_on: [T136, T138]

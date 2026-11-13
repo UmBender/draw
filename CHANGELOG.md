@@ -27,6 +27,11 @@ All notable changes to draw are listed here. The format follows
   and the gestures; the editor queues effects that the shell carries out,
   and the core never reads the clock. A model-based test checks the
   automaton against a reference model.
+- The text tool and the select tool keep their states in enums of the
+  automaton: an open text block is new, a re-opened block or the text of a
+  shape, and a select gesture is idle, a marquee, a move or a resize, so a
+  state the code does not mean cannot be built. Saved snapshots load as
+  before.
 - The settings that were environment variables are command-line flags, and
   draw reads no `DRAW_*` variable any more: `DRAW_LOG=debug` is `--log
   debug`, `DRAW_MSAA=off` is `--msaa off`, `DRAW_FRAME_TIMES=1` is

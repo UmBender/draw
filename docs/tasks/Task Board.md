@@ -559,5 +559,5 @@ flowchart TD
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
 | [[T151 Release 2.0.0]] | todo | T127–T149, T152, T153, T154 | `task/T151-release-2-0-0` |
 | [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
-| [[T153 Text and select as sub-automata]] | todo | T136, T138 | `task/T153-text-and-select-as-sub-automata` |
+| [[T153 Text and select as sub-automata]] | done | T136, T138 | `task/T153-text-and-select-as-sub-automata` |
 | [[T154 Environment variables to flags]] | done | T152, T129 | `task/T154-environment-variables-to-flags` |
