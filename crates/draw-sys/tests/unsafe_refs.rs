@@ -135,7 +135,11 @@ fn every_unsafe_block_has_a_test_reference() {
             report.push(format!("{}:{line}: {why}", file.display()));
         }
     }
-    assert!(report.is_empty(), "unsafe without a test:\n{}", report.join("\n"));
+    assert!(
+        report.is_empty(),
+        "unsafe without a test:\n{}",
+        report.join("\n")
+    );
 }
 
 fn known(names: &[&str]) -> HashSet<String> {

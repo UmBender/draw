@@ -205,12 +205,14 @@ impl<F: Copy> Deref for Symbol<'_, F> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
     const LIBM: &str = "libm.so.6";
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn open_missing_library_returns_not_found() {
         let err = Library::open("libdraw-does-not-exist.so.9").err();
 
@@ -225,11 +227,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn open_existing_library_succeeds() {
         assert!(Library::open(LIBM).is_ok());
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn symbol_missing_returns_symbol_not_found() {
         let lib = Library::open(LIBM).unwrap();
 
@@ -240,6 +244,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn symbol_name_with_nul_returns_invalid_name() {
         let lib = Library::open(LIBM).unwrap();
 
@@ -250,6 +255,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn symbol_of_wrong_size_returns_bad_type() {
         let lib = Library::open(LIBM).unwrap();
 
@@ -260,6 +266,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn symbol_present_can_be_called() {
         let lib = Library::open(LIBM).unwrap();
 
@@ -272,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call dlopen")]
     fn error_messages_name_the_library_or_symbol() {
         let lib = Library::open(LIBM).unwrap();
         // SAFETY: the symbol does not exist, so no function is ever called.

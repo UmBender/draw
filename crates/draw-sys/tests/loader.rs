@@ -1,6 +1,8 @@
 //! The loader through its public API only, so the sanitizer jobs of the
 //! nightly workflow (AC-3) exercise the real `dlopen` path.
 
+#![allow(clippy::expect_used)]
+
 use draw_sys::loader::{Library, LoadError};
 
 const LIBM: &str = "libm.so.6";
