@@ -1,11 +1,11 @@
 ---
 id: T140
 title: Platform and Gpu traits with recording interpreters
-status: todo
+status: in-progress
 wave: 68
 branch: task/T140-platform-and-gpu-traits-with-recording-i
 depends_on: [T132, T137]
-adrs: []
+adrs: [ADR-T140-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -24,14 +24,14 @@ The shell is written against `Platform` and `Gpu` traits, run with generics, and
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Design in [[ADR-T140-1 The Gpu and Platform traits]].
 
 - **AC-1** — `Platform` (poll input, clipboard, window size and scale, schedule) and `Gpu` (buffers, textures, pipelines, command list) are defined with associated types.
-  Tests: the recording interpreter keeps every call in order (`recorder_keeps_the_call_order`).
+  Tests (`tests/recorder.rs`): `recorder_keeps_the_call_order`, `recorder_gpu_hands_out_distinct_handles`, `recorder_platform_replays_queued_events_in_order`, `recorder_platform_logs_clipboard_and_wakeups`, `null_gpu_accepts_a_command_list`, `command_list_clear_keeps_capacity`.
 - **AC-2** — The macroquad code is one interpreter of the traits; `main` picks it with a `match` and monomorphises.
-  `e2e.sh` green on both backends.
+  `e2e.sh --backend all` green.
 - **AC-3** — A review note in the ADR shows each `Gpu` method mapped to OpenGL ES 3.0 and to Vulkan with no case that needs hidden state.
-  `ADR-T140-1`.
+  `ADR-T140-1` (done in the spec commit).
 
 ## Out of scope
 
@@ -39,7 +39,10 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `crates/draw-gfx/src/gpu.rs`, `crates/draw-sys/src/platform.rs` (traits only), `crates/draw/src/**`
+Amended 2026-11-13 by the owner (the app lives in `src/`, not `crates/draw/`):
+
+- `crates/draw-gfx/src/gpu.rs`, `crates/draw-sys/src/platform.rs` (traits and the raw event type only), `src/**`
+- the recorder's tests under `tests/`
 - this note and `ADR-T140-*`
 
 ## Subtasks (one commit each)
