@@ -9,7 +9,9 @@
 
 use crate::core::geom::Vec2;
 use crate::shell::app::TEXT_FONT;
-use crate::shell::glyphs::{GlyphAtlas, GlyphQuad, GlyphTextures, glyph_quad, glyph_scale, raster_px};
+use crate::shell::glyphs::{
+    GlyphAtlas, GlyphQuad, GlyphTextures, glyph_quad, glyph_scale, raster_px,
+};
 use crate::shell::gpu_mq::{MqGpu, MqTexture};
 use crate::shell::render::{Batch, MeshSink, draw_inline, with_gpu};
 use draw_gfx::gpu::Vertex;
@@ -17,6 +19,9 @@ use macroquad::color::Color;
 use macroquad::miniquad;
 use macroquad::text::{Font, TextDimensions, load_ttf_font_from_bytes, measure_text};
 use std::cell::{OnceCell, RefCell};
+
+/// A glyph quad with the atlas page it samples.
+pub type Placed = (GlyphQuad, u32);
 
 /// The atlas of the menu font and its pages on the GPU.
 struct Glyphs {
@@ -88,7 +93,7 @@ fn prepare(
     y: f32,
     font_size: u16,
     dpi: f32,
-) -> Option<(Vec<(GlyphQuad, u32)>, Vec<MqTexture>)> {
+) -> Option<(Vec<Placed>, Vec<MqTexture>)> {
     GLYPHS.with(|cell| {
         let mut guard = cell.borrow_mut();
         if guard.is_none() {
@@ -131,7 +136,7 @@ pub fn label_quads(
     y: f32,
     font_size: u16,
     dpi: f32,
-) -> Vec<(GlyphQuad, u32)> {
+) -> Vec<Placed> {
     let px = raster_px(font_size, dpi);
     let scale = glyph_scale(f32::from(font_size), px);
     let mut pen = Vec2::new(snap(x, dpi), snap(y, dpi));
@@ -168,7 +173,7 @@ impl MeshSink for PageSink {
 mod tests {
     use super::*;
     use crate::core::geom::approx_eq;
-    use crate::shell::glyphs::raster_px;
+    use crate::shell::glyphs::AtlasEntry;
 
     #[test]
     fn snap_rounds_to_physical_pixels() {
@@ -186,7 +191,9 @@ mod tests {
 
     /// An atlas over the menu font with `label` rasterized at `dpi`.
     fn atlas_with(label: &str, font_size: u16, dpi: f32) -> GlyphAtlas {
-        let mut atlas = GlyphAtlas::new(TEXT_FONT).expect("the text font parses");
+        let Ok(mut atlas) = GlyphAtlas::new(TEXT_FONT) else {
+            panic!("the text font does not parse");
+        };
         let px = raster_px(font_size, dpi);
         for ch in label.chars() {
             atlas.prepare(ch, px);
@@ -194,19 +201,30 @@ mod tests {
         atlas
     }
 
+    /// The entry of `ch` at 16 px, which the test prepared.
+    fn entry(atlas: &GlyphAtlas, ch: char) -> AtlasEntry {
+        let Some(entry) = atlas.get(ch, 16) else {
+            panic!("{ch:?} is not prepared");
+        };
+        entry
+    }
+
     #[test]
     fn label_quads_place_glyphs_along_the_baseline() {
         let atlas = atlas_with("ab", 16, 1.0);
         let quads = label_quads(&atlas, "ab", 10.0, 40.0, 16, 1.0);
         assert_eq!(quads.len(), 2);
-        let advance = atlas.get('a', 16).expect("a is prepared").advance;
+        let advance = entry(&atlas, 'a').advance;
         let (a, b) = (&quads[0].0, &quads[1].0);
         // Both glyphs sit above the baseline; the second starts one
-        // advance after the first, give or take their own bearings.
+        // advance after the first, give or take its own bearing.
         assert!(a.max.y <= 40.0 + 4.0 && b.max.y <= 40.0 + 4.0);
         assert!(b.min.x > a.min.x);
-        let entry_b = atlas.get('b', 16).expect("b is prepared");
-        assert!(approx_eq(b.min.x, 10.0 + advance + entry_b.xmin, 1e-3));
+        assert!(approx_eq(
+            b.min.x,
+            10.0 + advance + entry(&atlas, 'b').xmin,
+            1e-3
+        ));
     }
 
     #[test]
@@ -214,12 +232,10 @@ mod tests {
         let atlas = atlas_with("a b", 16, 1.0);
         let quads = label_quads(&atlas, "a b", 0.0, 20.0, 16, 1.0);
         assert_eq!(quads.len(), 2);
-        let space = atlas.get(' ', 16).expect("space is prepared").advance;
-        let a = atlas.get('a', 16).expect("a is prepared");
-        let b = atlas.get('b', 16).expect("b is prepared");
+        let pen = entry(&atlas, 'a').advance + entry(&atlas, ' ').advance;
         assert!(approx_eq(
             quads[1].0.min.x,
-            a.advance + space + b.xmin,
+            pen + entry(&atlas, 'b').xmin,
             1e-3
         ));
     }
@@ -234,8 +250,8 @@ mod tests {
 
     #[test]
     fn label_quads_of_an_unprepared_label_are_empty() {
-        let atlas = GlyphAtlas::new(TEXT_FONT).expect("the text font parses");
-        assert!(label_quads(&atlas, "abc", 0.0, 0.0, 16, 1.0).is_empty());
+        let atlas = atlas_with("", 16, 1.0);
+        assert_eq!(label_quads(&atlas, "abc", 0.0, 0.0, 16, 1.0).len(), 0);
     }
 
     /// AC-1 of T161: no macroquad draw call in this file.
