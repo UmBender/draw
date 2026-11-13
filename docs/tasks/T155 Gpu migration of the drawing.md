@@ -1,7 +1,7 @@
 ---
 id: T155
 title: Gpu migration of the drawing
-status: todo
+status: in-progress
 wave: 68
 branch: task/T155-gpu-migration-of-the-drawing
 depends_on: [T140]
@@ -25,10 +25,23 @@ Everything the shell draws goes through the `Gpu` trait, with macroquad as one i
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Refined after reading the code (2026-11-13). Findings that shape the work:
 
-- **AC-1** — The drawing path (render, glyphs, minimap, ui, frame cache) emits `Gpu` calls only; no macroquad drawing call remains outside the macroquad `Gpu` interpreter.
-- **AC-2** — A test draws a scene over `RecordingGpu` and asserts the command list.
+- `render.rs` already has a seam: `Batch<S: MeshSink>` and `push_text_*` take a sink. But `Batch`, every `draw_*` helper and the sink tests use macroquad's `Mesh`, `Vertex` and `Color`, and glyph pages live in a `thread_local` `TEXTURES` of macroquad `Texture2D`.
+- `draw_guides`, `draw_selection` and the toolbar, minimap, sheet and palette still call `draw_line`, `draw_rectangle`, `draw_texture_ex` directly.
+- `app.rs` owns the MSAA frame cache (`render_target_ex`, `set_camera`, `blit`).
+- `ui_text.rs` uses `draw_text_ex` and `measure_text` on a macroquad `Font`: glyph quads need the glyph atlas to rasterize the UI font (a metrics change would break pixel parity).
+
+Slices (each ends with `e2e.sh --backend all` green; no pixel change):
+
+1. **S1** — macroquad `Gpu` interpreter (`src/shell/gpu_mq.rs`: buffers, textures, targets, pipelines, `submit` through `draw_mesh` and `RenderPass`), tested for chunk limits and handle checks.
+2. **S2** — `render.rs`: `Batch` emits `Vertex` and `Command::Draw`; `GlyphTextures` holds `Gpu` texture handles; `draw_guides` and `draw_selection*` become tessellated quads.
+3. **S3** — `minimap.rs` and the frame cache in `app.rs` (render target, blit) on `Gpu` handles.
+4. **S4** — `toolbar`, `sheet`, `command_palette`, `ui_shapes` primitives tessellated.
+5. **S5** — `ui_text.rs`: UI text as glyph quads from the shared atlas.
+
+- **AC-1** — The drawing path (render, glyphs, minimap, ui, frame cache) emits `Gpu` calls only; no macroquad drawing call remains outside the macroquad `Gpu` interpreter. Check: `grep` for `draw_mesh|draw_line|draw_rectangle|draw_texture_ex|draw_text_ex|render_target_ex|set_camera` finds only `gpu_mq.rs` (test `no_macroquad_draw_calls_outside_the_interpreter`, a source scan).
+- **AC-2** — A test draws a scene over `RecordingGpu` and asserts the command list: `scene_over_recording_gpu_emits_begin_draws_end` (a rectangle, a stroke and a text block: one pass, draws with the white-block UVs, glyph draws bound to the atlas texture), `batch_over_recording_gpu_splits_chunks_at_the_limits`.
 - **AC-3** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
 
 ## Out of scope
@@ -42,7 +55,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T155): specify the Gpu migration of the drawing`
+- [x] spec — `docs(T155): specify the Gpu migration of the drawing`
 - [ ] tests — `test(T155): add failing tests for the drawing over the recorder`
 - [ ] models — `feat(T155): add the macroquad Gpu interpreter`
 - [ ] behaviour — `refactor(T155): draw through the Gpu trait`
