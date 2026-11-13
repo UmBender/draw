@@ -1343,7 +1343,12 @@ mod tests {
     use crate::core::math_metrics;
     use crate::core::palette::{ColorId, Rgba, palette};
     use crate::core::tex::{ACCENTS, Face, MINUS, Mark, SYMBOLS, calligraphic, italic};
+    use crate::shell::recording::RecordingGpu;
     use crate::theme;
+    use draw_gfx::gpu::{
+        Blend, Command, CommandList, Geometry, Gpu, PipelineDesc, Vertex as GfxVertex, View,
+    };
+    use macroquad::models::Vertex;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -1367,11 +1372,145 @@ mod tests {
     }
 
     impl MeshSink for Recorder {
-        fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
-            self.chunks
-                .push((mesh.vertices.clone(), mesh.indices.clone()));
+        fn draw(&mut self, vertices: &[GfxVertex], indices: &[u32], page: Option<u32>) {
+            self.chunks.push((
+                vertices.iter().map(mq_vertex).collect(),
+                indices.iter().map(|&i| i as u16).collect(),
+            ));
             self.pages.push(page);
         }
+    }
+
+    /// The macroquad vertex with `vertex`'s position, uv and colour bytes.
+    fn mq_vertex(vertex: &GfxVertex) -> Vertex {
+        let mut out = Vertex::new(
+            vertex.pos[0],
+            vertex.pos[1],
+            0.0,
+            vertex.uv[0],
+            vertex.uv[1],
+            Color::default(),
+        );
+        out.color = vertex.color;
+        out
+    }
+
+    // ---- T158 AC-1..AC-4 over the Gpu trait ----------------------------------
+
+    fn page_textures(gpu: &mut RecordingGpu) -> GlyphTextures<RecordingGpu> {
+        let mut textures = GlyphTextures::<RecordingGpu>::default();
+        let mut atlas = atlas();
+        atlas.prepare('A', 20);
+        assert!(textures.sync(gpu, &mut atlas).is_ok());
+        textures
+    }
+
+    fn draw_counts(list: &CommandList<RecordingGpu>) -> Vec<usize> {
+        list.commands()
+            .iter()
+            .filter_map(|command| match command {
+                Command::Draw {
+                    geometry: Geometry::Inline { indices, .. },
+                    ..
+                } => Some(indices.len()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn batch_over_recording_gpu_splits_chunks_at_the_limits() {
+        // Arrange: 2 000 quads, 800 per chunk by the index limit.
+        let mut gpu = RecordingGpu::new();
+        let textures = page_textures(&mut gpu);
+        let pipeline = gpu.pipeline(PipelineDesc { blend: Blend::Alpha });
+        let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
+
+        // Act
+        for i in 0..2_000_u16 {
+            let x = f32::from(i);
+            batch.rect(aabb(x, 0.0, x + 1.0, 1.0), RED);
+        }
+        let list = batch
+            .finish()
+            .into_list(View { width: 100.0, height: 100.0 });
+
+        // Assert
+        let counts = draw_counts(&list);
+        assert_eq!(counts, vec![4_800, 4_800, 2_400]);
+        assert!(counts.iter().all(|&n| n <= BATCH_MAX_INDICES));
+    }
+
+    #[test]
+    fn scene_over_recording_gpu_emits_begin_draws_end() {
+        // Arrange: a shape chunk, then a glyph chunk bound to page 0.
+        let mut gpu = RecordingGpu::new();
+        let textures = page_textures(&mut gpu);
+        let pipeline = gpu.pipeline(PipelineDesc { blend: Blend::Alpha });
+        let view = View { width: 640.0, height: 480.0 };
+        let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
+
+        // Act
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.flush();
+        batch.glyph(&quad(), 0, RED);
+        let list = batch.finish().into_list(view);
+
+        // Assert
+        let page = textures.get(0).cloned();
+        let commands = list.commands();
+        assert_eq!(commands.len(), 4);
+        assert_eq!(
+            commands[0],
+            Command::BeginPass { target: None, view, clear: None }
+        );
+        assert!(matches!(&commands[1], Command::Draw { texture: None, .. }));
+        assert!(matches!(&commands[2], Command::Draw { texture, .. } if *texture == page));
+        assert_eq!(commands[3], Command::EndPass);
+    }
+
+    #[test]
+    fn gpu_sink_binds_the_page_texture() {
+        // Arrange
+        let mut gpu = RecordingGpu::new();
+        let textures = page_textures(&mut gpu);
+        let pipeline = gpu.pipeline(PipelineDesc { blend: Blend::Alpha });
+        let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
+
+        // Act: a glyph alone in the batch, then an empty batch.
+        batch.glyph(&quad(), 0, RED);
+        let list = batch.finish().into_list(View { width: 1.0, height: 1.0 });
+        let empty = Batch::new(GpuSink::new(pipeline, &textures))
+            .finish()
+            .into_list(View { width: 1.0, height: 1.0 });
+
+        // Assert
+        assert!(matches!(
+            &list.commands()[1],
+            Command::Draw { pipeline: p, texture: Some(_), .. } if *p == pipeline
+        ));
+        assert_eq!(empty.len(), 2, "only the pass, no draw");
+    }
+
+    #[test]
+    fn push_guides_emits_one_quad_per_guide() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let guides = [
+            [Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
+            [Vec2::new(0.0, 5.0), Vec2::new(0.0, 9.0)],
+        ];
+
+        // Act
+        push_guides(&mut batch, &guides, &Camera::default());
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!(vertices.len(), 8);
+        assert_eq!(indices.len(), 12);
+        let want = vertex_bytes(hex_color(theme::GUIDE));
+        assert!(vertices.iter().all(|v| v.color == want));
     }
 
     const RED: Color = Color::new(1.0, 0.0, 0.0, 1.0);

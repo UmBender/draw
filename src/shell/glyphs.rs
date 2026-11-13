@@ -593,6 +593,7 @@ mod tests {
     use crate::core::math_metrics;
     use crate::core::tex::Face;
     use crate::shell::app::{MATH_FONT, TEXT_FONT};
+    use crate::shell::recording::{GpuCall, RecordingGpu};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -1133,6 +1134,47 @@ mod tests {
                 assert!(o.units_per_em.is_finite() && o.advance.is_finite());
             }
         }
+    }
+
+    // ---- T158 AC-3 textures over Gpu handles --------------------------------
+
+    fn synced() -> (RecordingGpu, GlyphTextures<RecordingGpu>, GlyphAtlas) {
+        let mut gpu = RecordingGpu::new();
+        let mut textures = GlyphTextures::<RecordingGpu>::default();
+        let mut atlas = atlas();
+        atlas.prepare('A', 20);
+        assert!(textures.sync(&mut gpu, &mut atlas).is_ok());
+        (gpu, textures, atlas)
+    }
+
+    #[test]
+    fn glyph_textures_sync_creates_one_texture_per_page() {
+        // Act
+        let (gpu, textures, atlas) = synced();
+
+        // Assert
+        let created = gpu
+            .calls()
+            .iter()
+            .filter(|call| matches!(call, GpuCall::CreateTexture { .. }))
+            .count();
+        assert_eq!(created, atlas.page_count());
+        assert!(textures.get(0).is_some());
+        assert!(textures.get(u32::try_from(atlas.page_count()).unwrap_or(u32::MAX)).is_none());
+    }
+
+    #[test]
+    fn glyph_textures_sync_writes_pending_uploads() {
+        // Act
+        let (gpu, textures, _) = synced();
+
+        // Assert: the glyph was written into the page texture.
+        let Some(page) = textures.get(0) else {
+            panic!("page 0 exists");
+        };
+        assert!(gpu.calls().iter().any(
+            |call| matches!(call, GpuCall::WriteTexture { texture, .. } if texture == page)
+        ));
     }
 
     #[test]
