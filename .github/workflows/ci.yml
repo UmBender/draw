@@ -32,6 +32,9 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      # The GL tests (T145) run on Mesa's software renderer: headless EGL,
+      # and GLX under their own Xvfb.
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libgl1-mesa-dri xvfb
       - run: scripts/check.sh
 
   # Line coverage per module may not fall, and a rise must be recorded in
@@ -48,6 +51,7 @@ jobs:
           toolchain: stable
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libgl1-mesa-dri xvfb
       - run: cargo install cargo-llvm-cov --locked
       - run: bash scripts/coverage.sh
 
