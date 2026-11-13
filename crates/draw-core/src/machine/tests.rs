@@ -425,3 +425,27 @@ fn snapshot_of_machine_equals_the_editor_snapshot() {
     // Act / Assert
     assert_eq!(machine.editor().snapshot(), editor.snapshot());
 }
+
+// ---- T153 AC-5: the sub-automata are exhaustive matches ------------------
+
+/// The code of `source` before its test module.
+fn code_before_tests(source: &str) -> &str {
+    source.split("#[cfg(test)]").next().unwrap_or(source)
+}
+
+#[test]
+fn machine_sub_automata_have_no_wildcard_arm() {
+    for (name, source) in [
+        ("text.rs", include_str!("text.rs")),
+        ("select.rs", include_str!("select.rs")),
+    ] {
+        for (n, line) in code_before_tests(source).lines().enumerate() {
+            let line = line.trim_start();
+            assert!(
+                !line.starts_with("_ =>") && !line.starts_with("other =>"),
+                "{name}:{} has a wildcard arm: {line}",
+                n + 1
+            );
+        }
+    }
+}

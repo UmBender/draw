@@ -31,6 +31,7 @@ use crate::core::document::{Document, Edit, ShapeId, Transaction, tx_remove};
 use crate::core::geom::{Aabb, Vec2, approx_eq};
 use crate::core::shape::Shape;
 use crate::core::snapshot::{Reader, SnapshotError, Writer, check_unlocked_ids};
+use crate::machine::select::{MIN_FACTOR, ResizeFrame, Select};
 
 /// Pointer travel (screen pixels) below which a press-release is a click.
 pub const CLICK_SLOP_PX: f32 = 3.0;
@@ -51,99 +52,14 @@ pub const SCALE_UP_FACTOR: f32 = 1.1;
 /// Factor of [`Command::ScaleDown`](crate::core::command::Command::ScaleDown).
 pub const SCALE_DOWN_FACTOR: f32 = 0.9;
 
-/// Smallest factor a resize ever applies: keeps every factor positive on
-/// the axes that set no limit of their own.
-const MIN_FACTOR: f32 = 1e-3;
-
 /// How close to 1 a factor counts as no change.
 const IDENTITY_EPS: f32 = 1e-6;
-
-/// What a resize scales, worked out once at the press (ADR-T91-1). World
-/// units.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct ResizeFrame {
-    /// The corner that stays put.
-    pivot: Vec2,
-    /// The corner being dragged.
-    corner: Vec2,
-    /// Smallest factor per axis the selection allows.
-    floor: Vec2,
-}
 
 /// Gesture state of this tool.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
-    /// The gesture in progress, if any.
-    gesture: Option<Gesture>,
-}
-
-/// A select-tool gesture; positions are screen pixels.
-#[derive(Debug, Clone, PartialEq)]
-enum Gesture {
-    /// Rubber-band selection started on empty space.
-    Marquee {
-        /// Press position.
-        start: Vec2,
-        /// Latest pointer position.
-        current: Vec2,
-        /// `Shift` was held: add to the selection instead of replacing it.
-        additive: bool,
-    },
-    /// Dragging shapes started on a shape.
-    Move {
-        /// Press position.
-        start: Vec2,
-        /// Latest pointer position.
-        current: Vec2,
-        /// The shape under the press.
-        clicked: ShapeId,
-        /// Shapes being moved (the selection at press time).
-        ids: Vec<ShapeId>,
-        /// `Alt` was held: insert moved copies, keep the originals.
-        duplicate: bool,
-    },
-    /// Dragging a corner handle of the selection.
-    Resize {
-        /// Press position.
-        start: Vec2,
-        /// Latest pointer position.
-        current: Vec2,
-        /// `Shift` is held: keep the proportions.
-        proportional: bool,
-        /// Shapes being resized (the selection at press time).
-        ids: Vec<ShapeId>,
-        /// Pivot, dragged corner and limits.
-        frame: ResizeFrame,
-    },
-}
-
-impl ResizeFrame {
-    /// The factors per axis for the dragged corner moved by the world
-    /// `delta`, or `None` if they are not finite. A side with no extent
-    /// keeps factor 1; `proportional` gives both axes the larger factor.
-    /// Never flips and never goes below the limits (ADR-T91-1).
-    fn factors(&self, delta: Vec2, proportional: bool) -> Option<(f32, f32)> {
-        if !delta.is_finite() {
-            return None;
-        }
-        let extent = self.corner - self.pivot;
-        let ratio = |side: f32, moved: f32| (side.abs() > 0.0).then(|| (side + moved) / side);
-        let (rx, ry) = (ratio(extent.x, delta.x), ratio(extent.y, delta.y));
-        if rx.is_some_and(|r| !r.is_finite()) || ry.is_some_and(|r| !r.is_finite()) {
-            return None;
-        }
-        if proportional {
-            let larger = match (rx, ry) {
-                (Some(x), Some(y)) => x.max(y),
-                (Some(r), None) | (None, Some(r)) => r,
-                (None, None) => return None,
-            };
-            let s = larger.max(self.floor.x.max(self.floor.y)).max(MIN_FACTOR);
-            return Some((s, s));
-        }
-        let clamp = |r: Option<f32>, floor: f32| r.map_or(1.0, |r| r.max(floor).max(MIN_FACTOR));
-        Some((clamp(rx, self.floor.x), clamp(ry, self.floor.y)))
-    }
+    /// The gesture in progress ([`Select::Idle`] when none).
+    gesture: Select,
 }
 
 /// The corners of `b`, clockwise from the top-left one.
@@ -478,13 +394,13 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
         && let Some(frame) = handle_at(ctx.doc, ctx.selection, ctx.camera, pos)
             .and_then(|index| resize_frame(ctx.doc, ctx.selection, index))
     {
-        state.gesture = Some(Gesture::Resize {
+        state.gesture = Select::Resize {
             start: pos,
             current: pos,
             proportional: pointer.mods.shift,
             ids: ctx.selection.clone(),
             frame,
-        });
+        };
         return *ctx.selection != before;
     }
     let world = ctx.camera.screen_to_world(pos);
@@ -511,29 +427,29 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
                 }
                 None => ctx.selection.push(id),
             }
-            None
+            Select::Idle
         }
         Some(id) => {
             if !ctx.selection.contains(&id) {
                 *ctx.selection = vec![id];
             }
-            Some(Gesture::Move {
+            Select::Move {
                 start: pos,
                 current: pos,
                 clicked: id,
                 ids: ctx.selection.clone(),
                 duplicate: pointer.mods.alt,
-            })
+            }
         }
         None => {
             if !pointer.mods.shift {
                 ctx.selection.clear();
             }
-            Some(Gesture::Marquee {
+            Select::Marquee {
                 start: pos,
                 current: pos,
                 additive: pointer.mods.shift,
-            })
+            }
         }
     };
     *ctx.selection != before
@@ -542,35 +458,20 @@ fn press(state: &mut State, ctx: &mut ToolCtx<'_>, pointer: Pointer) -> bool {
 /// Moves the pointer of the gesture in progress, with `shift` as now held.
 /// Returns whether anything it draws changed.
 fn drag_to(state: &mut State, pos: Vec2, shift: bool) -> bool {
-    match &mut state.gesture {
-        Some(Gesture::Marquee { current, .. } | Gesture::Move { current, .. }) => {
-            let moved = current.distance(pos) > 0.0;
-            *current = pos;
-            moved
-        }
-        Some(Gesture::Resize {
-            current,
-            proportional,
-            ..
-        }) => {
-            let changed = current.distance(pos) > 0.0 || *proportional != shift;
-            *current = pos;
-            *proportional = shift;
-            changed
-        }
-        None => false,
-    }
+    state.gesture.drag(pos, shift)
 }
 
 /// Ends the gesture: applies the marquee, the click or the move.
 fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
-    let Some(gesture) = state.gesture.take() else {
+    let gesture = state.gesture.take();
+    if gesture == Select::Idle {
         return false;
-    };
+    }
     prune(ctx.selection, ctx.doc);
     let camera = ctx.camera;
     match gesture {
-        Gesture::Marquee { start, current, .. } => {
+        Select::Idle => false,
+        Select::Marquee { start, current, .. } => {
             if is_click(start, current) {
                 return start.distance(current) > 0.0;
             }
@@ -591,7 +492,7 @@ fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
             }
             true
         }
-        Gesture::Move {
+        Select::Move {
             start,
             current,
             clicked,
@@ -616,7 +517,7 @@ fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
             // The preview disappears even if the edit was rejected.
             true
         }
-        Gesture::Resize {
+        Select::Resize {
             start,
             current,
             proportional,
@@ -641,21 +542,21 @@ fn release(state: &mut State, ctx: &mut ToolCtx<'_>) -> bool {
 pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
     let camera = view.camera;
     match &state.gesture {
-        None => Overlay::default(),
-        Some(Gesture::Marquee { start, current, .. }) => Overlay {
+        Select::Idle => Overlay::default(),
+        Select::Marquee { start, current, .. } => Overlay {
             marquee: Some(Aabb::from_corners(
                 camera.screen_to_world(*start),
                 camera.screen_to_world(*current),
             )),
             ..Overlay::default()
         },
-        Some(Gesture::Move {
+        Select::Move {
             start,
             current,
             ids,
             duplicate,
             ..
-        }) => {
+        } => {
             if is_click(*start, *current) {
                 return Overlay::default();
             }
@@ -671,13 +572,13 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
                 ..Overlay::default()
             }
         }
-        Some(Gesture::Resize {
+        Select::Resize {
             start,
             current,
             proportional,
             ids,
             frame,
-        }) => {
+        } => {
             if is_click(*start, *current) {
                 return Overlay::default();
             }
@@ -698,7 +599,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
 /// Discards the gesture in progress without changing the document. Returns
 /// whether a redraw is needed.
 pub fn cancel(state: &mut State) -> bool {
-    state.gesture.take().is_some()
+    state.gesture.cancel()
 }
 
 /// Selects every unlocked shape (ADR-T107-1). Returns whether the
@@ -735,23 +636,23 @@ impl State {
     /// <floor> <ids>` (snapshots, ADR-T74-1).
     pub(crate) fn write_snapshot(&self, w: &mut Writer) {
         w.record("select", |l| match &self.gesture {
-            None => {
+            Select::Idle => {
                 l.none();
             }
-            Some(Gesture::Marquee {
+            Select::Marquee {
                 start,
                 current,
                 additive,
-            }) => {
+            } => {
                 l.word("marquee").put(start).put(current).bool(*additive);
             }
-            Some(Gesture::Move {
+            Select::Move {
                 start,
                 current,
                 clicked,
                 ids,
                 duplicate,
-            }) => {
+            } => {
                 l.word("move")
                     .put(start)
                     .put(current)
@@ -759,13 +660,13 @@ impl State {
                     .bool(*duplicate)
                     .put(ids);
             }
-            Some(Gesture::Resize {
+            Select::Resize {
                 start,
                 current,
                 proportional,
                 ids,
                 frame,
-            }) => {
+            } => {
                 l.word("resize")
                     .put(start)
                     .put(current)
@@ -782,14 +683,14 @@ impl State {
     pub(crate) fn read_snapshot(r: &mut Reader<'_>, doc: &Document) -> Result<Self, SnapshotError> {
         let mut t = r.record("select")?;
         let gesture = if t.none() {
-            None
+            Select::Idle
         } else {
             match t.word("select gesture")? {
-                "marquee" => Some(Gesture::Marquee {
+                "marquee" => Select::Marquee {
                     start: t.loose_vec2()?,
                     current: t.loose_vec2()?,
                     additive: t.bool("additive")?,
-                }),
+                },
                 "move" => {
                     let start = t.loose_vec2()?;
                     let current = t.loose_vec2()?;
@@ -798,13 +699,13 @@ impl State {
                     let ids: Vec<ShapeId> = t.get()?;
                     check_unlocked_ids(&t, doc, &[clicked])?;
                     check_unlocked_ids(&t, doc, &ids)?;
-                    Some(Gesture::Move {
+                    Select::Move {
                         start,
                         current,
                         clicked,
                         ids,
                         duplicate,
-                    })
+                    }
                 }
                 "resize" => {
                     let start = t.loose_vec2()?;
@@ -817,13 +718,13 @@ impl State {
                     };
                     let ids: Vec<ShapeId> = t.get()?;
                     check_unlocked_ids(&t, doc, &ids)?;
-                    Some(Gesture::Resize {
+                    Select::Resize {
                         start,
                         current,
                         proportional,
                         ids,
                         frame,
-                    })
+                    }
                 }
                 other => return Err(t.error(format!("unknown select gesture `{other}`"))),
             }
