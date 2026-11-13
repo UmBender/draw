@@ -284,10 +284,22 @@ mod tests {
         let [top, bottom, left, right] = border_rects(rect, 2.0);
 
         // Assert
-        assert_eq!((top.min, top.max), (Vec2::new(10.0, 20.0), Vec2::new(110.0, 22.0)));
-        assert_eq!((bottom.min, bottom.max), (Vec2::new(10.0, 68.0), Vec2::new(110.0, 70.0)));
-        assert_eq!((left.min, left.max), (Vec2::new(10.0, 20.0), Vec2::new(12.0, 70.0)));
-        assert_eq!((right.min, right.max), (Vec2::new(108.0, 20.0), Vec2::new(110.0, 70.0)));
+        assert_eq!(
+            (top.min, top.max),
+            (Vec2::new(10.0, 20.0), Vec2::new(110.0, 22.0))
+        );
+        assert_eq!(
+            (bottom.min, bottom.max),
+            (Vec2::new(10.0, 68.0), Vec2::new(110.0, 70.0))
+        );
+        assert_eq!(
+            (left.min, left.max),
+            (Vec2::new(10.0, 20.0), Vec2::new(12.0, 70.0))
+        );
+        assert_eq!(
+            (right.min, right.max),
+            (Vec2::new(108.0, 20.0), Vec2::new(110.0, 70.0))
+        );
     }
 
     #[test]

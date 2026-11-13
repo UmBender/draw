@@ -128,8 +128,8 @@ pub struct RecordingGpu {
 type Sizes = HashMap<Handle, (u32, u32)>;
 
 /// The zeroed pixels of the texture `handle`.
-fn blank_pixels(sizes: &Sizes, handle: &Handle) -> Result<Vec<u8>, GpuError> {
-    let &(width, height) = sizes.get(handle).ok_or(GpuError::UnknownHandle)?;
+fn blank_pixels(sizes: &Sizes, handle: Handle) -> Result<Vec<u8>, GpuError> {
+    let &(width, height) = sizes.get(&handle).ok_or(GpuError::UnknownHandle)?;
     let desc = TextureDesc {
         width,
         height,
@@ -217,7 +217,7 @@ impl Gpu for RecordingGpu {
     }
 
     fn read_texture(&mut self, texture: &Handle) -> Result<Vec<u8>, GpuError> {
-        let pixels = blank_pixels(&self.sizes, texture)?;
+        let pixels = blank_pixels(&self.sizes, *texture)?;
         self.calls.push(GpuCall::ReadTexture { texture: *texture });
         Ok(pixels)
     }
@@ -290,7 +290,7 @@ impl Gpu for NullGpu {
     }
 
     fn read_texture(&mut self, texture: &Handle) -> Result<Vec<u8>, GpuError> {
-        blank_pixels(&self.sizes, texture)
+        blank_pixels(&self.sizes, *texture)
     }
 
     fn pipeline(&mut self, _: PipelineDesc) -> Handle {

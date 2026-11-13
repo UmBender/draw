@@ -10,6 +10,7 @@
 //! camera settles (ADR-T26-1). The embedded font is loaded at start-up
 //! (ADR-T29-1); an open text block's caret is part of the overlay.
 
+use macroquad::color::Color;
 use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
@@ -19,7 +20,6 @@ use macroquad::miniquad::window::{
     clipboard_get, clipboard_set, clipboard_set_png, schedule_update,
 };
 use macroquad::shapes::{draw_circle, draw_line, draw_rectangle, draw_rectangle_lines};
-use macroquad::color::Color;
 use macroquad::window::{next_frame, screen_dpi_scale, screen_height, screen_width};
 
 use draw_gfx::gpu::{Filter, Gpu, TargetDesc, View};
@@ -1161,17 +1161,8 @@ impl CachedFrame {
             render::clear_window(hex_color(theme::CANVAS));
             schedule_update();
         }
-        let filter = blit_filter(redraw);
-        let texture = render::with_gpu(|gpu| gpu.target_texture(document));
-        if filter != self.filter {
-            // The handle is the cache's own; a refusal keeps the old filter.
-            if render::with_gpu(|gpu| gpu.set_filter(&texture, filter)).is_ok() {
-                self.filter = filter;
-            }
-        }
-        if let Some(dest) = blit_rect(&cached.camera, &camera, self.layer) {
-            blit(&texture, dest);
-        }
+        let dest = blit_rect(&cached.camera, &camera, self.layer);
+        blit_layer(document, &mut self.filter, blit_filter(redraw), dest);
         draw_overlay(editor, &overlay, viewport);
         draw_laser(trail);
         if let Some(map) = &minimap {
@@ -1256,6 +1247,21 @@ impl CachedFrame {
     fn new_target(&self, size: (u32, u32)) -> Option<MqTarget> {
         let desc = frame_target_desc(size, self.samples);
         render::with_gpu(|gpu| gpu.create_target(desc)).ok()
+    }
+}
+
+/// Blits the layer `document` over `dest` (if any), after switching its
+/// texture from the filter `current` to `wanted`.
+fn blit_layer(document: &MqTarget, current: &mut Filter, wanted: Filter, dest: Option<Aabb>) {
+    let texture = render::with_gpu(|gpu| gpu.target_texture(document));
+    if wanted != *current {
+        // The handle is the cache's own; a refusal keeps the old filter.
+        if render::with_gpu(|gpu| gpu.set_filter(&texture, wanted)).is_ok() {
+            *current = wanted;
+        }
+    }
+    if let Some(dest) = dest {
+        blit(&texture, dest);
     }
 }
 
