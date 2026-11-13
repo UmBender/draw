@@ -1,7 +1,7 @@
 ---
 id: T142
 title: draw-sys foundation with dlopen, safe wrappers and the unsafe test set
-status: in-progress
+status: review
 wave: 69
 branch: task/T142-draw-sys-foundation-dlopen-safe-wrappers
 depends_on: [T132, T140]
@@ -44,15 +44,16 @@ Decisions: [[ADR-T142-1 dlopen through libc symbols and TEST markers]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T142): specify the loader and the unsafe contract`
-- [ ] tests — `test(T142): add failing tests for the loader`
-- [ ] models — `feat(T142): add the library and symbol types`
-- [ ] behaviour — `feat(T142): implement dlopen with safe wrappers`
-- [ ] quality — `chore(T142): pass clippy and rustfmt`
-- [ ] docs — `docs(T142): add the unsafe primitives note`
+- [x] spec — `docs(T142): specify the loader and the unsafe contract`
+- [x] tests — `test(T142): add failing tests for the loader`
+- [x] models — `feat(T142): add the library and symbol types`
+- [x] behaviour — `feat(T142): implement dlopen with safe wrappers`
+- [x] quality — `chore(T142): pass clippy and rustfmt`
+- [x] docs — `docs(T142): add the unsafe primitives note`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-13 — BLOCKED (batch): `crates/draw-sys/src/loader.rs` cannot compile or be tested without `pub mod loader;` in `crates/draw-sys/src/lib.rs` (which has `#![deny(unsafe_code)]`; the module needs a local `#![allow(unsafe_code)]`). `lib.rs` is not in *Files owned*, and `crates/draw-sys/tests/` (integration tests for AC-3) is not either. Also, `rustup`/`git`-compound commands were refused, so nightly/Miri availability was not checked. Recommended fix: add `crates/draw-sys/src/lib.rs` and `crates/draw-sys/tests/` to *Files owned*, then re-run the task.
 - 2026-11-13 — Files owned amended by the owner after the batch blocked: `lib.rs` (one `pub mod loader;` line) and `crates/draw-sys/tests/` (AC-3 integration tests) added.
+- 2026-11-13 — done: loader (`Library`, `Symbol`, `LoadError`), marker checker, `scripts/unsafe-tests.sh`, `scripts/unsafe-sanitizers.sh`, nightly job `sanitizers`, [[Unsafe primitives]]. `scripts/check.sh` green. Local runs: Miri runs the unit tests that do not call `dlopen` (Miri cannot call it, the rest are ignored under Miri); address and thread sanitizers pass on the integration tests. UNATTENDED CHOICE: the `compile_fail` doctest is named by rustdoc (`loader::Library`), not `symbol_cannot_outlive_library`; doctests are not in `check.sh` (`--all-targets`), so `scripts/unsafe-tests.sh` runs it (`cargo test -p draw-sys --doc`). Quality step: clippy/fmt fixes were committed as `chore`. The new nightly job is untested on GitHub.

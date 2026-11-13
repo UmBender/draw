@@ -9,6 +9,8 @@ cd "$(dirname "$0")/.."
 export CARGO_BUILD_JOBS=2
 
 cargo test -q -p draw-sys --test unsafe_refs
+# The compile_fail doctest: a symbol cannot outlive its library.
+cargo test -q -p draw-sys --doc
 
 if cargo +nightly miri --version >/dev/null 2>&1; then
     cargo +nightly miri test -q -p draw-sys --lib
