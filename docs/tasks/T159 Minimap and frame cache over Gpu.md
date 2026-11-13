@@ -1,11 +1,11 @@
 ---
 id: T159
 title: Minimap and frame cache over Gpu
-status: todo
+status: in-progress
 wave: 68
 branch: task/T159-minimap-and-frame-cache-over-gpu
 depends_on: [T158]
-adrs: []
+adrs: [ADR-T159-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -26,8 +26,14 @@ Slice S3 of [[T155 Gpu migration of the drawing]]: `minimap.rs` and the MSAA fra
 
 Draft: the spec step refines each criterion into named tests.
 
-- **AC-1** — The slice's code emits `Gpu` calls only, as described in the goal.
-- **AC-2** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
+Design in [[ADR-T159-1 Texture filter and readback in the Gpu trait]].
+
+- **AC-1** — `minimap.rs` and the frame cache (document layer, overview, selection image, blit) emit `Gpu` calls only: no `draw_rectangle`, `draw_texture_ex`, `render_target_ex`, `set_camera`, `get_texture_data` or `set_filter` on a macroquad texture remains in them. Checked by `minimap_and_frame_cache_use_no_macroquad_draw_calls` (source scan of the two files, outside `mod tests`).
+- **AC-2** — The `Gpu` trait has `TargetDesc.filter`, `set_filter` and `read_texture`: `recording_gpu_records_set_filter_and_read_texture`, `recording_gpu_read_texture_returns_one_rgba_image`, `recording_gpu_set_filter_unknown_handle_fails`, `null_gpu_read_texture_returns_zeroed_pixels`.
+- **AC-3** — The blit and the minimap panel are tessellated quads: `texture_quad_unflipped_maps_top_left_to_origin`, `texture_quad_flipped_swaps_the_rows`, `border_bars_cover_the_rect_edges`.
+- **AC-4** — A scope of draws into a target becomes one pass: `scope_list_wraps_draws_in_one_pass_with_clear`.
+- **AC-5** — `BeginPass { target: None }` owns the camera: `every_pass_owns_the_camera`.
+- **AC-6** — `e2e.sh --backend all` green; no pixel change in the screenshot comparisons.
 
 ## Out of scope
 
@@ -44,7 +50,7 @@ Draft: the spec step refines each criterion into named tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T159): specify the slice`
+- [x] spec — `docs(T159): specify the slice`
 - [ ] tests — `test(T159): add failing tests`
 - [ ] models — `feat(T159): add the types`
 - [ ] behaviour — `refactor(T159): migrate the slice`
