@@ -168,3 +168,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 157 | [[ADR-T137-1 One effect queue and time as a parameter]] | accepted | decision | — | — |
 | 158 | [[ADR-T153-1 Text and select are sub-automata of the machine]] | accepted | decision | T134-1, T136-1 | amends T136-1 |
 | 159 | [[ADR-T154-1 Every DRAW_ variable the binary reads becomes a flag]] | accepted | decision | T152-1 | supersedes T152-1 |
+| 160 | [[ADR-T140-1 The Gpu and Platform traits]] | accepted | decision | T127-5, T131-1, T132-1 | — |
