@@ -316,9 +316,21 @@ impl Gpu for MqGpu {
                 depth: false,
             },
         );
+        target.texture.set_filter(filter_mode(desc.filter));
         let texture = self.textures.insert(target.texture.clone());
         let id = self.targets.insert(target);
         Ok(MqTarget { id, texture })
+    }
+
+    fn set_filter(&mut self, texture: &MqTexture, filter: Filter) -> Result<(), GpuError> {
+        self.textures
+            .get(texture.id)?
+            .set_filter(filter_mode(filter));
+        Ok(())
+    }
+
+    fn read_texture(&mut self, texture: &MqTexture) -> Result<Vec<u8>, GpuError> {
+        Ok(self.textures.get(texture.id)?.get_texture_data().bytes)
     }
 
     fn target_texture(&self, target: &MqTarget) -> MqTexture {
@@ -401,8 +413,11 @@ impl MqGpu {
                     clear,
                 } => {
                     *in_target = pass_owns_camera(target.is_some());
-                    // Without a target the caller's macroquad camera stays,
-                    // until T159 moves the frame cache to passes (T158).
+                    // A pass never inherits the caller's camera (ADR-T159-1):
+                    // no target draws to the window in its pixels.
+                    if target.is_none() {
+                        set_default_camera();
+                    }
                     if let Some(target) = target {
                         let render_target = self.targets.get(target.id)?;
                         let mut camera = Camera2D::from_display_rect(Rect::new(
@@ -453,11 +468,10 @@ impl MqGpu {
 }
 
 /// Whether a pass with (`true`) or without a render target sets the
-/// macroquad camera itself. A pass without one draws with whatever camera
-/// the caller set, until T159 moves the frame cache to passes.
+/// macroquad camera itself: every pass does (ADR-T159-1).
 #[must_use]
-pub fn pass_owns_camera(has_target: bool) -> bool {
-    has_target
+pub fn pass_owns_camera(_has_target: bool) -> bool {
+    true
 }
 
 /// The `count` indices of `indices` from `first`.
@@ -713,15 +727,11 @@ mod tests {
         assert!(matches!(run(&[Step::Begin]), Err(GpuError::Backend(_))));
     }
 
-    // ---- T158 AC-5 camera ownership -------------------------------------------
+    // ---- T159 AC-5 camera ownership -------------------------------------------
 
     #[test]
-    fn pass_without_target_keeps_the_camera() {
-        assert!(!pass_owns_camera(false));
-    }
-
-    #[test]
-    fn pass_with_target_owns_the_camera() {
+    fn every_pass_owns_the_camera() {
+        assert!(pass_owns_camera(false));
         assert!(pass_owns_camera(true));
     }
 }

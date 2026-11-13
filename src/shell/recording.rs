@@ -4,8 +4,10 @@
 use std::collections::VecDeque;
 use std::future::{Future, Ready, ready};
 
+use std::collections::HashMap;
+
 use draw_gfx::gpu::{
-    CommandList, CommandOf, Gpu, GpuError, PipelineDesc, TargetDesc, TextureDesc, Vertex,
+    CommandList, CommandOf, Filter, Gpu, GpuError, PipelineDesc, TargetDesc, TextureDesc, Vertex,
 };
 use draw_sys::platform::{Platform, RawEvent, WindowMetrics};
 
@@ -53,6 +55,18 @@ pub enum GpuCall {
         handle: Handle,
         /// The description.
         desc: PipelineDesc,
+    },
+    /// `set_filter`.
+    SetFilter {
+        /// The texture changed.
+        texture: Handle,
+        /// The new filter.
+        filter: Filter,
+    },
+    /// `read_texture`.
+    ReadTexture {
+        /// The texture read.
+        texture: Handle,
     },
     /// `submit`, with a copy of the list.
     Submit {
@@ -106,6 +120,22 @@ fn check_rect(rect: [u32; 4], rgba: &[u8]) -> Result<(), GpuError> {
 pub struct RecordingGpu {
     calls: Vec<GpuCall>,
     handles: Handles,
+    /// Size of every texture and target, for `read_texture`.
+    sizes: Sizes,
+}
+
+/// Texel size of the textures an interpreter made, by handle.
+type Sizes = HashMap<Handle, (u32, u32)>;
+
+/// The zeroed pixels of the texture `handle`.
+fn blank_pixels(sizes: &Sizes, handle: Handle) -> Result<Vec<u8>, GpuError> {
+    let &(width, height) = sizes.get(&handle).ok_or(GpuError::UnknownHandle)?;
+    let desc = TextureDesc {
+        width,
+        height,
+        filter: Filter::Nearest,
+    };
+    Ok(vec![0; desc.byte_len().ok_or(GpuError::BadSize)?])
 }
 
 impl RecordingGpu {
@@ -146,6 +176,7 @@ impl Gpu for RecordingGpu {
     fn create_texture(&mut self, desc: TextureDesc, rgba: &[u8]) -> Result<Handle, GpuError> {
         check_pixels(&desc, rgba)?;
         let handle = self.handles.next();
+        self.sizes.insert(handle, (desc.width, desc.height));
         self.calls.push(GpuCall::CreateTexture { handle, desc });
         Ok(handle)
     }
@@ -169,8 +200,26 @@ impl Gpu for RecordingGpu {
             return Err(GpuError::BadSize);
         }
         let handle = self.handles.next();
+        self.sizes.insert(handle, (desc.width, desc.height));
         self.calls.push(GpuCall::CreateTarget { handle, desc });
         Ok(handle)
+    }
+
+    fn set_filter(&mut self, texture: &Handle, filter: Filter) -> Result<(), GpuError> {
+        if !self.sizes.contains_key(texture) {
+            return Err(GpuError::UnknownHandle);
+        }
+        self.calls.push(GpuCall::SetFilter {
+            texture: *texture,
+            filter,
+        });
+        Ok(())
+    }
+
+    fn read_texture(&mut self, texture: &Handle) -> Result<Vec<u8>, GpuError> {
+        let pixels = blank_pixels(&self.sizes, *texture)?;
+        self.calls.push(GpuCall::ReadTexture { texture: *texture });
+        Ok(pixels)
     }
 
     fn target_texture(&self, target: &Handle) -> Handle {
@@ -195,6 +244,7 @@ impl Gpu for RecordingGpu {
 #[derive(Debug, Clone, Default)]
 pub struct NullGpu {
     handles: Handles,
+    sizes: Sizes,
 }
 
 impl Gpu for NullGpu {
@@ -209,7 +259,9 @@ impl Gpu for NullGpu {
 
     fn create_texture(&mut self, desc: TextureDesc, rgba: &[u8]) -> Result<Handle, GpuError> {
         check_pixels(&desc, rgba)?;
-        Ok(self.handles.next())
+        let handle = self.handles.next();
+        self.sizes.insert(handle, (desc.width, desc.height));
+        Ok(handle)
     }
 
     fn write_texture(&mut self, _: &Handle, rect: [u32; 4], rgba: &[u8]) -> Result<(), GpuError> {
@@ -220,11 +272,25 @@ impl Gpu for NullGpu {
         if desc.width == 0 || desc.height == 0 || desc.samples == 0 {
             return Err(GpuError::BadSize);
         }
-        Ok(self.handles.next())
+        let handle = self.handles.next();
+        self.sizes.insert(handle, (desc.width, desc.height));
+        Ok(handle)
     }
 
     fn target_texture(&self, target: &Handle) -> Handle {
         *target
+    }
+
+    fn set_filter(&mut self, texture: &Handle, _: Filter) -> Result<(), GpuError> {
+        if self.sizes.contains_key(texture) {
+            Ok(())
+        } else {
+            Err(GpuError::UnknownHandle)
+        }
+    }
+
+    fn read_texture(&mut self, texture: &Handle) -> Result<Vec<u8>, GpuError> {
+        blank_pixels(&self.sizes, *texture)
     }
 
     fn pipeline(&mut self, _: PipelineDesc) -> Handle {

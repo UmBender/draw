@@ -10,10 +10,9 @@
 //! camera settles (ADR-T26-1). The embedded font is loaded at start-up
 //! (ADR-T29-1); an open text block's caret is part of the overlay.
 
-use macroquad::camera::{Camera2D, set_camera, set_default_camera};
+use macroquad::color::Color;
 use macroquad::conf::{Conf, UpdateTrigger};
 use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
-use macroquad::math::{Rect, vec2};
 use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
 use macroquad::miniquad::pen;
 use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
@@ -21,13 +20,9 @@ use macroquad::miniquad::window::{
     clipboard_get, clipboard_set, clipboard_set_png, schedule_update,
 };
 use macroquad::shapes::{draw_circle, draw_line, draw_rectangle, draw_rectangle_lines};
-use macroquad::texture::{
-    DrawTextureParams, FilterMode, RenderTarget, RenderTargetParams, Texture2D, draw_texture_ex,
-    render_target_ex,
-};
-use macroquad::window::{
-    clear_background, next_frame, screen_dpi_scale, screen_height, screen_width,
-};
+use macroquad::window::{next_frame, screen_dpi_scale, screen_height, screen_width};
+
+use draw_gfx::gpu::{Filter, Gpu, TargetDesc, View};
 
 use std::collections::HashSet;
 use std::io::Write as _;
@@ -60,6 +55,7 @@ use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
 use crate::shell::file::{self, Opened};
 use crate::shell::glyphs::{FontOutlines, GlyphAtlas};
+use crate::shell::gpu_mq::{MqTarget, MqTexture};
 use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
     wants_grid_clipboard,
@@ -90,7 +86,7 @@ pub const MATH_FONT: &[u8] = include_bytes!("../../assets/fonts/LatinModernMath-
 
 /// Filter of the resolved frame texture: the blit is 1:1 in physical pixels,
 /// so nearest keeps it sharp.
-const FRAME_FILTER: FilterMode = FilterMode::Nearest;
+const FRAME_FILTER: Filter = Filter::Nearest;
 
 /// The frame timer's line for one re-render: which layers, CPU time in
 /// milliseconds, the frame's text work if given (T32 AC-1) and the number
@@ -246,9 +242,9 @@ pub fn blit_rect(cached: &Camera, current: &Camera, layer: Aabb) -> Option<Aabb>
 /// Texture filter for blitting the layer under `redraw`: linear while it is
 /// scaled during a gesture, nearest when it lands 1:1.
 #[must_use]
-pub fn blit_filter(redraw: Redraw) -> FilterMode {
+pub fn blit_filter(redraw: Redraw) -> Filter {
     if redraw == Redraw::Moved {
-        FilterMode::Linear
+        Filter::Linear
     } else {
         FRAME_FILTER
     }
@@ -281,12 +277,14 @@ pub fn layer_camera(camera: &Camera, margin: f32) -> Camera {
     shifted
 }
 
-/// Render-target parameters for the cached frame: `samples` per pixel and no
-/// depth buffer.
-fn frame_target_params(samples: i32) -> RenderTargetParams {
-    RenderTargetParams {
-        sample_count: samples,
-        depth: false,
+/// The render target of the cached frame: `size` pixels, `samples` per
+/// pixel (clamped to 1..=255) and the frame filter.
+fn frame_target_desc(size: (u32, u32), samples: i32) -> TargetDesc {
+    TargetDesc {
+        width: size.0,
+        height: size.1,
+        samples: u8::try_from(samples.max(1)).unwrap_or(u8::MAX),
+        filter: FRAME_FILTER,
     }
 }
 
@@ -889,12 +887,11 @@ fn render_selection(
 ) -> Result<Vec<u8>, ExportError> {
     let camera = Camera::new(plan.world.min, plan.scale);
     let extent = Vec2::new(plan.size.0 as f32, plan.size.1 as f32);
-    let target = frame.new_target(plan.size);
+    let target = frame.new_target(plan.size).ok_or(ExportError::Pixels)?;
     // Start from an atlas with room, so no glyph is dropped.
     let _ = render::begin_text_frame();
     let selected: HashSet<ShapeId> = editor.selection().iter().copied().collect();
-    render_into(&target, extent, || {
-        clear_background(hex_color(theme::CANVAS));
+    render_into(&target, extent, Some(hex_color(theme::CANVAS)), || {
         let shapes = editor
             .document()
             .shapes()
@@ -905,9 +902,10 @@ fn render_selection(
     if render::text_overflowed() {
         return Err(ExportError::Pixels);
     }
-    let image = target.texture.get_texture_data();
-    let layer = (u32::from(image.width), u32::from(image.height));
-    export::view_pixels(&image.bytes, layer, plan.size, 0)
+    let texture = render::with_gpu(|gpu| gpu.target_texture(&target));
+    let bytes =
+        render::with_gpu(|gpu| gpu.read_texture(&texture)).map_err(|_| ExportError::Pixels)?;
+    export::view_pixels(&bytes, plan.size, plan.size, 0)
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is
@@ -1030,13 +1028,13 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
 /// ADR-T26-1). The overlay is drawn on the window every frame (ADR-T24-2).
 struct CachedFrame {
     /// The document layer.
-    document: Option<RenderTarget>,
+    document: Option<MqTarget>,
     /// What `document` shows.
     key: Option<LayerKey>,
     /// Where `document` lies in window pixels at the camera in `key`.
     layer: Aabb,
     /// Filter currently set on `document`'s texture.
-    filter: FilterMode,
+    filter: Filter,
     /// Camera of the last frame.
     last_camera: Option<Camera>,
     /// When the camera last changed.
@@ -1051,7 +1049,7 @@ struct CachedFrame {
     /// glyph atlas overflowed (ADR-T32-1).
     rerender: bool,
     /// The minimap's overview of the shapes (ADR-T110-1).
-    overview: Option<RenderTarget>,
+    overview: Option<MqTarget>,
     /// What `overview` shows.
     overview_key: Option<OverviewKey>,
 }
@@ -1126,7 +1124,7 @@ impl CachedFrame {
         if let Some(from) = from {
             let margin = layer_margin(size);
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
-                self.document = Some(self.new_target(layer_size(size, margin)));
+                self.document = self.new_target(layer_size(size, margin));
                 self.filter = FRAME_FILTER;
             }
             let pad = margin as f32 / sanitize_dpi(dpi);
@@ -1134,7 +1132,9 @@ impl CachedFrame {
             let layer_camera = layer_camera(&camera, pad);
             let rendering = Instant::now();
             if let Some(document) = &self.document {
-                render_into(document, extent, || {
+                // The background only when the layer starts from scratch.
+                let clear = (from == 0).then(|| hex_color(theme::CANVAS));
+                render_into(document, extent, clear, || {
                     draw_document(editor, &layer_camera, &overlay, extent, from);
                 });
             }
@@ -1158,23 +1158,21 @@ impl CachedFrame {
         if redraw == Redraw::Moved {
             // The moved layer may not cover the window; wake again until the
             // camera settles (ADR-T26-1).
-            clear_background(hex_color(theme::CANVAS));
+            render::clear_window(hex_color(theme::CANVAS));
             schedule_update();
         }
-        let filter = blit_filter(redraw);
-        if filter != self.filter {
-            document.texture.set_filter(filter);
-            self.filter = filter;
-        }
-        if let Some(dest) = blit_rect(&cached.camera, &camera, self.layer) {
-            blit(&document.texture, dest);
-        }
+        let dest = blit_rect(&cached.camera, &camera, self.layer);
+        blit_layer(document, &mut self.filter, blit_filter(redraw), dest);
         draw_overlay(editor, &overlay, viewport);
         draw_laser(trail);
         if let Some(map) = &minimap {
             let view = camera.visible_world_rect(viewport);
-            let texture = self.overview.as_ref().map(|target| &target.texture);
-            minimap::draw_panel(map, view, texture.zip(overview.as_ref()));
+            let texture = self
+                .overview
+                .as_ref()
+                .map(|target| render::with_gpu(|gpu| gpu.target_texture(target)));
+            let shown = texture.as_ref().zip(overview.as_ref());
+            minimap::draw_panel(map, view, shown);
         }
         if rerender_after_overflow(render::text_overflowed(), cleared) {
             // Glyphs were dropped from the layer; draw it again next frame
@@ -1201,9 +1199,12 @@ impl CachedFrame {
         let (Some(document), Some(key)) = (&self.document, &self.key) else {
             return Err(ExportError::Pixels);
         };
-        let image = document.texture.get_texture_data();
-        let layer = (u32::from(image.width), u32::from(image.height));
-        let rgba = export::view_pixels(&image.bytes, layer, key.size, layer_margin(key.size))?;
+        let texture = render::with_gpu(|gpu| gpu.target_texture(document));
+        let bytes =
+            render::with_gpu(|gpu| gpu.read_texture(&texture)).map_err(|_| ExportError::Pixels)?;
+        let margin = layer_margin(key.size);
+        let layer = layer_size(key.size, margin);
+        let rgba = export::view_pixels(&bytes, layer, key.size, margin)?;
         Ok((rgba, key.size))
     }
 
@@ -1221,14 +1222,17 @@ impl CachedFrame {
                 .as_ref()
                 .is_none_or(|cached| cached.size != key.size);
             if resized || self.overview.is_none() {
-                let target = self.new_target(key.size);
-                // Drawn smaller when the view leaves the content.
-                target.texture.set_filter(FilterMode::Linear);
-                self.overview = Some(target);
+                self.overview = self.new_target(key.size);
+                if let Some(target) = &self.overview {
+                    // Drawn smaller when the view leaves the content.
+                    let texture = render::with_gpu(|gpu| gpu.target_texture(target));
+                    let _ = render::with_gpu(|gpu| gpu.set_filter(&texture, Filter::Linear));
+                }
             }
             if let Some(target) = &self.overview {
-                render_into(target, Vec2::new(area.width(), area.height()), || {
-                    clear_background(minimap::clear_color());
+                let extent = Vec2::new(area.width(), area.height());
+                let clear = Some(minimap::clear_color());
+                render_into(target, extent, clear, || {
                     minimap::draw_overview(editor, &image);
                 });
             }
@@ -1239,28 +1243,33 @@ impl CachedFrame {
 
     /// A render target of `size` physical pixels with this cache's sample
     /// count.
-    fn new_target(&self, size: (u32, u32)) -> RenderTarget {
-        let target = render_target_ex(size.0, size.1, frame_target_params(self.samples));
-        target.texture.set_filter(FRAME_FILTER);
-        target
+    /// `None` if the backend cannot make it.
+    fn new_target(&self, size: (u32, u32)) -> Option<MqTarget> {
+        let desc = frame_target_desc(size, self.samples);
+        render::with_gpu(|gpu| gpu.create_target(desc)).ok()
+    }
+}
+
+/// Blits the layer `document` over `dest` (if any), after switching its
+/// texture from the filter `current` to `wanted`.
+fn blit_layer(document: &MqTarget, current: &mut Filter, wanted: Filter, dest: Option<Aabb>) {
+    let texture = render::with_gpu(|gpu| gpu.target_texture(document));
+    if wanted != *current {
+        // The handle is the cache's own; a refusal keeps the old filter.
+        if render::with_gpu(|gpu| gpu.set_filter(&texture, wanted)).is_ok() {
+            *current = wanted;
+        }
+    }
+    if let Some(dest) = dest {
+        blit(&texture, dest);
     }
 }
 
 /// Draws a resolved layer `texture` stretched over `dest`, in window
 /// pixels.
-fn blit(texture: &Texture2D, dest: Aabb) {
-    draw_texture_ex(
-        texture,
-        dest.min.x,
-        dest.min.y,
-        to_mq_color(Rgba::NO_TINT),
-        DrawTextureParams {
-            dest_size: Some(vec2(dest.width(), dest.height())),
-            // GL textures start at the bottom row.
-            flip_y: true,
-            ..DrawTextureParams::default()
-        },
-    );
+fn blit(texture: &MqTexture, dest: Aabb) {
+    // GL textures start at the bottom row.
+    render::draw_texture_quad(texture, dest, true);
 }
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
@@ -1280,13 +1289,14 @@ fn sanitize_dpi(dpi: f32) -> f32 {
     }
 }
 
-/// Runs `draw` with `target` as the destination, in logical pixels.
-fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
-    let mut camera = Camera2D::from_display_rect(Rect::new(0.0, 0.0, viewport.x, viewport.y));
-    camera.render_target = Some(target.clone());
-    set_camera(&camera);
-    draw();
-    set_default_camera();
+/// Runs `draw` with `target` as the destination, `viewport` logical pixels
+/// wide, cleared to `clear` first if given: one pass (ADR-T159-1).
+fn render_into(target: &MqTarget, viewport: Vec2, clear: Option<Color>, draw: impl FnOnce()) {
+    let view = View {
+        width: viewport.x,
+        height: viewport.y,
+    };
+    render::render_to(target, view, clear, draw);
 }
 
 /// Draws the document layer through `camera` into a target of `viewport`
@@ -1295,7 +1305,6 @@ fn render_into(target: &RenderTarget, viewport: Vec2, draw: impl FnOnce()) {
 /// drawn over what the layer already holds (ADR-T24-3).
 fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: Vec2, from: usize) {
     if from == 0 {
-        clear_background(hex_color(theme::CANVAS));
         render::draw_underlay(editor, camera, viewport);
     }
     let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
@@ -1522,21 +1531,20 @@ mod tests {
     }
 
     #[test]
-    fn frame_target_params_uses_sample_count() {
+    fn frame_target_desc_uses_size_samples_and_frame_filter() {
         // Arrange / Act
-        let params = frame_target_params(4);
+        let desc = frame_target_desc((640, 400), 4);
 
         // Assert
-        assert_eq!(params.sample_count, 4);
+        assert_eq!((desc.width, desc.height, desc.samples), (640, 400, 4));
+        assert_eq!(desc.filter, FRAME_FILTER);
     }
 
     #[test]
-    fn frame_target_params_has_no_depth() {
-        // Arrange / Act
-        let params = frame_target_params(DEFAULT_MSAA_SAMPLES);
-
-        // Assert
-        assert!(!params.depth);
+    fn frame_target_desc_clamps_the_sample_count_to_a_byte() {
+        // Arrange / Act / Assert
+        assert_eq!(frame_target_desc((1, 1), 1_000).samples, u8::MAX);
+        assert_eq!(frame_target_desc((1, 1), -3).samples, 1);
     }
 
     #[test]
@@ -1546,7 +1554,7 @@ mod tests {
 
     #[test]
     fn frame_filter_is_nearest() {
-        assert_eq!(FRAME_FILTER, FilterMode::Nearest);
+        assert_eq!(FRAME_FILTER, Filter::Nearest);
     }
 
     #[test]
@@ -1834,7 +1842,7 @@ mod tests {
 
     #[test]
     fn blit_filter_moved_is_linear() {
-        assert_eq!(blit_filter(Redraw::Moved), FilterMode::Linear);
+        assert_eq!(blit_filter(Redraw::Moved), Filter::Linear);
     }
 
     #[test]

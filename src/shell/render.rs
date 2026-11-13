@@ -16,7 +16,10 @@ use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 use macroquad::window::{screen_dpi_scale, screen_height, screen_width as window_width};
 
-use draw_gfx::gpu::{Blend, Command, CommandList, Geometry, Gpu, PipelineDesc, Vertex, View};
+use draw_gfx::gpu::{
+    Blend, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
+    View,
+};
 
 use std::cell::{Cell, OnceCell, RefCell};
 use std::time::{Duration, Instant};
@@ -35,7 +38,7 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
-use crate::shell::gpu_mq::{MqGpu, MqPipeline};
+use crate::shell::gpu_mq::{MqGpu, MqPipeline, MqTarget, MqTexture};
 use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
@@ -62,36 +65,149 @@ pub struct GlSink;
 impl MeshSink for GlSink {
     fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
         let texture = page.and_then(|page| TEXTURES.with(|t| t.borrow().get(page).cloned()));
-        let pipeline = PIPELINE.with(|cell| {
-            *cell.get_or_init(|| {
-                GPU.with(|gpu| {
-                    gpu.borrow_mut().pipeline(PipelineDesc {
-                        blend: Blend::Alpha,
-                    })
+        draw_inline(vertices, indices, texture);
+    }
+}
+
+/// Sends one inline draw with `texture`: collected into the open
+/// [`render_to`] scope, else a pass of its own on the window.
+fn draw_inline(vertices: &[Vertex], indices: &[u32], texture: Option<MqTexture>) {
+    let draw = Command::Draw {
+        pipeline: alpha_pipeline(),
+        texture,
+        geometry: Geometry::Inline {
+            vertices: vertices.to_vec(),
+            indices: indices.to_vec(),
+        },
+    };
+    let draw = SCOPE.with(|scope| match scope.borrow_mut().as_mut() {
+        Some(open) => {
+            open.push(draw);
+            None
+        }
+        None => Some(draw),
+    });
+    if let Some(draw) = draw {
+        submit(&wrap_pass::<MqGpu>(None, window_view(), None, vec![draw]));
+    }
+}
+
+/// The window in logical pixels, as a pass view.
+fn window_view() -> View {
+    View {
+        width: window_width(),
+        height: screen_height(),
+    }
+}
+
+/// The alpha-blend pipeline of the shared interpreter.
+#[must_use]
+pub fn alpha_pipeline() -> MqPipeline {
+    PIPELINE.with(|cell| {
+        *cell.get_or_init(|| {
+            with_gpu(|gpu| {
+                gpu.pipeline(PipelineDesc {
+                    blend: Blend::Alpha,
                 })
             })
-        });
-        let mut list = CommandList::<MqGpu>::new();
-        list.push(Command::BeginPass {
-            target: None,
-            view: View {
-                width: window_width(),
-                height: screen_height(),
-            },
-            clear: None,
-        });
-        list.push(Command::Draw {
-            pipeline,
-            texture,
-            geometry: Geometry::Inline {
-                vertices: vertices.to_vec(),
-                indices: indices.to_vec(),
-            },
-        });
-        list.push(Command::EndPass);
-        // The chunk is built from valid batches; a refusal drops it.
-        let _ = GPU.with(|gpu| gpu.borrow_mut().submit(&list));
+        })
+    })
+}
+
+/// Runs `f` on the one interpreter every drawing call goes through, so the
+/// frame cache and the minimap share its targets and textures (T159).
+/// `f` must not draw: call it for resources and for [`submit`] only.
+pub fn with_gpu<R>(f: impl FnOnce(&mut MqGpu) -> R) -> R {
+    GPU.with(|gpu| f(&mut gpu.borrow_mut()))
+}
+
+/// Executes `list` on the shared interpreter. The lists are built from
+/// valid handles; a refusal drops the list.
+pub fn submit(list: &CommandList<MqGpu>) {
+    let _ = with_gpu(|gpu| gpu.submit(list));
+}
+
+/// `draws` wrapped in one pass over `target` (`None`: the window) seen
+/// through `view`, cleared to `clear` first if given.
+#[must_use]
+pub fn wrap_pass<G: Gpu>(
+    target: Option<G::Target>,
+    view: View,
+    clear: Option<GfxColor>,
+    draws: Vec<CommandOf<G>>,
+) -> CommandList<G> {
+    let mut list = CommandList::new();
+    list.push(Command::BeginPass {
+        target,
+        view,
+        clear,
+    });
+    for draw in draws {
+        list.push(draw);
     }
+    list.push(Command::EndPass);
+    list
+}
+
+/// A macroquad colour as a `Gpu` clear colour.
+#[must_use]
+pub fn gfx_color(color: Color) -> GfxColor {
+    GfxColor::rgba(color.r, color.g, color.b, color.a)
+}
+
+/// Runs `draw` with every [`GlSink`] draw collected into one pass over
+/// `target`, seen through `view` (logical pixels), after clearing it to
+/// `clear` if given. One pass means one resolve of a multisampled target
+/// (ADR-T159-1). Not reentrant.
+pub fn render_to(target: &MqTarget, view: View, clear: Option<Color>, draw: impl FnOnce()) {
+    SCOPE.with(|scope| *scope.borrow_mut() = Some(Vec::new()));
+    draw();
+    let draws = SCOPE.with(|scope| scope.borrow_mut().take().unwrap_or_default());
+    let clear = clear.map(gfx_color);
+    submit(&wrap_pass::<MqGpu>(
+        Some(target.clone()),
+        view,
+        clear,
+        draws,
+    ));
+}
+
+/// Clears the window to `color`.
+pub fn clear_window(color: Color) {
+    submit(&wrap_pass::<MqGpu>(
+        None,
+        window_view(),
+        Some(gfx_color(color)),
+        Vec::new(),
+    ));
+}
+
+/// The two triangles of `dest` showing a whole texture, tinted `tint`.
+/// Rows of the texture run from the bottom when `flip_y` (GL targets).
+#[must_use]
+pub fn texture_quad(dest: Aabb, flip_y: bool, tint: [u8; 4]) -> ([Vertex; 4], [u32; 6]) {
+    let (top, bottom) = if flip_y { (1.0, 0.0) } else { (0.0, 1.0) };
+    let corner = |x: f32, y: f32, u: f32, v: f32| Vertex {
+        pos: [x, y],
+        uv: [u, v],
+        color: tint,
+    };
+    (
+        [
+            corner(dest.min.x, dest.min.y, 0.0, top),
+            corner(dest.max.x, dest.min.y, 1.0, top),
+            corner(dest.max.x, dest.max.y, 1.0, bottom),
+            corner(dest.min.x, dest.max.y, 0.0, bottom),
+        ],
+        [0, 1, 2, 0, 2, 3],
+    )
+}
+
+/// Draws the whole `texture` stretched over `dest` on the window, in
+/// window pixels, rows from the bottom when `flip_y`.
+pub fn draw_texture_quad(texture: &MqTexture, dest: Aabb, flip_y: bool) {
+    let (vertices, indices) = texture_quad(dest, flip_y, [255; 4]);
+    draw_inline(&vertices, &indices, Some(texture.clone()));
 }
 
 /// Collects chunks as `Command::Draw` of a command list, to submit them
@@ -740,6 +856,8 @@ thread_local! {
     static GPU: RefCell<MqGpu> = RefCell::new(MqGpu::new());
     /// The alpha-blend pipeline of [`GPU`], made on first use.
     static PIPELINE: OnceCell<MqPipeline> = const { OnceCell::new() };
+    /// The draws collected by the open [`render_to`], if any.
+    static SCOPE: RefCell<Option<Vec<CommandOf<MqGpu>>>> = const { RefCell::new(None) };
     /// Text work since the last [`take_text_stats`].
     static STATS: Cell<TextStats> = Cell::new(TextStats::default());
 }
@@ -1539,6 +1657,72 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    // ---- T159 AC-3 / AC-4: quads and passes ------------------------------------
+
+    #[test]
+    fn texture_quad_unflipped_maps_top_left_to_origin() {
+        // Arrange / Act
+        let (vertices, indices) = texture_quad(aabb(10.0, 20.0, 50.0, 60.0), false, [255; 4]);
+
+        // Assert: corners clockwise from the top left, uv from the top.
+        assert_eq!(vertices[0].pos, [10.0, 20.0]);
+        assert_eq!(vertices[2].pos, [50.0, 60.0]);
+        assert_eq!(vertices[0].uv, [0.0, 0.0]);
+        assert_eq!(vertices[1].uv, [1.0, 0.0]);
+        assert_eq!(vertices[2].uv, [1.0, 1.0]);
+        assert_eq!(vertices[3].uv, [0.0, 1.0]);
+        assert_eq!(indices, [0, 1, 2, 0, 2, 3]);
+    }
+
+    #[test]
+    fn texture_quad_flipped_swaps_the_rows() {
+        // Arrange / Act
+        let (vertices, _) = texture_quad(aabb(0.0, 0.0, 4.0, 4.0), true, [255; 4]);
+
+        // Assert
+        assert_eq!(vertices[0].uv, [0.0, 1.0]);
+        assert_eq!(vertices[2].uv, [1.0, 0.0]);
+        assert!(vertices.iter().all(|v| v.color == [255; 4]));
+    }
+
+    #[test]
+    fn scope_list_wraps_draws_in_one_pass_with_clear() {
+        // Arrange
+        let mut gpu = RecordingGpu::new();
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
+        let draw = Command::Draw {
+            pipeline,
+            texture: None,
+            geometry: Geometry::Inline {
+                vertices: Vec::new(),
+                indices: Vec::new(),
+            },
+        };
+        let view = View {
+            width: 8.0,
+            height: 8.0,
+        };
+        let clear = Some(draw_gfx::gpu::Color::rgba(0.0, 0.0, 0.0, 1.0));
+
+        // Act
+        let list = wrap_pass::<RecordingGpu>(None, view, clear, vec![draw.clone(), draw]);
+
+        // Assert
+        let commands = list.commands();
+        assert_eq!(commands.len(), 4);
+        assert!(matches!(
+            commands[0],
+            Command::BeginPass {
+                target: None,
+                clear: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(commands[3], Command::EndPass));
     }
 
     #[test]

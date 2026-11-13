@@ -36,6 +36,9 @@ Draft: the spec step refines each criterion into named tests.
 ## Files owned
 
 - `src/shell/ui_text.rs`
+- `src/shell/glyphs.rs` (the shared atlas)
+- call sites of the migrated API in other `src/shell/` files, and the shared interpreter accessor in `src/shell/render.rs` (added by T159), when the slice needs them to compile; a change to the `Gpu` trait still blocks
+- the `no_macroquad_draw_calls_outside_the_interpreter` test, wherever it lives
 - this note
 
 ## Subtasks (one commit each)
@@ -49,3 +52,4 @@ Draft: the spec step refines each criterion into named tests.
 ## Log
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
+- 2026-11-13 — widened in advance by the owner after T158 and T159 blocked on *Files owned*: `glyphs.rs`, call sites in other shell files, the `render.rs` accessor and the scan test are allowed; the `Gpu` trait is not.

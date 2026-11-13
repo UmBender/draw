@@ -92,6 +92,8 @@ pub struct TargetDesc {
     pub height: u32,
     /// Samples per pixel; `1` is no multisampling.
     pub samples: u8,
+    /// Filter of the texture the target resolves to (ADR-T159-1).
+    pub filter: Filter,
 }
 
 /// A pipeline to create.
@@ -308,6 +310,21 @@ pub trait Gpu {
 
     /// The texture a later pass samples to read what `target` holds.
     fn target_texture(&self, target: &Self::Target) -> Self::Texture;
+
+    /// Changes the sampling filter of `texture` (a texture of a target
+    /// too), ADR-T159-1.
+    ///
+    /// # Errors
+    /// [`GpuError::UnknownHandle`] if the interpreter does not know `texture`.
+    fn set_filter(&mut self, texture: &Self::Texture, filter: Filter) -> Result<(), GpuError>;
+
+    /// Reads back the RGBA8 texels of `texture` (`width * height * 4`
+    /// bytes) in the order the backend stores them, ADR-T159-1.
+    ///
+    /// # Errors
+    /// [`GpuError::UnknownHandle`] if the interpreter does not know
+    /// `texture`; [`GpuError::Backend`] if the read fails.
+    fn read_texture(&mut self, texture: &Self::Texture) -> Result<Vec<u8>, GpuError>;
 
     /// Creates a pipeline.
     fn pipeline(&mut self, desc: PipelineDesc) -> Self::Pipeline;
