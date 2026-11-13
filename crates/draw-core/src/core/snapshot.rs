@@ -2426,6 +2426,145 @@ mod tests {
         // Assert
         assert_eq!(result.err().map(|e| e.line), Some(line + 1));
     }
+
+    // ---- T153 text and select states ---------------------------------------
+
+    /// An editor with a rectangle and a text block, text tool selected.
+    fn text_scene() -> Editor {
+        let mut ed = editor();
+        ed.apply(Command::SetTool(Tool::Rect));
+        drag(&mut ed, v(300.0, 300.0), v(500.0, 420.0));
+        ed.apply(Command::SetTool(Tool::Text));
+        down(&mut ed, v(50.0, 50.0));
+        up(&mut ed, v(50.0, 50.0));
+        type_text(&mut ed, "block");
+        key(&mut ed, Key::Escape);
+        ed
+    }
+
+    /// Asserts `ed` loads back equal and then ends the edit the same way.
+    fn assert_round_trips(name: &str, ed: Editor) {
+        let mut loaded = round_trip(&ed);
+        let mut ed = ed;
+        assert_eq!(loaded, ed, "{name}");
+        for editor in [&mut ed, &mut loaded] {
+            type_text(editor, "z");
+            key(editor, Key::Escape);
+        }
+        assert_eq!(loaded, ed, "{name} after typing");
+    }
+
+    #[test]
+    fn snapshot_roundtrip_text_new() {
+        let mut ed = text_scene();
+        down(&mut ed, v(700.0, 80.0));
+        up(&mut ed, v(700.0, 80.0));
+        type_text(&mut ed, "new");
+        assert!(ed.text_edit().is_some_and(|e| e.target().is_none()));
+
+        assert_round_trips("text new", ed);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_text_block() {
+        let mut ed = text_scene();
+        down(&mut ed, v(52.0, 52.0));
+        up(&mut ed, v(52.0, 52.0));
+        assert!(ed.text_edit().is_some_and(|e| e.target().is_some()));
+
+        assert_round_trips("text block", ed);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_text_slot() {
+        let mut ed = text_scene();
+        down(&mut ed, v(400.0, 360.0));
+        up(&mut ed, v(400.0, 360.0));
+        type_text(&mut ed, "in");
+        assert!(ed.text_edit().is_some_and(|e| e.host().is_some()));
+
+        assert_round_trips("text slot", ed);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_text_resized() {
+        let mut ed = text_scene();
+        down(&mut ed, v(700.0, 80.0));
+        up(&mut ed, v(700.0, 80.0));
+        type_text(&mut ed, "big");
+        ed.handle(InputEvent::KeyDown {
+            key: Key::BracketRight,
+            mods: Modifiers {
+                shift: false,
+                ctrl: true,
+                alt: false,
+            },
+        });
+        assert!(ed.text_edit().is_some_and(crate::core::tools::text::TextEdit::resized));
+
+        assert_round_trips("text resized", ed);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_select_marquee() {
+        let mut ed = text_scene();
+        ed.apply(Command::SetTool(Tool::Select));
+        down(&mut ed, v(900.0, 600.0));
+        move_to(&mut ed, v(600.0, 500.0));
+
+        assert_eq!(round_trip(&ed), ed);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_select_move() {
+        let mut ed = text_scene();
+        ed.apply(Command::SetTool(Tool::Select));
+        down(&mut ed, v(52.0, 52.0));
+        move_to(&mut ed, v(90.0, 90.0));
+
+        assert_eq!(round_trip(&ed), ed);
+    }
+
+    #[test]
+    fn snapshot_roundtrip_select_resize() {
+        // Arrange: a selected rectangle, then a press on its corner handle.
+        let mut ed = text_scene();
+        ed.apply(Command::SetTool(Tool::Select));
+        down(&mut ed, v(300.0, 300.0));
+        up(&mut ed, v(300.0, 300.0));
+        down(&mut ed, v(500.0, 420.0));
+        move_to(&mut ed, v(540.0, 450.0));
+
+        // Assert
+        assert_eq!(round_trip(&ed), ed);
+    }
+
+    #[test]
+    fn snapshot_rejects_text_with_target_and_host() {
+        // Arrange: a block edit whose record also names a host.
+        let mut ed = text_scene();
+        down(&mut ed, v(52.0, 52.0));
+        up(&mut ed, v(52.0, 52.0));
+        let text = ed.snapshot().to_text();
+        let line = line_of(&text, "text ");
+        let host = "0 shape 300.0 300.0 500.0 420.0 0";
+        let mut words: Vec<String> = text
+            .lines()
+            .nth(line)
+            .unwrap_or_default()
+            .split(' ')
+            .map(str::to_owned)
+            .collect();
+        let at = words.iter().position(|w| w == "-").unwrap_or(0);
+        words[at] = host.to_owned();
+        let bad = edited(&ed, line, &words.join(" "));
+
+        // Act
+        let err = Snapshot::parse(&bad);
+
+        // Assert
+        assert!(err.is_err(), "target with host was accepted");
+    }
 }
 
 #[cfg(test)]

@@ -1195,4 +1195,61 @@ mod tests {
             assert_eq!(e.caret(), 1);
         }
     }
+
+    // ---- T153 the anchor of an edit ----------------------------------------
+
+    #[test]
+    fn edit_new_builds_new_anchor() {
+        let e = edit("", 0);
+
+        assert_eq!(e.anchor(), &Anchor::New);
+    }
+
+    #[test]
+    fn edit_open_builds_block_anchor() {
+        // Arrange
+        let id = crate::core::document::ShapeId(2);
+        let block = Shape::Text {
+            origin: Vec2::ZERO,
+            text: "hi".to_owned(),
+            size: 10.0,
+            style: STYLE,
+        };
+
+        // Act
+        let e = TextEdit::open(id, &block, Vec2::ZERO);
+
+        // Assert
+        assert_eq!(e.map(|e| e.anchor().clone()), Some(Anchor::Block(id)));
+    }
+
+    #[test]
+    fn edit_open_in_builds_slot_anchor() {
+        // Arrange
+        let id = crate::core::document::ShapeId(4);
+
+        // Act
+        let e = TextEdit::open_in(id, &host_rect(), TextSlot::Shape, 10.0);
+
+        // Assert
+        let anchor = e.map(|e| e.anchor().clone());
+        assert!(
+            matches!(anchor, Some(Anchor::Slot(h)) if h.id == id && h.slot == TextSlot::Shape),
+            "{anchor:?}"
+        );
+    }
+
+    #[test]
+    fn edit_resize_keeps_the_anchor() {
+        // Arrange
+        let mut e = edit("ab", 1);
+        let before = e.anchor().clone();
+
+        // Act
+        let stepped = e.step_size(true, 1.0);
+
+        // Assert
+        assert!(stepped && e.resized());
+        assert_eq!(e.anchor(), &before);
+    }
 }

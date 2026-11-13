@@ -45,7 +45,17 @@ enum Action {
     Undo,
     /// `Escape`.
     Escape,
+    /// Text tool, press at spot `n`, type `x`, `Escape` to commit (T153): a
+    /// new block, or an edit of the block already at that spot.
+    WriteText(u8),
+    /// Select tool, marquee over the whole page (T153).
+    MarqueeAll,
+    /// Select tool, marquee over empty space (T153).
+    MarqueeEmpty,
 }
+
+/// Spots a text block can be written at; far from the rectangles.
+const TEXT_SPOTS: u8 = 3;
 
 const TOOL_KEYS: [(Tool, Key); 11] = [
     (Tool::Pen, Key::D),
@@ -126,7 +136,64 @@ fn inputs(action: Action) -> Vec<Input> {
         Action::Delete => vec![key(Key::Delete, Modifiers::NONE)],
         Action::Undo => vec![key(Key::Z, CTRL)],
         Action::Escape => vec![key(Key::Escape, Modifiers::NONE)],
+        Action::WriteText(spot) => {
+            let x = 800.0 + 150.0 * f32::from(spot % TEXT_SPOTS);
+            vec![
+                key(Key::T, Modifiers::NONE),
+                left_down(x, 40.0),
+                left_up(x, 40.0),
+                Input::Char {
+                    ch: 'x',
+                    mods: Modifiers::NONE,
+                },
+                key(Key::Escape, Modifiers::NONE),
+            ]
+        }
+        Action::MarqueeAll => marquee(5.0, 5.0, 3000.0, 3000.0),
+        Action::MarqueeEmpty => marquee(2500.0, 2500.0, 2600.0, 2600.0),
     }
+}
+
+fn left_down(x: f32, y: f32) -> Input {
+    pointer(
+        |pos| Input::PointerDown {
+            pos,
+            button: PointerButton::Left,
+            mods: Modifiers::NONE,
+        },
+        x,
+        y,
+    )
+}
+
+fn left_up(x: f32, y: f32) -> Input {
+    pointer(
+        |pos| Input::PointerUp {
+            pos,
+            button: PointerButton::Left,
+            mods: Modifiers::NONE,
+        },
+        x,
+        y,
+    )
+}
+
+/// Select tool, a press at `(x0, y0)`, a move halfway and a release at
+/// `(x1, y1)`.
+fn marquee(x0: f32, y0: f32, x1: f32, y1: f32) -> Vec<Input> {
+    vec![
+        key(Key::V, Modifiers::NONE),
+        left_down(x0, y0),
+        pointer(
+            |pos| Input::PointerMove {
+                pos,
+                mods: Modifiers::NONE,
+            },
+            (x0 + x1) / 2.0,
+            (y0 + y1) / 2.0,
+        ),
+        left_up(x1, y1),
+    ]
 }
 
 fn run(machine: Machine, action: Action) -> Machine {
@@ -165,6 +232,8 @@ struct Model {
     history: [Vec<Vec<u32>>; PAGES],
     /// Selected shape ids per page.
     selection: [Vec<u32>; PAGES],
+    /// Text blocks per page: spot and shape id.
+    texts: [Vec<(u8, u32)>; PAGES],
     /// Next fresh shape id.
     next: u32,
 }
@@ -177,6 +246,7 @@ impl Model {
             shapes: Default::default(),
             history: Default::default(),
             selection: Default::default(),
+            texts: Default::default(),
             next: 0,
         }
     }
@@ -209,6 +279,28 @@ impl Model {
                 }
             }
             Action::Escape => self.selection[p].clear(),
+            Action::WriteText(spot) => {
+                let spot = spot % TEXT_SPOTS;
+                self.tool = Tool::Text;
+                self.history[p].push(self.shapes[p].clone());
+                let alive = &self.shapes[p];
+                let there = self.texts[p]
+                    .iter()
+                    .any(|(at, id)| *at == spot && alive.contains(id));
+                if !there {
+                    self.shapes[p].push(self.next);
+                    self.texts[p].push((spot, self.next));
+                    self.next += 1;
+                }
+            }
+            Action::MarqueeAll => {
+                self.tool = Tool::Select;
+                self.selection[p].clone_from(&self.shapes[p]);
+            }
+            Action::MarqueeEmpty => {
+                self.tool = Tool::Select;
+                self.selection[p].clear();
+            }
         }
     }
 
@@ -231,6 +323,9 @@ fn arb_action() -> impl Strategy<Value = Action> {
         2 => Just(Action::Delete),
         2 => Just(Action::Undo),
         1 => Just(Action::Escape),
+        3 => (0..TEXT_SPOTS).prop_map(Action::WriteText),
+        1 => Just(Action::MarqueeAll),
+        1 => Just(Action::MarqueeEmpty),
     ]
 }
 
@@ -290,6 +385,17 @@ fn alphabet() -> Vec<Vec<Input>> {
         260.0,
         240.0,
     )]);
+    // T153: text opened and typed into, and a select marquee left open.
+    all.push(vec![
+        key(Key::T, Modifiers::NONE),
+        left_down(200.0, 200.0),
+        left_up(200.0, 200.0),
+        Input::Char {
+            ch: 'q',
+            mods: Modifiers::NONE,
+        },
+    ]);
+    all.push(vec![key(Key::V, Modifiers::NONE), left_down(900.0, 900.0)]);
     all
 }
 

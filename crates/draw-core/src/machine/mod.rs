@@ -9,8 +9,10 @@ mod effect;
 mod gesture;
 mod input;
 mod regions;
+pub mod select;
 mod state;
 mod table;
+pub mod text;
 
 #[cfg(test)]
 mod tests;
