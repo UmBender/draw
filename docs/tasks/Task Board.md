@@ -266,13 +266,19 @@ flowchart TD
   T137 --> T140
   T140 --> T141
   T140 --> T155
+  T140 --> T157
+  T157 --> T158
+  T158 --> T159
+  T159 --> T160
+  T160 --> T161
+  T161 --> T155
   T140 --> T156
-  T155 --> T156
+  T161 --> T156
   T156 --> T141
-  T155 --> T146
-  T155 --> T149
+  T161 --> T146
+  T161 --> T149
   T156 --> T149
-  T155 --> T151
+  T161 --> T151
   T156 --> T151
   T132 --> T142
   T140 --> T142
@@ -403,7 +409,7 @@ flowchart TD
 | 65 | [[T128 Keep X11 and revert the deprecation]] · [[T129 Release gate with end-to-end on X11 and Wayland]] · [[T130 Coverage in CI with a ratchet]] · [[T131 No dynamic dispatch and stricter lints]] · [[T132 Workspace split with unsafe levels]] |
 | 66 | [[T133 Typed units and ids]] · [[T134 The control automaton states, inputs and effects]] · [[T139 Split tex.rs into modules]] |
 | 67 | [[T135 Automaton modal states, pages, camera and selection]] · [[T136 Automaton gestures and text editing per tool]] · [[T137 Automaton effects queue and time as an input]] |
-| 68 | [[T138 Model-based tests of the automaton]] · [[T140 Platform and Gpu traits with recording interpreters]] · [[T141 Fuzz of the shell through the recording platform]] · [[T155 Gpu migration of the drawing]] · [[T156 Platform migration of input and the loop]] |
+| 68 | [[T138 Model-based tests of the automaton]] · [[T140 Platform and Gpu traits with recording interpreters]] · [[T141 Fuzz of the shell through the recording platform]] · [[T155 Gpu migration of the drawing]] · [[T156 Platform migration of input and the loop]] · [[T157 macroquad Gpu interpreter]] · [[T158 Render batch over Gpu]] · [[T159 Minimap and frame cache over Gpu]] · [[T160 Toolbar and menus over Gpu]] · [[T161 UI text over Gpu]] |
 | 69 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] · [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] · [[T153 Text and select as sub-automata]] |
 | 70 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] · [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] |
 | 71 | [[T146 Retained renderer in draw-gfx]] · [[T147 Frame pacing by the compositor and idle at zero]] |
@@ -541,7 +547,7 @@ flowchart TD
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
 | [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
-| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T156 | `task/T50-v2-refactor` |
+| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T161 | `task/T50-v2-refactor` |
 | [[T127 2.0 audit and baseline]] | done | T118 | `task/T127-2-0-audit-and-baseline` |
 | [[T128 Keep X11 and revert the deprecation]] | done | T127 | `task/T128-keep-x11-revert-the-deprecation` |
 | [[T129 Release gate with end-to-end on X11 and Wayland]] | done | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
@@ -561,14 +567,19 @@ flowchart TD
 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | todo | T142, T145 | `task/T143-wayland-backend-window-keyboard-pointer-` |
 | [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | todo | T142, T145 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
 | [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | todo | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
-| [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136, T153, T155 | `task/T146-retained-renderer-in-draw-gfx` |
+| [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136, T153, T161 | `task/T146-retained-renderer-in-draw-gfx` |
 | [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
 | [[T148 Multithreaded tessellation, only with a measured gain]] | todo | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
-| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152–T156 | `task/T149-cutover-remove-miniquad-and-macroquad` |
+| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152–T161 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
-| [[T151 Release 2.0.0]] | todo | T127–T149, T152–T156 | `task/T151-release-2-0-0` |
+| [[T151 Release 2.0.0]] | todo | T127–T149, T152–T161 | `task/T151-release-2-0-0` |
 | [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
 | [[T153 Text and select as sub-automata]] | done | T136, T138 | `task/T153-text-and-select-as-sub-automata` |
 | [[T154 Environment variables to flags]] | done | T152, T129 | `task/T154-environment-variables-to-flags` |
-| [[T155 Gpu migration of the drawing]] | todo | T140 | `task/T155-gpu-migration-of-the-drawing` |
-| [[T156 Platform migration of input and the loop]] | todo | T140, T155 | `task/T156-platform-migration-of-input-and-the-loop` |
+| [[T155 Gpu migration of the drawing]] | done | T157–T161 | `task/T155-gpu-migration-of-the-drawing` |
+| [[T156 Platform migration of input and the loop]] | todo | T140, T161 | `task/T156-platform-migration-of-input-and-the-loop` |
+| [[T157 macroquad Gpu interpreter]] | todo | T140 | `task/T157-macroquad-gpu-interpreter` |
+| [[T158 Render batch over Gpu]] | todo | T157 | `task/T158-render-batch-over-gpu` |
+| [[T159 Minimap and frame cache over Gpu]] | todo | T158 | `task/T159-minimap-and-frame-cache-over-gpu` |
+| [[T160 Toolbar and menus over Gpu]] | todo | T159 | `task/T160-toolbar-and-menus-over-gpu` |
+| [[T161 UI text over Gpu]] | todo | T160 | `task/T161-ui-text-over-gpu` |

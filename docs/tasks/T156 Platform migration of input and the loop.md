@@ -4,7 +4,7 @@ title: Platform migration of input and the loop
 status: todo
 wave: 68
 branch: task/T156-platform-migration-of-input-and-the-loop
-depends_on: [T140, T155]
+depends_on: [T140, T161]
 adrs: []
 feature: ""
 tutorial: ""
