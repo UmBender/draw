@@ -36,6 +36,7 @@ Draft: the spec step refines each criterion into named tests.
 ## Files owned
 
 - `src/shell/toolbar*`, `sheet*`, `command_palette*`, `ui_shapes*`
+- call sites of the migrated API in other `src/shell/` files, and the shared interpreter accessor in `src/shell/render.rs` (added by T159), when the slice needs them to compile; a change to the `Gpu` trait still blocks
 - this note
 
 ## Subtasks (one commit each)
@@ -49,3 +50,4 @@ Draft: the spec step refines each criterion into named tests.
 ## Log
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
+- 2026-11-13 — widened in advance by the owner after T158 and T159 blocked on *Files owned*: call sites in other shell files and the `render.rs` accessor are allowed; the `Gpu` trait is not.
