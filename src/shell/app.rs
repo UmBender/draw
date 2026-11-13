@@ -1557,7 +1557,7 @@ mod tests {
         // Arrange: the source above the tests; a call through the platform
         // has a `.` before the name.
         let source = include_str!("app.rs");
-        let (code, _) = source.split_once("#[cfg(test)]").expect("tests module");
+        let code = source.split("#[cfg(test)]").next().unwrap_or(source);
         let names = [
             "screen_width",
             "screen_height",

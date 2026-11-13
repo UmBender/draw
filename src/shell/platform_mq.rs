@@ -235,15 +235,11 @@ const fn backend_event(event: mq_diag::BackendEvent) -> BackendEvent {
 /// Appends the pen samples miniquad queued since the last call to `out`
 /// as [`RawEvent::Tablet`] (ADR-T35-1).
 pub fn push_tablet_events(out: &mut Vec<RawEvent>) {
-    out.extend(
-        pen::take_samples()
-            .into_iter()
-            .map(|s| RawEvent::Tablet {
-                x: s.x,
-                y: s.y,
-                pressure: s.pressure,
-            }),
-    );
+    out.extend(pen::take_samples().into_iter().map(|s| RawEvent::Tablet {
+        x: s.x,
+        y: s.y,
+        pressure: s.pressure,
+    }));
 }
 
 /// The miniquad and macroquad window as a [`Platform`] (ADR-T140-1): the
