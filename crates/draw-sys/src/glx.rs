@@ -28,11 +28,14 @@ const GLX_CONTEXT_MINOR_VERSION_ARB: c_int = 0x2092;
 const GLX_CONTEXT_PROFILE_MASK_ARB: c_int = 0x9126;
 const GLX_CONTEXT_ES2_PROFILE_BIT_EXT: c_int = 0x4;
 
+// TEST: glx_pbuffer_context_makes_current_under_xvfb
 type CreateContextAttribs = unsafe extern "C" fn(Ptr, Ptr, Ptr, c_int, *const c_int) -> Ptr;
 
 /// The Xlib and GLX functions draw uses, with the libraries that own them.
 #[derive(Debug)]
 struct GlxApi {
+    // TEST: glx_pbuffer_context_makes_current_under_xvfb
+    // (the `unsafe` of these function types: calling them is the unsafe act)
     x_open_display: unsafe extern "C" fn(*const c_char) -> Ptr,
     x_close_display: unsafe extern "C" fn(Ptr) -> c_int,
     x_default_screen: unsafe extern "C" fn(Ptr) -> c_int,
@@ -40,10 +43,13 @@ struct GlxApi {
     choose_fb_config: unsafe extern "C" fn(Ptr, c_int, *const c_int, *mut c_int) -> *mut Ptr,
     create_pbuffer: unsafe extern "C" fn(Ptr, Ptr, *const c_int) -> c_ulong,
     create_window: unsafe extern "C" fn(Ptr, Ptr, c_ulong, *const c_int) -> c_ulong,
+    // TEST: glx_pbuffer_context_makes_current_under_xvfb
     destroy_pbuffer: unsafe extern "C" fn(Ptr, c_ulong),
     destroy_window: unsafe extern "C" fn(Ptr, c_ulong),
+    // TEST: glx_pbuffer_context_makes_current_under_xvfb
     destroy_context: unsafe extern "C" fn(Ptr, Ptr),
     make_context_current: unsafe extern "C" fn(Ptr, c_ulong, c_ulong, Ptr) -> c_int,
+    // TEST: glx_pbuffer_context_makes_current_under_xvfb
     swap_buffers: unsafe extern "C" fn(Ptr, c_ulong),
     get_proc_address: unsafe extern "C" fn(*const u8) -> *const c_void,
     // Declared last: the libraries outlive the pointers above.
@@ -135,9 +141,9 @@ impl GlxContext {
         }
         let attributes = [
             GLX_PBUFFER_WIDTH,
-            width as c_int,
+            width.cast_signed(),
             GLX_PBUFFER_HEIGHT,
-            height as c_int,
+            height.cast_signed(),
             0,
         ];
         Self::build(api, display, GLX_PBUFFER_BIT, true, |api, config| {

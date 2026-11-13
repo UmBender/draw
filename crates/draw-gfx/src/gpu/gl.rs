@@ -2,7 +2,7 @@
 //! GLSL ES 3.00 shaders and one program per [`Blend`].
 //!
 //! Every GL call goes through [`Gl`]; the interpreter reaches it only
-//! through a [`Ready`] token, which proves the context of the [`GlGpu`] is
+//! through a `Ready` token, which proves the context of the [`GlGpu`] is
 //! current on this thread.
 
 #![allow(unsafe_code)]
@@ -65,6 +65,8 @@ const PACK_ALIGNMENT: u32 = 0x0D05;
 
 /// Bytes of one vertex in the vertex buffer: position, uv, colour.
 const STRIDE: usize = 20;
+/// [`STRIDE`] as the `GLsizei` of the attribute pointers.
+const STRIDE_GL: i32 = 20;
 
 const VERTEX_SOURCE: &str = "#version 300 es
 layout(location = 0) in vec2 pos;
@@ -130,6 +132,7 @@ macro_rules! gl_table {
         /// The GL functions draw needs, loaded once; each wrapper checks
         /// `glGetError` after the call in debug builds.
         pub struct Gl {
+            // TEST: triangle_set_reads_back_exactly
             $($name: unsafe extern "C" fn($($ty),*) $(-> $ret)?,)*
             first_error: RefCell<Option<String>>,
         }
@@ -158,17 +161,20 @@ macro_rules! gl_table {
                 if !missing.is_empty() {
                     return Err(GlError::MissingEntryPoints(missing));
                 }
-                // TEST: all_entry_points_present_loads
-                // SAFETY: every address is non-null (checked above) and is
-                // the entry point of the function named in its lookup; the
-                // field type is the C prototype of that function.
-                Ok(Self {
-                    $($name: unsafe {
+                $(
+                    // TEST: all_entry_points_present_loads
+                    // SAFETY: every address is non-null (checked above) and
+                    // is the entry point of the function named in its
+                    // lookup; the field type is the C prototype of it.
+                    let $name = unsafe {
                         std::mem::transmute::<
                             *const c_void,
                             unsafe extern "C" fn($($ty),*) $(-> $ret)?,
                         >($name)
-                    },)*
+                    };
+                )*
+                Ok(Self {
+                    $($name,)*
                     first_error: RefCell::new(None),
                 })
             }
@@ -179,6 +185,8 @@ macro_rules! gl_table {
                 /// # Safety
                 /// A context of this table is current on the calling thread
                 /// and the arguments are valid for the GL call.
+                #[allow(clippy::too_many_arguments)]
+                // TEST: triangle_set_reads_back_exactly
                 pub unsafe fn $name(&self, $($arg: $ty),*) $(-> $ret)? {
                     // TEST: triangle_set_reads_back_exactly
                     // SAFETY: the field holds the entry point loaded for the
@@ -484,7 +492,7 @@ impl Ready<'_> {
             self.gl.tex_image_2d(
                 TEXTURE_2D,
                 0,
-                RGBA8 as i32,
+                RGBA8.cast_signed(),
                 width,
                 height,
                 0,
@@ -500,8 +508,8 @@ impl Ready<'_> {
         self.sampling(name, filter);
     }
 
-    fn sampling(&self, name: u32, filter: Filter) {
-        let value = filter_value(filter) as i32;
+    fn sampling(self, name: u32, filter: Filter) {
+        let value = filter_value(filter).cast_signed();
         // TEST: set_filter_changes_sampling
         // SAFETY: plain state calls on a texture name of this context.
         unsafe {
@@ -625,8 +633,8 @@ impl Ready<'_> {
         // SAFETY: `status` is a valid out pointer.
         unsafe {
             self.gl
-                .get_shaderiv(shader, COMPILE_STATUS, &raw mut status)
-        };
+                .get_shaderiv(shader, COMPILE_STATUS, &raw mut status);
+        }
         if status != 0 {
             return Ok(shader);
         }
@@ -930,7 +938,7 @@ impl<C: GlContext> GlGpu<C> {
             ready.gl.bind_vertex_array(self.vao);
             ready.gl.bind_buffer(ARRAY_BUFFER, vbo);
             ready.gl.bind_buffer(ELEMENT_ARRAY_BUFFER, ibo);
-            let stride = STRIDE as i32;
+            let stride = STRIDE_GL;
             ready.gl.enable_vertex_attrib_array(0);
             ready
                 .gl
@@ -1013,7 +1021,7 @@ impl<C: GlContext> GlGpu<C> {
     }
 
     /// Ends a pass: resolves a multisampled target into its texture.
-    fn end_pass(&self, ready: Ready<'_>, target: Option<&GlTarget>) {
+    fn end_pass(ready: Ready<'_>, target: Option<&GlTarget>) {
         if let Some(target) = target
             && let Some((msaa_fbo, _)) = target.0.msaa
         {
@@ -1355,12 +1363,12 @@ impl<C: GlContext> Gpu for GlGpu<C> {
                     let Some((target, _)) = pass.take() else {
                         return Err(backend("EndPass outside a pass"));
                     };
-                    self.end_pass(ready, target.as_ref());
+                    Self::end_pass(ready, target.as_ref());
                 }
             }
         }
         if let Some((target, _)) = pass {
-            self.end_pass(ready, target.as_ref());
+            Self::end_pass(ready, target.as_ref());
             return Err(backend("the list ended inside a pass"));
         }
         self.finish()
@@ -1382,6 +1390,7 @@ mod tests {
     #[test]
     fn encode_vertices_writes_twenty_bytes_each() {
         let mut out = Vec::new();
+        assert_eq!(usize::try_from(STRIDE_GL), Ok(STRIDE));
 
         encode_vertices(
             &[vertex(1.0, [1, 2, 3, 4]), vertex(3.0, [5, 6, 7, 8])],

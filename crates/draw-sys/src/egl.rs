@@ -119,12 +119,15 @@ const EGL_PLATFORM_SURFACELESS_MESA: u32 = 0x31DD;
 /// The EGL functions draw uses, with the library that owns them.
 #[derive(Debug)]
 struct EglApi {
+    // TEST: egl_headless_context_makes_current
+    // (the `unsafe` of these function types: calling them is the unsafe act)
     get_proc_address: unsafe extern "C" fn(*const c_char) -> *const c_void,
     get_error: unsafe extern "C" fn() -> Int,
     get_platform_display: unsafe extern "C" fn(u32, Ptr, *const isize) -> Ptr,
     get_display: unsafe extern "C" fn(Ptr) -> Ptr,
     initialize: unsafe extern "C" fn(Ptr, *mut Int, *mut Int) -> u32,
     bind_api: unsafe extern "C" fn(u32) -> u32,
+    // TEST: egl_headless_context_makes_current
     choose_config: unsafe extern "C" fn(Ptr, *const Int, *mut Ptr, Int, *mut Int) -> u32,
     create_context: unsafe extern "C" fn(Ptr, Ptr, Ptr, *const Int) -> Ptr,
     destroy_context: unsafe extern "C" fn(Ptr, Ptr) -> u32,
@@ -310,7 +313,13 @@ impl EglContext {
             return Ok(context);
         }
         Self::build(library, 0, null_mut(), |api, (display, config)| {
-            let size = [EGL_WIDTH, width as Int, EGL_HEIGHT, height as Int, EGL_NONE];
+            let size = [
+                EGL_WIDTH,
+                width.cast_signed(),
+                EGL_HEIGHT,
+                height.cast_signed(),
+                EGL_NONE,
+            ];
             // TEST: egl_headless_context_makes_current
             // SAFETY: `display` and `config` came from EGL and `size` is
             // `EGL_NONE` terminated.

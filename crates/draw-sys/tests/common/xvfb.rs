@@ -1,6 +1,8 @@
 //! A private X server for the GLX tests: `Xvfb -displayfd`, killed on drop.
 //! A missing `Xvfb` fails the test, it never skips it (T145).
 
+#![allow(clippy::expect_used)]
+
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 
