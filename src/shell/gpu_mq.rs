@@ -46,7 +46,7 @@ pub struct Chunk {
 /// [`GpuError::Backend`] if `indices` is not a whole number of triangles or
 /// names a vertex that does not exist.
 pub fn chunks(vertices: &[Vertex], indices: &[u32]) -> Result<Vec<Chunk>, GpuError> {
-    if indices.len() % 3 != 0 {
+    if !indices.len().is_multiple_of(3) {
         return Err(backend("indices are not whole triangles"));
     }
     let mut out = Vec::new();
@@ -55,11 +55,12 @@ pub fn chunks(vertices: &[Vertex], indices: &[u32]) -> Result<Vec<Chunk>, GpuErr
         indices: Vec::new(),
     };
     let mut local: HashMap<u32, u16> = HashMap::new();
-    for triangle in indices.chunks_exact(3) {
+    let (triangles, _) = indices.as_chunks::<3>();
+    for triangle in triangles {
         if triangle.iter().any(|&i| i as usize >= vertices.len()) {
             return Err(backend("index out of range"));
         }
-        let [a, b, c] = [triangle[0], triangle[1], triangle[2]];
+        let [a, b, c] = *triangle;
         let mut fresh = usize::from(!local.contains_key(&a));
         fresh += usize::from(b != a && !local.contains_key(&b));
         fresh += usize::from(c != a && c != b && !local.contains_key(&c));
@@ -76,15 +77,14 @@ pub fn chunks(vertices: &[Vertex], indices: &[u32]) -> Result<Vec<Chunk>, GpuErr
             local.clear();
         }
         for &i in triangle {
-            let slot = match local.get(&i) {
-                Some(&slot) => slot,
-                None => {
-                    let slot = u16::try_from(chunk.vertices.len())
-                        .map_err(|_| backend("chunk too large"))?;
-                    chunk.vertices.push(vertices[i as usize]);
-                    local.insert(i, slot);
-                    slot
-                }
+            let slot = if let Some(&slot) = local.get(&i) {
+                slot
+            } else {
+                let slot =
+                    u16::try_from(chunk.vertices.len()).map_err(|_| backend("chunk too large"))?;
+                chunk.vertices.push(vertices[i as usize]);
+                local.insert(i, slot);
+                slot
             };
             chunk.indices.push(slot);
         }
@@ -233,7 +233,8 @@ impl Gpu for MqGpu {
         vertices: &[Vertex],
         indices: &[u32],
     ) -> Result<MqBuffer, GpuError> {
-        if indices.len() % 3 != 0 || indices.iter().any(|&i| i as usize >= vertices.len()) {
+        if !indices.len().is_multiple_of(3) || indices.iter().any(|&i| i as usize >= vertices.len())
+        {
             return Err(backend("buffer indices do not fit its vertices"));
         }
         let id = self.buffers.insert((vertices.to_vec(), indices.to_vec()));
@@ -285,15 +286,18 @@ impl Gpu for MqGpu {
                 .checked_add(extent)
                 .is_some_and(|end| end as f32 <= whole)
         };
-        if width == 0 || height == 0 || !fits(x, width, target.width()) || !fits(y, height, target.height())
+        if width == 0
+            || height == 0
+            || !fits(x, width, target.width())
+            || !fits(y, height, target.height())
         {
             return Err(GpuError::BadSize);
         }
-        let side = |value: u32| u16::try_from(value).map_err(|_| GpuError::BadSize);
+        let narrow = |value: u32| u16::try_from(value).map_err(|_| GpuError::BadSize);
         let image = Image {
             bytes: rgba.to_vec(),
-            width: side(width)?,
-            height: side(height)?,
+            width: narrow(width)?,
+            height: narrow(height)?,
         };
         let int = |value: u32| i32::try_from(value).map_err(|_| GpuError::BadSize);
         target.update_part(&image, int(x)?, int(y)?, int(width)?, int(height)?);
@@ -413,12 +417,12 @@ impl MqGpu {
                     texture, geometry, ..
                 } => {
                     let texture = match texture {
-                        Some(texture) => Some(self.textures.get(texture.id)?.clone()),
+                        Some(texture) => Some(self.textures.get(texture.id)?),
                         None => None,
                     };
                     match geometry {
                         Geometry::Inline { vertices, indices } => {
-                            draw_chunks(vertices, indices, &texture)?;
+                            draw_chunks(vertices, indices, texture)?;
                         }
                         Geometry::Buffer {
                             buffer,
@@ -427,7 +431,7 @@ impl MqGpu {
                         } => {
                             let (vertices, indices) = self.buffers.get(buffer.id)?;
                             let range = buffer_range(indices, *first, *count)?;
-                            draw_chunks(vertices, range, &texture)?;
+                            draw_chunks(vertices, range, texture)?;
                         }
                     }
                 }
@@ -453,13 +457,13 @@ fn buffer_range(indices: &[u32], first: u32, count: u32) -> Result<&[u32], GpuEr
 fn draw_chunks(
     vertices: &[Vertex],
     indices: &[u32],
-    texture: &Option<Texture2D>,
+    texture: Option<&Texture2D>,
 ) -> Result<(), GpuError> {
     for chunk in chunks(vertices, indices)? {
         let mesh = Mesh {
             vertices: chunk.vertices.iter().map(to_mq_vertex).collect(),
             indices: chunk.indices,
-            texture: texture.clone(),
+            texture: texture.cloned(),
         };
         draw_mesh(&mesh);
     }
@@ -494,6 +498,13 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    fn ok<T>(result: Result<T, GpuError>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(error) => panic!("unexpected error: {error}"),
+        }
+    }
+
     fn vertex(n: u32) -> Vertex {
         Vertex {
             pos: [n as f32, 0.0],
@@ -514,7 +525,7 @@ mod tests {
         let v = vertices(3);
 
         // Act
-        let chunks = chunks(&v, &[0, 1, 2]).unwrap();
+        let chunks = ok(chunks(&v, &[0, 1, 2]));
 
         // Assert
         assert_eq!(chunks.len(), 1);
@@ -524,7 +535,7 @@ mod tests {
 
     #[test]
     fn chunks_of_empty_geometry_is_empty() {
-        assert!(chunks(&[], &[]).unwrap().is_empty());
+        assert_eq!(ok(chunks(&[], &[])), Vec::new());
     }
 
     #[test]
@@ -535,7 +546,7 @@ mod tests {
         let indices: Vec<u32> = (0..triangles).flat_map(|_| [0, 1, 2]).collect();
 
         // Act
-        let chunks = chunks(&v, &indices).unwrap();
+        let chunks = ok(chunks(&v, &indices));
 
         // Assert
         assert_eq!(chunks.len(), 2);
@@ -551,11 +562,15 @@ mod tests {
         let indices: Vec<u32> = (0..(triangles * 3) as u32).collect();
 
         // Act
-        let chunks = chunks(&v, &indices).unwrap();
+        let chunks = ok(chunks(&v, &indices));
 
         // Assert
         assert_eq!(chunks.len(), 2);
-        assert!(chunks.iter().all(|c| c.vertices.len() <= CHUNK_MAX_VERTICES));
+        assert!(
+            chunks
+                .iter()
+                .all(|c| c.vertices.len() <= CHUNK_MAX_VERTICES)
+        );
     }
 
     #[test]
@@ -565,8 +580,8 @@ mod tests {
         let indices = [0, 1, 2, 3, 4, 5];
 
         // Act
-        let one = chunks(&v, &indices).unwrap();
-        let second = chunks(&v, &indices[3..]).unwrap();
+        let one = ok(chunks(&v, &indices));
+        let second = ok(chunks(&v, &indices[3..]));
 
         // Assert
         assert_eq!(one[0].indices, vec![0, 1, 2, 3, 4, 5]);
@@ -577,10 +592,7 @@ mod tests {
     #[test]
     fn chunks_reject_index_out_of_range() {
         let v = vertices(3);
-        assert!(matches!(
-            chunks(&v, &[0, 1, 3]),
-            Err(GpuError::Backend(_))
-        ));
+        assert!(matches!(chunks(&v, &[0, 1, 3]), Err(GpuError::Backend(_))));
     }
 
     #[test]
@@ -604,7 +616,7 @@ mod tests {
                 .collect();
 
             // Act
-            let chunks = chunks(&v, &indices).unwrap();
+            let chunks = ok(chunks(&v, &indices));
 
             // Assert: limits hold and the triangles come back in order.
             let mut back = Vec::new();
@@ -627,13 +639,13 @@ mod tests {
     fn table_get_after_insert_returns_value() {
         let mut table = Table::new();
         let id = table.insert("a");
-        assert_eq!(table.get(id).unwrap(), &"a");
+        assert_eq!(ok(table.get(id)), &"a");
     }
 
     #[test]
     fn table_get_unknown_id_is_unknown_handle() {
         let table: Table<u8> = Table::new();
-        assert_eq!(table.get(7).unwrap_err(), GpuError::UnknownHandle);
+        assert!(matches!(table.get(7), Err(GpuError::UnknownHandle)));
     }
 
     #[test]
