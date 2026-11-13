@@ -1,7 +1,7 @@
 ---
 id: T160
 title: Toolbar and menus over Gpu
-status: in-progress
+status: review
 wave: 68
 branch: task/T160-toolbar-and-menus-over-gpu
 depends_on: [T159]
@@ -42,13 +42,14 @@ Design: no new ADR. Each draw function opens a `Batch<GlSink>`, adds its shapes 
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T160): specify the slice`
-- [ ] tests — `test(T160): add failing tests`
-- [ ] models — `feat(T160): add the types`
-- [ ] behaviour — `refactor(T160): migrate the slice`
-- [ ] quality — `chore(T160): pass clippy and rustfmt`
+- [x] spec — `docs(T160): specify the slice`
+- [x] tests — `test(T160): add failing tests`
+- [x] models — merged into the behaviour commit (`push_fill`, `push_ring`, `rect_xywh` are small)
+- [x] behaviour — `refactor(T160): migrate the slice`
+- [x] quality — `chore(T160): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-13 — split from T155 by the owner, following the batch's recommendation.
 - 2026-11-13 — widened in advance by the owner after T158 and T159 blocked on *Files owned*: call sites in other shell files and the `render.rs` accessor are allowed; the `Gpu` trait is not.
+- 2026-11-13 — done: the four files use `Batch<GlSink>` (rects, triangles, rounded fill and ring); no macroquad draw call remains in them (source-scan test). Models step merged into behaviour. `scripts/check.sh` and `e2e.sh --backend all` green. No feature or tutorial note (task has none).
