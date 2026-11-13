@@ -713,15 +713,11 @@ mod tests {
         assert!(matches!(run(&[Step::Begin]), Err(GpuError::Backend(_))));
     }
 
-    // ---- T158 AC-5 camera ownership -------------------------------------------
+    // ---- T159 AC-5 camera ownership -------------------------------------------
 
     #[test]
-    fn pass_without_target_keeps_the_camera() {
-        assert!(!pass_owns_camera(false));
-    }
-
-    #[test]
-    fn pass_with_target_owns_the_camera() {
+    fn every_pass_owns_the_camera() {
+        assert!(pass_owns_camera(false));
         assert!(pass_owns_camera(true));
     }
 }

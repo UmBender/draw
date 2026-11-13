@@ -51,6 +51,7 @@ fn recorder_keeps_the_call_order() -> Result<(), GpuError> {
         width: 4,
         height: 4,
         samples: 1,
+        filter: Filter::Nearest,
     })?;
     let pipeline = gpu.pipeline(PipelineDesc {
         blend: Blend::Alpha,
@@ -128,6 +129,84 @@ fn recorder_gpu_rejects_a_texture_with_the_wrong_byte_count() {
     // Assert
     assert!(result.is_err());
     assert_eq!(gpu.calls().len(), 0);
+}
+
+// ---- T159 AC-2: filter and readback ------------------------------------------
+
+#[test]
+fn recording_gpu_records_set_filter_and_read_texture() -> Result<(), GpuError> {
+    // Arrange
+    let mut gpu = RecordingGpu::new();
+    let desc = TextureDesc {
+        width: 2,
+        height: 1,
+        filter: Filter::Nearest,
+    };
+    let texture = gpu.create_texture(desc, &[0; 8])?;
+    // Act
+    gpu.set_filter(&texture, Filter::Linear)?;
+    gpu.read_texture(&texture)?;
+    // Assert
+    let calls = gpu.calls();
+    assert_eq!(
+        calls[calls.len() - 2],
+        GpuCall::SetFilter {
+            texture,
+            filter: Filter::Linear
+        }
+    );
+    assert_eq!(calls[calls.len() - 1], GpuCall::ReadTexture { texture });
+    Ok(())
+}
+
+#[test]
+fn recording_gpu_read_texture_returns_one_rgba_image() -> Result<(), GpuError> {
+    // Arrange
+    let mut gpu = RecordingGpu::new();
+    let target = gpu.create_target(TargetDesc {
+        width: 3,
+        height: 2,
+        samples: 1,
+        filter: Filter::Linear,
+    })?;
+    let texture = gpu.target_texture(&target);
+    // Act
+    let pixels = gpu.read_texture(&texture)?;
+    // Assert
+    assert_eq!(pixels.len(), 3 * 2 * 4);
+    Ok(())
+}
+
+#[test]
+fn recording_gpu_set_filter_unknown_handle_fails() {
+    // Arrange
+    let mut gpu = RecordingGpu::new();
+    let other = RecordingGpu::new().create_buffer(&[], &[]);
+    let Ok(handle) = other else {
+        panic!("buffer");
+    };
+    // Act
+    let result = gpu.set_filter(&handle, Filter::Linear);
+    // Assert
+    assert_eq!(result, Err(GpuError::UnknownHandle));
+    assert_eq!(gpu.read_texture(&handle), Err(GpuError::UnknownHandle));
+}
+
+#[test]
+fn null_gpu_read_texture_returns_zeroed_pixels() -> Result<(), GpuError> {
+    // Arrange
+    let mut gpu = NullGpu::default();
+    let desc = TextureDesc {
+        width: 2,
+        height: 2,
+        filter: Filter::Nearest,
+    };
+    let texture = gpu.create_texture(desc, &[7; 16])?;
+    // Act
+    let pixels = gpu.read_texture(&texture)?;
+    // Assert
+    assert_eq!(pixels, vec![0; 16]);
+    Ok(())
 }
 
 #[test]

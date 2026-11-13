@@ -1522,21 +1522,20 @@ mod tests {
     }
 
     #[test]
-    fn frame_target_params_uses_sample_count() {
+    fn frame_target_desc_uses_size_samples_and_frame_filter() {
         // Arrange / Act
-        let params = frame_target_params(4);
+        let desc = frame_target_desc((640, 400), 4);
 
         // Assert
-        assert_eq!(params.sample_count, 4);
+        assert_eq!((desc.width, desc.height, desc.samples), (640, 400, 4));
+        assert_eq!(desc.filter, FRAME_FILTER);
     }
 
     #[test]
-    fn frame_target_params_has_no_depth() {
-        // Arrange / Act
-        let params = frame_target_params(DEFAULT_MSAA_SAMPLES);
-
-        // Assert
-        assert!(!params.depth);
+    fn frame_target_desc_clamps_the_sample_count_to_a_byte() {
+        // Arrange / Act / Assert
+        assert_eq!(frame_target_desc((1, 1), 1_000).samples, u8::MAX);
+        assert_eq!(frame_target_desc((1, 1), -3).samples, 1);
     }
 
     #[test]
@@ -1546,7 +1545,7 @@ mod tests {
 
     #[test]
     fn frame_filter_is_nearest() {
-        assert_eq!(FRAME_FILTER, FilterMode::Nearest);
+        assert_eq!(FRAME_FILTER, Filter::Nearest);
     }
 
     #[test]
@@ -1834,7 +1833,7 @@ mod tests {
 
     #[test]
     fn blit_filter_moved_is_linear() {
-        assert_eq!(blit_filter(Redraw::Moved), FilterMode::Linear);
+        assert_eq!(blit_filter(Redraw::Moved), Filter::Linear);
     }
 
     #[test]

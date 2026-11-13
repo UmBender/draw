@@ -1541,6 +1541,72 @@ mod tests {
             .collect()
     }
 
+    // ---- T159 AC-3 / AC-4: quads and passes ------------------------------------
+
+    #[test]
+    fn texture_quad_unflipped_maps_top_left_to_origin() {
+        // Arrange / Act
+        let (vertices, indices) = texture_quad(aabb(10.0, 20.0, 50.0, 60.0), false, [255; 4]);
+
+        // Assert: corners clockwise from the top left, uv from the top.
+        assert_eq!(vertices[0].pos, [10.0, 20.0]);
+        assert_eq!(vertices[2].pos, [50.0, 60.0]);
+        assert_eq!(vertices[0].uv, [0.0, 0.0]);
+        assert_eq!(vertices[1].uv, [1.0, 0.0]);
+        assert_eq!(vertices[2].uv, [1.0, 1.0]);
+        assert_eq!(vertices[3].uv, [0.0, 1.0]);
+        assert_eq!(indices, [0, 1, 2, 0, 2, 3]);
+    }
+
+    #[test]
+    fn texture_quad_flipped_swaps_the_rows() {
+        // Arrange / Act
+        let (vertices, _) = texture_quad(aabb(0.0, 0.0, 4.0, 4.0), true, [255; 4]);
+
+        // Assert
+        assert_eq!(vertices[0].uv, [0.0, 1.0]);
+        assert_eq!(vertices[2].uv, [1.0, 0.0]);
+        assert!(vertices.iter().all(|v| v.color == [255; 4]));
+    }
+
+    #[test]
+    fn scope_list_wraps_draws_in_one_pass_with_clear() {
+        // Arrange
+        let mut gpu = RecordingGpu::new();
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
+        let draw = Command::Draw {
+            pipeline,
+            texture: None,
+            geometry: Geometry::Inline {
+                vertices: Vec::new(),
+                indices: Vec::new(),
+            },
+        };
+        let view = View {
+            width: 8.0,
+            height: 8.0,
+        };
+        let clear = Some(draw_gfx::gpu::Color::rgba(0.0, 0.0, 0.0, 1.0));
+
+        // Act
+        let list = wrap_pass::<RecordingGpu>(None, view, clear, vec![draw.clone(), draw]);
+
+        // Assert
+        let commands = list.commands();
+        assert_eq!(commands.len(), 4);
+        assert!(matches!(
+            commands[0],
+            Command::BeginPass {
+                target: None,
+                clear: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(commands[3], Command::EndPass));
+    }
+
     #[test]
     fn batch_over_recording_gpu_splits_chunks_at_the_limits() {
         // Arrange: 2 000 quads, 800 per chunk by the index limit.

@@ -276,6 +276,48 @@ mod tests {
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 
     const VIEWPORT: Vec2 = Vec2::new(800.0, 600.0);
+
+    #[test]
+    fn border_bars_cover_the_rect_edges() {
+        // Arrange
+        let rect = Aabb::from_corners(Vec2::new(10.0, 20.0), Vec2::new(110.0, 70.0));
+
+        // Act
+        let [top, bottom, left, right] = border_rects(rect, 2.0);
+
+        // Assert
+        assert_eq!((top.min, top.max), (Vec2::new(10.0, 20.0), Vec2::new(110.0, 22.0)));
+        assert_eq!((bottom.min, bottom.max), (Vec2::new(10.0, 68.0), Vec2::new(110.0, 70.0)));
+        assert_eq!((left.min, left.max), (Vec2::new(10.0, 20.0), Vec2::new(12.0, 70.0)));
+        assert_eq!((right.min, right.max), (Vec2::new(108.0, 20.0), Vec2::new(110.0, 70.0)));
+    }
+
+    #[test]
+    fn minimap_and_frame_cache_use_no_macroquad_draw_calls() {
+        // Arrange: the code of both files, without their test modules.
+        let code = |source: &'static str| source.split("#[cfg(test)]").next().unwrap_or("");
+        let minimap = code(include_str!("minimap.rs"));
+        let app = code(include_str!("app.rs"));
+        let forbidden = [
+            "draw_rectangle(",
+            "draw_texture_ex(",
+            "render_target_ex(",
+            "set_camera(",
+            "get_texture_data(",
+            ".set_filter(",
+            "clear_background(",
+        ];
+
+        // Act / Assert
+        for call in forbidden {
+            assert!(!minimap.contains(call), "minimap.rs uses {call}");
+            // The overlay (T160) still draws its marquee with rectangles.
+            if call != "draw_rectangle(" {
+                assert!(!app.contains(call), "app.rs uses {call}");
+            }
+        }
+    }
+
     const CTRL: Modifiers = Modifiers {
         shift: false,
         ctrl: true,
