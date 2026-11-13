@@ -14,11 +14,11 @@
 
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
-use macroquad::models::{Mesh, Vertex, draw_mesh};
-use macroquad::shapes::draw_line;
-use macroquad::window::screen_dpi_scale;
+use macroquad::window::{screen_dpi_scale, screen_height, screen_width as window_width};
 
-use std::cell::{Cell, RefCell};
+use draw_gfx::gpu::{Blend, Command, CommandList, Geometry, Gpu, PipelineDesc, Vertex, View};
+
+use std::cell::{Cell, OnceCell, RefCell};
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -35,6 +35,7 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
+use crate::shell::gpu_mq::{MqGpu, MqPipeline};
 use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
@@ -48,18 +49,100 @@ pub const BATCH_MAX_INDICES: usize = 4_800;
 /// Where a [`Batch`] sends finished chunks.
 pub trait MeshSink {
     /// Draws (or records) one chunk of triangles bound to atlas `page`
-    /// (`None`: no glyphs, untextured), ADR-T32-2.
-    fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>);
+    /// (`None`: no glyphs, untextured), ADR-T32-2. `indices` are triangles
+    /// into `vertices`.
+    fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>);
 }
 
-/// Sends chunks to macroquad with `draw_mesh`.
+/// Sends chunks to macroquad through one shared [`MqGpu`]: each chunk is
+/// a one-draw command list in a pass that keeps the current camera.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GlSink;
 
 impl MeshSink for GlSink {
-    fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
-        mesh.texture = page.and_then(|page| TEXTURES.with(|t| t.borrow().get(page).cloned()));
-        draw_mesh(mesh);
+    fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
+        let texture = page.and_then(|page| TEXTURES.with(|t| t.borrow().get(page).cloned()));
+        let pipeline = PIPELINE.with(|cell| {
+            *cell.get_or_init(|| {
+                GPU.with(|gpu| {
+                    gpu.borrow_mut().pipeline(PipelineDesc {
+                        blend: Blend::Alpha,
+                    })
+                })
+            })
+        });
+        let mut list = CommandList::<MqGpu>::new();
+        list.push(Command::BeginPass {
+            target: None,
+            view: View {
+                width: window_width(),
+                height: screen_height(),
+            },
+            clear: None,
+        });
+        list.push(Command::Draw {
+            pipeline,
+            texture,
+            geometry: Geometry::Inline {
+                vertices: vertices.to_vec(),
+                indices: indices.to_vec(),
+            },
+        });
+        list.push(Command::EndPass);
+        // The chunk is built from valid batches; a refusal drops it.
+        let _ = GPU.with(|gpu| gpu.borrow_mut().submit(&list));
+    }
+}
+
+/// Collects chunks as `Command::Draw` of a command list, to submit them
+/// to any [`Gpu`] in one pass ([`GpuSink::into_list`]).
+pub struct GpuSink<'t, G: Gpu> {
+    /// The draws so far.
+    list: CommandList<G>,
+    /// The alpha-blend pipeline every draw uses.
+    pipeline: G::Pipeline,
+    /// Page textures, to bind a chunk's page.
+    textures: &'t GlyphTextures<G>,
+}
+
+impl<'t, G: Gpu> GpuSink<'t, G> {
+    /// An empty sink drawing with `pipeline`, binding pages of `textures`.
+    pub fn new(pipeline: G::Pipeline, textures: &'t GlyphTextures<G>) -> Self {
+        Self {
+            list: CommandList::new(),
+            pipeline,
+            textures,
+        }
+    }
+
+    /// The draws wrapped in one pass over the screen of `view`, without
+    /// clearing it.
+    #[must_use]
+    pub fn into_list(self, view: View) -> CommandList<G> {
+        let mut out = CommandList::new();
+        out.push(Command::BeginPass {
+            target: None,
+            view,
+            clear: None,
+        });
+        for command in self.list.commands() {
+            out.push(command.clone());
+        }
+        out.push(Command::EndPass);
+        out
+    }
+}
+
+impl<G: Gpu> MeshSink for GpuSink<'_, G> {
+    fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
+        self.list.push(Command::Draw {
+            pipeline: self.pipeline,
+            texture: page.and_then(|page| self.textures.get(page).cloned()),
+            geometry: Geometry::Inline {
+                vertices: vertices.to_vec(),
+                indices: indices.to_vec(),
+            },
+        });
     }
 }
 
@@ -70,21 +153,37 @@ impl MeshSink for GlSink {
 /// [`Batch::flush`] before drawing anything outside the batch.
 pub struct Batch<S: MeshSink = GlSink> {
     /// The chunk being filled.
-    mesh: Mesh,
+    mesh: Chunk,
     /// Receives finished chunks.
     sink: S,
     /// Atlas page the chunk's glyphs come from (ADR-T32-2).
     page: Option<u32>,
 }
 
+/// The triangles of the chunk being filled.
+struct Chunk {
+    /// Vertices, in order.
+    vertices: Vec<Vertex>,
+    /// Triangle indices into `vertices`.
+    indices: Vec<u32>,
+}
+
+/// The vertex bytes of `color`, as macroquad's `Vertex::new` made them.
+fn vertex_at(x: f32, y: f32, u: f32, v: f32, color: Color) -> Vertex {
+    Vertex {
+        pos: [x, y],
+        uv: [u, v],
+        color: color.into(),
+    }
+}
+
 impl<S: MeshSink> Batch<S> {
     /// An empty batch sending chunks to `sink`.
     pub fn new(sink: S) -> Self {
         Self {
-            mesh: Mesh {
+            mesh: Chunk {
                 vertices: Vec::with_capacity(BATCH_MAX_VERTICES),
                 indices: Vec::with_capacity(BATCH_MAX_INDICES),
-                texture: None,
             },
             sink,
             page: None,
@@ -134,7 +233,7 @@ impl<S: MeshSink> Batch<S> {
         for p in rim {
             self.vertex(p, color);
         }
-        for i in 1..points as u16 {
+        for i in 1..points as u32 {
             self.mesh.indices.extend([base, base + i, base + i + 1]);
         }
     }
@@ -224,7 +323,8 @@ impl<S: MeshSink> Batch<S> {
     /// Sends the current chunk to the sink, if it holds anything.
     pub fn flush(&mut self) {
         if !self.mesh.indices.is_empty() {
-            self.sink.draw(&mut self.mesh, self.page);
+            self.sink
+                .draw(&self.mesh.vertices, &self.mesh.indices, self.page);
         }
         self.mesh.vertices.clear();
         self.mesh.indices.clear();
@@ -245,7 +345,7 @@ impl<S: MeshSink> Batch<S> {
             (max.x, max.y, uv1.x, uv1.y),
             (min.x, max.y, uv0.x, uv1.y),
         ] {
-            self.mesh.vertices.push(Vertex::new(x, y, 0.0, u, v, color));
+            self.mesh.vertices.push(vertex_at(x, y, u, v, color));
         }
         self.mesh
             .indices
@@ -275,10 +375,10 @@ impl<S: MeshSink> Batch<S> {
     /// and the previous pair repeated in the next one. Returns the new last.
     fn strip_push(
         &mut self,
-        last: Option<(u16, (Vec2, Vec2))>,
+        last: Option<(u32, (Vec2, Vec2))>,
         pair: (Vec2, Vec2),
         color: Color,
-    ) -> (u16, (Vec2, Vec2)) {
+    ) -> (u32, (Vec2, Vec2)) {
         let Some((mut prev_index, prev)) = last else {
             // Room for the first quad too, so the pair is not stranded.
             let base = self.reserve(4, 6);
@@ -295,8 +395,8 @@ impl<S: MeshSink> Batch<S> {
             self.vertex(prev.0, color);
             self.vertex(prev.1, color);
         }
-        // At most BATCH_MAX_VERTICES, which fits in u16.
-        let base = self.mesh.vertices.len() as u16;
+        // At most BATCH_MAX_VERTICES, which fits in u32.
+        let base = self.mesh.vertices.len() as u32;
         self.vertex(pair.0, color);
         self.vertex(pair.1, color);
         let (o0, i0, o1, i1) = (prev_index, prev_index + 1, base, base + 1);
@@ -308,22 +408,22 @@ impl<S: MeshSink> Batch<S> {
     /// flushing first if they would not fit. Returns the index the first new
     /// vertex gets. A single fan or quad never exceeds a chunk: the largest
     /// is a disc of [`MAX_SEGMENTS`] segments; strips continue across chunks.
-    fn reserve(&mut self, vertices: usize, indices: usize) -> u16 {
+    fn reserve(&mut self, vertices: usize, indices: usize) -> u32 {
         let mesh = &self.mesh;
         if mesh.vertices.len() + vertices > BATCH_MAX_VERTICES
             || mesh.indices.len() + indices > BATCH_MAX_INDICES
         {
             self.flush();
         }
-        // At most BATCH_MAX_VERTICES, which fits in u16.
-        self.mesh.vertices.len() as u16
+        // At most BATCH_MAX_VERTICES, which fits in u32.
+        self.mesh.vertices.len() as u32
     }
 
     /// Appends one untextured vertex at screen point `p`.
     fn vertex(&mut self, p: Vec2, color: Color) {
         self.mesh
             .vertices
-            .push(Vertex::new(p.x, p.y, 0.0, WHITE_UV[0], WHITE_UV[1], color));
+            .push(vertex_at(p.x, p.y, WHITE_UV[0], WHITE_UV[1], color));
     }
 }
 
@@ -634,9 +734,25 @@ thread_local! {
     static ATLAS: RefCell<Option<GlyphAtlas>> = const { RefCell::new(None) };
     /// The atlas pages on the GPU; a separate cell, so [`GlSink`] can bind
     /// them while text reads the atlas.
-    static TEXTURES: RefCell<GlyphTextures> = RefCell::new(GlyphTextures::default());
+    static TEXTURES: RefCell<GlyphTextures<MqGpu>> = RefCell::new(GlyphTextures::default());
+    /// The interpreter every [`GlSink`] chunk and the page textures go
+    /// through (T158).
+    static GPU: RefCell<MqGpu> = RefCell::new(MqGpu::new());
+    /// The alpha-blend pipeline of [`GPU`], made on first use.
+    static PIPELINE: OnceCell<MqPipeline> = const { OnceCell::new() };
     /// Text work since the last [`take_text_stats`].
     static STATS: Cell<TextStats> = Cell::new(TextStats::default());
+}
+
+/// Puts the new pages and uploads of `atlas` on the GPU. A failed upload
+/// leaves the page as it was: its glyphs draw blank, nothing panics.
+fn sync_textures(atlas: &mut GlyphAtlas) {
+    let result = GPU.with(|gpu| {
+        TEXTURES.with(|textures| textures.borrow_mut().sync(&mut gpu.borrow_mut(), atlas))
+    });
+    if let Err(err) = result {
+        eprintln!("glyph textures: {err}");
+    }
 }
 
 /// Makes `atlas` the glyph atlas of text blocks and labels; until then
@@ -645,7 +761,7 @@ pub fn set_glyph_atlas(mut atlas: GlyphAtlas) {
     // Opens the first page now: creating a page texture takes ~25 ms on
     // the target, too long for the first frame with text.
     atlas.prepare('0', raster_px(TEXT_RASTER_SIZES[0], screen_dpi_scale()));
-    TEXTURES.with(|textures| textures.borrow_mut().sync(&mut atlas));
+    sync_textures(&mut atlas);
     atlas.take_rasterized();
     ATLAS.with(|cell| *cell.borrow_mut() = Some(atlas));
 }
@@ -883,7 +999,7 @@ fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAt
                 return 0;
             };
             prepare(atlas);
-            TEXTURES.with(|textures| textures.borrow_mut().sync(atlas));
+            sync_textures(atlas);
             atlas.take_rasterized()
         };
         if let Some(atlas) = cell.borrow().as_ref() {
@@ -922,10 +1038,17 @@ pub fn draw_underlay(editor: &Editor, camera: &Camera, viewport: Vec2) {
 /// Draws alignment guides, world-space segments, on top of the overlay,
 /// [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`.
 pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
+    let mut batch = Batch::new(GlSink);
+    push_guides(&mut batch, guides, camera);
+    batch.finish();
+}
+
+/// Adds each guide as one quad [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`.
+pub fn push_guides<S: MeshSink>(batch: &mut Batch<S>, guides: &[[Vec2; 2]], camera: &Camera) {
     let color = hex_color(theme::GUIDE);
     for [a, b] in guides {
         let (a, b) = (camera.world_to_screen(*a), camera.world_to_screen(*b));
-        draw_line(a.x, a.y, b.x, b.y, GUIDE_WIDTH_PX, color);
+        batch.line(a, b, GUIDE_WIDTH_PX, color);
     }
 }
 
@@ -1343,7 +1466,12 @@ mod tests {
     use crate::core::math_metrics;
     use crate::core::palette::{ColorId, Rgba, palette};
     use crate::core::tex::{ACCENTS, Face, MINUS, Mark, SYMBOLS, calligraphic, italic};
+    use crate::shell::recording::RecordingGpu;
     use crate::theme;
+    use draw_gfx::gpu::{
+        Blend, Command, CommandList, Geometry, Gpu, PipelineDesc, Vertex as GfxVertex, View,
+    };
+    use macroquad::models::Vertex;
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -1367,11 +1495,165 @@ mod tests {
     }
 
     impl MeshSink for Recorder {
-        fn draw(&mut self, mesh: &mut Mesh, page: Option<u32>) {
-            self.chunks
-                .push((mesh.vertices.clone(), mesh.indices.clone()));
+        fn draw(&mut self, vertices: &[GfxVertex], indices: &[u32], page: Option<u32>) {
+            self.chunks.push((
+                vertices.iter().map(mq_vertex).collect(),
+                indices.iter().map(|&i| i as u16).collect(),
+            ));
             self.pages.push(page);
         }
+    }
+
+    /// The macroquad vertex with `vertex`'s position, uv and colour bytes.
+    fn mq_vertex(vertex: &GfxVertex) -> Vertex {
+        let mut out = Vertex::new(
+            vertex.pos[0],
+            vertex.pos[1],
+            0.0,
+            vertex.uv[0],
+            vertex.uv[1],
+            Color::default(),
+        );
+        out.color = vertex.color;
+        out
+    }
+
+    // ---- T158 AC-1..AC-4 over the Gpu trait ----------------------------------
+
+    fn page_textures(gpu: &mut RecordingGpu) -> GlyphTextures<RecordingGpu> {
+        let mut textures = GlyphTextures::<RecordingGpu>::default();
+        let mut atlas = atlas();
+        atlas.prepare('A', 20);
+        assert!(textures.sync(gpu, &mut atlas).is_ok());
+        textures
+    }
+
+    fn draw_counts(list: &CommandList<RecordingGpu>) -> Vec<usize> {
+        list.commands()
+            .iter()
+            .filter_map(|command| match command {
+                Command::Draw {
+                    geometry: Geometry::Inline { indices, .. },
+                    ..
+                } => Some(indices.len()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn batch_over_recording_gpu_splits_chunks_at_the_limits() {
+        // Arrange: 2 000 quads, 800 per chunk by the index limit.
+        let mut gpu = RecordingGpu::new();
+        let textures = page_textures(&mut gpu);
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
+        let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
+
+        // Act
+        for i in 0..2_000_u16 {
+            let x = f32::from(i);
+            batch.rect(aabb(x, 0.0, x + 1.0, 1.0), RED);
+        }
+        let list = batch.finish().into_list(View {
+            width: 100.0,
+            height: 100.0,
+        });
+
+        // Assert
+        let counts = draw_counts(&list);
+        assert_eq!(counts, vec![4_800, 4_800, 2_400]);
+        assert!(counts.iter().all(|&n| n <= BATCH_MAX_INDICES));
+    }
+
+    #[test]
+    fn scene_over_recording_gpu_emits_begin_draws_end() {
+        // Arrange: a shape chunk, then a glyph chunk bound to page 0.
+        let mut gpu = RecordingGpu::new();
+        let textures = page_textures(&mut gpu);
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
+        let view = View {
+            width: 640.0,
+            height: 480.0,
+        };
+        let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
+
+        // Act
+        batch.rect(aabb(0.0, 0.0, 4.0, 2.0), RED);
+        batch.flush();
+        batch.glyph(&quad(), 0, RED);
+        let list = batch.finish().into_list(view);
+
+        // Assert
+        let page = textures.get(0).copied();
+        let commands = list.commands();
+        assert_eq!(commands.len(), 4);
+        assert_eq!(
+            commands[0],
+            Command::BeginPass {
+                target: None,
+                view,
+                clear: None
+            }
+        );
+        assert!(matches!(&commands[1], Command::Draw { texture: None, .. }));
+        assert!(matches!(&commands[2], Command::Draw { texture, .. } if *texture == page));
+        assert_eq!(commands[3], Command::EndPass);
+    }
+
+    #[test]
+    fn gpu_sink_binds_the_page_texture() {
+        // Arrange
+        let mut gpu = RecordingGpu::new();
+        let textures = page_textures(&mut gpu);
+        let pipeline = gpu.pipeline(PipelineDesc {
+            blend: Blend::Alpha,
+        });
+        let mut batch = Batch::new(GpuSink::new(pipeline, &textures));
+
+        // Act: a glyph alone in the batch, then an empty batch.
+        batch.glyph(&quad(), 0, RED);
+        let list = batch.finish().into_list(View {
+            width: 1.0,
+            height: 1.0,
+        });
+        let empty = Batch::new(GpuSink::new(pipeline, &textures))
+            .finish()
+            .into_list(View {
+                width: 1.0,
+                height: 1.0,
+            });
+
+        // Assert
+        assert!(matches!(
+            &list.commands()[1],
+            Command::Draw { pipeline: p, texture: Some(_), .. } if *p == pipeline
+        ));
+        assert_eq!(empty.len(), 2, "only the pass, no draw");
+    }
+
+    #[test]
+    fn push_guides_emits_one_quad_per_guide() {
+        // Arrange
+        let mut batch = Batch::new(Recorder::default());
+        let guides = [
+            [Vec2::new(0.0, 0.0), Vec2::new(10.0, 0.0)],
+            [Vec2::new(0.0, 5.0), Vec2::new(0.0, 9.0)],
+        ];
+
+        // Act
+        push_guides(&mut batch, &guides, &Camera::default());
+        let rec = batch.finish();
+
+        // Assert
+        let (vertices, indices) = only_chunk(&rec);
+        assert_eq!(vertices.len(), 8);
+        assert_eq!(indices.len(), 12);
+        let want = vertex_bytes(hex_color(theme::GUIDE));
+        assert!(vertices.iter().all(|v| v.color == want));
     }
 
     const RED: Color = Color::new(1.0, 0.0, 0.0, 1.0);

@@ -36,8 +36,8 @@ use draw::shell::glyphs::GlyphAtlas;
 use draw::shell::render::{
     Batch, MeshSink, cull_rect, is_visible, prepare_text_block, push_text_block,
 };
+use draw_gfx::gpu::Vertex;
 use macroquad::color::WHITE;
-use macroquad::models::Mesh;
 
 /// Shapes in the benchmark document.
 const SHAPES: usize = 10_000;
@@ -613,9 +613,9 @@ struct CountingSink {
 }
 
 impl MeshSink for CountingSink {
-    fn draw(&mut self, mesh: &mut Mesh, _page: Option<u32>) {
+    fn draw(&mut self, _vertices: &[Vertex], indices: &[u32], _page: Option<u32>) {
         self.chunks += 1;
-        self.indices += mesh.indices.len();
+        self.indices += indices.len();
     }
 }
 
