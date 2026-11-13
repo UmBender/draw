@@ -2,6 +2,141 @@
 
 #![allow(unsafe_code)]
 
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
+use std::fmt;
+use std::marker::PhantomData;
+use std::mem::size_of;
+use std::ops::Deref;
+use std::ptr::NonNull;
+
+/// `RTLD_NOW` on Linux: resolve every symbol when the library is loaded.
+const RTLD_NOW: c_int = 2;
+
+// TEST: open_existing_library_succeeds
+// SAFETY of the declarations: these are the glibc prototypes; each call
+// site states why its arguments are valid.
+unsafe extern "C" {
+    fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
+    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+    fn dlclose(handle: *mut c_void) -> c_int;
+    fn dlerror() -> *mut c_char;
+}
+
+/// Why a library or a symbol could not be loaded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoadError {
+    /// A name holds a NUL byte, so it cannot be a C string.
+    InvalidName {
+        /// The name as given.
+        name: String,
+    },
+    /// `dlopen` failed: the library is missing or cannot be loaded.
+    LibraryNotFound {
+        /// The library name as given.
+        name: String,
+        /// The text of `dlerror`.
+        reason: String,
+    },
+    /// `dlsym` found no such symbol in the library.
+    SymbolNotFound {
+        /// The symbol name as given.
+        name: String,
+        /// The text of `dlerror`.
+        reason: String,
+    },
+    /// The requested function type does not have the size of a pointer.
+    BadSymbolType {
+        /// The symbol name as given.
+        name: String,
+        /// `size_of` the requested type.
+        size: usize,
+    },
+}
+
+impl fmt::Display for LoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidName { name } => write!(f, "name {name:?} contains a NUL byte"),
+            Self::LibraryNotFound { name, reason } => {
+                write!(f, "cannot load library {name}: {reason}")
+            }
+            Self::SymbolNotFound { name, reason } => {
+                write!(f, "cannot find symbol {name}: {reason}")
+            }
+            Self::BadSymbolType { name, size } => write!(
+                f,
+                "symbol {name} cannot have a {size}-byte type, a function pointer has {} bytes",
+                size_of::<*mut c_void>()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LoadError {}
+
+/// A loaded shared library, closed when dropped.
+///
+/// A [`Symbol`] borrows its library, so it cannot be used after the
+/// library is dropped:
+///
+/// ```compile_fail
+/// use draw_sys::loader::Library;
+/// let lib = Library::open("libm.so.6").unwrap();
+/// let cos = unsafe { lib.symbol::<unsafe extern "C" fn(f64) -> f64>("cos") }.unwrap();
+/// drop(lib);
+/// let _ = unsafe { cos(0.0) };
+/// ```
+#[derive(Debug)]
+pub struct Library {
+    handle: NonNull<c_void>,
+}
+
+/// A function of a [`Library`], typed when it was loaded.
+#[derive(Debug, Clone, Copy)]
+pub struct Symbol<'lib, F: Copy> {
+    value: F,
+    library: PhantomData<&'lib Library>,
+}
+
+impl Library {
+    /// Loads the shared library `name` (for example `"libEGL.so.1"`).
+    ///
+    /// # Errors
+    ///
+    /// [`LoadError::InvalidName`] if `name` has a NUL byte, and
+    /// [`LoadError::LibraryNotFound`] if `dlopen` fails.
+    pub fn open(name: &str) -> Result<Self, LoadError> {
+        todo!("dlopen {name}")
+    }
+
+    /// Looks up the symbol `name` and gives it the type `F`.
+    ///
+    /// # Errors
+    ///
+    /// [`LoadError::InvalidName`] if `name` has a NUL byte,
+    /// [`LoadError::BadSymbolType`] if `F` is not pointer sized, and
+    /// [`LoadError::SymbolNotFound`] if the library has no such symbol (a
+    /// symbol whose address is null counts as not found).
+    ///
+    /// # Safety
+    ///
+    /// `F` must be a function pointer type (`unsafe extern "C" fn(..)`)
+    /// that matches the real signature of the symbol, and the symbol must
+    /// be a function. Calling it through a wrong type is undefined behaviour.
+    // TEST: symbol_present_can_be_called
+    pub unsafe fn symbol<F: Copy>(&self, name: &str) -> Result<Symbol<'_, F>, LoadError> {
+        todo!("dlsym {name}")
+    }
+}
+
+impl<F: Copy> Deref for Symbol<'_, F> {
+    type Target = F;
+
+    fn deref(&self) -> &F {
+        &self.value
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
