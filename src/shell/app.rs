@@ -48,7 +48,6 @@ use crate::core::tools::Overlay;
 use crate::core::tools::text::TextEdit;
 use crate::shell::autosave::{self, Autosaver, Launch};
 use crate::shell::backend::{self, Backend};
-use crate::shell::platform_mq::MqInput;
 use crate::shell::command_palette;
 use crate::shell::diag::event::{Event, FrameKind};
 use crate::shell::diag::{self, Level, e2e};
@@ -62,6 +61,7 @@ use crate::shell::input_map::{
 };
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::Options;
+use crate::shell::platform_mq::MqInput;
 use crate::shell::render::{
     self, Batch, GlSink, TextStats, hex_color, hex_color_alpha, to_mq_color,
 };
