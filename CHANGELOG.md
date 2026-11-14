@@ -52,6 +52,13 @@ All notable changes to draw are listed here. The format follows
 - `draw-sys` loads system libraries with `dlopen` behind safe wrappers;
   every `unsafe` block is covered by a test, and a nightly CI job runs
   them under the address and thread sanitizers.
+- `draw-sys` opens an OpenGL ES 3.0 context through EGL (on a window or
+  headless) or GLX, and `draw-gfx` implements the `Gpu` interface over it
+  with a checked GL function table; the app does not use it yet.
+- Input, the clipboard, the pen and the main loop go through one
+  `Platform` interface, with macroquad as its only implementation. The
+  diagnostic dump names letter keys `Letter('Z')` and unlisted keys
+  `Other(n)`.
 
 ## [1.6.0] - 2026-11-12
 

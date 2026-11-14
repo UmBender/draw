@@ -1,7 +1,7 @@
 ---
 id: T162
 title: RawEvent and the input collector
-status: review
+status: done
 wave: 68
 branch: task/T162-rawevent-and-the-input-collector
 depends_on: [T140, T161]

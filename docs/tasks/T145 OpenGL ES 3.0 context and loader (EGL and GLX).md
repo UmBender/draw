@@ -1,7 +1,7 @@
 ---
 id: T145
 title: OpenGL ES 3.0 context and loader (EGL and GLX)
-status: review
+status: done
 wave: 69
 branch: task/T145-opengl-es-3-0-context-and-loader-egl-and
 depends_on: [T142]

@@ -171,3 +171,5 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 160 | [[ADR-T140-1 The Gpu and Platform traits]] | accepted | decision | T127-5, T131-1, T132-1 | — |
 | 161 | [[ADR-T142-1 dlopen through libc symbols and TEST markers]] | accepted | decision | T132-1 | — |
 | 162 | [[ADR-T159-1 Texture filter and readback in the Gpu trait]] | accepted | decision | T140-1 | amends T140-1 |
+| 163 | [[ADR-T145-1 GL context, function table and Gpu over OpenGL ES 3.0]] | accepted | decision | T127-5, T140-1, T142-1, T159-1 | — |
+| 164 | [[ADR-T162-1 RawEvent carries the backend records and the pen samples]] | accepted | decision | T140-1 | amends T140-1 |

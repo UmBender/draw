@@ -1,7 +1,7 @@
 ---
 id: T163
 title: macroquad Platform interpreter and the loop
-status: review
+status: done
 wave: 68
 branch: task/T163-macroquad-platform-interpreter-and-the-loop
 depends_on: [T162]

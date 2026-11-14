@@ -568,7 +568,7 @@ flowchart TD
 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] | done | T132, T140 | `task/T142-draw-sys-foundation-dlopen-safe-wrappers` |
 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | todo | T142, T145 | `task/T143-wayland-backend-window-keyboard-pointer-` |
 | [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | todo | T142, T145 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
-| [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | todo | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
+| [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | done | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
 | [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136, T153, T161 | `task/T146-retained-renderer-in-draw-gfx` |
 | [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
 | [[T148 Multithreaded tessellation, only with a measured gain]] | todo | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
@@ -585,6 +585,6 @@ flowchart TD
 | [[T159 Minimap and frame cache over Gpu]] | done | T158 | `task/T159-minimap-and-frame-cache-over-gpu` |
 | [[T160 Toolbar and menus over Gpu]] | done | T159 | `task/T160-toolbar-and-menus-over-gpu` |
 | [[T161 UI text over Gpu]] | done | T160 | `task/T161-ui-text-over-gpu` |
-| [[T162 RawEvent and the input collector]] | todo | T140, T161 | `task/T162-rawevent-and-the-input-collector` |
-| [[T163 macroquad Platform interpreter and the loop]] | todo | T162 | `task/T163-macroquad-platform-interpreter-and-the-loop` |
+| [[T162 RawEvent and the input collector]] | done | T140, T161 | `task/T162-rawevent-and-the-input-collector` |
+| [[T163 macroquad Platform interpreter and the loop]] | done | T162 | `task/T163-macroquad-platform-interpreter-and-the-loop` |
 | [[T164 Generic run over Platform and Gpu]] | todo | T163 | `task/T164-generic-run-over-platform-and-gpu` |
