@@ -4,3 +4,4 @@
 #
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
+cc 47910af2d170b4a433b4b024e6838912d578088c66bed1caebe10fd6b1fce310 # shrinks to ox = 22.343204, oy = 0.0, z0 = 15.48393, px = 9430.526, py = 0.0, z1 = 9.643611, w = 1.0, h = 1.0, m = 0.0
