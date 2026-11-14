@@ -2223,8 +2223,12 @@ mod tests {
             let corner = current.world_to_screen(cached.screen_to_world(layer.min));
             let tol = 1e-3 * (1.0 + corner.x.abs().max(corner.y.abs()));
             prop_assert!(rect.min.approx_eq(corner, tol), "{rect:?} {corner:?}");
+            // The width is the difference of two screen coordinates, so it
+            // also carries their f32 rounding, which grows with their size.
+            let far = current.world_to_screen(cached.screen_to_world(layer.max));
+            let reach = corner.x.abs().max(far.x.abs());
             let scale = z1 / z0;
-            let width_tol = 1e-3 * (1.0 + layer.width() * scale);
+            let width_tol = 1e-3 * (1.0 + layer.width() * scale) + 1e-5 * reach;
             prop_assert!(approx_eq(rect.width(), layer.width() * scale, width_tol));
         }
     }
