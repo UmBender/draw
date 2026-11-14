@@ -400,3 +400,37 @@ impl Platform for RecordingPlatform {
         done
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recording_platform_replays_queued_events() {
+        // Arrange
+        let metrics = WindowMetrics {
+            width: 800.0,
+            height: 600.0,
+            scale: 1.0,
+        };
+        let mut platform = RecordingPlatform::new(metrics);
+        platform.queue(RawEvent::PointerMove { x: 1.0, y: 2.0 });
+        platform.queue(RawEvent::Wheel { dx: 0.0, dy: 1.0 });
+
+        // Act
+        let mut out = Vec::new();
+        platform.poll(&mut out);
+        let mut again = Vec::new();
+        platform.poll(&mut again);
+
+        // Assert
+        assert_eq!(
+            out,
+            [
+                RawEvent::PointerMove { x: 1.0, y: 2.0 },
+                RawEvent::Wheel { dx: 0.0, dy: 1.0 },
+            ]
+        );
+        assert_eq!(again, []);
+    }
+}

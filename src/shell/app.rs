@@ -12,16 +12,11 @@
 
 use macroquad::color::Color;
 use macroquad::conf::{Conf, UpdateTrigger};
-use macroquad::input::utils::{register_input_subscriber, repeat_all_miniquad_input};
-use macroquad::miniquad::conf::{Conf as WindowConf, Platform};
-use macroquad::miniquad::pen;
+use macroquad::miniquad::conf::{Conf as WindowConf, Platform as WindowPlatform};
 use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
-use macroquad::miniquad::window::{
-    clipboard_get, clipboard_set, clipboard_set_png, schedule_update,
-};
-use macroquad::window::{next_frame, screen_dpi_scale, screen_height, screen_width};
 
 use draw_gfx::gpu::{Filter, Gpu, TargetDesc, View};
+use draw_sys::platform::{Platform, RawEvent};
 
 use std::collections::HashSet;
 use std::io::Write as _;
@@ -56,12 +51,12 @@ use crate::shell::file::{self, Opened};
 use crate::shell::glyphs::{FontOutlines, GlyphAtlas};
 use crate::shell::gpu_mq::{MqTarget, MqTexture};
 use crate::shell::input_map::{
-    Collector, PEN_BOUNCE_WINDOW, PenSample, paste_event, paste_grid_event, wants_clipboard,
+    Collector, PEN_BOUNCE_WINDOW, paste_event, paste_grid_event, wants_clipboard,
     wants_grid_clipboard,
 };
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::Options;
-use crate::shell::platform_mq::MqInput;
+use crate::shell::platform_mq::MqPlatform;
 use crate::shell::render::{
     self, Batch, GlSink, TextStats, hex_color, hex_color_alpha, to_mq_color,
 };
@@ -319,11 +314,11 @@ impl From<WindowSettings> for Conf {
                 window_height: settings.window_height,
                 window_resizable: settings.window_resizable,
                 high_dpi: settings.high_dpi,
-                platform: Platform {
+                platform: WindowPlatform {
                     linux_backend: settings.backend.linux_backend(),
                     blocking_event_loop: true,
                     linux_wm_class: WM_CLASS,
-                    ..Platform::default()
+                    ..WindowPlatform::default()
                 },
                 ..WindowConf::default()
             },
@@ -571,6 +566,109 @@ fn input_collector(backend: Backend, tablet: &tablet::Choice) -> Collector {
 /// Runs the application until the window is closed, as `options` say, on
 /// `backend` and with the pen mode of `tablet` (ADR-T94-1, ADR-T154-1).
 pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
+    run_on(MqPlatform::open(), options, backend, tablet).await;
+}
+
+/// What one frame's input phase found.
+#[derive(Debug, Clone, Copy)]
+struct Gathered {
+    /// The window size in logical pixels.
+    viewport: Vec2,
+    /// Physical pixels per logical pixel.
+    dpi: f32,
+    /// The editor changed.
+    dirty: bool,
+    /// The dump chord was pressed.
+    dump_asked: bool,
+    /// Input reached the editor (the idle frames have none).
+    had_input: bool,
+}
+
+/// What the input phase keeps between frames.
+#[derive(Debug, Default)]
+struct InputState {
+    /// The events of the frame, reused so a frame does not allocate.
+    raw: Vec<RawEvent>,
+    /// The end-to-end hooks; inert unless the suite gives its files
+    /// (ADR-T75-1).
+    hooks: Option<e2e::Hooks>,
+}
+
+/// The input phase of a frame: the window metrics, the events of
+/// `platform` through the collector and the editor (ADR-T12-1,
+/// ADR-T162-1).
+fn gather_input<P: Platform>(
+    platform: &mut P,
+    collector: &mut Collector,
+    editor: &mut Editor,
+    state: &mut InputState,
+    laser: &mut LaserLayer,
+) -> Gathered {
+    let metrics = platform.window();
+    let viewport = Vec2::new(metrics.width, metrics.height);
+    let dpi = metrics.scale;
+    let mut dirty = false;
+    if !viewport.approx_eq(editor.viewport(), RESIZE_EPS_PX) {
+        dirty |= editor.handle(InputEvent::Resize { size: viewport });
+    }
+    collector.set_dpi(dpi);
+    collector.set_now(Instant::now());
+    state.raw.clear();
+    platform.poll(&mut state.raw);
+    for event in state.raw.drain(..) {
+        collector.handle(event);
+    }
+    if collector.flush_bounce() {
+        // Wake again to hand the held release on (ADR-T42-1).
+        platform.schedule_update();
+    }
+    // Test-only: the harness's text, where `wl-copy` is missing (ADR-T83-1).
+    if let Some(text) = state.hooks.as_ref().and_then(e2e::Hooks::take_clipboard) {
+        platform.set_clipboard_text(&text);
+    }
+    let mut dump_asked = false;
+    let mut had_input = false;
+    for event in collector.drain() {
+        if state
+            .hooks
+            .as_mut()
+            .is_some_and(|hooks| hooks.intercept(&event))
+        {
+            continue;
+        }
+        if laser.consumes(&event, editor) {
+            continue;
+        }
+        had_input = true;
+        let editing = editor.text_edit().is_some();
+        if wants_clipboard(&event, editing) {
+            dirty |= paste_clipboard(platform, editor, paste_event);
+        } else if wants_grid_clipboard(&event, editing) {
+            dirty |= paste_clipboard(platform, editor, paste_grid_event);
+        } else if is_dump_chord(&event) {
+            dump_asked = true;
+        } else if is_snapshot_chord(&event) {
+            report_snapshot(editor);
+        } else {
+            dirty |= dispatch(editor, event);
+        }
+    }
+    Gathered {
+        viewport,
+        dpi,
+        dirty,
+        dump_asked,
+        had_input,
+    }
+}
+
+/// [`run`] over any [`Platform`].
+pub async fn run_on<P: Platform>(
+    mut platform: P,
+    options: Options,
+    backend: Backend,
+    tablet: tablet::Choice,
+) {
     let Options {
         launch,
         file: file_arg,
@@ -581,7 +679,6 @@ pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
         ..
     } = options;
     load_fonts();
-    let subscriber = register_input_subscriber();
     let mut collector = input_collector(backend, &tablet);
     let mut editor = Editor::new().with_tap_slop(tablet.tap_slop_px());
     let state_dir = crate::shell::crash::state_dir(
@@ -593,58 +690,35 @@ pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
     let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
     let mut frame = CachedFrame::new(msaa_samples, frame_times);
     let mut recorder = FrameRecorder::new(&editor);
-    // Inert unless the end-to-end suite gives its files (ADR-T75-1).
-    let mut hooks = e2e::Hooks::from_files(&e2e_files);
+    let mut input = InputState {
+        raw: Vec::new(),
+        hooks: e2e::Hooks::from_files(&e2e_files),
+    };
     let mut export_pending = false;
     let mut svg_writes: Vec<mpsc::Receiver<Result<PathBuf, ExportError>>> = Vec::new();
     let mut laser = LaserLayer::new();
     loop {
-        let viewport = Vec2::new(screen_width(), screen_height());
-        let dpi = screen_dpi_scale();
-        let mut dirty = false;
-        if !viewport.approx_eq(editor.viewport(), RESIZE_EPS_PX) {
-            dirty |= editor.handle(InputEvent::Resize { size: viewport });
-        }
-        collector.set_dpi(dpi);
-        collector.set_pen_samples(pen_samples());
-        collector.set_now(Instant::now());
-        recorder.begin(&mut collector);
-        repeat_all_miniquad_input(&mut MqInput(&mut collector), subscriber);
-        if collector.flush_bounce() {
-            // Wake again to hand the held release on (ADR-T42-1).
-            schedule_update();
-        }
-        // Test-only: the harness's text, where `wl-copy` is missing (ADR-T83-1).
-        if let Some(text) = hooks.as_ref().and_then(e2e::Hooks::take_clipboard) {
-            clipboard_set(&text);
-        }
-        let mut dump_asked = false;
-        let mut had_input = false;
-        for event in collector.drain() {
-            if hooks.as_mut().is_some_and(|hooks| hooks.intercept(&event)) {
-                continue;
-            }
-            if laser.consumes(&event, &editor) {
-                continue;
-            }
-            had_input = true;
-            let editing = editor.text_edit().is_some();
-            if wants_clipboard(&event, editing) {
-                dirty |= paste_clipboard(&mut editor, paste_event);
-            } else if wants_grid_clipboard(&event, editing) {
-                dirty |= paste_clipboard(&mut editor, paste_grid_event);
-            } else if is_dump_chord(&event) {
-                dump_asked = true;
-            } else if is_snapshot_chord(&event) {
-                report_snapshot(&editor);
-            } else {
-                dirty |= dispatch(&mut editor, event);
-            }
-        }
+        let Gathered {
+            viewport,
+            dpi,
+            mut dirty,
+            dump_asked,
+            had_input,
+        } = gather_input(
+            &mut platform,
+            &mut collector,
+            &mut editor,
+            &mut input,
+            &mut laser,
+        );
         let effects = editor.take_effects();
         export_pending = arm_export(export_pending, &effects, &editor, &mut frame);
         dirty |= laser.tick();
+        if laser.fading() {
+            platform.schedule_update();
+        }
         serve_effects(
+            &mut platform,
             &effects,
             &mut editor,
             &mut frame,
@@ -652,6 +726,9 @@ pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
             &mut save_path,
         );
         let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
+        if frame.wake {
+            platform.schedule_update();
+        }
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
             export_pending = false;
@@ -662,11 +739,13 @@ pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
         if had_input {
             autosaver.on_input(&editor, Instant::now());
         }
-        if let Some(hooks) = &mut hooks {
-            answer_sync(hooks, &frame, presented, &editor);
+        if let Some(hooks) = &mut input.hooks
+            && answer_sync(hooks, &frame, presented, &editor)
+        {
+            platform.schedule_update();
         }
-        next_frame().await;
-        if let Some(hooks) = &mut hooks {
+        platform.next_frame().await;
+        if let Some(hooks) = &mut input.hooks {
             hooks.after_swap();
         }
     }
@@ -688,7 +767,8 @@ fn arm_export(pending: bool, effects: &[Effect], editor: &Editor, frame: &mut Ca
 /// ADR-T108-1, ADR-T137-1). The PNG export is answered by the frame loop,
 /// which waits for a fresh layer; the other effects are not the editor's to
 /// queue.
-fn serve_effects(
+fn serve_effects<P: Platform>(
+    platform: &mut P,
     effects: &[Effect],
     editor: &mut Editor,
     frame: &mut CachedFrame,
@@ -699,10 +779,10 @@ fn serve_effects(
     if effects.contains(&Effect::ExportSvg) {
         svg_writes.push(export_svg(editor));
     }
-    log_finished_svg_writes(svg_writes);
+    log_finished_svg_writes(platform, svg_writes);
     for effect in effects {
         if let Effect::CopyImage(bounds) = effect {
-            copy_selection_image(editor, frame, *bounds);
+            copy_selection_image(platform, editor, frame, *bounds);
         }
     }
     if effects.contains(&Effect::Save) {
@@ -791,10 +871,14 @@ fn report_snapshot(editor: &Editor) {
 
 /// Hands the system clipboard to the editor as the event `paste` makes of
 /// it. Returns whether the view needs a redraw (ADR-T83-1, ADR-T84-1).
-fn paste_clipboard(editor: &mut Editor, paste: fn(Option<String>) -> Option<InputEvent>) -> bool {
-    let changed = paste(clipboard_get()).is_some_and(|paste| dispatch(editor, paste));
+fn paste_clipboard<P: Platform>(
+    platform: &mut P,
+    editor: &mut Editor,
+    paste: fn(Option<String>) -> Option<InputEvent>,
+) -> bool {
+    let changed = paste(platform.clipboard_text()).is_some_and(|paste| dispatch(editor, paste));
     // The read may have queued input the loop would sleep on.
-    schedule_update();
+    platform.schedule_update();
     changed
 }
 
@@ -850,7 +934,10 @@ fn export_svg(editor: &Editor) -> mpsc::Receiver<Result<PathBuf, ExportError>> {
 
 /// Logs the outcome of every SVG write that has finished, and keeps the
 /// loop awake while one is still running.
-fn log_finished_svg_writes(writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>) {
+fn log_finished_svg_writes<P: Platform>(
+    platform: &mut P,
+    writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>,
+) {
     writes.retain(|receiver| match receiver.try_recv() {
         Ok(result) => {
             let (level, line) = export::svg_log_line(&result);
@@ -862,19 +949,24 @@ fn log_finished_svg_writes(writes: &mut Vec<mpsc::Receiver<Result<PathBuf, Expor
         Err(mpsc::TryRecvError::Disconnected) => false,
     });
     if !writes.is_empty() {
-        schedule_update();
+        platform.schedule_update();
     }
 }
 
 /// Renders the selected shapes alone and offers them on the clipboard as a
 /// PNG; a failure is logged and never panics (ADR-T115-1).
-fn copy_selection_image(editor: &Editor, frame: &mut CachedFrame, bounds: Aabb) {
+fn copy_selection_image<P: Platform>(
+    platform: &mut P,
+    editor: &Editor,
+    frame: &mut CachedFrame,
+    bounds: Aabb,
+) {
     let Some(plan) = snapshot_image::plan(bounds, editor.camera().zoom()) else {
         return;
     };
     let result = render_selection(editor, frame, &plan).and_then(|rgba| {
         let png = export::encode_png(plan.size.0, plan.size.1, &rgba)?;
-        clipboard_set_png(&png);
+        platform.set_clipboard_png(&png);
         Ok(())
     });
     let (level, line) = export::copy_log_line(&result, plan.size, plan.scaled_down);
@@ -912,18 +1004,17 @@ fn render_selection(
 }
 
 /// Lets the end-to-end hooks answer a pending sync once the frame is
-/// settled, waking the loop so the answer comes after the swap (ADR-T75-1).
+/// settled. Returns whether the loop must wake again, so the answer comes
+/// after the swap (ADR-T75-1).
 fn answer_sync(
     hooks: &mut e2e::Hooks,
     frame: &CachedFrame,
     presented: Option<(Redraw, Duration)>,
     editor: &Editor,
-) {
+) -> bool {
     let moved = matches!(presented, Some((Redraw::Moved, _)));
     let settled = !moved && !frame.rerender;
-    if hooks.frame_presented(settled, || editor.snapshot().to_text()) {
-        schedule_update();
-    }
+    hooks.frame_presented(settled, || editor.snapshot().to_text())
 }
 
 /// Collects one frame's flight recorder records and hands them to
@@ -931,7 +1022,6 @@ fn answer_sync(
 /// frame.
 struct FrameRecorder {
     records: Vec<(Instant, Event)>,
-    backend: Vec<draw_sys::platform::BackendRecord>,
     tool: Tool,
     revision: u64,
 }
@@ -941,21 +1031,8 @@ impl FrameRecorder {
     fn new(editor: &Editor) -> Self {
         Self {
             records: Vec::with_capacity(256),
-            backend: Vec::with_capacity(256),
             tool: editor.tool(),
             revision: editor.document_revision(),
-        }
-    }
-
-    /// Takes the backend's events before the input is replayed; a focus
-    /// change makes the collector forget its held keys.
-    fn begin(&mut self, collector: &mut Collector) {
-        diag::take_backend(&mut self.backend, &mut self.records);
-        let focus = |(_, event): &(Instant, Event)| {
-            matches!(event, Event::KeyboardEnter | Event::KeyboardLeave)
-        };
-        if self.records.iter().any(focus) {
-            collector.focus_changed();
         }
     }
 
@@ -995,18 +1072,6 @@ impl FrameRecorder {
             }
         }
     }
-}
-
-/// The pen samples the window library pushed since the last call
-/// (ADR-T35-1).
-fn pen_samples() -> Vec<PenSample> {
-    pen::take_samples()
-        .into_iter()
-        .map(|s| PenSample {
-            pos: Vec2::new(s.x, s.y),
-            pressure: s.pressure,
-        })
-        .collect()
 }
 
 /// Sends one event to the toolbar or the editor. Returns whether the view
@@ -1051,6 +1116,8 @@ struct CachedFrame {
     /// Whether the next frame re-renders the layer in full because the
     /// glyph atlas overflowed (ADR-T32-1).
     rerender: bool,
+    /// The last frame wants another one even without input.
+    wake: bool,
     /// The minimap's overview of the shapes (ADR-T110-1).
     overview: Option<MqTarget>,
     /// What `overview` shows.
@@ -1072,6 +1139,7 @@ impl CachedFrame {
             samples,
             timed,
             rerender: false,
+            wake: false,
             overview: None,
             overview_key: None,
         }
@@ -1091,6 +1159,7 @@ impl CachedFrame {
         dirty: bool,
         trail: &[Segment],
     ) -> Option<(Redraw, Duration)> {
+        self.wake = false;
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
         let camera = *editor.camera();
@@ -1162,7 +1231,7 @@ impl CachedFrame {
             // The moved layer may not cover the window; wake again until the
             // camera settles (ADR-T26-1).
             render::clear_window(hex_color(theme::CANVAS));
-            schedule_update();
+            self.wake = true;
         }
         let dest = blit_rect(&cached.camera, &camera, self.layer);
         blit_layer(document, &mut self.filter, blit_filter(redraw), dest);
@@ -1181,7 +1250,7 @@ impl CachedFrame {
             // Glyphs were dropped from the layer; draw it again next frame
             // with the atlas cleared.
             self.rerender = true;
-            schedule_update();
+            self.wake = true;
         }
         let text = render::take_text_stats();
         if redraw == Redraw::None {
@@ -1431,10 +1500,13 @@ impl LaserLayer {
         let redraw = self.laser.tick(now);
         self.trail.clear();
         self.trail.extend(self.laser.segments(now));
-        if self.laser.is_fading() {
-            schedule_update();
-        }
         redraw
+    }
+
+    /// Whether points are still fading: the loop asks for another frame, so
+    /// idle returns to 0 % once they are gone.
+    fn fading(&self) -> bool {
+        self.laser.is_fading()
     }
 }
 
@@ -1481,12 +1553,89 @@ mod tests {
     }
 
     #[test]
-    fn pen_samples_are_empty_without_a_window() {
-        // Arrange / Act: no backend has run, so nothing was pushed.
-        let samples = pen_samples();
+    fn app_names_no_window_clipboard_pen_or_loop_function() {
+        // Arrange: the source above the tests; a call through the platform
+        // has a `.` before the name.
+        let source = include_str!("app.rs");
+        let code = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let names = [
+            "screen_width",
+            "screen_height",
+            "screen_dpi_scale",
+            "clipboard_get",
+            "clipboard_set",
+            "schedule_update",
+            "next_frame",
+            "take_samples",
+            "repeat_all_miniquad_input",
+            "register_input_subscriber",
+        ];
+
+        // Act
+        let direct: Vec<&str> = names
+            .into_iter()
+            .filter(|name| {
+                code.match_indices(name)
+                    .any(|(at, _)| !code[..at].ends_with('.'))
+            })
+            .collect();
 
         // Assert
-        assert_eq!(samples, []);
+        assert_eq!(direct, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn frames_over_the_recording_platform_resize_and_dispatch_input() {
+        use crate::shell::recording::{PlatformCall, RecordingPlatform};
+        use draw_sys::platform::{RawKey, RawMods, WindowMetrics};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let mut platform = RecordingPlatform::new(metrics);
+        platform.queue(RawEvent::Key {
+            key: RawKey::Letter('R'),
+            mods: RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let mut editor = Editor::new();
+        let mut collector = Collector::new();
+        let mut laser = LaserLayer::new();
+        let mut state = InputState::default();
+
+        // Act: three frames; the key arrives in the first only.
+        for _ in 0..3 {
+            let _ = gather_input(
+                &mut platform,
+                &mut collector,
+                &mut editor,
+                &mut state,
+                &mut laser,
+            );
+            let mut next = pin!(platform.next_frame());
+            let mut cx = Context::from_waker(Waker::noop());
+            assert_eq!(next.as_mut().poll(&mut cx), Poll::Ready(()));
+        }
+
+        // Assert
+        assert_eq!(editor.tool(), Tool::Rect);
+        assert!(editor.viewport().approx_eq(Vec2::new(640.0, 480.0), 0.5));
+        let calls = platform.take_calls();
+        let frames = calls
+            .iter()
+            .filter(|call| **call == PlatformCall::NextFrame)
+            .count();
+        let windows = calls
+            .iter()
+            .filter(|call| **call == PlatformCall::Window)
+            .count();
+        assert_eq!((frames, windows), (3, 3));
     }
 
     #[test]
