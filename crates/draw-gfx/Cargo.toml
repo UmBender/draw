@@ -10,6 +10,7 @@ repository = "https://github.com/UmBender/draw"
 
 [dependencies]
 draw-types = { path = "../draw-types" }
+draw-sys = { path = "../draw-sys" }
 
 [lints]
 workspace = true
