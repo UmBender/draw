@@ -4,7 +4,7 @@ title: Fuzz of the shell through the recording platform
 status: todo
 wave: 68
 branch: task/T141-fuzz-of-the-shell-through-the-recording-
-depends_on: [T140, T164]
+depends_on: [T140, T167]
 adrs: []
 feature: ""
 tutorial: ""

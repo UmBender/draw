@@ -1,10 +1,10 @@
 ---
 id: T164
 title: Generic run over Platform and Gpu
-status: in-progress
+status: done
 wave: 68
 branch: task/T164-generic-run-over-platform-and-gpu
-depends_on: [T163]
+depends_on: [T165, T166, T167]
 adrs: []
 feature: ""
 tutorial: ""
@@ -48,12 +48,13 @@ Draft: the spec step refines each criterion into named tests.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T164): specify the slice`
-- [ ] tests — `test(T164): add failing tests`
-- [ ] models — `feat(T164): add the types`
-- [ ] behaviour — `refactor(T164): migrate the slice`
-- [ ] quality — `chore(T164): pass clippy and rustfmt`
+- [x] tests — moved to the slices
+- [x] models — moved to the slices
+- [x] behaviour — moved to the slices
+- [x] quality — moved to the slices
 
 ## Log
 
 - 2026-11-13 — split from T156 by the owner, following the batch's recommendation.
 - 2026-11-13 — BLOCKED (batch): too large for one unattended session. The `Gpu` thread-locals (`GPU`, `TEXTURES`, `SCOPE`, `PIPELINE` in `render.rs`; `ui_text.rs`; 8 `with_gpu` calls in `app.rs`) are reached through free functions (`draw_inline`, `GlSink`, `render_to`, ~90 uses of `Batch`/`MeshSink` in `render.rs`, 12 in `ui_shapes.rs`, 7 in `minimap.rs`), and the drawing still calls macroquad `window_width`/`screen_height`. Making all of it take `&mut G` is a signature change through the whole shell with no compiling intermediate stub. Only the spec step is committed. Recommended fix: split into T164a (a `RenderCtx<G>` that owns the `Gpu`, textures, pipeline and scope; migrate `render.rs` and `ui_text.rs`), T164b (`minimap`, `toolbar`, `export`, `app.rs` resource calls and the window size via `Platform`), T164c (generic `run<P, G>`, `main` `match`, widened source scan, AC-4 by hand), each in its own session.
+- 2026-11-14 — closed by the owner: split into [[T165 RenderCtx over Gpu for the drawing and UI text]] (the `RenderCtx`, `render.rs`, `ui_text.rs`), [[T166 Minimap, toolbar, export and app over RenderCtx]] (AC-1, the window size through `Platform`) and [[T167 Generic run and the match in main]] (AC-2 with an allowlist that T149 empties, AC-3, and AC-4 by hand at its end).

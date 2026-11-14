@@ -4,7 +4,7 @@ title: Cutover removing miniquad and macroquad
 status: todo
 wave: 73
 branch: task/T149-cutover-remove-miniquad-and-macroquad
-depends_on: [T143, T144, T146, T147, T148, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164]
+depends_on: [T143, T144, T146, T147, T148, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167]
 adrs: []
 feature: ""
 tutorial: ""
@@ -20,6 +20,7 @@ The vendored miniquad and macroquad are deleted; the app runs only on the new ba
 ## Known facts (2026-11-12)
 
 - A strangler: the new platform replaces the old only when it passes the same e2e suite on both backends.
+- The source scan of [[T167 Generic run and the match in main]] allows a few macroquad uses outside its interpreters (`Color`, the menu font measure, the window config, the signals, `LinuxBackend`); this task empties that allowlist.
 
 ## Spec
 
