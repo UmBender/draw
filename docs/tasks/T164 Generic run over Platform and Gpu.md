@@ -1,7 +1,7 @@
 ---
 id: T164
 title: Generic run over Platform and Gpu
-status: todo
+status: in-progress
 wave: 68
 branch: task/T164-generic-run-over-platform-and-gpu
 depends_on: [T163]
@@ -28,8 +28,8 @@ Slice 3 of [[T156 Platform migration of input and the loop]]: the `MqGpu` thread
 
 Draft: the spec step refines each criterion into named tests.
 
-- **AC-1** — No thread-local holds the `Gpu`; everything that draws takes `&mut G` (or a context that owns it).
-- **AC-2** — `main` monomorphises over `P` and `G` with a `match`; a source scan finds no miniquad or macroquad type outside `platform_mq.rs` and `gpu_mq.rs` (the T161 scan widened).
+- **AC-1** — No thread-local holds the `Gpu`; everything that draws takes `&mut G` (or a context that owns it). Test: `shell_sources_have_no_gpu_thread_local` (source scan for `thread_local!` next to `Gpu`, `GPU`, `TEXTURES`, `SCOPE`, `with_gpu`, `render::submit`).
+- **AC-2** — `main` monomorphises over `P` and `G` with a `match`; a source scan finds no miniquad or macroquad type outside `platform_mq.rs` and `gpu_mq.rs` (the T161 scan widened). Test: `shell_sources_outside_the_mq_interpreters_name_no_macroquad` and `main_runs_generic_run_through_a_match`.
 - **AC-3** — `e2e.sh --backend all` green; no pixel change.
 - **AC-4** — Hand check with a tablet (pen pressure, tilt, eraser, seat changes), recorded in the Log by the owner (T156 AC-4).
 
@@ -47,7 +47,7 @@ Draft: the spec step refines each criterion into named tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T164): specify the slice`
+- [x] spec — `docs(T164): specify the slice`
 - [ ] tests — `test(T164): add failing tests`
 - [ ] models — `feat(T164): add the types`
 - [ ] behaviour — `refactor(T164): migrate the slice`
@@ -56,3 +56,4 @@ Draft: the spec step refines each criterion into named tests.
 ## Log
 
 - 2026-11-13 — split from T156 by the owner, following the batch's recommendation.
+- 2026-11-13 — BLOCKED (batch): too large for one unattended session. The `Gpu` thread-locals (`GPU`, `TEXTURES`, `SCOPE`, `PIPELINE` in `render.rs`; `ui_text.rs`; 8 `with_gpu` calls in `app.rs`) are reached through free functions (`draw_inline`, `GlSink`, `render_to`, ~90 uses of `Batch`/`MeshSink` in `render.rs`, 12 in `ui_shapes.rs`, 7 in `minimap.rs`), and the drawing still calls macroquad `window_width`/`screen_height`. Making all of it take `&mut G` is a signature change through the whole shell with no compiling intermediate stub. Only the spec step is committed. Recommended fix: split into T164a (a `RenderCtx<G>` that owns the `Gpu`, textures, pipeline and scope; migrate `render.rs` and `ui_text.rs`), T164b (`minimap`, `toolbar`, `export`, `app.rs` resource calls and the window size via `Platform`), T164c (generic `run<P, G>`, `main` `match`, widened source scan, AC-4 by hand), each in its own session.
