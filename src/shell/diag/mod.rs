@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError, TryLockError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use macroquad::miniquad::diag as backend_diag;
+use draw_sys::platform::BackendRecord;
 
 use crate::shell::diag::detect::{BackendWatch, IdleWatch, Limiter, Topic, Verdict};
 use crate::shell::diag::event::{Anomaly, Event, Record, from_backend};
@@ -26,7 +26,7 @@ use crate::shell::diag::file::{
     LOG_CAP, MAX_DUMPS, SessionLog, dump_name, log_line, prune_dumps, utc,
 };
 use crate::shell::diag::ring::Ring;
-use crate::shell::{backend, crash};
+use crate::shell::{backend, crash, platform_mq};
 
 /// Name of the session log in the state directory.
 pub const LOG_FILE: &str = "draw.log";
@@ -532,11 +532,8 @@ pub fn record_all(records: &mut Vec<(Instant, Event)>) {
 /// Moves the backend's queued events into `out` as records, keys hidden
 /// by the privacy rule, with a [`Event::BackendDropped`] record if the
 /// queue dropped any. `buffer` is reused between frames.
-pub fn take_backend(
-    buffer: &mut Vec<backend_diag::BackendRecord>,
-    out: &mut Vec<(Instant, Event)>,
-) {
-    let dropped = backend_diag::take_events_into(buffer);
+pub fn take_backend(buffer: &mut Vec<BackendRecord>, out: &mut Vec<(Instant, Event)>) {
+    let dropped = platform_mq::take_backend_into(buffer);
     if dropped > 0 {
         let count = u32::try_from(dropped).unwrap_or(u32::MAX);
         out.push((Instant::now(), Event::BackendDropped { count }));
@@ -588,8 +585,8 @@ mod tests {
     use super::*;
     use crate::shell::diag::event::{Anomaly, CharClass, Event, FrameKind, KeyTag};
     use crate::shell::input_map::Collector;
-    use macroquad::input::KeyCode;
-    use macroquad::miniquad::{EventHandler, KeyMods};
+    use crate::shell::platform_mq::keys::{Drive, KeyCode};
+    use draw_sys::platform::RawMods as KeyMods;
     use std::io;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
@@ -599,7 +596,6 @@ mod tests {
         shift: false,
         ctrl: false,
         alt: false,
-        logo: false,
     };
 
     /// An empty directory of its own for one test.

@@ -1,7 +1,8 @@
-//! Translates macroquad input into core input events.
+//! Translates platform input into core input events.
 //!
 //! The shell registers a macroquad input subscriber and replays the raw
-//! miniquad events into a [`Collector`] every frame (ADR-T12-1). Unlike
+//! events, as `RawEvent`s, into a [`Collector`] every frame (ADR-T12-1,
+//! ADR-T162-1; `platform_mq` translates miniquad's). Unlike
 //! macroquad's polled state, this keeps every pointer sample and every click,
 //! in arrival order. Raw positions are physical pixels; [`to_logical`] turns
 //! them into the logical pixels used by the editor and the renderer.
@@ -9,93 +10,107 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use macroquad::input::{KeyCode, MouseButton};
-use macroquad::miniquad::{EventHandler, KeyMods};
+use draw_sys::platform::{BackendEvent, RawButton, RawEvent, RawKey, RawMods};
 
 use crate::core::command::Command;
 use crate::core::geom::Vec2;
 use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
 use crate::core::keymap::{self, KeyChord};
 use crate::shell::diag::detect::KeyWatch;
-use crate::shell::diag::event::{Event, char_class, key_tag};
+use crate::shell::diag::event::{Event, char_class, from_backend, key_tag};
 
-/// The editor key for a macroquad key code, `None` for keys the editor ignores.
+/// The editor letter key for `letter`, `None` outside `A..=Z`.
+const fn letter_key(letter: char) -> Option<Key> {
+    Some(match letter {
+        'A' => Key::A,
+        'B' => Key::B,
+        'C' => Key::C,
+        'D' => Key::D,
+        'E' => Key::E,
+        'F' => Key::F,
+        'G' => Key::G,
+        'H' => Key::H,
+        'I' => Key::I,
+        'J' => Key::J,
+        'K' => Key::K,
+        'L' => Key::L,
+        'M' => Key::M,
+        'N' => Key::N,
+        'O' => Key::O,
+        'P' => Key::P,
+        'Q' => Key::Q,
+        'R' => Key::R,
+        'S' => Key::S,
+        'T' => Key::T,
+        'U' => Key::U,
+        'V' => Key::V,
+        'W' => Key::W,
+        'X' => Key::X,
+        'Y' => Key::Y,
+        'Z' => Key::Z,
+        _ => return None,
+    })
+}
+
+/// The editor digit key for `digit`, `None` above 9.
+const fn digit_key(digit: u8) -> Option<Key> {
+    Some(match digit {
+        0 => Key::Digit0,
+        1 => Key::Digit1,
+        2 => Key::Digit2,
+        3 => Key::Digit3,
+        4 => Key::Digit4,
+        5 => Key::Digit5,
+        6 => Key::Digit6,
+        7 => Key::Digit7,
+        8 => Key::Digit8,
+        9 => Key::Digit9,
+        _ => return None,
+    })
+}
+
+/// The editor key for a platform key, `None` for keys the editor ignores.
 #[must_use]
 #[allow(
     clippy::wildcard_enum_match_arm,
-    reason = "KeyCode is miniquad's, about 120 keys; ADR-T131-1"
+    reason = "the modifier keys and `Other` have no editor key; ADR-T131-1"
 )]
-pub fn map_key(code: KeyCode) -> Option<Key> {
-    let key = match code {
-        KeyCode::A => Key::A,
-        KeyCode::B => Key::B,
-        KeyCode::C => Key::C,
-        KeyCode::D => Key::D,
-        KeyCode::E => Key::E,
-        KeyCode::F => Key::F,
-        KeyCode::G => Key::G,
-        KeyCode::H => Key::H,
-        KeyCode::I => Key::I,
-        KeyCode::J => Key::J,
-        KeyCode::K => Key::K,
-        KeyCode::L => Key::L,
-        KeyCode::M => Key::M,
-        KeyCode::N => Key::N,
-        KeyCode::O => Key::O,
-        KeyCode::P => Key::P,
-        KeyCode::Q => Key::Q,
-        KeyCode::R => Key::R,
-        KeyCode::S => Key::S,
-        KeyCode::T => Key::T,
-        KeyCode::U => Key::U,
-        KeyCode::V => Key::V,
-        KeyCode::W => Key::W,
-        KeyCode::X => Key::X,
-        KeyCode::Y => Key::Y,
-        KeyCode::Z => Key::Z,
-        KeyCode::Key0 => Key::Digit0,
-        KeyCode::Key1 => Key::Digit1,
-        KeyCode::Key2 => Key::Digit2,
-        KeyCode::Key3 => Key::Digit3,
-        KeyCode::Key4 => Key::Digit4,
-        KeyCode::Key5 => Key::Digit5,
-        KeyCode::Key6 => Key::Digit6,
-        KeyCode::Key7 => Key::Digit7,
-        KeyCode::Key8 => Key::Digit8,
-        KeyCode::Key9 => Key::Digit9,
-        KeyCode::Delete => Key::Delete,
-        KeyCode::Backspace => Key::Backspace,
-        KeyCode::Escape => Key::Escape,
-        KeyCode::Space => Key::Space,
-        KeyCode::Tab => Key::Tab,
-        KeyCode::LeftBracket => Key::BracketLeft,
-        KeyCode::RightBracket => Key::BracketRight,
-        KeyCode::Left => Key::ArrowLeft,
-        KeyCode::Right => Key::ArrowRight,
-        KeyCode::Up => Key::ArrowUp,
-        KeyCode::Down => Key::ArrowDown,
-        KeyCode::Enter | KeyCode::KpEnter => Key::Enter,
-        KeyCode::Home => Key::Home,
-        KeyCode::End => Key::End,
-        _ => return None,
-    };
-    Some(key)
-}
-
-/// The editor button for a mouse button, `None` for unknown buttons.
-#[must_use]
-pub fn map_button(button: MouseButton) -> Option<PointerButton> {
-    match button {
-        MouseButton::Left => Some(PointerButton::Left),
-        MouseButton::Middle => Some(PointerButton::Middle),
-        MouseButton::Right => Some(PointerButton::Right),
-        MouseButton::Unknown => None,
+pub fn map_key(code: RawKey) -> Option<Key> {
+    match code {
+        RawKey::Letter(letter) => letter_key(letter),
+        RawKey::Digit(digit) => digit_key(digit),
+        RawKey::Delete => Some(Key::Delete),
+        RawKey::Backspace => Some(Key::Backspace),
+        RawKey::Escape => Some(Key::Escape),
+        RawKey::Space => Some(Key::Space),
+        RawKey::Tab => Some(Key::Tab),
+        RawKey::BracketLeft => Some(Key::BracketLeft),
+        RawKey::BracketRight => Some(Key::BracketRight),
+        RawKey::ArrowLeft => Some(Key::ArrowLeft),
+        RawKey::ArrowRight => Some(Key::ArrowRight),
+        RawKey::ArrowUp => Some(Key::ArrowUp),
+        RawKey::ArrowDown => Some(Key::ArrowDown),
+        RawKey::Enter => Some(Key::Enter),
+        RawKey::Home => Some(Key::Home),
+        RawKey::End => Some(Key::End),
+        _ => None,
     }
 }
 
-/// Editor modifiers for miniquad's; the logo key is dropped.
+/// The editor button for a platform button, `None` for unknown buttons.
 #[must_use]
-pub fn map_mods(mods: KeyMods) -> Modifiers {
+pub fn map_button(button: RawButton) -> Option<PointerButton> {
+    match button {
+        RawButton::Left => Some(PointerButton::Left),
+        RawButton::Middle => Some(PointerButton::Middle),
+        RawButton::Right => Some(PointerButton::Right),
+        RawButton::Other => None,
+    }
+}
+
+/// Editor modifiers for the platform's.
+#[must_use]
+pub const fn map_mods(mods: RawMods) -> Modifiers {
     Modifiers {
         shift: mods.shift,
         ctrl: mods.ctrl,
@@ -167,16 +182,16 @@ impl HeldMods {
     /// Records a modifier key going down (`true`) or up; other keys are ignored.
     #[allow(
         clippy::wildcard_enum_match_arm,
-        reason = "KeyCode is miniquad's, about 120 keys; ADR-T131-1"
+        reason = "only the six modifier keys matter; ADR-T131-1"
     )]
-    fn set(&mut self, code: KeyCode, down: bool) {
+    fn set(&mut self, code: RawKey, down: bool) {
         let bit = match code {
-            KeyCode::LeftShift => Self::LEFT_SHIFT,
-            KeyCode::RightShift => Self::RIGHT_SHIFT,
-            KeyCode::LeftControl => Self::LEFT_CTRL,
-            KeyCode::RightControl => Self::RIGHT_CTRL,
-            KeyCode::LeftAlt => Self::LEFT_ALT,
-            KeyCode::RightAlt => Self::RIGHT_ALT,
+            RawKey::LeftShift => Self::LEFT_SHIFT,
+            RawKey::RightShift => Self::RIGHT_SHIFT,
+            RawKey::LeftControl => Self::LEFT_CTRL,
+            RawKey::RightControl => Self::RIGHT_CTRL,
+            RawKey::LeftAlt => Self::LEFT_ALT,
+            RawKey::RightAlt => Self::RIGHT_ALT,
             _ => return,
         };
         if down {
@@ -225,7 +240,7 @@ struct HeldRelease {
     last_move: Option<InputEvent>,
 }
 
-/// Collects raw miniquad events as [`InputEvent`]s in arrival order.
+/// Collects platform events as [`InputEvent`]s in arrival order.
 ///
 /// Pointer events carry the modifiers whose keys are held (pointer events
 /// have none of their own); key and character events carry the modifiers
@@ -386,19 +401,54 @@ impl Collector {
         pressure.is_some()
     }
 
-    /// Converts a physical position and remembers it as the pointer.
-    fn track(&mut self, x: f32, y: f32) -> Vec2 {
-        self.pointer = to_logical(x, y, self.dpi);
-        self.pointer
+    /// Takes one platform event, in arrival order (ADR-T162-1).
+    pub fn handle(&mut self, event: RawEvent) {
+        match event {
+            RawEvent::Key {
+                key,
+                mods,
+                down: true,
+                repeat,
+            } => self.key_down(key, mods, repeat),
+            RawEvent::Key {
+                key,
+                mods,
+                down: false,
+                ..
+            } => self.key_up(key, mods),
+            RawEvent::Char { ch, mods, repeat } => self.char(ch, mods, repeat),
+            RawEvent::PointerMove { x, y } => self.pointer_move(x, y),
+            RawEvent::Button {
+                button,
+                x,
+                y,
+                down: true,
+            } => self.button_down(button, x, y),
+            RawEvent::Button {
+                button,
+                x,
+                y,
+                down: false,
+            } => self.button_up(button, x, y),
+            RawEvent::Wheel { dy, .. } => self.wheel(dy),
+            RawEvent::Tablet { x, y, pressure } => self.pen.push_back(PenSample {
+                pos: Vec2::new(x, y),
+                pressure,
+            }),
+            RawEvent::Backend(record) => {
+                if matches!(
+                    record.event,
+                    BackendEvent::KeyboardEnter | BackendEvent::KeyboardLeave
+                ) {
+                    self.focus_changed();
+                }
+                self.records.push((record.at, from_backend(record.event)));
+            }
+            RawEvent::Resize(_) | RawEvent::Focus(_) | RawEvent::Seat(_) => {}
+        }
     }
-}
 
-impl EventHandler for Collector {
-    fn update(&mut self) {}
-
-    fn draw(&mut self) {}
-
-    fn mouse_motion_event(&mut self, x: f32, y: f32) {
+    fn pointer_move(&mut self, x: f32, y: f32) {
         self.moves = self.moves.saturating_add(1);
         self.pair_pen(x, y);
         let pos = self.track(x, y);
@@ -410,7 +460,7 @@ impl EventHandler for Collector {
         }
     }
 
-    fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
+    fn wheel(&mut self, y: f32) {
         self.record(Event::Wheel);
         self.release_bounce();
         if y != 0.0 {
@@ -421,7 +471,7 @@ impl EventHandler for Collector {
         }
     }
 
-    fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+    fn button_down(&mut self, button: RawButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
             self.record(Event::PointerDown(button));
@@ -442,7 +492,7 @@ impl EventHandler for Collector {
         }
     }
 
-    fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+    fn button_up(&mut self, button: RawButton, x: f32, y: f32) {
         let pos = self.track(x, y);
         if let Some(button) = map_button(button) {
             self.record(Event::PointerUp(button));
@@ -462,7 +512,7 @@ impl EventHandler for Collector {
         }
     }
 
-    fn key_down_event(&mut self, code: KeyCode, mods: KeyMods, repeat: bool) {
+    fn key_down(&mut self, code: RawKey, mods: RawMods, repeat: bool) {
         self.record(Event::KeyDown {
             key: key_tag(code, mods),
             repeat,
@@ -486,7 +536,7 @@ impl EventHandler for Collector {
         }
     }
 
-    fn char_event(&mut self, ch: char, mods: KeyMods, repeat: bool) {
+    fn char(&mut self, ch: char, mods: RawMods, repeat: bool) {
         self.record(Event::Char {
             class: char_class(ch),
             repeat,
@@ -499,7 +549,7 @@ impl EventHandler for Collector {
         self.events.push(InputEvent::Char { ch, mods });
     }
 
-    fn key_up_event(&mut self, code: KeyCode, mods: KeyMods) {
+    fn key_up(&mut self, code: RawKey, mods: RawMods) {
         self.record(Event::KeyUp {
             key: key_tag(code, mods),
         });
@@ -511,6 +561,12 @@ impl EventHandler for Collector {
             self.events.push(InputEvent::KeyUp { key, mods });
         }
     }
+
+    /// Converts a physical position and remembers it as the pointer.
+    fn track(&mut self, x: f32, y: f32) -> Vec2 {
+        self.pointer = to_logical(x, y, self.dpi);
+        self.pointer
+    }
 }
 
 #[cfg(test)]
@@ -518,8 +574,8 @@ mod tests {
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
-    use macroquad::input::{KeyCode, MouseButton};
-    use macroquad::miniquad::{EventHandler, KeyMods};
+    use crate::shell::platform_mq::keys::{Drive, KeyCode};
+    use draw_sys::platform::{RawButton as MouseButton, RawMods as KeyMods};
 
     const EPS: f32 = 1e-5;
 
@@ -527,7 +583,6 @@ mod tests {
         shift: false,
         ctrl: false,
         alt: false,
-        logo: false,
     };
 
     const CTRL: Modifiers = Modifiers {
@@ -653,17 +708,16 @@ mod tests {
         assert_eq!(map_button(MouseButton::Left), Some(PointerButton::Left));
         assert_eq!(map_button(MouseButton::Middle), Some(PointerButton::Middle));
         assert_eq!(map_button(MouseButton::Right), Some(PointerButton::Right));
-        assert_eq!(map_button(MouseButton::Unknown), None);
+        assert_eq!(map_button(MouseButton::Other), None);
     }
 
     #[test]
-    fn map_mods_drops_logo() {
+    fn map_mods_keeps_shift_ctrl_and_alt() {
         // Arrange
         let mods = KeyMods {
             shift: true,
             ctrl: false,
             alt: true,
-            logo: true,
         };
         // Act
         let mapped = map_mods(mods);
@@ -890,8 +944,8 @@ mod tests {
         // Act
         c.key_down_event(KeyCode::F5, NO_MODS, false);
         c.key_up_event(KeyCode::F6, NO_MODS);
-        c.mouse_button_down_event(MouseButton::Unknown, 1.0, 1.0);
-        c.mouse_button_up_event(MouseButton::Unknown, 1.0, 1.0);
+        c.mouse_button_down_event(MouseButton::Other, 1.0, 1.0);
+        c.mouse_button_up_event(MouseButton::Other, 1.0, 1.0);
         // Assert
         assert_eq!(drain(&mut c), []);
     }
@@ -1139,7 +1193,7 @@ mod tests {
 
     // ---- T40 copied wl_pointer input on Wayland ---------------------------
 
-    use macroquad::miniquad::pen::pointer_shadowed_by_pen;
+    use draw_sys::platform::pointer_shadowed_by_pen;
 
     /// A `wl_pointer.motion` the compositor copied from the pen, as the
     /// Wayland backend forwards it given each tool's proximity.
@@ -1468,7 +1522,7 @@ mod tests {
 
     // ---- T44 one device per Wayland seat capability ----------------------
 
-    use macroquad::miniquad::seat::{DeviceChange, device_change, has_release_request};
+    use draw_sys::platform::{DeviceChange, device_change, has_release_request};
 
     /// Replays `capabilities` events for one device, each saying whether
     /// the capability is announced, as the Wayland backend applies them.
@@ -1728,6 +1782,81 @@ mod tests {
 
         // Assert
         let recorded = records(&mut collector);
+        assert!(
+            !recorded.iter().any(|e| matches!(e, Event::Anomaly(_))),
+            "{recorded:?}"
+        );
+    }
+
+    // ---- T162 the collector takes RawEvent -------------------------------
+
+    use draw_sys::platform::{BackendEvent, BackendRecord, RawEvent};
+
+    #[test]
+    fn collector_tablet_event_pairs_pressure_with_pointer_event() {
+        // Arrange
+        let mut c = Collector::new();
+
+        // Act: the pen sample, then the pointer move at the same spot.
+        c.handle(RawEvent::Tablet {
+            x: 5.0,
+            y: 6.0,
+            pressure: 0.5,
+        });
+        c.handle(RawEvent::PointerMove { x: 5.0, y: 6.0 });
+        let events = drain(&mut c);
+
+        // Assert
+        assert_eq!(
+            events,
+            [
+                InputEvent::Pressure {
+                    pressure: Some(0.5)
+                },
+                InputEvent::PointerMove {
+                    pos: Vec2::new(5.0, 6.0),
+                    mods: Modifiers::NONE,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn collector_backend_event_is_recorded_at_its_time() {
+        // Arrange
+        use crate::shell::diag::event::Event;
+        let mut c = Collector::new();
+        let at = Instant::now();
+
+        // Act
+        c.handle(RawEvent::Backend(BackendRecord {
+            at,
+            event: BackendEvent::ProximityIn,
+        }));
+        let mut out = Vec::new();
+        c.take_records(&mut out);
+
+        // Assert
+        assert_eq!(out, [(at, Event::ProximityIn)]);
+        assert_eq!(drain(&mut c), []);
+    }
+
+    #[test]
+    fn collector_backend_focus_event_forgets_held_keys() {
+        // Arrange
+        use crate::shell::diag::event::Event;
+        let mut c = Collector::new();
+        c.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Act
+        c.handle(RawEvent::Backend(BackendRecord {
+            at: Instant::now(),
+            event: BackendEvent::KeyboardLeave,
+        }));
+        c.key_down_event(KeyCode::A, NO_MODS, false);
+
+        // Assert
+        let recorded = records(&mut c);
         assert!(
             !recorded.iter().any(|e| matches!(e, Event::Anomaly(_))),
             "{recorded:?}"
