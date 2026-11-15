@@ -132,7 +132,6 @@ fn run_session(frames: Vec<Vec<RawEvent>>) -> Stats {
     ));
     let mut cx = Context::from_waker(Waker::noop());
     assert_eq!(session.as_mut().poll(&mut cx), Poll::Pending);
-    drop(session);
     let stats = stats.take();
     assert_eq!(stats.frames, count, "the loop stopped asking for frames");
     stats
@@ -149,7 +148,14 @@ fn is_forbidden(event: &RawEvent) -> bool {
         // `?` opens the shortcut sheet, which measures text with
         // macroquad's font (T149).
         RawEvent::Char { ch, mods, .. } => *ch == '\t' || *ch == '?' || (mods.ctrl && mods.shift),
-        _ => false,
+        RawEvent::PointerMove { .. }
+        | RawEvent::Button { .. }
+        | RawEvent::Wheel { .. }
+        | RawEvent::Tablet { .. }
+        | RawEvent::Resize(_)
+        | RawEvent::Focus(_)
+        | RawEvent::Seat(_)
+        | RawEvent::Backend(_) => false,
     }
 }
 
@@ -176,7 +182,14 @@ fn sanitize(event: RawEvent) -> RawEvent {
             mods: RawMods::default(),
             repeat,
         },
-        other => other,
+        other @ (RawEvent::PointerMove { .. }
+        | RawEvent::Button { .. }
+        | RawEvent::Wheel { .. }
+        | RawEvent::Tablet { .. }
+        | RawEvent::Resize(_)
+        | RawEvent::Focus(_)
+        | RawEvent::Seat(_)
+        | RawEvent::Backend(_)) => other,
     }
 }
 
