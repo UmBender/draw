@@ -1,10 +1,10 @@
 ---
 id: T143
 title: Wayland backend with window, keyboard, pointer, tablet and clipboard
-status: todo
+status: done
 wave: 70
 branch: task/T143-wayland-backend-window-keyboard-pointer-
-depends_on: [T142, T145]
+depends_on: [T168, T169, T170, T171]
 adrs: []
 feature: ""
 tutorial: ""
@@ -44,12 +44,13 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T143): specify the Wayland backend`
-- [ ] tests — `test(T143): add failing tests for the Wayland platform`
-- [ ] models — `feat(T143): add the protocol state types`
-- [ ] behaviour — `feat(T143): implement the Wayland platform`
-- [ ] quality — `chore(T143): pass clippy and rustfmt`
+- [x] spec — moved to the slices
+- [x] tests — moved to the slices
+- [x] models — moved to the slices
+- [x] behaviour — moved to the slices
+- [x] quality — moved to the slices
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-15 — closed by the owner before the batch (as large as T156 and T164, which blocked): split into [[T168 Wayland connection, window and protocol states]] (generated protocol code checked in, window, EGL on it, frame callbacks, type states; AC-2), [[T169 Wayland keyboard, pointer and seat]], [[T170 Wayland tablet and clipboard]] (AC-1 with T169) and [[T171 Wayland platform in main and the e2e suite]] (AC-3).

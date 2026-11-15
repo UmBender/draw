@@ -35,7 +35,8 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `tests/shell_fuzz.rs`
+- `tests/shell_fuzz.rs`, `tests/shell_fuzz.proptest-regressions`
+- `.github/workflows/nightly.yml` (the 20000-case run)
 - this note
 
 ## Subtasks (one commit each)
@@ -47,3 +48,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-15 — owner decisions for the batch: the nightly job may be edited for the 20000 cases; the fuzz starts with the toolbar hidden (Tab), as the T167 frame test does, because the menu label measure needs a macroquad context until [[T149 Cutover removing miniquad and macroquad]].

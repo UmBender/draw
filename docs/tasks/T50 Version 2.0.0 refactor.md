@@ -4,7 +4,7 @@ title: Version 2.0.0 refactor
 status: in-progress
 wave: 63
 branch: task/T50-v2-refactor
-depends_on: [T46, T47, T48, T49, T51, T52, T53, T118, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167]
+depends_on: [T46, T47, T48, T49, T51, T52, T53, T118, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171, T172]
 adrs: []
 feature: ""
 tutorial: ""
@@ -130,11 +130,16 @@ child tasks; it does not implement code.
 - [ ] [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]]
 - [ ] [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]]
 - [ ] [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]]
+  - [ ] [[T168 Wayland connection, window and protocol states]]
+  - [ ] [[T169 Wayland keyboard, pointer and seat]]
+  - [ ] [[T170 Wayland tablet and clipboard]]
+  - [ ] [[T171 Wayland platform in main and the e2e suite]]
 - [ ] [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]]
 
 **Renderer, pacing, threads**
 
 - [ ] [[T146 Retained renderer in draw-gfx]]
+- [ ] [[T172 Retained renderer in the app]]
 - [ ] [[T147 Frame pacing by the compositor and idle at zero]]
 - [ ] [[T148 Multithreaded tessellation, only with a measured gain]]
 - [ ] [[T152 Command line and DRAW_* variables audit]]
