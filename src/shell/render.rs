@@ -7,7 +7,7 @@
 //! submitted with one `draw_mesh` per few thousand indices instead of one
 //! `draw_*` call per triangle (ADR-T24-3). Grids and labels follow
 //! ADR-T16-1. Text blocks and labels use the embedded monospaced font
-//! through the glyph atlas set with [`set_glyph_atlas`], each glyph a quad
+//! through the glyph atlas set with [`RenderCtx::set_glyph_atlas`], each glyph a quad
 //! in the same batch as the shapes at its
 //! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1, ADR-T32-1,
 //! ADR-T32-2).

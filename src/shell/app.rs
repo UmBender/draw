@@ -49,6 +49,7 @@ use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
 use crate::shell::file::{self, Opened};
 use crate::shell::glyphs::{FontOutlines, GlyphAtlas};
+use crate::shell::gpu_mq::MqGpu;
 use crate::shell::gpu_mq::{MqTarget, MqTexture};
 use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, paste_event, paste_grid_event, wants_clipboard,
@@ -57,7 +58,6 @@ use crate::shell::input_map::{
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::Options;
 use crate::shell::platform_mq::MqPlatform;
-use crate::shell::gpu_mq::MqGpu;
 use crate::shell::render::{
     self, Batch, CtxSink, TextStats, gfx_color, hex_color, hex_color_alpha, to_mq_color,
 };
@@ -994,18 +994,26 @@ fn render_selection(
 ) -> Result<Vec<u8>, ExportError> {
     let camera = Camera::new(plan.world.min, plan.scale);
     let extent = Vec2::new(plan.size.0 as f32, plan.size.1 as f32);
-    let target = frame.new_target(ctx, plan.size).ok_or(ExportError::Pixels)?;
+    let target = frame
+        .new_target(ctx, plan.size)
+        .ok_or(ExportError::Pixels)?;
     // Start from an atlas with room, so no glyph is dropped.
     let _ = render::begin_text_frame();
     let selected: HashSet<ShapeId> = editor.selection().iter().copied().collect();
-    render_into(ctx, &target, extent, Some(hex_color(theme::CANVAS)), |ctx| {
-        let shapes = editor
-            .document()
-            .shapes()
-            .filter(|(id, _)| selected.contains(id))
-            .map(|(_, shape)| shape);
-        ctx.draw_shapes(shapes, &camera, extent);
-    });
+    render_into(
+        ctx,
+        &target,
+        extent,
+        Some(hex_color(theme::CANVAS)),
+        |ctx| {
+            let shapes = editor
+                .document()
+                .shapes()
+                .filter(|(id, _)| selected.contains(id))
+                .map(|(_, shape)| shape);
+            ctx.draw_shapes(shapes, &camera, extent);
+        },
+    );
     if render::text_overflowed() {
         return Err(ExportError::Pixels);
     }

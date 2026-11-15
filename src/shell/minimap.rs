@@ -16,9 +16,7 @@ use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::palette;
 use crate::core::shape::{Shape, grid_cell_rect};
 use crate::shell::gpu_mq::MqTexture;
-use crate::shell::render::{
-    Batch, CtxSink, MeshSink, hex_color, hex_color_alpha, to_mq_color,
-};
+use crate::shell::render::{Batch, CtxSink, MeshSink, hex_color, hex_color_alpha, to_mq_color};
 use crate::shell::render_ctx::MqCtx;
 use crate::theme;
 
