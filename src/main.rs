@@ -7,9 +7,19 @@
 
 use draw::shell::app;
 use draw::shell::diag::{self, Level};
+use draw::shell::gpu_mq::MqGpu;
 use draw::shell::options::{self, Parsed};
+use draw::shell::platform_mq::MqPlatform;
 use draw::shell::{backend, tablet};
 use macroquad::miniquad::signal;
+
+/// The pair of interpreters the app runs over; `main` matches on it. The
+/// native Wayland and X11 backends (T143, T144) add arms.
+#[derive(Debug, Clone, Copy)]
+enum Runtime {
+    /// macroquad's window, input and GL.
+    Macroquad,
+}
 
 /// The text of `--version`.
 fn version_text() -> String {
@@ -72,10 +82,16 @@ fn main() {
     if !signal::install_quit() {
         diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
     }
-    macroquad::Window::from_config(
-        app::window_conf(backend),
-        app::run(options, backend, tablet),
-    );
+    let runtime = Runtime::Macroquad;
+    match runtime {
+        // The window and the GPU exist only inside macroquad's loop, so the
+        // interpreters are made there.
+        Runtime::Macroquad => {
+            macroquad::Window::from_config(app::window_conf(backend), async move {
+                app::run(MqPlatform::open(), MqGpu::new(), options, backend, tablet).await;
+            });
+        }
+    }
     let received = signal::received();
     if let Some(quit) = received {
         diag::log(Level::Info, &app::signal_line(quit));
@@ -93,6 +109,24 @@ mod tests {
     /// The prefix of the variables draw once read, split so the source guard
     /// `tests/no_draw_env.rs` does not match it.
     const OLD_PREFIX: &str = concat!("DRAW", "_");
+
+    /// AC-1 of T167: `main` picks the interpreters with a `match` and runs
+    /// the generic `app::run`.
+    #[test]
+    fn main_runs_generic_run_through_a_match() {
+        let source = include_str!("main.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+
+        for needed in [
+            "match runtime",
+            "app::run(",
+            "MqPlatform::open()",
+            "MqGpu::new()",
+        ] {
+            assert!(production.contains(needed), "{needed} missing");
+        }
+        assert!(!production.contains("run_on"), "run_on is still used");
+    }
 
     #[test]
     fn help_lists_the_flags() {

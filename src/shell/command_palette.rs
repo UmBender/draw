@@ -11,8 +11,9 @@ use macroquad::color::Color;
 use crate::core::command_palette::{CommandPalette, VISIBLE_ROWS, chord_label, visible_window};
 use crate::core::geom::{Aabb, Vec2};
 use crate::shell::render::{hex_color, hex_color_alpha};
-use crate::shell::render_ctx::MqCtx;
+use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
+use draw_gfx::gpu::Gpu;
 
 /// Widest the panel gets, in pixels.
 const PANEL_WIDTH_PX: f32 = 520.0;
@@ -78,7 +79,7 @@ pub fn key_caps(widths: &[f32], right: f32) -> Vec<(f32, f32)> {
 }
 
 /// Draws the palette over the canvas of `viewport` pixels.
-pub fn draw(ctx: &mut MqCtx, palette: &CommandPalette, viewport: Vec2) {
+pub fn draw<G: Gpu>(ctx: &mut RenderCtx<G>, palette: &CommandPalette, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     ui_shapes::rect_xywh(
@@ -148,7 +149,7 @@ pub fn draw(ctx: &mut MqCtx, palette: &CommandPalette, viewport: Vec2) {
 
 /// Draws the keys of `label` as key caps ending at `right`, in the row
 /// starting at `y`.
-fn draw_key_caps(ctx: &mut MqCtx, label: &str, right: f32, y: f32) {
+fn draw_key_caps<G: Gpu>(ctx: &mut RenderCtx<G>, label: &str, right: f32, y: f32) {
     let keys = chord_keys(label);
     let widths: Vec<f32> = keys
         .iter()
@@ -184,7 +185,7 @@ fn draw_key_caps(ctx: &mut MqCtx, label: &str, right: f32, y: f32) {
 }
 
 /// Draws `label` vertically centred in the row starting at `y`.
-fn draw_row_text(ctx: &mut MqCtx, label: &str, x: f32, y: f32, color: Color) {
+fn draw_row_text<G: Gpu>(ctx: &mut RenderCtx<G>, label: &str, x: f32, y: f32, color: Color) {
     let size = ui_text::measure(label, TEXT_PX);
     ctx.draw_menu_label(
         label,

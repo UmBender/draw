@@ -16,9 +16,10 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
 use crate::shell::render::{Batch, CtxSink, hex_color, hex_color_alpha, to_mq_color};
-use crate::shell::render_ctx::MqCtx;
+use crate::shell::render_ctx::RenderCtx;
 use crate::shell::{ui_shapes, ui_text};
 use crate::theme;
+use draw_gfx::gpu::Gpu;
 
 /// Side of a square button in pixels.
 pub const BUTTON_PX: f32 = 32.0;
@@ -336,7 +337,7 @@ pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> 
 
 /// Draws one island: its translucent fill and its thin border ring
 /// (ADR-T126-1).
-fn draw_island(ctx: &mut MqCtx, frame: Aabb) {
+fn draw_island<G: Gpu>(ctx: &mut RenderCtx<G>, frame: Aabb) {
     ui_shapes::fill(
         ctx,
         frame,
@@ -354,7 +355,7 @@ fn draw_island(ctx: &mut MqCtx, frame: Aabb) {
 
 /// Draws the toolbar for `editor` in a viewport of `viewport` pixels, with
 /// the grid size flyout while the grid tool is active.
-pub fn draw(ctx: &mut MqCtx, editor: &Editor, viewport: Vec2) {
+pub fn draw<G: Gpu>(ctx: &mut RenderCtx<G>, editor: &Editor, viewport: Vec2) {
     for frame in islands(viewport) {
         draw_island(ctx, frame);
     }
@@ -446,7 +447,7 @@ pub fn page_look(editor: &Editor, page: usize) -> PageLook {
 }
 
 /// Draws the cell of page `page` (zero-based) in `rect`.
-fn draw_page_cell(ctx: &mut MqCtx, rect: Aabb, page: usize, look: PageLook) {
+fn draw_page_cell<G: Gpu>(ctx: &mut RenderCtx<G>, rect: Aabb, page: usize, look: PageLook) {
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     let label = (page + 1).to_string();
     match look {
@@ -476,7 +477,7 @@ fn draw_page_cell(ctx: &mut MqCtx, rect: Aabb, page: usize, look: PageLook) {
 
 /// Draws the grid size flyout with the current columns and rows of
 /// `editor`.
-fn draw_flyout(ctx: &mut MqCtx, editor: &Editor, viewport: Vec2) {
+fn draw_flyout<G: Gpu>(ctx: &mut RenderCtx<G>, editor: &Editor, viewport: Vec2) {
     let fly = flyout_panel(viewport);
     draw_island(ctx, fly);
     let border = hex_color(theme::MENU_BORDER);
@@ -544,7 +545,14 @@ fn tool_label(tool: Tool) -> &'static str {
 }
 
 /// Draws a labelled button: a rounded fill and the bright accent when `on`.
-fn draw_toggle(ctx: &mut MqCtx, rect: Aabb, label: &str, on: bool, _accent: Color, text: Color) {
+fn draw_toggle<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
+    rect: Aabb,
+    label: &str,
+    on: bool,
+    _accent: Color,
+    text: Color,
+) {
     if on {
         ui_shapes::fill(
             ctx,
@@ -569,12 +577,18 @@ fn history_color(enabled: bool) -> Color {
 }
 
 /// Draws `label` centred in `rect`.
-fn draw_label(ctx: &mut MqCtx, rect: Aabb, label: &str, color: Color) {
+fn draw_label<G: Gpu>(ctx: &mut RenderCtx<G>, rect: Aabb, label: &str, color: Color) {
     draw_label_sized(ctx, rect, label, color, LABEL_SIZE);
 }
 
 /// Draws `label` centred in `rect` at `font_size` pixels.
-fn draw_label_sized(ctx: &mut MqCtx, rect: Aabb, label: &str, color: Color, font_size: u16) {
+fn draw_label_sized<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
+    rect: Aabb,
+    label: &str,
+    color: Color,
+    font_size: u16,
+) {
     let size = ui_text::measure(label, font_size);
     let c = rect.center();
     let x = c.x - size.width * 0.5;
@@ -583,7 +597,7 @@ fn draw_label_sized(ctx: &mut MqCtx, rect: Aabb, label: &str, color: Color, font
 }
 
 /// Draws a horizontal arrow in `rect`, pointing left (`dir < 0`) or right.
-fn draw_history_arrow(ctx: &mut MqCtx, rect: Aabb, dir: f32, color: Color) {
+fn draw_history_arrow<G: Gpu>(ctx: &mut RenderCtx<G>, rect: Aabb, dir: f32, color: Color) {
     let c = rect.center();
     let half = BUTTON_PX * 0.25;
     let head = BUTTON_PX * 0.2;

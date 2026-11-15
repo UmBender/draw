@@ -49,19 +49,16 @@ use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
 use crate::shell::file::{self, Opened};
 use crate::shell::glyphs::{FontOutlines, GlyphAtlas};
-use crate::shell::gpu_mq::MqGpu;
-use crate::shell::gpu_mq::{MqTarget, MqTexture};
 use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, paste_event, paste_grid_event, wants_clipboard,
     wants_grid_clipboard,
 };
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::Options;
-use crate::shell::platform_mq::MqPlatform;
 use crate::shell::render::{
     self, Batch, CtxSink, TextStats, gfx_color, hex_color, hex_color_alpha, to_mq_color,
 };
-use crate::shell::render_ctx::{MqCtx, RenderCtx};
+use crate::shell::render_ctx::RenderCtx;
 use crate::shell::sheet;
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -496,7 +493,7 @@ pub fn window_conf(backend: Backend) -> WindowSettings {
 }
 
 /// Loads the embedded fonts into the renderer's glyph atlas.
-fn load_fonts(ctx: &mut MqCtx) {
+fn load_fonts<G: Gpu>(ctx: &mut RenderCtx<G>) {
     match GlyphAtlas::new(TEXT_FONT) {
         // Unit tests prove both embedded fonts parse (ADR-T32-1, ADR-T33-1).
         Ok(atlas) => match atlas.with_math(MATH_FONT) {
@@ -563,12 +560,6 @@ fn input_collector(backend: Backend, tablet: &tablet::Choice) -> Collector {
         collector.set_bounce_window(PEN_BOUNCE_WINDOW);
     }
     collector
-}
-
-/// Runs the application until the window is closed, as `options` say, on
-/// `backend` and with the pen mode of `tablet` (ADR-T94-1, ADR-T154-1).
-pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
-    run_on(MqPlatform::open(), options, backend, tablet).await;
 }
 
 /// What one frame's input phase found.
@@ -667,9 +658,12 @@ fn gather_input<P: Platform>(
     }
 }
 
-/// [`run`] over any [`Platform`].
-pub async fn run_on<P: Platform>(
+/// Runs the application until the window is closed, over `platform` and
+/// `gpu`, as `options` say, on `backend` and with the pen mode of `tablet`
+/// (ADR-T94-1, ADR-T154-1). `main` picks the two interpreters.
+pub async fn run<P: Platform, G: Gpu>(
     mut platform: P,
+    gpu: G,
     options: Options,
     backend: Backend,
     tablet: tablet::Choice,
@@ -683,7 +677,7 @@ pub async fn run_on<P: Platform>(
         e2e: e2e_files,
         ..
     } = options;
-    let mut ctx = RenderCtx::new(MqGpu::new());
+    let mut ctx = RenderCtx::new(gpu);
     load_fonts(&mut ctx);
     let mut collector = input_collector(backend, &tablet);
     let mut editor = Editor::new().with_tap_slop(tablet.tap_slop_px());
@@ -763,7 +757,12 @@ pub async fn run_on<P: Platform>(
 /// Whether a PNG export is waiting after this frame's `effects`: asked now
 /// or before, and still allowed. A waiting export forces a fresh layer, never
 /// one left from an older camera (ADR-T92-2).
-fn arm_export(pending: bool, effects: &[Effect], editor: &Editor, frame: &mut CachedFrame) -> bool {
+fn arm_export<G: Gpu>(
+    pending: bool,
+    effects: &[Effect],
+    editor: &Editor,
+    frame: &mut CachedFrame<G>,
+) -> bool {
     let waiting = (pending || effects.contains(&Effect::ExportPng)) && editor.can_export();
     if waiting {
         frame.rerender = true;
@@ -776,12 +775,12 @@ fn arm_export(pending: bool, effects: &[Effect], editor: &Editor, frame: &mut Ca
 /// ADR-T108-1, ADR-T137-1). The PNG export is answered by the frame loop,
 /// which waits for a fresh layer; the other effects are not the editor's to
 /// queue.
-fn serve_effects<P: Platform>(
+fn serve_effects<P: Platform, G: Gpu>(
     platform: &mut P,
-    ctx: &mut MqCtx,
+    ctx: &mut RenderCtx<G>,
     effects: &[Effect],
     editor: &mut Editor,
-    frame: &mut CachedFrame,
+    frame: &mut CachedFrame<G>,
     svg_writes: &mut Vec<mpsc::Receiver<Result<PathBuf, ExportError>>>,
     save_path: &mut Option<PathBuf>,
 ) {
@@ -894,7 +893,7 @@ fn paste_clipboard<P: Platform>(
 
 /// Writes the view to a new PNG file in the home directory and logs the
 /// outcome; a failure never panics (ADR-T92-2).
-fn export_view(ctx: &mut MqCtx, frame: &CachedFrame) {
+fn export_view<G: Gpu>(ctx: &mut RenderCtx<G>, frame: &CachedFrame<G>) {
     let unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -965,11 +964,11 @@ fn log_finished_svg_writes<P: Platform>(
 
 /// Renders the selected shapes alone and offers them on the clipboard as a
 /// PNG; a failure is logged and never panics (ADR-T115-1).
-fn copy_selection_image<P: Platform>(
+fn copy_selection_image<P: Platform, G: Gpu>(
     platform: &mut P,
-    ctx: &mut MqCtx,
+    ctx: &mut RenderCtx<G>,
     editor: &Editor,
-    frame: &mut CachedFrame,
+    frame: &mut CachedFrame<G>,
     bounds: Aabb,
 ) {
     let Some(plan) = snapshot_image::plan(bounds, editor.camera().zoom()) else {
@@ -986,10 +985,10 @@ fn copy_selection_image<P: Platform>(
 }
 
 /// The selection of `editor` as RGBA rows from the top, `plan.size` pixels.
-fn render_selection(
-    ctx: &mut MqCtx,
+fn render_selection<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
     editor: &Editor,
-    frame: &CachedFrame,
+    frame: &CachedFrame<G>,
     plan: &ImagePlan,
 ) -> Result<Vec<u8>, ExportError> {
     let camera = Camera::new(plan.world.min, plan.scale);
@@ -1028,9 +1027,9 @@ fn render_selection(
 /// Lets the end-to-end hooks answer a pending sync once the frame is
 /// settled. Returns whether the loop must wake again, so the answer comes
 /// after the swap (ADR-T75-1).
-fn answer_sync(
+fn answer_sync<G: Gpu>(
     hooks: &mut e2e::Hooks,
-    frame: &CachedFrame,
+    frame: &CachedFrame<G>,
     presented: Option<(Redraw, Duration)>,
     editor: &Editor,
 ) -> bool {
@@ -1116,9 +1115,9 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
 /// multisampled render target the size of the framebuffer plus a margin,
 /// which macroquad resolves into a plain texture (ADR-T15-1, ADR-T24-1,
 /// ADR-T26-1). The overlay is drawn on the window every frame (ADR-T24-2).
-struct CachedFrame {
+struct CachedFrame<G: Gpu> {
     /// The document layer.
-    document: Option<MqTarget>,
+    document: Option<G::Target>,
     /// What `document` shows.
     key: Option<LayerKey>,
     /// Where `document` lies in window pixels at the camera in `key`.
@@ -1141,12 +1140,12 @@ struct CachedFrame {
     /// The last frame wants another one even without input.
     wake: bool,
     /// The minimap's overview of the shapes (ADR-T110-1).
-    overview: Option<MqTarget>,
+    overview: Option<G::Target>,
     /// What `overview` shows.
     overview_key: Option<OverviewKey>,
 }
 
-impl CachedFrame {
+impl<G: Gpu> CachedFrame<G> {
     /// An empty cache whose targets use `samples` per pixel; `timed` turns
     /// on the frame timer.
     fn new(samples: i32, timed: bool) -> Self {
@@ -1175,7 +1174,7 @@ impl CachedFrame {
     /// for the flight recorder (ADR-T47-1).
     fn present(
         &mut self,
-        ctx: &mut MqCtx,
+        ctx: &mut RenderCtx<G>,
         editor: &Editor,
         viewport: Vec2,
         dpi: f32,
@@ -1290,7 +1289,7 @@ impl CachedFrame {
 
     /// The window's part of the document layer, read back as RGBA rows from
     /// the top, and its size in physical pixels (ADR-T92-2).
-    fn read_view(&self, ctx: &mut MqCtx) -> Result<(Vec<u8>, (u32, u32)), ExportError> {
+    fn read_view(&self, ctx: &mut RenderCtx<G>) -> Result<(Vec<u8>, (u32, u32)), ExportError> {
         let (Some(document), Some(key)) = (&self.document, &self.key) else {
             return Err(ExportError::Pixels);
         };
@@ -1311,7 +1310,7 @@ impl CachedFrame {
     /// panning never renders it again (ADR-T110-1).
     fn update_overview(
         &mut self,
-        ctx: &mut MqCtx,
+        ctx: &mut RenderCtx<G>,
         editor: &Editor,
         map: &Minimap,
         dpi: f32,
@@ -1347,7 +1346,7 @@ impl CachedFrame {
     /// A render target of `size` physical pixels with this cache's sample
     /// count.
     /// `None` if the backend cannot make it.
-    fn new_target(&self, ctx: &mut MqCtx, size: (u32, u32)) -> Option<MqTarget> {
+    fn new_target(&self, ctx: &mut RenderCtx<G>, size: (u32, u32)) -> Option<G::Target> {
         let desc = frame_target_desc(size, self.samples);
         ctx.gpu_mut().create_target(desc).ok()
     }
@@ -1355,9 +1354,9 @@ impl CachedFrame {
 
 /// Blits the layer `document` over `dest` (if any), after switching its
 /// texture from the filter `current` to `wanted`.
-fn blit_layer(
-    ctx: &mut MqCtx,
-    document: &MqTarget,
+fn blit_layer<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
+    document: &G::Target,
     current: &mut Filter,
     wanted: Filter,
     dest: Option<Aabb>,
@@ -1376,7 +1375,7 @@ fn blit_layer(
 
 /// Draws a resolved layer `texture` stretched over `dest`, in window
 /// pixels.
-fn blit(ctx: &mut MqCtx, texture: &MqTexture, dest: Aabb) {
+fn blit<G: Gpu>(ctx: &mut RenderCtx<G>, texture: &G::Texture, dest: Aabb) {
     // GL textures start at the bottom row.
     ctx.draw_texture_quad(texture, dest, true);
 }
@@ -1400,12 +1399,12 @@ fn sanitize_dpi(dpi: f32) -> f32 {
 
 /// Runs `draw` with `target` as the destination, `viewport` logical pixels
 /// wide, cleared to `clear` first if given: one pass (ADR-T159-1).
-fn render_into(
-    ctx: &mut MqCtx,
-    target: &MqTarget,
+fn render_into<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
+    target: &G::Target,
     viewport: Vec2,
     clear: Option<Color>,
-    draw: impl FnOnce(&mut MqCtx),
+    draw: impl FnOnce(&mut RenderCtx<G>),
 ) {
     let view = View {
         width: viewport.x,
@@ -1418,8 +1417,8 @@ fn render_into(
 /// pixels: background, underlay and every shape the gesture in progress
 /// does not hide. With `from > 0` only the shapes from that index on are
 /// drawn over what the layer already holds (ADR-T24-3).
-fn draw_document(
-    ctx: &mut MqCtx,
+fn draw_document<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
     editor: &Editor,
     camera: &Camera,
     overlay: &Overlay,
@@ -1441,7 +1440,12 @@ fn draw_document(
 
 /// Draws what lies above the document: gesture overlay, guides, selection,
 /// marquee and toolbar.
-fn draw_overlay(ctx: &mut MqCtx, editor: &Editor, overlay: &Overlay, viewport: Vec2) {
+fn draw_overlay<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
+    editor: &Editor,
+    overlay: &Overlay,
+    viewport: Vec2,
+) {
     let camera = editor.camera();
     // The open text block shows its source, formulas untypeset (ADR-T30-1).
     let editing = editor.text_edit().map(TextEdit::shape);
@@ -1563,7 +1567,7 @@ impl LaserLayer {
 /// Draws the laser trail in window pixels, over everything: each piece a
 /// line [`laser::WIDTH_PX`] wide with a round end, in [`theme::RED`] at
 /// its opacity (ADR-T106-2).
-fn draw_laser(ctx: &mut MqCtx, trail: &[Segment]) {
+fn draw_laser<G: Gpu>(ctx: &mut RenderCtx<G>, trail: &[Segment]) {
     let radius = laser::WIDTH_PX / 2.0;
     let mut batch = Batch::new(CtxSink::new(ctx));
     for segment in trail.iter().filter(|s| s.alpha > 0.0) {
@@ -1686,6 +1690,93 @@ mod tests {
             .filter(|call| **call == PlatformCall::Window)
             .count();
         assert_eq!((frames, windows), (3, 3));
+    }
+
+    /// A platform that ends the loop: after `left` frames its `next_frame`
+    /// never completes, so the loop's future stays pending.
+    struct StopAfter {
+        inner: crate::shell::recording::RecordingPlatform,
+        left: usize,
+        frames: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl Platform for StopAfter {
+        fn poll(&mut self, out: &mut Vec<RawEvent>) {
+            self.inner.poll(out);
+        }
+        fn window(&mut self) -> WindowMetrics {
+            self.inner.window()
+        }
+        fn clipboard_text(&mut self) -> Option<String> {
+            self.inner.clipboard_text()
+        }
+        fn set_clipboard_text(&mut self, text: &str) {
+            self.inner.set_clipboard_text(text);
+        }
+        fn set_clipboard_png(&mut self, png: &[u8]) {
+            self.inner.set_clipboard_png(png);
+        }
+        fn schedule_update(&mut self) {
+            self.inner.schedule_update();
+        }
+        fn next_frame(&mut self) -> impl std::future::Future<Output = ()> {
+            let stop = self.left == 0;
+            self.left = self.left.saturating_sub(1);
+            if !stop {
+                self.frames.set(self.frames.get() + 1);
+            }
+            async move {
+                if stop {
+                    std::future::pending::<()>().await;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn run_over_recording_platform_and_gpu_draws_frames() {
+        use crate::shell::recording::{RecordingGpu, RecordingPlatform};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+        // Tab hides the toolbar: its labels are measured with macroquad's
+        // font (kept until T149), which needs a macroquad context.
+        let mut inner = RecordingPlatform::new(metrics);
+        inner.queue(RawEvent::Key {
+            key: draw_sys::platform::RawKey::Tab,
+            mods: draw_sys::platform::RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let platform = StopAfter {
+            inner,
+            left: 3,
+            frames: std::rc::Rc::clone(&frames),
+        };
+        let backend = Backend::X11;
+        let tablet = tablet::detect(crate::shell::options::TabletMode::Off);
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            RecordingGpu::default(),
+            Options::default(),
+            backend,
+            tablet
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        let polled = run.as_mut().poll(&mut cx);
+
+        // Assert
+        assert_eq!(polled, Poll::Pending);
+        assert_eq!(frames.get(), 3);
     }
 
     #[test]

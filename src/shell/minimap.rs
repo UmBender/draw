@@ -15,10 +15,10 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::palette;
 use crate::core::shape::{Shape, grid_cell_rect};
-use crate::shell::gpu_mq::MqTexture;
 use crate::shell::render::{Batch, CtxSink, MeshSink, hex_color, hex_color_alpha, to_mq_color};
-use crate::shell::render_ctx::MqCtx;
+use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
+use draw_gfx::gpu::Gpu;
 
 /// Content drawn smaller than this, in pixels on its longer side, gets a
 /// marker: the scaled-down overview can lose its lines.
@@ -107,7 +107,7 @@ fn square_in(center: Vec2, side: f32, area: Aabb) -> Aabb {
 /// Draws every shape of `editor`'s document as a schematic through
 /// `image`, into the current render target: lines [`LINE_PX`] wide, fills
 /// as areas, text blocks as bars, shapes below [`DOT_BELOW_PX`] as dots.
-pub fn draw_overview(ctx: &mut MqCtx, editor: &Editor, image: &Fit) {
+pub fn draw_overview<G: Gpu>(ctx: &mut RenderCtx<G>, editor: &Editor, image: &Fit) {
     let mut batch = Batch::new(CtxSink::new(ctx));
     for (_, shape) in editor.document().shapes() {
         if shape.is_finite() {
@@ -217,11 +217,11 @@ fn border<S: MeshSink>(batch: &mut Batch<S>, rect: Aabb, width: f32, color: Colo
 /// Draws the minimap on the window: the panel, the cached `overview`
 /// (its texture and the map it was rendered through), the content marker
 /// and the frame of the visible world rectangle `view`.
-pub fn draw_panel(
-    ctx: &mut MqCtx,
+pub fn draw_panel<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
     map: &Minimap,
     view: Aabb,
-    overview: Option<(&MqTexture, &Fit)>,
+    overview: Option<(&G::Texture, &Fit)>,
 ) {
     let panel = map.panel();
     let mut batch = Batch::new(CtxSink::new(ctx));
