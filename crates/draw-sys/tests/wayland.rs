@@ -78,7 +78,18 @@ fn wayland_window_configures_with_a_size() {
         .wait_configure()
         .unwrap();
 
-    assert_eq!(window.size(), (800, 600));
+    // Sway lets an unmapped window choose its size: the fallback is used.
+    let (width, height) = window.size();
+    assert!(width > 0 && height > 0);
+    // Once mapped, sway configures the tile: the whole 800x600 output.
+    let window = window.open_gl().unwrap();
+    window.swap().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while window.size() != (800, 600) {
+        assert!(Instant::now() < deadline, "size is {:?}", window.size());
+        conn.dispatch(Duration::from_millis(20)).unwrap();
+        window.apply_configure();
+    }
 }
 
 #[test]
@@ -162,11 +173,12 @@ fn wayland_output_scale_is_an_integer() {
     let mut platform = platform(&sway);
     sway.msg(&["output", "HEADLESS-1", "scale", "2"]);
 
-    pump_until(&mut platform, |p, _| {
-        ((p.window().scale - 2.0).abs() < f32::EPSILON).then_some(())
+    let metrics = pump_until(&mut platform, |p, _| {
+        let m = p.window();
+        ((m.scale - 2.0).abs() < f32::EPSILON && (m.width - 400.0).abs() < 0.5).then_some(m)
     });
 
-    assert!((platform.window().width - 400.0).abs() < 0.5);
+    assert!((metrics.height - 300.0).abs() < 0.5);
 }
 
 #[test]
