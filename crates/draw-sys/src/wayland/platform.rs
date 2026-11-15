@@ -2,7 +2,6 @@
 //! connection (T168). Keyboard, pointer and seats are T169, tablet and
 //! clipboard T170: until then those parts return nothing.
 
-use std::future::Future;
 use std::path::Path;
 use std::time::Duration;
 
@@ -31,11 +30,7 @@ impl WaylandPlatform {
     ///
     /// # Errors
     /// [`WaylandError`] from the connection, the window or the context.
-    pub fn connect(
-        socket: Option<&Path>,
-        title: &str,
-        app_id: &str,
-    ) -> Result<Self, WaylandError> {
+    pub fn connect(socket: Option<&Path>, title: &str, app_id: &str) -> Result<Self, WaylandError> {
         let connection = Connection::connect(socket)?;
         let window = connection
             .create_window(title, app_id)?
@@ -118,18 +113,16 @@ impl Platform for WaylandPlatform {
         let _ = self.connection.shared.dispatch(0);
     }
 
-    fn next_frame(&mut self) -> impl Future<Output = ()> {
-        async move {
-            self.window.request_frame();
-            // A failed present leaves the old frame on screen; the next
-            // frame tries again.
-            let _ = self.window.swap();
-            let window = &self.window;
-            let _ = self
-                .connection
-                .shared
-                .wait_until(|| !window.frame_pending(), FRAME_WAIT);
-            self.pump();
-        }
+    async fn next_frame(&mut self) {
+        self.window.request_frame();
+        // A failed present leaves the old frame on screen; the next frame
+        // tries again.
+        let _ = self.window.swap();
+        let window = &self.window;
+        let _ = self
+            .connection
+            .shared
+            .wait_until(|| !window.frame_pending(), FRAME_WAIT);
+        self.pump();
     }
 }

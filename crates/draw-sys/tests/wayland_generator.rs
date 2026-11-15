@@ -47,7 +47,11 @@ fn attributes(body: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut rest = body;
     while let Some(eq) = rest.find('=') {
-        let key = rest[..eq].split_whitespace().last().unwrap_or("").to_string();
+        let key = rest[..eq]
+            .split_whitespace()
+            .last()
+            .unwrap_or("")
+            .to_string();
         let after = &rest[eq + 1..];
         let Some(open) = after.find('"') else { break };
         let Some(len) = after[open + 1..].find('"') else {
@@ -61,7 +65,10 @@ fn attributes(body: &str) -> Vec<(String, String)> {
 }
 
 fn attr<'a>(attrs: &'a [(String, String)], key: &str) -> Option<&'a str> {
-    attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    attrs
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.as_str())
 }
 
 /// The tags of an XML text, comments and declarations skipped: the tag
@@ -241,20 +248,30 @@ const MARKER: &str = "wayland_window_configures_with_a_size";
 /// The Rust module of one interface.
 fn emit_interface(out: &mut String, iface: &Interface, known: &HashMap<String, String>) {
     let name = &iface.name;
-    let path_of = |(file, i): (&str, &str)| format!("crate::wayland::generated::{file}::{i}::INTERFACE");
+    let path_of =
+        |(file, i): (&str, &str)| format!("crate::wayland::generated::{file}::{i}::INTERFACE");
     let _ = writeln!(out, "\n/// The `{name}` interface.\npub mod {name} {{");
     out.push_str("    use crate::wayland::client::{Client, Proxy};\n");
     out.push_str("    use crate::wayland::ffi::{Interface, Message, MessageTable, TypeTable};\n");
     out.push_str("    use std::ffi::{c_char, c_void};\n");
     out.push_str("    use std::ptr::{null, null_mut};\n\n");
-    let _ = writeln!(out, "    /// Highest version this code knows.\n    pub const VERSION: u32 = {};\n", iface.version);
+    let _ = writeln!(
+        out,
+        "    /// Highest version this code knows.\n    pub const VERSION: u32 = {};\n",
+        iface.version
+    );
 
     for (kind, list) in [("REQUEST", &iface.requests), ("EVENT", &iface.events)] {
         for (i, m) in list.iter().enumerate() {
             let entries = type_entries(m, known);
             let cells: Vec<String> = entries
                 .iter()
-                .map(|e| e.map_or_else(|| "null()".to_string(), |t| format!("&raw const {}", path_of(t))))
+                .map(|e| {
+                    e.map_or_else(
+                        || "null()".to_string(),
+                        |t| format!("&raw const {}", path_of(t)),
+                    )
+                })
                 .collect();
             let _ = writeln!(
                 out,
@@ -321,7 +338,10 @@ fn emit_listener(out: &mut String, iface: &Interface) {
     }
     out.push_str("    }\n\n");
     for m in &iface.events {
-        let blanks: Vec<String> = event_params(m).split(", ").map(|t| format!("_: {t}")).collect();
+        let blanks: Vec<String> = event_params(m)
+            .split(", ")
+            .map(|t| format!("_: {t}"))
+            .collect();
         let _ = writeln!(
             out,
             "    extern \"C\" fn ignore_{}({}) {{}}",
@@ -370,7 +390,10 @@ fn emit_request(
         if a.kind == "new_id" {
             returns = true;
             if let Some(i) = &a.interface {
-                new_interface = format!("&raw const {}", format_args!("crate::wayland::generated::{}::{i}::INTERFACE", known[i]));
+                new_interface = format!(
+                    "&raw const {}",
+                    format_args!("crate::wayland::generated::{}::{i}::INTERFACE", known[i])
+                );
                 call.push_str(", null_mut::<Proxy>()");
             } else {
                 params.push_str(", interface: *const Interface, version: u32");
@@ -564,5 +587,8 @@ fn generator_escapes_keywords_and_marks_destructors() {
     emit_interface(&mut out, &list[0], &known);
 
     assert!(out.contains("pub unsafe fn r#move(client: &Client, proxy: *mut Proxy, r#type: u32)"));
-    assert!(out.contains("null(), (client.get_version)(proxy), 1)"), "{out}");
+    assert!(
+        out.contains("null(), (client.get_version)(proxy), 1)"),
+        "{out}"
+    );
 }

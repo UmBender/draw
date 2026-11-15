@@ -173,7 +173,11 @@ impl Connection {
     ///
     /// # Errors
     /// [`WaylandError::NoObject`] if the compositor refuses an object.
-    pub fn create_window(&self, title: &str, app_id: &str) -> Result<Window<Created>, WaylandError> {
+    pub fn create_window(
+        &self,
+        title: &str,
+        app_id: &str,
+    ) -> Result<Window<Created>, WaylandError> {
         let shared = &self.shared;
         let c = &shared.client;
         let data = Rc::as_ptr(shared).cast_mut().cast::<c_void>();
@@ -306,6 +310,7 @@ impl Window<Configured> {
         self.objects.commit();
     }
 
+    // TEST: wayland_egl_context_renders_and_swaps
     /// Attaches a `wl_buffer` (or none) at `x`, `y`.
     ///
     /// # Safety
@@ -345,10 +350,9 @@ impl Window<Configured> {
         // SAFETY: `display` and `ptr` are a live `wl_display*` and
         // `wl_egl_window*`; the context is dropped before `native` (field
         // order of `GlPart`), and the display outlives both (`Rc`).
-        let context = unsafe {
-            EglContext::from_window(Platform::Wayland, shared.display.cast(), ptr)
-        }
-        .map_err(WaylandError::Context)?;
+        let context =
+            unsafe { EglContext::from_window(Platform::Wayland, shared.display.cast(), ptr) }
+                .map_err(WaylandError::Context)?;
         context.make_current().map_err(WaylandError::Context)?;
         let o = &self.objects;
         // TEST: wayland_output_scale_is_an_integer
@@ -367,6 +371,7 @@ impl Window<Mapped> {
         self.objects.commit();
     }
 
+    // TEST: wayland_egl_context_renders_and_swaps
     /// Attaches a `wl_buffer` (or none) at `x`, `y`.
     ///
     /// # Safety
@@ -471,8 +476,20 @@ impl Shared {
     pub(crate) fn apply_pending_size(&self, fallback: (i32, i32)) {
         let (pw, ph) = self.win.pending.get();
         let (cw, ch) = self.win.size.get();
-        let width = if pw > 0 { pw } else if cw > 0 { cw } else { fallback.0 };
-        let height = if ph > 0 { ph } else if ch > 0 { ch } else { fallback.1 };
+        let width = if pw > 0 {
+            pw
+        } else if cw > 0 {
+            cw
+        } else {
+            fallback.0
+        };
+        let height = if ph > 0 {
+            ph
+        } else if ch > 0 {
+            ch
+        } else {
+            fallback.1
+        };
         self.win.size.set((width, height));
     }
 }

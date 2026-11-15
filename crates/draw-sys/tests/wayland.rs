@@ -147,9 +147,12 @@ fn wayland_resize_event_follows_the_compositor() {
     sway.msg(&["output", "HEADLESS-1", "resolution", "640x480"]);
 
     let metrics = pump_until(&mut platform, |_, events| {
-        events.iter().find_map(|e| match e {
-            RawEvent::Resize(m) if (m.width - 640.0).abs() < 0.5 => Some(*m),
-            _ => None,
+        events.iter().find_map(|e| {
+            if let RawEvent::Resize(m) = e {
+                ((m.width - 640.0).abs() < 0.5).then_some(*m)
+            } else {
+                None
+            }
         })
     });
 
@@ -214,10 +217,11 @@ fn wayland_platform_input_parts_return_nothing() {
     let mut events = Vec::new();
     platform.poll(&mut events);
 
-    assert!(events.iter().all(|e| matches!(
-        e,
-        RawEvent::Resize(_) | RawEvent::Backend(_)
-    )));
+    assert!(
+        events
+            .iter()
+            .all(|e| matches!(e, RawEvent::Resize(_) | RawEvent::Backend(_)))
+    );
     assert_eq!(platform.clipboard_text(), None);
     platform.set_clipboard_text("ignored until T170");
     assert_eq!(platform.clipboard_text(), None);

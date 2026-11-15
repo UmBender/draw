@@ -5,6 +5,7 @@
 pub mod client;
 pub mod connection;
 pub mod ffi;
+#[rustfmt::skip]
 pub mod generated;
 pub mod platform;
 pub mod window;

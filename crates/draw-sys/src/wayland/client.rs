@@ -22,7 +22,8 @@ pub struct Proxy {
 #[derive(Debug)]
 pub struct Client {
     /// `wl_proxy_marshal_flags`.
-    pub marshal_flags: unsafe extern "C" fn(*mut Proxy, u32, *const Interface, u32, u32, ...) -> *mut Proxy, // TEST: wayland_connect_binds_the_globals
+    pub marshal_flags:
+        unsafe extern "C" fn(*mut Proxy, u32, *const Interface, u32, u32, ...) -> *mut Proxy, // TEST: wayland_connect_binds_the_globals
     /// `wl_proxy_add_listener`.
     pub add_listener: unsafe extern "C" fn(*mut Proxy, *const c_void, *mut c_void) -> i32, // TEST: wayland_connect_binds_the_globals
     /// `wl_proxy_get_version`.
@@ -55,8 +56,8 @@ pub struct Client {
     pub egl_window_resize: unsafe extern "C" fn(*mut c_void, i32, i32, i32, i32), // TEST: wayland_resize_event_follows_the_compositor
     /// `wl_egl_window_destroy`.
     pub egl_window_destroy: unsafe extern "C" fn(*mut c_void), // TEST: wayland_egl_context_renders_and_swaps
-    _egl: Library,
-    _client: Library,
+    _egl_lib: Library,
+    _core_lib: Library,
 }
 
 /// Loads `name` from `library`, typed as the field it initialises.
@@ -93,8 +94,8 @@ impl Client {
             egl_window_create: symbol(&egl, "wl_egl_window_create")?,
             egl_window_resize: symbol(&egl, "wl_egl_window_resize")?,
             egl_window_destroy: symbol(&egl, "wl_egl_window_destroy")?,
-            _egl: egl,
-            _client: client,
+            _egl_lib: egl,
+            _core_lib: client,
         })
     }
 }
