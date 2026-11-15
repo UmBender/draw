@@ -60,3 +60,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-15 — split from T143 by the owner; protocol code generated and checked in (owner decision).
+- 2026-11-15 — BLOCKED (batch): the protocol XML cannot be copied into `crates/draw-sys/protocols/`: `cp /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml …`, `ls` of `/usr/share/wayland*` and Read outside the repo are all refused (no allow rule), and the generator (AC-1) needs the XML. Recommended fix: allow `cp /usr/share/wayland*/*` (or copy `wayland.xml` and `xdg-shell.xml` by hand into `crates/draw-sys/protocols/`) and confirm `wayland-protocols-devel` is installed; then re-run.
