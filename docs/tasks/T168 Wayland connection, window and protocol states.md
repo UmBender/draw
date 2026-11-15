@@ -1,7 +1,7 @@
 ---
 id: T168
 title: Wayland connection, window and protocol states
-status: todo
+status: in-progress
 wave: 70
 branch: task/T168-wayland-connection-window-and-protocol-
 depends_on: [T142, T145]
@@ -29,13 +29,13 @@ Slice 1 of [[T143 Wayland backend with window, keyboard, pointer, tablet and cli
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Decisions: [[ADR-T168-1 Generated Wayland protocol code and surface type states]]. Test files: `tests/wayland_generator.rs` (generator, AC-1), `tests/wayland.rs` (integration on headless sway, AC-2/3/5), `tests/compile_fail/` and `tests/compile_pass/` (AC-4).
 
-- **AC-1** — The generator and the checked-in code: `wl_display`, `wl_registry`, `wl_compositor`, `wl_surface`, `wl_callback`, `wl_output`, `xdg_wm_base`, `xdg_surface`, `xdg_toplevel`. Test: the committed code equals the generator's output; unit tests of the generator on a small XML sample.
-- **AC-2** — Connect, bind the globals, ping/pong, open a toplevel with a title and app id, follow `configure` (size), integer buffer scale from the outputs, close; an EGL context on the window renders and swaps. Integration tests against headless sway.
-- **AC-3** — Frame callbacks: `schedule_update` asks for one, the next frame resolves when it arrives. Integration test.
-- **AC-4** — Out-of-order requests do not compile (attach/commit before configure; acking twice). Compile-fail tests.
-- **AC-5** — `WaylandPlatform` implements `Platform` for the window part (`window()`, `poll` with resize and close, `schedule_update`, `next_frame`); keyboard, pointer, tablet and clipboard return nothing yet, documented as T169/T170.
+- **AC-1** — The generator and the checked-in code: `wl_display`, `wl_registry`, `wl_compositor`, `wl_surface`, `wl_callback`, `wl_output`, `xdg_wm_base`, `xdg_surface`, `xdg_toplevel`. Tests: `generated_code_matches_the_checked_in_files`, `parser_reads_interfaces_requests_and_events`, `generator_emits_signature_for_new_id_and_object_args`, `generator_skips_wrappers_for_unknown_interfaces`.
+- **AC-2** — Connect, bind the globals, ping/pong, open a toplevel with a title and app id, follow `configure` (size), integer buffer scale from the outputs, close; an EGL context on the window renders and swaps. Integration tests against headless sway: `wayland_connect_binds_the_globals`, `wayland_window_configures_with_a_size`, `wayland_window_sets_title_and_app_id` (seen through `swaymsg -t get_tree`), `wayland_egl_context_renders_and_swaps`, `wayland_resize_event_follows_the_compositor`, `wayland_close_is_reported`, `wayland_output_scale_is_an_integer`, `wayland_missing_server_is_an_error_value`.
+- **AC-3** — Frame callbacks: `schedule_update` asks for one, the next frame resolves when it arrives. Integration tests: `wayland_frame_callback_resolves_next_frame`, `wayland_schedule_update_requests_a_frame`.
+- **AC-4** — Out-of-order requests do not compile (attach/commit before configure; acking twice). Compile-fail tests: `compile_fail/wayland_commit_before_configure.rs`, `wayland_attach_before_configure.rs`, `wayland_ack_twice.rs`; `compile_pass/wayland_full_sequence.rs`.
+- **AC-5** — `WaylandPlatform` implements `Platform` for the window part (`window()`, `poll` with resize and close, `schedule_update`, `next_frame`); keyboard, pointer, tablet and clipboard return nothing yet, documented as T169/T170. `RawEvent` has no close variant and `platform.rs` is not owned here, so close is `close_requested()` (ADR-T168-1). Tests: `wayland_platform_window_reports_metrics`, `wayland_platform_input_parts_return_nothing`.
 
 ## Out of scope
 
@@ -51,7 +51,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T168): specify the slice`
+- [x] spec — `docs(T168): specify the slice`
 - [ ] tests — `test(T168): add failing tests for the Wayland window`
 - [ ] models — `feat(T168): add the generated protocol and the surface states`
 - [ ] behaviour — `feat(T168): implement the Wayland window`
