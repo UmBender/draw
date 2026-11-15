@@ -165,6 +165,16 @@ fn mesh_geometry_is_inline_with_the_same_triangles() {
     assert_eq!(indices, mesh.indices);
 }
 
+fn view(rows: &[(u64, u64, Shape)]) -> Vec<Item<'_>> {
+    rows.iter()
+        .map(|(id, revision, shape)| Item {
+            id: ShapeId(*id),
+            revision: *revision,
+            shape,
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 enum EditOp {
     Replace(usize, usize),
@@ -192,11 +202,6 @@ proptest! {
             .map(|i| { next_id += 1; (next_id, 0, line(i)) })
             .collect();
         let mut cache = ChunkCache::new();
-        let view = |rows: &[(u64, u64, Shape)]| -> Vec<Item<'_>> {
-            rows.iter()
-                .map(|(id, revision, shape)| Item { id: ShapeId(*id), revision: *revision, shape })
-                .collect()
-        };
         cache.update(&view(&rows));
         for op in ops {
             match op {
