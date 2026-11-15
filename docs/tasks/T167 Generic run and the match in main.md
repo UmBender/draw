@@ -1,7 +1,7 @@
 ---
 id: T167
 title: Generic run and the match in main
-status: review
+status: done
 wave: 68
 branch: task/T167-generic-run-and-the-match-in-main
 depends_on: [T166]

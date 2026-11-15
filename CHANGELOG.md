@@ -59,6 +59,11 @@ All notable changes to draw are listed here. The format follows
   `Platform` interface, with macroquad as its only implementation. The
   diagnostic dump names letter keys `Letter('Z')` and unlisted keys
   `Other(n)`.
+- The app runs as one loop generic over the `Platform` and `Gpu`
+  interfaces, picked in `main`; the GPU state lives in the loop instead of
+  thread-locals, and a source check keeps macroquad inside its two
+  interpreters apart from a short list that the cutover removes. The pixels
+  are unchanged.
 
 ## [1.6.0] - 2026-11-12
 

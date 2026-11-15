@@ -1,7 +1,7 @@
 ---
 id: T165
 title: RenderCtx over Gpu for the drawing and UI text
-status: review
+status: done
 wave: 68
 branch: task/T165-renderctx-over-gpu-for-the-drawing-and-u
 depends_on: [T163]

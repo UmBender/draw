@@ -1,7 +1,7 @@
 ---
 id: T166
 title: Minimap, toolbar, export and app over RenderCtx
-status: review
+status: done
 wave: 68
 branch: task/T166-minimap-toolbar-export-and-app-over-rend
 depends_on: [T165]

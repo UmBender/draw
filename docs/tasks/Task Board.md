@@ -591,6 +591,6 @@ flowchart TD
 | [[T162 RawEvent and the input collector]] | done | T140, T161 | `task/T162-rawevent-and-the-input-collector` |
 | [[T163 macroquad Platform interpreter and the loop]] | done | T162 | `task/T163-macroquad-platform-interpreter-and-the-loop` |
 | [[T164 Generic run over Platform and Gpu]] | done | T165–T167 | `task/T164-generic-run-over-platform-and-gpu` |
-| [[T165 RenderCtx over Gpu for the drawing and UI text]] | todo | T163 | `task/T165-renderctx-over-gpu-for-the-drawing-and-u` |
-| [[T166 Minimap, toolbar, export and app over RenderCtx]] | todo | T165 | `task/T166-minimap-toolbar-export-and-app-over-rend` |
-| [[T167 Generic run and the match in main]] | todo | T166 | `task/T167-generic-run-and-the-match-in-main` |
+| [[T165 RenderCtx over Gpu for the drawing and UI text]] | done | T163 | `task/T165-renderctx-over-gpu-for-the-drawing-and-u` |
+| [[T166 Minimap, toolbar, export and app over RenderCtx]] | done | T165 | `task/T166-minimap-toolbar-export-and-app-over-rend` |
+| [[T167 Generic run and the match in main]] | done | T166 | `task/T167-generic-run-and-the-match-in-main` |
