@@ -1,7 +1,7 @@
 ---
 id: T141
 title: Fuzz of the shell through the recording platform
-status: review
+status: done
 wave: 68
 branch: task/T141-fuzz-of-the-shell-through-the-recording-
 depends_on: [T140, T167]

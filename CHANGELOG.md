@@ -64,6 +64,8 @@ All notable changes to draw are listed here. The format follows
   thread-locals, and a source check keeps macroquad inside its two
   interpreters apart from a short list that the cutover removes. The pixels
   are unchanged.
+- A fuzz test drives the app's main loop with random keyboard, pointer and
+  pen input and no window; the nightly CI job runs it with 20 000 cases.
 
 ## [1.6.0] - 2026-11-12
 
