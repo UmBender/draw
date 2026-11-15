@@ -1,7 +1,7 @@
 ---
 id: T176
 title: X11 keyboard, pointer and XInput2 pressure
-status: in-progress
+status: review
 wave: 71
 branch: task/T176-x11-keyboard-pointer-and-xinput2-pressu
 depends_on: [T175]
@@ -49,13 +49,16 @@ Design: pure decoders next to the T175 ones (`x11/keys.rs`, `x11/pen.rs`, new va
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T176): specify the slice`
-- [ ] tests — `test(T176): add failing tests`
-- [ ] models — `feat(T176): add the types`
-- [ ] behaviour — `feat(T176): implement the keyboard, pointer and pressure`
-- [ ] quality — `chore(T176): pass clippy and rustfmt`
+- [x] spec — `docs(T176): specify the slice`
+- [x] tests — `test(T176): add failing tests`
+- [x] models — `feat(T176): add the types`
+- [x] behaviour — `feat(T176): implement the keyboard, pointer and pressure`
+- [x] quality — `chore(T176): pass clippy and rustfmt`
 - [ ] tablet by hand — owner, recorded in the Log
 
 ## Log
 
 - 2026-11-15 — split from T144 by the owner.
+- 2026-11-15 — implemented in the batch run; `scripts/check.sh` green. Pure decoders in `x11/keys.rs` and `x11/pen.rs`, new `XEvent` variants, `unsafe` only in `x11/xlib.rs`. The integration tests run on a private Xvfb with `xdotool`.
+- 2026-11-15 — deviations: the T175 test `decode_short_or_unknown_events_are_other` used event type 2 as "unknown"; type 2 is now a key press, so it uses type 12 (`x11_pure.rs`). The fuzz is a seeded xorshift, not proptest (not a dev-dependency). The note's "X11 bugs of T28" were not identifiable (T28 is a Wayland task): the focus-loss test `x11_regression_t28_key_release_after_focus_loss_clears_state` covers the lost-release case instead. No feature note or tutorial: the task frontmatter has none. No ADR.
+- 2026-11-15 — AC-5 (tablet by hand) is left to the owner: with a real tablet, check pressure, the tip lift and the eraser/barrel buttons.

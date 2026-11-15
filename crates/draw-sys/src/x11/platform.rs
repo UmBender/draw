@@ -1,7 +1,7 @@
 //! [`X11Platform`]: the window part of `Platform` over Xlib (T175 AC-3).
 //!
-//! Keyboard, pointer and pen events come with T176, selections with T177:
-//! until then `poll` reports only resizes and the clipboard is empty.
+//! `poll` reports resizes, keys, pointer, wheel, focus and pen samples
+//! (T176); selections come with T177 and until then the clipboard is empty.
 
 use std::collections::HashMap;
 use std::ffi::c_void;
