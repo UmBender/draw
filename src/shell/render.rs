@@ -12,16 +12,13 @@
 //! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1, ADR-T32-1,
 //! ADR-T32-2).
 
+use draw_gfx::gpu::{
+    Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, Vertex, View,
+};
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
-use macroquad::window::{screen_dpi_scale, screen_height, screen_width as window_width};
 
-use draw_gfx::gpu::{
-    Blend, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
-    View,
-};
-
-use std::cell::{Cell, OnceCell, RefCell};
+use std::cell::{Cell, RefCell};
 use std::time::{Duration, Instant};
 
 use crate::core::camera::Camera;
@@ -38,7 +35,8 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
-use crate::shell::gpu_mq::{MqGpu, MqPipeline, MqTarget, MqTexture};
+use crate::shell::gpu_mq::{MqGpu, MqTarget, MqTexture};
+use crate::shell::render_ctx::{RenderCtx, with_ctx, with_drawing};
 use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
@@ -57,74 +55,22 @@ pub trait MeshSink {
     fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>);
 }
 
-/// Sends chunks to macroquad through one shared [`MqGpu`]: each chunk is
-/// a one-draw command list in a pass that keeps the current camera.
+/// Sends chunks to the bridge context (T165; removed by T166): each chunk
+/// is a one-draw command list in a pass that keeps the current camera.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GlSink;
 
 impl MeshSink for GlSink {
     fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
-        let texture = page.and_then(|page| TEXTURES.with(|t| t.borrow().get(page).cloned()));
-        draw_inline(vertices, indices, texture);
+        with_drawing(|ctx| ctx.draw_chunk(vertices, indices, page));
     }
-}
-
-/// Sends one inline draw with `texture`: collected into the open
-/// [`render_to`] scope, else a pass of its own on the window.
-pub fn draw_inline(vertices: &[Vertex], indices: &[u32], texture: Option<MqTexture>) {
-    let draw = Command::Draw {
-        pipeline: alpha_pipeline(),
-        texture,
-        geometry: Geometry::Inline {
-            vertices: vertices.to_vec(),
-            indices: indices.to_vec(),
-        },
-    };
-    let draw = SCOPE.with(|scope| match scope.borrow_mut().as_mut() {
-        Some(open) => {
-            open.push(draw);
-            None
-        }
-        None => Some(draw),
-    });
-    if let Some(draw) = draw {
-        submit(&wrap_pass::<MqGpu>(None, window_view(), None, vec![draw]));
-    }
-}
-
-/// The window in logical pixels, as a pass view.
-fn window_view() -> View {
-    View {
-        width: window_width(),
-        height: screen_height(),
-    }
-}
-
-/// The alpha-blend pipeline of the shared interpreter.
-#[must_use]
-pub fn alpha_pipeline() -> MqPipeline {
-    PIPELINE.with(|cell| {
-        *cell.get_or_init(|| {
-            with_gpu(|gpu| {
-                gpu.pipeline(PipelineDesc {
-                    blend: Blend::Alpha,
-                })
-            })
-        })
-    })
 }
 
 /// Runs `f` on the one interpreter every drawing call goes through, so the
 /// frame cache and the minimap share its targets and textures (T159).
-/// `f` must not draw: call it for resources and for [`submit`] only.
+/// `f` must not draw: call it for resources only. Removed by T166.
 pub fn with_gpu<R>(f: impl FnOnce(&mut MqGpu) -> R) -> R {
-    GPU.with(|gpu| f(&mut gpu.borrow_mut()))
-}
-
-/// Executes `list` on the shared interpreter. The lists are built from
-/// valid handles; a refusal drops the list.
-pub fn submit(list: &CommandList<MqGpu>) {
-    let _ = with_gpu(|gpu| gpu.submit(list));
+    with_ctx(|ctx| f(ctx.gpu_mut()))
 }
 
 /// `draws` wrapped in one pass over `target` (`None`: the window) seen
@@ -158,28 +104,18 @@ pub fn gfx_color(color: Color) -> GfxColor {
 /// Runs `draw` with every [`GlSink`] draw collected into one pass over
 /// `target`, seen through `view` (logical pixels), after clearing it to
 /// `clear` if given. One pass means one resolve of a multisampled target
-/// (ADR-T159-1). Not reentrant.
+/// (ADR-T159-1). Not reentrant. On the bridge context, whose borrow is
+/// released while `draw` runs, so `draw` may call the other bridge
+/// functions. Removed by T166.
 pub fn render_to(target: &MqTarget, view: View, clear: Option<Color>, draw: impl FnOnce()) {
-    SCOPE.with(|scope| *scope.borrow_mut() = Some(Vec::new()));
+    with_ctx(RenderCtx::begin_scope);
     draw();
-    let draws = SCOPE.with(|scope| scope.borrow_mut().take().unwrap_or_default());
-    let clear = clear.map(gfx_color);
-    submit(&wrap_pass::<MqGpu>(
-        Some(target.clone()),
-        view,
-        clear,
-        draws,
-    ));
+    with_ctx(|ctx| ctx.end_scope(target, view, clear.map(gfx_color)));
 }
 
-/// Clears the window to `color`.
+/// Clears the window to `color`. Removed by T166.
 pub fn clear_window(color: Color) {
-    submit(&wrap_pass::<MqGpu>(
-        None,
-        window_view(),
-        Some(gfx_color(color)),
-        Vec::new(),
-    ));
+    with_drawing(|ctx| ctx.clear_window(gfx_color(color)));
 }
 
 /// The two triangles of `dest` showing a whole texture, tinted `tint`.
@@ -204,11 +140,34 @@ pub fn texture_quad(dest: Aabb, flip_y: bool, tint: [u8; 4]) -> ([Vertex; 4], [u
 }
 
 /// Draws the whole `texture` stretched over `dest` on the window, in
-/// window pixels, rows from the bottom when `flip_y`.
+/// window pixels, rows from the bottom when `flip_y`. On the bridge
+/// context; removed by T166.
 pub fn draw_texture_quad(texture: &MqTexture, dest: Aabb, flip_y: bool) {
-    let (vertices, indices) = texture_quad(dest, flip_y, [255; 4]);
-    draw_inline(&vertices, &indices, Some(texture.clone()));
+    with_drawing(|ctx| ctx.draw_texture_quad(texture, dest, flip_y));
 }
+
+/// Sends chunks to a [`RenderCtx`], binding the glyph page of each one
+/// from the context's textures.
+pub struct CtxSink<'c, G: Gpu> {
+    /// Where the chunks go.
+    pub(crate) ctx: &'c mut RenderCtx<G>,
+}
+
+impl<'c, G: Gpu> CtxSink<'c, G> {
+    /// A sink drawing through `ctx`.
+    pub fn new(ctx: &'c mut RenderCtx<G>) -> Self {
+        Self { ctx }
+    }
+}
+
+impl<G: Gpu> MeshSink for CtxSink<'_, G> {
+    fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
+        self.ctx.draw_chunk(vertices, indices, page);
+    }
+}
+
+/// A [`Batch`] drawing through a [`RenderCtx`].
+type CtxBatch<'c, G> = Batch<CtxSink<'c, G>>;
 
 /// Collects chunks as `Command::Draw` of a command list, to submit them
 /// to any [`Gpu`] in one pass ([`GpuSink::into_list`]).
@@ -466,6 +425,11 @@ impl<S: MeshSink> Batch<S> {
         self.mesh
             .indices
             .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
+    }
+
+    /// The sink, for work that must happen between two chunks.
+    pub fn sink_mut(&mut self) -> &mut S {
+        &mut self.sink
     }
 
     /// Flushes and returns the sink.
@@ -848,40 +812,27 @@ thread_local! {
     /// The glyph atlas of text blocks and labels; none until
     /// [`set_glyph_atlas`] is called (ADR-T32-1).
     static ATLAS: RefCell<Option<GlyphAtlas>> = const { RefCell::new(None) };
-    /// The atlas pages on the GPU; a separate cell, so [`GlSink`] can bind
-    /// them while text reads the atlas.
-    static TEXTURES: RefCell<GlyphTextures<MqGpu>> = RefCell::new(GlyphTextures::default());
-    /// The interpreter every [`GlSink`] chunk and the page textures go
-    /// through (T158).
-    static GPU: RefCell<MqGpu> = RefCell::new(MqGpu::new());
-    /// The alpha-blend pipeline of [`GPU`], made on first use.
-    static PIPELINE: OnceCell<MqPipeline> = const { OnceCell::new() };
-    /// The draws collected by the open [`render_to`], if any.
-    static SCOPE: RefCell<Option<Vec<CommandOf<MqGpu>>>> = const { RefCell::new(None) };
     /// Text work since the last [`take_text_stats`].
     static STATS: Cell<TextStats> = Cell::new(TextStats::default());
 }
 
-/// Puts the new pages and uploads of `atlas` on the GPU. A failed upload
-/// leaves the page as it was: its glyphs draw blank, nothing panics.
-fn sync_textures(atlas: &mut GlyphAtlas) {
-    let result = GPU.with(|gpu| {
-        TEXTURES.with(|textures| textures.borrow_mut().sync(&mut gpu.borrow_mut(), atlas))
-    });
-    if let Err(err) = result {
-        eprintln!("glyph textures: {err}");
-    }
+/// Makes `atlas` the glyph atlas of text blocks and labels on the bridge
+/// context; removed by T166.
+pub fn set_glyph_atlas(atlas: GlyphAtlas) {
+    with_drawing(|ctx| ctx.set_glyph_atlas(atlas));
 }
 
-/// Makes `atlas` the glyph atlas of text blocks and labels; until then
-/// they are not drawn (ADR-T32-1). Main thread only.
-pub fn set_glyph_atlas(mut atlas: GlyphAtlas) {
-    // Opens the first page now: creating a page texture takes ~25 ms on
-    // the target, too long for the first frame with text.
-    atlas.prepare('0', raster_px(TEXT_RASTER_SIZES[0], screen_dpi_scale()));
-    sync_textures(&mut atlas);
-    atlas.take_rasterized();
-    ATLAS.with(|cell| *cell.borrow_mut() = Some(atlas));
+impl<G: Gpu> RenderCtx<G> {
+    /// Makes `atlas` the glyph atlas of text blocks and labels; until then
+    /// they are not drawn (ADR-T32-1). Main thread only.
+    pub fn set_glyph_atlas(&mut self, mut atlas: GlyphAtlas) {
+        // Opens the first page now: creating a page texture takes ~25 ms on
+        // the target, too long for the first frame with text.
+        atlas.prepare('0', raster_px(TEXT_RASTER_SIZES[0], self.dpi()));
+        self.sync_textures(&mut atlas);
+        atlas.take_rasterized();
+        ATLAS.with(|cell| *cell.borrow_mut() = Some(atlas));
+    }
 }
 
 /// Starts a frame's text work: clears an atlas that overflowed in an
@@ -1108,7 +1059,11 @@ pub fn push_text_centered<S: MeshSink>(
 /// Runs `prepare` on the glyph atlas, puts new glyphs on the GPU, then
 /// runs `draw` with the atlas, adding the time and rasterizations to the
 /// frame's [`TextStats`]. Nothing runs without an atlas.
-fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAtlas)) {
+fn with_glyphs<G: Gpu>(
+    batch: &mut CtxBatch<'_, G>,
+    prepare: impl FnOnce(&mut GlyphAtlas),
+    draw: impl FnOnce(&mut CtxBatch<'_, G>, &GlyphAtlas),
+) {
     let started = Instant::now();
     let rasterized = ATLAS.with(|cell| {
         let rasterized = {
@@ -1117,11 +1072,11 @@ fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAt
                 return 0;
             };
             prepare(atlas);
-            sync_textures(atlas);
+            batch.sink_mut().ctx.sync_textures(atlas);
             atlas.take_rasterized()
         };
         if let Some(atlas) = cell.borrow().as_ref() {
-            draw(atlas);
+            draw(batch, atlas);
         }
         rasterized
     });
@@ -1136,29 +1091,174 @@ fn with_glyphs(prepare: impl FnOnce(&mut GlyphAtlas), draw: impl FnOnce(&GlyphAt
 /// Draws what lies under the shapes: the snap dot grid while grid snap is
 /// on (ADR-T17-1), as seen through `camera` in a viewport of `viewport`
 /// pixels. Nothing is drawn when the view has too many dots.
+/// On the bridge context; removed by T166.
 pub fn draw_underlay(editor: &Editor, camera: &Camera, viewport: Vec2) {
-    if !editor.helpers().grid_snap {
-        return;
-    }
-    let Some(spacing) = dot_grid_spacing(camera.zoom()) else {
-        return;
-    };
-    let color = hex_color_alpha(theme::DOT_GRID, theme::DOT_GRID_ALPHA);
-    let half = Vec2::new(DOT_SIZE_PX / 2.0, DOT_SIZE_PX / 2.0);
-    let mut batch = Batch::new(GlSink);
-    for dot in dot_grid_points(camera.visible_world_rect(viewport), spacing) {
-        let p = camera.world_to_screen(dot);
-        batch.rect(Aabb::from_corners(p - half, p + half), color);
-    }
-    batch.finish();
+    with_drawing(|ctx| ctx.draw_underlay(editor, camera, viewport));
 }
 
 /// Draws alignment guides, world-space segments, on top of the overlay,
-/// [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`.
+/// [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`. On the bridge context;
+/// removed by T166.
 pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
-    let mut batch = Batch::new(GlSink);
-    push_guides(&mut batch, guides, camera);
-    batch.finish();
+    with_drawing(|ctx| ctx.draw_guides(guides, camera));
+}
+
+/// Draws every shape whose bounds are visible through `camera` in a viewport
+/// of `viewport` pixels, in iteration order (later shapes on top). On the
+/// bridge context; removed by T166.
+pub fn draw_shapes<'a>(
+    shapes: impl IntoIterator<Item = &'a Shape>,
+    camera: &Camera,
+    viewport: Vec2,
+) {
+    with_drawing(|ctx| ctx.draw_shapes(shapes, camera, viewport));
+}
+
+/// Draws the shape being created, without culling. On the bridge context;
+/// removed by T166.
+pub fn draw_preview(shape: &Shape, camera: &Camera) {
+    with_drawing(|ctx| ctx.draw_preview(shape, camera));
+}
+
+/// Draws the text block being edited as typed, formulas as source
+/// (ADR-T30-1), in the background colour when it sits `on_fill` of a
+/// shape or cell (ADR-T31-1); any other shape as [`draw_preview`] does. On
+/// the bridge context; removed by T166.
+pub fn draw_source_preview(shape: &Shape, camera: &Camera, on_fill: bool) {
+    with_drawing(|ctx| ctx.draw_source_preview(shape, camera, on_fill));
+}
+
+/// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
+/// wide in `theme::SELECTION_OUTLINE`. On the bridge context; removed by
+/// T166.
+pub fn draw_selection(bounds: Aabb, camera: &Camera) {
+    with_drawing(|ctx| ctx.draw_selection(bounds, camera));
+}
+
+/// Draws the resize handles at the screen `centers`: filled squares in the
+/// canvas colour with a selection-coloured outline. On the bridge context;
+/// removed by T166.
+pub fn draw_selection_handles(centers: &[Vec2; 4]) {
+    with_drawing(|ctx| ctx.draw_selection_handles(centers));
+}
+
+impl<G: Gpu> RenderCtx<G> {
+    /// Draws what lies under the shapes: the snap dot grid while grid snap
+    /// is on (ADR-T17-1), as seen through `camera` in a viewport of
+    /// `viewport` pixels. Nothing is drawn when the view has too many dots.
+    pub fn draw_underlay(&mut self, editor: &Editor, camera: &Camera, viewport: Vec2) {
+        if !editor.helpers().grid_snap {
+            return;
+        }
+        let Some(spacing) = dot_grid_spacing(camera.zoom()) else {
+            return;
+        };
+        let color = hex_color_alpha(theme::DOT_GRID, theme::DOT_GRID_ALPHA);
+        let half = Vec2::new(DOT_SIZE_PX / 2.0, DOT_SIZE_PX / 2.0);
+        let mut batch = Batch::new(CtxSink::new(self));
+        for dot in dot_grid_points(camera.visible_world_rect(viewport), spacing) {
+            let p = camera.world_to_screen(dot);
+            batch.rect(Aabb::from_corners(p - half, p + half), color);
+        }
+        batch.finish();
+    }
+
+    /// Draws alignment guides, world-space segments, on top of the overlay,
+    /// [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`.
+    pub fn draw_guides(&mut self, guides: &[[Vec2; 2]], camera: &Camera) {
+        let mut batch = Batch::new(CtxSink::new(self));
+        push_guides(&mut batch, guides, camera);
+        batch.finish();
+    }
+
+    /// Draws every shape whose bounds are visible through `camera` in a
+    /// viewport of `viewport` pixels, in iteration order (later shapes on
+    /// top).
+    pub fn draw_shapes<'a>(
+        &mut self,
+        shapes: impl IntoIterator<Item = &'a Shape>,
+        camera: &Camera,
+        viewport: Vec2,
+    ) {
+        let view = cull_rect(camera, viewport);
+        let mut batch = Batch::new(CtxSink::new(self));
+        for shape in shapes {
+            if is_visible(shape.bounds(), view) {
+                draw_shape(&mut batch, shape, camera);
+            }
+        }
+        batch.finish();
+    }
+
+    /// Draws the shape being created, without culling.
+    pub fn draw_preview(&mut self, shape: &Shape, camera: &Camera) {
+        let mut batch = Batch::new(CtxSink::new(self));
+        draw_shape(&mut batch, shape, camera);
+        batch.finish();
+    }
+
+    /// Draws the text block being edited as typed, formulas as source
+    /// (ADR-T30-1), in the background colour when it sits `on_fill` of a
+    /// shape or cell (ADR-T31-1); any other shape as
+    /// [`RenderCtx::draw_preview`] does.
+    pub fn draw_source_preview(&mut self, shape: &Shape, camera: &Camera, on_fill: bool) {
+        let Shape::Text {
+            origin,
+            text,
+            size,
+            style,
+        } = shape
+        else {
+            self.draw_preview(shape, camera);
+            return;
+        };
+        if !shape.is_finite() {
+            return;
+        }
+        let dpi = self.dpi();
+        if block_raster(*size, camera, dpi).is_none() {
+            return;
+        }
+        let color = label_color(on_fill.then_some(style.color), color_of(style.color));
+        let mut batch = Batch::new(CtxSink::new(self));
+        with_glyphs(
+            &mut batch,
+            |atlas| prepare_text_source(atlas, text, *size, camera, dpi),
+            |batch, atlas| push_text_source(batch, atlas, *origin, text, *size, camera, dpi, color),
+        );
+        batch.finish();
+    }
+
+    /// Draws the selection outline around world `bounds`,
+    /// [`SELECTION_WIDTH_PX`] wide in `theme::SELECTION_OUTLINE`.
+    pub fn draw_selection(&mut self, bounds: Aabb, camera: &Camera) {
+        let rect = selection_rect(bounds, camera);
+        let mut batch = Batch::new(CtxSink::new(self));
+        draw_rect_outline(
+            &mut batch,
+            rect,
+            SELECTION_WIDTH_PX,
+            hex_color(theme::SELECTION_OUTLINE),
+        );
+        batch.finish();
+    }
+
+    /// Draws the resize handles at the screen `centers`: filled squares in
+    /// the canvas colour with a selection-coloured outline.
+    pub fn draw_selection_handles(&mut self, centers: &[Vec2; 4]) {
+        let mut batch = Batch::new(CtxSink::new(self));
+        for center in centers {
+            let rect = selection_handle_rect(*center);
+            batch.rect(rect, hex_color(theme::CANVAS));
+            draw_rect_outline(
+                &mut batch,
+                rect,
+                SELECTION_WIDTH_PX,
+                hex_color(theme::SELECTION_OUTLINE),
+            );
+        }
+        batch.finish();
+    }
 }
 
 /// Adds each guide as one quad [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`.
@@ -1170,74 +1270,6 @@ pub fn push_guides<S: MeshSink>(batch: &mut Batch<S>, guides: &[[Vec2; 2]], came
     }
 }
 
-/// Draws every shape whose bounds are visible through `camera` in a viewport
-/// of `viewport` pixels, in iteration order (later shapes on top).
-pub fn draw_shapes<'a>(
-    shapes: impl IntoIterator<Item = &'a Shape>,
-    camera: &Camera,
-    viewport: Vec2,
-) {
-    let view = cull_rect(camera, viewport);
-    let mut batch = Batch::new(GlSink);
-    for shape in shapes {
-        if is_visible(shape.bounds(), view) {
-            draw_shape(&mut batch, shape, camera);
-        }
-    }
-    batch.finish();
-}
-
-/// Draws the shape being created, without culling.
-pub fn draw_preview(shape: &Shape, camera: &Camera) {
-    let mut batch = Batch::new(GlSink);
-    draw_shape(&mut batch, shape, camera);
-    batch.finish();
-}
-
-/// Draws the text block being edited as typed, formulas as source
-/// (ADR-T30-1), in the background colour when it sits `on_fill` of a
-/// shape or cell (ADR-T31-1); any other shape as [`draw_preview`] does.
-pub fn draw_source_preview(shape: &Shape, camera: &Camera, on_fill: bool) {
-    let Shape::Text {
-        origin,
-        text,
-        size,
-        style,
-    } = shape
-    else {
-        draw_preview(shape, camera);
-        return;
-    };
-    if !shape.is_finite() {
-        return;
-    }
-    let dpi = screen_dpi_scale();
-    if block_raster(*size, camera, dpi).is_none() {
-        return;
-    }
-    let color = label_color(on_fill.then_some(style.color), color_of(style.color));
-    let mut batch = Batch::new(GlSink);
-    with_glyphs(
-        |atlas| prepare_text_source(atlas, text, *size, camera, dpi),
-        |atlas| push_text_source(&mut batch, atlas, *origin, text, *size, camera, dpi, color),
-    );
-    batch.finish();
-}
-
-/// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
-/// wide in `theme::SELECTION_OUTLINE`.
-pub fn draw_selection(bounds: Aabb, camera: &Camera) {
-    let rect = selection_rect(bounds, camera);
-    let mut batch = Batch::new(GlSink);
-    draw_rect_outline(
-        &mut batch,
-        rect,
-        SELECTION_WIDTH_PX,
-        hex_color(theme::SELECTION_OUTLINE),
-    );
-    batch.finish();
-}
-
 /// The square of the resize handle centred at screen `center`, the same
 /// size at every zoom (ADR-T91-1).
 #[must_use]
@@ -1245,26 +1277,9 @@ pub fn selection_handle_rect(center: Vec2) -> Aabb {
     Aabb::from_corners(center, center).expand(select::HANDLE_SIZE_PX * 0.5)
 }
 
-/// Draws the resize handles at the screen `centers`: filled squares in the
-/// canvas colour with a selection-coloured outline.
-pub fn draw_selection_handles(centers: &[Vec2; 4]) {
-    let mut batch = Batch::new(GlSink);
-    for center in centers {
-        let rect = selection_handle_rect(*center);
-        batch.rect(rect, hex_color(theme::CANVAS));
-        draw_rect_outline(
-            &mut batch,
-            rect,
-            SELECTION_WIDTH_PX,
-            hex_color(theme::SELECTION_OUTLINE),
-        );
-    }
-    batch.finish();
-}
-
 /// Adds one shape to `batch` (its labels are drawn right away, after a
 /// flush); non-finite shapes are skipped.
-fn draw_shape(batch: &mut Batch, shape: &Shape, camera: &Camera) {
+fn draw_shape<G: Gpu>(batch: &mut CtxBatch<'_, G>, shape: &Shape, camera: &Camera) {
     if !shape.is_finite() {
         return;
     }
@@ -1387,7 +1402,13 @@ fn label_color(fill: Option<ColorId>, outline: Color) -> Color {
 /// Adds `label` centred in the screen rectangle `rect` of a rectangle or
 /// (`ellipse`) an ellipse, if it is big enough on screen, on top of the
 /// shape (ADR-T32-2).
-fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, color: Color) {
+fn draw_label<G: Gpu>(
+    batch: &mut CtxBatch<'_, G>,
+    label: Option<u32>,
+    rect: Aabb,
+    ellipse: bool,
+    color: Color,
+) {
     let Some(label) = label else {
         return;
     };
@@ -1395,18 +1416,19 @@ fn draw_label(batch: &mut Batch, label: Option<u32>, rect: Aabb, ellipse: bool, 
     let Some(size) = label_size(text.len(), label_area(rect, ellipse)) else {
         return;
     };
-    let dpi = screen_dpi_scale();
+    let dpi = batch.sink_mut().ctx.dpi();
     with_glyphs(
+        batch,
         |atlas| prepare_text_centered(atlas, &text, size, dpi),
-        |atlas| push_text_centered(batch, atlas, &text, rect, size, dpi, color),
+        |batch, atlas| push_text_centered(batch, atlas, &text, rect, size, dpi, color),
     );
 }
 
 /// Adds every text of a rectangle, ellipse or grid (ADR-T31-1), each a
 /// text block fitted into its frame, in the colour `color_at` gives for
 /// the world centre of its block.
-fn draw_shape_texts(
-    batch: &mut Batch,
+fn draw_shape_texts<G: Gpu>(
+    batch: &mut CtxBatch<'_, G>,
     shape: &Shape,
     camera: &Camera,
     color_at: impl Fn(Vec2) -> Color,
@@ -1427,7 +1449,14 @@ fn draw_shape_texts(
 
 /// Adds the axis indices of a grid with screen corners `a` (drag start) and
 /// `b`, all at one size, if the cells are big enough on screen.
-fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, color: Color) {
+fn draw_axis_labels<G: Gpu>(
+    batch: &mut CtxBatch<'_, G>,
+    a: Vec2,
+    b: Vec2,
+    cols: u32,
+    rows: u32,
+    color: Color,
+) {
     let Some(first) = grid_axis_labels(a, b, cols, rows).next() else {
         return;
     };
@@ -1435,17 +1464,18 @@ fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, c
     let Some(size) = axis_label_size(cols, rows, cell) else {
         return;
     };
-    let dpi = screen_dpi_scale();
+    let dpi = batch.sink_mut().ctx.dpi();
     let labels: Vec<(String, Aabb)> = grid_axis_labels(a, b, cols, rows)
         .map(|label| (label.index.to_string(), label.rect))
         .collect();
     with_glyphs(
+        batch,
         |atlas| {
             for (text, _) in &labels {
                 prepare_text_centered(atlas, text, size, dpi);
             }
         },
-        |atlas| {
+        |batch, atlas| {
             for (text, rect) in &labels {
                 push_text_centered(batch, atlas, text, *rect, size, dpi, color);
             }
@@ -1455,28 +1485,29 @@ fn draw_axis_labels(batch: &mut Batch, a: Vec2, b: Vec2, cols: u32, rows: u32, c
 
 /// Adds a text block of world `size` at world `origin`, each glyph at its
 /// layout cell (ADR-T29-1), if it is big enough on screen.
-fn draw_text_block(
-    batch: &mut Batch,
+fn draw_text_block<G: Gpu>(
+    batch: &mut CtxBatch<'_, G>,
     origin: Vec2,
     text: &str,
     size: f32,
     camera: &Camera,
     color: Color,
 ) {
-    let dpi = screen_dpi_scale();
+    let dpi = batch.sink_mut().ctx.dpi();
     if block_raster(size, camera, dpi).is_none() {
         return;
     }
     with_glyphs(
+        batch,
         |atlas| prepare_text_block(atlas, text, size, camera, dpi),
-        |atlas| push_text_block(batch, atlas, origin, text, size, camera, dpi, color),
+        |batch, atlas| push_text_block(batch, atlas, origin, text, size, camera, dpi, color),
     );
 }
 
 /// Draws an axis-aligned screen segment as a band `width` pixels wide that
 /// overhangs both ends by half the width, so crossing bands meet with square
 /// corners.
-fn draw_band(batch: &mut Batch, start: Vec2, end: Vec2, width: f32, color: Color) {
+fn draw_band<S: MeshSink>(batch: &mut Batch<S>, start: Vec2, end: Vec2, width: f32, color: Color) {
     batch.rect(Aabb::from_corners(start, end).expand(width * 0.5), color);
 }
 
@@ -1487,7 +1518,13 @@ fn color_of(id: ColorId) -> Color {
 
 /// Draws a polyline of world `points` (ADR-T24-4). A single point is a
 /// dot; an empty polyline draws nothing.
-fn draw_polyline(batch: &mut Batch, points: &[Vec2], camera: &Camera, width: f32, color: Color) {
+fn draw_polyline<S: MeshSink>(
+    batch: &mut Batch<S>,
+    points: &[Vec2],
+    camera: &Camera,
+    width: f32,
+    color: Color,
+) {
     batch.polyline(
         points.iter().map(|p| camera.world_to_screen(*p)),
         width,
@@ -1503,7 +1540,7 @@ pub fn stroke_point_width(world_width: f32, factor: f32, zoom: f32) -> f32 {
 }
 
 /// Draws a screen-space segment with round caps when thick.
-fn draw_segment(batch: &mut Batch, a: Vec2, b: Vec2, width: f32, color: Color) {
+fn draw_segment<S: MeshSink>(batch: &mut Batch<S>, a: Vec2, b: Vec2, width: f32, color: Color) {
     batch.line(a, b, width, color);
     if stroke_needs_joints(width) {
         let radius = width * 0.5;
@@ -1514,7 +1551,7 @@ fn draw_segment(batch: &mut Batch, a: Vec2, b: Vec2, width: f32, color: Color) {
 
 /// Draws the outline of a screen rectangle as four opaque bands of `width`
 /// pixels centred on its edges (square corners).
-fn draw_rect_outline(batch: &mut Batch, rect: Aabb, width: f32, color: Color) {
+fn draw_rect_outline<S: MeshSink>(batch: &mut Batch<S>, rect: Aabb, width: f32, color: Color) {
     let h = width * 0.5;
     let (x0, y0, x1, y1) = (
         rect.min.x - h,
@@ -1554,12 +1591,12 @@ fn scale(u: Vec2, radii: Vec2) -> Vec2 {
 }
 
 /// Draws a filled disc of `radius` pixels centred at screen `center`.
-fn draw_disc(batch: &mut Batch, center: Vec2, radius: f32, color: Color) {
+fn draw_disc<S: MeshSink>(batch: &mut Batch<S>, center: Vec2, radius: f32, color: Color) {
     batch.disc(center, radius, color);
 }
 
 /// Adds a filled axis-aligned ellipse (screen space) as a triangle fan.
-fn draw_ellipse_fill(batch: &mut Batch, center: Vec2, radii: Vec2, color: Color) {
+fn draw_ellipse_fill<S: MeshSink>(batch: &mut Batch<S>, center: Vec2, radii: Vec2, color: Color) {
     let n = circle_segments(radii.x.max(radii.y));
     let rim = unit_circle(n).map(|u| center + scale(u, radii));
     batch.fan(center, rim, color);
@@ -1567,7 +1604,13 @@ fn draw_ellipse_fill(batch: &mut Batch, center: Vec2, radii: Vec2, color: Color)
 
 /// Adds an ellipse outline `width` pixels wide, centred on the ellipse
 /// (screen space), as a ring of quads between the inner and outer ellipses.
-fn draw_ellipse_ring(batch: &mut Batch, center: Vec2, radii: Vec2, width: f32, color: Color) {
+fn draw_ellipse_ring<S: MeshSink>(
+    batch: &mut Batch<S>,
+    center: Vec2,
+    radii: Vec2,
+    width: f32,
+    color: Color,
+) {
     let h = width * 0.5;
     let outer = Vec2::new(radii.x + h, radii.y + h);
     let inner = Vec2::new((radii.x - h).max(0.0), (radii.y - h).max(0.0));

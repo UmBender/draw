@@ -1,3 +1,227 @@
+//! The drawing context: everything the drawing of the canvas and of the
+//! menus needs from a [`Gpu`], in one value (T165).
+//!
+//! [`RenderCtx`] owns the `Gpu`, the glyph page textures, the alpha
+//! pipeline, the draws of an open [`RenderCtx::render_to`] scope and the
+//! menu glyphs. `render.rs` and `ui_text.rs` draw through its methods; the
+//! shell reaches one `RenderCtx<MqGpu>` through the bridge below until T166
+//! passes it down from `app::run_on`.
+
+use draw_gfx::gpu::{
+    Blend, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
+    View,
+};
+use macroquad::window::{screen_dpi_scale, screen_height, screen_width};
+use std::cell::RefCell;
+
+use crate::core::geom::Aabb;
+use crate::shell::glyphs::{GlyphAtlas, GlyphTextures};
+use crate::shell::gpu_mq::MqGpu;
+use crate::shell::render::{texture_quad, wrap_pass};
+use crate::shell::ui_text::MenuGlyphs;
+
+/// A [`Gpu`] with the resources the drawing keeps on it.
+pub struct RenderCtx<G: Gpu> {
+    /// The interpreter every draw goes through.
+    pub(crate) gpu: G,
+    /// The glyph atlas pages of the canvas text on `gpu`.
+    textures: GlyphTextures<G>,
+    /// The alpha-blend pipeline, made on first use.
+    pipeline: Option<G::Pipeline>,
+    /// The draws collected by the open [`RenderCtx::render_to`], if any.
+    scope: Option<Vec<CommandOf<G>>>,
+    /// The menu font's atlas and pages; made on first use.
+    pub(crate) menu: Option<MenuGlyphs<G>>,
+    /// The window in logical pixels: the view of a draw outside a scope.
+    window: View,
+    /// The window's DPI scale.
+    dpi: f32,
+}
+
+impl<G: Gpu> RenderCtx<G> {
+    /// A context drawing on `gpu`, with a 1×1 window until
+    /// [`RenderCtx::set_window`].
+    #[must_use]
+    pub fn new(gpu: G) -> Self {
+        Self {
+            gpu,
+            textures: GlyphTextures::default(),
+            pipeline: None,
+            scope: None,
+            menu: None,
+            window: View {
+                width: 1.0,
+                height: 1.0,
+            },
+            dpi: 1.0,
+        }
+    }
+
+    /// The interpreter.
+    #[must_use]
+    pub fn gpu(&self) -> &G {
+        &self.gpu
+    }
+
+    /// The interpreter, for resources and [`RenderCtx::submit`]; not for
+    /// drawing.
+    pub fn gpu_mut(&mut self) -> &mut G {
+        &mut self.gpu
+    }
+
+    /// The glyph page textures of the canvas text.
+    #[must_use]
+    pub fn textures(&self) -> &GlyphTextures<G> {
+        &self.textures
+    }
+
+    /// Sets the window size (logical pixels) and DPI scale the drawing
+    /// reads.
+    pub fn set_window(&mut self, view: View, dpi: f32) {
+        self.window = view;
+        self.dpi = dpi;
+    }
+
+    /// The window in logical pixels.
+    #[must_use]
+    pub fn window(&self) -> View {
+        self.window
+    }
+
+    /// The window's DPI scale.
+    #[must_use]
+    pub fn dpi(&self) -> f32 {
+        self.dpi
+    }
+
+    /// Whether a [`RenderCtx::render_to`] scope is open.
+    #[must_use]
+    pub fn in_scope(&self) -> bool {
+        self.scope.is_some()
+    }
+
+    /// The alpha-blend pipeline; made on the first call.
+    pub fn alpha_pipeline(&mut self) -> G::Pipeline {
+        let gpu = &mut self.gpu;
+        *self.pipeline.get_or_insert_with(|| {
+            gpu.pipeline(PipelineDesc {
+                blend: Blend::Alpha,
+            })
+        })
+    }
+
+    /// Executes `list`. The lists are built from valid handles; a refusal
+    /// drops the list.
+    pub fn submit(&mut self, list: &CommandList<G>) {
+        let _ = self.gpu.submit(list);
+    }
+
+    /// Puts the new pages and uploads of `atlas` on the GPU. A failed
+    /// upload leaves the page as it was: its glyphs draw blank.
+    pub fn sync_textures(&mut self, atlas: &mut GlyphAtlas) {
+        if let Err(err) = self.textures.sync(&mut self.gpu, atlas) {
+            eprintln!("glyph textures: {err}");
+        }
+    }
+
+    /// Sends one inline draw with `texture`: collected into the open scope,
+    /// else a pass of its own on the window.
+    pub fn draw_inline(
+        &mut self,
+        vertices: &[Vertex],
+        indices: &[u32],
+        texture: Option<G::Texture>,
+    ) {
+        let draw = Command::Draw {
+            pipeline: self.alpha_pipeline(),
+            texture,
+            geometry: Geometry::Inline {
+                vertices: vertices.to_vec(),
+                indices: indices.to_vec(),
+            },
+        };
+        if let Some(open) = self.scope.as_mut() {
+            open.push(draw);
+        } else {
+            let list = wrap_pass::<G>(None, self.window, None, vec![draw]);
+            self.submit(&list);
+        }
+    }
+
+    /// Sends one chunk bound to glyph atlas `page` (`None`: untextured).
+    pub fn draw_chunk(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
+        let texture = page.and_then(|page| self.textures.get(page).cloned());
+        self.draw_inline(vertices, indices, texture);
+    }
+
+    /// Runs `draw` with every draw collected into one pass over `target`,
+    /// seen through `view` (logical pixels), after clearing it to `clear`
+    /// if given. One pass means one resolve of a multisampled target
+    /// (ADR-T159-1). Not reentrant.
+    pub fn render_to(
+        &mut self,
+        target: &G::Target,
+        view: View,
+        clear: Option<GfxColor>,
+        draw: impl FnOnce(&mut Self),
+    ) {
+        self.begin_scope();
+        draw(self);
+        self.end_scope(target, view, clear);
+    }
+
+    /// Opens a scope: draws are collected until [`RenderCtx::end_scope`].
+    pub fn begin_scope(&mut self) {
+        self.scope = Some(Vec::new());
+    }
+
+    /// Closes the scope, submitting its draws in one pass over `target`.
+    pub fn end_scope(&mut self, target: &G::Target, view: View, clear: Option<GfxColor>) {
+        let draws = self.scope.take().unwrap_or_default();
+        let list = wrap_pass::<G>(Some(target.clone()), view, clear, draws);
+        self.submit(&list);
+    }
+
+    /// Clears the window to `color`.
+    pub fn clear_window(&mut self, color: GfxColor) {
+        let list = wrap_pass::<G>(None, self.window, Some(color), Vec::new());
+        self.submit(&list);
+    }
+
+    /// Draws the whole `texture` stretched over `dest` on the window, in
+    /// window pixels, rows from the bottom when `flip_y`.
+    pub fn draw_texture_quad(&mut self, texture: &G::Texture, dest: Aabb, flip_y: bool) {
+        let (vertices, indices) = texture_quad(dest, flip_y, [255; 4]);
+        self.draw_inline(&vertices, &indices, Some(texture.clone()));
+    }
+}
+
+thread_local! {
+    /// The bridge: the one context the shell reaches until T166 passes it
+    /// down from `app::run_on` (T165).
+    static BRIDGE: RefCell<RenderCtx<MqGpu>> = RefCell::new(RenderCtx::new(MqGpu::new()));
+}
+
+/// Runs `f` on the bridge context. `f` must not call back into the bridge.
+/// Removed by T166.
+pub fn with_ctx<R>(f: impl FnOnce(&mut RenderCtx<MqGpu>) -> R) -> R {
+    BRIDGE.with(|ctx| f(&mut ctx.borrow_mut()))
+}
+
+/// [`with_ctx`] after reading the window size and DPI from macroquad.
+/// Removed by T166.
+pub fn with_drawing<R>(f: impl FnOnce(&mut RenderCtx<MqGpu>) -> R) -> R {
+    let view = View {
+        width: screen_width(),
+        height: screen_height(),
+    };
+    let dpi = screen_dpi_scale();
+    with_ctx(|ctx| {
+        ctx.set_window(view, dpi);
+        f(ctx)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,9 +347,15 @@ mod tests {
             "the glyph page is created on the Gpu"
         );
         let textured = calls.iter().any(|call| match call {
-            GpuCall::Submit { commands } => commands
-                .iter()
-                .any(|c| matches!(c, Command::Draw { texture: Some(_), .. })),
+            GpuCall::Submit { commands } => commands.iter().any(|c| {
+                matches!(
+                    c,
+                    Command::Draw {
+                        texture: Some(_),
+                        ..
+                    }
+                )
+            }),
             _ => false,
         });
         assert!(textured, "a glyph chunk samples the page");
@@ -154,11 +384,13 @@ mod tests {
             })
             .collect();
         assert_eq!(lists.len(), 1);
-        assert!(
-            lists[0]
-                .iter()
-                .any(|c| matches!(c, Command::Draw { texture: Some(_), .. }))
-        );
+        assert!(lists[0].iter().any(|c| matches!(
+            c,
+            Command::Draw {
+                texture: Some(_),
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -187,7 +419,10 @@ mod tests {
         // Act
         ctx.render_to(&target, view, clear, |ctx| {
             ctx.draw_preview(&stroke(), &Camera::default());
-            ctx.draw_guides(&[[Vec2::new(0.0, 0.0), Vec2::new(30.0, 0.0)]], &Camera::default());
+            ctx.draw_guides(
+                &[[Vec2::new(0.0, 0.0), Vec2::new(30.0, 0.0)]],
+                &Camera::default(),
+            );
         });
 
         // Assert
@@ -249,13 +484,19 @@ mod tests {
             };
             let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
             let holds_gpu = production.contains("thread_local!")
-                && ["MqGpu", "GlyphTextures", "MqPipeline", "CommandOf", "Glyphs>"]
-                    .iter()
-                    .any(|word| {
-                        production
-                            .lines()
-                            .any(|l| l.contains("static ") && l.contains(word))
-                    });
+                && [
+                    "MqGpu",
+                    "GlyphTextures",
+                    "MqPipeline",
+                    "CommandOf",
+                    "Glyphs>",
+                ]
+                .iter()
+                .any(|word| {
+                    production
+                        .lines()
+                        .any(|l| l.contains("static ") && l.contains(word))
+                });
             if holds_gpu {
                 bridges.push(name);
             }
