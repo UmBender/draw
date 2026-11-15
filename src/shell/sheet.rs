@@ -13,6 +13,7 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::keymap::Topic;
 use crate::core::sheet::Sheet;
 use crate::shell::render::{hex_color, hex_color_alpha};
+use crate::shell::render_ctx::MqCtx;
 use crate::theme;
 
 /// Widest the panel gets, in pixels.
@@ -76,10 +77,11 @@ fn tab_layout(labels: &[String], widths: &[f32], width: f32) -> Vec<(f32, usize)
 }
 
 /// Draws the sheet over the canvas of `viewport` pixels.
-pub fn draw(sheet: &Sheet, viewport: Vec2) {
+pub fn draw(ctx: &mut MqCtx, sheet: &Sheet, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     ui_shapes::rect_xywh(
+        ctx,
         0.0,
         0.0,
         viewport.x,
@@ -104,12 +106,13 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
     // Tabs, title, rows, footer.
     let rect = panel(viewport, tab_lines + 1 + rows.len().max(1) + 1);
     ui_shapes::fill(
+        ctx,
         rect,
         PANEL_RADIUS_PX,
         hex_color_alpha(theme::MENU_ISLAND, theme::MENU_PANEL_ALPHA),
     );
     let edge = hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA);
-    ui_shapes::ring(rect, PANEL_RADIUS_PX, 1.0, edge);
+    ui_shapes::ring(ctx, rect, PANEL_RADIUS_PX, 1.0, edge);
 
     let x = rect.min.x + PAD_PX;
     let mut y = rect.min.y + PAD_PX;
@@ -121,17 +124,28 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
                 min: Vec2::new(x + dx, top + PILL_MARGIN_PX),
                 max: Vec2::new(x + dx + width, top + ROW_PX - PILL_MARGIN_PX),
             };
-            ui_shapes::fill(pill, PILL_RADIUS_PX, hex_color(theme::TOOLBAR_ACTIVE_FILL));
+            ui_shapes::fill(
+                ctx,
+                pill,
+                PILL_RADIUS_PX,
+                hex_color(theme::TOOLBAR_ACTIVE_FILL),
+            );
         }
         let color = if current {
             hex_color(theme::MENU_ACTIVE_BRIGHT)
         } else {
             hex_color(theme::MENU_DIM_TEXT)
         };
-        draw_row_text(label, x + dx + PILL_PAD_PX, top, color);
+        draw_row_text(ctx, label, x + dx + PILL_PAD_PX, top, color);
     }
     y += tab_lines as f32 * ROW_PX;
-    draw_row_text(&page.title(), x, y, hex_color(theme::MENU_ACTIVE_BRIGHT));
+    draw_row_text(
+        ctx,
+        &page.title(),
+        x,
+        y,
+        hex_color(theme::MENU_ACTIVE_BRIGHT),
+    );
     y += ROW_PX;
     for (i, row) in rows.iter().enumerate() {
         if i % 2 == 1 {
@@ -140,22 +154,23 @@ pub fn draw(sheet: &Sheet, viewport: Vec2) {
                 max: Vec2::new(rect.max.x - 4.0, y + ROW_PX),
             };
             ui_shapes::fill(
+                ctx,
                 stripe,
                 PILL_RADIUS_PX,
                 hex_color_alpha(theme::MENU_KEY_FILL, STRIPE_ALPHA),
             );
         }
-        draw_row_text(&row.keys, x, y, accent);
-        draw_row_text(row.text, x + KEY_COLUMN_PX, y, text);
+        draw_row_text(ctx, &row.keys, x, y, accent);
+        draw_row_text(ctx, row.text, x + KEY_COLUMN_PX, y, text);
         y += ROW_PX;
     }
-    draw_row_text(FOOTER, x, y, hex_color(theme::MENU_MUTED));
+    draw_row_text(ctx, FOOTER, x, y, hex_color(theme::MENU_MUTED));
 }
 
 /// Draws `label` vertically centred in the row starting at `y`.
-fn draw_row_text(label: &str, x: f32, y: f32, color: Color) {
+fn draw_row_text(ctx: &mut MqCtx, label: &str, x: f32, y: f32, color: Color) {
     let size = ui_text::measure(label, TEXT_PX);
-    ui_text::draw(
+    ctx.draw_menu_label(
         label,
         x,
         y + ROW_PX * 0.5 + size.offset_y * 0.5,

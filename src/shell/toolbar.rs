@@ -15,7 +15,8 @@ use crate::core::editor::{Editor, PAGE_COUNT};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
-use crate::shell::render::{Batch, GlSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::render::{Batch, CtxSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::render_ctx::MqCtx;
 use crate::shell::{ui_shapes, ui_text};
 use crate::theme;
 
@@ -335,13 +336,15 @@ pub fn route(visible: bool, flyout: bool, viewport: Vec2, event: InputEvent) -> 
 
 /// Draws one island: its translucent fill and its thin border ring
 /// (ADR-T126-1).
-fn draw_island(frame: Aabb) {
+fn draw_island(ctx: &mut MqCtx, frame: Aabb) {
     ui_shapes::fill(
+        ctx,
         frame,
         ISLAND_RADIUS_PX,
         hex_color_alpha(theme::MENU_ISLAND, theme::MENU_ISLAND_ALPHA),
     );
     ui_shapes::ring(
+        ctx,
         frame,
         ISLAND_RADIUS_PX,
         ISLAND_BORDER_PX,
@@ -351,9 +354,9 @@ fn draw_island(frame: Aabb) {
 
 /// Draws the toolbar for `editor` in a viewport of `viewport` pixels, with
 /// the grid size flyout while the grid tool is active.
-pub fn draw(editor: &Editor, viewport: Vec2) {
+pub fn draw(ctx: &mut MqCtx, editor: &Editor, viewport: Vec2) {
     for frame in islands(viewport) {
-        draw_island(frame);
+        draw_island(ctx, frame);
     }
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     let text = hex_color(theme::TOOLBAR_TEXT);
@@ -361,18 +364,26 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
         let rect = button.rect;
         match button.kind {
             ButtonKind::Tool(tool) => {
-                draw_toggle(rect, tool_label(tool), editor.tool() == tool, accent, text);
+                draw_toggle(
+                    ctx,
+                    rect,
+                    tool_label(tool),
+                    editor.tool() == tool,
+                    accent,
+                    text,
+                );
             }
             ButtonKind::Color(id) => {
                 let swatch = rect.expand(-SWATCH_INSET_PX);
-                ui_shapes::fill(swatch, SWATCH_RADIUS_PX, to_mq_color(palette(id)));
+                ui_shapes::fill(ctx, swatch, SWATCH_RADIUS_PX, to_mq_color(palette(id)));
                 if editor.style().color == id {
                     let ring = swatch.expand(SWATCH_RING_GAP_PX);
-                    ui_shapes::ring(ring, BUTTON_RADIUS_PX, OUTLINE_PX, accent);
+                    ui_shapes::ring(ctx, ring, BUTTON_RADIUS_PX, OUTLINE_PX, accent);
                 }
             }
             ButtonKind::SmartSnap => {
                 draw_toggle(
+                    ctx,
                     rect,
                     SMART_SNAP_LABEL,
                     editor.helpers().smart_snap,
@@ -381,29 +392,33 @@ pub fn draw(editor: &Editor, viewport: Vec2) {
                 );
             }
             ButtonKind::GridSnap => {
-                draw_toggle(rect, "#", editor.helpers().grid_snap, accent, text);
+                draw_toggle(ctx, rect, "#", editor.helpers().grid_snap, accent, text);
             }
             ButtonKind::Numbering => {
-                draw_toggle(rect, "N", editor.helpers().numbering, accent, text);
+                draw_toggle(ctx, rect, "N", editor.helpers().numbering, accent, text);
             }
             ButtonKind::GridCols(delta) | ButtonKind::GridRows(delta) => {
-                draw_label(rect, step_label(delta), text);
+                draw_label(ctx, rect, step_label(delta), text);
             }
-            ButtonKind::Undo => draw_history_arrow(rect, -1.0, history_color(editor.can_undo())),
-            ButtonKind::Redo => draw_history_arrow(rect, 1.0, history_color(editor.can_redo())),
+            ButtonKind::Undo => {
+                draw_history_arrow(ctx, rect, -1.0, history_color(editor.can_undo()));
+            }
+            ButtonKind::Redo => {
+                draw_history_arrow(ctx, rect, 1.0, history_color(editor.can_redo()));
+            }
             ButtonKind::Page(_) => {}
         }
     }
     for cell in page_layout(viewport) {
         if let ButtonKind::Page(page) = cell.kind {
-            draw_page_cell(cell.rect, page, page_look(editor, page));
+            draw_page_cell(ctx, cell.rect, page, page_look(editor, page));
         }
     }
     if editor.tap_slop() > 0.0 {
-        draw_label_sized(pen_badge(viewport), "pen", accent, BADGE_LABEL_SIZE);
+        draw_label_sized(ctx, pen_badge(viewport), "pen", accent, BADGE_LABEL_SIZE);
     }
     if editor.tool() == Tool::Grid {
-        draw_flyout(editor, viewport);
+        draw_flyout(ctx, editor, viewport);
     }
 }
 
@@ -431,21 +446,23 @@ pub fn page_look(editor: &Editor, page: usize) -> PageLook {
 }
 
 /// Draws the cell of page `page` (zero-based) in `rect`.
-fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
+fn draw_page_cell(ctx: &mut MqCtx, rect: Aabb, page: usize, look: PageLook) {
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     let label = (page + 1).to_string();
     match look {
         PageLook::Current => {
             ui_shapes::fill(
+                ctx,
                 rect,
                 BUTTON_RADIUS_PX,
                 hex_color(theme::TOOLBAR_ACTIVE_FILL),
             );
-            draw_label(rect, &label, hex_color(theme::MENU_ACTIVE_BRIGHT));
+            draw_label(ctx, rect, &label, hex_color(theme::MENU_ACTIVE_BRIGHT));
         }
         PageLook::Used => {
-            draw_label(rect, &label, hex_color(theme::TOOLBAR_TEXT));
+            draw_label(ctx, rect, &label, hex_color(theme::TOOLBAR_TEXT));
             ui_shapes::rect_xywh(
+                ctx,
                 rect.min.x + PAGE_BAR_INSET_PX,
                 rect.max.y - PAGE_BAR_LIFT_PX - PAGE_BAR_PX,
                 rect.width() - 2.0 * PAGE_BAR_INSET_PX,
@@ -453,15 +470,15 @@ fn draw_page_cell(rect: Aabb, page: usize, look: PageLook) {
                 accent,
             );
         }
-        PageLook::Empty => draw_label(rect, &label, hex_color(theme::MENU_MUTED)),
+        PageLook::Empty => draw_label(ctx, rect, &label, hex_color(theme::MENU_MUTED)),
     }
 }
 
 /// Draws the grid size flyout with the current columns and rows of
 /// `editor`.
-fn draw_flyout(editor: &Editor, viewport: Vec2) {
+fn draw_flyout(ctx: &mut MqCtx, editor: &Editor, viewport: Vec2) {
     let fly = flyout_panel(viewport);
-    draw_island(fly);
+    draw_island(ctx, fly);
     let border = hex_color(theme::MENU_BORDER);
     let text = hex_color(theme::TOOLBAR_TEXT);
     let helpers = editor.helpers();
@@ -474,7 +491,7 @@ fn draw_flyout(editor: &Editor, viewport: Vec2) {
     };
     for button in flyout_layout(viewport) {
         let rect = button.rect;
-        ui_shapes::ring(rect, BUTTON_RADIUS_PX, ISLAND_BORDER_PX, border);
+        ui_shapes::ring(ctx, rect, BUTTON_RADIUS_PX, ISLAND_BORDER_PX, border);
         let (delta, name, value) = match button.kind {
             ButtonKind::GridCols(delta) => (delta, "cols", helpers.grid_cols),
             ButtonKind::GridRows(delta) => (delta, "rows", helpers.grid_rows),
@@ -487,15 +504,15 @@ fn draw_flyout(editor: &Editor, viewport: Vec2) {
             | ButtonKind::Redo
             | ButtonKind::Page(_) => continue,
         };
-        draw_label(rect, step_label(delta), text);
+        draw_label(ctx, rect, step_label(delta), text);
         if delta < 0 {
             // The value right of `-`.
-            draw_label_sized(name_box(rect), name, text, FLY_LABEL_SIZE);
+            draw_label_sized(ctx, name_box(rect), name, text, FLY_LABEL_SIZE);
             let cell = Aabb::from_corners(
                 Vec2::new(rect.max.x + GAP_PX, rect.min.y),
                 Vec2::new(rect.max.x + GAP_PX + FLY_VALUE_PX, rect.max.y),
             );
-            draw_label(cell, &value.to_string(), text);
+            draw_label(ctx, cell, &value.to_string(), text);
         }
     }
 }
@@ -527,16 +544,17 @@ fn tool_label(tool: Tool) -> &'static str {
 }
 
 /// Draws a labelled button: a rounded fill and the bright accent when `on`.
-fn draw_toggle(rect: Aabb, label: &str, on: bool, _accent: Color, text: Color) {
+fn draw_toggle(ctx: &mut MqCtx, rect: Aabb, label: &str, on: bool, _accent: Color, text: Color) {
     if on {
         ui_shapes::fill(
+            ctx,
             rect,
             BUTTON_RADIUS_PX,
             hex_color(theme::TOOLBAR_ACTIVE_FILL),
         );
     }
     let bright = hex_color(theme::MENU_ACTIVE_BRIGHT);
-    draw_label(rect, label, if on { bright } else { text });
+    draw_label(ctx, rect, label, if on { bright } else { text });
 }
 
 /// Colour of an undo/redo arrow: the toolbar text colour, faded by
@@ -551,21 +569,21 @@ fn history_color(enabled: bool) -> Color {
 }
 
 /// Draws `label` centred in `rect`.
-fn draw_label(rect: Aabb, label: &str, color: Color) {
-    draw_label_sized(rect, label, color, LABEL_SIZE);
+fn draw_label(ctx: &mut MqCtx, rect: Aabb, label: &str, color: Color) {
+    draw_label_sized(ctx, rect, label, color, LABEL_SIZE);
 }
 
 /// Draws `label` centred in `rect` at `font_size` pixels.
-fn draw_label_sized(rect: Aabb, label: &str, color: Color, font_size: u16) {
+fn draw_label_sized(ctx: &mut MqCtx, rect: Aabb, label: &str, color: Color, font_size: u16) {
     let size = ui_text::measure(label, font_size);
     let c = rect.center();
     let x = c.x - size.width * 0.5;
     let y = c.y + size.offset_y * 0.5;
-    ui_text::draw(label, x, y, font_size, color);
+    ctx.draw_menu_label(label, x, y, font_size, color);
 }
 
 /// Draws a horizontal arrow in `rect`, pointing left (`dir < 0`) or right.
-fn draw_history_arrow(rect: Aabb, dir: f32, color: Color) {
+fn draw_history_arrow(ctx: &mut MqCtx, rect: Aabb, dir: f32, color: Color) {
     let c = rect.center();
     let half = BUTTON_PX * 0.25;
     let head = BUTTON_PX * 0.2;
@@ -573,7 +591,7 @@ fn draw_history_arrow(rect: Aabb, dir: f32, color: Color) {
     let base = Vec2::new(tip.x - dir * head, c.y);
     let tail = c.x - dir * half;
     let bar = 2.0;
-    let mut batch = Batch::new(GlSink);
+    let mut batch = Batch::new(CtxSink::new(ctx));
     batch.rect(
         Aabb::from_corners(
             Vec2::new(base.x.min(tail), c.y - bar * 0.5),

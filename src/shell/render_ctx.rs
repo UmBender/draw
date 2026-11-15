@@ -3,22 +3,24 @@
 //!
 //! [`RenderCtx`] owns the `Gpu`, the glyph page textures, the alpha
 //! pipeline, the draws of an open [`RenderCtx::render_to`] scope and the
-//! menu glyphs. `render.rs` and `ui_text.rs` draw through its methods; the
-//! shell reaches one `RenderCtx<MqGpu>` through the bridge below until T166
-//! passes it down from `app::run_on`.
+//! menu glyphs. `render.rs` and `ui_text.rs` draw through its methods;
+//! `app::run_on` owns one `RenderCtx<MqGpu>` and passes it down (T166), after
+//! [`RenderCtx::sync_window`] with the platform's metrics.
 
 use draw_gfx::gpu::{
     Blend, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
     View,
 };
-use macroquad::window::{screen_dpi_scale, screen_height, screen_width};
-use std::cell::RefCell;
+use draw_sys::platform::WindowMetrics;
 
 use crate::core::geom::Aabb;
 use crate::shell::glyphs::{GlyphAtlas, GlyphTextures};
 use crate::shell::gpu_mq::MqGpu;
 use crate::shell::render::{texture_quad, wrap_pass};
 use crate::shell::ui_text::MenuGlyphs;
+
+/// The context the loop owns until T167 makes it generic.
+pub type MqCtx = RenderCtx<MqGpu>;
 
 /// A [`Gpu`] with the resources the drawing keeps on it.
 pub struct RenderCtx<G: Gpu> {
@@ -80,6 +82,15 @@ impl<G: Gpu> RenderCtx<G> {
     pub fn set_window(&mut self, view: View, dpi: f32) {
         self.window = view;
         self.dpi = dpi;
+    }
+
+    /// [`RenderCtx::set_window`] from what the platform reports.
+    pub fn sync_window(&mut self, metrics: WindowMetrics) {
+        let view = View {
+            width: metrics.width,
+            height: metrics.height,
+        };
+        self.set_window(view, metrics.scale);
     }
 
     /// The window in logical pixels.
@@ -194,32 +205,6 @@ impl<G: Gpu> RenderCtx<G> {
         let (vertices, indices) = texture_quad(dest, flip_y, [255; 4]);
         self.draw_inline(&vertices, &indices, Some(texture.clone()));
     }
-}
-
-thread_local! {
-    /// The bridge: the one context the shell reaches until T166 passes it
-    /// down from `app::run_on` (T165).
-    static BRIDGE: RefCell<RenderCtx<MqGpu>> = RefCell::new(RenderCtx::new(MqGpu::new()));
-}
-
-/// Runs `f` on the bridge context. `f` must not call back into the bridge.
-/// Removed by T166.
-pub fn with_ctx<R>(f: impl FnOnce(&mut RenderCtx<MqGpu>) -> R) -> R {
-    BRIDGE.with(|ctx| f(&mut ctx.borrow_mut()))
-}
-
-/// [`with_ctx`] after reading the window size and DPI from macroquad.
-/// Removed by T166.
-pub fn with_drawing<R>(f: impl FnOnce(&mut RenderCtx<MqGpu>) -> R) -> R {
-    let view = View {
-        width: screen_width(),
-        height: screen_height(),
-    };
-    let dpi = screen_dpi_scale();
-    with_ctx(|ctx| {
-        ctx.set_window(view, dpi);
-        f(ctx)
-    })
 }
 
 #[cfg(test)]

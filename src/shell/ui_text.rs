@@ -13,7 +13,7 @@ use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, glyph_quad, glyph_scale, raster_px,
 };
 use crate::shell::render::{Batch, MeshSink};
-use crate::shell::render_ctx::{RenderCtx, with_drawing};
+use crate::shell::render_ctx::RenderCtx;
 use draw_gfx::gpu::{Gpu, Vertex};
 use macroquad::color::Color;
 use macroquad::text::{Font, TextDimensions, load_ttf_font_from_bytes, measure_text};
@@ -65,12 +65,6 @@ pub fn snap(value: f32, dpi: f32) -> f32 {
     } else {
         value
     }
-}
-
-/// Draws `label` with its baseline at `y` and its left edge at `x`, both
-/// snapped to whole physical pixels, on the bridge context. Removed by T166.
-pub fn draw(label: &str, x: f32, y: f32, font_size: u16, color: Color) {
-    with_drawing(|ctx| ctx.draw_menu_label(label, x, y, font_size, color));
 }
 
 impl<G: Gpu> RenderCtx<G> {

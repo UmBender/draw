@@ -35,8 +35,8 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
-use crate::shell::gpu_mq::{MqGpu, MqTarget, MqTexture};
-use crate::shell::render_ctx::{RenderCtx, with_ctx, with_drawing};
+use crate::shell::gpu_mq::MqGpu;
+use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
 
 /// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
@@ -55,23 +55,11 @@ pub trait MeshSink {
     fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>);
 }
 
-/// Sends chunks to the bridge context (T165; removed by T166): each chunk
-/// is a one-draw command list in a pass that keeps the current camera.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct GlSink;
+/// Sends chunks to the context of the `MqGpu` the loop owns.
+pub type MqSink<'c> = CtxSink<'c, MqGpu>;
 
-impl MeshSink for GlSink {
-    fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
-        with_drawing(|ctx| ctx.draw_chunk(vertices, indices, page));
-    }
-}
-
-/// Runs `f` on the one interpreter every drawing call goes through, so the
-/// frame cache and the minimap share its targets and textures (T159).
-/// `f` must not draw: call it for resources only. Removed by T166.
-pub fn with_gpu<R>(f: impl FnOnce(&mut MqGpu) -> R) -> R {
-    with_ctx(|ctx| f(ctx.gpu_mut()))
-}
+/// A [`Batch`] drawing through the loop's `MqGpu` context.
+pub type MqBatch<'c> = Batch<MqSink<'c>>;
 
 /// `draws` wrapped in one pass over `target` (`None`: the window) seen
 /// through `view`, cleared to `clear` first if given.
@@ -101,23 +89,6 @@ pub fn gfx_color(color: Color) -> GfxColor {
     GfxColor::rgba(color.r, color.g, color.b, color.a)
 }
 
-/// Runs `draw` with every [`GlSink`] draw collected into one pass over
-/// `target`, seen through `view` (logical pixels), after clearing it to
-/// `clear` if given. One pass means one resolve of a multisampled target
-/// (ADR-T159-1). Not reentrant. On the bridge context, whose borrow is
-/// released while `draw` runs, so `draw` may call the other bridge
-/// functions. Removed by T166.
-pub fn render_to(target: &MqTarget, view: View, clear: Option<Color>, draw: impl FnOnce()) {
-    with_ctx(RenderCtx::begin_scope);
-    draw();
-    with_ctx(|ctx| ctx.end_scope(target, view, clear.map(gfx_color)));
-}
-
-/// Clears the window to `color`. Removed by T166.
-pub fn clear_window(color: Color) {
-    with_drawing(|ctx| ctx.clear_window(gfx_color(color)));
-}
-
 /// The two triangles of `dest` showing a whole texture, tinted `tint`.
 /// Rows of the texture run from the bottom when `flip_y` (GL targets).
 #[must_use]
@@ -137,13 +108,6 @@ pub fn texture_quad(dest: Aabb, flip_y: bool, tint: [u8; 4]) -> ([Vertex; 4], [u
         ],
         [0, 1, 2, 0, 2, 3],
     )
-}
-
-/// Draws the whole `texture` stretched over `dest` on the window, in
-/// window pixels, rows from the bottom when `flip_y`. On the bridge
-/// context; removed by T166.
-pub fn draw_texture_quad(texture: &MqTexture, dest: Aabb, flip_y: bool) {
-    with_drawing(|ctx| ctx.draw_texture_quad(texture, dest, flip_y));
 }
 
 /// Sends chunks to a [`RenderCtx`], binding the glyph page of each one
@@ -226,7 +190,7 @@ impl<G: Gpu> MeshSink for GpuSink<'_, G> {
 /// sample the white block of the chunk's atlas page, so they share chunks
 /// with glyphs; a chunk is bound to one page (ADR-T32-2). Callers
 /// [`Batch::flush`] before drawing anything outside the batch.
-pub struct Batch<S: MeshSink = GlSink> {
+pub struct Batch<S: MeshSink> {
     /// The chunk being filled.
     mesh: Chunk,
     /// Receives finished chunks.
@@ -816,12 +780,6 @@ thread_local! {
     static STATS: Cell<TextStats> = Cell::new(TextStats::default());
 }
 
-/// Makes `atlas` the glyph atlas of text blocks and labels on the bridge
-/// context; removed by T166.
-pub fn set_glyph_atlas(atlas: GlyphAtlas) {
-    with_drawing(|ctx| ctx.set_glyph_atlas(atlas));
-}
-
 impl<G: Gpu> RenderCtx<G> {
     /// Makes `atlas` the glyph atlas of text blocks and labels; until then
     /// they are not drawn (ADR-T32-1). Main thread only.
@@ -1086,60 +1044,6 @@ fn with_glyphs<G: Gpu>(
         sum.rasterized += rasterized;
         stats.set(sum);
     });
-}
-
-/// Draws what lies under the shapes: the snap dot grid while grid snap is
-/// on (ADR-T17-1), as seen through `camera` in a viewport of `viewport`
-/// pixels. Nothing is drawn when the view has too many dots.
-/// On the bridge context; removed by T166.
-pub fn draw_underlay(editor: &Editor, camera: &Camera, viewport: Vec2) {
-    with_drawing(|ctx| ctx.draw_underlay(editor, camera, viewport));
-}
-
-/// Draws alignment guides, world-space segments, on top of the overlay,
-/// [`GUIDE_WIDTH_PX`] wide in `theme::GUIDE`. On the bridge context;
-/// removed by T166.
-pub fn draw_guides(guides: &[[Vec2; 2]], camera: &Camera) {
-    with_drawing(|ctx| ctx.draw_guides(guides, camera));
-}
-
-/// Draws every shape whose bounds are visible through `camera` in a viewport
-/// of `viewport` pixels, in iteration order (later shapes on top). On the
-/// bridge context; removed by T166.
-pub fn draw_shapes<'a>(
-    shapes: impl IntoIterator<Item = &'a Shape>,
-    camera: &Camera,
-    viewport: Vec2,
-) {
-    with_drawing(|ctx| ctx.draw_shapes(shapes, camera, viewport));
-}
-
-/// Draws the shape being created, without culling. On the bridge context;
-/// removed by T166.
-pub fn draw_preview(shape: &Shape, camera: &Camera) {
-    with_drawing(|ctx| ctx.draw_preview(shape, camera));
-}
-
-/// Draws the text block being edited as typed, formulas as source
-/// (ADR-T30-1), in the background colour when it sits `on_fill` of a
-/// shape or cell (ADR-T31-1); any other shape as [`draw_preview`] does. On
-/// the bridge context; removed by T166.
-pub fn draw_source_preview(shape: &Shape, camera: &Camera, on_fill: bool) {
-    with_drawing(|ctx| ctx.draw_source_preview(shape, camera, on_fill));
-}
-
-/// Draws the selection outline around world `bounds`, [`SELECTION_WIDTH_PX`]
-/// wide in `theme::SELECTION_OUTLINE`. On the bridge context; removed by
-/// T166.
-pub fn draw_selection(bounds: Aabb, camera: &Camera) {
-    with_drawing(|ctx| ctx.draw_selection(bounds, camera));
-}
-
-/// Draws the resize handles at the screen `centers`: filled squares in the
-/// canvas colour with a selection-coloured outline. On the bridge context;
-/// removed by T166.
-pub fn draw_selection_handles(centers: &[Vec2; 4]) {
-    with_drawing(|ctx| ctx.draw_selection_handles(centers));
 }
 
 impl<G: Gpu> RenderCtx<G> {
