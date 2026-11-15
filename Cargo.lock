@@ -119,8 +119,10 @@ dependencies = [
 name = "draw-gfx"
 version = "1.6.0"
 dependencies = [
+ "draw-core",
  "draw-sys",
  "draw-types",
+ "proptest",
 ]
 
 [[package]]
