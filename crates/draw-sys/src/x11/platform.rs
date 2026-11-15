@@ -4,6 +4,7 @@
 //! until then `poll` reports only resizes and the clipboard is empty.
 
 use std::ffi::c_void;
+use std::collections::HashMap;
 use std::future::{Future, ready};
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,11 @@ use crate::platform::{Platform, RawEvent, WindowMetrics};
 
 use super::dpi::{resolve_dpi, scale_from_dpi, window_metrics};
 use super::event::{XEvent, decode, is_close};
+use super::keys::{
+    KeyTracker, button_from_x, char_from_keysym, group_of, key_from_keysym, level_for,
+    mods_from_state, wheel_delta,
+};
+use super::pen::{PenTracker, PressureAxis};
 use super::xlib::{Connection, Created, Mapped, VisualChoice, Window, open_context};
 use super::{GlBackend, X11Error};
 
@@ -64,6 +70,9 @@ pub struct X11Platform {
     scale: f32,
     close: bool,
     update_scheduled: bool,
+    keys: KeyTracker,
+    pen: PenTracker,
+    axes: HashMap<i32, Option<PressureAxis>>,
 }
 
 impl X11Platform {
@@ -91,7 +100,11 @@ impl X11Platform {
             Window::create(&conn, title, class, (width, height), choice)?;
         let gl = open_context(&conn, created.id(), backend)?;
         let window = created.map();
+        conn.select_raw_motion();
         Ok(Self {
+            keys: KeyTracker::default(),
+            pen: PenTracker::default(),
+            axes: HashMap::new(),
             gl,
             window,
             size: (width.max(1), height.max(1)),
@@ -116,7 +129,54 @@ impl X11Platform {
     /// Whether pen pressure is available (`libXi` with XInput2 2.0).
     #[must_use]
     pub fn pen_supported(&self) -> bool {
-        false
+        self.window.conn().has_xi()
+    }
+
+    fn key(&mut self, out: &mut Vec<RawEvent>, down: bool, keycode: u32, state: u32) {
+        let conn = self.window.conn();
+        let group = group_of(state);
+        let base = conn.keysym(keycode, group, 0);
+        let mods = mods_from_state(state);
+        let repeat = if down {
+            self.keys.press(keycode)
+        } else {
+            self.keys.release(keycode);
+            false
+        };
+        out.push(RawEvent::Key {
+            key: key_from_keysym(base, keycode),
+            mods,
+            down,
+            repeat,
+        });
+        if down && !mods.ctrl && !mods.alt {
+            let alphabetic = char_from_keysym(base).is_some_and(char::is_alphabetic);
+            let level = level_for(state, alphabetic);
+            let mut sym = conn.keysym(keycode, group, level);
+            if sym == 0 {
+                sym = base;
+            }
+            if let Some(ch) = char_from_keysym(sym) {
+                out.push(RawEvent::Char { ch, mods, repeat });
+            }
+        }
+    }
+
+    fn button(&mut self, out: &mut Vec<RawEvent>, down: bool, button: u32, x: i32, y: i32) {
+        if let Some((dx, dy)) = wheel_delta(button) {
+            if down {
+                out.push(RawEvent::Wheel { dx, dy });
+            }
+            return;
+        }
+        let (x, y) = (x as f32, y as f32);
+        out.extend(self.pen.sample(x, y));
+        out.push(RawEvent::Button {
+            button: button_from_x(button),
+            x,
+            y,
+            down,
+        });
     }
 
     /// Whether the window manager asked to close the window.
@@ -129,17 +189,48 @@ impl X11Platform {
 impl Platform for X11Platform {
     fn poll(&mut self, out: &mut Vec<RawEvent>) {
         let atoms = self.window.close_atoms();
-        while let Some(raw) = self.window.next_event() {
-            let event = decode(&raw);
+        while let Some(fetched) = self.window.next_event() {
+            let event = decode(&fetched.bytes);
             if is_close(event, atoms) {
                 self.close = true;
-            } else if let XEvent::Configure { width, height } = event
-                && width > 0
-                && height > 0
-                && (width, height) != self.size
-            {
-                self.size = (width, height);
-                out.push(RawEvent::Resize(window_metrics(width, height, self.scale)));
+                continue;
+            }
+            match event {
+                XEvent::Configure { width, height }
+                    if width > 0 && height > 0 && (width, height) != self.size =>
+                {
+                    self.size = (width, height);
+                    out.push(RawEvent::Resize(window_metrics(width, height, self.scale)));
+                }
+                XEvent::Key {
+                    down,
+                    keycode,
+                    state,
+                } => self.key(out, down, keycode, state),
+                XEvent::Button { down, button, x, y } => self.button(out, down, button, x, y),
+                XEvent::Motion { x, y } => {
+                    let (x, y) = (x as f32, y as f32);
+                    out.extend(self.pen.sample(x, y));
+                    out.push(RawEvent::PointerMove { x, y });
+                }
+                XEvent::Focus(focus) => {
+                    if !focus {
+                        self.keys.clear();
+                    }
+                    out.push(RawEvent::Focus(focus));
+                }
+                XEvent::Generic { .. } => {
+                    if let Some(raw) = fetched.raw {
+                        let conn = self.window.conn();
+                        let axis = *self
+                            .axes
+                            .entry(raw.source)
+                            .or_insert_with(|| conn.pressure_axis(raw.source));
+                        self.pen
+                            .raw_event(raw.source, axis, &raw.mask, &raw.values);
+                    }
+                }
+                _ => {}
             }
         }
     }

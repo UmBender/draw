@@ -6,6 +6,15 @@
 /// Size of the Xlib `XEvent` union on LP64.
 pub const EVENT_BYTES: usize = 192;
 
+const KEY_PRESS: i32 = 2;
+const KEY_RELEASE: i32 = 3;
+const BUTTON_PRESS: i32 = 4;
+const BUTTON_RELEASE: i32 = 5;
+const MOTION_NOTIFY: i32 = 6;
+const FOCUS_IN: i32 = 9;
+const FOCUS_OUT: i32 = 10;
+/// `GenericEvent`: its first field (the type) is 35.
+pub const GENERIC_EVENT: i32 = 35;
 const CONFIGURE_NOTIFY: i32 = 22;
 const CLIENT_MESSAGE: i32 = 33;
 
@@ -86,8 +95,33 @@ fn read_u64(raw: &[u8], at: usize) -> Option<u64> {
     Some(u64::from_ne_bytes(bytes.try_into().ok()?))
 }
 
+fn read_u32(raw: &[u8], at: usize) -> Option<u32> {
+    let bytes = raw.get(at..at + 4)?;
+    Some(u32::from_ne_bytes(bytes.try_into().ok()?))
+}
+
 fn decode_known(raw: &[u8], kind: i32) -> Option<XEvent> {
     match kind {
+        KEY_PRESS | KEY_RELEASE => Some(XEvent::Key {
+            down: kind == KEY_PRESS,
+            keycode: read_u32(raw, 84)?,
+            state: read_u32(raw, 80)?,
+        }),
+        BUTTON_PRESS | BUTTON_RELEASE => Some(XEvent::Button {
+            down: kind == BUTTON_PRESS,
+            button: read_u32(raw, 84)?,
+            x: read_i32(raw, 64)?,
+            y: read_i32(raw, 68)?,
+        }),
+        MOTION_NOTIFY => Some(XEvent::Motion {
+            x: read_i32(raw, 64)?,
+            y: read_i32(raw, 68)?,
+        }),
+        FOCUS_IN | FOCUS_OUT => Some(XEvent::Focus(kind == FOCUS_IN)),
+        GENERIC_EVENT => Some(XEvent::Generic {
+            extension: read_i32(raw, 32)?,
+            evtype: read_i32(raw, 36)?,
+        }),
         CONFIGURE_NOTIFY => Some(XEvent::Configure {
             width: u32::try_from(read_i32(raw, 56)?).unwrap_or(0),
             height: u32::try_from(read_i32(raw, 60)?).unwrap_or(0),

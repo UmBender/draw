@@ -15,7 +15,8 @@ use crate::egl::{EglContext, Platform as EglPlatform};
 use crate::glx::GlxContext;
 use crate::loader::Library;
 
-use super::event::{CloseAtoms, EVENT_BYTES};
+use super::event::{CloseAtoms, EVENT_BYTES, XEvent, decode};
+use super::pen::PressureAxis;
 use super::platform::GlSurface;
 use super::{GlBackend, X11Error};
 
@@ -31,6 +32,8 @@ const CW_COLORMAP: c_ulong = 1 << 13;
 const INPUT_OUTPUT: c_uint = 1;
 const EXPOSURE_MASK: c_long = 1 << 15;
 const STRUCTURE_NOTIFY_MASK: c_long = 1 << 17;
+/// Key press and release, button press and release, pointer motion, focus.
+const INPUT_MASK: c_long = 1 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 6 | 1 << 21;
 
 const GLX_RED_SIZE: c_int = 8;
 const GLX_GREEN_SIZE: c_int = 9;
@@ -150,8 +153,113 @@ struct XlibApi {
     send_event: unsafe extern "C" fn(Ptr, c_ulong, c_int, c_long, *mut c_long) -> c_int,
     set_error_handler: unsafe extern "C" fn(ErrorHandler) -> *const c_void,
     free: unsafe extern "C" fn(Ptr) -> c_int,
+    // TEST: x11_key_by_xdotool_reports_key_and_char
+    keycode_to_keysym: unsafe extern "C" fn(Ptr, c_uint, c_uint, c_uint) -> c_ulong,
+    set_detectable: unsafe extern "C" fn(Ptr, c_int, *mut c_int) -> c_int,
+    get_event_data: unsafe extern "C" fn(Ptr, *mut c_long) -> c_int,
+    free_event_data: unsafe extern "C" fn(Ptr, *mut c_long),
+    query_extension: unsafe extern "C" fn(Ptr, *const c_char, *mut c_int, *mut c_int, *mut c_int) -> c_int,
     // Declared last: the library outlives the pointers above.
     _libx11: Library,
+}
+
+/// `XIEventMask`.
+#[repr(C)]
+struct XiEventMask {
+    deviceid: c_int,
+    mask_len: c_int,
+    mask: *mut u8,
+}
+
+/// `XIAnyClassInfo`.
+#[repr(C)]
+struct XiAnyClass {
+    kind: c_int,
+    sourceid: c_int,
+}
+
+/// `XIValuatorClassInfo`.
+#[repr(C)]
+struct XiValuatorClass {
+    kind: c_int,
+    sourceid: c_int,
+    number: c_int,
+    label: c_ulong,
+    min: f64,
+    max: f64,
+    value: f64,
+    resolution: c_int,
+    mode: c_int,
+}
+
+/// `XIDeviceInfo`.
+#[repr(C)]
+struct XiDeviceInfo {
+    deviceid: c_int,
+    name: *mut c_char,
+    use_: c_int,
+    attachment: c_int,
+    enabled: c_int,
+    num_classes: c_int,
+    classes: *mut *mut XiAnyClass,
+}
+
+/// The head of `XIRawEvent` up to its valuator state.
+#[repr(C)]
+struct XiRawHead {
+    kind: c_int,
+    serial: c_ulong,
+    send_event: c_int,
+    display: Ptr,
+    extension: c_int,
+    evtype: c_int,
+    time: c_ulong,
+    deviceid: c_int,
+    sourceid: c_int,
+    detail: c_int,
+    flags: c_int,
+    mask_len: c_int,
+    mask: *const u8,
+    values: *const f64,
+}
+
+const XI_RAW_MOTION: i32 = 17;
+const XI_VALUATOR_CLASS: c_int = 2;
+const XI_ALL_MASTER_DEVICES: c_int = 1;
+
+/// The `libXi` functions, present when XInput2 2.0 is.
+#[derive(Debug)]
+struct XiApi {
+    // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+    query_version: unsafe extern "C" fn(Ptr, *mut c_int, *mut c_int) -> c_int,
+    // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+    select_events: unsafe extern "C" fn(Ptr, c_ulong, *mut XiEventMask, c_int) -> c_int,
+    // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+    query_device: unsafe extern "C" fn(Ptr, c_int, *mut c_int) -> *mut XiDeviceInfo,
+    // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+    free_device_info: unsafe extern "C" fn(*mut XiDeviceInfo),
+    opcode: c_int,
+    _libxi: Library,
+}
+
+/// One `XI_RawMotion`, copied out of the display's event data.
+#[derive(Debug)]
+pub(super) struct XiRaw {
+    /// The source device.
+    pub(super) source: i32,
+    /// The valuator mask.
+    pub(super) mask: Vec<u8>,
+    /// The packed valuator values.
+    pub(super) values: Vec<f64>,
+}
+
+/// An event with the XInput2 data it carried.
+#[derive(Debug)]
+pub(super) struct Fetched {
+    /// The `XEvent` bytes.
+    pub(super) bytes: [u8; EVENT_BYTES],
+    /// The raw motion, for an `XI_RawMotion` event.
+    pub(super) raw: Option<XiRaw>,
 }
 
 impl XlibApi {
@@ -188,6 +296,11 @@ impl XlibApi {
                 send_event: *x11.symbol("XSendEvent")?,
                 set_error_handler: *x11.symbol("XSetErrorHandler")?,
                 free: *x11.symbol("XFree")?,
+                keycode_to_keysym: *x11.symbol("XkbKeycodeToKeysym")?,
+                set_detectable: *x11.symbol("XkbSetDetectableAutoRepeat")?,
+                get_event_data: *x11.symbol("XGetEventData")?,
+                free_event_data: *x11.symbol("XFreeEventData")?,
+                query_extension: *x11.symbol("XQueryExtension")?,
                 _libx11: Library::open("libX11.so.6")?,
             }
         };
@@ -204,6 +317,54 @@ pub(super) struct Connection {
     /// display's close, and the GL contexts `dlclose` their own handles
     /// before the display goes (this field drops after `Drop::drop`).
     _gl_libraries: Vec<Library>,
+    xi: Option<XiApi>,
+}
+
+impl XiApi {
+    /// Loads `libXi` and negotiates XInput2 2.0; `None` if either fails.
+    fn open(api: &XlibApi, display: Ptr) -> Option<Self> {
+        let lib = Library::open("libXi.so.6").ok()?;
+        let mut opcode: c_int = 0;
+        let (mut event, mut error) = (0, 0);
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `display` is live, the name is NUL terminated and the
+        // out pointers are valid.
+        let known = unsafe {
+            (api.query_extension)(
+                display,
+                c"XInputExtension".as_ptr(),
+                &raw mut opcode,
+                &raw mut event,
+                &raw mut error,
+            )
+        };
+        if known == 0 {
+            return None;
+        }
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: the types are the libXi prototypes of the names.
+        let (query_version, select_events, query_device, free_device_info) = unsafe {
+            (
+                *lib.symbol("XIQueryVersion").ok()?,
+                *lib.symbol("XISelectEvents").ok()?,
+                *lib.symbol("XIQueryDevice").ok()?,
+                *lib.symbol("XIFreeDeviceInfo").ok()?,
+            )
+        };
+        let xi = Self {
+            query_version,
+            select_events,
+            query_device,
+            free_device_info,
+            opcode,
+            _libxi: lib,
+        };
+        let (mut major, mut minor) = (2, 0);
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `display` is live and the version pointers are valid.
+        let status = unsafe { (xi.query_version)(display, &raw mut major, &raw mut minor) };
+        (status == 0).then_some(xi)
+    }
 }
 
 impl Connection {
@@ -228,11 +389,146 @@ impl Connection {
         // TEST: x11_window_has_title_and_class
         // SAFETY: `on_error` has the handler type and lives forever.
         unsafe { (api.set_error_handler)(on_error) };
+        let mut supported: c_int = 0;
+        // TEST: x11_held_key_reports_repeat_until_release
+        // SAFETY: `display` is live and `supported` is a valid out pointer.
+        unsafe { (api.set_detectable)(display, 1, &raw mut supported) };
+        let xi = XiApi::open(&api, display);
         Ok(Rc::new(Self {
             api,
             display,
             _gl_libraries: gl_libraries,
+            xi,
         }))
+    }
+
+    /// Fetches the data of a generic `event` and frees it again; the raw
+    /// motion if it is an XInput2 one.
+    fn fetch_generic(&self, event: &mut [c_long; 24]) -> Option<XiRaw> {
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `event` is the generic event `XNextEvent` just filled.
+        let got = unsafe { (self.api.get_event_data)(self.display, event.as_mut_ptr()) };
+        if got == 0 {
+            return None;
+        }
+        let mut raw = None;
+        if let Some(xi) = &self.xi {
+            // The cookie: extension at byte 32, evtype at 36, data at 48.
+            let [ext, evtype] = [event[4] as i32, (event[4] >> 32) as i32];
+            let data = event[6] as *const XiRawHead;
+            if ext == xi.opcode && evtype == XI_RAW_MOTION && !data.is_null() {
+                // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+                // SAFETY: Xlib points `data` at an `XIRawEvent` that lives
+                // until `XFreeEventData`; its mask holds `mask_len` bytes and
+                // its values one `double` per set mask bit.
+                raw = unsafe {
+                    let head = &*data;
+                    let len = usize::try_from(head.mask_len).unwrap_or(0);
+                    (!head.mask.is_null() && !head.values.is_null()).then(|| {
+                        let mask = std::slice::from_raw_parts(head.mask, len).to_vec();
+                        let count: usize = mask.iter().map(|b| b.count_ones() as usize).sum();
+                        let values = (0..count)
+                            .map(|i| std::ptr::read_unaligned(head.values.add(i)))
+                            .collect();
+                        XiRaw {
+                            source: head.sourceid,
+                            mask,
+                            values,
+                        }
+                    })
+                };
+            }
+        }
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: the data was fetched above and is freed once.
+        unsafe { (self.api.free_event_data)(self.display, event.as_mut_ptr()) };
+        raw
+    }
+
+    /// Whether XInput2 raw events are available.
+    pub(super) fn has_xi(&self) -> bool {
+        self.xi.is_some()
+    }
+
+    /// The root window of the default screen.
+    pub(super) fn root(&self) -> u64 {
+        // TEST: x11_window_has_title_and_class
+        // SAFETY: `display` is live.
+        unsafe { (self.api.root_window)(self.display, (self.api.default_screen)(self.display)) }
+    }
+
+    /// Asks for `XI_RawMotion` of the master devices on the root window.
+    pub(super) fn select_raw_motion(&self) {
+        let Some(xi) = &self.xi else { return };
+        let mut mask = [0u8; 3];
+        mask[(XI_RAW_MOTION / 8) as usize] = 1 << (XI_RAW_MOTION % 8);
+        let mut selection = XiEventMask {
+            deviceid: XI_ALL_MASTER_DEVICES,
+            mask_len: 3,
+            mask: mask.as_mut_ptr(),
+        };
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `display` is live; the selection and its mask live
+        // through the call, which copies them.
+        unsafe {
+            (xi.select_events)(self.display, self.root(), &raw mut selection, 1);
+            (self.api.flush)(self.display);
+        }
+    }
+
+    /// The keysym of `keycode` at `group` and `level`, `0` if none.
+    pub(super) fn keysym(&self, keycode: u32, group: u32, level: u32) -> u32 {
+        // TEST: x11_key_by_xdotool_reports_key_and_char
+        // SAFETY: `display` is live; Xlib returns `NoSymbol` (0) for any
+        // keycode, group or level it does not know.
+        let sym = unsafe { (self.api.keycode_to_keysym)(self.display, keycode, group, level) };
+        u32::try_from(sym).unwrap_or(0)
+    }
+
+    /// The `Abs Pressure` axis of `device`, `None` if it is not a pen.
+    pub(super) fn pressure_axis(&self, device: i32) -> Option<PressureAxis> {
+        let xi = self.xi.as_ref()?;
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `display` is live and the name is NUL terminated.
+        let label = unsafe { (self.api.intern_atom)(self.display, c"Abs Pressure".as_ptr(), 1) };
+        if label == 0 {
+            return None;
+        }
+        let mut count: c_int = 0;
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `display` is live and `count` is a valid out pointer.
+        let info = unsafe { (xi.query_device)(self.display, device, &raw mut count) };
+        if info.is_null() {
+            return None;
+        }
+        let mut found = None;
+        for d in 0..usize::try_from(count).unwrap_or(0) {
+            // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+            // SAFETY: `info` holds `count` device infos, each with
+            // `num_classes` class pointers; a class of the valuator kind is
+            // an `XIValuatorClassInfo`. They stay valid until the free below.
+            unsafe {
+                let device_info = &*info.add(d);
+                for c in 0..usize::try_from(device_info.num_classes).unwrap_or(0) {
+                    let class = *device_info.classes.add(c);
+                    if class.is_null() || (*class).kind != XI_VALUATOR_CLASS {
+                        continue;
+                    }
+                    let valuator = &*class.cast::<XiValuatorClass>();
+                    if valuator.label == label {
+                        found = Some(PressureAxis {
+                            number: valuator.number,
+                            min: valuator.min,
+                            max: valuator.max,
+                        });
+                    }
+                }
+            }
+        }
+        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // SAFETY: `info` came from `XIQueryDevice` and is freed once.
+        unsafe { (xi.free_device_info)(info) };
+        found
     }
 
     /// The raw `Display*`, valid while `self` lives.
@@ -458,7 +754,7 @@ impl Window<Created> {
                 backing_planes: 0,
                 backing_pixel: 0,
                 save_under: 0,
-                event_mask: EXPOSURE_MASK | STRUCTURE_NOTIFY_MASK,
+                event_mask: EXPOSURE_MASK | STRUCTURE_NOTIFY_MASK | INPUT_MASK,
                 do_not_propagate_mask: 0,
                 override_redirect: 0,
                 colormap,
@@ -542,6 +838,11 @@ impl<S> Window<S> {
 }
 
 impl Window<Mapped> {
+    /// The display connection of the window.
+    pub(super) fn conn(&self) -> &Connection {
+        &self.handle.conn
+    }
+
     /// Whether an event is waiting.
     pub(super) fn has_pending(&self) -> bool {
         let conn = &self.handle.conn;
@@ -551,7 +852,7 @@ impl Window<Mapped> {
     }
 
     /// The next waiting event as raw bytes, `None` if there is none.
-    pub(super) fn next_event(&self) -> Option<[u8; EVENT_BYTES]> {
+    pub(super) fn next_event(&self) -> Option<Fetched> {
         if !self.has_pending() {
             return None;
         }
@@ -565,7 +866,12 @@ impl Window<Mapped> {
         for (chunk, long) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(event) {
             *chunk = long.to_ne_bytes();
         }
-        Some(bytes)
+        let raw = if matches!(decode(&bytes), XEvent::Generic { .. }) {
+            conn.fetch_generic(&mut event)
+        } else {
+            None
+        };
+        Some(Fetched { bytes, raw })
     }
 }
 
