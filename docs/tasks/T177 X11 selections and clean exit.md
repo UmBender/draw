@@ -1,7 +1,7 @@
 ---
 id: T177
 title: X11 selections and clean exit
-status: in-progress
+status: review
 wave: 72
 branch: task/T177-x11-selections-and-clean-exit
 depends_on: [T176]
@@ -47,11 +47,12 @@ Design: [[ADR-T177-1 X11 selections and quit signals]]. Integration tests live i
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T177): specify the slice`
-- [ ] tests — `test(T177): add failing tests`
-- [ ] models — `feat(T177): add the types`
-- [ ] behaviour — `feat(T177): implement the selections and the clean exit`
-- [ ] quality — `chore(T177): pass clippy and rustfmt`
+- [x] tests — `test(T177): add failing tests`
+- [x] models — `feat(T177): add the types`
+- [x] behaviour — `feat(T177): implement the selections and the clean exit`
+- [x] quality — `chore(T177): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-15 — split from T144 by the owner.
+- 2026-11-15 — implemented in the batch. `scripts/check.sh` green. Deviations: the fuzz is a seeded xorshift, not proptest (not a dev-dependency, as in T175/T176); the two signal tests of the spec are one test, `x11_quit_signals_set_close_requested`, because the signal flag is process-wide; the property atom is `_SCRATCH_SELECTION` because the `DRAW_` scan of `no_draw_env` rejects the other name. `x11::signal::take` gives `main` (T178) the signal number to end the process by it as T48 does. Tested with `xclip` on Xvfb (text, PRIMARY, TARGETS, PNG, `INCR` both ways, refused targets, events kept during a read); not tried against a real desktop or browser.
