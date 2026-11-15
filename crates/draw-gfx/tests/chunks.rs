@@ -4,7 +4,7 @@ use draw_core::core::document::ShapeId;
 use draw_core::core::geom::{Aabb, Vec2};
 use draw_core::core::palette::ColorId;
 use draw_core::core::shape::{Shape, Style};
-use draw_gfx::chunks::{CHUNK_LEN, ChunkCache, Item};
+use draw_gfx::chunks::{CHUNK_LEN, Chunk, ChunkCache, Item};
 use draw_gfx::gpu::Geometry;
 use draw_gfx::tessellate::{Mesh, tessellate};
 use proptest::prelude::*;
@@ -118,7 +118,7 @@ fn visible_chunks_follow_the_view() {
 #[test]
 fn tessellate_line_covers_its_width() {
     let mesh = tessellate(&line(0));
-    assert!(!mesh.vertices.is_empty());
+    assert_ne!(mesh.vertices.len(), 0);
     assert_eq!(mesh.indices.len() % 3, 0);
     let xs: Vec<f32> = mesh.vertices.iter().map(|v| v.pos[0]).collect();
     let min = xs.iter().copied().fold(f32::INFINITY, f32::min);
@@ -138,10 +138,14 @@ fn tessellate_filled_rect_has_fill_and_outline() {
     };
     let open = tessellate(&rect(None));
     let filled = tessellate(&rect(ColorId::new(2)));
-    assert!(!open.indices.is_empty());
+    assert_ne!(open.indices.len(), 0);
     assert!(filled.indices.len() > open.indices.len());
     for mesh in [&open, &filled] {
-        assert!(mesh.indices.iter().all(|&i| (i as usize) < mesh.vertices.len()));
+        assert!(
+            mesh.indices
+                .iter()
+                .all(|&i| (i as usize) < mesh.vertices.len())
+        );
     }
 }
 
@@ -225,7 +229,7 @@ proptest! {
             cache.update(&view(&rows));
             // Assert: the cache holds what a fresh tessellation gives.
             let fresh = ChunkCache::recompute(&view(&rows));
-            let cached: Vec<&Mesh> = cache.chunks().iter().map(|c| c.mesh()).collect();
+            let cached: Vec<&Mesh> = cache.chunks().iter().map(Chunk::mesh).collect();
             prop_assert_eq!(cached.len(), fresh.len());
             for (c, f) in cached.iter().zip(&fresh) {
                 prop_assert_eq!(*c, f);

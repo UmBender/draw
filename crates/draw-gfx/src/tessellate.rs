@@ -209,7 +209,9 @@ impl Builder {
         }
         let n = u32::try_from(rim.len()).unwrap_or(0);
         for k in 0..n {
-            self.mesh.indices.extend([c, c + 1 + k, c + 1 + (k + 1) % n]);
+            self.mesh
+                .indices
+                .extend([c, c + 1 + k, c + 1 + (k + 1) % n]);
         }
     }
 
