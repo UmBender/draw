@@ -1,11 +1,11 @@
 ---
 id: T177
 title: X11 selections and clean exit
-status: todo
+status: in-progress
 wave: 72
 branch: task/T177-x11-selections-and-clean-exit
 depends_on: [T176]
-adrs: []
+adrs: [ADR-T177-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -27,11 +27,11 @@ Slice 3 of T144: the clipboard and primary selections (text and `image/png`, wit
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Design: [[ADR-T177-1 X11 selections and quit signals]]. Integration tests live in `crates/draw-sys/tests/x11_selection.rs` (Xvfb + `xclip`), pure tests in `x11_selection_pure.rs`.
 
-- **AC-1** — Own and answer `CLIPBOARD` and `PRIMARY` (`UTF8_STRING`, `TARGETS`, `image/png`), read them from other clients, `INCR` both ways. Integration tests against Xvfb with `xclip` or a second connection in the test; regressions for T115.
-- **AC-2** — WM close and `Ctrl-C` (SIGINT) exit cleanly as in T48. Integration test.
-- **AC-3** — Selection decoders fuzzed (proptest).
+- **AC-1** — Own and answer `CLIPBOARD` and `PRIMARY` (`UTF8_STRING`, `TARGETS`, `image/png`), read them from other clients, `INCR` both ways. Tests: `x11_clipboard_text_is_served_to_xclip`, `x11_primary_text_is_served_to_xclip`, `x11_targets_list_text_targets`, `x11_png_is_served_as_image_png`, `x11_large_png_is_served_with_incr`, `x11_reads_text_set_by_xclip`, `x11_reads_png_set_by_xclip`, `x11_reads_large_png_by_incr`, `x11_unknown_target_is_refused`, `x11_events_during_a_read_are_not_lost`; pure: `incr_sender_*`, `incr_receiver_*`, `targets_*`. Regressions for T115: `regression_t115_png_is_not_offered_as_text`, `regression_t115_new_text_replaces_png`.
+- **AC-2** — WM close and `Ctrl-C` (SIGINT) exit cleanly as in T48. Tests: `x11_wm_close_sets_close_requested` (T175), `x11_sigint_sets_close_requested`, `x11_sigterm_reports_its_number`.
+- **AC-3** — Selection decoders fuzzed: `selection_decoders_never_panic_on_random_bytes`, `incr_receiver_never_exceeds_the_cap` (seeded xorshift, as T175/T176: `proptest` is not a dev-dependency of this crate).
 
 ## Out of scope
 
@@ -46,7 +46,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T177): specify the slice`
+- [x] spec — `docs(T177): specify the slice`
 - [ ] tests — `test(T177): add failing tests`
 - [ ] models — `feat(T177): add the types`
 - [ ] behaviour — `feat(T177): implement the selections and the clean exit`
