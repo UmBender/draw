@@ -62,3 +62,4 @@ Draft: the spec step refines each criterion into named tests.
 - 2026-11-15 — `MqCtx` is gone; the drawing functions and `CachedFrame<G>` are generic. `main` matches on a private `Runtime` enum (one arm).
 - 2026-11-15 — allowlist addition: `render.rs` keeps `macroquad::math::Vec2` (the batch's vertices), not in the owner's list; it names T149 and may only shrink.
 - 2026-11-15 — the frame test over `RecordingPlatform`/`RecordingGpu` hides the toolbar with Tab first: the menu label measure (`measure_text`, allowlisted for T149) needs a macroquad context.
+- 2026-11-15 — AC-4 done by the owner on the release build: pen pressure, tilt, eraser, tablet unplugged and plugged back while running, mouse and keyboard all work.
