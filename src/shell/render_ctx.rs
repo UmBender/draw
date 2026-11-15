@@ -4,7 +4,7 @@
 //! [`RenderCtx`] owns the `Gpu`, the glyph page textures, the alpha
 //! pipeline, the draws of an open [`RenderCtx::render_to`] scope and the
 //! menu glyphs. `render.rs` and `ui_text.rs` draw through its methods;
-//! `app::run_on` owns one `RenderCtx<MqGpu>` and passes it down (T166), after
+//! `app::run` owns one `RenderCtx<G>` and passes it down (T166, T167), after
 //! [`RenderCtx::sync_window`] with the platform's metrics.
 
 use draw_gfx::gpu::{
@@ -15,12 +15,8 @@ use draw_sys::platform::WindowMetrics;
 
 use crate::core::geom::Aabb;
 use crate::shell::glyphs::{GlyphAtlas, GlyphTextures};
-use crate::shell::gpu_mq::MqGpu;
 use crate::shell::render::{texture_quad, wrap_pass};
 use crate::shell::ui_text::MenuGlyphs;
-
-/// The context the loop owns until T167 makes it generic.
-pub type MqCtx = RenderCtx<MqGpu>;
 
 /// A [`Gpu`] with the resources the drawing keeps on it.
 pub struct RenderCtx<G: Gpu> {

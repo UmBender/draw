@@ -13,8 +13,9 @@ use crate::core::geom::{Aabb, Vec2};
 use crate::core::keymap::Topic;
 use crate::core::sheet::Sheet;
 use crate::shell::render::{hex_color, hex_color_alpha};
-use crate::shell::render_ctx::MqCtx;
+use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
+use draw_gfx::gpu::Gpu;
 
 /// Widest the panel gets, in pixels.
 const PANEL_WIDTH_PX: f32 = 880.0;
@@ -77,7 +78,7 @@ fn tab_layout(labels: &[String], widths: &[f32], width: f32) -> Vec<(f32, usize)
 }
 
 /// Draws the sheet over the canvas of `viewport` pixels.
-pub fn draw(ctx: &mut MqCtx, sheet: &Sheet, viewport: Vec2) {
+pub fn draw<G: Gpu>(ctx: &mut RenderCtx<G>, sheet: &Sheet, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     ui_shapes::rect_xywh(
@@ -168,7 +169,7 @@ pub fn draw(ctx: &mut MqCtx, sheet: &Sheet, viewport: Vec2) {
 }
 
 /// Draws `label` vertically centred in the row starting at `y`.
-fn draw_row_text(ctx: &mut MqCtx, label: &str, x: f32, y: f32, color: Color) {
+fn draw_row_text<G: Gpu>(ctx: &mut RenderCtx<G>, label: &str, x: f32, y: f32, color: Color) {
     let size = ui_text::measure(label, TEXT_PX);
     ctx.draw_menu_label(
         label,
