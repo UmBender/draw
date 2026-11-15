@@ -6,7 +6,8 @@
 //! [`ring`] only hand the triangles to macroquad.
 
 use crate::core::geom::{Aabb, Vec2};
-use crate::shell::render::{Batch, GlSink, MeshSink};
+use crate::shell::render::{Batch, CtxSink, MeshSink};
+use crate::shell::render_ctx::MqCtx;
 use macroquad::color::Color;
 use std::f32::consts::FRAC_PI_2;
 
@@ -164,8 +165,8 @@ pub fn push_ring<S: MeshSink>(
 }
 
 /// Fills the axis-aligned rectangle at (`x`, `y`) of `w` × `h` pixels.
-pub fn rect_xywh(x: f32, y: f32, w: f32, h: f32, color: Color) {
-    let mut batch = Batch::new(GlSink);
+pub fn rect_xywh(ctx: &mut MqCtx, x: f32, y: f32, w: f32, h: f32, color: Color) {
+    let mut batch = Batch::new(CtxSink::new(ctx));
     batch.rect(
         Aabb::from_corners(Vec2::new(x, y), Vec2::new(x + w, y + h)),
         color,
@@ -174,15 +175,15 @@ pub fn rect_xywh(x: f32, y: f32, w: f32, h: f32, color: Color) {
 }
 
 /// Fills `rect` with rounded corners.
-pub fn fill(rect: Aabb, radius: f32, color: Color) {
-    let mut batch = Batch::new(GlSink);
+pub fn fill(ctx: &mut MqCtx, rect: Aabb, radius: f32, color: Color) {
+    let mut batch = Batch::new(CtxSink::new(ctx));
     push_fill(&mut batch, rect, radius, color);
     batch.finish();
 }
 
 /// Draws the `width` px border of `rect` with rounded corners.
-pub fn ring(rect: Aabb, radius: f32, width: f32, color: Color) {
-    let mut batch = Batch::new(GlSink);
+pub fn ring(ctx: &mut MqCtx, rect: Aabb, radius: f32, width: f32, color: Color) {
+    let mut batch = Batch::new(CtxSink::new(ctx));
     push_ring(&mut batch, rect, radius, width, color);
     batch.finish();
 }

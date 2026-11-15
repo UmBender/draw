@@ -3,22 +3,24 @@
 //!
 //! [`RenderCtx`] owns the `Gpu`, the glyph page textures, the alpha
 //! pipeline, the draws of an open [`RenderCtx::render_to`] scope and the
-//! menu glyphs. `render.rs` and `ui_text.rs` draw through its methods; the
-//! shell reaches one `RenderCtx<MqGpu>` through the bridge below until T166
-//! passes it down from `app::run_on`.
+//! menu glyphs. `render.rs` and `ui_text.rs` draw through its methods;
+//! `app::run_on` owns one `RenderCtx<MqGpu>` and passes it down (T166), after
+//! [`RenderCtx::sync_window`] with the platform's metrics.
 
 use draw_gfx::gpu::{
     Blend, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
     View,
 };
-use macroquad::window::{screen_dpi_scale, screen_height, screen_width};
-use std::cell::RefCell;
+use draw_sys::platform::WindowMetrics;
 
 use crate::core::geom::Aabb;
 use crate::shell::glyphs::{GlyphAtlas, GlyphTextures};
 use crate::shell::gpu_mq::MqGpu;
 use crate::shell::render::{texture_quad, wrap_pass};
 use crate::shell::ui_text::MenuGlyphs;
+
+/// The context the loop owns until T167 makes it generic.
+pub type MqCtx = RenderCtx<MqGpu>;
 
 /// A [`Gpu`] with the resources the drawing keeps on it.
 pub struct RenderCtx<G: Gpu> {
@@ -80,6 +82,15 @@ impl<G: Gpu> RenderCtx<G> {
     pub fn set_window(&mut self, view: View, dpi: f32) {
         self.window = view;
         self.dpi = dpi;
+    }
+
+    /// [`RenderCtx::set_window`] from what the platform reports.
+    pub fn sync_window(&mut self, metrics: WindowMetrics) {
+        let view = View {
+            width: metrics.width,
+            height: metrics.height,
+        };
+        self.set_window(view, metrics.scale);
     }
 
     /// The window in logical pixels.
@@ -194,32 +205,6 @@ impl<G: Gpu> RenderCtx<G> {
         let (vertices, indices) = texture_quad(dest, flip_y, [255; 4]);
         self.draw_inline(&vertices, &indices, Some(texture.clone()));
     }
-}
-
-thread_local! {
-    /// The bridge: the one context the shell reaches until T166 passes it
-    /// down from `app::run_on` (T165).
-    static BRIDGE: RefCell<RenderCtx<MqGpu>> = RefCell::new(RenderCtx::new(MqGpu::new()));
-}
-
-/// Runs `f` on the bridge context. `f` must not call back into the bridge.
-/// Removed by T166.
-pub fn with_ctx<R>(f: impl FnOnce(&mut RenderCtx<MqGpu>) -> R) -> R {
-    BRIDGE.with(|ctx| f(&mut ctx.borrow_mut()))
-}
-
-/// [`with_ctx`] after reading the window size and DPI from macroquad.
-/// Removed by T166.
-pub fn with_drawing<R>(f: impl FnOnce(&mut RenderCtx<MqGpu>) -> R) -> R {
-    let view = View {
-        width: screen_width(),
-        height: screen_height(),
-    };
-    let dpi = screen_dpi_scale();
-    with_ctx(|ctx| {
-        ctx.set_window(view, dpi);
-        f(ctx)
-    })
 }
 
 #[cfg(test)]
@@ -460,16 +445,40 @@ mod tests {
         assert_eq!(pipelines, 1);
     }
 
-    /// AC-2 of T165: no thread-local holds the `Gpu` or its resources in
-    /// `render.rs` or `ui_text.rs`; the bridge in this file is the only
-    /// one in the shell.
+    /// The production source (above `#[cfg(test)]`) of `src/shell/<name>`.
+    fn shell_production(name: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/shell")
+            .join(name);
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            panic!("cannot read {path:?}");
+        };
+        source
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or(&source)
+            .to_owned()
+    }
+
+    /// AC-1 of T166: no `thread_local!` in the shell holds the `Gpu`, its
+    /// resources or a `RenderCtx`, and nothing reaches one by a bridge.
     #[test]
-    fn render_and_ui_text_hold_no_gpu_thread_local() {
+    fn shell_sources_have_no_gpu_thread_local() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/shell");
         let Ok(entries) = std::fs::read_dir(&dir) else {
             panic!("cannot read {dir:?}");
         };
-        let mut bridges = Vec::new();
+        let words = [
+            "Gpu",
+            "GPU",
+            "TEXTURES",
+            "SCOPE",
+            "PIPELINE",
+            "RenderCtx",
+            "with_gpu",
+            "render::submit",
+        ];
+        let mut offenders = Vec::new();
         for path in entries.filter_map(|e| e.ok().map(|e| e.path())) {
             let name = path
                 .file_name()
@@ -479,28 +488,74 @@ mod tests {
             if path.extension().is_none_or(|ext| ext != "rs") {
                 continue;
             }
-            let Ok(source) = std::fs::read_to_string(&path) else {
-                panic!("cannot read {path:?}");
-            };
-            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
-            let holds_gpu = production.contains("thread_local!")
-                && [
-                    "MqGpu",
-                    "GlyphTextures",
-                    "MqPipeline",
-                    "CommandOf",
-                    "Glyphs>",
-                ]
-                .iter()
-                .any(|word| {
-                    production
-                        .lines()
-                        .any(|l| l.contains("static ") && l.contains(word))
-                });
-            if holds_gpu {
-                bridges.push(name);
+            let production = shell_production(&name);
+            for block in production.split("thread_local!").skip(1) {
+                let body = block.split("\n}").next().unwrap_or(block);
+                if words.iter().any(|word| body.contains(word)) {
+                    offenders.push(name.clone());
+                }
+            }
+            for bridge in ["with_gpu", "with_ctx", "with_drawing"] {
+                let defines = production.contains(&format!("fn {bridge}"));
+                if defines {
+                    offenders.push(format!("{name}: fn {bridge}"));
+                }
             }
         }
-        assert_eq!(bridges, vec!["render_ctx.rs".to_owned()]);
+        assert_eq!(offenders, Vec::<String>::new());
+    }
+
+    /// AC-2 of T166: the drawing asks no macroquad function for the window
+    /// size or the DPI scale.
+    #[test]
+    fn drawing_reads_the_window_size_from_the_platform() {
+        let names = [
+            "screen_height",
+            "screen_dpi_scale",
+            "dpi_scale",
+            "macroquad::window",
+        ];
+        let mut direct = Vec::new();
+        for file in ["render.rs", "ui_text.rs", "app.rs", "render_ctx.rs"] {
+            let code = shell_production(file);
+            for name in names {
+                if code.contains(name) {
+                    direct.push(format!("{file}: {name}"));
+                }
+            }
+        }
+        assert_eq!(direct, Vec::<String>::new());
+    }
+
+    #[test]
+    fn ctx_sync_window_draws_at_the_platform_size_and_dpi() {
+        use draw_sys::platform::WindowMetrics;
+
+        // Arrange
+        let mut ctx = ctx();
+        let metrics = WindowMetrics {
+            width: 1024.0,
+            height: 768.0,
+            scale: 2.0,
+        };
+
+        // Act
+        ctx.sync_window(metrics);
+        ctx.draw_preview(&stroke(), &Camera::default());
+
+        // Assert
+        let lists = submitted(&mut ctx);
+        assert_eq!(
+            lists[0][0],
+            Command::BeginPass {
+                target: None,
+                view: View {
+                    width: 1024.0,
+                    height: 768.0
+                },
+                clear: None
+            }
+        );
+        assert!(crate::core::geom::approx_eq(ctx.dpi(), 2.0, 1e-6));
     }
 }

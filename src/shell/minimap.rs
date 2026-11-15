@@ -16,9 +16,8 @@ use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::palette;
 use crate::core::shape::{Shape, grid_cell_rect};
 use crate::shell::gpu_mq::MqTexture;
-use crate::shell::render::{
-    Batch, GlSink, draw_texture_quad, hex_color, hex_color_alpha, to_mq_color,
-};
+use crate::shell::render::{Batch, CtxSink, MeshSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::render_ctx::MqCtx;
 use crate::theme;
 
 /// Content drawn smaller than this, in pixels on its longer side, gets a
@@ -108,8 +107,8 @@ fn square_in(center: Vec2, side: f32, area: Aabb) -> Aabb {
 /// Draws every shape of `editor`'s document as a schematic through
 /// `image`, into the current render target: lines [`LINE_PX`] wide, fills
 /// as areas, text blocks as bars, shapes below [`DOT_BELOW_PX`] as dots.
-pub fn draw_overview(editor: &Editor, image: &Fit) {
-    let mut batch = Batch::new(GlSink);
+pub fn draw_overview(ctx: &mut MqCtx, editor: &Editor, image: &Fit) {
+    let mut batch = Batch::new(CtxSink::new(ctx));
     for (_, shape) in editor.document().shapes() {
         if shape.is_finite() {
             draw_schematic(&mut batch, shape, image);
@@ -125,7 +124,7 @@ const ELLIPSE_SEGMENTS: u16 = 24;
 const TEXT_BAR_ALPHA: u8 = 140;
 
 /// Adds the schematic of one finite `shape` to `batch`, through `image`.
-fn draw_schematic(batch: &mut Batch, shape: &Shape, image: &Fit) {
+fn draw_schematic<S: MeshSink>(batch: &mut Batch<S>, shape: &Shape, image: &Fit) {
     let color = to_mq_color(palette(shape.style().color));
     let bounds = image.rect_of(shape.bounds());
     if bounds.width().max(bounds.height()) < DOT_BELOW_PX {
@@ -180,7 +179,7 @@ fn draw_schematic(batch: &mut Batch, shape: &Shape, image: &Fit) {
 }
 
 /// Adds the outline of `rect` to `batch`, [`LINE_PX`] wide.
-fn outline(batch: &mut Batch, rect: Aabb, color: Color) {
+fn outline<S: MeshSink>(batch: &mut Batch<S>, rect: Aabb, color: Color) {
     let (min, max) = (rect.min, rect.max);
     let corners = [
         min,
@@ -209,7 +208,7 @@ pub fn border_rects(rect: Aabb, width: f32) -> [Aabb; 4] {
 }
 
 /// Adds the border of `rect` to `batch`, `width` pixels wide.
-fn border(batch: &mut Batch, rect: Aabb, width: f32, color: Color) {
+fn border<S: MeshSink>(batch: &mut Batch<S>, rect: Aabb, width: f32, color: Color) {
     for bar in border_rects(rect, width) {
         batch.rect(bar, color);
     }
@@ -218,9 +217,14 @@ fn border(batch: &mut Batch, rect: Aabb, width: f32, color: Color) {
 /// Draws the minimap on the window: the panel, the cached `overview`
 /// (its texture and the map it was rendered through), the content marker
 /// and the frame of the visible world rectangle `view`.
-pub fn draw_panel(map: &Minimap, view: Aabb, overview: Option<(&MqTexture, &Fit)>) {
+pub fn draw_panel(
+    ctx: &mut MqCtx,
+    map: &Minimap,
+    view: Aabb,
+    overview: Option<(&MqTexture, &Fit)>,
+) {
     let panel = map.panel();
-    let mut batch = Batch::new(GlSink);
+    let mut batch = Batch::new(CtxSink::new(ctx));
     batch.rect(
         panel,
         hex_color_alpha(theme::TOOLBAR_BACKGROUND, PANEL_ALPHA),
@@ -231,9 +235,9 @@ pub fn draw_panel(map: &Minimap, view: Aabb, overview: Option<(&MqTexture, &Fit)
         && let Some(dest) = map.place(image)
     {
         // GL textures start at the bottom row.
-        draw_texture_quad(texture, dest, true);
+        ctx.draw_texture_quad(texture, dest, true);
     }
-    let mut batch = Batch::new(GlSink);
+    let mut batch = Batch::new(CtxSink::new(ctx));
     if let Some(marker) = marker_rect(map) {
         batch.rect(marker, hex_color(theme::TOOLBAR_TEXT));
     }

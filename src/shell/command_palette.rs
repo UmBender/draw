@@ -11,6 +11,7 @@ use macroquad::color::Color;
 use crate::core::command_palette::{CommandPalette, VISIBLE_ROWS, chord_label, visible_window};
 use crate::core::geom::{Aabb, Vec2};
 use crate::shell::render::{hex_color, hex_color_alpha};
+use crate::shell::render_ctx::MqCtx;
 use crate::theme;
 
 /// Widest the panel gets, in pixels.
@@ -77,10 +78,11 @@ pub fn key_caps(widths: &[f32], right: f32) -> Vec<(f32, f32)> {
 }
 
 /// Draws the palette over the canvas of `viewport` pixels.
-pub fn draw(palette: &CommandPalette, viewport: Vec2) {
+pub fn draw(ctx: &mut MqCtx, palette: &CommandPalette, viewport: Vec2) {
     let text = hex_color(theme::TOOLBAR_TEXT);
     let accent = hex_color(theme::TOOLBAR_ACTIVE);
     ui_shapes::rect_xywh(
+        ctx,
         0.0,
         0.0,
         viewport.x,
@@ -90,23 +92,30 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
     let window = visible_window(palette.selected(), palette.len(), VISIBLE_ROWS);
     let rect = panel(viewport, window.len().max(1));
     ui_shapes::fill(
+        ctx,
         rect,
         PANEL_RADIUS_PX,
         hex_color_alpha(theme::MENU_ISLAND, theme::MENU_PANEL_ALPHA),
     );
     let edge = hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA);
-    ui_shapes::ring(rect, PANEL_RADIUS_PX, 1.0, edge);
+    ui_shapes::ring(ctx, rect, PANEL_RADIUS_PX, 1.0, edge);
 
     let x = rect.min.x + PAD_PX;
     let right = rect.max.x - PAD_PX;
     let mut y = rect.min.y + PAD_PX;
     let query = format!("> {}_", palette.query());
-    draw_row_text(&query, x, y, accent);
+    draw_row_text(ctx, &query, x, y, accent);
     y += ROW_PX;
     // A thin line under the query.
-    ui_shapes::rect_xywh(x, y - 1.0, right - x, 1.0, edge);
+    ui_shapes::rect_xywh(ctx, x, y - 1.0, right - x, 1.0, edge);
     if palette.is_empty() {
-        draw_row_text("No matching command", x, y, hex_color(theme::MENU_DIM_TEXT));
+        draw_row_text(
+            ctx,
+            "No matching command",
+            x,
+            y,
+            hex_color(theme::MENU_DIM_TEXT),
+        );
         return;
     }
     for (offset, (chord, _, description)) in palette.rows().skip(window.start).enumerate() {
@@ -119,22 +128,27 @@ pub fn draw(palette: &CommandPalette, viewport: Vec2) {
                 min: Vec2::new(rect.min.x + 4.0, y),
                 max: Vec2::new(rect.max.x - 4.0, y + ROW_PX),
             };
-            ui_shapes::fill(band, ROW_RADIUS_PX, hex_color(theme::TOOLBAR_ACTIVE_FILL));
+            ui_shapes::fill(
+                ctx,
+                band,
+                ROW_RADIUS_PX,
+                hex_color(theme::TOOLBAR_ACTIVE_FILL),
+            );
         }
         let color = if selected {
             hex_color(theme::MENU_ACTIVE_BRIGHT)
         } else {
             text
         };
-        draw_row_text(description, x, y, color);
-        draw_key_caps(&chord_label(chord), right, y);
+        draw_row_text(ctx, description, x, y, color);
+        draw_key_caps(ctx, &chord_label(chord), right, y);
         y += ROW_PX;
     }
 }
 
 /// Draws the keys of `label` as key caps ending at `right`, in the row
 /// starting at `y`.
-fn draw_key_caps(label: &str, right: f32, y: f32) {
+fn draw_key_caps(ctx: &mut MqCtx, label: &str, right: f32, y: f32) {
     let keys = chord_keys(label);
     let widths: Vec<f32> = keys
         .iter()
@@ -145,15 +159,21 @@ fn draw_key_caps(label: &str, right: f32, y: f32) {
             min: Vec2::new(left, y + CAP_MARGIN_PX),
             max: Vec2::new(left + width, y + ROW_PX - CAP_MARGIN_PX),
         };
-        ui_shapes::fill(cap, ROW_RADIUS_PX - 2.0, hex_color(theme::MENU_KEY_FILL));
+        ui_shapes::fill(
+            ctx,
+            cap,
+            ROW_RADIUS_PX - 2.0,
+            hex_color(theme::MENU_KEY_FILL),
+        );
         ui_shapes::ring(
+            ctx,
             cap,
             ROW_RADIUS_PX - 2.0,
             1.0,
             hex_color_alpha(theme::MENU_BORDER, theme::MENU_BORDER_ALPHA),
         );
         let size = ui_text::measure(key, CAP_TEXT_PX);
-        ui_text::draw(
+        ctx.draw_menu_label(
             key,
             left + CAP_PAD_PX,
             cap.center().y + size.offset_y * 0.5,
@@ -164,9 +184,9 @@ fn draw_key_caps(label: &str, right: f32, y: f32) {
 }
 
 /// Draws `label` vertically centred in the row starting at `y`.
-fn draw_row_text(label: &str, x: f32, y: f32, color: Color) {
+fn draw_row_text(ctx: &mut MqCtx, label: &str, x: f32, y: f32, color: Color) {
     let size = ui_text::measure(label, TEXT_PX);
-    ui_text::draw(
+    ctx.draw_menu_label(
         label,
         x,
         y + ROW_PX * 0.5 + size.offset_y * 0.5,

@@ -16,7 +16,7 @@ use macroquad::miniquad::conf::{Conf as WindowConf, Platform as WindowPlatform};
 use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
 
 use draw_gfx::gpu::{Filter, Gpu, TargetDesc, View};
-use draw_sys::platform::{Platform, RawEvent};
+use draw_sys::platform::{Platform, RawEvent, WindowMetrics};
 
 use std::collections::HashSet;
 use std::io::Write as _;
@@ -49,6 +49,7 @@ use crate::shell::diag::{self, Level, e2e};
 use crate::shell::export::{self, ExportError};
 use crate::shell::file::{self, Opened};
 use crate::shell::glyphs::{FontOutlines, GlyphAtlas};
+use crate::shell::gpu_mq::MqGpu;
 use crate::shell::gpu_mq::{MqTarget, MqTexture};
 use crate::shell::input_map::{
     Collector, PEN_BOUNCE_WINDOW, paste_event, paste_grid_event, wants_clipboard,
@@ -58,8 +59,9 @@ use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::Options;
 use crate::shell::platform_mq::MqPlatform;
 use crate::shell::render::{
-    self, Batch, GlSink, TextStats, hex_color, hex_color_alpha, to_mq_color,
+    self, Batch, CtxSink, TextStats, gfx_color, hex_color, hex_color_alpha, to_mq_color,
 };
+use crate::shell::render_ctx::{MqCtx, RenderCtx};
 use crate::shell::sheet;
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -494,16 +496,16 @@ pub fn window_conf(backend: Backend) -> WindowSettings {
 }
 
 /// Loads the embedded fonts into the renderer's glyph atlas.
-fn load_fonts() {
+fn load_fonts(ctx: &mut MqCtx) {
     match GlyphAtlas::new(TEXT_FONT) {
         // Unit tests prove both embedded fonts parse (ADR-T32-1, ADR-T33-1).
         Ok(atlas) => match atlas.with_math(MATH_FONT) {
-            Ok(atlas) => render::set_glyph_atlas(atlas),
+            Ok(atlas) => ctx.set_glyph_atlas(atlas),
             Err(err) => {
                 eprintln!("draw: math font not loaded, formulas in the text font: {err}");
                 diag::log(Level::Error, &format!("math font not loaded: {err}"));
                 if let Ok(atlas) = GlyphAtlas::new(TEXT_FONT) {
-                    render::set_glyph_atlas(atlas);
+                    ctx.set_glyph_atlas(atlas);
                 }
             }
         },
@@ -572,6 +574,8 @@ pub async fn run(options: Options, backend: Backend, tablet: tablet::Choice) {
 /// What one frame's input phase found.
 #[derive(Debug, Clone, Copy)]
 struct Gathered {
+    /// What the platform reported for the window.
+    metrics: WindowMetrics,
     /// The window size in logical pixels.
     viewport: Vec2,
     /// Physical pixels per logical pixel.
@@ -654,6 +658,7 @@ fn gather_input<P: Platform>(
         }
     }
     Gathered {
+        metrics,
         viewport,
         dpi,
         dirty,
@@ -678,7 +683,8 @@ pub async fn run_on<P: Platform>(
         e2e: e2e_files,
         ..
     } = options;
-    load_fonts();
+    let mut ctx = RenderCtx::new(MqGpu::new());
+    load_fonts(&mut ctx);
     let mut collector = input_collector(backend, &tablet);
     let mut editor = Editor::new().with_tap_slop(tablet.tap_slop_px());
     let state_dir = crate::shell::crash::state_dir(
@@ -699,6 +705,7 @@ pub async fn run_on<P: Platform>(
     let mut laser = LaserLayer::new();
     loop {
         let Gathered {
+            metrics,
             viewport,
             dpi,
             mut dirty,
@@ -717,22 +724,24 @@ pub async fn run_on<P: Platform>(
         if laser.fading() {
             platform.schedule_update();
         }
+        ctx.sync_window(metrics);
         serve_effects(
             &mut platform,
+            &mut ctx,
             &effects,
             &mut editor,
             &mut frame,
             &mut svg_writes,
             &mut save_path,
         );
-        let presented = frame.present(&editor, viewport, dpi, dirty, &laser.trail);
+        let presented = frame.present(&mut ctx, &editor, viewport, dpi, dirty, &laser.trail);
         if frame.wake {
             platform.schedule_update();
         }
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
         if export_pending && !frame.rerender {
             export_pending = false;
-            export_view(&frame);
+            export_view(&mut ctx, &frame);
         }
         recorder.end(&mut collector, &editor, presented, dump_asked);
         // On input only, so idle stays at 0 % (ADR-T94-1).
@@ -769,6 +778,7 @@ fn arm_export(pending: bool, effects: &[Effect], editor: &Editor, frame: &mut Ca
 /// queue.
 fn serve_effects<P: Platform>(
     platform: &mut P,
+    ctx: &mut MqCtx,
     effects: &[Effect],
     editor: &mut Editor,
     frame: &mut CachedFrame,
@@ -782,7 +792,7 @@ fn serve_effects<P: Platform>(
     log_finished_svg_writes(platform, svg_writes);
     for effect in effects {
         if let Effect::CopyImage(bounds) = effect {
-            copy_selection_image(platform, editor, frame, *bounds);
+            copy_selection_image(platform, ctx, editor, frame, *bounds);
         }
     }
     if effects.contains(&Effect::Save) {
@@ -884,13 +894,13 @@ fn paste_clipboard<P: Platform>(
 
 /// Writes the view to a new PNG file in the home directory and logs the
 /// outcome; a failure never panics (ADR-T92-2).
-fn export_view(frame: &CachedFrame) {
+fn export_view(ctx: &mut MqCtx, frame: &CachedFrame) {
     let unix = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let home = std::env::var_os("HOME");
     let result = frame
-        .read_view()
+        .read_view(ctx)
         .and_then(|(rgba, size)| export::save(&rgba, size, home.as_deref(), unix));
     let (level, line) = export::log_line(&result);
     eprintln!("draw: {line}");
@@ -957,6 +967,7 @@ fn log_finished_svg_writes<P: Platform>(
 /// PNG; a failure is logged and never panics (ADR-T115-1).
 fn copy_selection_image<P: Platform>(
     platform: &mut P,
+    ctx: &mut MqCtx,
     editor: &Editor,
     frame: &mut CachedFrame,
     bounds: Aabb,
@@ -964,7 +975,7 @@ fn copy_selection_image<P: Platform>(
     let Some(plan) = snapshot_image::plan(bounds, editor.camera().zoom()) else {
         return;
     };
-    let result = render_selection(editor, frame, &plan).and_then(|rgba| {
+    let result = render_selection(ctx, editor, frame, &plan).and_then(|rgba| {
         let png = export::encode_png(plan.size.0, plan.size.1, &rgba)?;
         platform.set_clipboard_png(&png);
         Ok(())
@@ -976,30 +987,41 @@ fn copy_selection_image<P: Platform>(
 
 /// The selection of `editor` as RGBA rows from the top, `plan.size` pixels.
 fn render_selection(
+    ctx: &mut MqCtx,
     editor: &Editor,
     frame: &CachedFrame,
     plan: &ImagePlan,
 ) -> Result<Vec<u8>, ExportError> {
     let camera = Camera::new(plan.world.min, plan.scale);
     let extent = Vec2::new(plan.size.0 as f32, plan.size.1 as f32);
-    let target = frame.new_target(plan.size).ok_or(ExportError::Pixels)?;
+    let target = frame
+        .new_target(ctx, plan.size)
+        .ok_or(ExportError::Pixels)?;
     // Start from an atlas with room, so no glyph is dropped.
     let _ = render::begin_text_frame();
     let selected: HashSet<ShapeId> = editor.selection().iter().copied().collect();
-    render_into(&target, extent, Some(hex_color(theme::CANVAS)), || {
-        let shapes = editor
-            .document()
-            .shapes()
-            .filter(|(id, _)| selected.contains(id))
-            .map(|(_, shape)| shape);
-        render::draw_shapes(shapes, &camera, extent);
-    });
+    render_into(
+        ctx,
+        &target,
+        extent,
+        Some(hex_color(theme::CANVAS)),
+        |ctx| {
+            let shapes = editor
+                .document()
+                .shapes()
+                .filter(|(id, _)| selected.contains(id))
+                .map(|(_, shape)| shape);
+            ctx.draw_shapes(shapes, &camera, extent);
+        },
+    );
     if render::text_overflowed() {
         return Err(ExportError::Pixels);
     }
-    let texture = render::with_gpu(|gpu| gpu.target_texture(&target));
-    let bytes =
-        render::with_gpu(|gpu| gpu.read_texture(&texture)).map_err(|_| ExportError::Pixels)?;
+    let texture = ctx.gpu_mut().target_texture(&target);
+    let bytes = ctx
+        .gpu_mut()
+        .read_texture(&texture)
+        .map_err(|_| ExportError::Pixels)?;
     export::view_pixels(&bytes, plan.size, plan.size, 0)
 }
 
@@ -1153,6 +1175,7 @@ impl CachedFrame {
     /// for the flight recorder (ADR-T47-1).
     fn present(
         &mut self,
+        ctx: &mut MqCtx,
         editor: &Editor,
         viewport: Vec2,
         dpi: f32,
@@ -1196,7 +1219,7 @@ impl CachedFrame {
         if let Some(from) = from {
             let margin = layer_margin(size);
             if self.key.as_ref().is_none_or(|cached| cached.size != size) {
-                self.document = self.new_target(layer_size(size, margin));
+                self.document = self.new_target(ctx, layer_size(size, margin));
                 self.filter = FRAME_FILTER;
             }
             let pad = margin as f32 / sanitize_dpi(dpi);
@@ -1206,8 +1229,8 @@ impl CachedFrame {
             if let Some(document) = &self.document {
                 // The background only when the layer starts from scratch.
                 let clear = (from == 0).then(|| hex_color(theme::CANVAS));
-                render_into(document, extent, clear, || {
-                    draw_document(editor, &layer_camera, &overlay, extent, from);
+                render_into(ctx, document, extent, clear, |ctx| {
+                    draw_document(ctx, editor, &layer_camera, &overlay, extent, from);
                 });
             }
             if redraw == Redraw::Full {
@@ -1223,28 +1246,28 @@ impl CachedFrame {
         let minimap = editor.minimap();
         let overview = minimap
             .as_ref()
-            .and_then(|map| self.update_overview(editor, map, dpi));
+            .and_then(|map| self.update_overview(ctx, editor, map, dpi));
         let (Some(document), Some(cached)) = (&self.document, &self.key) else {
             return None;
         };
         if redraw == Redraw::Moved {
             // The moved layer may not cover the window; wake again until the
             // camera settles (ADR-T26-1).
-            render::clear_window(hex_color(theme::CANVAS));
+            ctx.clear_window(gfx_color(hex_color(theme::CANVAS)));
             self.wake = true;
         }
         let dest = blit_rect(&cached.camera, &camera, self.layer);
-        blit_layer(document, &mut self.filter, blit_filter(redraw), dest);
-        draw_overlay(editor, &overlay, viewport);
-        draw_laser(trail);
+        blit_layer(ctx, document, &mut self.filter, blit_filter(redraw), dest);
+        draw_overlay(ctx, editor, &overlay, viewport);
+        draw_laser(ctx, trail);
         if let Some(map) = &minimap {
             let view = camera.visible_world_rect(viewport);
             let texture = self
                 .overview
                 .as_ref()
-                .map(|target| render::with_gpu(|gpu| gpu.target_texture(target)));
+                .map(|target| ctx.gpu_mut().target_texture(target));
             let shown = texture.as_ref().zip(overview.as_ref());
-            minimap::draw_panel(map, view, shown);
+            minimap::draw_panel(ctx, map, view, shown);
         }
         if rerender_after_overflow(render::text_overflowed(), cleared) {
             // Glyphs were dropped from the layer; draw it again next frame
@@ -1267,13 +1290,15 @@ impl CachedFrame {
 
     /// The window's part of the document layer, read back as RGBA rows from
     /// the top, and its size in physical pixels (ADR-T92-2).
-    fn read_view(&self) -> Result<(Vec<u8>, (u32, u32)), ExportError> {
+    fn read_view(&self, ctx: &mut MqCtx) -> Result<(Vec<u8>, (u32, u32)), ExportError> {
         let (Some(document), Some(key)) = (&self.document, &self.key) else {
             return Err(ExportError::Pixels);
         };
-        let texture = render::with_gpu(|gpu| gpu.target_texture(document));
-        let bytes =
-            render::with_gpu(|gpu| gpu.read_texture(&texture)).map_err(|_| ExportError::Pixels)?;
+        let texture = ctx.gpu_mut().target_texture(document);
+        let bytes = ctx
+            .gpu_mut()
+            .read_texture(&texture)
+            .map_err(|_| ExportError::Pixels)?;
         let margin = layer_margin(key.size);
         let layer = layer_size(key.size, margin);
         let rgba = export::view_pixels(&bytes, layer, key.size, margin)?;
@@ -1284,7 +1309,13 @@ impl CachedFrame {
     /// last rendered, and returns the map it was rendered through; `None`
     /// for an empty document. The camera is not part of its key, so
     /// panning never renders it again (ADR-T110-1).
-    fn update_overview(&mut self, editor: &Editor, map: &Minimap, dpi: f32) -> Option<Fit> {
+    fn update_overview(
+        &mut self,
+        ctx: &mut MqCtx,
+        editor: &Editor,
+        map: &Minimap,
+        dpi: f32,
+    ) -> Option<Fit> {
         let key = OverviewKey::of(editor, map, dpi)?;
         let area = map.area();
         let image = key.image(area);
@@ -1294,18 +1325,18 @@ impl CachedFrame {
                 .as_ref()
                 .is_none_or(|cached| cached.size != key.size);
             if resized || self.overview.is_none() {
-                self.overview = self.new_target(key.size);
+                self.overview = self.new_target(ctx, key.size);
                 if let Some(target) = &self.overview {
                     // Drawn smaller when the view leaves the content.
-                    let texture = render::with_gpu(|gpu| gpu.target_texture(target));
-                    let _ = render::with_gpu(|gpu| gpu.set_filter(&texture, Filter::Linear));
+                    let texture = ctx.gpu_mut().target_texture(target);
+                    let _ = ctx.gpu_mut().set_filter(&texture, Filter::Linear);
                 }
             }
             if let Some(target) = &self.overview {
                 let extent = Vec2::new(area.width(), area.height());
                 let clear = Some(minimap::clear_color());
-                render_into(target, extent, clear, || {
-                    minimap::draw_overview(editor, &image);
+                render_into(ctx, target, extent, clear, |ctx| {
+                    minimap::draw_overview(ctx, editor, &image);
                 });
             }
             self.overview_key = Some(key);
@@ -1316,32 +1347,38 @@ impl CachedFrame {
     /// A render target of `size` physical pixels with this cache's sample
     /// count.
     /// `None` if the backend cannot make it.
-    fn new_target(&self, size: (u32, u32)) -> Option<MqTarget> {
+    fn new_target(&self, ctx: &mut MqCtx, size: (u32, u32)) -> Option<MqTarget> {
         let desc = frame_target_desc(size, self.samples);
-        render::with_gpu(|gpu| gpu.create_target(desc)).ok()
+        ctx.gpu_mut().create_target(desc).ok()
     }
 }
 
 /// Blits the layer `document` over `dest` (if any), after switching its
 /// texture from the filter `current` to `wanted`.
-fn blit_layer(document: &MqTarget, current: &mut Filter, wanted: Filter, dest: Option<Aabb>) {
-    let texture = render::with_gpu(|gpu| gpu.target_texture(document));
+fn blit_layer(
+    ctx: &mut MqCtx,
+    document: &MqTarget,
+    current: &mut Filter,
+    wanted: Filter,
+    dest: Option<Aabb>,
+) {
+    let texture = ctx.gpu_mut().target_texture(document);
     if wanted != *current {
         // The handle is the cache's own; a refusal keeps the old filter.
-        if render::with_gpu(|gpu| gpu.set_filter(&texture, wanted)).is_ok() {
+        if ctx.gpu_mut().set_filter(&texture, wanted).is_ok() {
             *current = wanted;
         }
     }
     if let Some(dest) = dest {
-        blit(&texture, dest);
+        blit(ctx, &texture, dest);
     }
 }
 
 /// Draws a resolved layer `texture` stretched over `dest`, in window
 /// pixels.
-fn blit(texture: &MqTexture, dest: Aabb) {
+fn blit(ctx: &mut MqCtx, texture: &MqTexture, dest: Aabb) {
     // GL textures start at the bottom row.
-    render::draw_texture_quad(texture, dest, true);
+    ctx.draw_texture_quad(texture, dest, true);
 }
 
 /// Framebuffer size in physical pixels for a logical `viewport`, at least 1×1.
@@ -1363,21 +1400,34 @@ fn sanitize_dpi(dpi: f32) -> f32 {
 
 /// Runs `draw` with `target` as the destination, `viewport` logical pixels
 /// wide, cleared to `clear` first if given: one pass (ADR-T159-1).
-fn render_into(target: &MqTarget, viewport: Vec2, clear: Option<Color>, draw: impl FnOnce()) {
+fn render_into(
+    ctx: &mut MqCtx,
+    target: &MqTarget,
+    viewport: Vec2,
+    clear: Option<Color>,
+    draw: impl FnOnce(&mut MqCtx),
+) {
     let view = View {
         width: viewport.x,
         height: viewport.y,
     };
-    render::render_to(target, view, clear, draw);
+    ctx.render_to(target, view, clear.map(gfx_color), draw);
 }
 
 /// Draws the document layer through `camera` into a target of `viewport`
 /// pixels: background, underlay and every shape the gesture in progress
 /// does not hide. With `from > 0` only the shapes from that index on are
 /// drawn over what the layer already holds (ADR-T24-3).
-fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: Vec2, from: usize) {
+fn draw_document(
+    ctx: &mut MqCtx,
+    editor: &Editor,
+    camera: &Camera,
+    overlay: &Overlay,
+    viewport: Vec2,
+    from: usize,
+) {
     if from == 0 {
-        render::draw_underlay(editor, camera, viewport);
+        ctx.draw_underlay(editor, camera, viewport);
     }
     let hidden: HashSet<ShapeId> = overlay.hidden.iter().copied().collect();
     let shapes = editor
@@ -1386,12 +1436,12 @@ fn draw_document(editor: &Editor, camera: &Camera, overlay: &Overlay, viewport: 
         .skip(from)
         .filter(|(id, _)| !hidden.contains(id))
         .map(|(_, shape)| shape);
-    render::draw_shapes(shapes, camera, viewport);
+    ctx.draw_shapes(shapes, camera, viewport);
 }
 
 /// Draws what lies above the document: gesture overlay, guides, selection,
 /// marquee and toolbar.
-fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
+fn draw_overlay(ctx: &mut MqCtx, editor: &Editor, overlay: &Overlay, viewport: Vec2) {
     let camera = editor.camera();
     // The open text block shows its source, formulas untypeset (ADR-T30-1).
     let editing = editor.text_edit().map(TextEdit::shape);
@@ -1402,32 +1452,32 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         .is_some_and(|host| host.filled);
     for shape in &overlay.shapes {
         if editing.as_ref() == Some(shape) {
-            render::draw_source_preview(shape, camera, on_fill);
+            ctx.draw_source_preview(shape, camera, on_fill);
         } else {
-            render::draw_preview(shape, camera);
+            ctx.draw_preview(shape, camera);
         }
     }
-    render::draw_guides(&overlay.guides, camera);
+    ctx.draw_guides(&overlay.guides, camera);
     if let Some(edit) = editor.text_edit() {
         // The block being edited is outlined; its caret does not blink, so
         // the loop stays asleep (ADR-T29-2).
-        render::draw_selection(edit.bounds(), camera);
+        ctx.draw_selection(edit.bounds(), camera);
         let [top, bottom] = edit.caret_line().map(|p| camera.world_to_screen(p));
         let color = if on_fill {
             hex_color(theme::TEXT_ON_FILL)
         } else {
             to_mq_color(palette(edit.style.color))
         };
-        let mut batch = Batch::new(GlSink);
+        let mut batch = Batch::new(CtxSink::new(ctx));
         batch.line(top, bottom, CARET_WIDTH_PX, color);
         batch.finish();
     }
     if editor.active_gesture().is_none()
         && let Some(bounds) = editor.selection_bounds()
     {
-        render::draw_selection(bounds, camera);
+        ctx.draw_selection(bounds, camera);
         if let Some(handles) = editor.selection_handles() {
-            render::draw_selection_handles(&handles);
+            ctx.draw_selection_handles(&handles);
         }
     }
     if let Some(marquee) = overlay.marquee {
@@ -1436,7 +1486,7 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
             camera.world_to_screen(marquee.max),
         );
         let fill = hex_color_alpha(theme::MARQUEE_FILL, theme::MARQUEE_FILL_ALPHA);
-        let mut batch = Batch::new(GlSink);
+        let mut batch = Batch::new(CtxSink::new(ctx));
         batch.rect(rect, fill);
         ui_shapes::push_ring(
             &mut batch,
@@ -1448,13 +1498,13 @@ fn draw_overlay(editor: &Editor, overlay: &Overlay, viewport: Vec2) {
         batch.finish();
     }
     if editor.toolbar_visible() {
-        toolbar::draw(editor, viewport);
+        toolbar::draw(ctx, editor, viewport);
     }
     if let Some(palette) = editor.palette() {
-        command_palette::draw(palette, viewport);
+        command_palette::draw(ctx, palette, viewport);
     }
     if let Some(sheet) = editor.sheet() {
-        sheet::draw(sheet, viewport);
+        sheet::draw(ctx, sheet, viewport);
     }
 }
 
@@ -1513,9 +1563,9 @@ impl LaserLayer {
 /// Draws the laser trail in window pixels, over everything: each piece a
 /// line [`laser::WIDTH_PX`] wide with a round end, in [`theme::RED`] at
 /// its opacity (ADR-T106-2).
-fn draw_laser(trail: &[Segment]) {
+fn draw_laser(ctx: &mut MqCtx, trail: &[Segment]) {
     let radius = laser::WIDTH_PX / 2.0;
-    let mut batch = Batch::new(GlSink);
+    let mut batch = Batch::new(CtxSink::new(ctx));
     for segment in trail.iter().filter(|s| s.alpha > 0.0) {
         let color = hex_color_alpha(theme::RED, alpha_byte(segment.alpha));
         let (from, to) = (segment.from, segment.to);
