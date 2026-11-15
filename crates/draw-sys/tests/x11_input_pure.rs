@@ -367,14 +367,11 @@ fn regression_t35_pressure_sample_precedes_press_and_release() {
 
     let sample = pen.sample(10.0, 20.0).unwrap();
 
-    match sample {
-        RawEvent::Tablet { x, y, pressure } => {
-            assert!((x - 10.0).abs() < 1e-6);
-            assert!((y - 20.0).abs() < 1e-6);
-            assert!((pressure - 0.75).abs() < 1e-6);
-        }
-        other => panic!("expected a tablet sample, got {other:?}"),
-    }
+    assert!(matches!(
+        sample,
+        RawEvent::Tablet { x, y, pressure }
+            if (x - 10.0).abs() < 1e-6 && (y - 20.0).abs() < 1e-6 && (pressure - 0.75).abs() < 1e-6
+    ));
     // The tip lifts: pressure 0 is still a sample, not "no pen".
     pen.raw_event(7, Some(AXIS), &[0b100], &[0.0]);
     assert!(matches!(
@@ -411,11 +408,11 @@ fn fuzz_keys_random_keysyms_never_panic() {
         let _ = key_from_keysym(sym, code);
         let _ = char_from_keysym(sym);
         let _ = mods_from_state(state);
-        let _ = level_for(state, state % 2 == 0);
+        let _ = level_for(state, state.is_multiple_of(2));
         let _ = group_of(state);
         let _ = button_from_x(code);
         let _ = wheel_delta(code);
-        if state % 3 == 0 {
+        if state.is_multiple_of(3) {
             tracker.release(code % 300);
         } else {
             let _ = tracker.press(code % 300);
@@ -436,7 +433,7 @@ fn fuzz_pen_valuator_random_masks_never_panic() {
             .collect();
         let number = (rng.next() % 70) as i32 - 3;
         let _ = valuator(&mask, &values, number);
-        let axis = (rng.next() % 4 != 0).then_some(PressureAxis {
+        let axis = (!rng.next().is_multiple_of(4)).then_some(PressureAxis {
             number,
             min: f64::from_bits(rng.next()),
             max: f64::from_bits(rng.next()),

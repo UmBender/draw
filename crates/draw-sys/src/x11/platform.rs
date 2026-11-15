@@ -3,8 +3,8 @@
 //! Keyboard, pointer and pen events come with T176, selections with T177:
 //! until then `poll` reports only resizes and the clipboard is empty.
 
-use std::ffi::c_void;
 use std::collections::HashMap;
+use std::ffi::c_void;
 use std::future::{Future, ready};
 use std::time::{Duration, Instant};
 
@@ -126,7 +126,7 @@ impl X11Platform {
         &self.gl
     }
 
-    /// Whether pen pressure is available (`libXi` with XInput2 2.0).
+    /// Whether pen pressure is available (`libXi` with `XInput2` 2.0).
     #[must_use]
     pub fn pen_supported(&self) -> bool {
         self.window.conn().has_xi()
@@ -226,11 +226,10 @@ impl Platform for X11Platform {
                             .axes
                             .entry(raw.source)
                             .or_insert_with(|| conn.pressure_axis(raw.source));
-                        self.pen
-                            .raw_event(raw.source, axis, &raw.mask, &raw.values);
+                        self.pen.raw_event(raw.source, axis, &raw.mask, &raw.values);
                     }
                 }
-                _ => {}
+                XEvent::Configure { .. } | XEvent::ClientMessage { .. } | XEvent::Other(_) => {}
             }
         }
     }

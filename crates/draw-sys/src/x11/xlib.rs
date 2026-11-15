@@ -158,7 +158,8 @@ struct XlibApi {
     set_detectable: unsafe extern "C" fn(Ptr, c_int, *mut c_int) -> c_int,
     get_event_data: unsafe extern "C" fn(Ptr, *mut c_long) -> c_int,
     free_event_data: unsafe extern "C" fn(Ptr, *mut c_long),
-    query_extension: unsafe extern "C" fn(Ptr, *const c_char, *mut c_int, *mut c_int, *mut c_int) -> c_int,
+    query_extension:
+        unsafe extern "C" fn(Ptr, *const c_char, *mut c_int, *mut c_int, *mut c_int) -> c_int,
     // Declared last: the library outlives the pointers above.
     _libx11: Library,
 }
@@ -227,7 +228,7 @@ const XI_RAW_MOTION: i32 = 17;
 const XI_VALUATOR_CLASS: c_int = 2;
 const XI_ALL_MASTER_DEVICES: c_int = 1;
 
-/// The `libXi` functions, present when XInput2 2.0 is.
+/// The `libXi` functions, present when `XInput2` 2.0 is.
 #[derive(Debug)]
 struct XiApi {
     // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
@@ -253,7 +254,7 @@ pub(super) struct XiRaw {
     pub(super) values: Vec<f64>,
 }
 
-/// An event with the XInput2 data it carried.
+/// An event with the `XInput2` data it carried.
 #[derive(Debug)]
 pub(super) struct Fetched {
     /// The `XEvent` bytes.
@@ -321,7 +322,7 @@ pub(super) struct Connection {
 }
 
 impl XiApi {
-    /// Loads `libXi` and negotiates XInput2 2.0; `None` if either fails.
+    /// Loads `libXi` and negotiates `XInput2` 2.0; `None` if either fails.
     fn open(api: &XlibApi, display: Ptr) -> Option<Self> {
         let lib = Library::open("libXi.so.6").ok()?;
         let mut opcode: c_int = 0;
@@ -403,7 +404,7 @@ impl Connection {
     }
 
     /// Fetches the data of a generic `event` and frees it again; the raw
-    /// motion if it is an XInput2 one.
+    /// motion if it is an `XInput2` one.
     fn fetch_generic(&self, event: &mut [c_long; 24]) -> Option<XiRaw> {
         // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
         // SAFETY: `event` is the generic event `XNextEvent` just filled.
@@ -445,7 +446,7 @@ impl Connection {
         raw
     }
 
-    /// Whether XInput2 raw events are available.
+    /// Whether `XInput2` raw events are available.
     pub(super) fn has_xi(&self) -> bool {
         self.xi.is_some()
     }
@@ -514,6 +515,9 @@ impl Connection {
                     if class.is_null() || (*class).kind != XI_VALUATOR_CLASS {
                         continue;
                     }
+                    // Libxi lays the class structs out in one malloc'd
+                    // buffer with natural alignment.
+                    #[allow(clippy::cast_ptr_alignment)]
                     let valuator = &*class.cast::<XiValuatorClass>();
                     if valuator.label == label {
                         found = Some(PressureAxis {

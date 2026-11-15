@@ -92,7 +92,7 @@ pub fn mods_from_state(state: u32) -> RawMods {
 }
 
 /// The keysym level of a key for an event `state`: shift, caps lock (on
-/// `alphabetic` keys only) and AltGr (Mod5).
+/// `alphabetic` keys only) and `AltGr` (`Mod5`).
 #[must_use]
 pub fn level_for(state: u32, alphabetic: bool) -> u32 {
     let shifted = (state & SHIFT_MASK != 0) ^ (alphabetic && state & LOCK_MASK != 0);

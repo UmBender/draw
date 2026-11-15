@@ -1,4 +1,4 @@
-//! Pen pressure from XInput2 raw events, as pure functions (T176 AC-3).
+//! Pen pressure from `XInput2` raw events, as pure functions (T176 AC-3).
 
 use crate::platform::RawEvent;
 
@@ -72,8 +72,8 @@ impl PenTracker {
             Some((pen, pressure)) if pen == device => pressure,
             _ => 0.0,
         };
-        let pressure = valuator(mask, values, axis.number)
-            .map_or(previous, |value| normalise(value, axis));
+        let pressure =
+            valuator(mask, values, axis.number).map_or(previous, |value| normalise(value, axis));
         self.current = Some((device, pressure));
     }
 

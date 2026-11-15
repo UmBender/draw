@@ -1,4 +1,4 @@
-//! Keyboard, pointer and XInput2 of `X11Platform` under a private Xvfb
+//! Keyboard, pointer and `XInput2` of `X11Platform` under a private Xvfb
 //! (T176 AC-1 to AC-3). A missing `Xvfb` or `xdotool` fails the test.
 
 #![allow(clippy::unwrap_used)]
@@ -68,11 +68,19 @@ fn x11_key_by_xdotool_reports_key_and_char() {
     assert!(events.iter().any(|e| key_down(e, RawKey::Letter('A'))));
     assert!(events.iter().any(|e| matches!(
         e,
-        RawEvent::Char { ch: 'a', repeat: false, .. }
+        RawEvent::Char {
+            ch: 'a',
+            repeat: false,
+            ..
+        }
     )));
     assert!(events.iter().any(|e| matches!(
         e,
-        RawEvent::Key { key: RawKey::Letter('A'), down: false, .. }
+        RawEvent::Key {
+            key: RawKey::Letter('A'),
+            down: false,
+            ..
+        }
     )));
 }
 
@@ -111,7 +119,16 @@ fn x11_held_key_reports_repeat_until_release() {
     };
     let releases = events
         .iter()
-        .filter(|e| matches!(e, RawEvent::Key { key: RawKey::Letter('A'), down: false, .. }))
+        .filter(|e| {
+            matches!(
+                e,
+                RawEvent::Key {
+                    key: RawKey::Letter('A'),
+                    down: false,
+                    ..
+                }
+            )
+        })
         .count();
     assert_eq!(presses(false), 1);
     assert!(presses(true) >= 1);
@@ -152,7 +169,12 @@ fn x11_regression_t28_key_release_after_focus_loss_clears_state() {
 
     assert!(events.iter().any(|e| matches!(
         e,
-        RawEvent::Key { key: RawKey::Letter('A'), down: true, repeat: false, .. }
+        RawEvent::Key {
+            key: RawKey::Letter('A'),
+            down: true,
+            repeat: false,
+            ..
+        }
     )));
 }
 
@@ -218,6 +240,10 @@ fn x11_xi2_raw_motion_from_xtest_is_not_a_pen() {
     xdotool(&server, &["mousemove", "25", "26"]);
     let events = collect(&mut platform, Duration::from_millis(300));
 
-    assert!(events.iter().any(|e| matches!(e, RawEvent::PointerMove { .. })));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, RawEvent::PointerMove { .. }))
+    );
     assert!(events.iter().all(|e| !matches!(e, RawEvent::Tablet { .. })));
 }
