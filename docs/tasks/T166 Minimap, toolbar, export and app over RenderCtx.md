@@ -1,7 +1,7 @@
 ---
 id: T166
 title: Minimap, toolbar, export and app over RenderCtx
-status: in-progress
+status: review
 wave: 68
 branch: task/T166-minimap-toolbar-export-and-app-over-rend
 depends_on: [T165]
@@ -46,12 +46,13 @@ Design (no new ADR, it follows ADR-T140-1 and T165): `GlSink<'a>` holds `&'a mut
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T166): specify the slice`
-- [ ] tests — `test(T166): add failing tests`
-- [ ] models — `feat(T166): add the types`
-- [ ] behaviour — `refactor(T166): migrate the slice`
-- [ ] quality — `chore(T166): pass clippy and rustfmt`
+- [x] spec — `docs(T166): specify the slice`
+- [x] tests — `test(T166): add failing tests`
+- [x] models — merged into the behaviour commit
+- [x] behaviour — `refactor(T166): migrate the slice`
+- [x] quality — `chore(T166): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-14 — split from T164 by the owner, following the batch's recommendation.
+- 2026-11-15 — done in batch. The tests commit does not compile alone (`sync_window` is new), and models and behaviour are one commit because the signature change cannot compile in between, as in T165. `MqCtx` is an alias for `RenderCtx<MqGpu>` until T167; `Batch` lost its default sink and the free forwarding functions of `render.rs` are deleted (callers use the `RenderCtx` methods). The old T165 bridge test was replaced by `shell_sources_have_no_gpu_thread_local`. `scripts/check.sh` and `e2e.sh --backend all` green; `cargo test --release --no-run` builds `tests/perf.rs` (not run).
