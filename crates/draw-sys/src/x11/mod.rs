@@ -9,6 +9,8 @@ use crate::loader::LoadError;
 
 pub mod dpi;
 pub mod event;
+pub mod keys;
+pub mod pen;
 mod platform;
 mod xlib;
 

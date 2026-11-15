@@ -113,6 +113,12 @@ impl X11Platform {
         &self.gl
     }
 
+    /// Whether pen pressure is available (`libXi` with XInput2 2.0).
+    #[must_use]
+    pub fn pen_supported(&self) -> bool {
+        false
+    }
+
     /// Whether the window manager asked to close the window.
     #[must_use]
     pub fn close_requested(&self) -> bool {

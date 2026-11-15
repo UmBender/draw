@@ -26,6 +26,43 @@ pub enum XEvent {
         /// The first `long` of the data.
         first_long: u64,
     },
+    /// `KeyPress` or `KeyRelease`.
+    Key {
+        /// Pressed (`true`) or released.
+        down: bool,
+        /// The X keycode.
+        keycode: u32,
+        /// Modifier mask and keyboard group.
+        state: u32,
+    },
+    /// `ButtonPress` or `ButtonRelease`.
+    Button {
+        /// Pressed (`true`) or released.
+        down: bool,
+        /// The X button number (4 to 7 are the wheel).
+        button: u32,
+        /// X in window pixels.
+        x: i32,
+        /// Y in window pixels.
+        y: i32,
+    },
+    /// `MotionNotify`.
+    Motion {
+        /// X in window pixels.
+        x: i32,
+        /// Y in window pixels.
+        y: i32,
+    },
+    /// `FocusIn` (`true`) or `FocusOut`.
+    Focus(bool),
+    /// `GenericEvent`: the extension opcode and event type; the data is
+    /// fetched from the display.
+    Generic {
+        /// The extension's major opcode.
+        extension: i32,
+        /// The extension's event type.
+        evtype: i32,
+    },
     /// Any other event, by its type code (`0` for a truncated event).
     Other(i32),
 }
