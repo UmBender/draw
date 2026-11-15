@@ -51,8 +51,24 @@ impl Payload {
     /// The answer to a request for `kind`.
     #[must_use]
     pub fn answer(&self, kind: TargetKind) -> Answer {
-        let _ = (self, kind);
-        todo!()
+        match (self, kind) {
+            (_, TargetKind::Targets) => Answer::Targets(match self {
+                Self::Text(_) => vec![
+                    TargetKind::Targets,
+                    TargetKind::Utf8,
+                    TargetKind::String,
+                    TargetKind::Text,
+                    TargetKind::PlainUtf8,
+                ],
+                Self::Png(_) => vec![TargetKind::Targets, TargetKind::Png],
+            }),
+            (
+                Self::Text(_),
+                TargetKind::Utf8 | TargetKind::String | TargetKind::Text | TargetKind::PlainUtf8,
+            )
+            | (Self::Png(_), TargetKind::Png) => Answer::Data(self.bytes().to_vec(), kind),
+            _ => Answer::Refuse,
+        }
     }
 
     /// The bytes of the payload.
@@ -115,8 +131,43 @@ pub enum SelEvent {
 /// short buffer. Never panics.
 #[must_use]
 pub fn decode_selection(raw: &[u8]) -> Option<SelEvent> {
-    let _ = raw;
-    todo!()
+    let kind = read_i32(raw, 0)?;
+    match kind {
+        SELECTION_REQUEST => Some(SelEvent::Request(Request {
+            requestor: read_u64(raw, 40)?,
+            selection: read_u64(raw, 48)?,
+            target: read_u64(raw, 56)?,
+            property: read_u64(raw, 64)?,
+            time: read_u64(raw, 72)?,
+        })),
+        SELECTION_NOTIFY => Some(SelEvent::Notify {
+            selection: read_u64(raw, 40)?,
+            target: read_u64(raw, 48)?,
+            property: read_u64(raw, 56)?,
+        }),
+        SELECTION_CLEAR => Some(SelEvent::Clear {
+            selection: read_u64(raw, 40)?,
+        }),
+        PROPERTY_NOTIFY => Some(SelEvent::Property {
+            window: read_u64(raw, 32)?,
+            atom: read_u64(raw, 40)?,
+            deleted: read_i32(raw, 56)? == 1,
+        }),
+        _ => None,
+    }
+}
+
+const PROPERTY_NOTIFY: i32 = 28;
+const SELECTION_CLEAR: i32 = 29;
+const SELECTION_REQUEST: i32 = 30;
+const SELECTION_NOTIFY: i32 = 31;
+
+fn read_i32(raw: &[u8], at: usize) -> Option<i32> {
+    Some(i32::from_ne_bytes(raw.get(at..at + 4)?.try_into().ok()?))
+}
+
+fn read_u64(raw: &[u8], at: usize) -> Option<u64> {
+    Some(u64::from_ne_bytes(raw.get(at..at + 8)?.try_into().ok()?))
 }
 
 /// Sends a payload in chunks, then an empty chunk.
@@ -141,7 +192,16 @@ impl IncrSender {
     /// The next chunk: data chunks of at most [`INCR_CHUNK`], then one
     /// empty chunk, then `None`.
     pub fn next_chunk(&mut self) -> Option<&[u8]> {
-        todo!()
+        if self.finished {
+            return None;
+        }
+        let start = self.sent;
+        let end = (start + INCR_CHUNK).min(self.data.len());
+        self.sent = end;
+        if start == end {
+            self.finished = true;
+        }
+        self.data.get(start..end)
     }
 }
 
@@ -171,8 +231,14 @@ impl IncrReceiver {
 
     /// Takes one chunk.
     pub fn push(&mut self, chunk: &[u8]) -> IncrStep {
-        let _ = chunk;
-        todo!()
+        if chunk.is_empty() {
+            return IncrStep::Done;
+        }
+        if self.buf.len() + chunk.len() > MAX_INCOMING {
+            return IncrStep::Overflow;
+        }
+        self.buf.extend_from_slice(chunk);
+        IncrStep::More
     }
 
     /// The bytes received so far.
