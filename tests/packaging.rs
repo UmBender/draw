@@ -266,3 +266,111 @@ fn cargo_patches_miniquad_with_the_vendored_copy() {
     assert_eq!(entry.len(), 1, "{entry:?}");
     assert!(!entry[0].contains("source ="), "{}", entry[0]);
 }
+
+/// Sonames named by the flake: the quoted value of every `soname = "…"`.
+fn flake_sonames(flake: &str) -> BTreeSet<String> {
+    flake
+        .split("soname = \"")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn flake_sonames_reads_quoted_values() {
+    // Arrange
+    let text = "{ soname = \"libA.so.1\"; pkg = a; } { soname = \"libB.so.2\"; }";
+
+    // Act
+    let found = flake_sonames(text);
+
+    // Assert
+    assert_eq!(found.len(), 2);
+    assert!(found.contains("libA.so.1") && found.contains("libB.so.2"));
+}
+
+#[test]
+fn flake_exposes_package_app_shell_and_overlay() {
+    // Arrange
+    let flake = read("flake.nix");
+
+    // Act / Assert
+    for needle in [
+        "packages",
+        "apps",
+        "devShells",
+        "overlays.default",
+        "x86_64-linux",
+        "aarch64-linux",
+        "LD_LIBRARY_PATH",
+        "io.github.UmBender.draw",
+    ] {
+        assert!(flake.contains(needle), "flake.nix lacks {needle}");
+    }
+    assert!(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("flake.lock")
+            .exists()
+    );
+}
+
+#[test]
+fn flake_libraries_match_runtime_libs() {
+    // Arrange
+    let wanted: BTreeSet<String> = runtime_libs()
+        .iter()
+        .filter(|lib| {
+            matches!(
+                lib.role,
+                Role::Required | Role::Gl | Role::Wayland | Role::Optional
+            )
+        })
+        .map(|lib| lib.soname.to_owned())
+        .collect();
+
+    // Act
+    let named = flake_sonames(&read("flake.nix"));
+
+    // Assert
+    assert_eq!(
+        named, wanted,
+        "flake.nix drifted from packaging/runtime-libs"
+    );
+}
+
+#[test]
+fn flake_toolchain_matches_rust_version() {
+    // Arrange
+    let cargo = read("Cargo.toml");
+    let minimum = cargo
+        .lines()
+        .find_map(|line| line.strip_prefix("rust-version = \""))
+        .and_then(|rest| rest.split('"').next())
+        .expect("rust-version in Cargo.toml");
+
+    // Act
+    let flake = read("flake.nix");
+
+    // Assert
+    assert!(
+        flake.contains(&format!("rustVersion = \"{minimum}.")),
+        "flake.nix rustVersion is not {minimum}.x"
+    );
+}
+
+#[test]
+fn readme_has_nixos_install_section() {
+    // Arrange
+    let readme = read("README.md");
+
+    // Act / Assert
+    assert!(readme.contains("### Install on NixOS"));
+    for needle in [
+        "nix run github:UmBender/draw",
+        "nix profile install",
+        "environment.systemPackages",
+    ] {
+        assert!(readme.contains(needle), "README lacks {needle}");
+    }
+}
