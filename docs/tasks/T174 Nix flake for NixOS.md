@@ -1,7 +1,7 @@
 ---
 id: T174
 title: Nix flake for NixOS
-status: in-progress
+status: review
 wave: 72
 branch: task/T174-nix-flake-for-nixos
 depends_on: []
@@ -59,12 +59,21 @@ AC-2 and AC-4 `readme_has_nixos_install_section`; AC-2 run by
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T174): specify the flake`
-- [ ] tests — `test(T174): add the flake library list check`
-- [ ] behaviour — `feat(T174): add the Nix flake`
-- [ ] docs — `docs(T174): document the NixOS install`
+- [x] spec — `docs(T174): specify the flake`
+- [x] tests — `test(T174): add the flake library list check`
+- [x] behaviour — `feat(T174): add the Nix flake`
+- [x] docs — `docs(T174): document the NixOS install`
 - [ ] by hand — owner, on NixOS, recorded in the Log
 
 ## Log
 
 - 2026-11-15 — written for the owner's move to NixOS.
+- 2026-11-15 — implemented (batch). `scripts/nix-check.sh` (new, not in
+  *Files owned*; the plan's recommended defaults asked for it) builds the
+  flake in `nixos/nix` with podman: `flake check`, `nix build`,
+  `draw --version`/`--help`, wrapper carries every soname's directory.
+  Green. `flake.lock` generated through it. The README section went in
+  with the quality commit. Not verified: `aarch64-linux` evaluates
+  (`flake check` skips it; `--all-systems` not run), tests are skipped in
+  the Nix build (`doCheck = false`), no ADR needed. AC-5 (Wayland, X11,
+  tablet on NixOS) is the owner's by-hand check.
