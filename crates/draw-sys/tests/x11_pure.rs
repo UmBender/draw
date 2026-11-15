@@ -159,7 +159,10 @@ fn dpi_from_xft_resource_reads_the_value() {
 fn dpi_without_resource_falls_back_to_screen_size() {
     assert!(near(resolve_dpi(None, 1920, 508), 96.0));
     assert!(near(resolve_dpi(None, 3840, 508), 192.0));
-    assert!(near(resolve_dpi(Some("Xft.antialias: 1"), 3840, 508), 192.0));
+    assert!(near(
+        resolve_dpi(Some("Xft.antialias: 1"), 3840, 508),
+        192.0
+    ));
     assert!(near(resolve_dpi(Some("Xft.dpi: 120"), 3840, 508), 120.0));
     assert!(near(resolve_dpi(None, 100, 0), 96.0));
     assert_eq!(screen_dpi(0, 100), None);

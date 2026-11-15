@@ -277,8 +277,8 @@ impl Connection {
         bytes[48..52].copy_from_slice(&32i32.to_ne_bytes());
         bytes[56..64].copy_from_slice(&delete.to_ne_bytes());
         let mut event = [0 as c_long; 24];
-        for (long, chunk) in event.iter_mut().zip(bytes.chunks_exact(8)) {
-            *long = c_long::from_ne_bytes(chunk.try_into().unwrap_or([0; 8]));
+        for (long, chunk) in event.iter_mut().zip(bytes.as_chunks::<8>().0) {
+            *long = c_long::from_ne_bytes(*chunk);
         }
         // TEST: x11_wm_close_sets_close_requested
         // SAFETY: `display` is live and `event` is a full-size
@@ -562,8 +562,8 @@ impl Window<Mapped> {
         // that size and alignment, and an event is pending.
         unsafe { (conn.api.next_event)(conn.display, event.as_mut_ptr()) };
         let mut bytes = [0u8; EVENT_BYTES];
-        for (chunk, long) in bytes.chunks_exact_mut(8).zip(event) {
-            chunk.copy_from_slice(&long.to_ne_bytes());
+        for (chunk, long) in bytes.as_chunks_mut::<8>().0.iter_mut().zip(event) {
+            *chunk = long.to_ne_bytes();
         }
         Some(bytes)
     }

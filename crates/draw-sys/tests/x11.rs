@@ -17,7 +17,15 @@ use draw_sys::platform::{Platform, RawEvent};
 use draw_sys::x11::{GlBackend, X11Error, X11Platform, send_close_request};
 
 fn open(server: &xvfb::Xvfb, backend: GlBackend) -> X11Platform {
-    X11Platform::open(Some(&server.display), "draw test", "draw-test", 200, 120, backend).unwrap()
+    X11Platform::open(
+        Some(&server.display),
+        "draw test",
+        "draw-test",
+        200,
+        120,
+        backend,
+    )
+    .unwrap()
 }
 
 fn xdotool(server: &xvfb::Xvfb, args: &[&str]) -> String {
@@ -25,7 +33,7 @@ fn xdotool(server: &xvfb::Xvfb, args: &[&str]) -> String {
         .env("DISPLAY", &server.display)
         .args(args)
         .output()
-        .expect("xdotool is required for the X11 tests");
+        .unwrap_or_else(|e| panic!("xdotool is required for the X11 tests: {e}"));
     String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
@@ -79,7 +87,8 @@ fn x11_glx_context_clears_and_swaps() {
     // SAFETY: both are core GL functions with these C prototypes and a
     // context is current on this thread.
     unsafe {
-        let clear_color: unsafe extern "C" fn(f32, f32, f32, f32) = std::mem::transmute(clear_color);
+        let clear_color: unsafe extern "C" fn(f32, f32, f32, f32) =
+            std::mem::transmute(clear_color);
         let clear: unsafe extern "C" fn(u32) = std::mem::transmute(clear);
         clear_color(0.2, 0.4, 0.6, 1.0);
         clear(0x4000);
@@ -113,9 +122,10 @@ fn x11_resize_by_xdotool_reaches_window_metrics() {
     let id = platform.window_id().to_string();
 
     xdotool(&server, &["windowsize", &id, "150", "90"]);
-    let seen = wait_for(&mut platform, |_, e| {
-        matches!(e, RawEvent::Resize(m) if m.width > 149.0 && m.width < 151.0)
-    });
+    let seen = wait_for(
+        &mut platform,
+        |_, e| matches!(e, RawEvent::Resize(m) if m.width > 149.0 && m.width < 151.0),
+    );
 
     assert!(seen, "no Resize event");
     let metrics = platform.window();
