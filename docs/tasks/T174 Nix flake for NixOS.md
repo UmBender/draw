@@ -1,7 +1,7 @@
 ---
 id: T174
 title: Nix flake for NixOS
-status: todo
+status: in-progress
 wave: 72
 branch: task/T174-nix-flake-for-nixos
 depends_on: []
@@ -28,7 +28,17 @@ draw installs on NixOS from the repository: `nix run github:UmBender/draw`, `nix
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Each criterion names its check. Design: `flake.nix` holds the library list
+as `{ soname = "libX11.so.6"; pkg = pkgs.libx11; }` entries (one `soname =`
+string per library, plain-text parsable); `scripts/nix-check.sh` runs the
+container build. Inputs: `nixos-unstable`, `rust-overlay`, `flake-utils`
+is avoided (plain `genAttrs`). The toolchain version is written once in
+`flake.nix` (`rustVersion = "1.99.0"`).
+
+Tests: AC-1 `flake_exposes_package_app_shell_and_overlay`; AC-3
+`flake_libraries_match_runtime_libs`, `flake_toolchain_matches_rust_version`;
+AC-2 and AC-4 `readme_has_nixos_install_section`; AC-2 run by
+`scripts/nix-check.sh` (not a cargo test: needs podman and network).
 
 - **AC-1** — `flake.nix` (with `flake.lock`) exposes `packages.x86_64-linux.default` (also `aarch64-linux` if it evaluates), `apps.default`, `devShells.default` (the toolchain, sway/Xvfb tools for e2e where nixpkgs has them) and `overlays.default`. The package installs the binary, the `.desktop` file, the icons and the metainfo like `packaging/install.sh`, and wraps the binary with `LD_LIBRARY_PATH`.
 - **AC-2** — `nix build` and `nix flake check` pass in a `nixos/nix` container (`podman run`); `result/bin/draw --version` prints the version and the preflight passes with the wrapped path (a check inside the build or the container: `draw --help` and the preflight's library lookup, without a display).
