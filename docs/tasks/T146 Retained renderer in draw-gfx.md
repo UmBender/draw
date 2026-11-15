@@ -1,7 +1,7 @@
 ---
 id: T146
 title: Retained renderer in draw-gfx
-status: todo
+status: in-progress
 wave: 71
 branch: task/T146-retained-renderer-in-draw-gfx
 depends_on: [T145, T135, T136, T153, T161]
@@ -24,14 +24,17 @@ Shapes are tessellated once, kept in GPU buffers per chunk and drawn with the ca
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Design (new modules in `draw-gfx`, which gains a path dependency on `draw-core`, a workspace crate, so no new external dependency):
 
-- **AC-1** — Chunks of shapes keyed by shape id and revision; an edit rebuilds only the chunks it touches.
-  Tests: `edit_rebuilds_only_its_chunk`, proptest `cached_geometry_equals_recomputed` over edit sequences.
-- **AC-2** — A camera change re-tessellates nothing (the chunk cache is keyed in world space); the renderer has the primitives text, formulas, grids and the minimap need.
-  Tests: tessellation counts on pan and zoom. The camera as a `Gpu` uniform is [[T173 Camera uniform and analytic anti-aliasing over Gpu]]; the app path and the e2e goldens are [[T172 Retained renderer in the app]].
+- `tessellate`: `Mesh { vertices, indices }` in **world** coordinates (`Vertex` of the `Gpu` trait, `uv` 0, straight colour from the palette) and `tessellate(&Shape) -> Mesh`. Non-finite shapes give an empty mesh. Text shapes give an empty mesh here (glyph primitives belong to the app wiring, T172). `Mesh::geometry()` gives a `Geometry::Inline` that T173 can upload unchanged.
+- `chunks`: shapes in z-order are grouped in fixed chunks of `CHUNK_LEN` (64) consecutive shapes, which keeps the z-order exact. A chunk's key is its list of `(ShapeId, revision)`; `ChunkCache::update` rebuilds a chunk only if its key changed. The caller supplies the revision (it grows on each edit of a shape).
+
+- **AC-1** — Chunks keyed by shape id and revision; an edit rebuilds only the chunks it touches.
+  Tests: `edit_rebuilds_only_its_chunk`, `unchanged_update_tessellates_nothing`, `insert_at_end_rebuilds_only_the_last_chunk`, proptest `cached_geometry_equals_recomputed` over edit sequences (replace, insert, remove).
+- **AC-2** — A camera change re-tessellates nothing (the chunks are in world space); culling picks chunks by world bounds.
+  Tests: `pan_and_zoom_tessellate_nothing`, `visible_chunks_follow_the_view`, `tessellate_*` per shape kind (`tessellate_line_covers_its_width`, `tessellate_filled_rect_has_fill_and_outline`, `tessellate_non_finite_is_empty`). The camera as a `Gpu` uniform is [[T173 Camera uniform and analytic anti-aliasing over Gpu]]; the app path and the e2e goldens are [[T172 Retained renderer in the app]].
 - **AC-3** — moved to [[T173 Camera uniform and analytic anti-aliasing over Gpu]] (analytic anti-aliasing).
-- **AC-4** — The tessellation time is a benchmark in `tests/perf.rs`, recorded in the Log. The ADR-T24-5 budgets in the app are [[T172 Retained renderer in the app]].
+- **AC-4** — The tessellation time is a benchmark in `tests/perf.rs` (`perf_tessellation_of_5k_strokes_is_measured`, 5120 strokes), recorded in the Log. The ADR-T24-5 budgets in the app are [[T172 Retained renderer in the app]].
 
 ## Out of scope
 
