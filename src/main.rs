@@ -94,6 +94,24 @@ mod tests {
     /// `tests/no_draw_env.rs` does not match it.
     const OLD_PREFIX: &str = concat!("DRAW", "_");
 
+    /// AC-1 of T167: `main` picks the interpreters with a `match` and runs
+    /// the generic `app::run`.
+    #[test]
+    fn main_runs_generic_run_through_a_match() {
+        let source = include_str!("main.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+
+        for needed in [
+            "match runtime",
+            "app::run(",
+            "MqPlatform::open()",
+            "MqGpu::new()",
+        ] {
+            assert!(production.contains(needed), "{needed} missing");
+        }
+        assert!(!production.contains("run_on"), "run_on is still used");
+    }
+
     #[test]
     fn help_lists_the_flags() {
         let text = help_text();

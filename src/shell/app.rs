@@ -1688,6 +1688,84 @@ mod tests {
         assert_eq!((frames, windows), (3, 3));
     }
 
+    /// A platform that ends the loop: after `left` frames its `next_frame`
+    /// never completes, so the loop's future stays pending.
+    struct StopAfter {
+        inner: crate::shell::recording::RecordingPlatform,
+        left: usize,
+        frames: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl Platform for StopAfter {
+        fn poll(&mut self, out: &mut Vec<RawEvent>) {
+            self.inner.poll(out);
+        }
+        fn window(&mut self) -> WindowMetrics {
+            self.inner.window()
+        }
+        fn clipboard_text(&mut self) -> Option<String> {
+            self.inner.clipboard_text()
+        }
+        fn set_clipboard_text(&mut self, text: &str) {
+            self.inner.set_clipboard_text(text);
+        }
+        fn set_clipboard_png(&mut self, png: &[u8]) {
+            self.inner.set_clipboard_png(png);
+        }
+        fn schedule_update(&mut self) {
+            self.inner.schedule_update();
+        }
+        fn next_frame(&mut self) -> impl std::future::Future<Output = ()> {
+            let stop = self.left == 0;
+            self.left = self.left.saturating_sub(1);
+            if !stop {
+                self.frames.set(self.frames.get() + 1);
+            }
+            async move {
+                if stop {
+                    std::future::pending::<()>().await;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn run_over_recording_platform_and_gpu_draws_frames() {
+        use crate::shell::recording::{RecordingGpu, RecordingPlatform};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+        let platform = StopAfter {
+            inner: RecordingPlatform::new(metrics),
+            left: 3,
+            frames: std::rc::Rc::clone(&frames),
+        };
+        let backend = Backend::X11;
+        let tablet = tablet::detect(crate::shell::options::TabletMode::Off);
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            RecordingGpu::default(),
+            Options::default(),
+            backend,
+            tablet
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        let polled = run.as_mut().poll(&mut cx);
+
+        // Assert
+        assert_eq!(polled, Poll::Pending);
+        assert_eq!(frames.get(), 3);
+    }
+
     #[test]
     fn window_conf_sets_wm_class() {
         // Arrange / Act
