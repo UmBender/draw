@@ -293,8 +293,12 @@ flowchart TD
   T169 --> T170
   T170 --> T171
   T171 --> T143
-  T142 --> T144
-  T145 --> T144
+  T142 --> T175
+  T145 --> T175
+  T175 --> T176
+  T176 --> T177
+  T177 --> T178
+  T178 --> T144
   T142 --> T145
   T135 --> T146
   T136 --> T146
@@ -306,6 +310,8 @@ flowchart TD
   T146 --> T148
   T143 --> T149
   T144 --> T149
+  T146 --> T173
+  T173 --> T172
   T146 --> T172
   T172 --> T149
   T147 --> T149
@@ -421,10 +427,10 @@ flowchart TD
 | 67 | [[T135 Automaton modal states, pages, camera and selection]] · [[T136 Automaton gestures and text editing per tool]] · [[T137 Automaton effects queue and time as an input]] |
 | 68 | [[T138 Model-based tests of the automaton]] · [[T140 Platform and Gpu traits with recording interpreters]] · [[T141 Fuzz of the shell through the recording platform]] · [[T155 Gpu migration of the drawing]] · [[T156 Platform migration of input and the loop]] · [[T157 macroquad Gpu interpreter]] · [[T158 Render batch over Gpu]] · [[T159 Minimap and frame cache over Gpu]] · [[T160 Toolbar and menus over Gpu]] · [[T161 UI text over Gpu]] · [[T162 RawEvent and the input collector]] · [[T163 macroquad Platform interpreter and the loop]] · [[T164 Generic run over Platform and Gpu]] · [[T165 RenderCtx over Gpu for the drawing and UI text]] · [[T166 Minimap, toolbar, export and app over RenderCtx]] · [[T167 Generic run and the match in main]] |
 | 69 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] · [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] · [[T153 Text and select as sub-automata]] |
-| 70 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] · [[T168 Wayland connection, window and protocol states]] · [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] |
-| 71 | [[T146 Retained renderer in draw-gfx]] · [[T147 Frame pacing by the compositor and idle at zero]] · [[T169 Wayland keyboard, pointer and seat]] |
-| 72 | [[T148 Multithreaded tessellation, only with a measured gain]] · [[T170 Wayland tablet and clipboard]] · [[T172 Retained renderer in the app]] · [[T152 Command line and DRAW_* variables audit]] · [[T154 Environment variables to flags]] |
-| 73 | [[T149 Cutover removing miniquad and macroquad]] · [[T171 Wayland platform in main and the e2e suite]] |
+| 70 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] · [[T168 Wayland connection, window and protocol states]] · [[T175 X11 connection, window and GLX context]] · [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] |
+| 71 | [[T146 Retained renderer in draw-gfx]] · [[T147 Frame pacing by the compositor and idle at zero]] · [[T169 Wayland keyboard, pointer and seat]] · [[T176 X11 keyboard, pointer and XInput2 pressure]] |
+| 72 | [[T148 Multithreaded tessellation, only with a measured gain]] · [[T170 Wayland tablet and clipboard]] · [[T172 Retained renderer in the app]] · [[T173 Camera uniform and analytic anti-aliasing over Gpu]] · [[T174 Nix flake for NixOS]] · [[T177 X11 selections and clean exit]] · [[T152 Command line and DRAW_* variables audit]] · [[T154 Environment variables to flags]] |
+| 73 | [[T149 Cutover removing miniquad and macroquad]] · [[T171 Wayland platform in main and the e2e suite]] · [[T178 X11 platform in main and the e2e suite]] |
 | 74 | [[T150 Optional Vulkan backend for the Gpu trait]] · [[T151 Release 2.0.0]] |
 
 ## Status
@@ -557,7 +563,7 @@ flowchart TD
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
 | [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
-| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T172 | `task/T50-v2-refactor` |
+| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T178 | `task/T50-v2-refactor` |
 | [[T127 2.0 audit and baseline]] | done | T118 | `task/T127-2-0-audit-and-baseline` |
 | [[T128 Keep X11 and revert the deprecation]] | done | T127 | `task/T128-keep-x11-revert-the-deprecation` |
 | [[T129 Release gate with end-to-end on X11 and Wayland]] | done | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
@@ -572,17 +578,17 @@ flowchart TD
 | [[T138 Model-based tests of the automaton]] | done | T135, T136, T137 | `task/T138-model-based-tests-of-the-automaton` |
 | [[T139 Split tex.rs into modules]] | done | T132 | `task/T139-split-tex-rs-into-modules` |
 | [[T140 Platform and Gpu traits with recording interpreters]] | done | T132, T137 | `task/T140-platform-and-gpu-traits-with-recording-i` |
-| [[T141 Fuzz of the shell through the recording platform]] | todo | T140, T167 | `task/T141-fuzz-of-the-shell-through-the-recording-` |
+| [[T141 Fuzz of the shell through the recording platform]] | done | T140, T167 | `task/T141-fuzz-of-the-shell-through-the-recording-` |
 | [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]] | done | T132, T140 | `task/T142-draw-sys-foundation-dlopen-safe-wrappers` |
 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | done | T168–T171 | `task/T143-wayland-backend-window-keyboard-pointer-` |
-| [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | todo | T142, T145 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
+| [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | done | T175–T178 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
 | [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | done | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
 | [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136, T153, T161 | `task/T146-retained-renderer-in-draw-gfx` |
 | [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
 | [[T148 Multithreaded tessellation, only with a measured gain]] | todo | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
-| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152–T172 | `task/T149-cutover-remove-miniquad-and-macroquad` |
+| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152–T173, T175–T178 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
-| [[T151 Release 2.0.0]] | todo | T127–T149, T152–T172 | `task/T151-release-2-0-0` |
+| [[T151 Release 2.0.0]] | todo | T127–T149, T152–T178 | `task/T151-release-2-0-0` |
 | [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
 | [[T153 Text and select as sub-automata]] | done | T136, T138 | `task/T153-text-and-select-as-sub-automata` |
 | [[T154 Environment variables to flags]] | done | T152, T129 | `task/T154-environment-variables-to-flags` |
@@ -603,4 +609,10 @@ flowchart TD
 | [[T169 Wayland keyboard, pointer and seat]] | todo | T168 | `task/T169-wayland-keyboard-pointer-and-seat` |
 | [[T170 Wayland tablet and clipboard]] | todo | T169 | `task/T170-wayland-tablet-and-clipboard` |
 | [[T171 Wayland platform in main and the e2e suite]] | todo | T170 | `task/T171-wayland-platform-in-main-and-the-e2e-su` |
-| [[T172 Retained renderer in the app]] | todo | T146 | `task/T172-retained-renderer-in-the-app` |
+| [[T172 Retained renderer in the app]] | todo | T146, T173 | `task/T172-retained-renderer-in-the-app` |
+| [[T173 Camera uniform and analytic anti-aliasing over Gpu]] | todo | T146 | `task/T173-camera-uniform-and-analytic-anti-aliasi` |
+| [[T174 Nix flake for NixOS]] | todo | — | `task/T174-nix-flake-for-nixos` |
+| [[T175 X11 connection, window and GLX context]] | todo | T142, T145 | `task/T175-x11-connection-window-and-glx-context` |
+| [[T176 X11 keyboard, pointer and XInput2 pressure]] | todo | T175 | `task/T176-x11-keyboard-pointer-and-xinput2-pressu` |
+| [[T177 X11 selections and clean exit]] | todo | T176 | `task/T177-x11-selections-and-clean-exit` |
+| [[T178 X11 platform in main and the e2e suite]] | todo | T177 | `task/T178-x11-platform-in-main-and-the-e2e-suite` |

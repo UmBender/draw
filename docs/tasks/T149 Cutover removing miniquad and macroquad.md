@@ -4,7 +4,7 @@ title: Cutover removing miniquad and macroquad
 status: todo
 wave: 73
 branch: task/T149-cutover-remove-miniquad-and-macroquad
-depends_on: [T143, T144, T146, T147, T148, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171, T172]
+depends_on: [T143, T144, T146, T147, T148, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171, T172, T173, T175, T176, T177, T178]
 adrs: []
 feature: ""
 tutorial: ""

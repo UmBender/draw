@@ -28,20 +28,20 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 - **AC-1** — Chunks of shapes keyed by shape id and revision; an edit rebuilds only the chunks it touches.
   Tests: `edit_rebuilds_only_its_chunk`, proptest `cached_geometry_equals_recomputed` over edit sequences.
-- **AC-2** — Pan and zoom change one uniform and re-tessellate nothing; the renderer has the primitives text, formulas, grids and the minimap need.
-  Tests: draw-call and vertex counts on the recording `Gpu`. The app path and the e2e goldens are [[T172 Retained renderer in the app]].
-- **AC-3** — Anti-aliasing is analytic in the fragment shader; MSAA stays as a fallback chosen by measurement.
-  Pixel tests on lines, circles and thin strokes at several zooms.
+- **AC-2** — A camera change re-tessellates nothing (the chunk cache is keyed in world space); the renderer has the primitives text, formulas, grids and the minimap need.
+  Tests: tessellation counts on pan and zoom. The camera as a `Gpu` uniform is [[T173 Camera uniform and analytic anti-aliasing over Gpu]]; the app path and the e2e goldens are [[T172 Retained renderer in the app]].
+- **AC-3** — moved to [[T173 Camera uniform and analytic anti-aliasing over Gpu]] (analytic anti-aliasing).
 - **AC-4** — The tessellation time is a benchmark in `tests/perf.rs`, recorded in the Log. The ADR-T24-5 budgets in the app are [[T172 Retained renderer in the app]].
 
 ## Out of scope
 
 - Anything in another task of [[T50 Version 2.0.0 refactor]]; new user-facing features.
+- The `Gpu` trait and its interpreters ([[T173 Camera uniform and analytic anti-aliasing over Gpu]]).
 - Wiring the renderer into `src/shell`, the e2e goldens and the frame budgets in the app ([[T172 Retained renderer in the app]]).
 
 ## Files owned
 
-- `crates/draw-gfx/src/**`, `tests/perf.rs`
+- `crates/draw-gfx/src/**`, `crates/draw-gfx/tests/**`, `crates/draw-gfx/Cargo.toml` (`proptest` as a dev-dependency, already in the workspace), `tests/perf.rs`
 - this note and `ADR-T146-*`
 
 ## Subtasks (one commit each)
@@ -58,3 +58,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-15 — scoped by the owner to `draw-gfx`: tested on the recording `Gpu` and headless GL; the app wiring, the e2e goldens and the frame budgets (AC-2 app part, AC-4 budgets) moved to [[T172 Retained renderer in the app]].
 - 2026-11-15 — BLOCKED (batch): AC-2 and AC-3 need the camera as a uniform and an analytic-AA fragment shader, but `Command`/`View`/`Geometry` in the `Gpu` trait carry no camera, and any change to them breaks the other interpreters (`src/shell/gpu_mq.rs`, `src/shell/recording.rs`, `src/shell/render_ctx.rs`, `tests/recorder.rs`), which are outside *Files owned*. `crates/draw-gfx/tests/**` and `crates/draw-gfx/Cargo.toml` (a `proptest` dev-dependency for AC-1's `cached_geometry_equals_recomputed`) are also not owned. Nothing was implemented. Recommended fix: owner decides one of (a) add the files above plus `crates/draw-gfx/tests/**` and `Cargo.toml` to *Files owned*, with an ADR amending ADR-T140-1 that adds a camera (`origin`, `scale`) to `Command::BeginPass` and a `fwidth`/SDF feather in `gl.rs`; or (b) split the pure part (chunks, revisions, invalidation, tessellation, benchmark: AC-1 and AC-4) from the GPU part (AC-2, AC-3) into two tasks.
+- 2026-11-15 — unblocked by the owner: split; T146 keeps the pure part in `draw-gfx` (chunks, revisions, invalidation, tessellation, the proptest, the benchmark: AC-1, AC-2 without the uniform, AC-4), and the camera uniform and the analytic anti-aliasing go to [[T173 Camera uniform and analytic anti-aliasing over Gpu]]. No change to the `Gpu` trait here.

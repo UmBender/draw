@@ -4,7 +4,7 @@ title: Retained renderer in the app
 status: todo
 wave: 72
 branch: task/T172-retained-renderer-in-the-app
-depends_on: [T146]
+depends_on: [T146, T173]
 adrs: []
 feature: ""
 tutorial: ""
@@ -28,7 +28,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 - **AC-1** — Shapes, text, formulas, grids and the minimap draw through the retained renderer; pan and zoom re-tessellate nothing. Tests: draw-call and vertex counts on the recorder.
 - **AC-2** — The formula and e2e goldens stay equal within the pixel tolerance. `scripts/e2e.sh --backend all`.
-- **AC-3** — The [[ADR-T24-5 Redraw budgets]] budgets are met on the target (overlay under 2 ms, full frame under 16 ms at any zoom), measured with `--frame-times` on the perf scenes and recorded in the Log.
+- **AC-3** — The [[ADR-T24-5 Redraw budgets]] budgets are met on the target (overlay under 2 ms, full frame under 16 ms at any zoom), measured with `--frame-times` on the perf scenes and recorded in the Log. The measurement is the owner's, on the desktop GPU (headless sway renders with pixman); an unattended run stops at `review` with AC-1 and AC-2 done.
 
 ## Out of scope
 

@@ -1,10 +1,10 @@
 ---
 id: T144
 title: X11 backend with window, keyboard, pointer, XInput2 pressure and selections
-status: todo
+status: done
 wave: 70
 branch: task/T144-x11-backend-window-keyboard-pointer-xinp
-depends_on: [T142, T145]
+depends_on: [T175, T176, T177, T178]
 adrs: []
 feature: ""
 tutorial: ""
@@ -42,12 +42,13 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T144): specify the X11 backend`
-- [ ] tests — `test(T144): add failing tests for the X11 platform`
-- [ ] models — `feat(T144): add the protocol types`
-- [ ] behaviour — `feat(T144): implement the X11 platform`
-- [ ] quality — `chore(T144): pass clippy and rustfmt`
+- [x] spec — moved to the slices
+- [x] tests — moved to the slices
+- [x] models — moved to the slices
+- [x] behaviour — moved to the slices
+- [x] quality — moved to the slices
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-15 — closed by the owner before the batch (as large as T143): split into [[T175 X11 connection, window and GLX context]], [[T176 X11 keyboard, pointer and XInput2 pressure]], [[T177 X11 selections and clean exit]] (AC-1, AC-2) and [[T178 X11 platform in main and the e2e suite]] (AC-3). Xlib rather than pure xcb, because GLX takes an Xlib `Display*`.

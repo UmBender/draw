@@ -20,13 +20,13 @@ Slice 4 of [[T143 Wayland backend with window, keyboard, pointer, tablet and cli
 ## Known facts (2026-11-15)
 
 - Split out of T143 by the owner. Builds on [[T170 Wayland tablet and clipboard]] and [[T167 Generic run and the match in main]].
-- **Open before planning (owner):** how the new backend is chosen on the command line (a new flag value next to `--backend wayland`, which means miniquad's Wayland until [[T149 Cutover removing miniquad and macroquad]]); whether the e2e goldens must be pixel-equal with the GL `Gpu` of [[ADR-T145-1 GL context, function table and Gpu over OpenGL ES 3.0]] or within a tolerance.
+- **Owner decisions (2026-11-15):** the flag is `--platform macroquad|native` (default `macroquad` until [[T149 Cutover removing miniquad and macroquad]]; `--backend` keeps its meaning); `native` picks Wayland or X11 from the session ([[T178 X11 platform in main and the e2e suite]] does the X11 arm). The e2e goldens hold with the GL `Gpu` of [[ADR-T145-1 GL context, function table and Gpu over OpenGL ES 3.0]] within the tolerance `scripts/e2e.sh` already uses; a larger difference blocks the task with the difference images.
 
 ## Spec
 
 Draft: the spec step refines each criterion into named tests and ADRs.
 
-- **AC-1** — `main` runs `app::run::<WaylandPlatform, GlGpu>` when the native Wayland backend is chosen.
+- **AC-1** — `main` runs `app::run::<WaylandPlatform, GlGpu>` for `--platform native` on a Wayland session.
 - **AC-2** — `scripts/e2e.sh` passes with this backend selected (T143 AC-3).
 - **AC-3** — Hand check (owner): window, keyboard, pointer, tablet and clipboard in the real app on the desktop compositor.
 
@@ -36,7 +36,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `src/main.rs`, `src/shell/app.rs` (selection only), `scripts/e2e.sh`, `tests/e2e*`
+- `src/main.rs`, `src/shell/app.rs` (selection only), `src/shell/options.rs` or wherever the flags live, `scripts/e2e.sh`, `tests/e2e*`, `tests/options.rs`
 - the ADRs this task writes
 - this note
 

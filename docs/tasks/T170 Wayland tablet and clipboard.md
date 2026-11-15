@@ -21,7 +21,7 @@ Slice 3 of [[T143 Wayland backend with window, keyboard, pointer, tablet and cli
 
 - Split out of T143 by the owner. Builds on [[T169 Wayland keyboard, pointer and seat]].
 - Patches to port (`vendor/miniquad/PATCHED.md`): tablet pressure (T35), the pointer dropped while a tool is in proximity ([[ADR-T40-1 Tablet stream wins over copied wl_pointer input]], `pointer_shadowed_by_pen`), barrel-button mapping (`fix/pen-barrel-takeover`), tip bounce (`fix/pen-tip-bounce`).
-- `tablet-unstable-v2.xml` is added to the generator's inputs ([[T168 Wayland connection, window and protocol states]]).
+- `tablet-v2.xml` (now in `wayland-protocols/stable/tablet/`, same `zwp_tablet_*_v2` interfaces; copied into `crates/draw-sys/protocols/` with T168) is added to the generator's inputs ([[T168 Wayland connection, window and protocol states]]).
 - Headless sway has no virtual tablet: tablet tests decode recorded event sequences; the owner checks a real tablet by hand at review.
 - Clipboard transfers pass file descriptors (pipes): an `unsafe` primitive under [[ADR-T127-2 The unsafe policy]]. `wl-copy`/`wl-paste` drive the integration tests.
 
