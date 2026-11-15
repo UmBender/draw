@@ -1,7 +1,7 @@
 ---
 id: T167
 title: Generic run and the match in main
-status: todo
+status: in-progress
 wave: 68
 branch: task/T167-generic-run-and-the-match-in-main
 depends_on: [T166]
@@ -29,8 +29,8 @@ Slice 3 of [[T164 Generic run over Platform and Gpu]]: `fn run<P: Platform, G: G
 
 Draft: the spec step refines each criterion into named tests.
 
-- **AC-1** — `app::run` is generic over `P: Platform` and `G: Gpu`; `main` monomorphises it through a `match` (one arm, macroquad, until T143/T144). Tests: `main_runs_generic_run_through_a_match` (source scan) and a few frames of the app over `RecordingPlatform` and `RecordingGpu`.
-- **AC-2** — No miniquad or macroquad path outside `platform_mq.rs` and `gpu_mq.rs` except the allowlist above. Test: `shell_sources_outside_the_mq_interpreters_name_no_macroquad` (the T161 scan widened), which also fails when an allowlist entry is no longer needed.
+- **AC-1** — `app::run<P: Platform, G: Gpu>(platform, gpu, options, backend, tablet)` is generic; `run_on` goes away and `MqCtx` is replaced by `RenderCtx<G>`. `main` monomorphises it through a `match` on the backend (one arm, macroquad, until T143/T144). Tests: `main_runs_generic_run_through_a_match` (source scan of `main.rs`, in `main.rs`) and `run_over_recording_platform_and_gpu_draws_frames` (in `app.rs`: the loop over `RecordingPlatform` and `RecordingGpu` until the platform stops it after three frames).
+- **AC-2** — No miniquad or macroquad path outside `platform_mq.rs` and `gpu_mq.rs` except the allowlist above. Test: `shell_sources_outside_the_mq_interpreters_name_no_macroquad` (in `src/shell/ui_text.rs` next to the T161 scan), which also fails when an allowlist entry is no longer needed (`macroquad_allowlist_has_no_stale_entry`).
 - **AC-3** — `e2e.sh --backend all` green; no pixel change.
 - **AC-4** — Hand check with a tablet (pen pressure, tilt, eraser, seat changes), recorded in the Log by the owner (T156 AC-4).
 
