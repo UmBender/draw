@@ -1,7 +1,7 @@
 ---
 id: T141
 title: Fuzz of the shell through the recording platform
-status: in-progress
+status: review
 wave: 68
 branch: task/T141-fuzz-of-the-shell-through-the-recording-
 depends_on: [T140, T167]
@@ -45,10 +45,11 @@ Raw input sequences are fuzzed against the input translation and the machine wit
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T141): specify the shell fuzz`
-- [ ] tests — `test(T141): add the shell fuzz`
-- [ ] fixes — one `fix(T141)` commit per bug found with its regression test
+- [x] tests — `test(T141): add the shell fuzz`
+- [x] fixes — none: the fuzz found no bug at 256 cases (no `fix` commit, no regression test)
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
 - 2026-11-15 — owner decisions for the batch: the nightly job may be edited for the 20000 cases; the fuzz starts with the toolbar hidden (Tab), as the T167 frame test does, because the menu label measure needs a macroquad context until [[T149 Cutover removing miniquad and macroquad]].
+- 2026-11-15 — implemented. `tests/shell_fuzz.rs` drives `app::run` over a scripted platform and `NullGpu`. Deviations: (1) `?` (shortcut sheet) is not generated, for the same macroquad measure reason as Tab, until T149; (2) the editor is owned by `run`, so the machine invariants are not read directly: the checks are no panic, every frame runs, and bounded `schedule_update` and clipboard calls per frame; (3) no Ctrl+S, Ctrl+E or Ctrl+Shift chords, which write to `$HOME`. Only the default 256 cases ran here (a larger `PROPTEST_CASES` run was not allowed in the batch): no bug found, so no `fix` commit. The nightly job runs 20000 cases; the owner should look at its first result. The lint pass (`chore`) removed a no-op `drop` and wildcard matches.
