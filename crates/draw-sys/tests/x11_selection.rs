@@ -35,11 +35,7 @@ fn open(server: &xvfb::Xvfb) -> X11Platform {
 
 /// Runs `xclip -o args`, polling the platform so it can answer; the exit
 /// success and the bytes written.
-fn xclip_out(
-    server: &xvfb::Xvfb,
-    platform: &mut X11Platform,
-    args: &[&str],
-) -> (bool, Vec<u8>) {
+fn xclip_out(server: &xvfb::Xvfb, platform: &mut X11Platform, args: &[&str]) -> (bool, Vec<u8>) {
     let mut child = Command::new("xclip")
         .env("DISPLAY", &server.display)
         .arg("-o")

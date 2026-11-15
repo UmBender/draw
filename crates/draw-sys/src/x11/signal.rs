@@ -31,9 +31,7 @@ extern "C" fn on_quit(signum: c_int) {
 pub fn install_quit() -> bool {
     // TEST: x11_quit_signals_set_close_requested
     // SAFETY: `on_quit` has the handler type and does only an atomic store.
-    unsafe {
-        signal(SIGINT, on_quit) != SIG_ERR && signal(SIGTERM, on_quit) != SIG_ERR
-    }
+    unsafe { signal(SIGINT, on_quit) != SIG_ERR && signal(SIGTERM, on_quit) != SIG_ERR }
 }
 
 /// The number of the last quit signal received, without taking it.

@@ -16,9 +16,9 @@ use crate::glx::GlxContext;
 use crate::loader::Library;
 
 use super::event::{CloseAtoms, EVENT_BYTES, XEvent, decode};
-use super::selection::{MAX_INCOMING, Request, TargetKind};
 use super::pen::PressureAxis;
 use super::platform::GlSurface;
+use super::selection::{MAX_INCOMING, Request, TargetKind};
 use super::{GlBackend, X11Error};
 
 // The event decoder reads the LP64 layout of Xlib's structs.
@@ -218,7 +218,8 @@ struct XlibApi {
     // TEST: x11_clipboard_text_is_served_to_xclip
     set_selection_owner: unsafe extern "C" fn(Ptr, c_ulong, c_ulong, c_ulong) -> c_int,
     get_selection_owner: unsafe extern "C" fn(Ptr, c_ulong) -> c_ulong,
-    convert_selection: unsafe extern "C" fn(Ptr, c_ulong, c_ulong, c_ulong, c_ulong, c_ulong) -> c_int,
+    convert_selection:
+        unsafe extern "C" fn(Ptr, c_ulong, c_ulong, c_ulong, c_ulong, c_ulong) -> c_int,
     change_property: unsafe extern "C" fn(
         Ptr,
         c_ulong,
@@ -230,6 +231,7 @@ struct XlibApi {
         c_int,
     ) -> c_int,
     #[allow(clippy::type_complexity)]
+    // TEST: x11_reads_large_png_by_incr
     get_window_property: unsafe extern "C" fn(
         Ptr,
         c_ulong,
@@ -244,7 +246,9 @@ struct XlibApi {
         *mut c_ulong,
         *mut *mut u8,
     ) -> c_int,
+    // TEST: x11_reads_text_set_by_xclip
     delete_property: unsafe extern "C" fn(Ptr, c_ulong, c_ulong) -> c_int,
+    // TEST: x11_large_png_is_served_with_incr
     select_input: unsafe extern "C" fn(Ptr, c_ulong, c_long) -> c_int,
     // Declared last: the library outlives the pointers above.
     _libx11: Library,
@@ -700,7 +704,7 @@ impl Connection {
             png: self.atom(c"image/png"),
             incr: self.atom(c"INCR"),
             atom: self.atom(c"ATOM"),
-            property: self.atom(c"DRAW_SELECTION"),
+            property: self.atom(c"_SCRATCH_SELECTION"),
         }
     }
 
@@ -733,14 +737,23 @@ impl Connection {
         // SAFETY: `display` is live; `data` holds at least `len` bytes and
         // is only read during the call.
         unsafe {
-            (self.api.change_property)(self.display, window, property, ty, 8, 0, data.as_ptr(), len);
+            (self.api.change_property)(
+                self.display,
+                window,
+                property,
+                ty,
+                8,
+                0,
+                data.as_ptr(),
+                len,
+            );
             (self.api.flush)(self.display);
         }
     }
 
     /// Writes `values` to `property` of `window` as `ty` with 32-bit items.
     pub(super) fn write_longs(&self, window: u64, property: u64, ty: u64, values: &[u64]) {
-        let longs: Vec<c_long> = values.iter().map(|v| *v as c_long).collect();
+        let longs: Vec<c_long> = values.iter().map(|v| v.cast_signed()).collect();
         let len = c_int::try_from(longs.len()).unwrap_or(0);
         // TEST: x11_targets_list_text_targets
         // SAFETY: `display` is live; for format 32 Xlib reads `len` C
@@ -762,10 +775,15 @@ impl Connection {
 
     /// Reads (and with `delete`, removes) `property` of `window`; `None` if
     /// it does not exist or holds more than [`MAX_INCOMING`] bytes.
-    pub(super) fn read_property(&self, window: u64, property: u64, delete: bool) -> Option<Property> {
+    pub(super) fn read_property(
+        &self,
+        window: u64,
+        property: u64,
+        delete: bool,
+    ) -> Option<Property> {
         let (mut ty, mut format, mut items, mut after) = (0 as c_ulong, 0 as c_int, 0, 0);
         let mut data: *mut u8 = std::ptr::null_mut();
-        let words = (MAX_INCOMING / 4) as c_long;
+        let words = c_long::try_from(MAX_INCOMING / 4).unwrap_or(c_long::MAX);
         // TEST: x11_reads_large_png_by_incr
         // SAFETY: `display` is live; every out pointer is valid for the call.
         let status = unsafe {
@@ -802,10 +820,7 @@ impl Connection {
             (self.api.free)(data.cast());
             bytes
         };
-        (ty != 0 && after == 0).then_some(Property {
-            ty,
-            data: bytes,
-        })
+        (ty != 0 && after == 0).then_some(Property { ty, data: bytes })
     }
 
     /// Sends the `SelectionNotify` that answers `request` (`property` `0`

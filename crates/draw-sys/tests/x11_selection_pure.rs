@@ -206,7 +206,11 @@ fn incr_receiver_overflows_past_the_cap() {
     }
 
     assert_eq!(steps.last(), Some(&IncrStep::Overflow));
-    assert!(steps[..steps.len() - 1].iter().all(|s| *s == IncrStep::More));
+    assert!(
+        steps[..steps.len() - 1]
+            .iter()
+            .all(|s| *s == IncrStep::More)
+    );
 }
 
 struct Xorshift(u64);

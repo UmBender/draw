@@ -241,7 +241,11 @@ impl X11Platform {
 
     /// Takes `selection` and serves `payload` from it.
     fn own(&mut self, selection: u64, payload: Payload) {
-        if self.window.conn().own_selection(self.window.id(), selection) {
+        if self
+            .window
+            .conn()
+            .own_selection(self.window.id(), selection)
+        {
             self.owned.insert(selection, payload);
         } else {
             self.owned.remove(&selection);
@@ -381,7 +385,12 @@ impl X11Platform {
                 property
             }
             Answer::Data(bytes, kind) => {
-                conn.write_bytes(request.requestor, property, self.atoms.atom_of(kind), &bytes);
+                conn.write_bytes(
+                    request.requestor,
+                    property,
+                    self.atoms.atom_of(kind),
+                    &bytes,
+                );
                 property
             }
             Answer::Refuse => 0,
@@ -403,7 +412,9 @@ impl X11Platform {
         match entry.sender.next_chunk() {
             Some(chunk) => {
                 let last = chunk.is_empty();
-                self.window.conn().write_bytes(requestor, property, ty, chunk);
+                self.window
+                    .conn()
+                    .write_bytes(requestor, property, ty, chunk);
                 if last {
                     self.outgoing.remove(at);
                 }
