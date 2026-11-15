@@ -19,6 +19,7 @@ pub mod platform_mq;
 pub mod preflight;
 pub mod recording;
 pub mod render;
+pub mod render_ctx;
 pub mod sheet;
 pub mod tablet;
 pub mod toolbar;
