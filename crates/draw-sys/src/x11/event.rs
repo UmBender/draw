@@ -6,6 +6,9 @@
 /// Size of the Xlib `XEvent` union on LP64.
 pub const EVENT_BYTES: usize = 192;
 
+const CONFIGURE_NOTIFY: i32 = 22;
+const CLIENT_MESSAGE: i32 = 33;
+
 /// An X event reduced to what the window part reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XEvent {
@@ -36,15 +39,46 @@ pub struct CloseAtoms {
     pub delete_window: u64,
 }
 
+fn read_i32(raw: &[u8], at: usize) -> Option<i32> {
+    let bytes = raw.get(at..at + 4)?;
+    Some(i32::from_ne_bytes(bytes.try_into().ok()?))
+}
+
+fn read_u64(raw: &[u8], at: usize) -> Option<u64> {
+    let bytes = raw.get(at..at + 8)?;
+    Some(u64::from_ne_bytes(bytes.try_into().ok()?))
+}
+
+fn decode_known(raw: &[u8], kind: i32) -> Option<XEvent> {
+    match kind {
+        CONFIGURE_NOTIFY => Some(XEvent::Configure {
+            width: u32::try_from(read_i32(raw, 56)?).unwrap_or(0),
+            height: u32::try_from(read_i32(raw, 60)?).unwrap_or(0),
+        }),
+        CLIENT_MESSAGE => Some(XEvent::ClientMessage {
+            message_type: read_u64(raw, 40)?,
+            first_long: read_u64(raw, 56)?,
+        }),
+        _ => None,
+    }
+}
+
 /// Decodes one event. Never panics: a short or unknown event is
 /// [`XEvent::Other`].
 #[must_use]
 pub fn decode(raw: &[u8]) -> XEvent {
-    todo!("decode {raw:?}")
+    let Some(kind) = read_i32(raw, 0) else {
+        return XEvent::Other(0);
+    };
+    decode_known(raw, kind).unwrap_or(XEvent::Other(kind))
 }
 
 /// Whether `event` is the window manager asking to close the window.
 #[must_use]
 pub fn is_close(event: XEvent, atoms: CloseAtoms) -> bool {
-    todo!("is_close {event:?} {atoms:?}")
+    matches!(
+        event,
+        XEvent::ClientMessage { message_type, first_long }
+            if message_type == atoms.protocols && first_long == atoms.delete_window
+    )
 }

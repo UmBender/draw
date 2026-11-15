@@ -10,8 +10,19 @@ use crate::loader::LoadError;
 pub mod dpi;
 pub mod event;
 mod platform;
+mod xlib;
 
-pub use platform::X11Platform;
+pub use platform::{GlSurface, X11Platform};
+
+/// Sends `window` of `display` (`None`: `$DISPLAY`) the close request a
+/// window manager sends (`WM_DELETE_WINDOW`). Tests use it where no window
+/// manager runs.
+///
+/// # Errors
+/// [`X11Error`] if the display cannot be opened or the send fails.
+pub fn send_close_request(display: Option<&str>, window: u64) -> Result<(), X11Error> {
+    xlib::Connection::open(display)?.send_delete_window(window)
+}
 
 /// Which GL API creates the context of the window.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

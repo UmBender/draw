@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use draw_sys::egl::GlContext;
 use draw_sys::platform::{Platform, RawEvent};
-use draw_sys::x11::{GlBackend, X11Error, X11Platform};
+use draw_sys::x11::{GlBackend, X11Error, X11Platform, send_close_request};
 
 fn open(server: &xvfb::Xvfb, backend: GlBackend) -> X11Platform {
     X11Platform::open(Some(&server.display), "draw test", "draw-test", 200, 120, backend).unwrap()
@@ -127,14 +127,18 @@ fn x11_resize_by_xdotool_reaches_window_metrics() {
 fn x11_wm_close_sets_close_requested() {
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
-    let id = platform.window_id().to_string();
     assert!(!platform.close_requested());
 
-    xdotool(&server, &["windowquit", &id]);
-    let seen = wait_for(&mut platform, |p, _| p.close_requested());
-    let closed = seen || platform.close_requested();
+    // `xdotool windowquit` needs a window manager, and none runs here.
+    send_close_request(Some(&server.display), platform.window_id()).unwrap();
+    let mut events = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !platform.close_requested() && Instant::now() < deadline {
+        platform.poll(&mut events);
+        std::thread::sleep(Duration::from_millis(10));
+    }
 
-    assert!(closed, "no WM_DELETE_WINDOW");
+    assert!(platform.close_requested(), "no WM_DELETE_WINDOW");
 }
 
 #[test]
@@ -142,7 +146,8 @@ fn x11_platform_poll_reports_the_resize() {
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     let id = platform.window_id().to_string();
-    assert!((platform.window().width - 200.0).abs() < 1.0);
+    let before = platform.window();
+    assert!((before.width - 200.0).abs() < 1.0, "{before:?}");
 
     xdotool(&server, &["windowsize", &id, "120", "100"]);
     let seen = wait_for(&mut platform, |_, e| matches!(e, RawEvent::Resize(_)));
@@ -172,6 +177,9 @@ fn x11_platform_input_and_clipboard_return_nothing() {
 fn x11_platform_schedule_update_ends_the_wait() {
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
+    // The events of the map are not what this test waits for.
+    std::thread::sleep(Duration::from_millis(50));
+    platform.poll(&mut Vec::new());
 
     platform.schedule_update();
     let started = Instant::now();
