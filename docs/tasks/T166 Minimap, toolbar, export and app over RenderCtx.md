@@ -1,7 +1,7 @@
 ---
 id: T166
 title: Minimap, toolbar, export and app over RenderCtx
-status: todo
+status: in-progress
 wave: 68
 branch: task/T166-minimap-toolbar-export-and-app-over-rend
 depends_on: [T165]
@@ -27,9 +27,9 @@ Slice 2 of [[T164 Generic run over Platform and Gpu]]: the minimap, the UI shape
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+Design (no new ADR, it follows ADR-T140-1 and T165): `GlSink<'a>` holds `&'a mut RenderCtx<MqGpu>`; every free function that drew through the bridge takes `&mut RenderCtx<MqGpu>` as its first argument (or becomes the `RenderCtx` method it forwarded to); `CachedFrame` methods take it; `app::run_on` creates it, and each frame sets the window from `Platform::window()` with `RenderCtx::set_window`. `with_ctx`, `with_drawing`, `with_gpu` and `BRIDGE` are deleted. `Batch` has no default sink type.
 
-- **AC-1** — No `thread_local!` in the shell holds the `Gpu`, its resources or a `RenderCtx`; everything that draws takes it from the loop. Test: `shell_sources_have_no_gpu_thread_local` (source scan for `thread_local!` next to `Gpu`, `GPU`, `TEXTURES`, `SCOPE`, `PIPELINE`, `RenderCtx`, `with_gpu`, `render::submit`).
+- **AC-1** — (test in `src/shell/render_ctx.rs`, extends `render_and_ui_text_hold_no_gpu_thread_local`) No `thread_local!` in the shell holds the `Gpu`, its resources or a `RenderCtx`; everything that draws takes it from the loop. Test: `shell_sources_have_no_gpu_thread_local` (source scan for `thread_local!` next to `Gpu`, `GPU`, `TEXTURES`, `SCOPE`, `PIPELINE`, `RenderCtx`, `with_gpu`, `render::submit`).
 - **AC-2** — `render.rs`, `ui_text.rs` and `app.rs` call no macroquad window size or DPI function; the drawing gets them from `WindowMetrics`. Tests: `drawing_reads_the_window_size_from_the_platform` (source scan) and a frame over `RecordingPlatform` with chosen metrics that lays out at that size.
 - **AC-3** — `e2e.sh --backend all` green; no pixel change; `tests/perf.rs` builds and runs.
 
