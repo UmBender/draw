@@ -1,7 +1,7 @@
 ---
 id: T165
 title: RenderCtx over Gpu for the drawing and UI text
-status: in-progress
+status: review
 wave: 68
 branch: task/T165-renderctx-over-gpu-for-the-drawing-and-u
 depends_on: [T163]
@@ -47,12 +47,14 @@ Design: `src/shell/render_ctx.rs` holds `RenderCtx<G: Gpu>` (the `Gpu`, `GlyphTe
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T165): specify the slice`
-- [ ] tests — `test(T165): add failing tests`
-- [ ] models — `feat(T165): add the types`
-- [ ] behaviour — `refactor(T165): migrate the slice`
-- [ ] quality — `chore(T165): pass clippy and rustfmt`
+- [x] spec — `docs(T165): specify the slice`
+- [x] tests — `test(T165): add failing tests`
+- [x] models — committed with behaviour (see Log)
+- [x] behaviour — `refactor(T165): migrate the slice`
+- [x] quality — rustfmt and one clippy fix (`single_match_else`) went into the behaviour commit's tree before it; no separate commit
 
 ## Log
+
+- 2026-11-15 — implemented. The tests step does not compile before the types exist (as in T163). The models and behaviour steps are one commit, `refactor(T165): migrate the slice`: the migration cannot compile half-way. `scripts/check.sh` green; `scripts/e2e.sh --backend all` green (no pixel change). Design: `RenderCtx<G>` in `render_ctx.rs`; `render.rs` and `ui_text.rs` draw through its methods with a `CtxSink` batch sink; outside callers keep the old free functions, which go through the bridge (`with_ctx`, `with_drawing`, one `thread_local!` of `RenderCtx<MqGpu>`), removed by T166. The window size and DPI are copied into the context by `with_drawing` from macroquad on each bridge call (T166 reads them from `WindowMetrics`). No new ADR; the `Gpu` trait is unchanged.
 
 - 2026-11-14 — split from T164 by the owner, following the batch's recommendation.
