@@ -326,7 +326,7 @@ fn flake_libraries_match_runtime_libs() {
                 Role::Required | Role::Gl | Role::Wayland | Role::Optional
             )
         })
-        .map(|lib| lib.soname.to_owned())
+        .map(|lib| lib.soname.clone())
         .collect();
 
     // Act
@@ -347,7 +347,7 @@ fn flake_toolchain_matches_rust_version() {
         .lines()
         .find_map(|line| line.strip_prefix("rust-version = \""))
         .and_then(|rest| rest.split('"').next())
-        .expect("rust-version in Cargo.toml");
+        .unwrap_or_else(|| panic!("rust-version in Cargo.toml"));
 
     // Act
     let flake = read("flake.nix");
