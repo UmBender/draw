@@ -9,3 +9,4 @@ pub mod egl;
 pub mod glx;
 pub mod loader;
 pub mod platform;
+pub mod wayland;

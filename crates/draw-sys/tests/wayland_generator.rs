@@ -336,7 +336,7 @@ fn emit_listener(out: &mut String, iface: &Interface) {
     out.push_str("    };\n\n");
     let _ = writeln!(
         out,
-        "    /// Installs `listener` on `proxy`; `0` on success.\n    ///\n    /// # Safety\n    /// `proxy` is a live `{0}` proxy of `client`, and `data` stays valid\n    /// (whatever the handlers do with it) until the proxy is destroyed.\n    pub unsafe fn add_listener(client: &Client, proxy: *mut Proxy, listener: &'static Listener, data: *mut c_void) -> i32 {{\n        // TEST: {MARKER}\n        // SAFETY: the caller vouches for `proxy` and `data`; the listener is a\n        // `repr(C)` table of function pointers in event order.\n        unsafe {{ (client.add_listener)(proxy, std::ptr::from_ref(listener).cast(), data) }}\n    }}\n",
+        "    // TEST: {MARKER}\n    /// Installs `listener` on `proxy`; `0` on success.\n    ///\n    /// # Safety\n    /// `proxy` is a live `{0}` proxy of `client`, and `data` stays valid\n    /// (whatever the handlers do with it) until the proxy is destroyed.\n    pub unsafe fn add_listener(client: &Client, proxy: *mut Proxy, listener: &'static Listener, data: *mut c_void) -> i32 {{\n        // TEST: {MARKER}\n        // SAFETY: the caller vouches for `proxy` and `data`; the listener is a\n        // `repr(C)` table of function pointers in event order.\n        unsafe {{ (client.add_listener)(proxy, std::ptr::from_ref(listener).cast(), data) }}\n    }}\n",
         iface.name
     );
 }
@@ -390,7 +390,7 @@ fn emit_request(
     );
     let _ = writeln!(
         out,
-        "    /// Request `{0}` of `{1}`.\n    ///\n    /// # Safety\n    /// `proxy` is a live `{1}` proxy of `client`; object arguments are live\n    /// proxies of the same connection (null where the protocol allows it).\n    pub unsafe fn {2}({params}){ret} {{\n        // TEST: {MARKER}\n        // SAFETY: the caller vouches for the proxies; the opcode, signature and\n        // argument types follow the protocol XML this file was generated from.\n        unsafe {{ {body} }}{3}\n    }}\n",
+        "    // TEST: {MARKER}\n    /// Request `{0}` of `{1}`.\n    ///\n    /// # Safety\n    /// `proxy` is a live `{1}` proxy of `client`; object arguments are live\n    /// proxies of the same connection (null where the protocol allows it).\n    pub unsafe fn {2}({params}){ret} {{\n        // TEST: {MARKER}\n        // SAFETY: the caller vouches for the proxies; the opcode, signature and\n        // argument types follow the protocol XML this file was generated from.\n        unsafe {{ {body} }}{3}\n    }}\n",
         m.name,
         iface.name,
         ident(&m.name),
