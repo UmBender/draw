@@ -1,7 +1,7 @@
 ---
 id: T165
 title: RenderCtx over Gpu for the drawing and UI text
-status: todo
+status: in-progress
 wave: 68
 branch: task/T165-renderctx-over-gpu-for-the-drawing-and-u
 depends_on: [T163]
@@ -27,10 +27,10 @@ Slice 1 of [[T164 Generic run over Platform and Gpu]]: a `RenderCtx<G: Gpu>` own
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests.
+Design: `src/shell/render_ctx.rs` holds `RenderCtx<G: Gpu>` (the `Gpu`, `GlyphTextures<G>`, the alpha pipeline, the open scope, the menu glyphs, the window view) and the bridge (`with_ctx`, one `thread_local!` of `RenderCtx<MqGpu>`). `render.rs` draws through `RenderCtx` methods with a `CtxSink` batch sink; the free functions that outside callers use stay as thin wrappers over the bridge. `ui_text.rs` draws menu labels through a `RenderCtx` method.
 
-- **AC-1** — `RenderCtx<G: Gpu>` owns the `Gpu`, the glyph page textures, the pipeline, the scope and the menu glyph textures; the drawing in `render.rs` and `ui_text.rs` takes `&mut RenderCtx<G>` (or is its methods). Test: a stroke, a text block and a UI label drawn through `RenderCtx<RecordingGpu>` give the expected `Gpu` calls.
-- **AC-2** — `render.rs` and `ui_text.rs` have no `thread_local!` holding the `Gpu` or its resources; the only one left in the shell is the bridge. Test: `render_and_ui_text_hold_no_gpu_thread_local` (source scan).
+- **AC-1** — `RenderCtx<G: Gpu>` owns the `Gpu`, the glyph page textures, the pipeline, the scope and the menu glyph textures; the drawing in `render.rs` and `ui_text.rs` is its methods. Tests (over `RenderCtx<RecordingGpu>`): `ctx_stroke_draws_one_untextured_chunk_in_a_pass`, `ctx_text_block_binds_the_glyph_page`, `ctx_menu_label_binds_the_menu_page`, `ctx_render_to_collects_draws_in_one_pass`, `ctx_pipeline_is_created_once`.
+- **AC-2** — `render.rs` and `ui_text.rs` have no `thread_local!` holding the `Gpu` or its resources; the only one left in the shell is the bridge. Test: `render_and_ui_text_hold_no_gpu_thread_local` (source scan of the shell: exactly one `MqGpu` thread-local, in `render_ctx.rs`).
 - **AC-3** — `e2e.sh --backend all` green; no pixel change.
 
 ## Out of scope
