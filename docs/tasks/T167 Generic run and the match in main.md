@@ -1,7 +1,7 @@
 ---
 id: T167
 title: Generic run and the match in main
-status: in-progress
+status: review
 wave: 68
 branch: task/T167-generic-run-and-the-match-in-main
 depends_on: [T166]
@@ -47,13 +47,18 @@ Draft: the spec step refines each criterion into named tests.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T167): specify the slice`
-- [ ] tests — `test(T167): add failing tests`
-- [ ] models — `feat(T167): add the types`
-- [ ] behaviour — `refactor(T167): migrate the slice`
-- [ ] quality — `chore(T167): pass clippy and rustfmt`
+- [x] spec — `docs(T167): specify the slice`
+- [x] tests — `test(T167): add failing tests`
+- [x] models — folded into the behaviour commit (signature change)
+- [x] behaviour — `refactor(T167): migrate the slice`
+- [x] quality — `chore(T167): pass clippy and rustfmt`
 - [ ] tablet by hand — owner, recorded in the Log
 
 ## Log
 
 - 2026-11-14 — split from T164 by the owner, following the batch's recommendation.
+- 2026-11-15 — AC-1 to AC-3 done; `scripts/check.sh` green; `e2e.sh --backend all` green (no pixel change). AC-4 (tablet by hand: pen pressure, tilt, eraser, seat changes; also the pen path of T162/T163) is left to the owner.
+- 2026-11-15 — the tests commit does not compile for the app test (signature change), and the models step is folded into the behaviour commit for the same reason, as in T163.
+- 2026-11-15 — `MqCtx` is gone; the drawing functions and `CachedFrame<G>` are generic. `main` matches on a private `Runtime` enum (one arm).
+- 2026-11-15 — allowlist addition: `render.rs` keeps `macroquad::math::Vec2` (the batch's vertices), not in the owner's list; it names T149 and may only shrink.
+- 2026-11-15 — the frame test over `RecordingPlatform`/`RecordingGpu` hides the toolbar with Tab first: the menu label measure (`measure_text`, allowlisted for T149) needs a macroquad context.
