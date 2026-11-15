@@ -179,6 +179,28 @@ impl X11Platform {
         });
     }
 
+    /// Puts `text` on the `PRIMARY` selection.
+    pub fn set_primary_text(&mut self, text: &str) {
+        let _ = text;
+        todo!()
+    }
+
+    /// The text of the `PRIMARY` selection, `None` when empty.
+    pub fn primary_text(&mut self) -> Option<String> {
+        todo!()
+    }
+
+    /// The PNG on the clipboard, `None` when there is none.
+    pub fn clipboard_png(&mut self) -> Option<Vec<u8>> {
+        todo!()
+    }
+
+    /// The quit signal (`SIGINT`, `SIGTERM`) that closed the loop, if any.
+    #[must_use]
+    pub fn quit_signal(&self) -> Option<i32> {
+        todo!()
+    }
+
     /// Whether the window manager asked to close the window.
     #[must_use]
     pub fn close_requested(&self) -> bool {
