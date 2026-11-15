@@ -1,7 +1,7 @@
 ---
 id: T168
 title: Wayland connection, window and protocol states
-status: in-progress
+status: review
 wave: 70
 branch: task/T168-wayland-connection-window-and-protocol-
 depends_on: [T142, T145]
@@ -52,13 +52,16 @@ Decisions: [[ADR-T168-1 Generated Wayland protocol code and surface type states]
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T168): specify the slice`
-- [ ] tests — `test(T168): add failing tests for the Wayland window`
-- [ ] models — `feat(T168): add the generated protocol and the surface states`
-- [ ] behaviour — `feat(T168): implement the Wayland window`
-- [ ] quality — `chore(T168): pass clippy and rustfmt`
+- [x] tests — `test(T168): add failing tests for the Wayland window`
+- [x] models — `feat(T168): add the generated protocol and the surface states`
+- [x] behaviour — `feat(T168): implement the Wayland window`
+- [x] quality — `chore(T168): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-15 — split from T143 by the owner; protocol code generated and checked in (owner decision).
 - 2026-11-15 — BLOCKED (batch): the protocol XML cannot be copied into `crates/draw-sys/protocols/`: `cp /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml …`, `ls` of `/usr/share/wayland*` and Read outside the repo are all refused (no allow rule), and the generator (AC-1) needs the XML. Recommended fix: allow `cp /usr/share/wayland*/*` (or copy `wayland.xml` and `xdg-shell.xml` by hand into `crates/draw-sys/protocols/`) and confirm `wayland-protocols-devel` is installed; then re-run.
 - 2026-11-15 — unblocked by the owner: `wayland.xml`, `xdg-shell.xml` and `tablet-v2.xml` copied into `crates/draw-sys/protocols/` (commit on this branch).
+- 2026-11-15 — done (batch): all five steps committed; `scripts/check.sh` and `scripts/compile_fail.sh` green; 12 sway tests, 5 generator tests, 3 compile-fail and 1 compile-pass case.
+  - Deviations: (1) the tests commit does not compile `tests/wayland.rs` until the models/behaviour steps (new `draw_sys::wayland` API), as T163/T165 did; the generator test failed for the right reason. (2) `RawEvent` has no close variant and `platform.rs` is not owned: close is `WaylandPlatform::close_requested()` (ADR-T168-1). (3) Sway lets an unmapped window choose its size (the fallback 640x480 is used); the configure with 800x600 arrives after the first present, so `wayland_window_configures_with_a_size` waits for it. (4) `next_frame` blocks inside `poll` on the display fd (no reactor yet); the frame wait is capped at 500 ms. (5) No feature or tutorial note: the task has no `feature` or `tutorial`. (6) `rustfmt` skips `wayland::generated` (`#[rustfmt::skip]` on the module).
+  - Not done here, by design: wiring into `main`, keyboard, pointer, tablet, clipboard (T169 to T171). Ping/pong is implemented but not exercised by a test (sway rarely pings).
