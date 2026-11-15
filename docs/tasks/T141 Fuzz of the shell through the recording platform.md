@@ -1,7 +1,7 @@
 ---
 id: T141
 title: Fuzz of the shell through the recording platform
-status: todo
+status: in-progress
 wave: 68
 branch: task/T141-fuzz-of-the-shell-through-the-recording-
 depends_on: [T140, T167]
@@ -23,11 +23,14 @@ Raw input sequences are fuzzed against the input translation and the machine wit
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
-
-- **AC-1** — `tests/shell_fuzz.rs` generates raw events (key codes, repeats, modifiers, pointer, tablet) and runs the shell over the recorder; no panic, invariants of the machine hold, no unbounded growth.
-  proptest, 20000 cases in the nightly job.
-- **AC-2** — Every bug found has a `regression_<ID>_<slug>` test.
+- **AC-1** — `tests/shell_fuzz.rs` generates raw events (key codes, repeats, modifiers, pointer, tablet, wheel, resize, focus, seats, typed characters) and runs `app::run` over a scripted `Platform` and `NullGpu` (which rejects bad sizes and handles); no panic, and the loop keeps asking for frames.
+  Test: `shell_session_never_panics_and_runs_every_frame` (proptest; 256 cases locally, `PROPTEST_CASES=20000` in the nightly job).
+- **AC-2** — No unbounded growth: per frame the platform sees at most 4 `schedule_update` calls and at most 4 clipboard writes.
+  Test: `shell_session_platform_calls_per_frame_are_bounded`.
+- **AC-3** — The fuzz is safe on the machine: it never generates `Ctrl+S`, `Ctrl+E`, any Ctrl+Shift chord (they write to `$HOME` or the state dir) nor Tab (the toolbar starts hidden, see the Log).
+  Test: `generated_events_avoid_chords_that_write_files`.
+- **AC-4** — The nightly job runs the fuzz with 20000 cases and uploads its regressions file on failure; `tests/ci.rs` stays green.
+- **AC-5** — Every bug found has a `regression_T141_<slug>` test.
 
 ## Out of scope
 
@@ -41,7 +44,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T141): specify the shell fuzz`
+- [x] spec — `docs(T141): specify the shell fuzz`
 - [ ] tests — `test(T141): add the shell fuzz`
 - [ ] fixes — one `fix(T141)` commit per bug found with its regression test
 
