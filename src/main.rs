@@ -89,7 +89,7 @@ fn main() {
         Runtime::Macroquad => {
             macroquad::Window::from_config(app::window_conf(backend), async move {
                 app::run(MqPlatform::open(), MqGpu::new(), options, backend, tablet).await;
-            })
+            });
         }
     }
     let received = signal::received();
