@@ -36,6 +36,7 @@ use crate::core::keymap::KeyChord;
 use crate::core::laser::{self, EditorState, Laser, Routed, Segment};
 use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::{Rgba, palette};
+use crate::core::shape::Shape;
 use crate::core::snapshot::Snapshot;
 use crate::core::snapshot_image::{self, ImagePlan};
 use crate::core::svg::to_svg;
@@ -54,11 +55,12 @@ use crate::shell::input_map::{
     wants_grid_clipboard,
 };
 use crate::shell::minimap::{self, OverviewKey};
-use crate::shell::options::Options;
+use crate::shell::options::{Options, Renderer};
 use crate::shell::render::{
     self, Batch, CtxSink, TextStats, gfx_color, hex_color, hex_color_alpha, to_mq_color,
 };
 use crate::shell::render_ctx::RenderCtx;
+use crate::shell::retained::RetainedScene;
 use crate::shell::sheet;
 use crate::shell::tablet;
 use crate::shell::toolbar::{self, Route};
@@ -675,6 +677,7 @@ pub async fn run<P: Platform, G: Gpu>(
         msaa_samples,
         frame_times,
         e2e: e2e_files,
+        renderer,
         ..
     } = options;
     let mut ctx = RenderCtx::new(gpu);
@@ -689,6 +692,9 @@ pub async fn run<P: Platform, G: Gpu>(
     let mut save_path = file_arg.and_then(|path| open_file_argument(&mut editor, &path));
     let mut autosaver = Autosaver::new(state_dir, &editor, Instant::now());
     let mut frame = CachedFrame::new(msaa_samples, frame_times);
+    if renderer == Renderer::Retained {
+        frame.retained = Some(RetainedScene::new());
+    }
     let mut recorder = FrameRecorder::new(&editor);
     let mut input = InputState {
         raw: Vec::new(),
@@ -1143,6 +1149,8 @@ struct CachedFrame<G: Gpu> {
     overview: Option<G::Target>,
     /// What `overview` shows.
     overview_key: Option<OverviewKey>,
+    /// The retained scene, when `--renderer retained` is on (T172).
+    retained: Option<RetainedScene>,
 }
 
 impl<G: Gpu> CachedFrame<G> {
@@ -1163,6 +1171,7 @@ impl<G: Gpu> CachedFrame<G> {
             wake: false,
             overview: None,
             overview_key: None,
+            retained: None,
         }
     }
 
@@ -1182,6 +1191,11 @@ impl<G: Gpu> CachedFrame<G> {
         trail: &[Segment],
     ) -> Option<(Redraw, Duration)> {
         self.wake = false;
+        if let Some(mut scene) = self.retained.take() {
+            let result = self.present_retained(ctx, editor, &mut scene, viewport, dpi, trail);
+            self.retained = Some(scene);
+            return Some(result);
+        }
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
         let camera = *editor.camera();
@@ -1259,15 +1273,7 @@ impl<G: Gpu> CachedFrame<G> {
         blit_layer(ctx, document, &mut self.filter, blit_filter(redraw), dest);
         draw_overlay(ctx, editor, &overlay, viewport);
         draw_laser(ctx, trail);
-        if let Some(map) = &minimap {
-            let view = camera.visible_world_rect(viewport);
-            let texture = self
-                .overview
-                .as_ref()
-                .map(|target| ctx.gpu_mut().target_texture(target));
-            let shown = texture.as_ref().zip(overview.as_ref());
-            minimap::draw_panel(ctx, map, view, shown);
-        }
+        self.draw_minimap(ctx, minimap.as_ref(), overview.as_ref(), &camera, viewport);
         if rerender_after_overflow(render::text_overflowed(), cleared) {
             // Glyphs were dropped from the layer; draw it again next frame
             // with the atlas cleared.
@@ -1287,6 +1293,42 @@ impl<G: Gpu> CachedFrame<G> {
         Some((redraw, elapsed))
     }
 
+    /// The frame of `--renderer retained` (T172): the document's chunks
+    /// drawn straight on the window under the camera uniform, then the
+    /// overlay, the laser and the minimap. No layer, no settle, no blit.
+    fn present_retained(
+        &mut self,
+        ctx: &mut RenderCtx<G>,
+        editor: &Editor,
+        scene: &mut RetainedScene,
+        viewport: Vec2,
+        dpi: f32,
+        trail: &[Segment],
+    ) -> (Redraw, Duration) {
+        let started = Instant::now();
+        let overlay = editor.overlay();
+        let camera = *editor.camera();
+        let _ = render::begin_text_frame();
+        render::take_text_stats();
+        let minimap = editor.minimap();
+        let overview = minimap
+            .as_ref()
+            .and_then(|map| self.update_overview(ctx, editor, map, dpi));
+        ctx.clear_window(gfx_color(hex_color(theme::CANVAS)));
+        ctx.draw_underlay(editor, &camera, viewport);
+        let shapes: Vec<(ShapeId, &Shape)> = editor.document().shapes().collect();
+        scene.draw(ctx, &shapes, &overlay.hidden, &camera, viewport);
+        draw_overlay(ctx, editor, &overlay, viewport);
+        draw_laser(ctx, trail);
+        self.draw_minimap(ctx, minimap.as_ref(), overview.as_ref(), &camera, viewport);
+        let elapsed = started.elapsed();
+        if self.timed {
+            let shapes = editor.document().len();
+            eprintln!("{}", frame_log_line(Redraw::Full, elapsed, None, shapes));
+        }
+        (Redraw::Full, elapsed)
+    }
+
     /// The window's part of the document layer, read back as RGBA rows from
     /// the top, and its size in physical pixels (ADR-T92-2).
     fn read_view(&self, ctx: &mut RenderCtx<G>) -> Result<(Vec<u8>, (u32, u32)), ExportError> {
@@ -1302,6 +1344,27 @@ impl<G: Gpu> CachedFrame<G> {
         let layer = layer_size(key.size, margin);
         let rgba = export::view_pixels(&bytes, layer, key.size, margin)?;
         Ok((rgba, key.size))
+    }
+
+    /// Draws the minimap panel over the window, with the cached overview
+    /// when there is one.
+    fn draw_minimap(
+        &self,
+        ctx: &mut RenderCtx<G>,
+        map: Option<&Minimap>,
+        fit: Option<&Fit>,
+        camera: &Camera,
+        viewport: Vec2,
+    ) {
+        let Some(map) = map else {
+            return;
+        };
+        let view = camera.visible_world_rect(viewport);
+        let texture = self
+            .overview
+            .as_ref()
+            .map(|target| ctx.gpu_mut().target_texture(target));
+        minimap::draw_panel(ctx, map, view, texture.as_ref().zip(fit));
     }
 
     /// Renders the minimap's overview if the document changed since it was

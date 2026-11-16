@@ -8,9 +8,10 @@
 //! [`RenderCtx::sync_window`] with the platform's metrics.
 
 use draw_gfx::gpu::{
-    Blend, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
-    View,
+    Blend, Camera as GfxCamera, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu,
+    PipelineDesc, Vertex, View,
 };
+use draw_gfx::tessellate::Mesh;
 use draw_sys::platform::WindowMetrics;
 
 use crate::core::geom::Aabb;
@@ -26,6 +27,8 @@ pub struct RenderCtx<G: Gpu> {
     textures: GlyphTextures<G>,
     /// The alpha-blend pipeline, made on first use.
     pipeline: Option<G::Pipeline>,
+    /// The feathered pipeline of the retained path, made on first use.
+    feathered: Option<G::Pipeline>,
     /// The draws collected by the open [`RenderCtx::render_to`], if any.
     scope: Option<Vec<CommandOf<G>>>,
     /// The menu font's atlas and pages; made on first use.
@@ -45,6 +48,7 @@ impl<G: Gpu> RenderCtx<G> {
             gpu,
             textures: GlyphTextures::default(),
             pipeline: None,
+            feathered: None,
             scope: None,
             menu: None,
             window: View {
@@ -115,6 +119,42 @@ impl<G: Gpu> RenderCtx<G> {
                 blend: Blend::Alpha,
             })
         })
+    }
+
+    /// The feathered alpha pipeline of the retained path (ADR-T173-1); made
+    /// on the first call.
+    pub fn feathered_pipeline(&mut self) -> G::Pipeline {
+        let gpu = &mut self.gpu;
+        *self.feathered.get_or_insert_with(|| {
+            gpu.pipeline(PipelineDesc {
+                blend: Blend::AlphaFeathered,
+            })
+        })
+    }
+
+    /// Draws world-space `meshes` in order under `camera`, in the open
+    /// scope or a pass of their own on the window; nothing for no meshes.
+    pub fn draw_world(&mut self, camera: GfxCamera, meshes: &[&Mesh]) {
+        if meshes.is_empty() {
+            return;
+        }
+        let pipeline = self.feathered_pipeline();
+        let mut draws: Vec<CommandOf<G>> = Vec::with_capacity(meshes.len() + 2);
+        draws.push(Command::SetCamera(camera));
+        for mesh in meshes {
+            draws.push(Command::Draw {
+                pipeline,
+                texture: None,
+                geometry: mesh.geometry(),
+            });
+        }
+        draws.push(Command::SetCamera(GfxCamera::IDENTITY));
+        if let Some(open) = self.scope.as_mut() {
+            open.extend(draws);
+        } else {
+            let list = wrap_pass::<G>(None, self.window, None, draws);
+            self.submit(&list);
+        }
     }
 
     /// Executes `list`. The lists are built from valid handles; a refusal

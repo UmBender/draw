@@ -21,6 +21,7 @@ pub mod preflight;
 pub mod recording;
 pub mod render;
 pub mod render_ctx;
+pub mod retained;
 pub mod sheet;
 pub mod tablet;
 pub mod toolbar;
