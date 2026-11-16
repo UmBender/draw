@@ -16,7 +16,7 @@ pub mod selection;
 pub mod signal;
 mod xlib;
 
-pub use platform::{GlSurface, X11Platform};
+pub use platform::{GlSurface, SharedGl, X11Platform};
 
 /// Sends `window` of `display` (`None`: `$DISPLAY`) the close request a
 /// window manager sends (`WM_DELETE_WINDOW`). Tests use it where no window
