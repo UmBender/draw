@@ -422,7 +422,7 @@ fn emit_request(
 }
 
 /// A protocol file and the interfaces generated from it.
-const PROTOCOLS: [(&str, &str, &[&str]); 2] = [
+const PROTOCOLS: [(&str, &str, &[&str]); 3] = [
     (
         "wayland.xml",
         "wayland",
@@ -436,12 +436,30 @@ const PROTOCOLS: [(&str, &str, &[&str]); 2] = [
             "wl_seat",
             "wl_pointer",
             "wl_keyboard",
+            "wl_data_device_manager",
+            "wl_data_device",
+            "wl_data_offer",
+            "wl_data_source",
         ],
     ),
     (
         "xdg-shell.xml",
         "xdg_shell",
         &["xdg_wm_base", "xdg_surface", "xdg_toplevel"],
+    ),
+    (
+        "tablet-v2.xml",
+        "tablet_v2",
+        &[
+            "zwp_tablet_manager_v2",
+            "zwp_tablet_seat_v2",
+            "zwp_tablet_tool_v2",
+            "zwp_tablet_v2",
+            "zwp_tablet_pad_ring_v2",
+            "zwp_tablet_pad_strip_v2",
+            "zwp_tablet_pad_group_v2",
+            "zwp_tablet_pad_v2",
+        ],
     ),
 ];
 
@@ -479,7 +497,7 @@ fn generate(protocols: &Path) -> Vec<(String, String)> {
     }
     let mut files = vec![(
         "mod.rs".to_string(),
-        "//! Generated protocol code (ADR-T168-1), one module per protocol file.\n\npub mod wayland;\npub mod xdg_shell;\n".to_string(),
+        "//! Generated protocol code (ADR-T168-1), one module per protocol file.\n\npub mod tablet_v2;\npub mod wayland;\npub mod xdg_shell;\n".to_string(),
     )];
     for (xml, module, list) in &parsed {
         let refs: Vec<&Interface> = list.iter().collect();

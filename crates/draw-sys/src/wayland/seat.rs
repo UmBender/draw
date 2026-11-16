@@ -17,12 +17,14 @@ use crate::platform::{
     BackendEvent, BackendRecord, Device, DeviceChange, RawEvent, has_release_request,
 };
 use crate::wayland::client::Proxy;
+use crate::wayland::clipboard::ClipboardState;
 use crate::wayland::connection::{Shared, shared_of};
 use crate::wayland::generated::wayland::{wl_keyboard, wl_pointer, wl_seat};
 use crate::wayland::input::{
     AxisFrame, SeatDevices, fixed_to_f32, keymap_usable, pointer_position, raw_button_from_evdev,
     raw_key_from_keysym, repeats_to_send, wheel_of_frame,
 };
+use crate::wayland::tablet::TabletState;
 use crate::wayland::xkb::{KeyState, Keymap, Xkb};
 
 /// The largest keymap the backend reads, in bytes.
@@ -53,6 +55,8 @@ pub(crate) struct InputState {
     held: Cell<Option<Held>>,
     pos: Cell<(f32, f32)>,
     axis: Cell<AxisFrame>,
+    pub tablet: TabletState,
+    pub clipboard: ClipboardState,
 }
 
 impl Default for InputState {
@@ -72,16 +76,18 @@ impl Default for InputState {
             held: Cell::new(None),
             pos: Cell::new((0.0, 0.0)),
             axis: Cell::new(AxisFrame::default()),
+            tablet: TabletState::default(),
+            clipboard: ClipboardState::default(),
         }
     }
 }
 
 impl InputState {
-    fn push(&self, event: RawEvent) {
+    pub(crate) fn push(&self, event: RawEvent) {
         self.events.borrow_mut().push(event);
     }
 
-    fn record(&self, event: BackendEvent) {
+    pub(crate) fn record(&self, event: BackendEvent) {
         self.push(RawEvent::Backend(BackendRecord {
             at: Instant::now(),
             event,
@@ -295,13 +301,14 @@ extern "C" fn on_keymap(data: *mut c_void, _kb: *mut Proxy, format: u32, fd: i32
 extern "C" fn on_kb_enter(
     data: *mut c_void,
     _kb: *mut Proxy,
-    _serial: u32,
+    serial: u32,
     _surface: *mut Proxy,
     _keys: *mut c_void,
 ) {
     // TEST: wayland_keyboard_focus_is_reported
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
     let input = &unsafe { shared_of(data) }.input;
+    input.clipboard.note_serial(serial);
     input.record(BackendEvent::KeyboardEnter);
     input.push(RawEvent::Focus(true));
 }
@@ -318,7 +325,7 @@ extern "C" fn on_kb_leave(data: *mut c_void, _kb: *mut Proxy, _serial: u32, _sur
 extern "C" fn on_key(
     data: *mut c_void,
     _kb: *mut Proxy,
-    _serial: u32,
+    serial: u32,
     _time: u32,
     code: u32,
     state: u32,
@@ -326,6 +333,7 @@ extern "C" fn on_key(
     // TEST: wayland_keyboard_typed_text_arrives
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
     let input = &unsafe { shared_of(data) }.input;
+    input.clipboard.note_serial(serial);
     let mods = input.state.borrow().as_ref().map(KeyState::mods);
     input.record(BackendEvent::Key {
         code,
@@ -385,6 +393,10 @@ extern "C" fn on_repeat_info(data: *mut c_void, _kb: *mut Proxy, rate: i32, dela
 
 /// Queues a pointer move to `(x, y)` fixed-point surface coordinates.
 fn pointer_to(shared: &Shared, x: i32, y: i32) {
+    // A tool in proximity sends the same movement itself (ADR-T40-1).
+    if shared.input.tablet.shadowed() {
+        return;
+    }
     let pos = pointer_position(x, y, shared.scale());
     shared.input.pos.set(pos);
     shared
@@ -395,14 +407,16 @@ fn pointer_to(shared: &Shared, x: i32, y: i32) {
 extern "C" fn on_ptr_enter(
     data: *mut c_void,
     _ptr: *mut Proxy,
-    _serial: u32,
+    serial: u32,
     _surface: *mut Proxy,
     x: i32,
     y: i32,
 ) {
     // TEST: wayland_pointer_motion_arrives
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
-    pointer_to(unsafe { shared_of(data) }, x, y);
+    let shared = unsafe { shared_of(data) };
+    shared.input.clipboard.note_serial(serial);
+    pointer_to(shared, x, y);
 }
 
 extern "C" fn on_ptr_motion(data: *mut c_void, _ptr: *mut Proxy, _time: u32, x: i32, y: i32) {
@@ -414,7 +428,7 @@ extern "C" fn on_ptr_motion(data: *mut c_void, _ptr: *mut Proxy, _time: u32, x: 
 extern "C" fn on_ptr_button(
     data: *mut c_void,
     _ptr: *mut Proxy,
-    _serial: u32,
+    serial: u32,
     _time: u32,
     button: u32,
     state: u32,
@@ -422,6 +436,10 @@ extern "C" fn on_ptr_button(
     // TEST: wayland_pointer_buttons_arrive
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
     let input = &unsafe { shared_of(data) }.input;
+    input.clipboard.note_serial(serial);
+    if input.tablet.shadowed() {
+        return;
+    }
     let (x, y) = input.pos.get();
     input.push(RawEvent::Button {
         button: raw_button_from_evdev(button),
@@ -502,6 +520,8 @@ impl InputState {
     /// Releases the devices and the seat before the connection closes.
     pub(crate) fn destroy_devices(&self, shared: &Shared) {
         let release = has_release_request(self.seat_version.get());
+        self.tablet.destroy(shared);
+        self.clipboard.destroy(shared);
         destroy(shared, self.keyboard.replace(null_mut()), release, false);
         destroy(shared, self.pointer.replace(null_mut()), release, true);
         let seat = self.seat.replace(null_mut());

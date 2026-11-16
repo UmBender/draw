@@ -308,6 +308,14 @@ impl Shared {
                 "wl_seat" if self.input.seat.get().is_null() => {
                     (&raw const wl_seat::INTERFACE, wl_seat::VERSION)
                 }
+                "zwp_tablet_manager_v2" if self.input.tablet.manager.get().is_null() => (
+                    &raw const crate::wayland::generated::tablet_v2::zwp_tablet_manager_v2::INTERFACE,
+                    crate::wayland::tablet::MANAGER_VERSION,
+                ),
+                "wl_data_device_manager" if self.input.clipboard.manager.get().is_null() => (
+                    &raw const crate::wayland::generated::wayland::wl_data_device_manager::INTERFACE,
+                    crate::wayland::clipboard::MANAGER_VERSION,
+                ),
                 _ => continue,
             };
             let version = global.version.min(ours);
@@ -334,6 +342,8 @@ impl Shared {
                     // `data` outlives it.
                     unsafe { wl_seat::add_listener(c, proxy, &SEAT_LISTENER, data) };
                 }
+                "zwp_tablet_manager_v2" => self.input.tablet.manager.set(proxy),
+                "wl_data_device_manager" => self.input.clipboard.set_manager(proxy, version),
                 _ => {
                     self.outputs.borrow_mut().push(Output { proxy, scale: 1 });
                     // TEST: wayland_output_scale_is_an_integer
@@ -343,6 +353,11 @@ impl Shared {
                 }
             }
         }
+        // The objects that hang off the seat, once the seat and the
+        // managers are known (the globals come in any order).
+        let seat = self.input.seat.get();
+        self.input.tablet.init(self, seat);
+        self.input.clipboard.init(self, seat);
         Ok(())
     }
 }

@@ -242,7 +242,7 @@ fn wayland_schedule_update_requests_a_frame() {
 }
 
 #[test]
-fn wayland_platform_input_parts_return_nothing() {
+fn wayland_platform_without_input_devices_returns_only_window_events() {
     let sway = Sway::start();
     let mut platform = platform(&sway);
     block_on(platform.next_frame());
@@ -254,7 +254,6 @@ fn wayland_platform_input_parts_return_nothing() {
         e,
         RawEvent::Resize(_) | RawEvent::Backend(_) | RawEvent::Focus(_)
     )));
-    assert_eq!(platform.clipboard_text(), None);
-    platform.set_clipboard_text("ignored until T170");
+    // The clipboard works since T170 (`tests/wayland_clipboard.rs`).
     assert_eq!(platform.clipboard_text(), None);
 }
