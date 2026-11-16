@@ -7,3 +7,4 @@
 pub mod chunks;
 pub mod gpu;
 pub mod tessellate;
+pub mod text;
