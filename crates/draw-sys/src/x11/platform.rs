@@ -5,9 +5,9 @@
 
 use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
-use std::rc::Rc;
 use std::ffi::c_void;
 use std::future::{Future, ready};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use crate::egl::{ContextError, EglContext, GlContext};

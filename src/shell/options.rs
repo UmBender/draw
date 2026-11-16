@@ -165,8 +165,8 @@ fn read(args: &[OsString]) -> Result<Options, String> {
                 });
                 rest.extend(value);
             }
-            "log" | "msaa" | "backend" | "platform" | "tablet" | "snapshot" | "e2e-dump" | "e2e-idle"
-            | "e2e-clipboard" => {
+            "log" | "msaa" | "backend" | "platform" | "tablet" | "snapshot" | "e2e-dump"
+            | "e2e-idle" | "e2e-clipboard" => {
                 let value = inline
                     .or_else(|| words.next().cloned())
                     .ok_or_else(|| format!("`--{name}` needs a value"))?;

@@ -106,14 +106,8 @@ fn backend_refuses_an_unknown_name() {
 
 #[test]
 fn platform_takes_macroquad_and_native() {
-    assert_eq!(
-        run(&["--platform", "native"]).platform,
-        Platform::Native
-    );
-    assert_eq!(
-        run(&["--platform=macroquad"]).platform,
-        Platform::Macroquad
-    );
+    assert_eq!(run(&["--platform", "native"]).platform, Platform::Native);
+    assert_eq!(run(&["--platform=macroquad"]).platform, Platform::Macroquad);
 }
 
 #[test]

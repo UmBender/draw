@@ -2507,7 +2507,9 @@ mod self_tests {
 
     #[test]
     fn e2e_script_takes_the_platform() {
-        let script = std::fs::read_to_string("scripts/e2e.sh").unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/e2e.sh");
+        let script = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
 
         for needle in ["--platform", "DRAW_E2E_PLATFORM"] {
             assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
