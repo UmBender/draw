@@ -51,3 +51,21 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-15 — created by the owner from T146 AC-2 (app part) and AC-4.
+- 2026-11-15 — BLOCKED (batch): the slice cannot reach a green tree with
+  unchanged e2e pixels without more groundwork. Findings: (1) the app's
+  `draw_shape` in `src/shell/render.rs` works in screen space (minimum
+  screen widths, joint and circle segment counts by pixel radius, fills,
+  arrow heads, dot grid), while `draw_gfx::tessellate` is world space with
+  no feather geometry (T173 left uv zero), no minimum width and no text,
+  so its pixels differ from the goldens; (2) text and formulas rasterise
+  per zoom step (`text_raster`, `label_raster`), so they cannot be
+  zoom-independent chunks without a design decision; (3) the minimap and
+  the T26 layer cache are tied to the current layer path. Tried: read the
+  render path and the tessellator; wrote no code. Recommended split, each
+  slice green on its own: (a) tessellator parity (feather strips, minimum
+  screen width through the camera uniform or a per-chunk rule, rect fills,
+  arrow heads) with a golden-diff test against `draw_shape` on the
+  recorder; (b) text and formulas on the retained path (an ADR on glyph
+  rasters per zoom step: re-emit text quads only on a raster-step change);
+  (c) wire `ChunkCache` into the app frame, minimap and grids, and remove
+  the T26 layer re-render, settle and blit; AC-3 stays the owner's.
