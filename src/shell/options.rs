@@ -202,3 +202,35 @@ fn apply(options: &mut Options, name: &str, value: &OsString) -> Result<(), Stri
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed(list: &[&str]) -> Parsed {
+        parse(list.iter().map(OsString::from))
+    }
+
+    #[test]
+    fn renderer_flag_defaults_to_layers() {
+        assert_eq!(Options::default().renderer, Renderer::Layers);
+    }
+
+    #[test]
+    fn renderer_flag_takes_layers_and_retained() {
+        let Parsed::Run(a) = parsed(&["--renderer", "retained"]) else {
+            panic!("refused");
+        };
+        let Parsed::Run(b) = parsed(&["--renderer=layers"]) else {
+            panic!("refused");
+        };
+        assert_eq!(a.renderer, Renderer::Retained);
+        assert_eq!(b.renderer, Renderer::Layers);
+    }
+
+    #[test]
+    fn renderer_flag_refuses_other_values() {
+        assert!(matches!(parsed(&["--renderer", "gl"]), Parsed::Refused(_)));
+        assert!(matches!(parsed(&["--renderer"]), Parsed::Refused(_)));
+    }
+}
