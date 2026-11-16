@@ -18,6 +18,8 @@ use draw_sys::egl::EglContext;
 
 /// Side of the square targets, in pixels.
 const SIDE: u32 = 64;
+/// [`SIDE`] for pixel coordinates.
+const SIDE_I: i32 = 64;
 /// Largest channel difference that does not count (the e2e tolerance).
 const CHANNEL: u8 = 8;
 /// Largest relative difference of the total ink.
@@ -100,24 +102,22 @@ fn tessellated(ctx: &mut Ctx, shape: &Shape, camera: &Camera) -> Vec<u8> {
 }
 
 fn at(bytes: &[u8], x: i32, y: i32) -> [u8; 4] {
-    let x = x.clamp(0, SIDE as i32 - 1) as usize;
-    let y = y.clamp(0, SIDE as i32 - 1) as usize;
+    let x = x.clamp(0, SIDE_I - 1) as usize;
+    let y = y.clamp(0, SIDE_I - 1) as usize;
     let i = (y * SIDE as usize + x) * 4;
     [bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]
 }
 
 /// `255 - green`, summed: how much ink the image holds.
 fn ink(bytes: &[u8]) -> f32 {
-    bytes
-        .chunks_exact(4)
-        .map(|p| f32::from(255 - p[1]))
-        .sum::<f32>()
+    let (pixels, _) = bytes.as_chunks::<4>();
+    pixels.iter().map(|p| f32::from(255 - p[1])).sum::<f32>()
 }
 
 /// Checks ADR-T179-2 and returns a description of the first failure.
 fn compare(reference: &[u8], candidate: &[u8]) -> Result<(), String> {
-    for y in 0..SIDE as i32 {
-        for x in 0..SIDE as i32 {
+    for y in 0..SIDE_I {
+        for x in 0..SIDE_I {
             let (r, c) = (at(reference, x, y), at(candidate, x, y));
             if r.iter().zip(&c).all(|(a, b)| a.abs_diff(*b) <= CHANNEL) {
                 continue;
@@ -188,7 +188,12 @@ fn parity_stroke() {
 #[test]
 fn parity_pressure_stroke() {
     assert_parity("pressure stroke", |e| Shape::Stroke {
-        points: vec![p(e, 0.1, 0.5), p(e, 0.35, 0.3), p(e, 0.65, 0.7), p(e, 0.9, 0.5)],
+        points: vec![
+            p(e, 0.1, 0.5),
+            p(e, 0.35, 0.3),
+            p(e, 0.65, 0.7),
+            p(e, 0.9, 0.5),
+        ],
         widths: Some(vec![0.5, 1.0, 2.0, 1.0]),
         style: STYLE,
     });

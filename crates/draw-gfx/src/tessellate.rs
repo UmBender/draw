@@ -577,7 +577,11 @@ mod tests {
         // Assert: outside the edge is negative, inside is positive.
         assert!(approx_eq(low, -0.5, EPS), "low {low}");
         assert!(approx_eq(high, 0.5, EPS), "high {high}");
-        for v in mesh.vertices.iter().filter(|v| approx_eq(v.pos[1].abs(), 2.5, EPS)) {
+        for v in mesh
+            .vertices
+            .iter()
+            .filter(|v| approx_eq(v.pos[1].abs(), 2.5, EPS))
+        {
             assert!(approx_eq(v.uv[0], -0.5, EPS));
         }
     }
@@ -586,7 +590,11 @@ mod tests {
     fn feathered_edge_reaches_half_a_pixel_outside() {
         // At zoom 4 half a pixel is 0.125 world units.
         let mesh = tessellate_at(&horizontal(4.0), 4.0);
-        assert!(approx_eq(max_abs_y(&mesh), 2.125, EPS), "{}", max_abs_y(&mesh));
+        assert!(
+            approx_eq(max_abs_y(&mesh), 2.125, EPS),
+            "{}",
+            max_abs_y(&mesh)
+        );
     }
 
     #[test]
