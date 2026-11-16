@@ -174,7 +174,7 @@ impl TextCache {
         revision: u64,
         spec: &TextSpec<'_>,
         zoom: f32,
-        source: &dyn GlyphSource,
+        source: &impl GlyphSource,
     ) -> bool {
         let key = Key {
             revision,
@@ -277,10 +277,7 @@ fn quantize(size: f32) -> f32 {
 
 /// The text of a block as `(ch, face, world pen, scale, warn)` glyphs and
 /// `(a, b, width)` rules in world units.
-type Laid = (
-    Vec<(char, Face, Vec2, f32, bool)>,
-    Vec<(Vec2, Vec2, f32)>,
-);
+type Laid = (Vec<(char, Face, Vec2, f32, bool)>, Vec<(Vec2, Vec2, f32)>);
 
 fn lay_out(text: &str, origin: Vec2, size: f32) -> Laid {
     let mut glyph_list = Vec::new();
@@ -300,7 +297,8 @@ fn lay_out(text: &str, origin: Vec2, size: f32) -> Laid {
             }
         }
     } else {
-        glyph_list.extend(glyphs(origin, text, size).map(|g| (g.ch, Face::Text, g.pos, 1.0, false)));
+        glyph_list
+            .extend(glyphs(origin, text, size).map(|g| (g.ch, Face::Text, g.pos, 1.0, false)));
     }
     (glyph_list, rules)
 }
@@ -322,7 +320,11 @@ fn plan(spec: &TextSpec<'_>, zoom: f32, dpi: f32) -> Key {
                 }
             }
             let visible = text_screen_px(size, zoom).is_some();
-            if visible && rules.iter().any(|r| r.2 * zoom < MIN_RULE_PX || !(r.2 * zoom).is_finite()) {
+            if visible
+                && rules
+                    .iter()
+                    .any(|r| r.2 * zoom < MIN_RULE_PX || !(r.2 * zoom).is_finite())
+            {
                 extra = zoom.to_bits();
             }
             // A change of the layout origin or size is a change of the key.
@@ -353,7 +355,14 @@ fn plan(spec: &TextSpec<'_>, zoom: f32, dpi: f32) -> Key {
 
 /// Appends the quad of `entry` with its pen at `pen`, `k` world units per
 /// texel; nothing for an empty bitmap or a non-finite value.
-fn push_quad(runs: &mut Vec<Run>, side: u16, entry: &GlyphEntry, pen: Vec2, k: f32, color: [u8; 4]) {
+fn push_quad(
+    runs: &mut Vec<Run>,
+    side: u16,
+    entry: &GlyphEntry,
+    pen: Vec2,
+    k: f32,
+    color: [u8; 4],
+) {
     if entry.w == 0 || entry.h == 0 || !pen.is_finite() || !(k.is_finite() && k > 0.0) {
         return;
     }
@@ -362,7 +371,10 @@ fn push_quad(runs: &mut Vec<Run>, side: u16, entry: &GlyphEntry, pen: Vec2, k: f
     let max = Vec2::new(min.x + w * k, min.y + h * k);
     let side = f32::from(side.max(1));
     let (u0, v0) = (f32::from(entry.x) / side, f32::from(entry.y) / side);
-    let (u1, v1) = ((f32::from(entry.x) + w) / side, (f32::from(entry.y) + h) / side);
+    let (u1, v1) = (
+        (f32::from(entry.x) + w) / side,
+        (f32::from(entry.y) + h) / side,
+    );
     if runs.last().is_none_or(|r| r.page != entry.page) {
         runs.push(Run {
             page: entry.page,
@@ -408,7 +420,7 @@ fn push_rule(mesh: &mut Mesh, a: Vec2, b: Vec2, width: f32, color: [u8; 4]) {
 }
 
 /// The quads and rules of `spec` at `zoom`.
-fn emit(spec: &TextSpec<'_>, zoom: f32, dpi: f32, source: &dyn GlyphSource) -> (Vec<Run>, Mesh) {
+fn emit(spec: &TextSpec<'_>, zoom: f32, dpi: f32, source: &impl GlyphSource) -> (Vec<Run>, Mesh) {
     let side = source.page_side();
     let mut runs = Vec::new();
     let mut rules = Mesh::default();
@@ -429,7 +441,14 @@ fn emit(spec: &TextSpec<'_>, zoom: f32, dpi: f32, source: &dyn GlyphSource) -> (
                     continue;
                 };
                 let k = size * scale / f32::from(rpx);
-                push_quad(&mut runs, side, &entry, pen, k, if warned { warn } else { color });
+                push_quad(
+                    &mut runs,
+                    side,
+                    &entry,
+                    pen,
+                    k,
+                    if warned { warn } else { color },
+                );
             }
             if text_screen_px(size, zoom).is_some() {
                 for (a, b, width) in rule_list {
@@ -444,12 +463,15 @@ fn emit(spec: &TextSpec<'_>, zoom: f32, dpi: f32, source: &dyn GlyphSource) -> (
             world_size,
             color,
         } => {
-            let size = quantize(world_size);
-            let Some(rpx) = label_rpx(size, zoom, dpi) else {
+            let em = quantize(world_size);
+            let Some(rpx) = label_rpx(em, zoom, dpi) else {
                 return (runs, rules);
             };
-            let k = size / f32::from(rpx);
-            let entries = || text.chars().filter_map(|ch| source.glyph(Face::Text, ch, rpx));
+            let k = em / f32::from(rpx);
+            let entries = || {
+                text.chars()
+                    .filter_map(|ch| source.glyph(Face::Text, ch, rpx))
+            };
             let width: f32 = entries().map(|e| e.advance * k).sum();
             let ink = entries()
                 .map(|e| (e.ymin + f32::from(e.h)) * k)

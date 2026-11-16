@@ -13,6 +13,7 @@ use draw_gfx::text::{
 const EPS: f32 = 1e-3;
 const INK: [u8; 4] = [10, 20, 30, 255];
 const WARN: [u8; 4] = [200, 0, 0, 255];
+const NONE: [[f32; 2]; 0] = [];
 
 /// Every glyph is `rpx/2` wide and `rpx` tall; `Z` lives on page 1.
 struct Fake {
@@ -45,7 +46,7 @@ fn fake() -> Fake {
     Fake { missing: None }
 }
 
-fn block<'a>(text: &'a str, size: f32) -> TextSpec<'a> {
+fn block(text: &str, size: f32) -> TextSpec<'_> {
     TextSpec::Block {
         text,
         origin: Vec2::new(10.0, 20.0),
@@ -184,7 +185,7 @@ fn formula_has_quads_and_rules() {
     cache.update(ShapeId(1), 0, &block("$\\frac{a}{b}$", 40.0), 1.0, &fake());
     let chunk = cache.get(ShapeId(1)).unwrap();
     assert!(chunk.runs().iter().map(|r| r.indices.len()).sum::<usize>() >= 12);
-    assert!(!chunk.rules().indices.is_empty());
+    assert_ne!(chunk.rules().indices.len(), 0);
 }
 
 #[test]
@@ -197,7 +198,7 @@ fn label_is_centered_and_capped_label_re_emits_on_zoom() {
         (lo.min(v[0]), hi.max(v[0]))
     });
     // Assert: ink centred on x = 100 within the advance box.
-    assert!(((min_x + max_x) * 0.5 - 100.0).abs() < 5.0);
+    assert!((f32::midpoint(min_x, max_x) - 100.0).abs() < 5.0);
     // Same world size: nothing to re-emit; another world size: re-emit.
     assert!(!cache.update(ShapeId(1), 0, &label("ab", 10.0), 2.0, &fake()));
     assert!(cache.update(ShapeId(1), 0, &label("ab", 5.0), 4.0, &fake()));
@@ -215,7 +216,7 @@ fn missing_glyph_is_skipped() {
 fn text_below_minimum_size_emits_nothing() {
     let mut cache = TextCache::new(1.0);
     cache.update(ShapeId(1), 0, &block("abc", 20.0), 0.1, &fake());
-    assert!(positions(&cache, 1).is_empty());
+    assert_eq!(positions(&cache, 1), NONE);
 }
 
 #[test]
@@ -223,10 +224,10 @@ fn non_finite_input_emits_nothing() {
     let mut cache = TextCache::new(1.0);
     for zoom in [f32::NAN, f32::INFINITY, 0.0, -1.0] {
         cache.update(ShapeId(1), 0, &block("abc", 20.0), zoom, &fake());
-        assert!(positions(&cache, 1).is_empty());
+        assert_eq!(positions(&cache, 1), NONE);
     }
     cache.update(ShapeId(2), 0, &block("abc", f32::NAN), 1.0, &fake());
-    assert!(positions(&cache, 2).is_empty());
+    assert_eq!(positions(&cache, 2), NONE);
     cache.update(ShapeId(3), 0, &label("ab", f32::NAN), 1.0, &fake());
-    assert!(positions(&cache, 3).is_empty());
+    assert_eq!(positions(&cache, 3), NONE);
 }
