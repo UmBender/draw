@@ -295,7 +295,7 @@ mod tests {
         let refs: Vec<&Shape> = shapes.iter().collect();
         // Act / Assert
         assert_eq!(tessellate_many(&refs, 8), tessellate_many(&refs, 1));
-        assert!(tessellate_many(&[], 4).is_empty());
+        assert_eq!(tessellate_many(&[], 4), Vec::<Mesh>::new());
         assert_eq!(tessellate_many(&refs, 0).len(), refs.len());
     }
 
