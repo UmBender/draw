@@ -4,7 +4,7 @@ title: Retained renderer in the app
 status: todo
 wave: 72
 branch: task/T172-retained-renderer-in-the-app
-depends_on: [T146, T173]
+depends_on: [T146, T173, T179, T180]
 adrs: []
 feature: ""
 tutorial: ""
@@ -69,3 +69,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
   rasters per zoom step: re-emit text quads only on a raster-step change);
   (c) wire `ChunkCache` into the app frame, minimap and grids, and remove
   the T26 layer re-render, settle and blit; AC-3 stays the owner's.
+- 2026-11-16 — split by the owner after the batch blocker (recorded on the task branch): tessellator parity went to [[T179 Tessellator parity with the app's drawing]], retained text and formulas to [[T180 Text and formulas on the retained path]]; T172 keeps the wiring (`ChunkCache` in the app frame, minimap and grids, removal of the T26 layer re-render, settle and blit) and AC-3.

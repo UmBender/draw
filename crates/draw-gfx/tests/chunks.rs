@@ -123,7 +123,37 @@ fn tessellate_line_covers_its_width() {
     let xs: Vec<f32> = mesh.vertices.iter().map(|v| v.pos[0]).collect();
     let min = xs.iter().copied().fold(f32::INFINITY, f32::min);
     let max = xs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    assert!((max - min - 4.0).abs() < 1e-3, "width {}", max - min);
+    // The width, the feather of half a pixel on each side, and nothing else.
+    assert!((max - min - 5.0).abs() < 1e-3, "width {}", max - min);
+}
+
+#[test]
+fn pan_keeps_chunks_and_bucket_change_rebuilds_them() {
+    // Arrange: one chunk made at zoom 1.
+    let all = shapes(10);
+    let revs = vec![0; all.len()];
+    let mut cache = ChunkCache::new();
+    cache.update(&items(&all, &revs));
+    let before = cache.tessellations();
+    // Act and assert: a zoom inside the bucket keeps the chunks.
+    assert!(!cache.set_zoom(1.2));
+    assert_eq!(cache.update(&items(&all, &revs)).rebuilt, 0);
+    assert_eq!(cache.tessellations(), before);
+    // A zoom across the bucket edge drops them, the next update rebuilds.
+    assert!(cache.set_zoom(4.0));
+    assert_eq!(cache.update(&items(&all, &revs)).rebuilt, 1);
+    assert_eq!(cache.tessellations(), before + all.len());
+}
+
+#[test]
+fn bucket_zoom_changes_the_geometry_like_a_fresh_tessellation() {
+    let all = shapes(3);
+    let revs = vec![0; all.len()];
+    let mut cache = ChunkCache::new();
+    cache.set_zoom(4.0);
+    cache.update(&items(&all, &revs));
+    let fresh = ChunkCache::recompute_at(&items(&all, &revs), 4.0);
+    assert_eq!(cache.chunks()[0].mesh(), &fresh[0]);
 }
 
 #[test]
