@@ -114,6 +114,18 @@ pub fn tessellate(shape: &Shape) -> Mesh {
     b.mesh
 }
 
+/// Fewer shapes than this are tessellated on the calling thread: the cost of
+/// spawning is more than the work (ADR-T148-1).
+pub const MIN_PARALLEL: usize = 256;
+
+/// Tessellates every shape, one mesh each and in the same order, on up to
+/// `threads` scoped threads. The result is the same for every `threads`.
+#[must_use]
+pub fn tessellate_many(shapes: &[&Shape], threads: usize) -> Vec<Mesh> {
+    let _ = (shapes, threads);
+    todo!()
+}
+
 /// Segments of the rim of an ellipse and of a join disc.
 const ELLIPSE_SEGMENTS: usize = 48;
 const DISC_SEGMENTS: usize = 8;
