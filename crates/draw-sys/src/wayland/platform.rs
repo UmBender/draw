@@ -3,7 +3,7 @@
 //! clipboard T170: until then those parts return nothing.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::egl::EglContext;
 use crate::platform::{Platform, RawEvent, WindowMetrics};
@@ -88,6 +88,9 @@ fn metrics(window: &Window<Mapped>) -> WindowMetrics {
 impl Platform for WaylandPlatform {
     fn poll(&mut self, out: &mut Vec<RawEvent>) {
         self.pump();
+        let input = &self.connection.shared.input;
+        input.poll_repeats(Instant::now());
+        input.drain(out);
         let now = metrics(&self.window);
         if now != self.reported {
             self.reported = now;

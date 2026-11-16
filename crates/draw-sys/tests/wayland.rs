@@ -250,11 +250,10 @@ fn wayland_platform_input_parts_return_nothing() {
     let mut events = Vec::new();
     platform.poll(&mut events);
 
-    assert!(
-        events
-            .iter()
-            .all(|e| matches!(e, RawEvent::Resize(_) | RawEvent::Backend(_)))
-    );
+    assert!(events.iter().all(|e| matches!(
+        e,
+        RawEvent::Resize(_) | RawEvent::Backend(_) | RawEvent::Focus(_)
+    )));
     assert_eq!(platform.clipboard_text(), None);
     platform.set_clipboard_text("ignored until T170");
     assert_eq!(platform.clipboard_text(), None);

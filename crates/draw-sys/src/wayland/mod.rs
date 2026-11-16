@@ -7,8 +7,11 @@ pub mod connection;
 pub mod ffi;
 #[rustfmt::skip]
 pub mod generated;
+pub mod input;
 pub mod platform;
+pub(crate) mod seat;
 pub mod window;
+pub mod xkb;
 
 pub use connection::{Connection, WaylandError};
 pub use platform::WaylandPlatform;

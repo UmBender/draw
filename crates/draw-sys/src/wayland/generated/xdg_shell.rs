@@ -230,9 +230,9 @@ pub mod xdg_toplevel {
     static REQUEST_TYPES_1: TypeTable<1> = TypeTable([&raw const crate::wayland::generated::xdg_shell::xdg_toplevel::INTERFACE]);
     static REQUEST_TYPES_2: TypeTable<1> = TypeTable([null()]);
     static REQUEST_TYPES_3: TypeTable<1> = TypeTable([null()]);
-    static REQUEST_TYPES_4: TypeTable<4> = TypeTable([null(), null(), null(), null()]);
-    static REQUEST_TYPES_5: TypeTable<2> = TypeTable([null(), null()]);
-    static REQUEST_TYPES_6: TypeTable<3> = TypeTable([null(), null(), null()]);
+    static REQUEST_TYPES_4: TypeTable<4> = TypeTable([&raw const crate::wayland::generated::wayland::wl_seat::INTERFACE, null(), null(), null()]);
+    static REQUEST_TYPES_5: TypeTable<2> = TypeTable([&raw const crate::wayland::generated::wayland::wl_seat::INTERFACE, null()]);
+    static REQUEST_TYPES_6: TypeTable<3> = TypeTable([&raw const crate::wayland::generated::wayland::wl_seat::INTERFACE, null(), null()]);
     static REQUEST_TYPES_7: TypeTable<2> = TypeTable([null(), null()]);
     static REQUEST_TYPES_8: TypeTable<2> = TypeTable([null(), null()]);
     static REQUEST_TYPES_9: TypeTable<0> = TypeTable([]);

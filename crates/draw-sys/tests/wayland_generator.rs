@@ -433,6 +433,9 @@ const PROTOCOLS: [(&str, &str, &[&str]); 2] = [
             "wl_surface",
             "wl_callback",
             "wl_output",
+            "wl_seat",
+            "wl_pointer",
+            "wl_keyboard",
         ],
     ),
     (

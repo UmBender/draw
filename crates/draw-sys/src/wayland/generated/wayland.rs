@@ -604,3 +604,337 @@ pub mod wl_output {
     }
 
 }
+
+/// The `wl_seat` interface.
+pub mod wl_seat {
+    use crate::wayland::client::{Client, Proxy};
+    use crate::wayland::ffi::{Interface, Message, MessageTable, TypeTable};
+    use std::ffi::{c_char, c_void};
+    use std::ptr::{null, null_mut};
+
+    /// Highest version this code knows.
+    pub const VERSION: u32 = 11;
+
+    static REQUEST_TYPES_0: TypeTable<1> = TypeTable([&raw const crate::wayland::generated::wayland::wl_pointer::INTERFACE]);
+    static REQUEST_TYPES_1: TypeTable<1> = TypeTable([&raw const crate::wayland::generated::wayland::wl_keyboard::INTERFACE]);
+    static REQUEST_TYPES_2: TypeTable<1> = TypeTable([null()]);
+    static REQUEST_TYPES_3: TypeTable<0> = TypeTable([]);
+    static REQUESTS: MessageTable<4> = MessageTable([Message { name: c"get_pointer".as_ptr(), signature: c"n".as_ptr(), types: REQUEST_TYPES_0.0.as_ptr() }, Message { name: c"get_keyboard".as_ptr(), signature: c"n".as_ptr(), types: REQUEST_TYPES_1.0.as_ptr() }, Message { name: c"get_touch".as_ptr(), signature: c"n".as_ptr(), types: REQUEST_TYPES_2.0.as_ptr() }, Message { name: c"release".as_ptr(), signature: c"5".as_ptr(), types: REQUEST_TYPES_3.0.as_ptr() }]);
+
+    static EVENT_TYPES_0: TypeTable<1> = TypeTable([null()]);
+    static EVENT_TYPES_1: TypeTable<1> = TypeTable([null()]);
+    static EVENTS: MessageTable<2> = MessageTable([Message { name: c"capabilities".as_ptr(), signature: c"u".as_ptr(), types: EVENT_TYPES_0.0.as_ptr() }, Message { name: c"name".as_ptr(), signature: c"2s".as_ptr(), types: EVENT_TYPES_1.0.as_ptr() }]);
+
+    /// The `wl_interface` table.
+    pub static INTERFACE: Interface = Interface {
+        name: c"wl_seat".as_ptr(),
+        version: 11,
+        method_count: 4,
+        methods: REQUESTS.0.as_ptr(),
+        event_count: 2,
+        events: EVENTS.0.as_ptr(),
+    };
+
+    /// The event handlers, in protocol order.
+    #[repr(C)]
+    pub struct Listener {
+        /// Event `capabilities`.
+        pub capabilities: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `name`.
+        pub name: unsafe extern "C" fn(*mut c_void, *mut Proxy, *const c_char), // TEST: wayland_window_configures_with_a_size
+    }
+
+    extern "C" fn ignore_capabilities(_: *mut c_void, _: *mut Proxy, _: u32) {}
+    extern "C" fn ignore_name(_: *mut c_void, _: *mut Proxy, _: *const c_char) {}
+
+    /// Handlers that do nothing, to update with `..IGNORE`.
+    pub const IGNORE: Listener = Listener {
+        capabilities: ignore_capabilities,
+        name: ignore_name,
+    };
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Installs `listener` on `proxy`; `0` on success.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_seat` proxy of `client`, and `data` stays valid
+    /// (whatever the handlers do with it) until the proxy is destroyed.
+    pub unsafe fn add_listener(client: &Client, proxy: *mut Proxy, listener: &'static Listener, data: *mut c_void) -> i32 {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for `proxy` and `data`; the listener is a
+        // `repr(C)` table of function pointers in event order.
+        unsafe { (client.add_listener)(proxy, std::ptr::from_ref(listener).cast(), data) }
+    }
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Request `get_pointer` of `wl_seat`.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_seat` proxy of `client`; object arguments are live
+    /// proxies of the same connection (null where the protocol allows it).
+    pub unsafe fn get_pointer(client: &Client, proxy: *mut Proxy) -> *mut Proxy {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for the proxies; the opcode, signature and
+        // argument types follow the protocol XML this file was generated from.
+        unsafe { (client.marshal_flags)(proxy, 0, &raw const crate::wayland::generated::wayland::wl_pointer::INTERFACE, (client.get_version)(proxy), 0, null_mut::<Proxy>()) }
+    }
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Request `get_keyboard` of `wl_seat`.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_seat` proxy of `client`; object arguments are live
+    /// proxies of the same connection (null where the protocol allows it).
+    pub unsafe fn get_keyboard(client: &Client, proxy: *mut Proxy) -> *mut Proxy {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for the proxies; the opcode, signature and
+        // argument types follow the protocol XML this file was generated from.
+        unsafe { (client.marshal_flags)(proxy, 1, &raw const crate::wayland::generated::wayland::wl_keyboard::INTERFACE, (client.get_version)(proxy), 0, null_mut::<Proxy>()) }
+    }
+
+    // `get_touch` is not wrapped: it creates `wl_touch`, which is not generated.
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Request `release` of `wl_seat`.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_seat` proxy of `client`; object arguments are live
+    /// proxies of the same connection (null where the protocol allows it).
+    pub unsafe fn release(client: &Client, proxy: *mut Proxy) {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for the proxies; the opcode, signature and
+        // argument types follow the protocol XML this file was generated from.
+        unsafe { (client.marshal_flags)(proxy, 3, null(), (client.get_version)(proxy), 1) };
+    }
+
+}
+
+/// The `wl_pointer` interface.
+pub mod wl_pointer {
+    use crate::wayland::client::{Client, Proxy};
+    use crate::wayland::ffi::{Interface, Message, MessageTable, TypeTable};
+    use std::ffi::{c_char, c_void};
+    use std::ptr::{null, null_mut};
+
+    /// Highest version this code knows.
+    pub const VERSION: u32 = 11;
+
+    static REQUEST_TYPES_0: TypeTable<4> = TypeTable([null(), &raw const crate::wayland::generated::wayland::wl_surface::INTERFACE, null(), null()]);
+    static REQUEST_TYPES_1: TypeTable<0> = TypeTable([]);
+    static REQUESTS: MessageTable<2> = MessageTable([Message { name: c"set_cursor".as_ptr(), signature: c"u?oii".as_ptr(), types: REQUEST_TYPES_0.0.as_ptr() }, Message { name: c"release".as_ptr(), signature: c"3".as_ptr(), types: REQUEST_TYPES_1.0.as_ptr() }]);
+
+    static EVENT_TYPES_0: TypeTable<4> = TypeTable([null(), &raw const crate::wayland::generated::wayland::wl_surface::INTERFACE, null(), null()]);
+    static EVENT_TYPES_1: TypeTable<2> = TypeTable([null(), &raw const crate::wayland::generated::wayland::wl_surface::INTERFACE]);
+    static EVENT_TYPES_2: TypeTable<3> = TypeTable([null(), null(), null()]);
+    static EVENT_TYPES_3: TypeTable<4> = TypeTable([null(), null(), null(), null()]);
+    static EVENT_TYPES_4: TypeTable<3> = TypeTable([null(), null(), null()]);
+    static EVENT_TYPES_5: TypeTable<0> = TypeTable([]);
+    static EVENT_TYPES_6: TypeTable<1> = TypeTable([null()]);
+    static EVENT_TYPES_7: TypeTable<2> = TypeTable([null(), null()]);
+    static EVENT_TYPES_8: TypeTable<2> = TypeTable([null(), null()]);
+    static EVENT_TYPES_9: TypeTable<2> = TypeTable([null(), null()]);
+    static EVENT_TYPES_10: TypeTable<2> = TypeTable([null(), null()]);
+    static EVENT_TYPES_11: TypeTable<2> = TypeTable([null(), null()]);
+    static EVENTS: MessageTable<12> = MessageTable([Message { name: c"enter".as_ptr(), signature: c"uoff".as_ptr(), types: EVENT_TYPES_0.0.as_ptr() }, Message { name: c"leave".as_ptr(), signature: c"uo".as_ptr(), types: EVENT_TYPES_1.0.as_ptr() }, Message { name: c"motion".as_ptr(), signature: c"uff".as_ptr(), types: EVENT_TYPES_2.0.as_ptr() }, Message { name: c"button".as_ptr(), signature: c"uuuu".as_ptr(), types: EVENT_TYPES_3.0.as_ptr() }, Message { name: c"axis".as_ptr(), signature: c"uuf".as_ptr(), types: EVENT_TYPES_4.0.as_ptr() }, Message { name: c"frame".as_ptr(), signature: c"5".as_ptr(), types: EVENT_TYPES_5.0.as_ptr() }, Message { name: c"axis_source".as_ptr(), signature: c"5u".as_ptr(), types: EVENT_TYPES_6.0.as_ptr() }, Message { name: c"axis_stop".as_ptr(), signature: c"5uu".as_ptr(), types: EVENT_TYPES_7.0.as_ptr() }, Message { name: c"axis_discrete".as_ptr(), signature: c"5ui".as_ptr(), types: EVENT_TYPES_8.0.as_ptr() }, Message { name: c"axis_value120".as_ptr(), signature: c"8ui".as_ptr(), types: EVENT_TYPES_9.0.as_ptr() }, Message { name: c"axis_relative_direction".as_ptr(), signature: c"9uu".as_ptr(), types: EVENT_TYPES_10.0.as_ptr() }, Message { name: c"warp".as_ptr(), signature: c"11ff".as_ptr(), types: EVENT_TYPES_11.0.as_ptr() }]);
+
+    /// The `wl_interface` table.
+    pub static INTERFACE: Interface = Interface {
+        name: c"wl_pointer".as_ptr(),
+        version: 11,
+        method_count: 2,
+        methods: REQUESTS.0.as_ptr(),
+        event_count: 12,
+        events: EVENTS.0.as_ptr(),
+    };
+
+    /// The event handlers, in protocol order.
+    #[repr(C)]
+    pub struct Listener {
+        /// Event `enter`.
+        pub enter: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, *mut Proxy, i32, i32), // TEST: wayland_window_configures_with_a_size
+        /// Event `leave`.
+        pub leave: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, *mut Proxy), // TEST: wayland_window_configures_with_a_size
+        /// Event `motion`.
+        pub motion: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, i32, i32), // TEST: wayland_window_configures_with_a_size
+        /// Event `button`.
+        pub button: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, u32, u32, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `axis`.
+        pub axis: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, u32, i32), // TEST: wayland_window_configures_with_a_size
+        /// Event `frame`.
+        pub frame: unsafe extern "C" fn(*mut c_void, *mut Proxy), // TEST: wayland_window_configures_with_a_size
+        /// Event `axis_source`.
+        pub axis_source: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `axis_stop`.
+        pub axis_stop: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `axis_discrete`.
+        pub axis_discrete: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, i32), // TEST: wayland_window_configures_with_a_size
+        /// Event `axis_value120`.
+        pub axis_value120: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, i32), // TEST: wayland_window_configures_with_a_size
+        /// Event `axis_relative_direction`.
+        pub axis_relative_direction: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `warp`.
+        pub warp: unsafe extern "C" fn(*mut c_void, *mut Proxy, i32, i32), // TEST: wayland_window_configures_with_a_size
+    }
+
+    extern "C" fn ignore_enter(_: *mut c_void, _: *mut Proxy, _: u32, _: *mut Proxy, _: i32, _: i32) {}
+    extern "C" fn ignore_leave(_: *mut c_void, _: *mut Proxy, _: u32, _: *mut Proxy) {}
+    extern "C" fn ignore_motion(_: *mut c_void, _: *mut Proxy, _: u32, _: i32, _: i32) {}
+    extern "C" fn ignore_button(_: *mut c_void, _: *mut Proxy, _: u32, _: u32, _: u32, _: u32) {}
+    extern "C" fn ignore_axis(_: *mut c_void, _: *mut Proxy, _: u32, _: u32, _: i32) {}
+    extern "C" fn ignore_frame(_: *mut c_void, _: *mut Proxy) {}
+    extern "C" fn ignore_axis_source(_: *mut c_void, _: *mut Proxy, _: u32) {}
+    extern "C" fn ignore_axis_stop(_: *mut c_void, _: *mut Proxy, _: u32, _: u32) {}
+    extern "C" fn ignore_axis_discrete(_: *mut c_void, _: *mut Proxy, _: u32, _: i32) {}
+    extern "C" fn ignore_axis_value120(_: *mut c_void, _: *mut Proxy, _: u32, _: i32) {}
+    extern "C" fn ignore_axis_relative_direction(_: *mut c_void, _: *mut Proxy, _: u32, _: u32) {}
+    extern "C" fn ignore_warp(_: *mut c_void, _: *mut Proxy, _: i32, _: i32) {}
+
+    /// Handlers that do nothing, to update with `..IGNORE`.
+    pub const IGNORE: Listener = Listener {
+        enter: ignore_enter,
+        leave: ignore_leave,
+        motion: ignore_motion,
+        button: ignore_button,
+        axis: ignore_axis,
+        frame: ignore_frame,
+        axis_source: ignore_axis_source,
+        axis_stop: ignore_axis_stop,
+        axis_discrete: ignore_axis_discrete,
+        axis_value120: ignore_axis_value120,
+        axis_relative_direction: ignore_axis_relative_direction,
+        warp: ignore_warp,
+    };
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Installs `listener` on `proxy`; `0` on success.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_pointer` proxy of `client`, and `data` stays valid
+    /// (whatever the handlers do with it) until the proxy is destroyed.
+    pub unsafe fn add_listener(client: &Client, proxy: *mut Proxy, listener: &'static Listener, data: *mut c_void) -> i32 {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for `proxy` and `data`; the listener is a
+        // `repr(C)` table of function pointers in event order.
+        unsafe { (client.add_listener)(proxy, std::ptr::from_ref(listener).cast(), data) }
+    }
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Request `set_cursor` of `wl_pointer`.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_pointer` proxy of `client`; object arguments are live
+    /// proxies of the same connection (null where the protocol allows it).
+    pub unsafe fn set_cursor(client: &Client, proxy: *mut Proxy, serial: u32, surface: *mut Proxy, hotspot_x: i32, hotspot_y: i32) {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for the proxies; the opcode, signature and
+        // argument types follow the protocol XML this file was generated from.
+        unsafe { (client.marshal_flags)(proxy, 0, null(), (client.get_version)(proxy), 0, serial, surface, hotspot_x, hotspot_y) };
+    }
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Request `release` of `wl_pointer`.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_pointer` proxy of `client`; object arguments are live
+    /// proxies of the same connection (null where the protocol allows it).
+    pub unsafe fn release(client: &Client, proxy: *mut Proxy) {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for the proxies; the opcode, signature and
+        // argument types follow the protocol XML this file was generated from.
+        unsafe { (client.marshal_flags)(proxy, 1, null(), (client.get_version)(proxy), 1) };
+    }
+
+}
+
+/// The `wl_keyboard` interface.
+pub mod wl_keyboard {
+    use crate::wayland::client::{Client, Proxy};
+    use crate::wayland::ffi::{Interface, Message, MessageTable, TypeTable};
+    use std::ffi::{c_char, c_void};
+    use std::ptr::{null, null_mut};
+
+    /// Highest version this code knows.
+    pub const VERSION: u32 = 11;
+
+    static REQUEST_TYPES_0: TypeTable<0> = TypeTable([]);
+    static REQUESTS: MessageTable<1> = MessageTable([Message { name: c"release".as_ptr(), signature: c"3".as_ptr(), types: REQUEST_TYPES_0.0.as_ptr() }]);
+
+    static EVENT_TYPES_0: TypeTable<3> = TypeTable([null(), null(), null()]);
+    static EVENT_TYPES_1: TypeTable<3> = TypeTable([null(), &raw const crate::wayland::generated::wayland::wl_surface::INTERFACE, null()]);
+    static EVENT_TYPES_2: TypeTable<2> = TypeTable([null(), &raw const crate::wayland::generated::wayland::wl_surface::INTERFACE]);
+    static EVENT_TYPES_3: TypeTable<4> = TypeTable([null(), null(), null(), null()]);
+    static EVENT_TYPES_4: TypeTable<5> = TypeTable([null(), null(), null(), null(), null()]);
+    static EVENT_TYPES_5: TypeTable<2> = TypeTable([null(), null()]);
+    static EVENTS: MessageTable<6> = MessageTable([Message { name: c"keymap".as_ptr(), signature: c"uhu".as_ptr(), types: EVENT_TYPES_0.0.as_ptr() }, Message { name: c"enter".as_ptr(), signature: c"uoa".as_ptr(), types: EVENT_TYPES_1.0.as_ptr() }, Message { name: c"leave".as_ptr(), signature: c"uo".as_ptr(), types: EVENT_TYPES_2.0.as_ptr() }, Message { name: c"key".as_ptr(), signature: c"uuuu".as_ptr(), types: EVENT_TYPES_3.0.as_ptr() }, Message { name: c"modifiers".as_ptr(), signature: c"uuuuu".as_ptr(), types: EVENT_TYPES_4.0.as_ptr() }, Message { name: c"repeat_info".as_ptr(), signature: c"4ii".as_ptr(), types: EVENT_TYPES_5.0.as_ptr() }]);
+
+    /// The `wl_interface` table.
+    pub static INTERFACE: Interface = Interface {
+        name: c"wl_keyboard".as_ptr(),
+        version: 11,
+        method_count: 1,
+        methods: REQUESTS.0.as_ptr(),
+        event_count: 6,
+        events: EVENTS.0.as_ptr(),
+    };
+
+    /// The event handlers, in protocol order.
+    #[repr(C)]
+    pub struct Listener {
+        /// Event `keymap`.
+        pub keymap: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, i32, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `enter`.
+        pub enter: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, *mut Proxy, *mut c_void), // TEST: wayland_window_configures_with_a_size
+        /// Event `leave`.
+        pub leave: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, *mut Proxy), // TEST: wayland_window_configures_with_a_size
+        /// Event `key`.
+        pub key: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, u32, u32, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `modifiers`.
+        pub modifiers: unsafe extern "C" fn(*mut c_void, *mut Proxy, u32, u32, u32, u32, u32), // TEST: wayland_window_configures_with_a_size
+        /// Event `repeat_info`.
+        pub repeat_info: unsafe extern "C" fn(*mut c_void, *mut Proxy, i32, i32), // TEST: wayland_window_configures_with_a_size
+    }
+
+    extern "C" fn ignore_keymap(_: *mut c_void, _: *mut Proxy, _: u32, _: i32, _: u32) {}
+    extern "C" fn ignore_enter(_: *mut c_void, _: *mut Proxy, _: u32, _: *mut Proxy, _: *mut c_void) {}
+    extern "C" fn ignore_leave(_: *mut c_void, _: *mut Proxy, _: u32, _: *mut Proxy) {}
+    extern "C" fn ignore_key(_: *mut c_void, _: *mut Proxy, _: u32, _: u32, _: u32, _: u32) {}
+    extern "C" fn ignore_modifiers(_: *mut c_void, _: *mut Proxy, _: u32, _: u32, _: u32, _: u32, _: u32) {}
+    extern "C" fn ignore_repeat_info(_: *mut c_void, _: *mut Proxy, _: i32, _: i32) {}
+
+    /// Handlers that do nothing, to update with `..IGNORE`.
+    pub const IGNORE: Listener = Listener {
+        keymap: ignore_keymap,
+        enter: ignore_enter,
+        leave: ignore_leave,
+        key: ignore_key,
+        modifiers: ignore_modifiers,
+        repeat_info: ignore_repeat_info,
+    };
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Installs `listener` on `proxy`; `0` on success.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_keyboard` proxy of `client`, and `data` stays valid
+    /// (whatever the handlers do with it) until the proxy is destroyed.
+    pub unsafe fn add_listener(client: &Client, proxy: *mut Proxy, listener: &'static Listener, data: *mut c_void) -> i32 {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for `proxy` and `data`; the listener is a
+        // `repr(C)` table of function pointers in event order.
+        unsafe { (client.add_listener)(proxy, std::ptr::from_ref(listener).cast(), data) }
+    }
+
+    // TEST: wayland_window_configures_with_a_size
+    /// Request `release` of `wl_keyboard`.
+    ///
+    /// # Safety
+    /// `proxy` is a live `wl_keyboard` proxy of `client`; object arguments are live
+    /// proxies of the same connection (null where the protocol allows it).
+    pub unsafe fn release(client: &Client, proxy: *mut Proxy) {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: the caller vouches for the proxies; the opcode, signature and
+        // argument types follow the protocol XML this file was generated from.
+        unsafe { (client.marshal_flags)(proxy, 0, null(), (client.get_version)(proxy), 1) };
+    }
+
+}
