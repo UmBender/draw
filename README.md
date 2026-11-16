@@ -112,6 +112,32 @@ is set). Please attach it to the issue.
 
 macOS and Windows have no packages: build from source.
 
+### Install on NixOS
+
+The tarball, `.deb` and `.rpm` do not run on NixOS. The repository is a
+flake whose package wraps the binary with the libraries draw loads at run
+time (`LD_LIBRARY_PATH`); the GL drivers come from `/run/opengl-driver`.
+
+```sh
+nix run github:UmBender/draw                # try it
+nix profile install github:UmBender/draw    # install it for your user
+```
+
+In a NixOS or home-manager configuration, add the flake as an input and
+install its package (or use `overlays.default` to get `pkgs.draw`):
+
+```nix
+# flake.nix
+inputs.draw.url = "github:UmBender/draw";
+
+# NixOS: environment.systemPackages; home-manager: home.packages
+environment.systemPackages = [ inputs.draw.packages.${pkgs.system}.default ];
+```
+
+`nix develop` gives a shell with the Rust toolchain and the end-to-end
+test tools. `scripts/nix-check.sh` builds and checks the flake in a
+`nixos/nix` container with podman.
+
 ### Build from source
 
 Requirements:

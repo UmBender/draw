@@ -1,7 +1,7 @@
 ---
 id: T174
 title: Nix flake for NixOS
-status: todo
+status: review
 wave: 72
 branch: task/T174-nix-flake-for-nixos
 depends_on: []
@@ -28,7 +28,17 @@ draw installs on NixOS from the repository: `nix run github:UmBender/draw`, `nix
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Each criterion names its check. Design: `flake.nix` holds the library list
+as `{ soname = "libX11.so.6"; pkg = pkgs.libx11; }` entries (one `soname =`
+string per library, plain-text parsable); `scripts/nix-check.sh` runs the
+container build. Inputs: `nixos-unstable`, `rust-overlay`, `flake-utils`
+is avoided (plain `genAttrs`). The toolchain version is written once in
+`flake.nix` (`rustVersion = "1.99.0"`).
+
+Tests: AC-1 `flake_exposes_package_app_shell_and_overlay`; AC-3
+`flake_libraries_match_runtime_libs`, `flake_toolchain_matches_rust_version`;
+AC-2 and AC-4 `readme_has_nixos_install_section`; AC-2 run by
+`scripts/nix-check.sh` (not a cargo test: needs podman and network).
 
 - **AC-1** — `flake.nix` (with `flake.lock`) exposes `packages.x86_64-linux.default` (also `aarch64-linux` if it evaluates), `apps.default`, `devShells.default` (the toolchain, sway/Xvfb tools for e2e where nixpkgs has them) and `overlays.default`. The package installs the binary, the `.desktop` file, the icons and the metainfo like `packaging/install.sh`, and wraps the binary with `LD_LIBRARY_PATH`.
 - **AC-2** — `nix build` and `nix flake check` pass in a `nixos/nix` container (`podman run`); `result/bin/draw --version` prints the version and the preflight passes with the wrapped path (a check inside the build or the container: `draw --help` and the preflight's library lookup, without a display).
@@ -49,12 +59,21 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T174): specify the flake`
-- [ ] tests — `test(T174): add the flake library list check`
-- [ ] behaviour — `feat(T174): add the Nix flake`
-- [ ] docs — `docs(T174): document the NixOS install`
+- [x] spec — `docs(T174): specify the flake`
+- [x] tests — `test(T174): add the flake library list check`
+- [x] behaviour — `feat(T174): add the Nix flake`
+- [x] docs — `docs(T174): document the NixOS install`
 - [ ] by hand — owner, on NixOS, recorded in the Log
 
 ## Log
 
 - 2026-11-15 — written for the owner's move to NixOS.
+- 2026-11-15 — implemented (batch). `scripts/nix-check.sh` (new, not in
+  *Files owned*; the plan's recommended defaults asked for it) builds the
+  flake in `nixos/nix` with podman: `flake check`, `nix build`,
+  `draw --version`/`--help`, wrapper carries every soname's directory.
+  Green. `flake.lock` generated through it. The README section went in
+  with the quality commit. Not verified: `aarch64-linux` evaluates
+  (`flake check` skips it; `--all-systems` not run), tests are skipped in
+  the Nix build (`doCheck = false`), no ADR needed. AC-5 (Wayland, X11,
+  tablet on NixOS) is the owner's by-hand check.
