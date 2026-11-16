@@ -1,7 +1,7 @@
 ---
 id: T178
 title: X11 platform in main and the e2e suite
-status: in-progress
+status: review
 wave: 73
 branch: task/T178-x11-platform-in-main-and-the-e2e-suite
 depends_on: [T177]
@@ -60,3 +60,4 @@ Design: [[ADR-T178-1 X11 platform hands out a shared GL handle]].
 - 2026-11-15 — unblocked by the owner: Files owned widened to `crates/draw-sys/src/x11/**` and `crates/draw-sys/tests/x11*`; design in ADR-T178-1.
 - 2026-11-15 — AC-0 and AC-1 done (shared GL handle `X11Platform::share_gl`, `--platform`, `X11Gpu`, native arm in `main`), `scripts/check.sh` green. AC-2 fails: `scripts/e2e.sh --backend x11 --platform native` aborts every case before sync 1 with `assertion failed: THREAD_ID.is_some()` (macroquad-0.4.16 `src/lib.rs:172`): macroquad is called outside its loop. The likely caller is `ui_text::measure` (`src/shell/ui_text.rs`: `load_ttf_font_from_bytes` + `measure_text`, used by `toolbar.rs`, `sheet.rs`, `command_palette.rs`, marked "kept until T149"). Window resize already reaches the Gpu through `X11Gpu`.
 - 2026-11-15 — BLOCKED (batch): AC-2 needs a macroquad-free `ui_text::measure` (e.g. fontdue advances from the `GlyphAtlas`), which is outside Files owned and may move label sizes against the goldens. Recommended fix: a small task (or widen T178 to `src/shell/ui_text.rs`, `toolbar.rs`, `sheet.rs`, `command_palette.rs`) that replaces `measure` and then re-runs `scripts/e2e.sh --backend x11 --platform native`; more macroquad calls may surface after that.
+- 2026-11-16 — unblocked by the owner (night 3): all of `src/shell/**`. `ui_text::measure` now uses fontdue (macroquad goldens unchanged); `scripts/e2e.sh` Xvfb gets `-dpi 96` (the native scale was 1.04); `ClosingX11` (`src/shell/gpu_x11.rs`) ends the native process on window close or SIGINT/SIGTERM through `finish_native` in `main`. `scripts/e2e.sh --backend x11 --platform native`: 15 of 16 scenes ok. LEFTOVER (rule 5): `text-formula` differs, 973 pixels over 8 (allowed 64); diff at `target/e2e/text-formula/diff.ppm`. `--backend x11` (macroquad) all ok; `scripts/check.sh` green. By hand: AC-3 in the real app.
