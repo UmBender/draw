@@ -5,7 +5,9 @@
 #![allow(clippy::expect_used, dead_code)]
 
 use std::fs;
+use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt};
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -108,19 +110,136 @@ impl Sway {
     }
 }
 
+/// A running `wtype`: a virtual keyboard on the seat while it lives.
+pub struct Keyboard(Child);
+
+impl Drop for Keyboard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// A virtual pointer held open on the sway socket: a headless seat has no
+/// pointer device, so this gives it the capability (ADR-T75-1).
+pub struct VirtualPointer(UnixStream);
+
+fn wire(object: u32, opcode: u32, payload: &[u8]) -> Vec<u8> {
+    let size = u32::try_from(8 + payload.len()).expect("small message");
+    let mut message = Vec::new();
+    message.extend(object.to_ne_bytes());
+    message.extend(((size << 16) | opcode).to_ne_bytes());
+    message.extend(payload);
+    message
+}
+
+fn wire_string(text: &str) -> Vec<u8> {
+    let mut out = u32::try_from(text.len() + 1)
+        .expect("short name")
+        .to_ne_bytes()
+        .to_vec();
+    out.extend(text.as_bytes());
+    out.push(0);
+    while out.len() % 4 != 0 {
+        out.push(0);
+    }
+    out
+}
+
+/// The registry name of `interface` among the events read so far, and
+/// whether the `sync` callback (object 3) has fired.
+fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
+    let word = |b: &[u8], i: usize| -> Option<u32> {
+        Some(u32::from_ne_bytes(b.get(i..i + 4)?.try_into().ok()?))
+    };
+    let (mut found, mut done) = (None, false);
+    while let (Some(object), Some(header)) = (word(bytes, 0), word(bytes, 4)) {
+        let size = (header >> 16) as usize;
+        let Some(body) = bytes.get(8..size) else {
+            break;
+        };
+        done |= object == 3;
+        if object == 2 && header & 0xffff == 0 {
+            let length = word(body, 4).unwrap_or(0) as usize;
+            if body.get(8..8 + length.saturating_sub(1)) == Some(interface.as_bytes()) {
+                found = word(body, 0);
+            }
+        }
+        bytes = bytes.get(size..).unwrap_or(&[]);
+    }
+    (found, done)
+}
+
+impl VirtualPointer {
+    /// One vertical wheel notch (`axis_source` wheel, `axis_discrete`,
+    /// `frame`).
+    pub fn wheel(&mut self, notch: i32) {
+        let mut discrete = 0u32.to_ne_bytes().to_vec();
+        discrete.extend(0u32.to_ne_bytes());
+        discrete.extend(((15 * notch) << 8).to_ne_bytes());
+        discrete.extend(notch.to_ne_bytes());
+        let mut message = wire(5, 5, &0u32.to_ne_bytes());
+        message.extend(wire(5, 7, &discrete));
+        message.extend(wire(5, 4, &[]));
+        self.0.write_all(&message).expect("virtual pointer write");
+    }
+}
+
 impl Sway {
-    /// Types with `wtype` (a virtual keyboard) on this sway.
+    /// Starts `wtype args…` in the background. Its virtual keyboard is on
+    /// the seat until the guard drops. Put a `-s <ms>` first to give the
+    /// client time to get the keyboard before the keys are typed.
     ///
     /// # Panics
-    /// If `wtype` is missing or fails.
-    pub fn wtype(&self, args: &[&str]) {
-        let status = Command::new("wtype")
+    /// If `wtype` is missing.
+    pub fn keyboard(&self, args: &[&str]) -> Keyboard {
+        let child = Command::new("wtype")
             .args(args)
             .env("WAYLAND_DISPLAY", &self.socket)
             .env("XDG_RUNTIME_DIR", &self.run)
-            .status()
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
             .expect("wtype is required for the Wayland input tests");
-        assert!(status.success(), "wtype {args:?} failed");
+        Keyboard(child)
+    }
+
+    /// Creates a virtual pointer on the seat.
+    ///
+    /// # Panics
+    /// If the compositor has no `zwlr_virtual_pointer_manager_v1`.
+    pub fn virtual_pointer(&self) -> VirtualPointer {
+        const INTERFACE: &str = "zwlr_virtual_pointer_manager_v1";
+        let mut stream = UnixStream::connect(&self.socket).expect("sway socket");
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .expect("timeout");
+        // wl_display.get_registry(2), wl_display.sync(3).
+        let mut hello = wire(1, 1, &2u32.to_ne_bytes());
+        hello.extend(wire(1, 0, &3u32.to_ne_bytes()));
+        stream.write_all(&hello).expect("hello");
+        let mut received = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let name = loop {
+            let n = stream.read(&mut chunk).expect("registry");
+            assert!(n > 0, "sway hung up");
+            received.extend_from_slice(&chunk[..n]);
+            let (found, done) = scan_registry(&received, INTERFACE);
+            if done {
+                break found.expect("sway has no virtual pointer manager");
+            }
+        };
+        // bind(manager id 4), create_virtual_pointer(no seat, id 5).
+        let mut bind = name.to_ne_bytes().to_vec();
+        bind.extend(wire_string(INTERFACE));
+        bind.extend(1u32.to_ne_bytes());
+        bind.extend(4u32.to_ne_bytes());
+        let mut message = wire(2, 0, &bind);
+        let mut create = 0u32.to_ne_bytes().to_vec();
+        create.extend(5u32.to_ne_bytes());
+        message.extend(wire(4, 0, &create));
+        stream.write_all(&message).expect("create pointer");
+        VirtualPointer(stream)
     }
 
     /// Runs `swaymsg seat - cursor <args>`.

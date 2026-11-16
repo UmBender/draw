@@ -16,7 +16,8 @@ use std::time::{Duration, Instant};
 use crate::egl::ContextError;
 use crate::loader::LoadError;
 use crate::wayland::client::{Client, Proxy};
-use crate::wayland::generated::wayland::{wl_compositor, wl_output, wl_registry};
+use crate::wayland::generated::wayland::{wl_compositor, wl_output, wl_registry, wl_seat};
+use crate::wayland::seat::{InputState, SEAT_LISTENER};
 use crate::wayland::generated::xdg_shell::xdg_wm_base;
 
 /// How long a blocking wait for the compositor lasts.
@@ -104,6 +105,7 @@ pub(crate) struct Shared {
     pub wm_base: Cell<*mut Proxy>,
     outputs: RefCell<Vec<Output>>,
     pub win: WinState,
+    pub input: InputState,
 }
 
 #[repr(C)]
@@ -126,7 +128,7 @@ unsafe extern "C" {
 /// `data` is the address of the [`Shared`] the proxy was created for; it
 /// outlives every proxy because `Shared::drop` destroys them.
 // TEST: wayland_connect_binds_the_globals
-unsafe fn shared_of<'a>(data: *mut c_void) -> &'a Shared {
+pub(crate) unsafe fn shared_of<'a>(data: *mut c_void) -> &'a Shared {
     // TEST: wayland_connect_binds_the_globals
     // SAFETY: the caller's contract.
     unsafe { &*data.cast::<Shared>() }
@@ -302,6 +304,10 @@ impl Shared {
                     xdg_wm_base::VERSION,
                 ),
                 "wl_output" => (&raw const wl_output::INTERFACE, wl_output::VERSION),
+                // One seat: the first one announced (T169).
+                "wl_seat" if self.input.seat.get().is_null() => {
+                    (&raw const wl_seat::INTERFACE, wl_seat::VERSION)
+                }
                 _ => continue,
             };
             let version = global.version.min(ours);
@@ -321,6 +327,13 @@ impl Shared {
                     // `data` outlives it.
                     unsafe { xdg_wm_base::add_listener(c, proxy, &WM_BASE_LISTENER, data) };
                 }
+                "wl_seat" => {
+                    self.input.set_seat(proxy, version);
+                    // TEST: wayland_seat_has_one_keyboard_and_one_pointer
+                    // SAFETY: `proxy` is the live `wl_seat` just bound;
+                    // `data` outlives it.
+                    unsafe { wl_seat::add_listener(c, proxy, &SEAT_LISTENER, data) };
+                }
                 _ => {
                     self.outputs.borrow_mut().push(Output { proxy, scale: 1 });
                     // TEST: wayland_output_scale_is_an_integer
@@ -337,6 +350,7 @@ impl Shared {
 impl Drop for Shared {
     fn drop(&mut self) {
         let c = &self.client;
+        self.input.destroy_devices(self);
         for output in self.outputs.borrow().iter() {
             // TEST: wayland_connect_binds_the_globals
             // SAFETY: the output proxies are live and destroyed once, here.
@@ -405,6 +419,7 @@ impl Connection {
             wm_base: Cell::new(null_mut()),
             outputs: RefCell::new(Vec::new()),
             win: WinState::default(),
+            input: InputState::default(),
         });
         let data = Rc::as_ptr(&shared).cast_mut().cast::<c_void>();
         // TEST: wayland_connect_binds_the_globals

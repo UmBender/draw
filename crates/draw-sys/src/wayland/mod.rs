@@ -9,6 +9,7 @@ pub mod ffi;
 pub mod generated;
 pub mod input;
 pub mod platform;
+pub(crate) mod seat;
 pub mod window;
 pub mod xkb;
 

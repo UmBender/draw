@@ -335,10 +335,13 @@ fn focused(sway: &Sway) -> (WaylandPlatform, Vec<RawEvent>) {
 #[test]
 fn wayland_seat_has_one_keyboard_and_one_pointer() {
     let sway = Sway::start();
+    let _keyboard = sway.keyboard(&["-s", "8000", "a"]);
+    let _pointer = sway.virtual_pointer();
     let mut platform = platform(&sway);
 
     let events = collect_until(&mut platform, |e| {
         count_backend(e, BackendEvent::DeviceCreated(Device::Keyboard)) > 0
+            && count_backend(e, BackendEvent::DeviceCreated(Device::Pointer)) > 0
     });
 
     assert_eq!(
@@ -354,6 +357,7 @@ fn wayland_seat_has_one_keyboard_and_one_pointer() {
 #[test]
 fn wayland_keyboard_focus_is_reported() {
     let sway = Sway::start();
+    let _keyboard = sway.keyboard(&["-s", "8000", "a"]);
 
     let (_platform, events) = focused(&sway);
 
@@ -363,9 +367,11 @@ fn wayland_keyboard_focus_is_reported() {
 #[test]
 fn wayland_keyboard_typed_text_arrives() {
     let sway = Sway::start();
+    // The virtual keyboard exists first; the keys come 1.5 s later, when
+    // the platform has its keyboard and focus.
+    let _keyboard = sway.keyboard(&["-s", "1500", "ab", "-s", "8000"]);
     let (mut platform, _) = focused(&sway);
 
-    sway.wtype(&["a", "b"]);
     let events = collect_until(&mut platform, |e| {
         e.iter()
             .filter(|e| matches!(e, RawEvent::Char { .. }))
@@ -391,9 +397,9 @@ fn wayland_keyboard_typed_text_arrives() {
 #[test]
 fn wayland_keyboard_modifiers_arrive() {
     let sway = Sway::start();
+    let _keyboard = sway.keyboard(&["-s", "1500", "-M", "ctrl", "z", "-m", "ctrl", "-s", "8000"]);
     let (mut platform, _) = focused(&sway);
 
-    sway.wtype(&["-M", "ctrl", "z", "-m", "ctrl"]);
     let events = collect_until(&mut platform, |e| {
         e.iter().any(|e| {
             matches!(e, RawEvent::Key { key: RawKey::Letter('Z'), down: true, .. })
@@ -409,9 +415,10 @@ fn wayland_keyboard_modifiers_arrive() {
 #[test]
 fn wayland_pointer_motion_arrives() {
     let sway = Sway::start();
+    let _pointer = sway.virtual_pointer();
     let mut platform = platform(&sway);
 
-    sway.cursor(&["set", "400", "300"]);
+    sway.cursor(&["set", "250", "150"]);
     let events = collect_until(&mut platform, |e| {
         e.iter().any(|e| matches!(e, RawEvent::PointerMove { .. }))
     });
@@ -423,12 +430,13 @@ fn wayland_pointer_motion_arrives() {
             _ => None,
         })
         .unwrap();
-    assert!((moved.0 - 400.0).abs() < 2.0 && (moved.1 - 300.0).abs() < 2.0);
+    assert!((moved.0 - 250.0).abs() < 2.0 && (moved.1 - 150.0).abs() < 2.0);
 }
 
 #[test]
 fn wayland_pointer_buttons_arrive() {
     let sway = Sway::start();
+    let _pointer = sway.virtual_pointer();
     let mut platform = platform(&sway);
     sway.cursor(&["set", "200", "100"]);
     collect_until(&mut platform, |e| {
@@ -460,13 +468,14 @@ fn wayland_pointer_buttons_arrive() {
 #[test]
 fn wayland_pointer_wheel_arrives() {
     let sway = Sway::start();
+    let mut pointer = sway.virtual_pointer();
     let mut platform = platform(&sway);
     sway.cursor(&["set", "300", "300"]);
     collect_until(&mut platform, |e| {
         e.iter().any(|e| matches!(e, RawEvent::PointerMove { .. }))
     });
 
-    sway.cursor(&["press", "button5"]);
+    pointer.wheel(1);
     let events = collect_until(&mut platform, |e| {
         e.iter().any(|e| matches!(e, RawEvent::Wheel { .. }))
     });
