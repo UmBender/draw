@@ -1,7 +1,7 @@
 ---
 id: T172
 title: Retained renderer in the app
-status: todo
+status: in-progress
 wave: 72
 branch: task/T172-retained-renderer-in-the-app
 depends_on: [T146, T173, T179, T180]
@@ -24,7 +24,12 @@ The app draws through the retained renderer of [[T146 Retained renderer in draw-
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Refined by the unattended night-3 run (UNATTENDED CHOICE: the slice below, see the Log). Default stays `layers`; `retained` ships behind `--renderer retained`.
+
+- **AC-1a** — `shell::retained::RetainedScene` draws the visible chunks of the document's shapes (hidden ones skipped) in one pass with `SetCamera(origin, zoom)` and the feathered pipeline; pan re-tessellates nothing and zoom inside a bucket neither. Tests: `retained_draw_sets_camera_and_feathered_pipeline`, `retained_pan_tessellates_nothing`, `retained_zoom_in_bucket_tessellates_nothing`, `retained_edit_rebuilds_only_the_changed_chunk`, `retained_hidden_shape_is_not_drawn`.
+- **AC-1b** — `--renderer layers|retained` is parsed into `Options::renderer` (default `layers`), a bad value is refused. Tests: `renderer_flag_*` in `src/shell/options.rs`.
+- **AC-1c** — With `--renderer retained` the app frame draws the document through `RetainedScene` (no layer target, no settle, no blit). Not unit-testable without a window; covered by AC-2.
+- **AC-1d (LEFTOVER)** — text, formulas, labels, the minimap and the grid tool on the retained path: not in this slice.
 
 - **AC-1** — Shapes, text, formulas, grids and the minimap draw through the retained renderer; pan and zoom re-tessellate nothing. Tests: draw-call and vertex counts on the recorder.
 - **AC-2** — The formula and e2e goldens stay equal within the pixel tolerance. `scripts/e2e.sh --backend all`.
