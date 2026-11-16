@@ -1,7 +1,7 @@
 ---
 id: T170
 title: Wayland tablet and clipboard
-status: in-progress
+status: review
 wave: 72
 branch: task/T170-wayland-tablet-and-clipboard
 depends_on: [T169]
@@ -49,12 +49,20 @@ Pure code in `wayland/pen.rs` and `wayland/transfer.rs`; tests in
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T170): specify the slice`
-- [ ] tests — `test(T170): add failing tests for the tablet and clipboard`
-- [ ] models — `feat(T170): add the tablet and transfer types`
-- [ ] behaviour — `feat(T170): implement the tablet and clipboard`
-- [ ] quality — `chore(T170): pass clippy and rustfmt`
+- [x] tests — `test(T170): add failing tests for the tablet and clipboard`
+- [x] models — `feat(T170): add the tablet and transfer types`
+- [x] behaviour — `feat(T170): implement the tablet and clipboard`
+- [x] quality — `chore(T170): pass clippy and rustfmt`
 - [ ] tablet by hand — owner, recorded in the Log
 
 ## Log
 
 - 2026-11-15 — split from T143 by the owner.
+- 2026-11-16 — implemented in a batch run on top of T169. `scripts/check.sh` green. Clipboard text and `image/png` verified against `wl-copy`/`wl-paste` in a private sway (4 MiB both ways). The pen is covered by recorded-sequence tests only.
+- 2026-11-16 — UNATTENDED CHOICE: edited `crates/draw-sys/src/wayland/{seat,connection,platform,mod}.rs` (wiring, serial tracking, pointer shadowing, destroy order) and `tests/wayland.rs` (the T168 test `wayland_platform_input_parts_return_nothing` asserted an empty clipboard; renamed and trimmed because the clipboard works now). Both are inside `crates/draw-sys`.
+- 2026-11-16 — UNATTENDED CHOICE: the tablet manager is bound at version 1 (version 2 only adds pad dials, which are not generated); tablets and pads are destroyed as soon as they are announced, only tools are used. Generator now also emits `tablet_v2` and the `wl_data_*` interfaces.
+- 2026-11-16 — the pen regressions (T35, T40, barrel, tip bounce) are ports of vendored patches: unit tests on the pure `PenTool`, no snapshot files.
+- LEFTOVER: tilt and tool kind (eraser) are kept in `PenTool` but `RawEvent::Tablet` has no fields for them; proposed task: widen the event when the editor uses them.
+- LEFTOVER: cursor shape while a pen is in proximity (`wp_cursor_shape_v1`, as the vendored code did); proposed task: with T171.
+- LEFTOVER: primary selection and drag and drop stay out of scope.
+- AC-4 (real tablet by hand) is the owner's: plug a tablet, draw with pressure, use both barrel buttons, check the mouse does not draw while the pen hovers.
