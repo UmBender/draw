@@ -97,6 +97,20 @@ impl ChunkCache {
         UpdateStats { rebuilt }
     }
 
+    /// Sets the zoom the chunks are tessellated for (ADR-T179-1); `true`
+    /// when its bucket changed, which drops every chunk.
+    pub fn set_zoom(&mut self, zoom: f32) -> bool {
+        let _ = zoom;
+        todo!()
+    }
+
+    /// [`ChunkCache::recompute`] for a view at `zoom`.
+    #[must_use]
+    pub fn recompute_at(items: &[Item<'_>], zoom: f32) -> Vec<Mesh> {
+        let _ = (items, zoom);
+        todo!()
+    }
+
     /// The chunks, bottom to top.
     #[must_use]
     pub fn chunks(&self) -> &[Chunk] {

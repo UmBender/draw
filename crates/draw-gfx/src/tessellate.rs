@@ -114,6 +114,37 @@ pub fn tessellate(shape: &Shape) -> Mesh {
     b.mesh
 }
 
+/// Tessellates `shape` for a view at `zoom` pixels per world unit
+/// (ADR-T179-1): the minimum screen width, the joint rule and the segment
+/// counts of the screen-space drawing, and the feather geometry
+/// `Blend::AlphaFeathered` reads. Pass a [`zoom_bucket`].
+#[must_use]
+pub fn tessellate_at(shape: &Shape, zoom: f32) -> Mesh {
+    let _ = (shape, zoom);
+    todo!()
+}
+
+/// The zoom rounded to the nearest power of two in the log domain; `1` for a
+/// zoom that is not finite and positive.
+#[must_use]
+pub fn zoom_bucket(zoom: f32) -> f32 {
+    let _ = zoom;
+    todo!()
+}
+
+/// The snap dot grid in `view` (world units): one square of `dot` world
+/// units per multiple of `spacing`, `color`, feather-free. Empty for a
+/// spacing that is not finite and positive and for more than
+/// [`DOT_GRID_MAX_DOTS`] dots.
+#[must_use]
+pub fn dot_grid_mesh(view: Aabb, spacing: f32, dot: f32, color: [u8; 4]) -> Mesh {
+    let _ = (view, spacing, dot, color);
+    todo!()
+}
+
+/// Most dots of [`dot_grid_mesh`].
+pub const DOT_GRID_MAX_DOTS: usize = 100_000;
+
 /// Segments of the rim of an ellipse and of a join disc.
 const ELLIPSE_SEGMENTS: usize = 48;
 const DISC_SEGMENTS: usize = 8;
