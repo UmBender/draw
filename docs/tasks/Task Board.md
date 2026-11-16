@@ -585,9 +585,9 @@ flowchart TD
 | [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]] | done | T168–T171 | `task/T143-wayland-backend-window-keyboard-pointer-` |
 | [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]] | done | T175–T178 | `task/T144-x11-backend-window-keyboard-pointer-xinp` |
 | [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]] | done | T142 | `task/T145-opengl-es-3-0-context-and-loader-egl-and` |
-| [[T146 Retained renderer in draw-gfx]] | todo | T145, T135, T136, T153, T161 | `task/T146-retained-renderer-in-draw-gfx` |
+| [[T146 Retained renderer in draw-gfx]] | done | T145, T135, T136, T153, T161 | `task/T146-retained-renderer-in-draw-gfx` |
 | [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
-| [[T148 Multithreaded tessellation, only with a measured gain]] | todo | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
+| [[T148 Multithreaded tessellation, only with a measured gain]] | done | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
 | [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152–T173, T175–T178 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
 | [[T151 Release 2.0.0]] | todo | T127–T149, T152–T178 | `task/T151-release-2-0-0` |
@@ -607,16 +607,16 @@ flowchart TD
 | [[T165 RenderCtx over Gpu for the drawing and UI text]] | done | T163 | `task/T165-renderctx-over-gpu-for-the-drawing-and-u` |
 | [[T166 Minimap, toolbar, export and app over RenderCtx]] | done | T165 | `task/T166-minimap-toolbar-export-and-app-over-rend` |
 | [[T167 Generic run and the match in main]] | done | T166 | `task/T167-generic-run-and-the-match-in-main` |
-| [[T168 Wayland connection, window and protocol states]] | todo | T142, T145 | `task/T168-wayland-connection-window-and-protocol-` |
-| [[T169 Wayland keyboard, pointer and seat]] | todo | T168 | `task/T169-wayland-keyboard-pointer-and-seat` |
-| [[T170 Wayland tablet and clipboard]] | todo | T169 | `task/T170-wayland-tablet-and-clipboard` |
+| [[T168 Wayland connection, window and protocol states]] | done | T142, T145 | `task/T168-wayland-connection-window-and-protocol-` |
+| [[T169 Wayland keyboard, pointer and seat]] | done | T168 | `task/T169-wayland-keyboard-pointer-and-seat` |
+| [[T170 Wayland tablet and clipboard]] | done | T169 | `task/T170-wayland-tablet-and-clipboard` |
 | [[T171 Wayland platform in main and the e2e suite]] | todo | T170 | `task/T171-wayland-platform-in-main-and-the-e2e-su` |
-| [[T172 Retained renderer in the app]] | todo | T146, T173, T179, T180 | `task/T172-retained-renderer-in-the-app` |
-| [[T173 Camera uniform and analytic anti-aliasing over Gpu]] | todo | T146 | `task/T173-camera-uniform-and-analytic-anti-aliasi` |
-| [[T174 Nix flake for NixOS]] | todo | — | `task/T174-nix-flake-for-nixos` |
-| [[T175 X11 connection, window and GLX context]] | todo | T142, T145 | `task/T175-x11-connection-window-and-glx-context` |
-| [[T176 X11 keyboard, pointer and XInput2 pressure]] | todo | T175 | `task/T176-x11-keyboard-pointer-and-xinput2-pressu` |
-| [[T177 X11 selections and clean exit]] | todo | T176 | `task/T177-x11-selections-and-clean-exit` |
-| [[T178 X11 platform in main and the e2e suite]] | todo | T177 | `task/T178-x11-platform-in-main-and-the-e2e-suite` |
-| [[T179 Tessellator parity with the app's drawing]] | todo | T146, T173 | `task/T179-tessellator-parity-with-the-app-s-draw` |
-| [[T180 Text and formulas on the retained path]] | todo | T146, T173, T179 | `task/T180-text-and-formulas-on-the-retained-path` |
+| [[T172 Retained renderer in the app]] | done | T146, T173, T179, T180 | `task/T172-retained-renderer-in-the-app` |
+| [[T173 Camera uniform and analytic anti-aliasing over Gpu]] | done | T146 | `task/T173-camera-uniform-and-analytic-anti-aliasi` |
+| [[T174 Nix flake for NixOS]] | done | — | `task/T174-nix-flake-for-nixos` |
+| [[T175 X11 connection, window and GLX context]] | done | T142, T145 | `task/T175-x11-connection-window-and-glx-context` |
+| [[T176 X11 keyboard, pointer and XInput2 pressure]] | done | T175 | `task/T176-x11-keyboard-pointer-and-xinput2-pressu` |
+| [[T177 X11 selections and clean exit]] | done | T176 | `task/T177-x11-selections-and-clean-exit` |
+| [[T178 X11 platform in main and the e2e suite]] | done | T177 | `task/T178-x11-platform-in-main-and-the-e2e-suite` |
+| [[T179 Tessellator parity with the app's drawing]] | done | T146, T173 | `task/T179-tessellator-parity-with-the-app-s-draw` |
+| [[T180 Text and formulas on the retained path]] | done | T146, T173, T179 | `task/T180-text-and-formulas-on-the-retained-path` |

@@ -1,7 +1,7 @@
 ---
 id: T179
 title: Tessellator parity with the app's drawing
-status: review
+status: done
 wave: 72
 branch: task/T179-tessellator-parity-with-the-app-s-draw
 depends_on: [T146, T173]

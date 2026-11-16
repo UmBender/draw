@@ -1,7 +1,7 @@
 ---
 id: T180
 title: Text and formulas on the retained path
-status: review
+status: done
 wave: 72
 branch: task/T180-text-and-formulas-on-the-retained-path
 depends_on: [T146, T173, T179]

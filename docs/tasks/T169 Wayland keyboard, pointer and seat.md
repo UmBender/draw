@@ -1,7 +1,7 @@
 ---
 id: T169
 title: Wayland keyboard, pointer and seat
-status: review
+status: done
 wave: 71
 branch: task/T169-wayland-keyboard-pointer-and-seat
 depends_on: [T168]

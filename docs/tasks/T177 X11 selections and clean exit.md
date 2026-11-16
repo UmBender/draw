@@ -1,7 +1,7 @@
 ---
 id: T177
 title: X11 selections and clean exit
-status: review
+status: done
 wave: 72
 branch: task/T177-x11-selections-and-clean-exit
 depends_on: [T176]

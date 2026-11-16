@@ -1,7 +1,7 @@
 ---
 id: T176
 title: X11 keyboard, pointer and XInput2 pressure
-status: review
+status: done
 wave: 71
 branch: task/T176-x11-keyboard-pointer-and-xinput2-pressu
 depends_on: [T175]

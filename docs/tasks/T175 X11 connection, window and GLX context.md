@@ -1,7 +1,7 @@
 ---
 id: T175
 title: X11 connection, window and GLX context
-status: review
+status: done
 wave: 70
 branch: task/T175-x11-connection-window-and-glx-context
 depends_on: [T142, T145]

@@ -1,7 +1,7 @@
 ---
 id: T168
 title: Wayland connection, window and protocol states
-status: review
+status: done
 wave: 70
 branch: task/T168-wayland-connection-window-and-protocol-
 depends_on: [T142, T145]

@@ -1,7 +1,7 @@
 ---
 id: T148
 title: Multithreaded tessellation, only with a measured gain
-status: review
+status: done
 wave: 72
 branch: task/T148-multithreaded-tessellation-only-with-a-m
 depends_on: [T146]

@@ -1,7 +1,7 @@
 ---
 id: T170
 title: Wayland tablet and clipboard
-status: review
+status: done
 wave: 72
 branch: task/T170-wayland-tablet-and-clipboard
 depends_on: [T169]

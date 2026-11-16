@@ -1,7 +1,7 @@
 ---
 id: T174
 title: Nix flake for NixOS
-status: review
+status: done
 wave: 72
 branch: task/T174-nix-flake-for-nixos
 depends_on: []

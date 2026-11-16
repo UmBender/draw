@@ -173,3 +173,16 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 162 | [[ADR-T159-1 Texture filter and readback in the Gpu trait]] | accepted | decision | T140-1 | amends T140-1 |
 | 163 | [[ADR-T145-1 GL context, function table and Gpu over OpenGL ES 3.0]] | accepted | decision | T127-5, T140-1, T142-1, T159-1 | — |
 | 164 | [[ADR-T162-1 RawEvent carries the backend records and the pen samples]] | accepted | decision | T140-1 | amends T140-1 |
+| 165 | [[ADR-T146-1 draw-gfx may depend on draw-core]] | accepted | decision | T132-1 | amends T132-1 |
+| 166 | [[ADR-T148-1 Threaded tessellation only with a measured gain]] | proposed | decision | T146-1 | — |
+| 167 | [[ADR-T168-1 Generated Wayland protocol code and surface type states]] | accepted | decision | T142-1, T127-2, T127-3 | — |
+| 168 | [[ADR-T168-2 Terminate the EGL display of a Wayland connection]] | accepted | decision | T145-1, T168-1 | amends T145-1 |
+| 169 | [[ADR-T168-3 Serialise EGL display initialisation and termination]] | accepted | decision | T168-2 | amends T168-2 |
+| 170 | [[ADR-T169-1 Wayland input decoding and keymap reading]] | accepted | decision | T44-1, T79-1, T127-2, T142-1 | — |
+| 171 | [[ADR-T170-1 Wayland pen frames and clipboard transfers]] | accepted | decision | T35-1, T40-1, T127-2, T169-1 | — |
+| 172 | [[ADR-T173-1 Camera command and feathered blend in the Gpu trait]] | accepted | decision | T140-1, T159-1 | amends T140-1 |
+| 173 | [[ADR-T177-1 X11 selections and quit signals]] | accepted | decision | T127-2, T142-1, T48-1 | — |
+| 174 | [[ADR-T178-1 X11 platform hands out a shared GL handle]] | accepted | decision | T145-1, T127-2, T140-1 | — |
+| 175 | [[ADR-T179-1 Zoom bucket per chunk for screen-space rules]] | accepted | decision | T173-1 | — |
+| 176 | [[ADR-T179-2 Parity metric against the screen-space drawing]] | accepted | decision | T179-1, T173-1 | — |
+| 177 | [[ADR-T180-1 Retained text chunks keyed by raster step]] | accepted | decision | T179-1 | — |

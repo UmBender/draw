@@ -1,7 +1,7 @@
 ---
 id: T172
 title: Retained renderer in the app
-status: review
+status: done
 wave: 72
 branch: task/T172-retained-renderer-in-the-app
 depends_on: [T146, T173, T179, T180]

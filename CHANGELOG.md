@@ -66,6 +66,21 @@ All notable changes to draw are listed here. The format follows
   are unchanged.
 - A fuzz test drives the app's main loop with random keyboard, pointer and
   pen input and no window; the nightly CI job runs it with 20 000 cases.
+- A Nix flake packages draw for NixOS (`nix build`, `nix run`) with its
+  runtime libraries wrapped.
+- `draw-gfx` includes a pure retained renderer that tessellates shapes
+  into chunks keyed by revision and zooms them with analytic
+  anti-aliasing under a camera uniform.
+- The native X11 platform in `draw-sys` supports windows, keyboard with
+  autorepeat, pointer, wheel, XInput2 pressure, PRIMARY and CLIPBOARD
+  selections, and clean shutdown on signals.
+- `--platform native` runs the app over the native X11 backend and
+  OpenGL ES GPU without macroquad.
+- The native Wayland backend in `draw-sys` handles window creation,
+  protocol states, seat keyboard with client-side repeat via xkbcommon,
+  pointer, tablet pressure, and clipboard data devices.
+- `--renderer layers|retained` allows drawing the document through
+  retained chunks under the camera uniform.
 
 ## [1.6.0] - 2026-11-12
 

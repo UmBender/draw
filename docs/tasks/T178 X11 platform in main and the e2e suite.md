@@ -1,7 +1,7 @@
 ---
 id: T178
 title: X11 platform in main and the e2e suite
-status: review
+status: done
 wave: 73
 branch: task/T178-x11-platform-in-main-and-the-e2e-suite
 depends_on: [T177]

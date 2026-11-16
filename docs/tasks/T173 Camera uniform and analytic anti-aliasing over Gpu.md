@@ -1,7 +1,7 @@
 ---
 id: T173
 title: Camera uniform and analytic anti-aliasing over Gpu
-status: review
+status: done
 wave: 72
 branch: task/T173-camera-uniform-and-analytic-anti-aliasi
 depends_on: [T146]
