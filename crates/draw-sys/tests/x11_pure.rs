@@ -76,7 +76,8 @@ fn decode_client_message_reads_type_and_first_long() {
 fn decode_short_or_unknown_events_are_other() {
     assert_eq!(decode(&[]), XEvent::Other(0));
     assert_eq!(decode(&[1, 0]), XEvent::Other(0));
-    assert_eq!(decode(&event_of(2)), XEvent::Other(2));
+    // Type 2 is a key press since T176; 12 (`Expose`) stays unknown.
+    assert_eq!(decode(&event_of(12)), XEvent::Other(12));
 }
 
 #[test]
