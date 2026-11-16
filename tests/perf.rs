@@ -875,3 +875,43 @@ fn perf_tessellate_200_formula_blocks_is_under_1ms() {
     );
     assert_within_budget("tessellate 200 formula blocks", median, BUDGET);
 }
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_tessellation_of_5k_strokes_is_measured() {
+    // Arrange (T146, AC-4): the 5 120-stroke scene of ADR-T24-5.
+    if !optimised() {
+        return;
+    }
+    let ed = doubled_strokes();
+    let items: Vec<draw_gfx::chunks::Item<'_>> = ed
+        .document()
+        .shapes()
+        .map(|(id, shape)| draw_gfx::chunks::Item {
+            id,
+            revision: 0,
+            shape,
+        })
+        .collect();
+
+    // Act: a cold build of every chunk, then one edit's rebuild.
+    let cold = median_time(draw_gfx::chunks::ChunkCache::new, |mut cache| {
+        cache.update(&items);
+        cache
+    });
+    let mut warm = draw_gfx::chunks::ChunkCache::new();
+    warm.update(&items);
+    let mut edited = items.clone();
+    edited[100].revision = 1;
+    let one_chunk = median_time(|| warm.clone(), |mut cache| cache.update(&edited));
+
+    // Assert: tessellation is off the frame in the app, so only reported.
+    let triangles: usize = warm
+        .chunks()
+        .iter()
+        .map(|c| c.mesh().indices.len() / 3)
+        .sum();
+    eprintln!(
+        "perf: tessellate 5 120 strokes: cold {cold:?}, one chunk {one_chunk:?}, {triangles} triangles"
+    );
+}

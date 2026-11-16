@@ -4,4 +4,6 @@
 
 #![deny(unsafe_code)]
 
+pub mod chunks;
 pub mod gpu;
+pub mod tessellate;

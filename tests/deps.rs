@@ -24,8 +24,9 @@ fn runtime_allowed(krate: &str) -> &'static [&'static str] {
             "draw-sys",
         ],
         "draw-core" => &["fontdue", "png", "ttf-parser", "draw-types"],
-        // `draw-sys` gives the GL contexts of the `Gpu` (T145).
-        "draw-gfx" => &["draw-types", "draw-sys"],
+        // `draw-sys` gives the GL contexts of the `Gpu` (T145); `draw-core`
+        // gives the shapes the chunks read (ADR-T146-1).
+        "draw-gfx" => &["draw-types", "draw-core", "draw-sys"],
         // `draw-types` and `draw-sys` have none, and a crate not listed may not
         // have any either.
         _ => &[],
