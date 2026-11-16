@@ -339,3 +339,27 @@ pub trait Gpu {
     where
         Self: Sized;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_default_is_identity() {
+        assert_eq!(Camera::default(), Camera::IDENTITY);
+        assert_eq!(Camera::IDENTITY.apply([3.0, -4.0]), [3.0, -4.0]);
+    }
+
+    #[test]
+    fn camera_maps_world_to_view_pixels() {
+        let camera = Camera {
+            origin: [10.0, 20.0],
+            scale: 2.0,
+        };
+
+        let at = camera.apply([11.0, 25.0]);
+
+        assert!((at[0] - 2.0).abs() < 1e-6);
+        assert!((at[1] - 10.0).abs() < 1e-6);
+    }
+}

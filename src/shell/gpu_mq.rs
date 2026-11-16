@@ -727,6 +727,27 @@ mod tests {
         assert!(matches!(run(&[Step::Begin]), Err(GpuError::Backend(_))));
     }
 
+    #[test]
+    fn passes_camera_inside_pass_is_ok_and_outside_is_error() {
+        assert!(run(&[Step::Begin, Step::Camera, Step::End]).is_ok());
+        assert!(matches!(run(&[Step::Camera]), Err(GpuError::Backend(_))));
+    }
+
+    #[test]
+    fn mq_camera_offsets_vertices() {
+        let camera = Camera {
+            origin: [1.0, 2.0],
+            scale: 3.0,
+        };
+        let input = [vertex(2), vertex(5)];
+
+        let out = with_camera(&input, camera);
+
+        assert_eq!(out[0].pos, camera.apply(input[0].pos));
+        assert_eq!(out[1].pos, camera.apply(input[1].pos));
+        assert_eq!(out[1].color, input[1].color);
+    }
+
     // ---- T159 AC-5 camera ownership -------------------------------------------
 
     #[test]

@@ -4,9 +4,11 @@ use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 
-use draw::shell::recording::{GpuCall, NullGpu, PlatformCall, RecordingGpu, RecordingPlatform};
+use draw::shell::recording::{
+    GpuCall, Handle, NullGpu, PlatformCall, RecordingGpu, RecordingPlatform,
+};
 use draw_gfx::gpu::{
-    Blend, Color, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
+    Blend, Camera, Color, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
     TextureDesc, Vertex, View,
 };
 use draw_sys::platform::{Platform, RawButton, RawEvent, RawKey, RawMods, WindowMetrics};
@@ -100,8 +102,106 @@ fn recorder_keeps_the_call_order() -> Result<(), GpuError> {
     Ok(())
 }
 
+fn camera_frame(
+    gpu: &mut RecordingGpu,
+    buffer: &<RecordingGpu as Gpu>::Buffer,
+    camera: Option<Camera>,
+) -> Vec<Command<Handle, Handle, Handle, Handle>> {
+    let pipeline = gpu.pipeline(PipelineDesc {
+        blend: Blend::Alpha,
+    });
+    let mut list = CommandList::<RecordingGpu>::new();
+    list.push(Command::BeginPass {
+        target: None,
+        view: View {
+            width: 4.0,
+            height: 4.0,
+        },
+        clear: None,
+    });
+    if let Some(camera) = camera {
+        list.push(Command::SetCamera(camera));
+    }
+    list.push(Command::Draw {
+        pipeline,
+        texture: None,
+        geometry: Geometry::Buffer {
+            buffer: buffer.clone(),
+            first: 0,
+            count: 3,
+        },
+    });
+    list.push(Command::EndPass);
+    gpu.submit(&list).unwrap();
+    list.commands().to_vec()
+}
+
 #[test]
-fn recorder_gpu_hands_out_distinct_handles() -> Result<(), GpuError> {
+fn recorder_pan_and_zoom_change_only_the_camera() -> Result<(), GpuError> {
+    // Arrange
+    let mut gpu = RecordingGpu::new();
+    let buffer = gpu.create_buffer(&[vertex(0.0, 0.0), vertex(1.0, 0.0), vertex(0.0, 1.0)], &[0, 1, 2])?;
+    let pan = Camera {
+        origin: [5.0, 0.0],
+        scale: 1.0,
+    };
+    let zoom = Camera {
+        origin: [0.0, 0.0],
+        scale: 2.0,
+    };
+    // Act
+    let first = camera_frame(&mut gpu, &buffer, Some(pan));
+    let second = camera_frame(&mut gpu, &buffer, Some(zoom));
+    // Assert
+    let draws = |frame: &[Command<Handle, Handle, Handle, Handle>]| -> Vec<_> {
+        frame
+            .iter()
+            .filter(|c| matches!(c, Command::Draw { .. }))
+            .cloned()
+            .collect()
+    };
+    assert_eq!(draws(&first), draws(&second));
+    assert!(first.contains(&Command::SetCamera(pan)));
+    assert!(second.contains(&Command::SetCamera(zoom)));
+    assert_ne!(first, second);
+    Ok(())
+}
+
+#[test]
+fn null_gpu_accepts_set_camera() -> Result<(), GpuError> {
+    // Arrange
+    let mut gpu = NullGpu::new();
+    let pipeline = gpu.pipeline(PipelineDesc {
+        blend: Blend::AlphaFeathered,
+    });
+    let mut list = CommandList::<NullGpu>::new();
+    list.push(Command::BeginPass {
+        target: None,
+        view: View {
+            width: 4.0,
+            height: 4.0,
+        },
+        clear: None,
+    });
+    list.push(Command::SetCamera(Camera::IDENTITY));
+    list.push(Command::Draw {
+        pipeline,
+        texture: None,
+        geometry: Geometry::Inline {
+            vertices: vec![vertex(0.0, 0.0)],
+            indices: vec![0],
+        },
+    });
+    list.push(Command::EndPass);
+    // Act
+    let result = gpu.submit(&list);
+    // Assert
+    assert_eq!(result, Ok(()));
+    Ok(())
+}
+
+#[test]
+fn recorder_gpu_hands_out_distinct_handles()-> Result<(), GpuError> {
     // Arrange
     let mut gpu = RecordingGpu::new();
     let desc = TextureDesc {

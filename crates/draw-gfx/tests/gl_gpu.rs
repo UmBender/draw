@@ -10,8 +10,8 @@ mod common {
 use common::scene::{SIDE, draw_to_target, pixel, rect, vertex};
 use draw_gfx::gpu::gl::GlGpu;
 use draw_gfx::gpu::{
-    Blend, Color, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
-    TextureDesc, View,
+    Blend, Camera, Color, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc,
+    TargetDesc, TextureDesc, Vertex, View,
 };
 use draw_sys::egl::EglContext;
 
@@ -172,6 +172,167 @@ fn set_filter_changes_sampling() {
 
     assert!(nearest.chunks(4).all(|p| p[0] == 0 || p[0] == 255));
     assert!(linear.chunks(4).any(|p| p[0] > 0 && p[0] < 255));
+}
+
+/// Renders `passes` (each a camera and a draw) into one `SIDE` target and
+/// reads it back.
+fn render_with_cameras(
+    gpu: &mut GlGpu<EglContext>,
+    blend: Blend,
+    passes: &[(Option<Camera>, Vec<Vertex>, Vec<u32>)],
+) -> Vec<u8> {
+    let target = gpu
+        .create_target(TargetDesc {
+            width: SIDE,
+            height: SIDE,
+            samples: 1,
+            filter: Filter::Nearest,
+        })
+        .unwrap();
+    let pipeline = gpu.pipeline(PipelineDesc { blend });
+    let mut list = CommandList::<GlGpu<EglContext>>::new();
+    for (n, (camera, vertices, indices)) in passes.iter().enumerate() {
+        list.push(Command::BeginPass {
+            target: Some(target.clone()),
+            view: View {
+                width: SIDE as f32,
+                height: SIDE as f32,
+            },
+            clear: (n == 0).then(|| Color::rgba(0.0, 0.0, 0.0, 1.0)),
+        });
+        if let Some(camera) = camera {
+            list.push(Command::SetCamera(*camera));
+        }
+        list.push(Command::Draw {
+            pipeline,
+            texture: None,
+            geometry: Geometry::Inline {
+                vertices: vertices.clone(),
+                indices: indices.clone(),
+            },
+        });
+        list.push(Command::EndPass);
+    }
+    gpu.submit(&list).unwrap();
+    let texture = gpu.target_texture(&target);
+    gpu.read_texture(&texture).unwrap()
+}
+
+#[test]
+fn gl_camera_pan_moves_the_triangle() {
+    let mut gpu = gpu();
+    let (vertices, indices) = rect(4.0, 4.0, 12.0, 12.0, [255, 0, 0, 255]);
+    let pan = Camera {
+        origin: [2.0, 0.0],
+        scale: 1.0,
+    };
+
+    let bytes = render_with_cameras(&mut gpu, Blend::Opaque, &[(Some(pan), vertices, indices)]);
+
+    assert_eq!(pixel(&bytes, 3, 8), [255, 0, 0, 255]);
+    assert_eq!(pixel(&bytes, 11, 8), [0, 0, 0, 255]);
+}
+
+#[test]
+fn gl_camera_zoom_scales_the_triangle() {
+    let mut gpu = gpu();
+    let (vertices, indices) = rect(2.0, 2.0, 6.0, 6.0, [255, 0, 0, 255]);
+    let zoom = Camera {
+        origin: [0.0, 0.0],
+        scale: 2.0,
+    };
+
+    let bytes = render_with_cameras(&mut gpu, Blend::Opaque, &[(Some(zoom), vertices, indices)]);
+
+    assert_eq!(pixel(&bytes, 4, 4), [255, 0, 0, 255]);
+    assert_eq!(pixel(&bytes, 11, 11), [255, 0, 0, 255]);
+    assert_eq!(pixel(&bytes, 12, 12), [0, 0, 0, 255]);
+    assert_eq!(pixel(&bytes, 3, 3), [0, 0, 0, 255]);
+}
+
+#[test]
+fn gl_camera_resets_at_begin_pass() {
+    let mut gpu = gpu();
+    let (vertices, indices) = rect(4.0, 4.0, 12.0, 12.0, [255, 0, 0, 255]);
+    let away = Camera {
+        origin: [100.0, 0.0],
+        scale: 1.0,
+    };
+
+    let bytes = render_with_cameras(
+        &mut gpu,
+        Blend::Opaque,
+        &[
+            (Some(away), vertices.clone(), indices.clone()),
+            (None, vertices, indices),
+        ],
+    );
+
+    assert_eq!(pixel(&bytes, 8, 8), [255, 0, 0, 255]);
+}
+
+/// A white strip whose left edge is at world `x = 10`, feathered through
+/// `uv[0]` (world distance inside the edge), seen with `scale` so that the
+/// edge falls at pixel `8.5`.
+fn feather_strip(scale: f32) -> (Camera, Vec<Vertex>, Vec<u32>) {
+    let camera = Camera {
+        origin: [10.0 - 8.5 / scale, 0.0],
+        scale,
+    };
+    let reach = 40.0 / scale;
+    let white = [255; 4];
+    let mut vertices = vec![
+        vertex(10.0, -1.0, white),
+        vertex(10.0 + reach, -1.0, white),
+        vertex(10.0 + reach, 20.0 / scale, white),
+        vertex(10.0, 20.0 / scale, white),
+    ];
+    for (v, d) in vertices.iter_mut().zip([0.0, reach, reach, 0.0]) {
+        v.uv = [d, 0.0];
+    }
+    (camera, vertices, vec![0, 1, 2, 0, 2, 3])
+}
+
+fn feather_row(scale: f32) -> Vec<[u8; 4]> {
+    let mut gpu = gpu();
+    let (camera, vertices, indices) = feather_strip(scale);
+    let bytes = render_with_cameras(
+        &mut gpu,
+        Blend::AlphaFeathered,
+        &[(Some(camera), vertices, indices)],
+    );
+    (0..SIDE).map(|x| pixel(&bytes, x, 8)).collect()
+}
+
+fn assert_one_pixel_feather(row: &[[u8; 4]]) {
+    assert_eq!(row[6], [0, 0, 0, 255]);
+    assert_eq!(row[7], [0, 0, 0, 255]);
+    let edge = i32::from(row[8][0]);
+    assert!((edge - 128).abs() <= 12, "edge pixel was {edge}");
+    assert_eq!(row[9], [255, 255, 255, 255]);
+    assert_eq!(row[13], [255, 255, 255, 255]);
+}
+
+#[test]
+fn feather_edge_is_one_pixel_wide_at_zoom_quarter() {
+    assert_one_pixel_feather(&feather_row(0.25));
+}
+
+#[test]
+fn feather_edge_is_one_pixel_wide_at_zoom_one() {
+    assert_one_pixel_feather(&feather_row(1.0));
+}
+
+#[test]
+fn feather_edge_is_one_pixel_wide_at_zoom_four() {
+    assert_one_pixel_feather(&feather_row(4.0));
+}
+
+#[test]
+fn feather_interior_is_opaque() {
+    let row = feather_row(1.0);
+
+    assert!(row[10..].iter().all(|p| *p == [255, 255, 255, 255]));
 }
 
 #[test]
