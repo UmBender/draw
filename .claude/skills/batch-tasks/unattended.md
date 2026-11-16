@@ -64,7 +64,8 @@ Every tool call re-sends the whole context, so keep it small.
 ## Stay inside the lines
 
 - Follow `implement-task` and `docs/process/Workflow.md` exactly: one
-  branch, one commit per step, tests before code, files owned only, no
+  branch, one commit per step, tests before code, files owned only
+  (unless the plan's *Policies* widen them), no
   shared indexes, no `Co-Authored-By` or agent mentions anywhere.
 - Branch from the base branch the prompt names (`main`, or the branch of
   a task this one depends on that is in review). Do not merge it and do
@@ -79,12 +80,16 @@ Every tool call re-sends the whole context, so keep it small.
 
 ## When to block
 
+The plan's *Policies* may narrow this list (for example "finish a smaller
+green slice at `review` instead of blocking"): the plan wins.
+
 Block instead of guessing when:
 
 - a decision belongs to the owner (architecture, scope, UX) and the plan
   does not answer it and the policy says to block;
 - a needed command, tool or file is not allowed or not available;
-- you need a file outside *Files owned*;
+- you need a file outside *Files owned* and the plan's *Policies* do not
+  allow it;
 - the gates stay red after a reasonable effort, or a dependency's work is
   missing or broken;
 - a test or result needs a human (a visual check, hardware such as a pen
