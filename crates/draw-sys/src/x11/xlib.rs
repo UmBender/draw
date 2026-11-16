@@ -18,6 +18,7 @@ use crate::loader::Library;
 use super::event::{CloseAtoms, EVENT_BYTES, XEvent, decode};
 use super::pen::PressureAxis;
 use super::platform::GlSurface;
+use super::selection::{MAX_INCOMING, Request, TargetKind};
 use super::{GlBackend, X11Error};
 
 // The event decoder reads the LP64 layout of Xlib's structs.
@@ -32,6 +33,60 @@ const CW_COLORMAP: c_ulong = 1 << 13;
 const INPUT_OUTPUT: c_uint = 1;
 const EXPOSURE_MASK: c_long = 1 << 15;
 const STRUCTURE_NOTIFY_MASK: c_long = 1 << 17;
+const PROPERTY_CHANGE_MASK: c_long = 1 << 22;
+
+/// A window property read back from the server.
+#[derive(Debug)]
+pub(super) struct Property {
+    /// The type atom.
+    pub(super) ty: u64,
+    /// The raw bytes.
+    pub(super) data: Vec<u8>,
+}
+
+/// The atoms the selections use.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct SelAtoms {
+    pub(super) clipboard: u64,
+    pub(super) primary: u64,
+    pub(super) targets: u64,
+    pub(super) utf8: u64,
+    pub(super) string: u64,
+    pub(super) text: u64,
+    pub(super) plain_utf8: u64,
+    pub(super) png: u64,
+    pub(super) incr: u64,
+    pub(super) atom: u64,
+    /// The property draw's own reads land in.
+    pub(super) property: u64,
+}
+
+impl SelAtoms {
+    /// The kind a target atom stands for.
+    pub(super) fn kind(&self, atom: u64) -> TargetKind {
+        match atom {
+            a if a == self.targets => TargetKind::Targets,
+            a if a == self.utf8 => TargetKind::Utf8,
+            a if a == self.string => TargetKind::String,
+            a if a == self.text => TargetKind::Text,
+            a if a == self.plain_utf8 => TargetKind::PlainUtf8,
+            a if a == self.png => TargetKind::Png,
+            _ => TargetKind::Other,
+        }
+    }
+
+    /// The atom of a kind (`0` for `Other`).
+    pub(super) fn atom_of(&self, kind: TargetKind) -> u64 {
+        match kind {
+            TargetKind::Targets => self.targets,
+            TargetKind::Utf8 | TargetKind::Text => self.utf8,
+            TargetKind::String => self.string,
+            TargetKind::PlainUtf8 => self.plain_utf8,
+            TargetKind::Png => self.png,
+            TargetKind::Other => 0,
+        }
+    }
+}
 /// Key press and release, button press and release, pointer motion, focus.
 const INPUT_MASK: c_long = 1 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 6 | 1 << 21;
 
@@ -160,6 +215,41 @@ struct XlibApi {
     free_event_data: unsafe extern "C" fn(Ptr, *mut c_long),
     query_extension:
         unsafe extern "C" fn(Ptr, *const c_char, *mut c_int, *mut c_int, *mut c_int) -> c_int,
+    // TEST: x11_clipboard_text_is_served_to_xclip
+    set_selection_owner: unsafe extern "C" fn(Ptr, c_ulong, c_ulong, c_ulong) -> c_int,
+    get_selection_owner: unsafe extern "C" fn(Ptr, c_ulong) -> c_ulong,
+    convert_selection:
+        unsafe extern "C" fn(Ptr, c_ulong, c_ulong, c_ulong, c_ulong, c_ulong) -> c_int,
+    change_property: unsafe extern "C" fn(
+        Ptr,
+        c_ulong,
+        c_ulong,
+        c_ulong,
+        c_int,
+        c_int,
+        *const u8,
+        c_int,
+    ) -> c_int,
+    #[allow(clippy::type_complexity)]
+    // TEST: x11_reads_large_png_by_incr
+    get_window_property: unsafe extern "C" fn(
+        Ptr,
+        c_ulong,
+        c_ulong,
+        c_long,
+        c_long,
+        c_int,
+        c_ulong,
+        *mut c_ulong,
+        *mut c_int,
+        *mut c_ulong,
+        *mut c_ulong,
+        *mut *mut u8,
+    ) -> c_int,
+    // TEST: x11_reads_text_set_by_xclip
+    delete_property: unsafe extern "C" fn(Ptr, c_ulong, c_ulong) -> c_int,
+    // TEST: x11_large_png_is_served_with_incr
+    select_input: unsafe extern "C" fn(Ptr, c_ulong, c_long) -> c_int,
     // Declared last: the library outlives the pointers above.
     _libx11: Library,
 }
@@ -302,6 +392,13 @@ impl XlibApi {
                 get_event_data: *x11.symbol("XGetEventData")?,
                 free_event_data: *x11.symbol("XFreeEventData")?,
                 query_extension: *x11.symbol("XQueryExtension")?,
+                set_selection_owner: *x11.symbol("XSetSelectionOwner")?,
+                get_selection_owner: *x11.symbol("XGetSelectionOwner")?,
+                convert_selection: *x11.symbol("XConvertSelection")?,
+                change_property: *x11.symbol("XChangeProperty")?,
+                get_window_property: *x11.symbol("XGetWindowProperty")?,
+                delete_property: *x11.symbol("XDeleteProperty")?,
+                select_input: *x11.symbol("XSelectInput")?,
                 _libx11: Library::open("libX11.so.6")?,
             }
         };
@@ -594,6 +691,181 @@ impl Connection {
         Ok(())
     }
 
+    /// The atoms the selections use.
+    pub(super) fn sel_atoms(&self) -> SelAtoms {
+        SelAtoms {
+            clipboard: self.atom(c"CLIPBOARD"),
+            primary: self.atom(c"PRIMARY"),
+            targets: self.atom(c"TARGETS"),
+            utf8: self.atom(c"UTF8_STRING"),
+            string: self.atom(c"STRING"),
+            text: self.atom(c"TEXT"),
+            plain_utf8: self.atom(c"text/plain;charset=utf-8"),
+            png: self.atom(c"image/png"),
+            incr: self.atom(c"INCR"),
+            atom: self.atom(c"ATOM"),
+            property: self.atom(c"_SCRATCH_SELECTION"),
+        }
+    }
+
+    /// Takes `selection` for `window` at the current time; whether the
+    /// server made `window` the owner.
+    pub(super) fn own_selection(&self, window: u64, selection: u64) -> bool {
+        // TEST: x11_clipboard_text_is_served_to_xclip
+        // SAFETY: `display` is live; the atoms and the window are plain ids.
+        unsafe {
+            (self.api.set_selection_owner)(self.display, selection, window, 0);
+            (self.api.get_selection_owner)(self.display, selection) == window
+        }
+    }
+
+    /// Asks the owner of `selection` for `target`, to be written to
+    /// `property` of `window`.
+    pub(super) fn convert(&self, selection: u64, target: u64, property: u64, window: u64) {
+        // TEST: x11_reads_text_set_by_xclip
+        // SAFETY: `display` is live; the arguments are plain ids.
+        unsafe {
+            (self.api.convert_selection)(self.display, selection, target, property, window, 0);
+            (self.api.flush)(self.display);
+        }
+    }
+
+    /// Writes `data` to `property` of `window` as `ty` with 8-bit items.
+    pub(super) fn write_bytes(&self, window: u64, property: u64, ty: u64, data: &[u8]) {
+        let len = c_int::try_from(data.len()).unwrap_or(c_int::MAX);
+        // TEST: x11_png_is_served_as_image_png
+        // SAFETY: `display` is live; `data` holds at least `len` bytes and
+        // is only read during the call.
+        unsafe {
+            (self.api.change_property)(
+                self.display,
+                window,
+                property,
+                ty,
+                8,
+                0,
+                data.as_ptr(),
+                len,
+            );
+            (self.api.flush)(self.display);
+        }
+    }
+
+    /// Writes `values` to `property` of `window` as `ty` with 32-bit items.
+    pub(super) fn write_longs(&self, window: u64, property: u64, ty: u64, values: &[u64]) {
+        let longs: Vec<c_long> = values.iter().map(|v| v.cast_signed()).collect();
+        let len = c_int::try_from(longs.len()).unwrap_or(0);
+        // TEST: x11_targets_list_text_targets
+        // SAFETY: `display` is live; for format 32 Xlib reads `len` C
+        // `long`s from the pointer, which `longs` provides.
+        unsafe {
+            (self.api.change_property)(
+                self.display,
+                window,
+                property,
+                ty,
+                32,
+                0,
+                longs.as_ptr().cast::<u8>(),
+                len,
+            );
+            (self.api.flush)(self.display);
+        }
+    }
+
+    /// Reads (and with `delete`, removes) `property` of `window`; `None` if
+    /// it does not exist or holds more than [`MAX_INCOMING`] bytes.
+    pub(super) fn read_property(
+        &self,
+        window: u64,
+        property: u64,
+        delete: bool,
+    ) -> Option<Property> {
+        let (mut ty, mut format, mut items, mut after) = (0 as c_ulong, 0 as c_int, 0, 0);
+        let mut data: *mut u8 = std::ptr::null_mut();
+        let words = c_long::try_from(MAX_INCOMING / 4).unwrap_or(c_long::MAX);
+        // TEST: x11_reads_large_png_by_incr
+        // SAFETY: `display` is live; every out pointer is valid for the call.
+        let status = unsafe {
+            (self.api.get_window_property)(
+                self.display,
+                window,
+                property,
+                0,
+                words,
+                c_int::from(delete),
+                0,
+                &raw mut ty,
+                &raw mut format,
+                &raw mut items,
+                &raw mut after,
+                &raw mut data,
+            )
+        };
+        if status != 0 || data.is_null() {
+            return None;
+        }
+        let unit = match format {
+            8 => 1,
+            16 => 2,
+            32 => size_of::<c_long>(),
+            _ => 0,
+        };
+        let len = usize::try_from(items).unwrap_or(0).saturating_mul(unit);
+        // TEST: x11_reads_large_png_by_incr
+        // SAFETY: Xlib returned `data` with `items` items of `unit` bytes
+        // (plus a NUL); the bytes are copied and the buffer freed once.
+        let bytes = unsafe {
+            let bytes = std::slice::from_raw_parts(data, len).to_vec();
+            (self.api.free)(data.cast());
+            bytes
+        };
+        (ty != 0 && after == 0).then_some(Property { ty, data: bytes })
+    }
+
+    /// Sends the `SelectionNotify` that answers `request` (`property` `0`
+    /// refuses).
+    pub(super) fn send_selection_notify(&self, request: &Request, property: u64) {
+        let mut bytes = [0u8; EVENT_BYTES];
+        bytes[0..4].copy_from_slice(&31i32.to_ne_bytes());
+        bytes[32..40].copy_from_slice(&request.requestor.to_ne_bytes());
+        bytes[40..48].copy_from_slice(&request.selection.to_ne_bytes());
+        bytes[48..56].copy_from_slice(&request.target.to_ne_bytes());
+        bytes[56..64].copy_from_slice(&property.to_ne_bytes());
+        bytes[64..72].copy_from_slice(&request.time.to_ne_bytes());
+        let mut event = [0 as c_long; 24];
+        for (long, chunk) in event.iter_mut().zip(bytes.as_chunks::<8>().0) {
+            *long = c_long::from_ne_bytes(*chunk);
+        }
+        // TEST: x11_clipboard_text_is_served_to_xclip
+        // SAFETY: `display` is live and `event` is a full-size
+        // `XSelectionEvent` buffer that lives through the call.
+        unsafe {
+            (self.api.send_event)(self.display, request.requestor, 0, 0, event.as_mut_ptr());
+            (self.api.flush)(self.display);
+        }
+    }
+
+    /// Asks for the property events of a foreign `window` (for `INCR`).
+    pub(super) fn watch_property(&self, window: u64) {
+        // TEST: x11_large_png_is_served_with_incr
+        // SAFETY: `display` is live; `window` is an id (a dead window is an
+        // X error the handler records).
+        unsafe {
+            (self.api.select_input)(self.display, window, PROPERTY_CHANGE_MASK);
+            (self.api.flush)(self.display);
+        }
+    }
+
+    /// Removes `property` of `window`.
+    pub(super) fn delete_property(&self, window: u64, property: u64) {
+        // TEST: x11_reads_text_set_by_xclip
+        // SAFETY: `display` is live; the arguments are plain ids.
+        unsafe {
+            (self.api.delete_property)(self.display, window, property);
+        }
+    }
+
     /// Waits for the requests so far and reports whether one failed.
     fn failed(&self) -> bool {
         // TEST: x11_window_has_title_and_class
@@ -758,7 +1030,10 @@ impl Window<Created> {
                 backing_planes: 0,
                 backing_pixel: 0,
                 save_under: 0,
-                event_mask: EXPOSURE_MASK | STRUCTURE_NOTIFY_MASK | INPUT_MASK,
+                event_mask: EXPOSURE_MASK
+                    | STRUCTURE_NOTIFY_MASK
+                    | INPUT_MASK
+                    | PROPERTY_CHANGE_MASK,
                 do_not_propagate_mask: 0,
                 override_redirect: 0,
                 colormap,

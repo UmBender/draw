@@ -12,6 +12,8 @@ pub mod event;
 pub mod keys;
 pub mod pen;
 mod platform;
+pub mod selection;
+pub mod signal;
 mod xlib;
 
 pub use platform::{GlSurface, X11Platform};
