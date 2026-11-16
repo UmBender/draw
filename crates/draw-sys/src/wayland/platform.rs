@@ -2,10 +2,13 @@
 //! connection (T168). Keyboard, pointer and seats are T169, tablet and
 //! clipboard T170: until then those parts return nothing.
 
+use std::cell::Cell;
+use std::ffi::c_void;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use crate::egl::EglContext;
+use crate::egl::{ContextError, EglContext, GlContext};
 use crate::platform::{Platform, RawEvent, WindowMetrics};
 use crate::wayland::connection::{Connection, WaylandError};
 use crate::wayland::transfer::Payload;
@@ -15,6 +18,36 @@ use crate::wayland::window::{Mapped, Window};
 /// (a hidden window gets none).
 const FRAME_WAIT: Duration = Duration::from_millis(500);
 
+/// A cheap clone of the GL context of a [`WaylandPlatform`], for a `Gpu` to
+/// own (ADR-T171-1). The platform keeps swapping the buffers.
+#[derive(Debug, Clone)]
+pub struct SharedGl {
+    context: Rc<EglContext>,
+    size: Rc<Cell<(u32, u32)>>,
+}
+
+impl SharedGl {
+    /// The current size of the window in physical pixels.
+    #[must_use]
+    pub fn window_size(&self) -> (u32, u32) {
+        self.size.get()
+    }
+}
+
+impl GlContext for SharedGl {
+    fn make_current(&self) -> Result<(), ContextError> {
+        self.context.make_current()
+    }
+
+    fn swap_buffers(&self) -> Result<(), ContextError> {
+        self.context.swap_buffers()
+    }
+
+    fn proc_address(&self, name: &str) -> Option<*const c_void> {
+        self.context.proc_address(name)
+    }
+}
+
 /// A Wayland window with a GL context, as a [`Platform`].
 #[derive(Debug)]
 pub struct WaylandPlatform {
@@ -22,6 +55,7 @@ pub struct WaylandPlatform {
     window: Window<Mapped>,
     connection: Connection,
     reported: WindowMetrics,
+    size: Rc<Cell<(u32, u32)>>,
 }
 
 impl WaylandPlatform {
@@ -40,14 +74,27 @@ impl WaylandPlatform {
         window.swap().map_err(WaylandError::Context)?;
         connection.shared.roundtrip()?;
         window.apply_configure();
+        let reported = metrics(&window);
         let mut platform = Self {
-            reported: metrics(&window),
+            size: Rc::new(Cell::new(pixels(reported))),
+            reported,
             window,
             connection,
         };
         platform.pump();
         platform.reported = metrics(&platform.window);
+        platform.size.set(pixels(platform.reported));
         Ok(platform)
+    }
+
+    /// A handle on the GL context for a `Gpu` to own. The platform keeps
+    /// swapping the buffers in `next_frame`; the Gpu must not.
+    ///
+    /// Every handle must be dropped before the platform: the GL window
+    /// goes before the native window (ADR-T171-1).
+    #[must_use]
+    pub fn share_gl(&self) -> SharedGl {
+        todo!("ADR-T171-1")
     }
 
     /// Whether the compositor asked the window to close.
@@ -81,6 +128,12 @@ impl WaylandPlatform {
         let _ = self.connection.dispatch(Duration::ZERO);
         self.window.apply_configure();
     }
+}
+
+/// The size of the window in physical pixels (logical size × scale).
+fn pixels(metrics: WindowMetrics) -> (u32, u32) {
+    let px = |v: f32| (v * metrics.scale).round().max(1.0) as u32;
+    (px(metrics.width), px(metrics.height))
 }
 
 fn metrics(window: &Window<Mapped>) -> WindowMetrics {

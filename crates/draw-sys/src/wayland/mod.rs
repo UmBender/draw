@@ -18,5 +18,5 @@ pub mod window;
 pub mod xkb;
 
 pub use connection::{Connection, WaylandError};
-pub use platform::WaylandPlatform;
+pub use platform::{SharedGl, WaylandPlatform};
 pub use window::{Configured, Created, Mapped, Window};
