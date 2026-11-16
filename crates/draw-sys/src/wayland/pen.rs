@@ -2,7 +2,8 @@
 //! `zwp_tablet_tool_v2` events of one `frame` become as
 //! [`RawEvent`]s. No compositor and no `unsafe`.
 
-use crate::platform::{RawButton, RawEvent};
+use crate::platform::{RawButton, RawEvent, pointer_shadowed_by_pen};
+use crate::wayland::input::{fixed_to_f32, pointer_position};
 
 /// The largest pressure value of the protocol.
 pub const PRESSURE_MAX: f32 = 65535.0;
@@ -21,22 +22,28 @@ pub enum ToolKind {
 /// The kind a `zwp_tablet_tool_v2.type` value stands for.
 #[must_use]
 pub fn tool_kind(wire: u32) -> ToolKind {
-    let _ = wire;
-    todo!()
+    match wire {
+        0x140 => ToolKind::Pen,
+        0x141 => ToolKind::Eraser,
+        _ => ToolKind::Other,
+    }
 }
 
 /// A pressure from the wire as `0..=1`.
 #[must_use]
 pub fn pressure_from_wire(wire: u32) -> f32 {
-    let _ = wire;
-    todo!()
+    (wire as f32 / PRESSURE_MAX).clamp(0.0, 1.0)
 }
 
-/// The button a barrel button's evdev code stands for.
+/// The button a barrel button's evdev code stands for (`BTN_STYLUS` and
+/// `BTN_STYLUS2`).
 #[must_use]
 pub fn pen_button_from_evdev(code: u32) -> Option<RawButton> {
-    let _ = code;
-    todo!()
+    match code {
+        0x14b => Some(RawButton::Middle),
+        0x14c => Some(RawButton::Right),
+        _ => None,
+    }
 }
 
 /// One tablet tool and the events since its last `frame`.
@@ -80,58 +87,91 @@ impl PenTool {
 
     /// `proximity_in`; `ours` is whether the surface is this window.
     pub fn proximity_in(&mut self, ours: bool) {
-        let _ = ours;
-        todo!()
+        self.focused = ours;
+        self.proximity_out = false;
     }
 
     /// `proximity_out`, applied at the next `frame`.
     pub fn proximity_out(&mut self) {
-        todo!()
+        self.proximity_out = true;
     }
 
     /// `down`.
     pub fn down(&mut self) {
-        todo!()
+        self.tip = Some(true);
     }
 
     /// `up`.
     pub fn up(&mut self) {
-        todo!()
+        self.tip = Some(false);
     }
 
     /// `motion` in `wl_fixed_t` surface coordinates at `scale`.
     pub fn motion(&mut self, x: i32, y: i32, scale: i32) {
-        let _ = (x, y, scale);
-        todo!()
+        self.motion = Some(pointer_position(x, y, scale));
     }
 
     /// `pressure` as on the wire.
     pub fn pressure(&mut self, wire: u32) {
-        let _ = wire;
-        todo!()
+        self.pressure = pressure_from_wire(wire);
     }
 
     /// `tilt` in `wl_fixed_t` degrees.
     pub fn tilt(&mut self, x: i32, y: i32) {
-        let _ = (x, y);
-        todo!()
+        self.tilt = (fixed_to_f32(x), fixed_to_f32(y));
     }
 
     /// `button` with an evdev code and `wl_pointer`-like state (1 pressed).
     pub fn button(&mut self, code: u32, state: u32) {
-        let _ = (code, state);
-        todo!()
+        if let Some(button) = pen_button_from_evdev(code) {
+            self.buttons.push((button, state == 1));
+        }
     }
 
     /// `type`: the kind from the wire value.
     pub fn set_kind(&mut self, wire: u32) {
-        let _ = wire;
-        todo!()
+        self.kind = tool_kind(wire);
     }
 
-    /// `frame`: the events of the frame, which is then empty again.
+    /// `frame`: the events of the frame, which is then empty again. A frame
+    /// of a tool that is not in proximity of the window sends nothing.
     pub fn frame(&mut self) -> Vec<RawEvent> {
-        todo!()
+        let motion = self.motion.take();
+        let tip = self.tip.take();
+        let buttons = std::mem::take(&mut self.buttons);
+        let leaving = std::mem::take(&mut self.proximity_out);
+        let mut out = Vec::new();
+        if !self.focused {
+            return out;
+        }
+        let pressure = self.pressure;
+        let mut send = |event: RawEvent, (x, y): (f32, f32)| {
+            out.push(RawEvent::Tablet { x, y, pressure });
+            out.push(event);
+        };
+        if let Some((x, y)) = motion {
+            self.position = (x, y);
+            send(RawEvent::PointerMove { x, y }, (x, y));
+        }
+        let (x, y) = self.position;
+        let mut button = |button: RawButton, down: bool| {
+            send(RawEvent::Button { button, x, y, down }, (x, y));
+        };
+        if let Some(down) = tip.filter(|down| *down != self.tip_down) {
+            self.tip_down = down;
+            button(RawButton::Left, down);
+        }
+        for (b, down) in buttons {
+            button(b, down);
+        }
+        if leaving {
+            if self.tip_down {
+                self.tip_down = false;
+                button(RawButton::Left, false);
+            }
+            self.focused = false;
+        }
+        out
     }
 
     /// The kind of the tool.
@@ -168,26 +208,34 @@ pub struct Pens {
 impl Pens {
     /// Adds a tool.
     pub fn add(&mut self, id: usize) {
-        let _ = id;
-        todo!()
+        if self.tools.iter().all(|(known, _)| *known != id) {
+            self.tools.push((id, PenTool::new()));
+        }
     }
 
     /// Removes a tool.
     pub fn remove(&mut self, id: usize) {
-        let _ = id;
-        todo!()
+        self.tools.retain(|(known, _)| *known != id);
     }
 
     /// The tool with `id`.
     pub fn get_mut(&mut self, id: usize) -> Option<&mut PenTool> {
-        let _ = id;
-        todo!()
+        self.tools
+            .iter_mut()
+            .find(|(known, _)| *known == id)
+            .map(|(_, tool)| tool)
+    }
+
+    /// The ids of the known tools.
+    #[must_use]
+    pub fn ids(&self) -> Vec<usize> {
+        self.tools.iter().map(|(id, _)| *id).collect()
     }
 
     /// Whether pointer input is dropped (ADR-T40-1).
     #[must_use]
     pub fn shadowed(&self) -> bool {
-        todo!()
+        pointer_shadowed_by_pen(self.tools.iter().map(|(_, tool)| tool.focused))
     }
 
     /// How many tools are known.

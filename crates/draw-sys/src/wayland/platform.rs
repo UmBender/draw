@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use crate::egl::EglContext;
 use crate::platform::{Platform, RawEvent, WindowMetrics};
 use crate::wayland::connection::{Connection, WaylandError};
+use crate::wayland::transfer::Payload;
 use crate::wayland::window::{Mapped, Window};
 
 /// How long `next_frame` waits for a frame callback before it gives up
@@ -58,7 +59,7 @@ impl WaylandPlatform {
     /// Whether the compositor's tablet manager is bound.
     #[must_use]
     pub fn has_tablet_manager(&self) -> bool {
-        todo!()
+        !self.connection.shared.input.tablet.manager.get().is_null()
     }
 
     /// Whether a frame callback is outstanding.
@@ -110,12 +111,20 @@ impl Platform for WaylandPlatform {
     }
 
     fn clipboard_text(&mut self) -> Option<String> {
-        None
+        self.pump();
+        let shared = &self.connection.shared;
+        shared.input.clipboard.text(shared)
     }
 
-    fn set_clipboard_text(&mut self, _text: &str) {}
+    fn set_clipboard_text(&mut self, text: &str) {
+        let shared = &self.connection.shared;
+        shared.input.clipboard.set(shared, Payload::Text(text.to_owned()));
+    }
 
-    fn set_clipboard_png(&mut self, _png: &[u8]) {}
+    fn set_clipboard_png(&mut self, png: &[u8]) {
+        let shared = &self.connection.shared;
+        shared.input.clipboard.set(shared, Payload::Png(png.to_vec()));
+    }
 
     fn schedule_update(&mut self) {
         self.window.request_frame();

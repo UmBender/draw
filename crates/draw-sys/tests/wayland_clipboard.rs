@@ -125,14 +125,38 @@ fn fuzz_transfer_decoders_never_panic() {
 
 // ---- against sway ----
 
-fn focused(sway: &Sway) -> WaylandPlatform {
+struct Focused {
+    platform: WaylandPlatform,
+    _keyboard: sway::Keyboard,
+}
+
+impl std::ops::Deref for Focused {
+    type Target = WaylandPlatform;
+    fn deref(&self) -> &WaylandPlatform {
+        &self.platform
+    }
+}
+
+impl std::ops::DerefMut for Focused {
+    fn deref_mut(&mut self) -> &mut WaylandPlatform {
+        &mut self.platform
+    }
+}
+
+/// A platform with keyboard focus; the virtual keyboard that gives the seat
+/// its capability lives as long as the returned value.
+fn focused(sway: &Sway) -> Focused {
+    let keyboard = sway.keyboard(&["-s", "20000", "a"]);
     let mut platform = WaylandPlatform::connect(Some(&sway.socket), "T170", "draw-test").unwrap();
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut events = Vec::new();
     loop {
         platform.poll(&mut events);
         if events.iter().any(|e| matches!(e, RawEvent::Focus(true))) {
-            return platform;
+            return Focused {
+                platform,
+                _keyboard: keyboard,
+            };
         }
         assert!(Instant::now() < deadline, "no keyboard focus: {events:?}");
         std::thread::sleep(Duration::from_millis(20));
