@@ -128,6 +128,39 @@ fn wayland_egl_context_renders_and_swaps() {
     assert_eq!(window.swap(), Ok(()));
 }
 
+/// Opens a connection, a GL window and one swap, then drops all of it.
+fn open_swap_and_drop(socket: &Path) {
+    let conn = Connection::connect(Some(socket)).unwrap();
+    let window = conn
+        .create_window("T168 title", "draw-test")
+        .unwrap()
+        .wait_configure()
+        .unwrap()
+        .open_gl()
+        .unwrap();
+    window.swap().unwrap();
+}
+
+/// Regression (ADR-T168-2): the EGL display of a closed connection must not
+/// be reused by a later connection at the same `wl_display` address.
+#[test]
+fn wayland_many_connections_in_sequence_and_threads() {
+    let sway = Sway::start();
+
+    for _ in 0..50 {
+        open_swap_and_drop(&sway.socket);
+    }
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            scope.spawn(|| {
+                for _ in 0..12 {
+                    open_swap_and_drop(&sway.socket);
+                }
+            });
+        }
+    });
+}
+
 #[test]
 fn wayland_platform_window_reports_metrics() {
     let sway = Sway::start();
