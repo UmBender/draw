@@ -85,7 +85,7 @@ fn pen_frame_out_of_proximity_drops_events() {
 
     let events = tool.frame();
 
-    assert!(events.is_empty());
+    assert_eq!(events, vec![]);
     assert!(!tool.tip_down());
 }
 
@@ -95,7 +95,7 @@ fn pen_frame_for_another_surface_stays_out_of_proximity() {
     tool.proximity_in(false);
     tool.motion(fixed(5), fixed(5), 1);
 
-    assert!(tool.frame().is_empty());
+    assert_eq!(tool.frame(), vec![]);
     assert!(!tool.in_proximity());
 }
 
@@ -181,7 +181,9 @@ fn regression_T35_pressure_reaches_the_sample() {
 
     let events = tool.frame();
 
-    assert!(matches!(events[0], RawEvent::Tablet { pressure, .. } if (pressure - 1.0).abs() < 1e-6));
+    assert!(
+        matches!(events[0], RawEvent::Tablet { pressure, .. } if (pressure - 1.0).abs() < 1e-6)
+    );
 }
 
 #[test]
@@ -228,11 +230,13 @@ fn regression_pen_tip_bounce() {
     tool.down();
     let events = tool.frame();
 
-    assert!(
-        !events
-            .iter()
-            .any(|e| matches!(e, RawEvent::Button { button: RawButton::Left, .. }))
-    );
+    assert!(!events.iter().any(|e| matches!(
+        e,
+        RawEvent::Button {
+            button: RawButton::Left,
+            ..
+        }
+    )));
     assert!(tool.tip_down());
 }
 
@@ -275,7 +279,11 @@ fn fuzz_pen_decoders_never_panic() {
                 }
             }
         }
-        let _ = (pressure_from_wire(m), tool_kind(n), pen_button_from_evdev(m));
+        let _ = (
+            pressure_from_wire(m),
+            tool_kind(n),
+            pen_button_from_evdev(m),
+        );
     }
 }
 
@@ -292,9 +300,7 @@ fn wayland_tablet_manager_is_bound_without_tablets() {
     }
 
     assert!(
-        events
-            .iter()
-            .all(|e| !matches!(e, RawEvent::Tablet { .. })),
+        events.iter().all(|e| !matches!(e, RawEvent::Tablet { .. })),
         "no tablet exists: {events:?}"
     );
     assert!(platform.has_tablet_manager());

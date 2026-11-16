@@ -12,8 +12,7 @@ use crate::platform::BackendEvent;
 use crate::wayland::client::Proxy;
 use crate::wayland::connection::{Shared, shared_of};
 use crate::wayland::generated::tablet_v2::{
-    zwp_tablet_manager_v2, zwp_tablet_pad_v2, zwp_tablet_seat_v2, zwp_tablet_tool_v2,
-    zwp_tablet_v2,
+    zwp_tablet_manager_v2, zwp_tablet_pad_v2, zwp_tablet_seat_v2, zwp_tablet_tool_v2, zwp_tablet_v2,
 };
 use crate::wayland::pen::Pens;
 
@@ -54,14 +53,17 @@ impl TabletState {
         let data = std::ptr::from_ref(shared).cast_mut().cast::<c_void>();
         // TEST: wayland_tablet_manager_is_bound_without_tablets
         // SAFETY: `manager` and `seat` are live proxies of this connection.
-        let proxy =
-            unsafe { zwp_tablet_manager_v2::get_tablet_seat(&shared.client, self.manager.get(), seat) };
+        let proxy = unsafe {
+            zwp_tablet_manager_v2::get_tablet_seat(&shared.client, self.manager.get(), seat)
+        };
         self.seat.set(proxy);
         if !proxy.is_null() {
             // TEST: wayland_tablet_manager_is_bound_without_tablets
             // SAFETY: `proxy` is the live tablet seat just made; `data`
             // outlives it (`Shared::drop` destroys it).
-            unsafe { zwp_tablet_seat_v2::add_listener(&shared.client, proxy, &SEAT_LISTENER, data) };
+            unsafe {
+                zwp_tablet_seat_v2::add_listener(&shared.client, proxy, &SEAT_LISTENER, data)
+            };
         }
     }
 
@@ -121,7 +123,11 @@ extern "C" fn on_tool_added(data: *mut c_void, _seat: *mut Proxy, tool: *mut Pro
 }
 
 /// Runs `f` on the tool `tool` if it is one of ours.
-fn with_tool(data: *mut c_void, tool: *mut Proxy, f: impl FnOnce(&Shared, &mut crate::wayland::pen::PenTool)) {
+fn with_tool(
+    data: *mut c_void,
+    tool: *mut Proxy,
+    f: impl FnOnce(&Shared, &mut crate::wayland::pen::PenTool),
+) {
     // TEST: wayland_tablet_manager_is_bound_without_tablets
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
     let shared = unsafe { shared_of(data) };
@@ -191,13 +197,7 @@ extern "C" fn on_tilt(data: *mut c_void, tool: *mut Proxy, x: i32, y: i32) {
     with_tool(data, tool, |_, t| t.tilt(x, y));
 }
 
-extern "C" fn on_button(
-    data: *mut c_void,
-    tool: *mut Proxy,
-    serial: u32,
-    button: u32,
-    state: u32,
-) {
+extern "C" fn on_button(data: *mut c_void, tool: *mut Proxy, serial: u32, button: u32, state: u32) {
     with_tool(data, tool, |shared, t| {
         t.button(button, state);
         shared.input.clipboard.note_serial(serial);

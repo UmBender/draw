@@ -19,12 +19,12 @@ use crate::platform::{
 use crate::wayland::client::Proxy;
 use crate::wayland::clipboard::ClipboardState;
 use crate::wayland::connection::{Shared, shared_of};
-use crate::wayland::tablet::TabletState;
 use crate::wayland::generated::wayland::{wl_keyboard, wl_pointer, wl_seat};
 use crate::wayland::input::{
     AxisFrame, SeatDevices, fixed_to_f32, keymap_usable, pointer_position, raw_button_from_evdev,
     raw_key_from_keysym, repeats_to_send, wheel_of_frame,
 };
+use crate::wayland::tablet::TabletState;
 use crate::wayland::xkb::{KeyState, Keymap, Xkb};
 
 /// The largest keymap the backend reads, in bytes.

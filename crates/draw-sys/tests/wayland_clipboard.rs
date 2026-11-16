@@ -30,7 +30,12 @@ fn names(list: &[&str]) -> Vec<String> {
 
 #[test]
 fn text_mime_prefers_utf8_over_legacy_names() {
-    let offered = names(&["STRING", "text/plain", "UTF8_STRING", "text/plain;charset=utf-8"]);
+    let offered = names(&[
+        "STRING",
+        "text/plain",
+        "UTF8_STRING",
+        "text/plain;charset=utf-8",
+    ]);
     assert_eq!(pick_text_mime(&offered), Some("text/plain;charset=utf-8"));
     let legacy = names(&["TEXT", "STRING"]);
     assert_eq!(pick_text_mime(&legacy), Some("TEXT"));
@@ -207,10 +212,8 @@ fn clipboard_until(platform: &mut WaylandPlatform, want: &str) -> String {
     let mut events = Vec::new();
     loop {
         platform.poll(&mut events);
-        if let Some(text) = platform.clipboard_text() {
-            if text == want {
-                return text;
-            }
+        if let Some(text) = platform.clipboard_text().filter(|text| text == want) {
+            return text;
         }
         assert!(Instant::now() < deadline, "clipboard never became the text");
         std::thread::sleep(Duration::from_millis(20));
@@ -224,7 +227,10 @@ fn wayland_clipboard_reads_text_from_wl_copy() {
 
     copy(&sway, &[], "from wl-copy ✓".as_bytes());
 
-    assert_eq!(clipboard_until(&mut platform, "from wl-copy ✓"), "from wl-copy ✓");
+    assert_eq!(
+        clipboard_until(&mut platform, "from wl-copy ✓"),
+        "from wl-copy ✓"
+    );
 }
 
 #[test]
@@ -255,12 +261,12 @@ fn wayland_clipboard_png_reaches_wl_paste() {
 fn wayland_clipboard_large_text_round_trips() {
     let sway = Sway::start();
     let mut platform = focused(&sway);
-    let big: String = (0..(4 * 1024 * 1024 / 8)).map(|i| format!("{:07}\n", i % 10_000_000)).collect();
+    let big = "0123456\n".repeat(4 * 1024 * 1024 / 8);
 
     platform.set_clipboard_text(&big);
     let got = paste(&sway, &mut platform, &["-n"]);
     assert_eq!(got.len(), big.len());
-    assert!(got == big.as_bytes());
+    assert_eq!(got, big.as_bytes());
 
     copy(&sway, &[], big.as_bytes());
     assert_eq!(clipboard_until(&mut platform, &big).len(), big.len());

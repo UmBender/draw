@@ -143,8 +143,9 @@ impl ClipboardState {
         let data = std::ptr::from_ref(shared).cast_mut().cast::<c_void>();
         // TEST: wayland_clipboard_empty_is_none
         // SAFETY: `manager` and `seat` are live proxies of this connection.
-        let device =
-            unsafe { wl_data_device_manager::get_data_device(&shared.client, self.manager.get(), seat) };
+        let device = unsafe {
+            wl_data_device_manager::get_data_device(&shared.client, self.manager.get(), seat)
+        };
         self.device.set(device);
         if !device.is_null() {
             // TEST: wayland_clipboard_empty_is_none
@@ -242,7 +243,12 @@ impl ClipboardState {
             // SAFETY: live, destroyed once.
             unsafe { wl_data_source::destroy(c, source) };
         }
-        let offers: Vec<usize> = self.offers.borrow_mut().drain(..).map(|(id, _)| id).collect();
+        let offers: Vec<usize> = self
+            .offers
+            .borrow_mut()
+            .drain(..)
+            .map(|(id, _)| id)
+            .collect();
         for id in offers {
             // TEST: wayland_clipboard_empty_is_none
             // SAFETY: the offers are live proxies, destroyed once.
@@ -294,7 +300,9 @@ extern "C" fn on_offer_mime(data: *mut c_void, offer: *mut Proxy, mime: *const c
     let shared = unsafe { shared_of(data) };
     // TEST: wayland_clipboard_reads_text_from_wl_copy
     // SAFETY: `mime` is a NUL-terminated string valid for the call.
-    let mime = unsafe { CStr::from_ptr(mime) }.to_string_lossy().into_owned();
+    let mime = unsafe { CStr::from_ptr(mime) }
+        .to_string_lossy()
+        .into_owned();
     let mut offers = shared.input.clipboard.offers.borrow_mut();
     if let Some((_, mimes)) = offers.iter_mut().find(|(id, _)| *id == offer as usize) {
         mimes.push(mime);
@@ -308,7 +316,9 @@ extern "C" fn on_selection(data: *mut c_void, _device: *mut Proxy, offer: *mut P
     let clip = &shared.input.clipboard;
     let old = clip.selection.replace(offer);
     if !old.is_null() && old != offer {
-        clip.offers.borrow_mut().retain(|(id, _)| *id != old as usize);
+        clip.offers
+            .borrow_mut()
+            .retain(|(id, _)| *id != old as usize);
         // TEST: wayland_clipboard_reads_text_from_wl_copy
         // SAFETY: `old` is a live offer, destroyed once.
         unsafe { wl_data_offer::destroy(&shared.client, old) };

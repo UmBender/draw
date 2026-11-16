@@ -118,12 +118,18 @@ impl Platform for WaylandPlatform {
 
     fn set_clipboard_text(&mut self, text: &str) {
         let shared = &self.connection.shared;
-        shared.input.clipboard.set(shared, Payload::Text(text.to_owned()));
+        shared
+            .input
+            .clipboard
+            .set(shared, Payload::Text(text.to_owned()));
     }
 
     fn set_clipboard_png(&mut self, png: &[u8]) {
         let shared = &self.connection.shared;
-        shared.input.clipboard.set(shared, Payload::Png(png.to_vec()));
+        shared
+            .input
+            .clipboard
+            .set(shared, Payload::Png(png.to_vec()));
     }
 
     fn schedule_update(&mut self) {
