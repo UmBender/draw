@@ -2514,6 +2514,11 @@ mod self_tests {
         for needle in ["--platform", "DRAW_E2E_PLATFORM"] {
             assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
         }
+        // T171: native runs on both display servers now.
+        assert!(
+            !script.contains("native needs --backend x11"),
+            "scripts/e2e.sh still limits native to X11"
+        );
     }
 
     // ---- flags, not variables (T154) --------------------------------------

@@ -203,6 +203,9 @@ mod tests {
             "X11Platform::open(",
             "X11Gpu::new(",
             "Platform::Native",
+            "WaylandPlatform::connect(",
+            "WaylandGpu::new(",
+            "ClosingWayland::new(",
         ] {
             assert!(production.contains(needed), "{needed} missing");
         }
@@ -227,6 +230,7 @@ mod tests {
             assert!(text.contains(flag), "{flag} missing: {text}");
         }
         assert!(!text.contains(OLD_PREFIX), "{text}");
+        assert!(!text.contains("X11 only"), "{text}");
     }
 
     #[test]
