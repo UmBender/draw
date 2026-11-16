@@ -16,6 +16,15 @@ use std::ptr::{null, null_mut};
 
 use crate::loader::{Library, LoadError};
 
+/// Serialises `eglInitialize` and the teardown ending in `eglTerminate`:
+/// Mesa's display set-up (loading a driver) and tear-down (unloading it) are
+/// not safe to run at once in one process (ADR-T168-3).
+fn display_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Why a context could not be created or used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextError {
@@ -139,6 +148,7 @@ struct EglApi {
     destroy_surface: unsafe extern "C" fn(Ptr, Ptr) -> u32,
     make_current: unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr) -> u32,
     swap_buffers: unsafe extern "C" fn(Ptr, Ptr) -> u32,
+    // TEST: wayland_many_connections_in_sequence_and_threads
     terminate: unsafe extern "C" fn(Ptr) -> u32,
     // Declared last: the library must outlive the pointers above, and
     // fields drop in order.
@@ -211,6 +221,7 @@ impl EglApi {
             return Err(ContextError::NoDisplay);
         }
         let (mut major, mut minor) = (0, 0);
+        let _guard = display_lock();
         // TEST: egl_headless_context_makes_current
         // SAFETY: `display` came from EGL and the two out pointers are
         // valid for the call.
@@ -497,6 +508,7 @@ impl GlContext for EglContext {
 
 impl Drop for EglContext {
     fn drop(&mut self) {
+        let _guard = display_lock();
         // TEST: egl_headless_context_makes_current
         // SAFETY: the handles belong to `self` and are released once, in this
         // order: unbind, surface, context. Failures are not actionable.
