@@ -43,12 +43,12 @@ fn white() -> Color {
     Color::rgba(1.0, 1.0, 1.0, 1.0)
 }
 
-fn target(ctx: &mut Ctx) -> <GlGpu<EglContext> as Gpu>::Target {
+fn target(ctx: &mut Ctx, samples: u8) -> <GlGpu<EglContext> as Gpu>::Target {
     ctx.gpu_mut()
         .create_target(TargetDesc {
             width: SIDE,
             height: SIDE,
-            samples: 1,
+            samples,
             filter: Filter::Nearest,
         })
         .unwrap()
@@ -62,7 +62,8 @@ fn read(ctx: &mut Ctx, target: &<GlGpu<EglContext> as Gpu>::Target) -> Vec<u8> {
 
 /// `draw_shape` through `RenderCtx`.
 fn reference(ctx: &mut Ctx, shape: &Shape, camera: &Camera) -> Vec<u8> {
-    let target = target(ctx);
+    // Multisampled like the app's frame target.
+    let target = target(ctx, 4);
     ctx.set_window(view(), 1.0);
     ctx.render_to(&target, view(), Some(white()), |ctx| {
         ctx.draw_preview(shape, camera);
@@ -72,7 +73,7 @@ fn reference(ctx: &mut Ctx, shape: &Shape, camera: &Camera) -> Vec<u8> {
 
 /// The tessellated mesh drawn feathered through the camera uniform.
 fn tessellated(ctx: &mut Ctx, shape: &Shape, camera: &Camera) -> Vec<u8> {
-    let target = target(ctx);
+    let target = target(ctx, 1);
     let mesh = tessellate_at(shape, zoom_bucket(camera.zoom()));
     let gpu = ctx.gpu_mut();
     let pipeline = gpu.pipeline(PipelineDesc {

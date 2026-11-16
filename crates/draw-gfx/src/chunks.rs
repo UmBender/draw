@@ -8,7 +8,7 @@ use draw_core::core::document::ShapeId;
 use draw_core::core::geom::{Aabb, Vec2};
 use draw_core::core::shape::Shape;
 
-use crate::tessellate::{Mesh, tessellate};
+use crate::tessellate::{Mesh, tessellate_at, zoom_bucket};
 
 /// Shapes per chunk.
 pub const CHUNK_LEN: usize = 64;
@@ -55,10 +55,22 @@ pub struct UpdateStats {
 }
 
 /// The chunks of a document.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ChunkCache {
     chunks: Vec<Chunk>,
     tessellations: usize,
+    /// The zoom bucket the chunks are tessellated for (ADR-T179-1).
+    bucket: f32,
+}
+
+impl Default for ChunkCache {
+    fn default() -> Self {
+        Self {
+            chunks: Vec::new(),
+            tessellations: 0,
+            bucket: 1.0,
+        }
+    }
 }
 
 impl ChunkCache {
@@ -86,7 +98,7 @@ impl ChunkCache {
             if same {
                 continue;
             }
-            let chunk = build(group);
+            let chunk = build(group, self.bucket);
             self.tessellations += group.len();
             rebuilt += 1;
             match self.chunks.get_mut(slot) {
@@ -100,15 +112,23 @@ impl ChunkCache {
     /// Sets the zoom the chunks are tessellated for (ADR-T179-1); `true`
     /// when its bucket changed, which drops every chunk.
     pub fn set_zoom(&mut self, zoom: f32) -> bool {
-        let _ = zoom;
-        todo!()
+        let bucket = zoom_bucket(zoom);
+        if bucket.to_bits() == self.bucket.to_bits() {
+            return false;
+        }
+        self.bucket = bucket;
+        self.chunks.clear();
+        true
     }
 
     /// [`ChunkCache::recompute`] for a view at `zoom`.
     #[must_use]
     pub fn recompute_at(items: &[Item<'_>], zoom: f32) -> Vec<Mesh> {
-        let _ = (items, zoom);
-        todo!()
+        let bucket = zoom_bucket(zoom);
+        items
+            .chunks(CHUNK_LEN)
+            .map(|g| build(g, bucket).mesh)
+            .collect()
     }
 
     /// The chunks, bottom to top.
@@ -133,15 +153,15 @@ impl ChunkCache {
     /// The meshes of `items`, tessellated from scratch, one per chunk.
     #[must_use]
     pub fn recompute(items: &[Item<'_>]) -> Vec<Mesh> {
-        items.chunks(CHUNK_LEN).map(|g| build(g).mesh).collect()
+        Self::recompute_at(items, 1.0)
     }
 }
 
-/// Tessellates one group of shapes into a chunk.
-fn build(group: &[Item<'_>]) -> Chunk {
+/// Tessellates one group of shapes into a chunk at zoom `bucket`.
+fn build(group: &[Item<'_>], bucket: f32) -> Chunk {
     let mut mesh = Mesh::default();
     for item in group {
-        let part = tessellate(item.shape);
+        let part = tessellate_at(item.shape, bucket);
         let base = u32::try_from(mesh.vertices.len()).unwrap_or(u32::MAX);
         mesh.vertices.extend(part.vertices);
         mesh.indices.extend(part.indices.iter().map(|i| i + base));
