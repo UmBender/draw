@@ -915,3 +915,39 @@ fn perf_tessellation_of_5k_strokes_is_measured() {
         "perf: tessellate 5 120 strokes: cold {cold:?}, one chunk {one_chunk:?}, {triangles} triangles"
     );
 }
+
+#[test]
+#[ignore = "perf: run with `cargo test --release -- --ignored perf`"]
+fn perf_threaded_tessellation_is_measured() {
+    // Arrange (T148, AC-1): one thread against all of them, at 5 120 and 100 shapes.
+    if !optimised() {
+        return;
+    }
+    let ed = doubled_strokes();
+    let all: Vec<&draw_core::core::shape::Shape> = ed.document().shapes().map(|(_, s)| s).collect();
+    let threads = std::thread::available_parallelism().map_or(1, usize::from);
+    let mut speedups = Vec::new();
+    for count in [100, all.len()] {
+        let shapes = &all[..count.min(all.len())];
+
+        // Act
+        let single = median_time(|| (), |()| draw_gfx::tessellate::tessellate_many(shapes, 1));
+        let multi = median_time(
+            || (),
+            |()| draw_gfx::tessellate::tessellate_many(shapes, threads),
+        );
+
+        // Assert: the geometry is the same; the times are reported for the ADR.
+        assert_eq!(
+            draw_gfx::tessellate::tessellate_many(shapes, 1),
+            draw_gfx::tessellate::tessellate_many(shapes, threads)
+        );
+        let speedup = single.as_secs_f64() / multi.as_secs_f64();
+        eprintln!(
+            "perf: tessellate {} shapes: 1 thread {single:?}, {threads} threads {multi:?}, {speedup:.2}x",
+            shapes.len()
+        );
+        speedups.push(speedup);
+    }
+    assert!(speedups[0] >= 0.9, "100 shapes must not lose: {speedups:?}");
+}

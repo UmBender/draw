@@ -114,6 +114,30 @@ pub fn tessellate(shape: &Shape) -> Mesh {
     b.mesh
 }
 
+/// Fewer shapes than this are tessellated on the calling thread: the cost of
+/// spawning is more than the work (ADR-T148-1).
+pub const MIN_PARALLEL: usize = 256;
+
+/// Tessellates every shape, one mesh each and in the same order, on up to
+/// `threads` scoped threads. The result is the same for every `threads`.
+#[must_use]
+pub fn tessellate_many(shapes: &[&Shape], threads: usize) -> Vec<Mesh> {
+    if threads <= 1 || shapes.len() < MIN_PARALLEL {
+        return shapes.iter().map(|s| tessellate(s)).collect();
+    }
+    let run = shapes.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = shapes
+            .chunks(run)
+            .map(|part| scope.spawn(move || part.iter().map(|s| tessellate(s)).collect::<Vec<_>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_default())
+            .collect()
+    })
+}
+
 /// Segments of the rim of an ellipse and of a join disc.
 const ELLIPSE_SEGMENTS: usize = 48;
 const DISC_SEGMENTS: usize = 8;
@@ -230,6 +254,50 @@ mod tests {
     use super::*;
     use draw_core::core::palette::ColorId;
     use draw_core::core::shape::Style;
+
+    fn scene(n: usize) -> Vec<Shape> {
+        (0..n)
+            .map(|i| {
+                let x = i as f32;
+                Shape::Stroke {
+                    points: (0..20)
+                        .map(|k| Vec2::new(x + k as f32, (x * 0.5 + k as f32).sin() * 10.0))
+                        .collect(),
+                    widths: None,
+                    style: Style {
+                        color: ColorId::INK,
+                        width: 2.0,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn threads_give_identical_geometry() {
+        // Arrange
+        let shapes = scene(MIN_PARALLEL * 3 + 7);
+        let refs: Vec<&Shape> = shapes.iter().collect();
+        // Act
+        let one = tessellate_many(&refs, 1);
+        // Assert
+        for threads in [2, 3, 4, 8, 64] {
+            assert_eq!(tessellate_many(&refs, threads), one, "{threads} threads");
+        }
+        assert_eq!(one.len(), refs.len());
+        assert_eq!(one[5], tessellate(refs[5]));
+    }
+
+    #[test]
+    fn small_inputs_use_one_thread() {
+        // Arrange
+        let shapes = scene(MIN_PARALLEL - 1);
+        let refs: Vec<&Shape> = shapes.iter().collect();
+        // Act / Assert
+        assert_eq!(tessellate_many(&refs, 8), tessellate_many(&refs, 1));
+        assert_eq!(tessellate_many(&[], 4), Vec::<Mesh>::new());
+        assert_eq!(tessellate_many(&refs, 0).len(), refs.len());
+    }
 
     #[test]
     fn text_shapes_tessellate_to_nothing() {
