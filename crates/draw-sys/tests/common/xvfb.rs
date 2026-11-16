@@ -26,6 +26,10 @@ impl Xvfb {
                 "-screen",
                 "0",
                 "64x64x24",
+                // A fixed DPI: the screen size would otherwise give the
+                // windows a fractional scale.
+                "-dpi",
+                "96",
                 "-nolisten",
                 "tcp",
                 "-noreset",

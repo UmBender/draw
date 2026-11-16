@@ -1477,6 +1477,15 @@ fn app_args(files: &AppFiles<'_>, start: Option<&Path>, recover: bool) -> Vec<Os
     args
 }
 
+/// The `--platform` flag for the platform named by `DRAW_E2E_PLATFORM`
+/// (`scripts/e2e.sh --platform`), nothing when it is unset.
+fn platform_args(platform: Option<&str>) -> Vec<OsString> {
+    platform
+        .into_iter()
+        .flat_map(|name| [OsString::from("--platform"), OsString::from(name)])
+        .collect()
+}
+
 /// Puts the snapshot `start` in the autosave place of `state`, for `--recover`.
 fn stage_autosave(start: &Path, state: &Path) -> Result<(), String> {
     let dir = state.join("draw");
@@ -1519,6 +1528,8 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         clipboard: &clipboard,
     };
     command.args(app_args(&files, start.as_deref(), case.recover));
+    let platform = std::env::var("DRAW_E2E_PLATFORM").ok();
+    command.args(platform_args(platform.as_deref()));
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;
     if session.backend == Backend::X11 {
@@ -2477,6 +2488,30 @@ mod self_tests {
             "MemoryMax=",
             "--backend",
         ] {
+            assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
+        }
+    }
+
+    // ---- the platform flag (T178) -----------------------------------------
+
+    #[test]
+    fn app_args_pass_the_platform() {
+        // Arrange, Act
+        let native = platform_args(Some("native"));
+        let unset = platform_args(None);
+
+        // Assert
+        assert_eq!(native, [OsString::from("--platform"), "native".into()]);
+        assert!(unset.is_empty(), "{unset:?}");
+    }
+
+    #[test]
+    fn e2e_script_takes_the_platform() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/e2e.sh");
+        let script = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+
+        for needle in ["--platform", "DRAW_E2E_PLATFORM"] {
             assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
         }
     }
