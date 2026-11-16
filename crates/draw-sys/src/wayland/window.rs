@@ -36,7 +36,7 @@ pub struct Mapped {
 /// first, so it is dropped before the native window.
 #[derive(Debug)]
 struct GlPart {
-    context: EglContext,
+    context: Rc<EglContext>,
     native: NativeWindow,
 }
 
@@ -360,7 +360,10 @@ impl Window<Configured> {
         unsafe { wl_surface::set_buffer_scale(&shared.client, o.surface, scale) };
         shared.win.applied.set((width, height, scale));
         Ok(self.next_state(Mapped {
-            gl: GlPart { context, native },
+            gl: GlPart {
+                context: Rc::new(context),
+                native,
+            },
         }))
     }
 }
@@ -386,6 +389,12 @@ impl Window<Mapped> {
     #[must_use]
     pub fn context(&self) -> &EglContext {
         &self.state.gl.context
+    }
+
+    /// A counted handle on the GL context (ADR-T171-1).
+    #[must_use]
+    pub fn context_handle(&self) -> Rc<EglContext> {
+        Rc::clone(&self.state.gl.context)
     }
 
     /// Presents the back buffer.

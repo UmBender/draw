@@ -12,19 +12,22 @@ use draw::shell::app;
 use draw::shell::backend::Backend;
 use draw::shell::diag::{self, Level};
 use draw::shell::gpu_mq::MqGpu;
-use draw::shell::gpu_x11::{ClosingX11, X11Gpu};
+use draw::shell::gpu_native::{ClosingWayland, ClosingX11, WaylandGpu, X11Gpu};
 use draw::shell::options::{self, Parsed, Platform};
 use draw::shell::platform_mq::MqPlatform;
 use draw::shell::{backend, tablet};
+use draw_sys::wayland::WaylandPlatform;
 use draw_sys::x11::{GlBackend, X11Platform};
 use macroquad::miniquad::signal;
 
-/// The pair of interpreters the app runs over; `main` matches on it. The
-/// native Wayland and X11 backends (T143, T144) add arms.
+/// The pair of interpreters the app runs over; `main` matches on it.
 #[derive(Debug, Clone, Copy)]
 enum Runtime {
     /// macroquad's window, input and GL.
     Macroquad,
+    /// `WaylandPlatform` and the OpenGL ES Gpu of `draw-gfx` (`--platform
+    /// native` on a Wayland session, ADR-T171-1).
+    Wayland,
     /// `X11Platform` and the OpenGL ES Gpu of `draw-gfx` (`--platform native`).
     X11,
 }
@@ -65,7 +68,7 @@ Debugging (for troubleshooting only):\n  \
   --frame-times        Log how long each re-render takes\n  \
   --skip-preflight     Skip the check for a display and libraries\n  \
   --backend <name>     Window backend on Linux: wayland or x11\n  \
-  --platform <name>    Window and GL layer: macroquad (default) or native (X11 only)\n  \
+  --platform <name>    Window and GL layer: macroquad (default) or native\n  \
   --msaa <n>           Anti-aliasing samples: off, 2, 4 (default), 8\n  \
   --tablet <mode>      Pen mode: auto (default), on, off",
         version_text()
@@ -110,13 +113,35 @@ fn main() {
     let runtime = match (options.platform, backend) {
         (Platform::Macroquad, _) => Runtime::Macroquad,
         (Platform::Native, Backend::X11) => Runtime::X11,
-        (Platform::Native, Backend::Wayland) => {
-            eprintln!("draw: --platform native on Wayland is not available yet; use --backend x11");
-            diag::finish("native Wayland not available");
-            std::process::exit(2);
-        }
+        (Platform::Native, Backend::Wayland) => Runtime::Wayland,
     };
     match runtime {
+        // The own Wayland backend and the OpenGL ES Gpu (T171, ADR-T171-1).
+        Runtime::Wayland => {
+            let platform = match WaylandPlatform::connect(None, "draw", app::WM_CLASS) {
+                Ok(platform) => platform,
+                Err(problem) => {
+                    eprintln!("draw: Wayland window: {problem}");
+                    diag::log(Level::Error, &format!("wayland: {problem}"));
+                    diag::finish("wayland window failed");
+                    std::process::exit(1);
+                }
+            };
+            let gpu = match WaylandGpu::new(platform.share_gl()) {
+                Ok(gpu) => gpu,
+                Err(problem) => {
+                    eprintln!("draw: OpenGL: {problem}");
+                    diag::log(Level::Error, &format!("gl: {problem}"));
+                    diag::finish("gl failed");
+                    std::process::exit(1);
+                }
+            };
+            if !draw_sys::x11::signal::install_quit() {
+                diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
+            }
+            let platform = ClosingWayland::new(platform, finish_native);
+            block_on(app::run(platform, gpu, options, backend, tablet));
+        }
         // The own X11 backend and the OpenGL ES Gpu (T178, ADR-T178-1).
         Runtime::X11 => {
             let opened = X11Platform::open(
@@ -173,7 +198,7 @@ fn finish(received: Option<signal::QuitSignal>) {
     }
 }
 
-/// The end of the native X11 run: the window closed, or the quit signal
+/// The end of a native run: the window closed, or the quit signal
 /// `number` came. The frame loop never returns, so this ends the process.
 fn finish_native(number: Option<i32>) {
     finish(number.and_then(signal::QuitSignal::from_number));

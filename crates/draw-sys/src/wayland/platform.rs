@@ -94,7 +94,10 @@ impl WaylandPlatform {
     /// goes before the native window (ADR-T171-1).
     #[must_use]
     pub fn share_gl(&self) -> SharedGl {
-        todo!("ADR-T171-1")
+        SharedGl {
+            context: self.window.context_handle(),
+            size: Rc::clone(&self.size),
+        }
     }
 
     /// Whether the compositor asked the window to close.
@@ -127,6 +130,7 @@ impl WaylandPlatform {
         // and no more events; T171 decides how `main` reports it.
         let _ = self.connection.dispatch(Duration::ZERO);
         self.window.apply_configure();
+        self.size.set(pixels(metrics(&self.window)));
     }
 }
 
