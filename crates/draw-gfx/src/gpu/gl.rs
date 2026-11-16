@@ -109,8 +109,8 @@ in vec4 v_color;
 in float v_edge;
 out vec4 frag;
 void main() {
-    frag = texture(tex, v_uv) * v_color;
-    frag.a *= clamp(v_edge + 0.5, 0.0, 1.0);
+    float coverage = clamp(v_edge + 0.5, 0.0, 1.0);
+    frag = texture(tex, v_uv) * v_color * vec4(1.0, 1.0, 1.0, coverage);
 }
 ";
 
@@ -1401,14 +1401,7 @@ impl<C: GlContext> Gpu for GlGpu<C> {
                         return Err(backend("Draw outside a pass"));
                     };
                     let (view, camera) = (*view, *camera);
-                    self.draw(
-                        ready,
-                        view,
-                        camera,
-                        *pipeline,
-                        texture.as_ref(),
-                        geometry,
-                    )?;
+                    self.draw(ready, view, camera, *pipeline, texture.as_ref(), geometry)?;
                 }
                 Command::SetCamera(camera) => {
                     let Some((_, _, current)) = &mut pass else {
