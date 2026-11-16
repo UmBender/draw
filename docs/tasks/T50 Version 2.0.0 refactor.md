@@ -144,6 +144,8 @@ child tasks; it does not implement code.
 
 - [ ] [[T146 Retained renderer in draw-gfx]]
 - [ ] [[T173 Camera uniform and analytic anti-aliasing over Gpu]]
+- [ ] [[T179 Tessellator parity with the app's drawing]]
+- [ ] [[T180 Text and formulas on the retained path]]
 - [ ] [[T172 Retained renderer in the app]]
 - [ ] [[T147 Frame pacing by the compositor and idle at zero]]
 - [ ] [[T148 Multithreaded tessellation, only with a measured gain]]
