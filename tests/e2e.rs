@@ -2481,6 +2481,28 @@ mod self_tests {
         }
     }
 
+    // ---- the platform flag (T178) -----------------------------------------
+
+    #[test]
+    fn app_args_pass_the_platform() {
+        // Arrange, Act
+        let native = platform_args(Some("native"));
+        let unset = platform_args(None);
+
+        // Assert
+        assert_eq!(native, [OsString::from("--platform"), "native".into()]);
+        assert!(unset.is_empty(), "{unset:?}");
+    }
+
+    #[test]
+    fn e2e_script_takes_the_platform() {
+        let script = std::fs::read_to_string("scripts/e2e.sh").unwrap();
+
+        for needle in ["--platform", "DRAW_E2E_PLATFORM"] {
+            assert!(script.contains(needle), "scripts/e2e.sh lacks {needle}");
+        }
+    }
+
     // ---- flags, not variables (T154) --------------------------------------
 
     #[test]

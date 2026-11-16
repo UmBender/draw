@@ -122,6 +122,9 @@ mod tests {
             "app::run(",
             "MqPlatform::open()",
             "MqGpu::new()",
+            "X11Platform::open(",
+            "X11Gpu::new(",
+            "Platform::Native",
         ] {
             assert!(production.contains(needed), "{needed} missing");
         }
@@ -138,6 +141,7 @@ mod tests {
             "--frame-times",
             "--skip-preflight",
             "--backend",
+            "--platform",
             "--msaa",
             "--tablet",
             "--recover",
