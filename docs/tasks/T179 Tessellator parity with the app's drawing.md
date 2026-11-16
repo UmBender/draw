@@ -1,7 +1,7 @@
 ---
 id: T179
 title: Tessellator parity with the app's drawing
-status: in-progress
+status: review
 wave: 72
 branch: task/T179-tessellator-parity-with-the-app-s-draw
 depends_on: [T146, T173]
@@ -43,12 +43,17 @@ ADRs: [[ADR-T179-1 Zoom bucket per chunk for screen-space rules]] (the per-chunk
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T179): specify the parity`
-- [ ] tests — `test(T179): add failing parity tests`
-- [ ] behaviour — `feat(T179): tessellate feather, fills, heads and the grid`
-- [ ] quality — `chore(T179): pass clippy and rustfmt`
-- [ ] docs — `docs(T179): record the parity results`
+- [x] spec — `docs(T179): specify the parity`
+- [x] tests — `test(T179): add failing parity tests`
+- [x] behaviour — `feat(T179): tessellate feather, fills, heads and the grid`
+- [x] quality — `chore(T179): pass clippy and rustfmt`
+- [x] docs — `docs(T179): record the parity results`
 
 ## Log
+
+- 2026-11-16 — done (batch). The tests step did not compile before the models step (new `tessellate_at`, `zoom_bucket`, `dot_grid_mesh`, `ChunkCache::set_zoom` signatures), as allowed. `scripts/check.sh` green; the e2e suite was not run: nothing in `src/` changed and the app does not call the tessellator.
+- Results: `tessellate_at(shape, zoom_bucket)` feathers strokes, lines, arrows, rect and ellipse outlines and fills, grid lines and cell fills (`uv[0]` is the edge distance, half a pixel out and in); the stroke follows `draw_shape`'s mitred strip, minimum step, mitre limit and joint rule. `parity_*` pass at zoom 0.25, 1 and 4 for stroke, pressure stroke, line, arrow, rect and ellipse (open and filled) and grid with fills, with the metric of [[ADR-T179-2 Parity metric against the screen-space drawing]] (reference on a 4× multisampled target).
+- Deviations: the dot grid is `dot_grid_mesh` (plain quads for the `Alpha` pipeline, not feathered, as `draw_underlay` draws it); flat stroke ends and thin-line corners are hard, not feathered; the parity metric tolerates differences only within one pixel of a reference edge plus 4 % of ink (ADR-T179-2), not the 64-pixel e2e count, which a feathered edge would exceed by design.
+- LEFTOVER: parity is tested at bucket zooms only; between buckets the minimum width is off by up to a factor of √2 for thin lines (ADR-T179-1). Text, labels and grid axis labels are T180. T172 may tighten the metric once the app draws through this path.
 
 - 2026-11-16 — created by the owner from the split of [[T172 Retained renderer in the app]] proposed in its Log.
