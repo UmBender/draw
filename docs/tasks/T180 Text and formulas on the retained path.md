@@ -1,7 +1,7 @@
 ---
 id: T180
 title: Text and formulas on the retained path
-status: in-progress
+status: review
 wave: 72
 branch: task/T180-text-and-formulas-on-the-retained-path
 depends_on: [T146, T173, T179]
@@ -42,12 +42,15 @@ New module `draw_gfx::text` (`TextCache`, `GlyphSource`, `GlyphEntry`), see [[AD
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T180): specify the retained text`
-- [ ] tests — `test(T180): add failing tests`
-- [ ] behaviour — `feat(T180): emit retained text and formula quads`
-- [ ] quality — `chore(T180): pass clippy and rustfmt`
-- [ ] docs — `docs(T180): record the results`
+- [x] spec — `docs(T180): specify the retained text`
+- [x] tests — `test(T180): add failing tests`
+- [x] behaviour — `feat(T180): emit retained text and formula quads`
+- [x] quality — `chore(T180): pass clippy and rustfmt`
+- [x] docs — `docs(T180): record the results`
 
 ## Log
 
 - 2026-11-16 — created by the owner from the split of [[T172 Retained renderer in the app]] proposed in its Log.
+- 2026-11-16 (batch) — done on top of the T179 branch. The tests commit does not compile until the models commit (new module `draw_gfx::text`), as the plan allows. New module `crates/draw-gfx/src/text.rs` (`TextCache`, `GlyphSource`, `GlyphEntry`, `TextSpec`); the shell's `GlyphAtlas` is adapted by a small `GlyphSource` in `tests/text_parity.rs` (no `src/` file changed, so `src/shell/ui_text.rs` and `render.rs` stay untouched). `update` is generic (`impl GlyphSource`), not `dyn`, because `tests/no_dyn.rs` forbids `dyn` outside ADR-T131-1's list.
+- AC-3 compares geometry, not pixels: retained world quads through the camera equal the vertices `push_text_block` and `push_text_centered` send to a recording sink at zoom 0.25, 1, 4 and dpi 1 and 2 (plain text, formulas with fraction, root, sum and warn source, labels). Whole-frame pixel parity stays with T172.
+- Known costs for T172 to weigh: `update` lays the block out (cached `typeset`, plain text allocates a glyph list) on every call to compute the key, even when nothing changes; a capped label and a rule thinner than 1 px re-emit on zoom (ADR-T180-1). LEFTOVER: wiring into the app frame, and an atlas epoch counter on `GlyphAtlas` (the shell must call `set_epoch` when the atlas clears) are T172's.
