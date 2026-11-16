@@ -1,3 +1,59 @@
+//! The retained document path of the app (T172): the shapes of the document
+//! as cached chunks of world-space triangles, drawn under the camera
+//! uniform, so a pan or a zoom inside a bucket tessellates nothing.
+//!
+//! Text, formulas, labels and the minimap are not on this path yet
+//! (T172 AC-1d); the default renderer stays the layer cache.
+
+use std::collections::HashMap;
+
+use draw_gfx::chunks::{ChunkCache, Item};
+use draw_gfx::gpu::{Camera as GfxCamera, Gpu};
+
+use crate::core::camera::Camera;
+use crate::core::document::ShapeId;
+use crate::core::geom::Vec2;
+use crate::core::shape::Shape;
+use crate::shell::render::cull_rect;
+use crate::shell::render_ctx::RenderCtx;
+
+/// The chunks of a document and the revisions that key them.
+#[derive(Debug, Default)]
+pub struct RetainedScene {
+    cache: ChunkCache,
+    /// Each shape as last seen and its revision.
+    seen: HashMap<ShapeId, (u64, Shape)>,
+    next_revision: u64,
+}
+
+impl RetainedScene {
+    /// An empty scene.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Shapes tessellated since the scene was made.
+    #[must_use]
+    pub fn tessellations(&self) -> usize {
+        self.cache.tessellations()
+    }
+
+    /// Draws `shapes` (bottom to top) except the `hidden` ones, through
+    /// `camera` in a viewport of `viewport` logical pixels: tessellates the
+    /// chunks whose shapes changed, then draws the chunks in view.
+    pub fn draw<G: Gpu>(
+        &mut self,
+        ctx: &mut RenderCtx<G>,
+        shapes: &[(ShapeId, &Shape)],
+        hidden: &[ShapeId],
+        camera: &Camera,
+        viewport: Vec2,
+    ) {
+        todo!("T172")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

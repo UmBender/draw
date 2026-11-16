@@ -25,6 +25,16 @@ pub enum TabletMode {
     Off,
 }
 
+/// How the document is drawn (`--renderer`, T172).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Renderer {
+    /// The cached document layer, blitted moved and scaled (T24, T26).
+    #[default]
+    Layers,
+    /// Retained chunks drawn through the camera uniform (T146, T173).
+    Retained,
+}
+
 /// The files the end-to-end harness gives the app (`--e2e-*`, hidden from
 /// `--help`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -57,6 +67,8 @@ pub struct Options {
     pub snapshot: Option<PathBuf>,
     /// The end-to-end harness files (hidden).
     pub e2e: E2eFiles,
+    /// How the document is drawn (`--renderer`).
+    pub renderer: Renderer,
     /// Whether to start from an autosave (`--recover [prev]`).
     pub launch: Launch,
     /// The file to open.
@@ -74,6 +86,7 @@ impl Default for Options {
             tablet: TabletMode::Auto,
             snapshot: None,
             e2e: E2eFiles::default(),
+            renderer: Renderer::Layers,
             launch: Launch::Normal,
             file: None,
         }
@@ -151,7 +164,7 @@ fn read(args: &[OsString]) -> Result<Options, String> {
                 });
                 rest.extend(value);
             }
-            "log" | "msaa" | "backend" | "tablet" | "snapshot" | "e2e-dump" | "e2e-idle"
+            "log" | "msaa" | "backend" | "tablet" | "renderer" | "snapshot" | "e2e-dump" | "e2e-idle"
             | "e2e-clipboard" => {
                 let value = inline
                     .or_else(|| words.next().cloned())
@@ -193,6 +206,13 @@ fn apply(options: &mut Options, name: &str, value: &OsString) -> Result<(), Stri
                 "on" => TabletMode::On,
                 "off" => TabletMode::Off,
                 _ => return Err(bad("auto, on or off")),
+            };
+        }
+        "renderer" => {
+            options.renderer = match text.trim().to_ascii_lowercase().as_str() {
+                "layers" => Renderer::Layers,
+                "retained" => Renderer::Retained,
+                _ => return Err(bad("layers or retained")),
             };
         }
         "snapshot" => options.snapshot = Some(PathBuf::from(value)),
