@@ -1,11 +1,11 @@
 ---
 id: T170
 title: Wayland tablet and clipboard
-status: todo
+status: in-progress
 wave: 72
 branch: task/T170-wayland-tablet-and-clipboard
 depends_on: [T169]
-adrs: []
+adrs: [ADR-T170-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -27,11 +27,13 @@ Slice 3 of [[T143 Wayland backend with window, keyboard, pointer, tablet and cli
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
+Decisions: [[ADR-T170-1 Wayland pen frames and clipboard transfers]].
+Pure code in `wayland/pen.rs` and `wayland/transfer.rs`; tests in
+`tests/wayland_tablet.rs` and `tests/wayland_clipboard.rs`.
 
-- **AC-1** — Tablet: tools, proximity, tip, pressure, tilt, eraser, barrel buttons, frames to pen samples; pointer shadowed while a tool is in proximity. Tests on recorded sequences; regressions for T35, T40 and the pen fixes.
-- **AC-2** — Clipboard: read and write text, write `image/png` (T115), large transfers. Integration tests with `wl-copy`/`wl-paste`.
-- **AC-3** — Decoders fuzzed (proptest).
+- **AC-1** — Tablet: tools, proximity, tip, pressure, tilt, eraser, barrel buttons, frames to pen samples; pointer shadowed while a tool is in proximity. Tests on recorded sequences: `pen_frame_motion_sends_sample_then_move`, `pen_frame_tip_change_sends_left_button_once`, `pen_frame_out_of_proximity_drops_events`, `pen_proximity_out_lifts_a_tip_that_is_down`, `pen_pressure_is_normalised_and_clamped`, `pen_barrel_buttons_map_to_middle_and_right`, `pen_tilt_is_kept_and_finite`, `pen_tool_kind_reads_the_wire_type`, `pens_shadow_the_pointer_while_a_tool_is_in_proximity`, `wayland_tablet_manager_is_bound_without_tablets`; regressions `regression_T35_pressure_reaches_the_sample`, `regression_T40_pointer_shadowed_in_proximity`, `regression_pen_barrel_takeover`, `regression_pen_tip_bounce`. These are ports of vendored patches, so they have no snapshot files.
+- **AC-2** — Clipboard: read and write text, write `image/png` (T115), large transfers. Pure: `text_mime_prefers_utf8_over_legacy_names`, `text_mime_none_without_a_text_type`, `png_offer_is_detected`, `source_mimes_follow_the_payload`, `read_limited_stops_at_the_limit`, `write_payload_ignores_a_closed_reader`. Integration with `wl-copy`/`wl-paste`: `wayland_clipboard_reads_text_from_wl_copy`, `wayland_clipboard_text_reaches_wl_paste`, `wayland_clipboard_png_reaches_wl_paste`, `wayland_clipboard_large_text_round_trips`, `wayland_clipboard_empty_is_none`.
+- **AC-3** — Decoders fuzzed with the xorshift generator of T169 (no new dependency): `fuzz_pen_decoders_never_panic`, `fuzz_transfer_decoders_never_panic`.
 - **AC-4** — Hand check with a tablet (owner, at review), recorded in the Log.
 
 ## Out of scope
@@ -46,7 +48,7 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T170): specify the slice`
+- [x] spec — `docs(T170): specify the slice`
 - [ ] tests — `test(T170): add failing tests for the tablet and clipboard`
 - [ ] models — `feat(T170): add the tablet and transfer types`
 - [ ] behaviour — `feat(T170): implement the tablet and clipboard`
