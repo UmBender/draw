@@ -2,8 +2,11 @@
 //! pbuffer) for tests and on a native window for the backends. Every failure
 //! is a [`ContextError`] value.
 //!
-//! The display is never terminated: EGL shares one display per platform in
-//! the process, and `eglTerminate` would pull it from under another context.
+//! The shared headless display is never terminated: EGL shares one display
+//! per platform in the process, and `eglTerminate` would pull it from under
+//! another context. A display made on a Wayland `wl_display` is private to
+//! that connection and is terminated on drop, before the connection is
+//! closed (ADR-T168-2).
 
 #![allow(unsafe_code)]
 
@@ -12,6 +15,15 @@ use std::fmt;
 use std::ptr::{null, null_mut};
 
 use crate::loader::{Library, LoadError};
+
+/// Serialises `eglInitialize` and the teardown ending in `eglTerminate`:
+/// Mesa's display set-up (loading a driver) and tear-down (unloading it) are
+/// not safe to run at once in one process (ADR-T168-3).
+fn display_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Why a context could not be created or used.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,6 +148,8 @@ struct EglApi {
     destroy_surface: unsafe extern "C" fn(Ptr, Ptr) -> u32,
     make_current: unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr) -> u32,
     swap_buffers: unsafe extern "C" fn(Ptr, Ptr) -> u32,
+    // TEST: wayland_many_connections_in_sequence_and_threads
+    terminate: unsafe extern "C" fn(Ptr) -> u32,
     // Declared last: the library must outlive the pointers above, and
     // fields drop in order.
     _library: Library,
@@ -164,11 +178,23 @@ impl EglApi {
                 destroy_surface: *lib.symbol("eglDestroySurface")?,
                 make_current: *lib.symbol("eglMakeCurrent")?,
                 swap_buffers: *lib.symbol("eglSwapBuffers")?,
+                terminate: *lib.symbol("eglTerminate")?,
                 _library: Library::open(library)?,
             }
         };
         drop(lib);
         Ok(api)
+    }
+
+    /// Terminates `display` when `terminate` is set.
+    fn terminate_if(&self, terminate: bool, display: Ptr) {
+        if terminate {
+            // TEST: wayland_many_connections_in_sequence_and_threads
+            // SAFETY: `display` came from `eglGetPlatformDisplay` on a live
+            // `wl_display`, whose contexts and surfaces are already gone;
+            // failure is not actionable.
+            let _ = unsafe { (self.terminate)(display) };
+        }
     }
 
     /// The error of a failed call.
@@ -195,6 +221,7 @@ impl EglApi {
             return Err(ContextError::NoDisplay);
         }
         let (mut major, mut minor) = (0, 0);
+        let _guard = display_lock();
         // TEST: egl_headless_context_makes_current
         // SAFETY: `display` came from EGL and the two out pointers are
         // valid for the call.
@@ -279,6 +306,9 @@ pub struct EglContext {
     context: Ptr,
     /// Null for a surfaceless context.
     surface: Ptr,
+    /// Whether `Drop` calls `eglTerminate` (a display made on a Wayland
+    /// connection; ADR-T168-2).
+    terminate: bool,
 }
 
 impl EglContext {
@@ -401,14 +431,28 @@ impl EglContext {
     {
         let api = EglApi::load(library)?;
         let display = api.display(platform, native)?;
-        let config = api.config(display, surface_type)?;
-        let context = api.context(display, config)?;
+        let terminate = platform == EGL_PLATFORM_WAYLAND_KHR;
+        let config = match api.config(display, surface_type) {
+            Ok(config) => config,
+            Err(error) => {
+                api.terminate_if(terminate, display);
+                return Err(error);
+            }
+        };
+        let context = match api.context(display, config) {
+            Ok(context) => context,
+            Err(error) => {
+                api.terminate_if(terminate, display);
+                return Err(error);
+            }
+        };
         let surface = match make_surface(&api, (display, config)) {
             Ok(surface) => surface,
             Err(error) => {
                 // TEST: egl_headless_context_makes_current
                 // SAFETY: `context` was just created on `display`.
                 let _ = unsafe { (api.destroy_context)(display, context) };
+                api.terminate_if(terminate, display);
                 return Err(error);
             }
         };
@@ -417,6 +461,7 @@ impl EglContext {
             display,
             context,
             surface,
+            terminate,
         };
         // A context that cannot be made current is unusable: `Drop` then
         // releases it and the caller may try another platform.
@@ -463,6 +508,7 @@ impl GlContext for EglContext {
 
 impl Drop for EglContext {
     fn drop(&mut self) {
+        let _guard = display_lock();
         // TEST: egl_headless_context_makes_current
         // SAFETY: the handles belong to `self` and are released once, in this
         // order: unbind, surface, context. Failures are not actionable.
@@ -473,6 +519,7 @@ impl Drop for EglContext {
             }
             let _ = (self.api.destroy_context)(self.display, self.context);
         }
+        self.api.terminate_if(self.terminate, self.display);
     }
 }
 
