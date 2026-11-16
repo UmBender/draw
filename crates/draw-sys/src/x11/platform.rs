@@ -3,7 +3,9 @@
 //! `poll` reports resizes, keys, pointer, wheel, focus and pen samples
 //! (T176); selections come with T177 and until then the clipboard is empty.
 
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use std::ffi::c_void;
 use std::future::{Future, ready};
 use std::time::{Duration, Instant};
@@ -79,15 +81,45 @@ impl GlContext for GlSurface {
     }
 }
 
+/// A cheap clone of the GL context of an [`X11Platform`], for a `Gpu` to
+/// own (ADR-T178-1). The platform keeps swapping the buffers.
+#[derive(Debug, Clone)]
+pub struct SharedGl {
+    surface: Rc<GlSurface>,
+    size: Rc<Cell<(u32, u32)>>,
+}
+
+impl SharedGl {
+    /// The current size of the window in pixels.
+    #[must_use]
+    pub fn window_size(&self) -> (u32, u32) {
+        self.size.get()
+    }
+}
+
+impl GlContext for SharedGl {
+    fn make_current(&self) -> Result<(), ContextError> {
+        self.surface.make_current()
+    }
+
+    fn swap_buffers(&self) -> Result<(), ContextError> {
+        self.surface.swap_buffers()
+    }
+
+    fn proc_address(&self, name: &str) -> Option<*const c_void> {
+        self.surface.proc_address(name)
+    }
+}
+
 /// An X11 window with its GL context.
 ///
 /// Field order is drop order: the context goes before the window, the
 /// window before the display connection it holds.
 #[derive(Debug)]
 pub struct X11Platform {
-    gl: GlSurface,
+    gl: Rc<GlSurface>,
     window: Window<Mapped>,
-    size: (u32, u32),
+    size: Rc<Cell<(u32, u32)>>,
     scale: f32,
     close: bool,
     update_scheduled: bool,
@@ -137,9 +169,9 @@ impl X11Platform {
             keys: KeyTracker::default(),
             pen: PenTracker::default(),
             axes: HashMap::new(),
-            gl,
+            gl: Rc::new(gl),
             window,
-            size: (width.max(1), height.max(1)),
+            size: Rc::new(Cell::new((width.max(1), height.max(1)))),
             scale: scale_from_dpi(dpi),
             close: false,
             update_scheduled: false,
@@ -156,6 +188,19 @@ impl X11Platform {
     #[must_use]
     pub fn gl(&self) -> &GlSurface {
         &self.gl
+    }
+
+    /// A handle on the GL context for a `Gpu` to own. The platform keeps
+    /// swapping the buffers in `next_frame`; the Gpu must not.
+    ///
+    /// Every handle must be dropped before the platform: the GL window
+    /// goes before the X window (ADR-T178-1).
+    #[must_use]
+    pub fn share_gl(&self) -> SharedGl {
+        SharedGl {
+            surface: Rc::clone(&self.gl),
+            size: Rc::clone(&self.size),
+        }
     }
 
     /// Whether pen pressure is available (`libXi` with `XInput2` 2.0).
@@ -451,9 +496,9 @@ impl Platform for X11Platform {
             }
             match event {
                 XEvent::Configure { width, height }
-                    if width > 0 && height > 0 && (width, height) != self.size =>
+                    if width > 0 && height > 0 && (width, height) != self.size.get() =>
                 {
-                    self.size = (width, height);
+                    self.size.set((width, height));
                     out.push(RawEvent::Resize(window_metrics(width, height, self.scale)));
                 }
                 XEvent::Key {
@@ -489,7 +534,8 @@ impl Platform for X11Platform {
     }
 
     fn window(&mut self) -> WindowMetrics {
-        window_metrics(self.size.0, self.size.1, self.scale)
+        let (width, height) = self.size.get();
+        window_metrics(width, height, self.scale)
     }
 
     fn clipboard_text(&mut self) -> Option<String> {

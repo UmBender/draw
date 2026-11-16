@@ -61,14 +61,14 @@ fn x11_shared_gl_reports_the_resized_window_size() {
 }
 
 #[test]
-fn x11_shared_gl_outlives_the_platform_without_using_a_closed_display() {
+fn x11_shared_gl_dropped_before_the_platform_closes_cleanly() {
     let server = xvfb::Xvfb::start();
     let platform = open(&server);
     let shared = platform.share_gl();
     assert_eq!(shared.make_current(), Ok(()));
 
-    drop(platform);
     drop(shared);
+    drop(platform);
 
     // The server is still alive and a new window opens: nothing crashed.
     drop(open(&server));

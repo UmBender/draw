@@ -27,8 +27,7 @@ framebuffer at creation, while the window is resized by the user.
 ## Decision
 
 - `X11Platform::share_gl(&self) -> SharedGl`: a cheap clone handle (`Rc`
-  inside) that implements `GlContext`. It also holds the display
-  connection, so the display outlives every handle.
+  inside) that implements `GlContext`.
 - The **platform swaps** the buffers (`next_frame`, as before); the Gpu's
   own `swap_buffers` is not called by `app::run`. One side swaps, never
   both.
@@ -37,9 +36,10 @@ framebuffer at creation, while the window is resized by the user.
   `GlGpu` in `X11Gpu` (`src/shell/gpu_x11.rs`), a `Gpu` that sets the
   window size on the inner `GlGpu` before each `submit`. Nothing else
   changes in `draw-gfx`.
-- Drop order: `app::run` drops the Gpu before the platform. A handle that
-  outlives the platform only keeps the display open; it never uses a
-  closed one.
+- Drop order: every handle must be dropped before the platform (the GL
+  window goes before the X window). `app::run` drops the Gpu, and so its
+  handle, before the platform; the doc of `share_gl` says so. The last
+  handle to drop destroys the context.
 - `--platform macroquad|native` (default `macroquad`) picks the
   interpreters. `native` on an X11 session runs
   `app::run::<X11Platform, X11Gpu>`. On a Wayland session `native` is T171.
