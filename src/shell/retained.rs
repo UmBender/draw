@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use draw_gfx::chunks::{ChunkCache, Item};
 use draw_gfx::gpu::{Camera as GfxCamera, Gpu};
+use draw_gfx::tessellate::Mesh;
 
 use crate::core::camera::Camera;
 use crate::core::document::ShapeId;
@@ -50,7 +51,50 @@ impl RetainedScene {
         camera: &Camera,
         viewport: Vec2,
     ) {
-        todo!("T172")
+        let visible: Vec<(ShapeId, &Shape)> = shapes
+            .iter()
+            .filter(|(id, _)| !hidden.contains(id))
+            .copied()
+            .collect();
+        let items: Vec<Item<'_>> = visible
+            .iter()
+            .map(|&(id, shape)| Item {
+                id,
+                revision: self.revision_of(id, shape),
+                shape,
+            })
+            .collect();
+        if self.seen.len() > 2 * items.len() + 64 {
+            let live: std::collections::HashSet<ShapeId> = items.iter().map(|i| i.id).collect();
+            self.seen.retain(|id, _| live.contains(id));
+        }
+        self.cache.set_zoom(camera.zoom());
+        self.cache.update(&items);
+        let view = cull_rect(camera, viewport);
+        let meshes: Vec<&Mesh> = self
+            .cache
+            .visible(view)
+            .map(draw_gfx::chunks::Chunk::mesh)
+            .filter(|mesh| !mesh.indices.is_empty())
+            .collect();
+        let gfx = GfxCamera {
+            origin: [camera.offset().x, camera.offset().y],
+            scale: camera.zoom(),
+        };
+        ctx.draw_world(gfx, &meshes);
+    }
+
+    /// The revision of `shape`: a new one when it differs from the last
+    /// time `id` was seen.
+    fn revision_of(&mut self, id: ShapeId, shape: &Shape) -> u64 {
+        match self.seen.get(&id) {
+            Some((revision, old)) if old == shape => *revision,
+            _ => {
+                self.next_revision += 1;
+                self.seen.insert(id, (self.next_revision, shape.clone()));
+                self.next_revision
+            }
+        }
     }
 }
 
