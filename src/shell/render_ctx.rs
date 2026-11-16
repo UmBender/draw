@@ -8,8 +8,8 @@
 //! [`RenderCtx::sync_window`] with the platform's metrics.
 
 use draw_gfx::gpu::{
-    Blend, Camera as GfxCamera, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, PipelineDesc, Vertex,
-    View,
+    Blend, Camera as GfxCamera, Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu,
+    PipelineDesc, Vertex, View,
 };
 use draw_gfx::tessellate::Mesh;
 use draw_sys::platform::WindowMetrics;

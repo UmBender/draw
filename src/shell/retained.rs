@@ -218,11 +218,23 @@ mod tests {
         let mut ctx = ctx();
         let mut scene = RetainedScene::new();
         let shapes = [line(0.0)];
-        scene.draw(&mut ctx, &items(&shapes), &[], &Camera::new(Vec2::ZERO, 1.0), PORT);
+        scene.draw(
+            &mut ctx,
+            &items(&shapes),
+            &[],
+            &Camera::new(Vec2::ZERO, 1.0),
+            PORT,
+        );
         let before = scene.tessellations();
 
         // Act
-        scene.draw(&mut ctx, &items(&shapes), &[], &Camera::new(Vec2::ZERO, 1.01), PORT);
+        scene.draw(
+            &mut ctx,
+            &items(&shapes),
+            &[],
+            &Camera::new(Vec2::ZERO, 1.01),
+            PORT,
+        );
 
         // Assert
         assert_eq!(scene.tessellations(), before);
