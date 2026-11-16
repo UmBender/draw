@@ -28,7 +28,7 @@ struct Inner {
     keymap_unref: unsafe extern "C" fn(Ptr), // TEST: fuzz_keymap_decoder_never_panics
     keymap_key_repeats: unsafe extern "C" fn(Ptr, u32) -> i32, // TEST: wayland_keyboard_typed_text_arrives
     state_new: unsafe extern "C" fn(Ptr) -> Ptr, // TEST: wayland_keyboard_typed_text_arrives
-    state_unref: unsafe extern "C" fn(Ptr), // TEST: wayland_keyboard_typed_text_arrives
+    state_unref: unsafe extern "C" fn(Ptr),      // TEST: wayland_keyboard_typed_text_arrives
     state_update_mask: unsafe extern "C" fn(Ptr, u32, u32, u32, u32, u32, u32) -> i32, // TEST: wayland_keyboard_modifiers_arrive
     state_key_get_one_sym: unsafe extern "C" fn(Ptr, u32) -> u32, // TEST: wayland_keyboard_typed_text_arrives
     state_key_get_utf8: unsafe extern "C" fn(Ptr, u32, *mut c_char, usize) -> i32, // TEST: wayland_keyboard_typed_text_arrives
@@ -181,7 +181,9 @@ impl KeyState {
     pub fn update_mask(&mut self, depressed: u32, latched: u32, locked: u32, group: u32) {
         // TEST: wayland_keyboard_modifiers_arrive
         // SAFETY: `raw` is the live state of this value.
-        unsafe { (self.inner.state_update_mask)(self.raw, depressed, latched, locked, 0, 0, group) };
+        unsafe {
+            (self.inner.state_update_mask)(self.raw, depressed, latched, locked, 0, 0, group)
+        };
     }
 
     /// The keysym of the key with this evdev scancode in the current state.

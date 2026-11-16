@@ -45,7 +45,7 @@ impl SeatDevices {
         for (device, announced) in announced {
             let slot = match device {
                 Device::Keyboard => &mut self.keyboard,
-                _ => &mut self.pointer,
+                Device::Pointer | Device::Touch => &mut self.pointer,
             };
             match device_change(*slot, announced) {
                 DeviceChange::Create => {

@@ -17,8 +17,8 @@ use crate::egl::ContextError;
 use crate::loader::LoadError;
 use crate::wayland::client::{Client, Proxy};
 use crate::wayland::generated::wayland::{wl_compositor, wl_output, wl_registry, wl_seat};
-use crate::wayland::seat::{InputState, SEAT_LISTENER};
 use crate::wayland::generated::xdg_shell::xdg_wm_base;
+use crate::wayland::seat::{InputState, SEAT_LISTENER};
 
 /// How long a blocking wait for the compositor lasts.
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(5);

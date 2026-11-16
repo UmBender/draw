@@ -3,7 +3,13 @@
 //! with `wtype` and `swaymsg seat - cursor`. A missing sway or `wtype` fails
 //! the tests, it never skips them.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, non_snake_case)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cast_possible_wrap,
+    clippy::wildcard_enum_match_arm,
+    non_snake_case
+)]
 
 #[path = "common/sway.rs"]
 mod sway;
@@ -45,7 +51,7 @@ fn seat_devices_capabilities_resent_keep_devices() {
 
     let again = seat.on_capabilities(CAP_POINTER | CAP_KEYBOARD);
 
-    assert!(again.is_empty());
+    assert_eq!(again, Vec::new());
 }
 
 #[test]
@@ -66,7 +72,7 @@ fn seat_devices_never_create_touch() {
 
     let changes = seat.on_capabilities(CAP_TOUCH);
 
-    assert!(changes.is_empty());
+    assert_eq!(changes, Vec::new());
 }
 
 #[test]
@@ -382,16 +388,30 @@ fn wayland_keyboard_typed_text_arrives() {
     let chars: String = events
         .iter()
         .filter_map(|e| match e {
-            RawEvent::Char { ch, repeat: false, .. } => Some(*ch),
+            RawEvent::Char {
+                ch, repeat: false, ..
+            } => Some(*ch),
             _ => None,
         })
         .collect();
     assert_eq!(chars, "ab");
     let downs = events
         .iter()
-        .filter(|e| matches!(e, RawEvent::Key { key: RawKey::Letter('A'), down: true, .. }))
+        .filter(|e| {
+            matches!(
+                e,
+                RawEvent::Key {
+                    key: RawKey::Letter('A'),
+                    down: true,
+                    ..
+                }
+            )
+        })
         .count();
-    assert_eq!(downs, 1, "one key press, not doubled (T44, T45): {events:?}");
+    assert_eq!(
+        downs, 1,
+        "one key press, not doubled (T44, T45): {events:?}"
+    );
 }
 
 #[test]
@@ -402,7 +422,14 @@ fn wayland_keyboard_modifiers_arrive() {
 
     let events = collect_until(&mut platform, |e| {
         e.iter().any(|e| {
-            matches!(e, RawEvent::Key { key: RawKey::Letter('Z'), down: true, .. })
+            matches!(
+                e,
+                RawEvent::Key {
+                    key: RawKey::Letter('Z'),
+                    down: true,
+                    ..
+                }
+            )
         })
     });
 

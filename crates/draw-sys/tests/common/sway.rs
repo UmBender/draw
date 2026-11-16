@@ -159,7 +159,7 @@ fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
             break;
         };
         done |= object == 3;
-        if object == 2 && header & 0xffff == 0 {
+        if object == 2 && header.trailing_zeros() >= 16 {
             let length = word(body, 4).unwrap_or(0) as usize;
             if body.get(8..8 + length.saturating_sub(1)) == Some(interface.as_bytes()) {
                 found = word(body, 0);

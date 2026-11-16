@@ -20,8 +20,8 @@ use crate::wayland::client::Proxy;
 use crate::wayland::connection::{Shared, shared_of};
 use crate::wayland::generated::wayland::{wl_keyboard, wl_pointer, wl_seat};
 use crate::wayland::input::{
-    AxisFrame, SeatDevices, keymap_usable, pointer_position, raw_button_from_evdev,
-    raw_key_from_keysym, repeats_to_send, wheel_of_frame, fixed_to_f32,
+    AxisFrame, SeatDevices, fixed_to_f32, keymap_usable, pointer_position, raw_button_from_evdev,
+    raw_key_from_keysym, repeats_to_send, wheel_of_frame,
 };
 use crate::wayland::xkb::{KeyState, Keymap, Xkb};
 
@@ -235,7 +235,7 @@ extern "C" fn on_capabilities(data: *mut c_void, seat: *mut Proxy, caps: u32) {
         }
         input.record(match change {
             DeviceChange::Create => BackendEvent::DeviceCreated(device),
-            _ => BackendEvent::DeviceReleased(device),
+            DeviceChange::Release | DeviceChange::Keep => BackendEvent::DeviceReleased(device),
         });
     }
 }
