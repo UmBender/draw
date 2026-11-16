@@ -4,7 +4,7 @@
 
 use draw_core::core::document::ShapeId;
 use draw_core::core::geom::{Vec2, approx_eq};
-use draw_core::core::tex::glyphs::Face;
+use draw_core::core::tex::Face;
 use draw_gfx::text::{
     GlyphEntry, GlyphSource, TextCache, TextSpec, label_raster, raster_px, text_raster,
     text_screen_px,
