@@ -122,8 +122,20 @@ pub const MIN_PARALLEL: usize = 256;
 /// `threads` scoped threads. The result is the same for every `threads`.
 #[must_use]
 pub fn tessellate_many(shapes: &[&Shape], threads: usize) -> Vec<Mesh> {
-    let _ = (shapes, threads);
-    todo!()
+    if threads <= 1 || shapes.len() < MIN_PARALLEL {
+        return shapes.iter().map(|s| tessellate(s)).collect();
+    }
+    let run = shapes.len().div_ceil(threads);
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = shapes
+            .chunks(run)
+            .map(|part| scope.spawn(move || part.iter().map(|s| tessellate(s)).collect::<Vec<_>>()))
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_default())
+            .collect()
+    })
 }
 
 /// Segments of the rim of an ellipse and of a join disc.
