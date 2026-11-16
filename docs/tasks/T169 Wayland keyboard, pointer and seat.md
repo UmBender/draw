@@ -1,11 +1,11 @@
 ---
 id: T169
 title: Wayland keyboard, pointer and seat
-status: todo
+status: review
 wave: 71
 branch: task/T169-wayland-keyboard-pointer-and-seat
 depends_on: [T168]
-adrs: []
+adrs: [ADR-T169-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -45,12 +45,16 @@ Decisions: [[ADR-T169-1 Wayland input decoding and keymap reading]]. Tests are i
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T169): specify the slice`
-- [ ] tests — `test(T169): add failing tests for the keyboard and pointer`
-- [ ] models — `feat(T169): add the seat and keymap types`
-- [ ] behaviour — `feat(T169): implement the keyboard, pointer and seat`
-- [ ] quality — `chore(T169): pass clippy and rustfmt`
+- [x] spec — `docs(T169): specify the slice`
+- [x] tests — `test(T169): add failing tests for the keyboard and pointer`
+- [x] models — `feat(T169): add the seat and keymap types`
+- [x] behaviour — `feat(T169): implement the keyboard, pointer and seat`
+- [x] quality — `chore(T169): pass clippy and rustfmt`
 
 ## Log
 
 - 2026-11-15 — split from T143 by the owner.
+- 2026-11-16 — implemented in unattended batch. New: `wayland::input` (pure decisions), `wayland::xkb` (dlopen xkbcommon), `wayland::seat` (listeners and event queue). `WaylandPlatform::poll` now returns keys, chars, pointer, wheel, focus and backend records. `scripts/check.sh` green; 15 consecutive green runs of `wayland_input`.
+- Deviations (see [[ADR-T169-1 Wayland input decoding and keymap reading]]): the keymap is read from its fd, not `mmap`ed; the fuzz uses xorshift instead of proptest (no dev-dependency in `draw-sys`); no cursor shape request (compositor default). The sway helper gained `keyboard` (background `wtype`) and `virtual_pointer` (raw-socket `zwlr_virtual_pointer_v1`, as in `tests/e2e.rs`) because a headless seat has no devices (ADR-T75-1); `wayland_platform_input_parts_return_nothing` now also allows `Focus`.
+- Not covered by a live test: a compositor re-sending `wl_seat.capabilities` (T44/T45 are tested on `SeatDevices`), `no_keymap` live (tested on `keymap_usable`), `axis_value120` live (sway sends it only to v8 seats; tested on `wheel_of_frame`). Key repeat timing is tested on `repeats_due`, not live.
+- The "wheel fix" and "pointer bugs of T35/T40" of `vendor/miniquad/PATCHED.md` were ported by behaviour (one wheel event per frame, no doubled discrete+smooth; pen shadowing is T170).
