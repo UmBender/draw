@@ -117,31 +117,7 @@ fn main() {
     };
     match runtime {
         // The own Wayland backend and the OpenGL ES Gpu (T171, ADR-T171-1).
-        Runtime::Wayland => {
-            let platform = match WaylandPlatform::connect(None, "draw", app::WM_CLASS) {
-                Ok(platform) => platform,
-                Err(problem) => {
-                    eprintln!("draw: Wayland window: {problem}");
-                    diag::log(Level::Error, &format!("wayland: {problem}"));
-                    diag::finish("wayland window failed");
-                    std::process::exit(1);
-                }
-            };
-            let gpu = match WaylandGpu::new(platform.share_gl()) {
-                Ok(gpu) => gpu,
-                Err(problem) => {
-                    eprintln!("draw: OpenGL: {problem}");
-                    diag::log(Level::Error, &format!("gl: {problem}"));
-                    diag::finish("gl failed");
-                    std::process::exit(1);
-                }
-            };
-            if !draw_sys::x11::signal::install_quit() {
-                diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
-            }
-            let platform = ClosingWayland::new(platform, finish_native);
-            block_on(app::run(platform, gpu, options, backend, tablet));
-        }
+        Runtime::Wayland => run_wayland(options, backend, tablet),
         // The own X11 backend and the OpenGL ES Gpu (T178, ADR-T178-1).
         Runtime::X11 => {
             let opened = X11Platform::open(
@@ -185,6 +161,34 @@ fn main() {
         }
     }
     finish(signal::received());
+}
+
+/// Runs the app over the own Wayland backend and the OpenGL ES Gpu
+/// (T171, ADR-T171-1).
+fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choice) {
+    let platform = match WaylandPlatform::connect(None, "draw", app::WM_CLASS) {
+        Ok(platform) => platform,
+        Err(problem) => {
+            eprintln!("draw: Wayland window: {problem}");
+            diag::log(Level::Error, &format!("wayland: {problem}"));
+            diag::finish("wayland window failed");
+            std::process::exit(1);
+        }
+    };
+    let gpu = match WaylandGpu::new(platform.share_gl()) {
+        Ok(gpu) => gpu,
+        Err(problem) => {
+            eprintln!("draw: OpenGL: {problem}");
+            diag::log(Level::Error, &format!("gl: {problem}"));
+            diag::finish("gl failed");
+            std::process::exit(1);
+        }
+    };
+    if !draw_sys::x11::signal::install_quit() {
+        diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
+    }
+    let platform = ClosingWayland::new(platform, finish_native);
+    block_on(app::run(platform, gpu, options, backend, tablet));
 }
 
 /// Logs the end of the session and ends the process by `received`'s signal.
