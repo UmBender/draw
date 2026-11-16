@@ -1,7 +1,7 @@
 ---
 id: T172
 title: Retained renderer in the app
-status: in-progress
+status: review
 wave: 72
 branch: task/T172-retained-renderer-in-the-app
 depends_on: [T146, T173, T179, T180]
@@ -47,11 +47,11 @@ Refined by the unattended night-3 run (UNATTENDED CHOICE: the slice below, see t
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T172): specify the wiring`
-- [ ] tests — `test(T172): add failing tests`
-- [ ] behaviour — `refactor(T172): draw the app through the retained renderer`
-- [ ] quality — `chore(T172): pass clippy and rustfmt`
-- [ ] docs — `docs(T172): record the frame times`
+- [x] spec — `docs(T172): specify the wiring slice`
+- [x] tests — `test(T172): add failing tests for the retained scene and --renderer`
+- [x] behaviour — `feat(T172): draw the document through retained chunks`, `refactor(T172): draw the app frame through the retained scene on request`
+- [x] quality — fmt and clippy fixes are in the behaviour commit
+- [ ] docs — AC-3 frame times: the owner's, on the desktop GPU
 
 ## Log
 
@@ -75,3 +75,5 @@ Refined by the unattended night-3 run (UNATTENDED CHOICE: the slice below, see t
   (c) wire `ChunkCache` into the app frame, minimap and grids, and remove
   the T26 layer re-render, settle and blit; AC-3 stays the owner's.
 - 2026-11-16 — split by the owner after the batch blocker (recorded on the task branch): tessellator parity went to [[T179 Tessellator parity with the app's drawing]], retained text and formulas to [[T180 Text and formulas on the retained path]]; T172 keeps the wiring (`ChunkCache` in the app frame, minimap and grids, removal of the T26 layer re-render, settle and blit) and AC-3.
+- 2026-11-16 — UNATTENDED CHOICE (batch): shipped a smaller slice at `review`. `--renderer layers|retained` (default `layers`); `shell::retained::RetainedScene` draws the document's chunks under the camera uniform with the feathered pipeline (AC-1a, AC-1b green on the recorder); `--renderer retained` frame = clear, dot grid, chunks, overlay, laser, minimap panel, with no layer, settle or blit (AC-1c). The layers path and the T26 code stay in place; the default is not switched.
+- 2026-11-16 — LEFTOVER: (1) text, formulas, labels (T180's `TextCache` is not wired: it needs a `GlyphSource` over the shell atlas and an epoch counter) and grid-tool text are not drawn with `--renderer retained`; (2) the minimap overview still renders through the old target path; (3) `scripts/e2e.sh --backend all` was not run with `retained` (it lacks text, so the goldens would differ), so the default stays `layers` and the T26 removal waits; (4) `--renderer` is not in `--help` (`src/main.rs` is outside the files owned); (5) AC-3 frame times are the owner's; (6) T148's `tessellate_many` is not wired, as the plan says.
