@@ -7,13 +7,16 @@
 # local socket only (-nolisten tcp), gets its display number from
 # -displayfd, and every child gets that DISPLAY, a private XAUTHORITY and no
 # WAYLAND_DISPLAY.
-# Usage: scripts/e2e.sh [--update] [--backend wayland|x11|all] [case]
+# Usage: scripts/e2e.sh [--update] [--backend wayland|x11|all]
+#                       [--platform macroquad|native] [case]
+#   --platform is passed to the app (T178); native needs --backend x11.
 #   --update (or DRAW_UPDATE_SNAPSHOTS=1) rewrites the goldens.
 #   --backend picks the display server; the default is all (Wayland, then X11).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 backend=all
+platform=macroquad
 while (($#)); do
     case $1 in
         --update)
@@ -28,9 +31,25 @@ while (($#)); do
             backend=$2
             shift 2
             ;;
+        --platform)
+            (($# >= 2)) || {
+                echo "e2e.sh: --platform needs macroquad or native" >&2
+                exit 2
+            }
+            platform=$2
+            shift 2
+            ;;
         *) break ;;
     esac
 done
+case $platform in
+    macroquad | native) ;;
+    *)
+        echo "e2e.sh: unknown platform '$platform' (macroquad or native)" >&2
+        exit 2
+        ;;
+esac
+export DRAW_E2E_PLATFORM=$platform
 case $backend in
     wayland | x11 | all) ;;
     *)
@@ -39,7 +58,7 @@ case $backend in
         ;;
 esac
 # What the scope re-runs: the parsed options, then the case.
-scope_args=(--backend "$backend" "$@")
+scope_args=(--backend "$backend" --platform "$platform" "$@")
 
 readonly JOBS=3
 readonly MEMORY_MAX=1G

@@ -12,6 +12,7 @@ pub mod export;
 pub mod file;
 pub mod glyphs;
 pub mod gpu_mq;
+pub mod gpu_x11;
 pub mod input_map;
 pub mod minimap;
 pub mod options;

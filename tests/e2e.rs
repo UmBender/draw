@@ -1477,6 +1477,15 @@ fn app_args(files: &AppFiles<'_>, start: Option<&Path>, recover: bool) -> Vec<Os
     args
 }
 
+/// The `--platform` flag for the platform named by `DRAW_E2E_PLATFORM`
+/// (`scripts/e2e.sh --platform`), nothing when it is unset.
+fn platform_args(platform: Option<&str>) -> Vec<OsString> {
+    platform
+        .into_iter()
+        .flat_map(|name| [OsString::from("--platform"), OsString::from(name)])
+        .collect()
+}
+
 /// Puts the snapshot `start` in the autosave place of `state`, for `--recover`.
 fn stage_autosave(start: &Path, state: &Path) -> Result<(), String> {
     let dir = state.join("draw");
@@ -1519,6 +1528,8 @@ fn run_case(session: &mut Session, source: &Path, run: &Path) -> Result<(), Stri
         clipboard: &clipboard,
     };
     command.args(app_args(&files, start.as_deref(), case.recover));
+    let platform = std::env::var("DRAW_E2E_PLATFORM").ok();
+    command.args(platform_args(platform.as_deref()));
     let mut child = command.spawn().map_err(|err| format!("draw: {err}"))?;
     session.wait_for_window(&mut child)?;
     if session.backend == Backend::X11 {
