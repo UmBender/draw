@@ -1,11 +1,11 @@
 ---
 id: T148
 title: Multithreaded tessellation, only with a measured gain
-status: todo
+status: in-progress
 wave: 72
 branch: task/T148-multithreaded-tessellation-only-with-a-m
 depends_on: [T146]
-adrs: []
+adrs: [ADR-T148-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -29,7 +29,12 @@ Draft: the spec step refines each criterion into named tests and ADRs.
   `tests/perf.rs` records both numbers.
 - **AC-2** — The threaded result is bit-identical to the single-thread one.
   Test: `threads_give_identical_geometry`.
-- **AC-3** — Shared state has the thread sanitizer in the nightly job and `loom` models for any lock-free structure.
+  Refined: `perf_threaded_tessellation_is_measured` (ignored, release) prints
+  both numbers for 5 120 strokes and for 100 shapes and asserts the 100-shape
+  case does not lose (small inputs use the single path).
+- **AC-3** — No shared mutable state: threads read `&[&Shape]` and return their
+  own meshes (`ADR-T148-1`), so no `loom` model or lock-free structure exists.
+  Test: `small_inputs_use_one_thread` (below `MIN_PARALLEL`, same result).
 
 ## Out of scope
 
