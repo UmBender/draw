@@ -3,7 +3,7 @@
 //! with `wtype` and `swaymsg seat - cursor`. A missing sway or `wtype` fails
 //! the tests, it never skips them.
 
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, non_snake_case)]
 
 #[path = "common/sway.rs"]
 mod sway;
