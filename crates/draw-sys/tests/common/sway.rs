@@ -108,6 +108,29 @@ impl Sway {
     }
 }
 
+impl Sway {
+    /// Types with `wtype` (a virtual keyboard) on this sway.
+    ///
+    /// # Panics
+    /// If `wtype` is missing or fails.
+    pub fn wtype(&self, args: &[&str]) {
+        let status = Command::new("wtype")
+            .args(args)
+            .env("WAYLAND_DISPLAY", &self.socket)
+            .env("XDG_RUNTIME_DIR", &self.run)
+            .status()
+            .expect("wtype is required for the Wayland input tests");
+        assert!(status.success(), "wtype {args:?} failed");
+    }
+
+    /// Runs `swaymsg seat - cursor <args>`.
+    pub fn cursor(&self, args: &[&str]) -> String {
+        let mut all = vec!["seat", "-", "cursor"];
+        all.extend_from_slice(args);
+        self.msg(&all)
+    }
+}
+
 impl Drop for Sway {
     fn drop(&mut self) {
         let _ = self.child.kill();
