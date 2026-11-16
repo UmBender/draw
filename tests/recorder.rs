@@ -170,7 +170,7 @@ fn recorder_pan_and_zoom_change_only_the_camera() -> Result<(), GpuError> {
 #[test]
 fn null_gpu_accepts_set_camera() -> Result<(), GpuError> {
     // Arrange
-    let mut gpu = NullGpu::new();
+    let mut gpu = NullGpu::default();
     let pipeline = gpu.pipeline(PipelineDesc {
         blend: Blend::AlphaFeathered,
     });

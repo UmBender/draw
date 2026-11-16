@@ -18,7 +18,7 @@ use macroquad::texture::{
 use macroquad::window::clear_background;
 
 use draw_gfx::gpu::{
-    Blend, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
+    Blend, Camera, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
     TextureDesc, Vertex,
 };
 
@@ -147,6 +147,8 @@ pub enum Step {
     Begin,
     /// `Draw`.
     Draw,
+    /// `SetCamera`.
+    Camera,
     /// `EndPass`.
     End,
 }
@@ -167,10 +169,11 @@ impl PassChecker {
         match (step, self.open) {
             (Step::Begin, false) => self.open = true,
             (Step::End, true) => self.open = false,
-            (Step::Draw, true) => {}
+            (Step::Draw | Step::Camera, true) => {}
             (Step::Begin, true) => return Err(backend("BeginPass inside a pass")),
             (Step::End, false) => return Err(backend("EndPass outside a pass")),
             (Step::Draw, false) => return Err(backend("Draw outside a pass")),
+            (Step::Camera, false) => return Err(backend("SetCamera outside a pass")),
         }
         Ok(())
     }
@@ -396,6 +399,7 @@ impl MqGpu {
                         buffer_range(indices, *first, *count)?;
                     }
                 }
+                Command::SetCamera(_) => passes.step(Step::Camera)?,
                 Command::EndPass => passes.step(Step::End)?,
             }
         }
@@ -455,6 +459,7 @@ impl MqGpu {
                         }
                     }
                 }
+                Command::SetCamera(_) => todo!("apply the camera to the vertices"),
                 Command::EndPass => {
                     if *in_target {
                         set_default_camera();
@@ -500,6 +505,12 @@ fn draw_chunks(
         draw_mesh(&mesh);
     }
     Ok(())
+}
+
+/// `vertices` with their positions moved through `camera`.
+fn with_camera(vertices: &[Vertex], camera: Camera) -> Vec<Vertex> {
+    let _ = (vertices, camera);
+    todo!("apply the camera to the vertices")
 }
 
 /// The macroquad vertex with the same position, texture coordinate and

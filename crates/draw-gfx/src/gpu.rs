@@ -60,6 +60,42 @@ pub enum Blend {
     Alpha,
     /// Replaces what is there.
     Opaque,
+    /// Straight alpha, multiplied by the coverage of the fragment's edge
+    /// distance `uv[0]` (world units, positive inside): a feather of about
+    /// one pixel at any zoom (ADR-T173-1).
+    AlphaFeathered,
+}
+
+/// Maps world points to view pixels as `(p - origin) * scale` (ADR-T173-1).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Camera {
+    /// The world point at the view's top left.
+    pub origin: [f32; 2],
+    /// View pixels per world unit.
+    pub scale: f32,
+}
+
+impl Camera {
+    /// No pan, no zoom.
+    pub const IDENTITY: Self = Self {
+        origin: [0.0, 0.0],
+        scale: 1.0,
+    };
+
+    /// The view position of the world point `p`.
+    #[must_use]
+    pub fn apply(&self, p: [f32; 2]) -> [f32; 2] {
+        [
+            (p[0] - self.origin[0]) * self.scale,
+            (p[1] - self.origin[1]) * self.scale,
+        ]
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
 }
 
 /// A texture to create: RGBA8, `width × height` texels.
@@ -149,6 +185,9 @@ pub enum Command<B, T, R, P> {
         /// Clear colour, `None` keeps the contents.
         clear: Option<Color>,
     },
+    /// Sets the camera of the draws that follow in this pass; a pass starts
+    /// with [`Camera::IDENTITY`].
+    SetCamera(Camera),
     /// Draws triangles with `pipeline`, sampling `texture` if given.
     Draw {
         /// How to blend.

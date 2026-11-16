@@ -749,6 +749,7 @@ fn program_index(blend: Blend) -> usize {
     match blend {
         Blend::Alpha => 0,
         Blend::Opaque => 1,
+        Blend::AlphaFeathered => todo!("feathered program"),
     }
 }
 
@@ -1092,6 +1093,7 @@ impl<C: GlContext> GlGpu<C> {
                     );
                 }
                 Blend::Opaque => ready.gl.disable(BLEND),
+                Blend::AlphaFeathered => todo!("feathered blend"),
             }
             ready
                 .gl
@@ -1359,6 +1361,7 @@ impl<C: GlContext> Gpu for GlGpu<C> {
                     let view = *view;
                     self.draw(ready, view, *pipeline, texture.as_ref(), geometry)?;
                 }
+                Command::SetCamera(_) => todo!("camera uniform"),
                 Command::EndPass => {
                     let Some((target, _)) = pass.take() else {
                         return Err(backend("EndPass outside a pass"));
