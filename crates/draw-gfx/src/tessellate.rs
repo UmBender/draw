@@ -231,6 +231,169 @@ mod tests {
     use draw_core::core::palette::ColorId;
     use draw_core::core::shape::Style;
 
+    use draw_core::core::geom::approx_eq;
+
+    const EPS: f32 = 1e-3;
+
+    fn style(width: f32) -> Style {
+        Style {
+            color: ColorId::INK,
+            width,
+        }
+    }
+
+    fn horizontal(width: f32) -> Shape {
+        Shape::Line {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(10.0, 0.0),
+            style: style(width),
+        }
+    }
+
+    fn max_abs_y(mesh: &Mesh) -> f32 {
+        mesh.vertices
+            .iter()
+            .map(|v| v.pos[1].abs())
+            .fold(0.0, f32::max)
+    }
+
+    fn uv_range(mesh: &Mesh) -> (f32, f32) {
+        let ds = mesh.vertices.iter().map(|v| v.uv[0]);
+        (
+            ds.clone().fold(f32::INFINITY, f32::min),
+            ds.fold(f32::NEG_INFINITY, f32::max),
+        )
+    }
+
+    #[test]
+    fn line_edge_vertices_carry_feather_distance() {
+        // Arrange: a 4 px line at zoom 1, so the feather is 0.5 world units.
+        let mesh = tessellate_at(&horizontal(4.0), 1.0);
+        // Act
+        let (low, high) = uv_range(&mesh);
+        // Assert: outside the edge is negative, inside is positive.
+        assert!(approx_eq(low, -0.5, EPS), "low {low}");
+        assert!(approx_eq(high, 0.5, EPS), "high {high}");
+        for v in mesh.vertices.iter().filter(|v| approx_eq(v.pos[1].abs(), 2.5, EPS)) {
+            assert!(approx_eq(v.uv[0], -0.5, EPS));
+        }
+    }
+
+    #[test]
+    fn feathered_edge_reaches_half_a_pixel_outside() {
+        // At zoom 4 half a pixel is 0.125 world units.
+        let mesh = tessellate_at(&horizontal(4.0), 4.0);
+        assert!(approx_eq(max_abs_y(&mesh), 2.125, EPS), "{}", max_abs_y(&mesh));
+    }
+
+    #[test]
+    fn thin_line_is_one_pixel_wide_at_any_zoom() {
+        for zoom in [0.25_f32, 1.0, 4.0] {
+            // The edge (coverage one half) is half a pixel from the axis, the
+            // feather another half a pixel beyond it.
+            let mesh = tessellate_at(&horizontal(0.01), zoom);
+            assert!(
+                approx_eq(max_abs_y(&mesh), 1.0 / zoom, EPS / zoom),
+                "zoom {zoom}: {}",
+                max_abs_y(&mesh)
+            );
+        }
+    }
+
+    #[test]
+    fn wide_line_keeps_its_world_width_at_any_zoom() {
+        for zoom in [0.25_f32, 1.0, 4.0] {
+            let mesh = tessellate_at(&horizontal(40.0), zoom);
+            let want = 20.0 + 0.5 / zoom;
+            assert!(approx_eq(max_abs_y(&mesh), want, EPS), "zoom {zoom}");
+        }
+    }
+
+    fn ellipse() -> Shape {
+        Shape::Ellipse {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(200.0, 100.0),
+            style: style(2.0),
+            fill: None,
+            label: None,
+            text: None,
+        }
+    }
+
+    #[test]
+    fn ellipse_segments_grow_with_zoom() {
+        let far = tessellate_at(&ellipse(), 0.25).vertices.len();
+        let near = tessellate_at(&ellipse(), 4.0).vertices.len();
+        assert!(near > far, "{near} vertices at zoom 4, {far} at 0.25");
+    }
+
+    #[test]
+    fn zoom_bucket_rounds_to_powers_of_two() {
+        for (zoom, want) in [
+            (0.25, 0.25),
+            (1.0, 1.0),
+            (4.0, 4.0),
+            (1.3, 1.0),
+            (1.5, 2.0),
+            (0.0, 1.0),
+            (f32::NAN, 1.0),
+            (f32::INFINITY, 1.0),
+            (-2.0, 1.0),
+        ] {
+            assert!(approx_eq(zoom_bucket(zoom), want, EPS), "{zoom}");
+        }
+    }
+
+    #[test]
+    fn arrow_shaft_stops_at_the_head_base() {
+        // Arrange: width 4, so the head is `arrow_head`'s.
+        let a = Vec2::new(0.0, 0.0);
+        let b = Vec2::new(100.0, 0.0);
+        let [tip, left, right] = arrow_head(a, b, 4.0);
+        let base_x = left.lerp(right, 0.5).x;
+        // Act
+        let mesh = tessellate_at(
+            &Shape::Arrow {
+                a,
+                b,
+                style: style(4.0),
+            },
+            1.0,
+        );
+        // Assert: the head is there, and nothing but the head passes the base.
+        let max_x = mesh
+            .vertices
+            .iter()
+            .map(|v| v.pos[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(max_x >= tip.x - EPS);
+        let shaft_end = mesh
+            .vertices
+            .iter()
+            .filter(|v| v.pos[1].abs() > 2.6 || v.pos[0] < base_x - 1.0)
+            .map(|v| v.pos[0])
+            .fold(f32::NEG_INFINITY, f32::max);
+        assert!(shaft_end <= base_x + 3.0, "shaft ends at {shaft_end}");
+    }
+
+    #[test]
+    fn dot_grid_mesh_has_one_quad_per_dot() {
+        let view = Aabb::from_corners(Vec2::new(0.0, 0.0), Vec2::new(30.0, 20.0));
+        let mesh = dot_grid_mesh(view, 10.0, 2.0, [1, 2, 3, 4]);
+        // x in 0, 10, 20, 30 and y in 0, 10, 20.
+        assert_eq!(mesh.vertices.len(), 12 * 4);
+        assert_eq!(mesh.indices.len(), 12 * 6);
+        assert!(mesh.vertices.iter().all(|v| v.color == [1, 2, 3, 4]));
+    }
+
+    #[test]
+    fn dot_grid_mesh_is_empty_for_too_many_dots_or_bad_spacing() {
+        let view = Aabb::from_corners(Vec2::new(0.0, 0.0), Vec2::new(1.0e6, 1.0e6));
+        assert_eq!(dot_grid_mesh(view, 1.0, 2.0, [0; 4]), Mesh::default());
+        assert_eq!(dot_grid_mesh(view, 0.0, 2.0, [0; 4]), Mesh::default());
+        assert_eq!(dot_grid_mesh(view, f32::NAN, 2.0, [0; 4]), Mesh::default());
+    }
+
     #[test]
     fn text_shapes_tessellate_to_nothing() {
         let text = Shape::Text {
