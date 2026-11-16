@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use draw_sys::egl::GlContext;
 
 use super::{
-    Blend, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
+    Blend, Camera, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
     TextureDesc, Vertex, View,
 };
 
@@ -73,23 +73,44 @@ layout(location = 0) in vec2 pos;
 layout(location = 1) in vec2 uv;
 layout(location = 2) in vec4 color;
 uniform vec2 view;
+uniform vec2 origin;
+uniform float scale;
 out vec2 v_uv;
 out vec4 v_color;
+out float v_edge;
 void main() {
     v_uv = uv;
     v_color = color;
-    gl_Position = vec4(pos.x / view.x * 2.0 - 1.0, 1.0 - pos.y / view.y * 2.0, 0.0, 1.0);
+    v_edge = uv.x * scale;
+    vec2 p = (pos - origin) * scale;
+    gl_Position = vec4(p.x / view.x * 2.0 - 1.0, 1.0 - p.y / view.y * 2.0, 0.0, 1.0);
 }
 ";
 
 const FRAGMENT_SOURCE: &str = "#version 300 es
-precision mediump float;
+precision highp float;
 uniform sampler2D tex;
 in vec2 v_uv;
 in vec4 v_color;
+in float v_edge;
 out vec4 frag;
 void main() {
     frag = texture(tex, v_uv) * v_color;
+}
+";
+
+/// The feathered variant: the alpha is also multiplied by the coverage of
+/// the edge distance in pixels (`v_edge`, positive inside), ADR-T173-1.
+const FEATHERED_FRAGMENT_SOURCE: &str = "#version 300 es
+precision highp float;
+uniform sampler2D tex;
+in vec2 v_uv;
+in vec4 v_color;
+in float v_edge;
+out vec4 frag;
+void main() {
+    frag = texture(tex, v_uv) * v_color;
+    frag.a *= clamp(v_edge + 0.5, 0.0, 1.0);
 }
 ";
 
@@ -267,6 +288,7 @@ gl_table! {
     get_uniform_location = "glGetUniformLocation"(program: u32, name: *const c_char) -> i32;
     uniform2f = "glUniform2f"(location: i32, x: f32, y: f32);
     uniform1i = "glUniform1i"(location: i32, value: i32);
+    uniform1f = "glUniform1f"(location: i32, x: f32);
     draw_elements = "glDrawElements"(mode: u32, count: i32, kind: u32, indices: *const c_void);
     read_pixels = "glReadPixels"(
         x: i32, y: i32, width: i32, height: i32, format: u32, kind: u32, pixels: *mut c_void);
@@ -396,6 +418,8 @@ pub struct GlPipeline {
 struct Program {
     name: u32,
     view: i32,
+    origin: i32,
+    scale: i32,
 }
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
@@ -679,15 +703,20 @@ impl Ready<'_> {
         String::from_utf8_lossy(&buffer[..used]).trim().to_owned()
     }
 
-    fn link(&self) -> Result<Program, GpuError> {
+    fn link(&self, feathered: bool) -> Result<Program, GpuError> {
         let vertex = self.compile(VERTEX_SHADER, VERTEX_SOURCE)?;
-        let fragment = self.compile(FRAGMENT_SHADER, FRAGMENT_SOURCE)?;
+        let source = if feathered {
+            FEATHERED_FRAGMENT_SOURCE
+        } else {
+            FRAGMENT_SOURCE
+        };
+        let fragment = self.compile(FRAGMENT_SHADER, source)?;
         let view = c"view";
         let tex = c"tex";
         // TEST: triangle_set_reads_back_exactly
         // SAFETY: the shader names were just created; the uniform names are
         // NUL-terminated literals.
-        let (name, view_location) = unsafe {
+        let (name, locations) = unsafe {
             let program = self.gl.create_program();
             self.gl.attach_shader(program, vertex);
             self.gl.attach_shader(program, fragment);
@@ -696,7 +725,11 @@ impl Ready<'_> {
             self.gl.delete_shader(fragment);
             (
                 program,
-                self.gl.get_uniform_location(program, view.as_ptr()),
+                [
+                    self.gl.get_uniform_location(program, view.as_ptr()),
+                    self.gl.get_uniform_location(program, c"origin".as_ptr()),
+                    self.gl.get_uniform_location(program, c"scale".as_ptr()),
+                ],
             )
         };
         let mut status = 0;
@@ -719,7 +752,9 @@ impl Ready<'_> {
         }
         Ok(Program {
             name,
-            view: view_location,
+            view: locations[0],
+            origin: locations[1],
+            scale: locations[2],
         })
     }
 }
@@ -732,8 +767,9 @@ pub struct GlGpu<C: GlContext> {
     id: u64,
     window: (u32, u32),
     release: ReleaseQueue,
-    /// One program per [`Blend`]: alpha, then opaque.
-    programs: [Program; 2],
+    /// One program per [`Blend`]: alpha, opaque, then
+    /// feathered alpha.
+    programs: [Program; 3],
     vao: u32,
     scratch_vbo: u32,
     scratch_ibo: u32,
@@ -749,7 +785,7 @@ fn program_index(blend: Blend) -> usize {
     match blend {
         Blend::Alpha => 0,
         Blend::Opaque => 1,
-        Blend::AlphaFeathered => todo!("feathered program"),
+        Blend::AlphaFeathered => 2,
     }
 }
 
@@ -769,8 +805,9 @@ impl<C: GlContext> GlGpu<C> {
         let ready = Ready { gl: &gl };
         let max_texture = ready.integer(MAX_TEXTURE_SIZE);
         let max_samples = ready.integer(MAX_SAMPLES).max(1);
-        let alpha = ready.link()?;
-        let opaque = ready.link()?;
+        let alpha = ready.link(false)?;
+        let opaque = ready.link(false)?;
+        let feathered = ready.link(true)?;
         let white = ready.texture_name();
         ready.texture_storage(white, 1, 1, Filter::Nearest, &[255; 4]);
         let mut names = [0u32; 3];
@@ -788,7 +825,7 @@ impl<C: GlContext> GlGpu<C> {
             id,
             window: window_size,
             release: Rc::new(RefCell::new(Vec::new())),
-            programs: [alpha, opaque],
+            programs: [alpha, opaque, feathered],
             vao: names[0],
             scratch_vbo: names[1],
             scratch_ibo: names[2],
@@ -1059,6 +1096,7 @@ impl<C: GlContext> GlGpu<C> {
         &self,
         ready: Ready<'_>,
         view: View,
+        camera: Camera,
         pipeline: GlPipeline,
         texture: Option<&GlTexture>,
         geometry: &Geometry<GlBuffer>,
@@ -1080,10 +1118,14 @@ impl<C: GlContext> GlGpu<C> {
         unsafe {
             ready.gl.use_program(program.name);
             ready.gl.uniform2f(program.view, view.width, view.height);
+            ready
+                .gl
+                .uniform2f(program.origin, camera.origin[0], camera.origin[1]);
+            ready.gl.uniform1f(program.scale, camera.scale);
             ready.gl.active_texture(TEXTURE0);
             ready.gl.bind_texture(TEXTURE_2D, texture_name);
             match pipeline.blend {
-                Blend::Alpha => {
+                Blend::Alpha | Blend::AlphaFeathered => {
                     ready.gl.enable(BLEND);
                     ready.gl.blend_func_separate(
                         SRC_ALPHA,
@@ -1093,7 +1135,6 @@ impl<C: GlContext> GlGpu<C> {
                     );
                 }
                 Blend::Opaque => ready.gl.disable(BLEND),
-                Blend::AlphaFeathered => todo!("feathered blend"),
             }
             ready
                 .gl
@@ -1106,13 +1147,14 @@ impl<C: GlContext> GlGpu<C> {
 impl<C: GlContext> Drop for GlGpu<C> {
     fn drop(&mut self) {
         if let Ok(ready) = self.ready() {
-            let [alpha, opaque] = self.programs;
+            let [alpha, opaque, feathered] = self.programs;
             // TEST: dropped_handles_are_released_without_a_gl_error
             // SAFETY: every name was created by this context and is deleted
             // once; the context is current (`ready`).
             unsafe {
                 ready.gl.delete_program(alpha.name);
                 ready.gl.delete_program(opaque.name);
+                ready.gl.delete_program(feathered.name);
                 ready.gl.delete_vertex_arrays(1, &raw const self.vao);
                 ready.gl.delete_buffers(1, &raw const self.scratch_vbo);
                 ready.gl.delete_buffers(1, &raw const self.scratch_ibo);
@@ -1336,7 +1378,7 @@ impl<C: GlContext> Gpu for GlGpu<C> {
 
     fn submit(&mut self, list: &CommandList<Self>) -> Result<(), GpuError> {
         let ready = self.ready()?;
-        let mut pass: Option<(Option<GlTarget>, View)> = None;
+        let mut pass: Option<(Option<GlTarget>, View, Camera)> = None;
         for command in list.commands() {
             match command {
                 Command::BeginPass {
@@ -1348,29 +1390,41 @@ impl<C: GlContext> Gpu for GlGpu<C> {
                         return Err(backend("BeginPass inside a pass"));
                     }
                     self.begin_pass(ready, target.as_ref(), *view, *clear)?;
-                    pass = Some((target.clone(), *view));
+                    pass = Some((target.clone(), *view, Camera::IDENTITY));
                 }
                 Command::Draw {
                     pipeline,
                     texture,
                     geometry,
                 } => {
-                    let Some((_, view)) = &pass else {
+                    let Some((_, view, camera)) = &pass else {
                         return Err(backend("Draw outside a pass"));
                     };
-                    let view = *view;
-                    self.draw(ready, view, *pipeline, texture.as_ref(), geometry)?;
+                    let (view, camera) = (*view, *camera);
+                    self.draw(
+                        ready,
+                        view,
+                        camera,
+                        *pipeline,
+                        texture.as_ref(),
+                        geometry,
+                    )?;
                 }
-                Command::SetCamera(_) => todo!("camera uniform"),
+                Command::SetCamera(camera) => {
+                    let Some((_, _, current)) = &mut pass else {
+                        return Err(backend("SetCamera outside a pass"));
+                    };
+                    *current = *camera;
+                }
                 Command::EndPass => {
-                    let Some((target, _)) = pass.take() else {
+                    let Some((target, _, _)) = pass.take() else {
                         return Err(backend("EndPass outside a pass"));
                     };
                     Self::end_pass(ready, target.as_ref());
                 }
             }
         }
-        if let Some((target, _)) = pass {
+        if let Some((target, _, _)) = pass {
             Self::end_pass(ready, target.as_ref());
             return Err(backend("the list ended inside a pass"));
         }

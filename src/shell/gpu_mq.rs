@@ -383,7 +383,7 @@ impl MqGpu {
                     geometry,
                 } => {
                     passes.step(Step::Draw)?;
-                    if self.pipelines.get(pipeline.id)?.blend != Blend::Alpha {
+                    if self.pipelines.get(pipeline.id)?.blend == Blend::Opaque {
                         return Err(backend("opaque blend is not supported yet"));
                     }
                     if let Some(texture) = texture {
@@ -409,6 +409,7 @@ impl MqGpu {
     /// Runs a validated `list`. `in_target` tells whether a target pass
     /// is open (it owns the camera, [`pass_owns_camera`]).
     fn execute(&self, list: &CommandList<Self>, in_target: &mut bool) -> Result<(), GpuError> {
+        let mut camera = Camera::IDENTITY;
         for command in list.commands() {
             match command {
                 Command::BeginPass {
@@ -416,6 +417,7 @@ impl MqGpu {
                     view,
                     clear,
                 } => {
+                    camera = Camera::IDENTITY;
                     *in_target = pass_owns_camera(target.is_some());
                     // A pass never inherits the caller's camera (ADR-T159-1):
                     // no target draws to the window in its pixels.
@@ -446,7 +448,7 @@ impl MqGpu {
                     };
                     match geometry {
                         Geometry::Inline { vertices, indices } => {
-                            draw_chunks(vertices, indices, texture)?;
+                            draw_camera_chunks(vertices, indices, texture, camera)?;
                         }
                         Geometry::Buffer {
                             buffer,
@@ -455,11 +457,11 @@ impl MqGpu {
                         } => {
                             let (vertices, indices) = self.buffers.get(buffer.id)?;
                             let range = buffer_range(indices, *first, *count)?;
-                            draw_chunks(vertices, range, texture)?;
+                            draw_camera_chunks(vertices, range, texture, camera)?;
                         }
                     }
                 }
-                Command::SetCamera(_) => todo!("apply the camera to the vertices"),
+                Command::SetCamera(next) => camera = *next,
                 Command::EndPass => {
                     if *in_target {
                         set_default_camera();
@@ -490,6 +492,20 @@ fn buffer_range(indices: &[u32], first: u32, count: u32) -> Result<&[u32], GpuEr
         .ok_or_else(|| backend("index range out of the buffer"))
 }
 
+/// [`draw_chunks`] through `camera`; the identity camera copies nothing.
+fn draw_camera_chunks(
+    vertices: &[Vertex],
+    indices: &[u32],
+    texture: Option<&Texture2D>,
+    camera: Camera,
+) -> Result<(), GpuError> {
+    if camera == Camera::IDENTITY {
+        draw_chunks(vertices, indices, texture)
+    } else {
+        draw_chunks(&with_camera(vertices, camera), indices, texture)
+    }
+}
+
 /// Draws the triangles in chunks macroquad can hold.
 fn draw_chunks(
     vertices: &[Vertex],
@@ -509,8 +525,13 @@ fn draw_chunks(
 
 /// `vertices` with their positions moved through `camera`.
 fn with_camera(vertices: &[Vertex], camera: Camera) -> Vec<Vertex> {
-    let _ = (vertices, camera);
-    todo!("apply the camera to the vertices")
+    vertices
+        .iter()
+        .map(|vertex| Vertex {
+            pos: camera.apply(vertex.pos),
+            ..*vertex
+        })
+        .collect()
 }
 
 /// The macroquad vertex with the same position, texture coordinate and
