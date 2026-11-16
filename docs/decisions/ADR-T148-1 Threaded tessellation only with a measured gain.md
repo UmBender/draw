@@ -48,7 +48,20 @@ separate step (that file is not owned by this task).
 
 ## Result
 
-To be filled by the measurement.
+Measured 2026-11-15 on the owner's machine with `cargo test --release --test
+perf perf_threaded -- --ignored --nocapture` (8 hardware threads):
+
+| shapes | 1 thread | 8 threads | gain |
+| --- | --- | --- | --- |
+| 5 120 strokes | 26.3 ms | 8.0 ms | 3.30x |
+| 100 shapes | 331 µs | 364 µs | 0.91x (same single path; noise) |
+
+The 5k gain is above 1.5x, so the threaded path is worth keeping. The 100-shape
+case is below `MIN_PARALLEL` (256) and runs the single-thread path in both
+columns, so the 0.91x is measurement noise, not a loss from threading. The
+function is **not yet wired** into `ChunkCache::update` (`chunks.rs` is outside
+this task's files): a follow-up should build the rebuilt chunks' shapes with
+`tessellate_many`. Status stays `proposed` for the owner to accept.
 
 ## Rollback plan
 

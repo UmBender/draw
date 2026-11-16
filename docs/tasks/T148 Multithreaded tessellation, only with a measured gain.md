@@ -1,7 +1,7 @@
 ---
 id: T148
 title: Multithreaded tessellation, only with a measured gain
-status: in-progress
+status: review
 wave: 72
 branch: task/T148-multithreaded-tessellation-only-with-a-m
 depends_on: [T146]
@@ -47,11 +47,15 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T148): specify threaded tessellation`
-- [ ] tests — `test(T148): add the benchmark and the equivalence test`
-- [ ] behaviour — `feat(T148): tessellate chunks on scoped threads`
-- [ ] quality — `chore(T148): pass clippy and rustfmt`
+- [x] spec — `docs(T148): specify threaded tessellation`
+- [x] tests — `test(T148): add the benchmark and the equivalence test`
+- [x] behaviour — `feat(T148): tessellate chunks on scoped threads`
+- [x] quality — `chore(T148): pass clippy and rustfmt`
 
 ## Log
 
+- 2026-11-15 — done: `tessellate_many` on scoped threads, 3.30x at 5 120 strokes
+  (see `ADR-T148-1`). Not wired into `chunks.rs` (not a file this task owns);
+  a follow-up must call it from `ChunkCache::update`. No tutorial or feature note
+  (frontmatter empty).
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
