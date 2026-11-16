@@ -12,7 +12,7 @@ use draw::shell::app;
 use draw::shell::backend::Backend;
 use draw::shell::diag::{self, Level};
 use draw::shell::gpu_mq::MqGpu;
-use draw::shell::gpu_x11::X11Gpu;
+use draw::shell::gpu_x11::{ClosingX11, X11Gpu};
 use draw::shell::options::{self, Parsed, Platform};
 use draw::shell::platform_mq::MqPlatform;
 use draw::shell::{backend, tablet};
@@ -145,6 +145,10 @@ fn main() {
                     std::process::exit(1);
                 }
             };
+            if !draw_sys::x11::signal::install_quit() {
+                diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
+            }
+            let platform = ClosingX11::new(platform, finish_native);
             block_on(app::run(platform, gpu, options, backend, tablet));
         }
         // The window and the GPU exist only inside macroquad's loop, so the
@@ -155,7 +159,11 @@ fn main() {
             });
         }
     }
-    let received = signal::received();
+    finish(signal::received());
+}
+
+/// Logs the end of the session and ends the process by `received`'s signal.
+fn finish(received: Option<signal::QuitSignal>) {
     if let Some(quit) = received {
         diag::log(Level::Info, &app::signal_line(quit));
     }
@@ -163,6 +171,13 @@ fn main() {
     if let Some(quit) = received {
         signal::reraise(quit);
     }
+}
+
+/// The end of the native X11 run: the window closed, or the quit signal
+/// `number` came. The frame loop never returns, so this ends the process.
+fn finish_native(number: Option<i32>) {
+    finish(number.and_then(signal::QuitSignal::from_number));
+    std::process::exit(0);
 }
 
 #[cfg(test)]

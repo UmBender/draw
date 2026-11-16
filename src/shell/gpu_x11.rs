@@ -91,3 +91,55 @@ impl Gpu for X11Gpu {
         self.inner.submit(&inner_list)
     }
 }
+
+/// The `X11Platform` of the native run, ending the process in order when
+/// the window is closed or a quit signal arrives: the frame loop of the app
+/// has no exit of its own (the macroquad window ends it).
+pub struct ClosingX11 {
+    /// The wrapped platform.
+    inner: draw_sys::x11::X11Platform,
+    /// Called once with the quit signal's number (if any) after the frame
+    /// that saw the close; it ends the process.
+    on_close: fn(Option<i32>),
+}
+
+impl ClosingX11 {
+    /// Wraps `inner`; `on_close` ends the process.
+    #[must_use]
+    pub fn new(inner: draw_sys::x11::X11Platform, on_close: fn(Option<i32>)) -> Self {
+        Self { inner, on_close }
+    }
+}
+
+impl draw_sys::platform::Platform for ClosingX11 {
+    fn poll(&mut self, out: &mut Vec<draw_sys::platform::RawEvent>) {
+        self.inner.poll(out);
+    }
+
+    fn window(&mut self) -> draw_sys::platform::WindowMetrics {
+        self.inner.window()
+    }
+
+    fn clipboard_text(&mut self) -> Option<String> {
+        self.inner.clipboard_text()
+    }
+
+    fn set_clipboard_text(&mut self, text: &str) {
+        self.inner.set_clipboard_text(text);
+    }
+
+    fn set_clipboard_png(&mut self, png: &[u8]) {
+        self.inner.set_clipboard_png(png);
+    }
+
+    fn schedule_update(&mut self) {
+        self.inner.schedule_update();
+    }
+
+    async fn next_frame(&mut self) {
+        self.inner.next_frame().await;
+        if self.inner.close_requested() || draw_sys::x11::signal::peek().is_some() {
+            (self.on_close)(draw_sys::x11::signal::take());
+        }
+    }
+}

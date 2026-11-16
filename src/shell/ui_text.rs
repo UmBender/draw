@@ -16,7 +16,6 @@ use crate::shell::render::{Batch, MeshSink};
 use crate::shell::render_ctx::RenderCtx;
 use draw_gfx::gpu::{Gpu, Vertex};
 use macroquad::color::Color;
-use macroquad::text::{Font, TextDimensions, load_ttf_font_from_bytes, measure_text};
 use std::cell::OnceCell;
 
 /// A glyph quad with the atlas page it samples.
@@ -32,29 +31,52 @@ pub struct MenuGlyphs<G: Gpu> {
 }
 
 thread_local! {
-    /// The menu font, loaded on first use: it needs the graphics context.
-    /// Leaked on purpose: dropping its texture after the window is gone
-    /// (a thread-local destructor at exit) crashes.
-    static FONT: OnceCell<Option<&'static Font>> = const { OnceCell::new() };
+    /// The menu font for measuring, parsed on first use. It needs no
+    /// graphics context, so it works on every platform.
+    static FONT: OnceCell<Option<fontdue::Font>> = const { OnceCell::new() };
 }
 
-/// Runs `body` with the menu font, or `None` when it did not load (the
-/// built-in font is used then).
-fn with_font<T>(body: impl FnOnce(Option<&Font>) -> T) -> T {
-    let font = FONT.with(|cell| {
-        *cell.get_or_init(|| {
-            load_ttf_font_from_bytes(TEXT_FONT)
-                .ok()
-                .map(|font| &*Box::leak(Box::new(font)))
-        })
-    });
-    body(font)
+/// The size of a label: what the menus need to centre it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextDimensions {
+    /// Sum of the glyph advances, in pixels.
+    pub width: f32,
+    /// Tallest glyph from its bottom to its top, in pixels.
+    pub height: f32,
+    /// Highest glyph top above the baseline, in pixels.
+    pub offset_y: f32,
 }
 
-/// The size of `label` at `font_size` pixels, as `measure_text` reports it.
+/// The size of `label` at `font_size` pixels, from the advances and bounds
+/// of the menu font (the numbers macroquad's `measure_text` gave). Zero
+/// when the font did not load.
 #[must_use]
 pub fn measure(label: &str, font_size: u16) -> TextDimensions {
-    with_font(|font| measure_text(label, font, font_size, 1.0))
+    let px = f32::from(font_size);
+    FONT.with(|cell| {
+        let font = cell.get_or_init(|| {
+            fontdue::Font::from_bytes(TEXT_FONT, fontdue::FontSettings::default()).ok()
+        });
+        let mut dims = TextDimensions {
+            width: 0.0,
+            height: 0.0,
+            offset_y: 0.0,
+        };
+        let Some(font) = font else {
+            return dims;
+        };
+        let mut min_y = 0.0_f32;
+        for ch in label.chars() {
+            let m = font.metrics(ch, px);
+            dims.width += m.advance_width;
+            #[allow(clippy::cast_precision_loss)]
+            let (top, bottom) = (m.height as f32 + m.ymin as f32, m.ymin as f32);
+            dims.offset_y = dims.offset_y.max(top);
+            min_y = min_y.min(bottom);
+        }
+        dims.height = dims.offset_y - min_y;
+        dims
+    })
 }
 
 /// `value` rounded to a whole physical pixel of a window scaled by `dpi`.
@@ -311,8 +333,6 @@ mod tests {
         ("toolbar.rs", "macroquad::color::Color"),
         ("ui_shapes.rs", "macroquad::color::Color"),
         ("ui_text.rs", "macroquad::color::Color"),
-        // T149: the menu font measure.
-        ("ui_text.rs", "macroquad::text::"),
         // T149: `Vec2` of the macroquad vertices in the batch.
         ("render.rs", "macroquad::math::Vec2"),
         // T149: window config and signals.

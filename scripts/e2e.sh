@@ -186,7 +186,7 @@ run_x11() {
 
     # The server writes its display number to fd 3, which is this file.
     local shown=$run/display
-    Xvfb -nolisten tcp -displayfd 3 -screen 0 1280x1024x24 -noreset \
+    Xvfb -nolisten tcp -displayfd 3 -screen 0 1280x1024x24 -dpi 96 -noreset \
         3>"$shown" >target/e2e/xvfb.log 2>&1 &
     xvfb_pid=$!
 
