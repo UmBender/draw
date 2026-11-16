@@ -55,6 +55,12 @@ impl WaylandPlatform {
         self.window.close_requested()
     }
 
+    /// Whether the compositor's tablet manager is bound.
+    #[must_use]
+    pub fn has_tablet_manager(&self) -> bool {
+        todo!()
+    }
+
     /// Whether a frame callback is outstanding.
     #[must_use]
     pub fn frame_pending(&self) -> bool {
