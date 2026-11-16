@@ -231,6 +231,50 @@ mod tests {
     use draw_core::core::palette::ColorId;
     use draw_core::core::shape::Style;
 
+    fn scene(n: usize) -> Vec<Shape> {
+        (0..n)
+            .map(|i| {
+                let x = i as f32;
+                Shape::Stroke {
+                    points: (0..20)
+                        .map(|k| Vec2::new(x + k as f32, (x * 0.5 + k as f32).sin() * 10.0))
+                        .collect(),
+                    widths: None,
+                    style: Style {
+                        color: ColorId::INK,
+                        width: 2.0,
+                    },
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn threads_give_identical_geometry() {
+        // Arrange
+        let shapes = scene(MIN_PARALLEL * 3 + 7);
+        let refs: Vec<&Shape> = shapes.iter().collect();
+        // Act
+        let one = tessellate_many(&refs, 1);
+        // Assert
+        for threads in [2, 3, 4, 8, 64] {
+            assert_eq!(tessellate_many(&refs, threads), one, "{threads} threads");
+        }
+        assert_eq!(one.len(), refs.len());
+        assert_eq!(one[5], tessellate(refs[5]));
+    }
+
+    #[test]
+    fn small_inputs_use_one_thread() {
+        // Arrange
+        let shapes = scene(MIN_PARALLEL - 1);
+        let refs: Vec<&Shape> = shapes.iter().collect();
+        // Act / Assert
+        assert_eq!(tessellate_many(&refs, 8), tessellate_many(&refs, 1));
+        assert!(tessellate_many(&[], 4).is_empty());
+        assert_eq!(tessellate_many(&refs, 0).len(), refs.len());
+    }
+
     #[test]
     fn text_shapes_tessellate_to_nothing() {
         let text = Shape::Text {
