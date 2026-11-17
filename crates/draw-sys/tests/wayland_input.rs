@@ -220,12 +220,12 @@ fn wheel_smooth_axis_flips_the_vertical_sign() {
 fn wheel_value120_wins_over_the_smooth_axis() {
     let frame = AxisFrame {
         dx: 0.0,
-        dy: 15.0,
+        dy: 20.0,
         v120_x: None,
         v120_y: Some(120),
     };
 
-    assert_eq!(wheel_of_frame(&frame), Some((0.0, -10.0)));
+    assert_eq!(wheel_of_frame(&frame), Some((0.0, -15.0)));
 }
 
 #[test]

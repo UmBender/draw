@@ -610,7 +610,7 @@ flowchart TD
 | [[T168 Wayland connection, window and protocol states]] | done | T142, T145 | `task/T168-wayland-connection-window-and-protocol-` |
 | [[T169 Wayland keyboard, pointer and seat]] | done | T168 | `task/T169-wayland-keyboard-pointer-and-seat` |
 | [[T170 Wayland tablet and clipboard]] | done | T169 | `task/T170-wayland-tablet-and-clipboard` |
-| [[T171 Wayland platform in main and the e2e suite]] | todo | T170 | `task/T171-wayland-platform-in-main-and-the-e2e-su` |
+| [[T171 Wayland platform in main and the e2e suite]] | done | T170 | `task/T171-wayland-platform-in-main-and-the-e2e-su` |
 | [[T172 Retained renderer in the app]] | done | T146, T173, T179, T180 | `task/T172-retained-renderer-in-the-app` |
 | [[T173 Camera uniform and analytic anti-aliasing over Gpu]] | done | T146 | `task/T173-camera-uniform-and-analytic-anti-aliasi` |
 | [[T174 Nix flake for NixOS]] | done | — | `task/T174-nix-flake-for-nixos` |

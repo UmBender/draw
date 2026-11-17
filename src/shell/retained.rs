@@ -12,12 +12,12 @@ use draw_gfx::text::{TextCache, TextSpec, for_each_glyph};
 use crate::core::camera::Camera;
 use crate::core::document::ShapeId;
 use crate::core::geom::{Aabb, Vec2};
-use crate::core::palette::{ColorId, palette};
+use crate::core::palette::{ColorId, Rgba, palette};
 use crate::core::shape::{Shape, grid_axis_labels};
 use crate::core::text_layout::bounds;
 use crate::shell::render::{
-    atlas_epoch, axis_label_size, cull_rect, hex_color, label_area, label_size, shown_label,
-    warn_color, with_atlas,
+    atlas_epoch, axis_label_size, cull_rect, label_area, label_size, shown_label, warn_color_rgba,
+    with_atlas,
 };
 use crate::shell::render_ctx::{RenderCtx, WorldDraw};
 use crate::theme;
@@ -353,15 +353,15 @@ fn palette_bytes(id: ColorId) -> [u8; 4] {
 
 fn label_color_bytes(fill: Option<ColorId>, outline: ColorId) -> [u8; 4] {
     if fill.is_some() {
-        hex_color(theme::TEXT_ON_FILL).into()
+        let c = Rgba::from_hex(theme::TEXT_ON_FILL);
+        [c.r, c.g, c.b, c.a]
     } else {
         palette_bytes(outline)
     }
 }
 
 fn warn_bytes(color: [u8; 4]) -> [u8; 4] {
-    let mq = macroquad::color::Color::from_rgba(color[0], color[1], color[2], color[3]);
-    warn_color(mq).into()
+    warn_color_rgba(color)
 }
 
 fn push_label_spec(

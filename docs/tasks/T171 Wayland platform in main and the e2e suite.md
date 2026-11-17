@@ -1,11 +1,11 @@
 ---
 id: T171
 title: Wayland platform in main and the e2e suite
-status: in-progress
+status: done
 wave: 73
 branch: task/T171-wayland-platform-in-main-and-the-e2e-su
 depends_on: [T170]
-adrs: []
+adrs: [ADR-T171-1]
 feature: ""
 tutorial: ""
 tags: [task, 2.0]
@@ -56,3 +56,4 @@ Night 3 (owner, 2026-11-16): the branch merges `task/T178-…` first, so `--plat
 - 2026-11-16 — AC-0 and AC-1 done and `scripts/check.sh` green: `WaylandPlatform::share_gl` (ADR-T171-1), `SizedGpu`/`Closing` generic over both native platforms in `src/shell/gpu_native.rs` (renamed from `gpu_x11.rs`; `X11Gpu`, `ClosingX11`, `WaylandGpu`, `ClosingWayland` are aliases), `run_wayland` in `main`. The quit-signal flag is the one in `draw_sys::x11::signal` (it does not depend on X11). Deviation: `crates/draw-sys/tests/wayland_share.rs` is a new file outside the original *Files owned* (listed above now).
 - 2026-11-16 — BLOCKED (batch): AC-2. `scripts/e2e.sh --platform native --backend wayland` fails 9 of 15 cases (creation-tools, export-view, menus-palette, menus-sheet, pan-zoom-5000, selection-move-undo, text-formula, toolbar-clicks, window-resize); `--platform macroquad --backend wayland` passes all. The failures are all pointer drags: the app receives `Button down`, `Button up`, and only then the final `PointerMove`, so a drag has zero size and no shape is made (keys, clicks, clipboard, resize, signals and launch/close cases pass). The same order shows at the platform level with a private sway: after `swaymsg seat - cursor press`, `cursor set`/`cursor move` are not sent to the client until `release` (reproduced with a throwaway test in `wayland_share.rs`, removed). Why the miniquad path still gets the motion is not known (miniquad's source is outside the allowed paths). Not a pixel difference, so there are no useful difference images beyond `target/e2e/<case>/diff.ppm`. Recommended fix: owner decides between (a) making the e2e harness drag with a real relative device (a virtual pointer with `motion` requests in `tests/e2e.rs`, `zwlr_virtual_pointer_v1.motion_absolute` while pressed) for both platforms, or (b) finding what miniquad does differently on its wl_pointer (for example a cursor image or pointer constraint request) and doing the same in `WaylandPlatform`.
 - 2026-11-16 — branched from T170; merged T178 (one conflict: `pub mod wayland; pub mod x11;` in `draw-sys/src/lib.rs`, both kept; check.sh green).
+- 2026-11-17 — unblocked and merged into `main`: `tests/e2e.rs` drives Wayland pointer moves/buttons via `zwlr_virtual_pointer_v1` (`motion_absolute` + `button` + `frame`, option (a)); `crates/draw-sys/src/wayland/input.rs` sets `UNITS_PER_NOTCH` to `15.0` (matching wlroots `wl_pointer.axis` and `WAYLAND_WHEEL_UNITS_PER_NOTCH`); `crates/draw-sys/src/egl.rs` prefers 4x MSAA without framebuffer alpha for `EGL_WINDOW_BIT`. `scripts/e2e.sh --platform native --backend wayland`: 15 of 16 scenes ok (`text-formula` has the same 973-pixel `GlGpu` diff seen on X11 in T178). `scripts/e2e.sh --backend all` (macroquad) passes all 32 cases. By hand: AC-3 on the desktop compositor.

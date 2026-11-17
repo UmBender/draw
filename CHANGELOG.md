@@ -74,13 +74,14 @@ All notable changes to draw are listed here. The format follows
 - The native X11 platform in `draw-sys` supports windows, keyboard with
   autorepeat, pointer, wheel, XInput2 pressure, PRIMARY and CLIPBOARD
   selections, and clean shutdown on signals.
-- `--platform native` runs the app over the native X11 backend and
+- `--platform native` runs the app over the native X11 or Wayland backend and
   OpenGL ES GPU without macroquad.
 - The native Wayland backend in `draw-sys` handles window creation,
   protocol states, seat keyboard with client-side repeat via xkbcommon,
   pointer, tablet pressure, and clipboard data devices.
-- `--renderer layers|retained` allows drawing the document through
-  retained chunks under the camera uniform.
+- `--renderer layers|retained` draws the document (shapes, text,
+  formulas, labels and grid indices) through cached retained chunks under
+  the camera uniform using parallel tessellation.
 
 ## [1.6.0] - 2026-11-12
 

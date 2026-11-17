@@ -998,6 +998,12 @@ pub fn warn_color(color: Color) -> Color {
     }
 }
 
+/// [`warn_color`] as straight RGBA bytes.
+#[must_use]
+pub fn warn_color_rgba(color: [u8; 4]) -> [u8; 4] {
+    warn_color(Color::from_rgba(color[0], color[1], color[2], color[3])).into()
+}
+
 /// Puts every glyph of a text block drawn as typed (formulas as source)
 /// into `atlas`.
 pub fn prepare_text_source(

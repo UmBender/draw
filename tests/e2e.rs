@@ -853,6 +853,46 @@ fn wheel_message(notch: i32) -> Vec<u8> {
     message
 }
 
+/// A pointer move or button event on `zwlr_virtual_pointer_v1`, with a `frame`.
+fn pointer_message(args: &[String], output: (u32, u32)) -> Result<Vec<u8>, String> {
+    const MOTION_ABSOLUTE: u32 = 1;
+    const BUTTON: u32 = 2;
+    const FRAME: u32 = 4;
+    const BTN_LEFT: u32 = 0x110;
+    const BTN_RIGHT: u32 = 0x111;
+    const BTN_MIDDLE: u32 = 0x112;
+    let time = 0u32;
+    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut message = match words.as_slice() {
+        ["set", x, y] => {
+            let x: u32 = x.parse().map_err(|_| format!("bad x `{x}`"))?;
+            let y: u32 = y.parse().map_err(|_| format!("bad y `{y}`"))?;
+            let mut body = time.to_ne_bytes().to_vec();
+            body.extend(x.to_ne_bytes());
+            body.extend(y.to_ne_bytes());
+            body.extend(output.0.max(1).to_ne_bytes());
+            body.extend(output.1.max(1).to_ne_bytes());
+            wire(VIRTUAL_POINTER_ID, MOTION_ABSOLUTE, &body)
+        }
+        ["press" | "release", button] => {
+            let code = match *button {
+                "button1" => BTN_LEFT,
+                "button2" => BTN_MIDDLE,
+                "button3" => BTN_RIGHT,
+                other => return Err(format!("unknown pointer button `{other}`")),
+            };
+            let state = u32::from(words[0] == "press");
+            let mut body = time.to_ne_bytes().to_vec();
+            body.extend(code.to_ne_bytes());
+            body.extend(state.to_ne_bytes());
+            wire(VIRTUAL_POINTER_ID, BUTTON, &body)
+        }
+        other => return Err(format!("no Wayland pointer step for {other:?}")),
+    };
+    message.extend(wire(VIRTUAL_POINTER_ID, FRAME, &[]));
+    Ok(message)
+}
+
 /// The global name of `interface` in a stream of registry events, if the
 /// messages seen so far announce it; and whether callback 3 has fired.
 fn scan_registry(mut bytes: &[u8], interface: &str) -> (Option<u32>, bool) {
@@ -969,8 +1009,10 @@ struct Session {
     x11: Option<X11Guard>,
     /// The app's window, once it has one, on the X11 backend.
     window: Option<String>,
-    /// Holds the seat's pointer and carries wheel notches.
+    /// Holds the seat's pointer and carries pointer/wheel events.
     pointer: Option<UnixStream>,
+    /// Current Wayland output size, for `motion_absolute` extents.
+    output: (u32, u32),
     /// `wtype` processes still alive, oldest first.
     keyboards: VecDeque<Child>,
 }
@@ -1000,6 +1042,7 @@ impl Session {
             x11: Some(x11),
             window: None,
             pointer: None,
+            output: OUTPUT,
             keyboards: VecDeque::new(),
         })
     }
@@ -1017,6 +1060,7 @@ impl Session {
             x11: None,
             window: None,
             pointer: Some(pointer),
+            output: OUTPUT,
             keyboards: VecDeque::new(),
         };
         // A keyboard on the seat from before the app starts.
@@ -1101,13 +1145,19 @@ impl Session {
         Ok(())
     }
 
-    /// One pointer step: `swaymsg seat - cursor` arguments on Wayland, the
-    /// same words as `xdotool` calls on X11.
-    fn pointer_step(&self, args: &[String]) -> Result<(), String> {
+    /// One pointer step: virtual pointer requests on Wayland (so sway's
+    /// `seatop_down` still forwards motion during a drag), `xdotool` on X11.
+    fn pointer_step(&mut self, args: &[String]) -> Result<(), String> {
         if self.backend == Backend::Wayland {
-            let mut command = vec!["seat", "-", "cursor"];
-            command.extend(args.iter().map(String::as_str));
-            return self.swaymsg(&command).map(drop);
+            let output = self.output;
+            let pointer = self
+                .pointer
+                .as_mut()
+                .ok_or_else(|| "virtual pointer missing".to_owned())?;
+            let message = pointer_message(args, output)?;
+            return pointer
+                .write_all(&message)
+                .map_err(|err| format!("pointer: {err}"));
         }
         let words: Vec<&str> = args.iter().map(String::as_str).collect();
         let number = |button: &str| button.strip_prefix("button").unwrap_or("1").to_owned();
@@ -1133,12 +1183,13 @@ impl Session {
     }
 
     /// Sizes the output (the window on X11) to `w` by `h`.
-    fn resize(&self, w: u32, h: u32) -> Result<(), String> {
+    fn resize(&mut self, w: u32, h: u32) -> Result<(), String> {
         if let Some(window) = &self.window {
             return self
                 .xdotool(&["windowsize", window, &w.to_string(), &h.to_string()])
                 .map(drop);
         }
+        self.output = (w, h);
         let mode = format!("{w}x{h}");
         self.swaymsg(&["output", OUTPUT_NAME, "resolution", &mode])
             .map(drop)
@@ -2862,6 +2913,43 @@ mod self_tests {
         assert_eq!(word(28), 15 << 8);
         assert_eq!(word(32), 1);
         assert_eq!((word(36), word(40) & 0xffff), (VIRTUAL_POINTER_ID, 4));
+    }
+
+    #[test]
+    fn pointer_message_encodes_motion_and_buttons_with_frame() {
+        let word = |message: &[u8], i: usize| {
+            u32::from_ne_bytes(
+                message
+                    .get(i..i + 4)
+                    .and_then(|b| b.try_into().ok())
+                    .unwrap_or([0; 4]),
+            )
+        };
+        let moved = pointer_message(
+            &["set".to_owned(), "120".to_owned(), "240".to_owned()],
+            (800, 600),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(moved.len(), 28 + 8);
+        assert_eq!(
+            (word(&moved, 0), word(&moved, 4) & 0xffff),
+            (VIRTUAL_POINTER_ID, 1)
+        );
+        assert_eq!((word(&moved, 12), word(&moved, 16)), (120, 240));
+        assert_eq!((word(&moved, 20), word(&moved, 24)), (800, 600));
+        assert_eq!(
+            (word(&moved, 28), word(&moved, 32) & 0xffff),
+            (VIRTUAL_POINTER_ID, 4)
+        );
+
+        let pressed = pointer_message(&["press".to_owned(), "button1".to_owned()], (800, 600))
+            .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(pressed.len(), 20 + 8);
+        assert_eq!(
+            (word(&pressed, 0), word(&pressed, 4) & 0xffff),
+            (VIRTUAL_POINTER_ID, 2)
+        );
+        assert_eq!((word(&pressed, 12), word(&pressed, 16)), (0x110, 1));
     }
 
     #[test]

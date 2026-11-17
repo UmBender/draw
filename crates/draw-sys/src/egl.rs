@@ -119,6 +119,7 @@ const EGL_RED_SIZE: Int = 0x3022;
 const EGL_GREEN_SIZE: Int = 0x3023;
 const EGL_BLUE_SIZE: Int = 0x3024;
 const EGL_ALPHA_SIZE: Int = 0x3021;
+const EGL_SAMPLES: Int = 0x3031;
 const EGL_WIDTH: Int = 0x3057;
 const EGL_HEIGHT: Int = 0x3056;
 const EGL_CONTEXT_MAJOR_VERSION: Int = 0x3098;
@@ -232,9 +233,28 @@ impl EglApi {
         Ok(display)
     }
 
-    /// Picks an RGBA8 OpenGL ES 3 config for `surface_type`.
+    /// Picks an OpenGL ES 3 config for `surface_type`; window configs ask
+    /// for 4x MSAA without framebuffer alpha first (matching `miniquad`'s
+    /// default) and fall back to the plain RGBA8 config.
     fn config(&self, display: Ptr, surface_type: Int) -> Result<Ptr, ContextError> {
-        let attributes = [
+        let window_msaa = [
+            EGL_SURFACE_TYPE,
+            surface_type,
+            EGL_RENDERABLE_TYPE,
+            EGL_OPENGL_ES3_BIT,
+            EGL_RED_SIZE,
+            8,
+            EGL_GREEN_SIZE,
+            8,
+            EGL_BLUE_SIZE,
+            8,
+            EGL_ALPHA_SIZE,
+            0,
+            EGL_SAMPLES,
+            4,
+            EGL_NONE,
+        ];
+        let plain = [
             EGL_SURFACE_TYPE,
             surface_type,
             EGL_RENDERABLE_TYPE,
@@ -249,27 +269,37 @@ impl EglApi {
             8,
             EGL_NONE,
         ];
-        let mut config: Ptr = null_mut();
-        let mut count: Int = 0;
-        // TEST: egl_headless_context_makes_current
-        // SAFETY: `attributes` is `EGL_NONE` terminated, `config` has room
-        // for the one config asked for, and `count` is a valid out pointer.
-        let ok = unsafe {
-            (self.choose_config)(
-                display,
-                attributes.as_ptr(),
-                &raw mut config,
-                1,
-                &raw mut count,
-            )
+        let candidates: [&[Int]; 2] = if surface_type == EGL_WINDOW_BIT {
+            [&window_msaa, &plain]
+        } else {
+            [&plain, &[]]
         };
-        if ok == 0 {
-            return Err(self.failed("eglChooseConfig"));
+        for attributes in candidates {
+            if attributes.is_empty() {
+                continue;
+            }
+            let mut config: Ptr = null_mut();
+            let mut count: Int = 0;
+            // TEST: egl_headless_context_makes_current
+            // SAFETY: `attributes` is `EGL_NONE` terminated, `config` has
+            // room for one config, and `count` is a valid out pointer.
+            let ok = unsafe {
+                (self.choose_config)(
+                    display,
+                    attributes.as_ptr(),
+                    &raw mut config,
+                    1,
+                    &raw mut count,
+                )
+            };
+            if ok == 0 {
+                return Err(self.failed("eglChooseConfig"));
+            }
+            if count >= 1 && !config.is_null() {
+                return Ok(config);
+            }
         }
-        if count < 1 || config.is_null() {
-            return Err(ContextError::Unsupported("an RGBA8 OpenGL ES 3 config"));
-        }
-        Ok(config)
+        Err(ContextError::Unsupported("an RGBA8 OpenGL ES 3 config"))
     }
 
     /// An OpenGL ES 3.0 context for `config`.

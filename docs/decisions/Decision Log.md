@@ -186,3 +186,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 175 | [[ADR-T179-1 Zoom bucket per chunk for screen-space rules]] | accepted | decision | T173-1 | — |
 | 176 | [[ADR-T179-2 Parity metric against the screen-space drawing]] | accepted | decision | T179-1, T173-1 | — |
 | 177 | [[ADR-T180-1 Retained text chunks keyed by raster step]] | accepted | decision | T179-1 | — |
+| 178 | [[ADR-T171-1 Wayland platform hands out a shared GL handle]] | accepted | decision | T178-1, T145-1 | — |

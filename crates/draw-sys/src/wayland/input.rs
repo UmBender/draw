@@ -11,9 +11,9 @@ use crate::platform::{Device, DeviceChange, RawButton, RawKey, device_change};
 /// `wl_keyboard.keymap_format.xkb_v1`.
 const XKB_V1: u32 = 1;
 
-/// Wheel units one notch (120 in `axis_value120`) stands for, like the
-/// smooth value of a common wheel.
-const UNITS_PER_NOTCH: f32 = 10.0;
+/// Wheel units one notch (120 in `axis_value120`) stands for, matching
+/// libinput/wlroots `wl_pointer.axis` (and `WAYLAND_WHEEL_UNITS_PER_NOTCH`).
+const UNITS_PER_NOTCH: f32 = 15.0;
 
 /// `wl_seat.capability.pointer`.
 pub const CAP_POINTER: u32 = 1;
