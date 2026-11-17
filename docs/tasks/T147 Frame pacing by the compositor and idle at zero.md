@@ -1,7 +1,7 @@
 ---
 id: T147
 title: Frame pacing by the compositor and idle at zero
-status: todo
+status: in-progress
 wave: 71
 branch: task/T147-frame-pacing-by-the-compositor-and-idle-
 depends_on: [T143, T144, T146]
@@ -23,11 +23,17 @@ Frames are paced by `wl_surface.frame` or X11 presentation timing instead of a p
 
 ## Spec
 
-Draft: the spec step refines each criterion into named tests and ADRs.
-
-- **AC-1** — A redraw is requested once per compositor frame at most; with no input and no timer the process sleeps.
-  Tests: recorder-based `no_redraw_without_input`; the idle CPU check of the e2e suite.
-- **AC-2** — A paused or hidden window draws nothing.
+- **AC-1** — A redraw is requested once per compositor frame at most; with no input and no timer the process sleeps with ~0 % CPU:
+  - `WaylandPlatform` paces active frames with `wl_surface.frame` and blocks in `poll()` on the Wayland socket fd and `signal::wake_fd()` with infinite timeout when idle (`next_idle`), using a short timeout only while a key is held for repeat.
+  - `X11Platform` implements `skips_idle_swap() -> true` and `next_idle()`, flushing X11 and blocking in `poll()` on `XConnectionNumber` and `signal::wake_fd()` instead of a 1 ms `thread::sleep` polling loop (keeping short waits only while clipboard `INCR` state is active).
+  - `app::run` skips GPU work and calls `next_idle()` when `skips_idle_swap()` is active and nothing changed (`Redraw::None`, `!frame.wake`, `!laser.fading()`).
+  - Tests: recorder-based `no_redraw_without_input` (`src/shell/app.rs`), `wayland_idle_sleeps_until_wakeup` (`crates/draw-sys/tests/wayland.rs`), `x11_idle_skips_swap_and_wakes_on_scheduled_update` (`crates/draw-sys/tests/x11.rs`), and the idle CPU check `e2e_idle_cpu_is_near_zero` (`tests/e2e.rs`).
+- **AC-2** — A paused or hidden window draws nothing:
+  - `Platform::paused(&self) -> bool` (default `false`, forwarded by `Closing<P>` and controllable in `RecordingPlatform`).
+  - `WaylandPlatform` reports `paused() == true` when `xdg_toplevel.configure` includes `XDG_TOPLEVEL_STATE_SUSPENDED` (`9`).
+  - `X11Platform` reports `paused() == true` when the window is unmapped (`UnmapNotify` vs `MapNotify`) or fully obscured (`VisibilityNotify` with `VisibilityFullyObscured`).
+  - `app::run` skips `frame.present(...)` and sleeps in `next_idle()` while `platform.paused()` is `true`.
+  - Tests: `paused_window_draws_nothing` (`src/shell/app.rs`), `wayland_toplevel_suspended_state_pauses_the_window` (`crates/draw-sys/src/wayland/window.rs`), `x11_unmap_and_visibility_pause_the_window` (`crates/draw-sys/src/x11/event.rs` / `crates/draw-sys/src/x11/platform.rs`).
 
 ## Out of scope
 
@@ -35,12 +41,12 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Files owned
 
-- `crates/draw/src/app.rs`, `crates/draw-sys/**` (timing only)
+- `src/shell/app.rs`, `src/shell/gpu_native.rs`, `src/shell/recording.rs`, `crates/draw-sys/**`, `tests/e2e.rs`
 - this note
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T147): specify frame pacing`
+- [x] spec — `docs(T147): specify frame pacing`
 - [ ] tests — `test(T147): add failing tests for pacing`
 - [ ] behaviour — `feat(T147): pace frames by the compositor`
 - [ ] quality — `chore(T147): pass clippy and rustfmt`
@@ -48,3 +54,4 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-17 — spec refined: `crates/draw` flattened to `src/shell/{app,gpu_native,recording}.rs`, `tests/e2e.rs` added for the AC-1 idle CPU check, AC-1/AC-2 mapped to `WaylandPlatform` (`wl_surface.frame`, `xdg_toplevel` `SUSPENDED`, `poll` on fd + `signal::wake_fd`) and `X11Platform` (`skips_idle_swap`, `XConnectionNumber` `poll`, `UnmapNotify`/`VisibilityNotify`).
