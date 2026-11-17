@@ -163,6 +163,11 @@ extern "C" fn on_ping(data: *mut c_void, wm_base: *mut Proxy, serial: u32) {
     // TEST: wayland_connect_binds_the_globals
     // SAFETY: `wm_base` is the live `xdg_wm_base` this event came from.
     unsafe { xdg_wm_base::pong(&shared.client, wm_base, serial) };
+    // Flush `pong` immediately so compositors with short ping timeouts do
+    // not wait until the next frame's `dispatch` (or until after a swap).
+    // TEST: wayland_connect_binds_the_globals
+    // SAFETY: `display` is live while `shared` is.
+    let _ = unsafe { (shared.client.display_flush)(shared.display) };
 }
 
 extern "C" fn on_output_scale(data: *mut c_void, output: *mut Proxy, scale: i32) {
@@ -243,7 +248,13 @@ impl Shared {
             // SAFETY: `prepare_read` succeeded above and is paired once.
             unsafe { (c.display_cancel_read)(self.display) };
         }
-        self.dispatch_pending()
+        self.dispatch_pending()?;
+        // Flush replies queued during `dispatch_pending` (e.g. `pong`,
+        // `ack_configure`) before returning to rendering or swapping.
+        // TEST: wayland_connect_binds_the_globals
+        // SAFETY: `display` is live while `self` is.
+        let _ = unsafe { (c.display_flush)(self.display) };
+        Ok(())
     }
 
     /// Dispatches until `done` holds, or fails after [`TIMEOUT`].

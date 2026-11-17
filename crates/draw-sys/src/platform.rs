@@ -320,8 +320,20 @@ pub trait Platform {
     /// Asks for one more frame even without input.
     fn schedule_update(&mut self);
 
+    /// Whether [`Platform::next_idle`] skips swapping buffers when nothing
+    /// new was drawn.
+    fn skips_idle_swap(&self) -> bool {
+        false
+    }
+
     /// Presents the frame and waits until the next one is due.
     fn next_frame(&mut self) -> impl Future<Output = ()>;
+
+    /// Waits for events or a scheduled update when nothing needed a redraw;
+    /// defaults to [`Platform::next_frame`].
+    fn next_idle(&mut self) -> impl Future<Output = ()> {
+        self.next_frame()
+    }
 }
 
 #[cfg(test)]

@@ -185,8 +185,19 @@ impl<P: CloseRequest> draw_sys::platform::Platform for Closing<P> {
         self.inner.schedule_update();
     }
 
+    fn skips_idle_swap(&self) -> bool {
+        self.inner.skips_idle_swap()
+    }
+
     async fn next_frame(&mut self) {
         self.inner.next_frame().await;
+        if self.inner.close_requested() || draw_sys::x11::signal::peek().is_some() {
+            (self.on_close)(draw_sys::x11::signal::take());
+        }
+    }
+
+    async fn next_idle(&mut self) {
+        self.inner.next_idle().await;
         if self.inner.close_requested() || draw_sys::x11::signal::peek().is_some() {
             (self.on_close)(draw_sys::x11::signal::take());
         }

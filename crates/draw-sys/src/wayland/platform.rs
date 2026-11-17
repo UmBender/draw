@@ -18,6 +18,10 @@ use crate::wayland::window::{Mapped, Window};
 /// (a hidden window gets none).
 const FRAME_WAIT: Duration = Duration::from_millis(500);
 
+/// How long `next_idle` sleeps in `poll` before letting the loop run
+/// house-keeping (signals, background writes) when no Wayland event arrives.
+const IDLE_WAIT: Duration = Duration::from_millis(100);
+
 /// A cheap clone of the GL context of a [`WaylandPlatform`], for a `Gpu` to
 /// own (ADR-T171-1). The platform keeps swapping the buffers.
 #[derive(Debug, Clone)]
@@ -56,6 +60,7 @@ pub struct WaylandPlatform {
     connection: Connection,
     reported: WindowMetrics,
     size: Rc<Cell<(u32, u32)>>,
+    update_scheduled: bool,
 }
 
 impl WaylandPlatform {
@@ -80,6 +85,7 @@ impl WaylandPlatform {
             reported,
             window,
             connection,
+            update_scheduled: false,
         };
         platform.pump();
         platform.reported = metrics(&platform.window);
@@ -190,11 +196,17 @@ impl Platform for WaylandPlatform {
     }
 
     fn schedule_update(&mut self) {
+        self.update_scheduled = true;
         self.window.request_frame();
         let _ = self.connection.shared.dispatch(0);
     }
 
+    fn skips_idle_swap(&self) -> bool {
+        true
+    }
+
     async fn next_frame(&mut self) {
+        self.update_scheduled = false;
         self.window.request_frame();
         // A failed present leaves the old frame on screen; the next frame
         // tries again.
@@ -205,5 +217,38 @@ impl Platform for WaylandPlatform {
             .shared
             .wait_until(|| !window.frame_pending(), FRAME_WAIT);
         self.pump();
+    }
+
+    fn next_idle(&mut self) -> impl std::future::Future<Output = ()> {
+        if std::mem::take(&mut self.update_scheduled)
+            || self.window.close_requested()
+            || self.connection.shared.input.has_events()
+            || crate::x11::signal::peek().is_some()
+        {
+            return std::future::ready(());
+        }
+        let deadline = Instant::now() + IDLE_WAIT;
+        loop {
+            let timeout_ms = if self.connection.shared.input.has_held_key() {
+                10
+            } else {
+                let left = deadline.saturating_duration_since(Instant::now());
+                i32::try_from(left.as_millis()).unwrap_or(100).clamp(1, 100)
+            };
+            let _ = self.connection.shared.dispatch(timeout_ms);
+            self.window.apply_configure();
+            self.size.set(pixels(metrics(&self.window)));
+            let input = &self.connection.shared.input;
+            if input.has_events()
+                || input.has_held_key()
+                || self.window.close_requested()
+                || metrics(&self.window) != self.reported
+                || crate::x11::signal::peek().is_some()
+                || Instant::now() >= deadline
+            {
+                break;
+            }
+        }
+        std::future::ready(())
     }
 }

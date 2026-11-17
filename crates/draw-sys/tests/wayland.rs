@@ -257,3 +257,21 @@ fn wayland_platform_without_input_devices_returns_only_window_events() {
     // The clipboard works since T170 (`tests/wayland_clipboard.rs`).
     assert_eq!(platform.clipboard_text(), None);
 }
+
+#[test]
+fn wayland_idle_skips_swap_and_wakes_on_scheduled_update() {
+    let sway = Sway::start();
+    let mut platform = platform(&sway);
+    assert!(platform.skips_idle_swap());
+
+    block_on(platform.next_frame());
+    assert!(!platform.frame_pending());
+
+    block_on(platform.next_idle());
+    assert!(!platform.frame_pending());
+
+    platform.schedule_update();
+    let started = std::time::Instant::now();
+    block_on(platform.next_idle());
+    assert!(started.elapsed() < Duration::from_millis(50));
+}

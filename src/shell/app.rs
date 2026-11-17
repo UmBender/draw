@@ -734,6 +734,15 @@ pub async fn run<P: Platform, G: Gpu>(
             &mut svg_writes,
             &mut save_path,
         );
+        let skip_idle = platform.skips_idle_swap()
+            && !export_pending
+            && input.hooks.is_none()
+            && svg_writes.is_empty();
+        frame.idle = if skip_idle {
+            IdlePolicy::Skip
+        } else {
+            IdlePolicy::Draw
+        };
         let presented = frame.present(&mut ctx, &editor, viewport, dpi, dirty, &laser.trail);
         if frame.wake {
             platform.schedule_update();
@@ -748,15 +757,39 @@ pub async fn run<P: Platform, G: Gpu>(
         if had_input {
             autosaver.on_input(&editor, Instant::now());
         }
-        if let Some(hooks) = &mut input.hooks
-            && answer_sync(hooks, &frame, presented, &editor)
-        {
+        let idle = skip_idle && presented.is_none() && !frame.wake && !laser.fading();
+        finish_frame(
+            &mut platform,
+            &frame,
+            presented,
+            &editor,
+            input.hooks.as_mut(),
+            idle,
+        )
+        .await;
+    }
+}
+
+async fn finish_frame<P: Platform, G: Gpu>(
+    platform: &mut P,
+    frame: &CachedFrame<G>,
+    presented: Option<(Redraw, Duration)>,
+    editor: &Editor,
+    hooks: Option<&mut e2e::Hooks>,
+    idle: bool,
+) {
+    if let Some(hooks) = hooks {
+        if answer_sync(hooks, frame, presented, editor) {
             platform.schedule_update();
         }
         platform.next_frame().await;
-        if let Some(hooks) = &mut input.hooks {
-            hooks.after_swap();
-        }
+        hooks.after_swap();
+        return;
+    }
+    if idle {
+        platform.next_idle().await;
+    } else {
+        platform.next_frame().await;
     }
 }
 
@@ -1117,6 +1150,35 @@ fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
     changed
 }
 
+/// Current overlay, camera, pixel size and cache key for one frame.
+fn layer_state(
+    editor: &Editor,
+    viewport: Vec2,
+    dpi: f32,
+) -> ((u32, u32), Overlay, Camera, LayerKey) {
+    let size = physical_size(viewport, dpi);
+    let overlay = editor.overlay();
+    let camera = *editor.camera();
+    let key = LayerKey {
+        revision: editor.document_revision(),
+        len: editor.document().len(),
+        camera,
+        size,
+        hidden: overlay.hidden.clone(),
+        underlay: editor.helpers().grid_snap,
+    };
+    (size, overlay, camera, key)
+}
+
+/// Whether [`CachedFrame`] renders unchanged frames (for platforms that
+/// swap unconditionally) or skips them (when `Platform::next_idle` does not
+/// swap).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IdlePolicy {
+    Draw,
+    Skip,
+}
+
 /// The document layer: background, underlay and document shapes in a
 /// multisampled render target the size of the framebuffer plus a margin,
 /// which macroquad resolves into a plain texture (ADR-T15-1, ADR-T24-1,
@@ -1145,6 +1207,8 @@ struct CachedFrame<G: Gpu> {
     rerender: bool,
     /// The last frame wants another one even without input.
     wake: bool,
+    /// Whether unchanged frames can skip GPU drawing (`IdlePolicy::Skip`).
+    idle: IdlePolicy,
     /// The minimap's overview of the shapes (ADR-T110-1).
     overview: Option<G::Target>,
     /// What `overview` shows.
@@ -1169,6 +1233,7 @@ impl<G: Gpu> CachedFrame<G> {
             timed,
             rerender: false,
             wake: false,
+            idle: IdlePolicy::Draw,
             overview: None,
             overview_key: None,
             retained: None,
@@ -1197,17 +1262,7 @@ impl<G: Gpu> CachedFrame<G> {
             self.retained = Some(scene);
             return result;
         }
-        let size = physical_size(viewport, dpi);
-        let overlay = editor.overlay();
-        let camera = *editor.camera();
-        let key = LayerKey {
-            revision: editor.document_revision(),
-            len: editor.document().len(),
-            camera,
-            size,
-            hidden: overlay.hidden.clone(),
-            underlay: editor.helpers().grid_snap,
-        };
+        let (size, overlay, camera, key) = layer_state(editor, viewport, dpi);
         let now = Instant::now();
         if self.last_camera != Some(camera) {
             self.last_camera = Some(camera);
@@ -1222,6 +1277,13 @@ impl<G: Gpu> CachedFrame<G> {
         } else {
             redraw
         };
+        if self.idle == IdlePolicy::Skip
+            && redraw == Redraw::None
+            && self.document.is_some()
+            && self.key.is_some()
+        {
+            return None;
+        }
         let cleared = render::begin_text_frame();
         render::take_text_stats();
         let started = Instant::now();
@@ -1308,19 +1370,9 @@ impl<G: Gpu> CachedFrame<G> {
         dirty: bool,
         trail: &[Segment],
     ) -> Option<(Redraw, Duration)> {
-        let size = physical_size(viewport, dpi);
-        let overlay = editor.overlay();
-        let camera = *editor.camera();
         // The same plan as the layer path, so a frame woken by a mouse
         // move over an unchanged document is not logged as a re-render.
-        let key = LayerKey {
-            revision: editor.document_revision(),
-            len: editor.document().len(),
-            camera,
-            size,
-            hidden: overlay.hidden.clone(),
-            underlay: editor.helpers().grid_snap,
-        };
+        let (size, overlay, camera, key) = layer_state(editor, viewport, dpi);
         let planned = plan_redraw(
             self.key.as_ref(),
             &key,
@@ -1336,6 +1388,9 @@ impl<G: Gpu> CachedFrame<G> {
                 other @ (Redraw::None | Redraw::Overlay | Redraw::Moved | Redraw::Full) => other,
             }
         };
+        if self.idle == IdlePolicy::Skip && redraw == Redraw::None && self.key.is_some() {
+            return None;
+        }
         let cleared = render::begin_text_frame();
         render::take_text_stats();
         let started = Instant::now();

@@ -99,6 +99,16 @@ impl InputState {
         out.append(&mut self.events.borrow_mut());
     }
 
+    /// Whether any events are waiting to be drained.
+    pub(crate) fn has_events(&self) -> bool {
+        !self.events.borrow().is_empty()
+    }
+
+    /// Whether a key is currently held down for repeat.
+    pub(crate) fn has_held_key(&self) -> bool {
+        self.held.get().is_some()
+    }
+
     /// Queues the repeats of the held key that are due at `now`.
     pub(crate) fn poll_repeats(&self, now: Instant) {
         let Some(mut held) = self.held.get() else {
