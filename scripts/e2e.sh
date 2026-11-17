@@ -9,7 +9,8 @@
 # WAYLAND_DISPLAY.
 # Usage: scripts/e2e.sh [--update] [--backend wayland|x11|all]
 #                       [--platform macroquad|native] [case]
-#   --platform is passed to the app (T178); native needs --backend x11.
+#   --platform is passed to the app (T178, T171); native runs on the
+#   Wayland and the X11 session alike.
 #   --update (or DRAW_UPDATE_SNAPSHOTS=1) rewrites the goldens.
 #   --backend picks the display server; the default is all (Wayland, then X11).
 set -euo pipefail
