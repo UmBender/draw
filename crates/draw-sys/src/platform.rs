@@ -326,6 +326,12 @@ pub trait Platform {
         false
     }
 
+    /// Whether the window is paused or hidden and should draw nothing
+    /// (T147 AC-2).
+    fn paused(&self) -> bool {
+        false
+    }
+
     /// Presents the frame and waits until the next one is due.
     fn next_frame(&mut self) -> impl Future<Output = ()>;
 

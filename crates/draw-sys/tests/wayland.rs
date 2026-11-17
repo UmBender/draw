@@ -267,9 +267,6 @@ fn wayland_idle_skips_swap_and_wakes_on_scheduled_update() {
     block_on(platform.next_frame());
     assert!(!platform.frame_pending());
 
-    block_on(platform.next_idle());
-    assert!(!platform.frame_pending());
-
     platform.schedule_update();
     let started = std::time::Instant::now();
     block_on(platform.next_idle());
@@ -300,6 +297,7 @@ fn wayland_idle_sleeps_until_wakeup() {
     let started = std::time::Instant::now();
     std::thread::spawn(|| {
         std::thread::sleep(Duration::from_millis(30));
+        // SAFETY: `SIGTERM` (15) has our `install_quit` async-signal-safe handler installed.
         unsafe {
             libc_raise(15);
         }

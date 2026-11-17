@@ -214,3 +214,34 @@ fn x11_idle_skips_swap_and_wakes_on_scheduled_update() {
     block_on(platform.next_idle());
     assert!(started.elapsed() < Duration::from_millis(20));
 }
+
+#[test]
+fn x11_idle_sleeps_until_wakeup() {
+    let server = xvfb::Xvfb::start();
+    let mut platform = open(&server, GlBackend::Glx);
+    // Drain initial map/expose/configure events first.
+    std::thread::sleep(Duration::from_millis(50));
+    platform.poll(&mut Vec::new());
+    assert!(draw_sys::x11::signal::install_quit());
+
+    let started = Instant::now();
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(60));
+        // SAFETY: `SIGTERM` (15) has our `install_quit` async-signal-safe handler installed.
+        unsafe {
+            libc_raise(15);
+        }
+    });
+    block_on(platform.next_idle());
+    let elapsed = started.elapsed();
+    let _ = draw_sys::x11::signal::take();
+    assert!(
+        elapsed >= Duration::from_millis(50) && elapsed < Duration::from_millis(200),
+        "expected sleep until signal, got {elapsed:?}"
+    );
+}
+
+unsafe extern "C" {
+    #[link_name = "raise"]
+    fn libc_raise(sig: i32) -> i32;
+}

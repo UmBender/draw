@@ -18,9 +18,8 @@ use crate::wayland::window::{Mapped, Window};
 /// (a hidden window gets none).
 const FRAME_WAIT: Duration = Duration::from_millis(500);
 
-/// How long `next_idle` sleeps in `poll` before letting the loop run
-/// house-keeping (signals, background writes) when no Wayland event arrives.
-const IDLE_WAIT: Duration = Duration::from_millis(100);
+/// Key-repeat polling step in `next_idle` while a key is held down.
+const REPEAT_WAIT_MS: i32 = 10;
 
 /// A cheap clone of the GL context of a [`WaylandPlatform`], for a `Gpu` to
 /// own (ADR-T171-1). The platform keeps swapping the buffers.
@@ -219,6 +218,10 @@ impl Platform for WaylandPlatform {
         true
     }
 
+    fn paused(&self) -> bool {
+        self.window.is_suspended()
+    }
+
     async fn next_frame(&mut self) {
         self.update_scheduled = false;
         self.window.request_frame();
@@ -241,24 +244,31 @@ impl Platform for WaylandPlatform {
         {
             return std::future::ready(());
         }
-        let deadline = Instant::now() + IDLE_WAIT;
+        let was_paused = self.paused();
         loop {
             let timeout_ms = if self.connection.shared.input.has_held_key() {
-                10
+                REPEAT_WAIT_MS
             } else {
-                let left = deadline.saturating_duration_since(Instant::now());
-                i32::try_from(left.as_millis()).unwrap_or(100).clamp(1, 100)
+                -1
             };
-            let _ = self.connection.shared.dispatch(timeout_ms);
+            let wake_fd = crate::x11::signal::wake_fd();
+            if self
+                .connection
+                .shared
+                .dispatch_with_wake(timeout_ms, wake_fd)
+                .is_err()
+            {
+                break;
+            }
             self.window.apply_configure();
             self.size.set(pixels(metrics(&self.window)));
             let input = &self.connection.shared.input;
             if input.has_events()
                 || input.has_held_key()
                 || self.window.close_requested()
+                || self.paused() != was_paused
                 || metrics(&self.window) != self.reported
                 || crate::x11::signal::peek().is_some()
-                || Instant::now() >= deadline
             {
                 break;
             }

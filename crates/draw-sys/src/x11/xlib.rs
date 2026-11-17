@@ -32,8 +32,24 @@ const CW_EVENT_MASK: c_ulong = 1 << 11;
 const CW_COLORMAP: c_ulong = 1 << 13;
 const INPUT_OUTPUT: c_uint = 1;
 const EXPOSURE_MASK: c_long = 1 << 15;
+const VISIBILITY_CHANGE_MASK: c_long = 1 << 16;
 const STRUCTURE_NOTIFY_MASK: c_long = 1 << 17;
 const PROPERTY_CHANGE_MASK: c_long = 1 << 22;
+
+const POLLIN: i16 = 0x0001;
+
+#[repr(C)]
+struct PollFd {
+    fd: c_int,
+    events: i16,
+    revents: i16,
+}
+
+// TEST: x11_platform_schedule_update_ends_the_wait
+// SAFETY: standard POSIX `poll` from libc.
+unsafe extern "C" {
+    fn poll(fds: *mut PollFd, nfds: c_ulong, timeout: c_int) -> c_int;
+}
 
 /// A window property read back from the server.
 #[derive(Debug)]
@@ -250,6 +266,8 @@ struct XlibApi {
     delete_property: unsafe extern "C" fn(Ptr, c_ulong, c_ulong) -> c_int,
     // TEST: x11_large_png_is_served_with_incr
     select_input: unsafe extern "C" fn(Ptr, c_ulong, c_long) -> c_int,
+    // TEST: x11_platform_schedule_update_ends_the_wait
+    connection_number: unsafe extern "C" fn(Ptr) -> c_int,
     // Declared last: the library outlives the pointers above.
     _libx11: Library,
 }
@@ -399,6 +417,7 @@ impl XlibApi {
                 get_window_property: *x11.symbol("XGetWindowProperty")?,
                 delete_property: *x11.symbol("XDeleteProperty")?,
                 select_input: *x11.symbol("XSelectInput")?,
+                connection_number: *x11.symbol("XConnectionNumber")?,
                 _libx11: Library::open("libX11.so.6")?,
             }
         };
@@ -1031,6 +1050,7 @@ impl Window<Created> {
                 backing_pixel: 0,
                 save_under: 0,
                 event_mask: EXPOSURE_MASK
+                    | VISIBILITY_CHANGE_MASK
                     | STRUCTURE_NOTIFY_MASK
                     | INPUT_MASK
                     | PROPERTY_CHANGE_MASK,
@@ -1128,6 +1148,38 @@ impl Window<Mapped> {
         // TEST: x11_platform_schedule_update_ends_the_wait
         // SAFETY: the display is live.
         unsafe { (conn.api.pending)(conn.display) > 0 }
+    }
+
+    /// Flushes queued X requests and waits in `poll` until an X event
+    /// arrives, `wake_fd` becomes readable, or `timeout_ms` elapses (`-1`
+    /// waits indefinitely).
+    pub(super) fn wait_events(&self, timeout_ms: i32, wake_fd: Option<i32>) {
+        let conn = &self.handle.conn;
+        // TEST: x11_platform_schedule_update_ends_the_wait
+        // SAFETY: the display is live.
+        unsafe { (conn.api.flush)(conn.display) };
+        if self.has_pending() {
+            return;
+        }
+        // TEST: x11_platform_schedule_update_ends_the_wait
+        // SAFETY: the display is live.
+        let x_fd = unsafe { (conn.api.connection_number)(conn.display) };
+        let mut fds = [
+            PollFd {
+                fd: x_fd,
+                events: POLLIN,
+                revents: 0,
+            },
+            PollFd {
+                fd: wake_fd.unwrap_or(-1),
+                events: POLLIN,
+                revents: 0,
+            },
+        ];
+        let nfds = if wake_fd.is_some() { 2 } else { 1 };
+        // TEST: x11_platform_schedule_update_ends_the_wait
+        // SAFETY: `fds[..nfds]` is valid and lives through the call.
+        let _ = unsafe { poll(fds.as_mut_ptr(), nfds, timeout_ms) };
     }
 
     /// The next waiting event as raw bytes, `None` if there is none.

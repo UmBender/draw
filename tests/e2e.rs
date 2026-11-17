@@ -1891,7 +1891,7 @@ fn e2e_idle_cpu_is_near_zero() {
     if std::env::var_os("DRAW_E2E_CASE").is_some() {
         return;
     }
-    let session = Session::join().unwrap_or_else(|err| panic!("{err}"));
+    let mut session = Session::join().unwrap_or_else(|err| panic!("{err}"));
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let run = manifest.join("target/e2e/_idle_cpu");
     let _ = std::fs::remove_dir_all(&run);
@@ -1912,7 +1912,18 @@ fn e2e_idle_cpu_is_near_zero() {
     session
         .wait_for_window(&mut child)
         .unwrap_or_else(|err| panic!("{err}"));
-    std::thread::sleep(Duration::from_millis(250));
+    // Allow first-frame shader compilation (especially software GL on X11) to
+    // settle before measuring steady-state idle CPU.
+    let settle_deadline = Instant::now() + Duration::from_secs(3);
+    let mut prev = proc_cpu_ticks(child.id()).unwrap_or_else(|err| panic!("{err}"));
+    while Instant::now() < settle_deadline {
+        std::thread::sleep(Duration::from_millis(200));
+        let cur = proc_cpu_ticks(child.id()).unwrap_or_else(|err| panic!("{err}"));
+        if cur.saturating_sub(prev) <= 1 {
+            break;
+        }
+        prev = cur;
+    }
     let before = proc_cpu_ticks(child.id()).unwrap_or_else(|err| panic!("{err}"));
     std::thread::sleep(Duration::from_millis(1000));
     let after = proc_cpu_ticks(child.id()).unwrap_or_else(|err| panic!("{err}"));

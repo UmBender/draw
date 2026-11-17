@@ -87,18 +87,53 @@ pub struct Window<S> {
     objects: Objects,
 }
 
+/// `xdg_toplevel.state.suspended` (since xdg-shell version 6).
+const TOPLEVEL_STATE_SUSPENDED: u32 = 9;
+
+/// C `wl_array` passed by `xdg_toplevel.configure`.
+#[repr(C)]
+struct WlArray {
+    size: usize,
+    _alloc: usize,
+    data: *const u32,
+}
+
+/// Whether an `xdg_toplevel.configure` state slice marks the surface
+/// suspended (T147 AC-2).
+#[must_use]
+pub fn toplevel_states_suspended(states: &[u32]) -> bool {
+    states.contains(&TOPLEVEL_STATE_SUSPENDED)
+}
+
 extern "C" fn on_toplevel_configure(
     data: *mut c_void,
     _toplevel: *mut Proxy,
     width: i32,
     height: i32,
-    _states: *mut c_void,
+    states: *mut c_void,
 ) {
     // TEST: wayland_window_configures_with_a_size
     // SAFETY: libwayland passes the data pointer given to `add_listener`,
     // the address of the live `Shared`.
     let shared = unsafe { &*data.cast::<Shared>() };
     shared.win.pending.set((width, height));
+    let suspended = if states.is_null() {
+        false
+    } else {
+        // TEST: wayland_window_configures_with_a_size
+        // SAFETY: `states` is a live `wl_array` of `u32` enum values for the call.
+        let arr = unsafe { &*states.cast::<WlArray>() };
+        if arr.data.is_null() || arr.size < size_of::<u32>() {
+            false
+        } else {
+            // TEST: wayland_window_configures_with_a_size
+            // SAFETY: `arr.data` points to `arr.size` bytes of valid `u32` values.
+            let slice =
+                unsafe { std::slice::from_raw_parts(arr.data, arr.size / size_of::<u32>()) };
+            toplevel_states_suspended(slice)
+        }
+    };
+    shared.win.suspended.set(suspended);
 }
 
 extern "C" fn on_toplevel_close(data: *mut c_void, _toplevel: *mut Proxy) {
@@ -260,6 +295,12 @@ impl<S> Window<S> {
     #[must_use]
     pub fn frame_pending(&self) -> bool {
         self.objects.shared.win.frame_pending.get()
+    }
+
+    /// Whether the compositor marked the toplevel `suspended` (T147 AC-2).
+    #[must_use]
+    pub fn is_suspended(&self) -> bool {
+        self.objects.shared.win.suspended.get()
     }
 
     fn next_state<T>(self, state: T) -> Window<T> {
@@ -513,5 +554,18 @@ impl Shared {
             fallback.1
         };
         self.win.size.set((width, height));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wayland_toplevel_suspended_state_pauses_the_window() {
+        assert!(!toplevel_states_suspended(&[]));
+        assert!(!toplevel_states_suspended(&[4]));
+        assert!(toplevel_states_suspended(&[9]));
+        assert!(toplevel_states_suspended(&[4, 9]));
     }
 }
