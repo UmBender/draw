@@ -419,6 +419,41 @@ fn push_rule(mesh: &mut Mesh, a: Vec2, b: Vec2, width: f32, color: [u8; 4]) {
         .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
 }
 
+/// Visits every `(face, ch, rpx)` glyph bitmap that emitting `spec` at
+/// `zoom` and `dpi` will request from a [`GlyphSource`].
+pub fn for_each_glyph(
+    spec: &TextSpec<'_>,
+    zoom: f32,
+    dpi: f32,
+    mut visit: impl FnMut(Face, char, u16),
+) {
+    match *spec {
+        TextSpec::Block {
+            text, origin, size, ..
+        } => {
+            let (list, _) = lay_out(text, origin, size);
+            for (ch, face, _, scale, _) in list {
+                if !drawable(ch) {
+                    continue;
+                }
+                if let Some(rpx) = block_rpx(size * scale, zoom, dpi) {
+                    visit(face, ch, rpx);
+                }
+            }
+        }
+        TextSpec::Label {
+            text, world_size, ..
+        } => {
+            let Some(rpx) = label_rpx(quantize(world_size), zoom, dpi) else {
+                return;
+            };
+            for ch in text.chars() {
+                visit(Face::Text, ch, rpx);
+            }
+        }
+    }
+}
+
 /// The quads and rules of `spec` at `zoom`.
 fn emit(spec: &TextSpec<'_>, zoom: f32, dpi: f32, source: &impl GlyphSource) -> (Vec<Run>, Mesh) {
     let side = source.page_side();

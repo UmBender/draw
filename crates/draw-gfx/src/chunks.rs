@@ -8,7 +8,7 @@ use draw_core::core::document::ShapeId;
 use draw_core::core::geom::{Aabb, Vec2};
 use draw_core::core::shape::Shape;
 
-use crate::tessellate::{Mesh, tessellate_at, zoom_bucket};
+use crate::tessellate::{Mesh, tessellate_many_at, zoom_bucket};
 
 /// Shapes per chunk.
 pub const CHUNK_LEN: usize = 64;
@@ -83,24 +83,37 @@ impl ChunkCache {
     /// Brings the cache in line with `items` (bottom to top), tessellating
     /// only the chunks whose key changed.
     pub fn update(&mut self, items: &[Item<'_>]) -> UpdateStats {
-        let mut rebuilt = 0;
-        let groups = items.chunks(CHUNK_LEN);
+        let groups: Vec<&[Item<'_>]> = items.chunks(CHUNK_LEN).collect();
         self.chunks.truncate(groups.len());
-        for (slot, group) in groups.enumerate() {
+        let mut dirty_slots = Vec::new();
+        let mut dirty_shapes = Vec::new();
+        for (slot, group) in groups.iter().enumerate() {
             let same = self.chunks.get(slot).is_some_and(|chunk| {
                 chunk.key.len() == group.len()
                     && chunk
                         .key
                         .iter()
-                        .zip(group)
+                        .zip(*group)
                         .all(|(k, item)| *k == (item.id, item.revision))
             });
-            if same {
-                continue;
+            if !same {
+                dirty_slots.push(slot);
+                dirty_shapes.extend(group.iter().map(|item| item.shape));
             }
-            let chunk = build(group, self.bucket);
+        }
+        if dirty_slots.is_empty() {
+            return UpdateStats { rebuilt: 0 };
+        }
+        let threads = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+        let meshes = tessellate_many_at(&dirty_shapes, self.bucket, threads);
+        let mut offset = 0;
+        let rebuilt = dirty_slots.len();
+        for slot in dirty_slots {
+            let group = groups[slot];
+            let end = offset + group.len();
+            let chunk = assemble(group, &meshes[offset..end]);
+            offset = end;
             self.tessellations += group.len();
-            rebuilt += 1;
             match self.chunks.get_mut(slot) {
                 Some(old) => *old = chunk,
                 None => self.chunks.push(chunk),
@@ -125,9 +138,18 @@ impl ChunkCache {
     #[must_use]
     pub fn recompute_at(items: &[Item<'_>], zoom: f32) -> Vec<Mesh> {
         let bucket = zoom_bucket(zoom);
+        let shapes: Vec<&Shape> = items.iter().map(|i| i.shape).collect();
+        let threads = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+        let meshes = tessellate_many_at(&shapes, bucket, threads);
+        let mut offset = 0;
         items
             .chunks(CHUNK_LEN)
-            .map(|g| build(g, bucket).mesh)
+            .map(|g| {
+                let end = offset + g.len();
+                let chunk = assemble(g, &meshes[offset..end]);
+                offset = end;
+                chunk.mesh
+            })
             .collect()
     }
 
@@ -157,13 +179,12 @@ impl ChunkCache {
     }
 }
 
-/// Tessellates one group of shapes into a chunk at zoom `bucket`.
-fn build(group: &[Item<'_>], bucket: f32) -> Chunk {
+/// Assembles one group of shapes and their tessellated parts into a chunk.
+fn assemble(group: &[Item<'_>], parts: &[Mesh]) -> Chunk {
     let mut mesh = Mesh::default();
-    for item in group {
-        let part = tessellate_at(item.shape, bucket);
+    for part in parts {
         let base = u32::try_from(mesh.vertices.len()).unwrap_or(u32::MAX);
-        mesh.vertices.extend(part.vertices);
+        mesh.vertices.extend_from_slice(&part.vertices);
         mesh.indices.extend(part.indices.iter().map(|i| i + base));
     }
     let points: Vec<Vec2> = mesh

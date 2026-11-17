@@ -149,24 +149,38 @@ pub fn tessellate_at(shape: &Shape, zoom: f32) -> Mesh {
 /// spawning is more than the work (ADR-T148-1).
 pub const MIN_PARALLEL: usize = 256;
 
-/// Tessellates every shape, one mesh each and in the same order, on up to
-/// `threads` scoped threads. The result is the same for every `threads`.
+/// Tessellates every shape at `zoom`, one mesh each and in the same order,
+/// on up to `threads` scoped threads. The result is the same for every
+/// `threads`.
 #[must_use]
-pub fn tessellate_many(shapes: &[&Shape], threads: usize) -> Vec<Mesh> {
+pub fn tessellate_many_at(shapes: &[&Shape], zoom: f32, threads: usize) -> Vec<Mesh> {
     if threads <= 1 || shapes.len() < MIN_PARALLEL {
-        return shapes.iter().map(|s| tessellate(s)).collect();
+        return shapes.iter().map(|s| tessellate_at(s, zoom)).collect();
     }
     let run = shapes.len().div_ceil(threads);
     std::thread::scope(|scope| {
         let handles: Vec<_> = shapes
             .chunks(run)
-            .map(|part| scope.spawn(move || part.iter().map(|s| tessellate(s)).collect::<Vec<_>>()))
+            .map(|part| {
+                scope.spawn(move || {
+                    part.iter()
+                        .map(|s| tessellate_at(s, zoom))
+                        .collect::<Vec<_>>()
+                })
+            })
             .collect();
         handles
             .into_iter()
             .flat_map(|h| h.join().unwrap_or_default())
             .collect()
     })
+}
+
+/// Tessellates every shape, one mesh each and in the same order, on up to
+/// `threads` scoped threads. The result is the same for every `threads`.
+#[must_use]
+pub fn tessellate_many(shapes: &[&Shape], threads: usize) -> Vec<Mesh> {
+    tessellate_many_at(shapes, 1.0, threads)
 }
 
 /// The zoom rounded to the nearest power of two in the log domain; `1` for a

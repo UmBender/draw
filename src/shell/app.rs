@@ -1297,6 +1297,7 @@ impl<G: Gpu> CachedFrame<G> {
     /// The frame of `--renderer retained` (T172): the document's chunks
     /// drawn straight on the window under the camera uniform, then the
     /// overlay, the laser and the minimap. No layer, no settle, no blit.
+    #[allow(clippy::too_many_arguments)]
     fn present_retained(
         &mut self,
         ctx: &mut RenderCtx<G>,
@@ -1307,7 +1308,7 @@ impl<G: Gpu> CachedFrame<G> {
         dirty: bool,
         trail: &[Segment],
     ) -> Option<(Redraw, Duration)> {
-        let started = Instant::now();
+        let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
         let camera = *editor.camera();
         // The same plan as the layer path, so a frame woken by a mouse
@@ -1316,7 +1317,7 @@ impl<G: Gpu> CachedFrame<G> {
             revision: editor.document_revision(),
             len: editor.document().len(),
             camera,
-            size: physical_size(viewport, dpi),
+            size,
             hidden: overlay.hidden.clone(),
             underlay: editor.helpers().grid_snap,
         };
@@ -1326,31 +1327,71 @@ impl<G: Gpu> CachedFrame<G> {
             editor.document_base_revision(),
             dirty,
         );
-        let redraw = match planned {
-            Redraw::Append { .. } => Redraw::Full,
-            other => other,
+        let forced = std::mem::take(&mut self.rerender);
+        let redraw = if forced {
+            Redraw::Full
+        } else {
+            match planned {
+                Redraw::Append { .. } => Redraw::Full,
+                other @ (Redraw::None | Redraw::Overlay | Redraw::Moved | Redraw::Full) => other,
+            }
         };
-        self.key = Some(key);
-        let _ = render::begin_text_frame();
+        let cleared = render::begin_text_frame();
         render::take_text_stats();
+        let started = Instant::now();
         let minimap = editor.minimap();
         let overview = minimap
             .as_ref()
             .and_then(|map| self.update_overview(ctx, editor, map, dpi));
+        let revision = editor.document_revision();
+        let mut draw_scene = |ctx: &mut RenderCtx<G>, cam: &Camera, port: Vec2| {
+            ctx.draw_underlay(editor, cam, port);
+            let zoom_same = scene.is_current(revision, &overlay.hidden);
+            if zoom_same {
+                scene.draw_cached(ctx, cam, port);
+            }
+            if !zoom_same || !scene.is_current(revision, &overlay.hidden) {
+                // Changed document, or a zoom bucket change dropped the chunks.
+                let shapes: Vec<(ShapeId, &Shape)> = editor.document().shapes().collect();
+                scene.draw_revision(ctx, revision, &shapes, &overlay.hidden, cam, port);
+            }
+        };
+        if forced {
+            let margin = layer_margin(size);
+            if self.key.as_ref().is_none_or(|cached| cached.size != size) || self.document.is_none()
+            {
+                self.document = self.new_target(ctx, layer_size(size, margin));
+                self.filter = FRAME_FILTER;
+            }
+            let pad = margin as f32 / sanitize_dpi(dpi);
+            let extent = Vec2::new(viewport.x + 2.0 * pad, viewport.y + 2.0 * pad);
+            let export_cam = layer_camera(&camera, pad);
+            if let Some(document) = &self.document {
+                let clear = Some(hex_color(theme::CANVAS));
+                render_into(ctx, document, extent, clear, |ctx| {
+                    draw_scene(ctx, &export_cam, extent);
+                });
+            }
+        }
+        self.key = Some(key);
         ctx.clear_window(gfx_color(hex_color(theme::CANVAS)));
-        ctx.draw_underlay(editor, &camera, viewport);
-        let shapes: Vec<(ShapeId, &Shape)> = editor.document().shapes().collect();
-        scene.draw(ctx, &shapes, &overlay.hidden, &camera, viewport);
+        draw_scene(ctx, &camera, viewport);
         draw_overlay(ctx, editor, &overlay, viewport);
         draw_laser(ctx, trail);
         self.draw_minimap(ctx, minimap.as_ref(), overview.as_ref(), &camera, viewport);
+        if rerender_after_overflow(render::text_overflowed(), cleared) {
+            self.rerender = true;
+            self.wake = true;
+        }
+        let text = render::take_text_stats();
         if redraw == Redraw::None {
             return None;
         }
         let elapsed = started.elapsed();
         if self.timed {
             let shapes = editor.document().len();
-            eprintln!("{}", frame_log_line(redraw, elapsed, None, shapes));
+            let text = (text != TextStats::default()).then_some(text);
+            eprintln!("{}", frame_log_line(redraw, elapsed, text, shapes));
         }
         Some((redraw, elapsed))
     }

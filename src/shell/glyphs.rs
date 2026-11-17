@@ -201,6 +201,9 @@ pub struct GlyphAtlas {
     overflowed: bool,
     /// Glyphs rasterized since the last [`GlyphAtlas::take_rasterized`].
     rasterized: usize,
+    /// Incremented on every [`GlyphAtlas::clear`], so retained caches drop
+    /// stale entries.
+    epoch: u64,
 }
 
 impl GlyphAtlas {
@@ -219,6 +222,7 @@ impl GlyphAtlas {
             uploads: Vec::new(),
             overflowed: false,
             rasterized: 0,
+            epoch: 0,
         })
     }
 
@@ -365,9 +369,16 @@ impl GlyphAtlas {
         self.overflowed
     }
 
+    /// Number of times [`GlyphAtlas::clear`] has cleared the atlas.
+    #[must_use]
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
     /// Forgets every entry and empties the pages (the page count stays),
     /// reserving the white blocks again.
     pub fn clear(&mut self) {
+        self.epoch = self.epoch.wrapping_add(1);
         self.entries.clear();
         self.overflowed = false;
         for packer in &mut self.pages {

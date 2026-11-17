@@ -39,6 +39,23 @@ pub struct RenderCtx<G: Gpu> {
     dpi: f32,
 }
 
+/// One draw inside a retained world-space pass (ADR-T173-1, ADR-T180-1).
+pub enum WorldDraw<'a> {
+    /// Feathered shape geometry (`Blend::AlphaFeathered`, untextured).
+    Feathered(&'a Mesh),
+    /// Untextured straight-alpha geometry (math rules, `Blend::Alpha`).
+    Alpha(&'a Mesh),
+    /// Glyph quads sampling atlas `page` (`Blend::Alpha`).
+    Glyphs {
+        /// Page index in `RenderCtx::textures`.
+        page: u32,
+        /// World-space vertices.
+        vertices: &'a [Vertex],
+        /// Triangle list indices into `vertices`.
+        indices: &'a [u32],
+    },
+}
+
 impl<G: Gpu> RenderCtx<G> {
     /// A context drawing on `gpu`, with a 1×1 window until
     /// [`RenderCtx::set_window`].
@@ -138,15 +155,64 @@ impl<G: Gpu> RenderCtx<G> {
         if meshes.is_empty() {
             return;
         }
-        let pipeline = self.feathered_pipeline();
-        let mut draws: Vec<CommandOf<G>> = Vec::with_capacity(meshes.len() + 2);
+        let items: Vec<WorldDraw<'_>> = meshes.iter().map(|m| WorldDraw::Feathered(m)).collect();
+        self.draw_retained(camera, &items);
+    }
+
+    /// Draws world-space shape chunks, rules and glyph runs in order under
+    /// `camera`, in the open scope or a pass of their own on the window;
+    /// nothing for an empty slice.
+    pub fn draw_retained(&mut self, camera: GfxCamera, items: &[WorldDraw<'_>]) {
+        if items.is_empty() {
+            return;
+        }
+        let need_feathered = items
+            .iter()
+            .any(|item| matches!(item, WorldDraw::Feathered(_)));
+        let need_alpha = items
+            .iter()
+            .any(|item| matches!(item, WorldDraw::Alpha(_) | WorldDraw::Glyphs { .. }));
+        let feathered = need_feathered.then(|| self.feathered_pipeline());
+        let alpha = need_alpha.then(|| self.alpha_pipeline());
+        let mut draws: Vec<CommandOf<G>> = Vec::with_capacity(items.len() + 2);
         draws.push(Command::SetCamera(camera));
-        for mesh in meshes {
-            draws.push(Command::Draw {
-                pipeline,
-                texture: None,
-                geometry: mesh.geometry(),
-            });
+        for item in items {
+            match *item {
+                WorldDraw::Feathered(mesh) => {
+                    if let Some(pipeline) = feathered {
+                        draws.push(Command::Draw {
+                            pipeline,
+                            texture: None,
+                            geometry: mesh.geometry(),
+                        });
+                    }
+                }
+                WorldDraw::Alpha(mesh) => {
+                    if let Some(pipeline) = alpha {
+                        draws.push(Command::Draw {
+                            pipeline,
+                            texture: None,
+                            geometry: mesh.geometry(),
+                        });
+                    }
+                }
+                WorldDraw::Glyphs {
+                    page,
+                    vertices,
+                    indices,
+                } => {
+                    if let Some(pipeline) = alpha {
+                        draws.push(Command::Draw {
+                            pipeline,
+                            texture: self.textures.get(page).cloned(),
+                            geometry: Geometry::Inline {
+                                vertices: vertices.to_vec(),
+                                indices: indices.to_vec(),
+                            },
+                        });
+                    }
+                }
+            }
         }
         draws.push(Command::SetCamera(GfxCamera::IDENTITY));
         if let Some(open) = self.scope.as_mut() {

@@ -15,6 +15,7 @@
 use draw_gfx::gpu::{
     Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, Vertex, View,
 };
+use draw_gfx::text::{GlyphEntry, GlyphSource};
 use macroquad::color::Color;
 use macroquad::math::Vec2 as MqVec2;
 
@@ -29,11 +30,11 @@ use crate::core::shape::{
     GRID_MAX_CELLS, Shape, TextSlot, arrow_head, grid_axis_labels, grid_cell_rect, grid_lines,
 };
 use crate::core::snap::GRID_STEP;
-use crate::core::tex::Ink;
+use crate::core::tex::{Face, Ink};
 use crate::core::text_layout::{bounds, glyphs, has_markup, typeset};
 use crate::core::tools::select;
 use crate::shell::glyphs::{
-    GlyphAtlas, GlyphQuad, GlyphTextures, WHITE_UV, glyph_quad, glyph_scale, raster_px,
+    GlyphAtlas, GlyphQuad, GlyphTextures, PAGE_SIDE, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
 use crate::shell::gpu_mq::MqGpu;
 use crate::shell::render_ctx::RenderCtx;
@@ -815,6 +816,72 @@ pub fn text_overflowed() -> bool {
 /// The text work since the last call.
 pub fn take_text_stats() -> TextStats {
     STATS.with(Cell::take)
+}
+
+/// Exposes the shell's [`GlyphAtlas`] as a `draw-gfx` [`GlyphSource`].
+pub struct AtlasSource<'a>(pub &'a GlyphAtlas);
+
+impl GlyphSource for AtlasSource<'_> {
+    fn page_side(&self) -> u16 {
+        PAGE_SIDE
+    }
+
+    fn glyph(&self, face: Face, ch: char, rpx: u16) -> Option<GlyphEntry> {
+        let entry = self.0.get_in(face, ch, rpx)?;
+        Some(GlyphEntry {
+            page: entry.page,
+            x: entry.rect.x,
+            y: entry.rect.y,
+            w: entry.rect.w,
+            h: entry.rect.h,
+            xmin: entry.xmin,
+            ymin: entry.ymin,
+            advance: entry.advance,
+        })
+    }
+}
+
+/// Current clear epoch of the canvas glyph atlas, `None` before
+/// [`RenderCtx::set_glyph_atlas`] has been called.
+#[must_use]
+pub fn atlas_epoch() -> Option<u64> {
+    ATLAS.with(|cell| cell.borrow().as_ref().map(GlyphAtlas::epoch))
+}
+
+/// Runs `prepare` on the canvas [`GlyphAtlas`], syncs its pages on `ctx`,
+/// then passes an [`AtlasSource`] and the atlas epoch to `use_source`,
+/// folding the elapsed time and rasterizations into [`take_text_stats`].
+/// Does nothing if no atlas has been set.
+pub fn with_atlas<G: Gpu>(
+    ctx: &mut RenderCtx<G>,
+    prepare: impl FnOnce(&mut GlyphAtlas),
+    use_source: impl FnOnce(&AtlasSource<'_>, u64),
+) {
+    let started = Instant::now();
+    let rasterized = ATLAS.with(|cell| {
+        let (rasterized, epoch) = {
+            let mut guard = cell.borrow_mut();
+            if let Some(atlas) = guard.as_mut() {
+                prepare(atlas);
+                ctx.sync_textures(atlas);
+                (atlas.take_rasterized(), Some(atlas.epoch()))
+            } else {
+                (0, None)
+            }
+        };
+        if let Some(epoch) = epoch
+            && let Some(atlas) = cell.borrow().as_ref()
+        {
+            use_source(&AtlasSource(atlas), epoch);
+        }
+        rasterized
+    });
+    STATS.with(|stats| {
+        let mut sum = stats.get();
+        sum.time += started.elapsed();
+        sum.rasterized += rasterized;
+        stats.set(sum);
+    });
 }
 
 /// Rasterization size and scale of a text block of world `size` through
