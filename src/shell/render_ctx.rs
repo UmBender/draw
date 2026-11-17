@@ -40,7 +40,14 @@ pub struct RenderCtx<G: Gpu> {
 }
 
 /// One draw inside a retained world-space pass (ADR-T173-1, ADR-T180-1).
-pub enum WorldDraw<'a> {
+pub enum WorldDraw<'a, B> {
+    /// Cached GPU buffer of feathered shape geometry (`Blend::AlphaFeathered`).
+    FeatheredBuffer {
+        /// Buffer holding world-space vertices and indices.
+        buffer: &'a B,
+        /// Number of triangle indices in `buffer`.
+        count: u32,
+    },
     /// Feathered shape geometry (`Blend::AlphaFeathered`, untextured).
     Feathered(&'a Mesh),
     /// Untextured straight-alpha geometry (math rules, `Blend::Alpha`).
@@ -155,20 +162,24 @@ impl<G: Gpu> RenderCtx<G> {
         if meshes.is_empty() {
             return;
         }
-        let items: Vec<WorldDraw<'_>> = meshes.iter().map(|m| WorldDraw::Feathered(m)).collect();
+        let items: Vec<WorldDraw<'_, G::Buffer>> =
+            meshes.iter().map(|m| WorldDraw::Feathered(m)).collect();
         self.draw_retained(camera, &items);
     }
 
     /// Draws world-space shape chunks, rules and glyph runs in order under
     /// `camera`, in the open scope or a pass of their own on the window;
     /// nothing for an empty slice.
-    pub fn draw_retained(&mut self, camera: GfxCamera, items: &[WorldDraw<'_>]) {
+    pub fn draw_retained(&mut self, camera: GfxCamera, items: &[WorldDraw<'_, G::Buffer>]) {
         if items.is_empty() {
             return;
         }
-        let need_feathered = items
-            .iter()
-            .any(|item| matches!(item, WorldDraw::Feathered(_)));
+        let need_feathered = items.iter().any(|item| {
+            matches!(
+                item,
+                WorldDraw::FeatheredBuffer { .. } | WorldDraw::Feathered(_)
+            )
+        });
         let need_alpha = items
             .iter()
             .any(|item| matches!(item, WorldDraw::Alpha(_) | WorldDraw::Glyphs { .. }));
@@ -178,6 +189,19 @@ impl<G: Gpu> RenderCtx<G> {
         draws.push(Command::SetCamera(camera));
         for item in items {
             match *item {
+                WorldDraw::FeatheredBuffer { buffer, count } => {
+                    if let Some(pipeline) = feathered {
+                        draws.push(Command::Draw {
+                            pipeline,
+                            texture: None,
+                            geometry: Geometry::Buffer {
+                                buffer: buffer.clone(),
+                                first: 0,
+                                count,
+                            },
+                        });
+                    }
+                }
                 WorldDraw::Feathered(mesh) => {
                     if let Some(pipeline) = feathered {
                         draws.push(Command::Draw {

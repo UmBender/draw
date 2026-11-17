@@ -1150,7 +1150,7 @@ struct CachedFrame<G: Gpu> {
     /// What `overview` shows.
     overview_key: Option<OverviewKey>,
     /// The retained scene, when `--renderer retained` is on (T172).
-    retained: Option<RetainedScene>,
+    retained: Option<RetainedScene<G::Buffer>>,
 }
 
 impl<G: Gpu> CachedFrame<G> {
@@ -1302,7 +1302,7 @@ impl<G: Gpu> CachedFrame<G> {
         &mut self,
         ctx: &mut RenderCtx<G>,
         editor: &Editor,
-        scene: &mut RetainedScene,
+        scene: &mut RetainedScene<G::Buffer>,
         viewport: Vec2,
         dpi: f32,
         dirty: bool,

@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 use macroquad::camera::{Camera2D, set_camera, set_default_camera};
 use macroquad::color::Color;
-use macroquad::math::Rect;
 use macroquad::models::{Mesh, Vertex as MqVertex, draw_mesh};
 use macroquad::texture::{
     FilterMode, Image, RenderTarget, RenderTargetParams, Texture2D, render_target_ex,
@@ -19,7 +18,7 @@ use macroquad::window::clear_background;
 
 use draw_gfx::gpu::{
     Blend, Camera, Command, CommandList, Filter, Geometry, Gpu, GpuError, PipelineDesc, TargetDesc,
-    TextureDesc, Vertex,
+    TextureDesc, Vertex, View,
 };
 
 use super::render::{BATCH_MAX_INDICES, BATCH_MAX_VERTICES};
@@ -216,13 +215,42 @@ pub struct MqPipeline {
     id: u32,
 }
 
+/// A buffer stored by the interpreter: raw arrays plus pre-split macroquad
+/// meshes so full-buffer draws need no per-frame `HashMap` chunking.
+struct StoredBuffer {
+    vertices: Vec<Vertex>,
+    indices: Vec<u32>,
+    meshes: Vec<Mesh>,
+}
+
+impl std::fmt::Debug for StoredBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoredBuffer")
+            .field("vertices", &self.vertices.len())
+            .field("indices", &self.indices.len())
+            .field("meshes", &self.meshes.len())
+            .finish()
+    }
+}
+
 /// The macroquad interpreter of [`Gpu`]. Needs a macroquad context.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct MqGpu {
-    buffers: Table<(Vec<Vertex>, Vec<u32>)>,
+    buffers: Table<StoredBuffer>,
     textures: Table<Texture2D>,
     targets: Table<RenderTarget>,
     pipelines: Table<PipelineDesc>,
+}
+
+impl std::fmt::Debug for MqGpu {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MqGpu")
+            .field("buffers", &self.buffers)
+            .field("textures", &self.textures)
+            .field("targets", &self.targets)
+            .field("pipelines", &self.pipelines)
+            .finish()
+    }
 }
 
 impl Gpu for MqGpu {
@@ -236,11 +264,19 @@ impl Gpu for MqGpu {
         vertices: &[Vertex],
         indices: &[u32],
     ) -> Result<MqBuffer, GpuError> {
-        if !indices.len().is_multiple_of(3) || indices.iter().any(|&i| i as usize >= vertices.len())
-        {
-            return Err(backend("buffer indices do not fit its vertices"));
-        }
-        let id = self.buffers.insert((vertices.to_vec(), indices.to_vec()));
+        let meshes = chunks(vertices, indices)?
+            .into_iter()
+            .map(|chunk| Mesh {
+                vertices: chunk.vertices.iter().map(to_mq_vertex).collect(),
+                indices: chunk.indices,
+                texture: None,
+            })
+            .collect();
+        let id = self.buffers.insert(StoredBuffer {
+            vertices: vertices.to_vec(),
+            indices: indices.to_vec(),
+            meshes,
+        });
         Ok(MqBuffer { id })
     }
 
@@ -395,8 +431,8 @@ impl MqGpu {
                         count,
                     } = geometry
                     {
-                        let (_, indices) = self.buffers.get(buffer.id)?;
-                        buffer_range(indices, *first, *count)?;
+                        let stored = self.buffers.get(buffer.id)?;
+                        buffer_range(&stored.indices, *first, *count)?;
                     }
                 }
                 Command::SetCamera(_) => passes.step(Step::Camera)?,
@@ -409,7 +445,11 @@ impl MqGpu {
     /// Runs a validated `list`. `in_target` tells whether a target pass
     /// is open (it owns the camera, [`pass_owns_camera`]).
     fn execute(&self, list: &CommandList<Self>, in_target: &mut bool) -> Result<(), GpuError> {
-        let mut camera = Camera::IDENTITY;
+        let mut pass_target: Option<RenderTarget> = None;
+        let mut pass_view = View {
+            width: 1.0,
+            height: 1.0,
+        };
         for command in list.commands() {
             match command {
                 Command::BeginPass {
@@ -417,24 +457,15 @@ impl MqGpu {
                     view,
                     clear,
                 } => {
-                    camera = Camera::IDENTITY;
+                    pass_view = *view;
+                    pass_target = match target {
+                        Some(target) => Some(self.targets.get(target.id)?.clone()),
+                        None => None,
+                    };
                     *in_target = pass_owns_camera(target.is_some());
                     // A pass never inherits the caller's camera (ADR-T159-1):
                     // no target draws to the window in its pixels.
-                    if target.is_none() {
-                        set_default_camera();
-                    }
-                    if let Some(target) = target {
-                        let render_target = self.targets.get(target.id)?;
-                        let mut camera = Camera2D::from_display_rect(Rect::new(
-                            0.0,
-                            0.0,
-                            view.width,
-                            view.height,
-                        ));
-                        camera.render_target = Some(render_target.clone());
-                        set_camera(&camera);
-                    }
+                    apply_mq_camera(pass_target.as_ref(), pass_view, Camera::IDENTITY);
                     if let Some(color) = clear {
                         clear_background(Color::new(color.r, color.g, color.b, color.a));
                     }
@@ -448,30 +479,68 @@ impl MqGpu {
                     };
                     match geometry {
                         Geometry::Inline { vertices, indices } => {
-                            draw_camera_chunks(vertices, indices, texture, camera)?;
+                            draw_chunks(vertices, indices, texture)?;
                         }
                         Geometry::Buffer {
                             buffer,
                             first,
                             count,
                         } => {
-                            let (vertices, indices) = self.buffers.get(buffer.id)?;
-                            let range = buffer_range(indices, *first, *count)?;
-                            draw_camera_chunks(vertices, range, texture, camera)?;
+                            let stored = self.buffers.get(buffer.id)?;
+                            if *first == 0
+                                && *count as usize == stored.indices.len()
+                                && texture.is_none()
+                            {
+                                for mesh in &stored.meshes {
+                                    draw_mesh(mesh);
+                                }
+                            } else {
+                                let range = buffer_range(&stored.indices, *first, *count)?;
+                                draw_chunks(&stored.vertices, range, texture)?;
+                            }
                         }
                     }
                 }
-                Command::SetCamera(next) => camera = *next,
+                Command::SetCamera(next) => {
+                    apply_mq_camera(pass_target.as_ref(), pass_view, *next);
+                }
                 Command::EndPass => {
                     if *in_target {
                         set_default_camera();
                         *in_target = false;
                     }
+                    pass_target = None;
                 }
             }
         }
         Ok(())
     }
+}
+
+/// Applies `camera` in macroquad for a pass over `target` with `view`
+/// logical pixels.
+fn apply_mq_camera(target: Option<&RenderTarget>, view: View, camera: Camera) {
+    if target.is_none() && camera == Camera::IDENTITY {
+        set_default_camera();
+        return;
+    }
+    let scale = if camera.scale.is_finite() && camera.scale > 0.0 {
+        camera.scale
+    } else {
+        1.0
+    };
+    let w = (view.width / scale).max(f32::EPSILON);
+    let h = (view.height / scale).max(f32::EPSILON);
+    let target_pt = macroquad::math::vec2(camera.origin[0] + w * 0.5, camera.origin[1] + h * 0.5);
+    // `Camera2D::matrix` multiplies `zoom.y` by -1 when `render_target` is
+    // `None`; match `+y` down in both cases.
+    let y_sign = if target.is_some() { -1.0 } else { 1.0 };
+    set_camera(&Camera2D {
+        target: target_pt,
+        zoom: macroquad::math::vec2(2.0 / w, y_sign * 2.0 / h),
+        render_target: target.cloned(),
+        ..Camera2D::default()
+    });
 }
 
 /// Whether a pass with (`true`) or without a render target sets the
@@ -492,20 +561,6 @@ fn buffer_range(indices: &[u32], first: u32, count: u32) -> Result<&[u32], GpuEr
         .ok_or_else(|| backend("index range out of the buffer"))
 }
 
-/// [`draw_chunks`] through `camera`; the identity camera copies nothing.
-fn draw_camera_chunks(
-    vertices: &[Vertex],
-    indices: &[u32],
-    texture: Option<&Texture2D>,
-    camera: Camera,
-) -> Result<(), GpuError> {
-    if camera == Camera::IDENTITY {
-        draw_chunks(vertices, indices, texture)
-    } else {
-        draw_chunks(&with_camera(vertices, camera), indices, texture)
-    }
-}
-
 /// Draws the triangles in chunks macroquad can hold.
 fn draw_chunks(
     vertices: &[Vertex],
@@ -524,6 +579,7 @@ fn draw_chunks(
 }
 
 /// `vertices` with their positions moved through `camera`.
+#[cfg(test)]
 fn with_camera(vertices: &[Vertex], camera: Camera) -> Vec<Vertex> {
     vertices
         .iter()

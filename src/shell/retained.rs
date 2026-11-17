@@ -22,10 +22,20 @@ use crate::shell::render::{
 use crate::shell::render_ctx::{RenderCtx, WorldDraw};
 use crate::theme;
 
-/// The chunks of a document, its text caches and the revisions that key them.
-#[derive(Debug, Default)]
-pub struct RetainedScene {
+#[derive(Debug)]
+struct BufferedChunk<B> {
+    chunk_rev: u64,
+    buffer: B,
+    count: u32,
+}
+
+/// The chunks of a document, their GPU buffers, its text caches and the
+/// revisions that key them.
+#[derive(Debug)]
+pub struct RetainedScene<B> {
     cache: ChunkCache,
+    /// One GPU buffer per chunk slot, rebuilt only when `chunk.revision()` changes.
+    buffers: Vec<Option<BufferedChunk<B>>>,
     /// Each shape as last seen and its revision.
     seen: HashMap<ShapeId, (u64, Shape)>,
     next_revision: u64,
@@ -44,7 +54,25 @@ pub struct RetainedScene {
     scene_seq: u64,
 }
 
-impl RetainedScene {
+impl<B> Default for RetainedScene<B> {
+    fn default() -> Self {
+        Self {
+            cache: ChunkCache::default(),
+            buffers: Vec::new(),
+            seen: HashMap::new(),
+            next_revision: 0,
+            built_for: None,
+            text: None,
+            chunk_text_owners: Vec::new(),
+            text_slots: HashMap::new(),
+            next_text_id: 0,
+            text_state: None,
+            scene_seq: 0,
+        }
+    }
+}
+
+impl<B> RetainedScene<B> {
     /// An empty scene.
     #[must_use]
     pub fn new() -> Self {
@@ -67,7 +95,12 @@ impl RetainedScene {
     }
 
     /// Draws the chunks as last built, through `camera`.
-    pub fn draw_cached<G: Gpu>(&mut self, ctx: &mut RenderCtx<G>, camera: &Camera, viewport: Vec2) {
+    pub fn draw_cached<G: Gpu<Buffer = B>>(
+        &mut self,
+        ctx: &mut RenderCtx<G>,
+        camera: &Camera,
+        viewport: Vec2,
+    ) {
         if self.cache.set_zoom(camera.zoom()) {
             // The bucket changed: the caller must rebuild.
             self.built_for = None;
@@ -77,7 +110,7 @@ impl RetainedScene {
 
     /// [`RetainedScene::draw`], remembering the `revision` and `hidden`
     /// the chunks are built for.
-    pub fn draw_revision<G: Gpu>(
+    pub fn draw_revision<G: Gpu<Buffer = B>>(
         &mut self,
         ctx: &mut RenderCtx<G>,
         revision: u64,
@@ -93,7 +126,7 @@ impl RetainedScene {
     /// Draws `shapes` (bottom to top) except the `hidden` ones, through
     /// `camera` in a viewport of `viewport` logical pixels: tessellates the
     /// chunks whose shapes changed, then draws the chunks in view.
-    pub fn draw<G: Gpu>(
+    pub fn draw<G: Gpu<Buffer = B>>(
         &mut self,
         ctx: &mut RenderCtx<G>,
         shapes: &[(ShapeId, &Shape)],
@@ -227,16 +260,58 @@ impl RetainedScene {
         self.text_state = Some(state);
     }
 
-    fn emit<G: Gpu>(&mut self, ctx: &mut RenderCtx<G>, camera: &Camera, viewport: Vec2) {
+    fn sync_buffers<G: Gpu<Buffer = B>>(&mut self, ctx: &mut RenderCtx<G>) {
+        let chunks = self.cache.chunks();
+        self.buffers.truncate(chunks.len());
+        self.buffers.resize_with(chunks.len(), || None);
+        for (slot, chunk) in chunks.iter().enumerate() {
+            let mesh = chunk.mesh();
+            if mesh.indices.is_empty() {
+                self.buffers[slot] = None;
+                continue;
+            }
+            let rev = chunk.revision();
+            if self.buffers[slot]
+                .as_ref()
+                .is_some_and(|cached| cached.chunk_rev == rev)
+            {
+                continue;
+            }
+            if let Ok(buffer) = ctx.gpu_mut().create_buffer(&mesh.vertices, &mesh.indices) {
+                let count = u32::try_from(mesh.indices.len()).unwrap_or(u32::MAX);
+                self.buffers[slot] = Some(BufferedChunk {
+                    chunk_rev: rev,
+                    buffer,
+                    count,
+                });
+            } else {
+                self.buffers[slot] = None;
+            }
+        }
+    }
+
+    fn emit<G: Gpu<Buffer = B>>(
+        &mut self,
+        ctx: &mut RenderCtx<G>,
+        camera: &Camera,
+        viewport: Vec2,
+    ) {
         self.sync_text(ctx, camera);
+        self.sync_buffers(ctx);
         let view = cull_rect(camera, viewport);
-        let mut draws: Vec<WorldDraw<'_>> = Vec::new();
+        let mut draws: Vec<WorldDraw<'_, B>> = Vec::new();
         let text_cache = self.text.as_ref().map(|(_, cache)| cache);
         for (slot, chunk) in self.cache.chunks().iter().enumerate() {
             if chunk.bounds().is_some_and(|b| b.intersects(&view))
                 && !chunk.mesh().indices.is_empty()
             {
-                draws.push(WorldDraw::Feathered(chunk.mesh()));
+                match self.buffers.get(slot).and_then(Option::as_ref) {
+                    Some(cached) => draws.push(WorldDraw::FeatheredBuffer {
+                        buffer: &cached.buffer,
+                        count: cached.count,
+                    }),
+                    None => draws.push(WorldDraw::Feathered(chunk.mesh())),
+                }
             }
             if let (Some(text_cache), Some(owners)) = (text_cache, self.chunk_text_owners.get(slot))
             {
@@ -730,8 +805,16 @@ mod tests {
         assert!(has_textured);
         assert_eq!(untextured_draws, 2);
 
-        // Act 2: pan on cached revision emits zero new text chunks.
+        // Act 2: pan on cached revision emits zero new text chunks and creates
+        // zero new GPU buffers.
+        let _ = ctx.gpu_mut().take_calls();
         scene.draw_cached(&mut ctx, &Camera::new(Vec2::new(15.0, 5.0), 1.0), PORT);
         assert_eq!(scene.text_emissions(), first_emissions);
+        assert!(
+            !ctx.gpu_mut()
+                .take_calls()
+                .iter()
+                .any(|c| matches!(c, GpuCall::CreateBuffer { .. }))
+        );
     }
 }

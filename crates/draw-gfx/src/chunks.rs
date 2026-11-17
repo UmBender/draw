@@ -29,11 +29,18 @@ pub struct Item<'a> {
 #[derive(Debug, Clone)]
 pub struct Chunk {
     key: Vec<(ShapeId, u64)>,
+    revision: u64,
     mesh: Mesh,
     bounds: Option<Aabb>,
 }
 
 impl Chunk {
+    /// Monotonic revision bumped whenever this chunk is built or rebuilt.
+    #[must_use]
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     /// The tessellation of the chunk's shapes, in z-order.
     #[must_use]
     pub fn mesh(&self) -> &Mesh {
@@ -59,6 +66,7 @@ pub struct UpdateStats {
 pub struct ChunkCache {
     chunks: Vec<Chunk>,
     tessellations: usize,
+    next_rev: u64,
     /// The zoom bucket the chunks are tessellated for (ADR-T179-1).
     bucket: f32,
 }
@@ -68,6 +76,7 @@ impl Default for ChunkCache {
         Self {
             chunks: Vec::new(),
             tessellations: 0,
+            next_rev: 0,
             bucket: 1.0,
         }
     }
@@ -111,7 +120,8 @@ impl ChunkCache {
         for slot in dirty_slots {
             let group = groups[slot];
             let end = offset + group.len();
-            let chunk = assemble(group, &meshes[offset..end]);
+            self.next_rev += 1;
+            let chunk = assemble(group, &meshes[offset..end], self.next_rev);
             offset = end;
             self.tessellations += group.len();
             match self.chunks.get_mut(slot) {
@@ -146,7 +156,7 @@ impl ChunkCache {
             .chunks(CHUNK_LEN)
             .map(|g| {
                 let end = offset + g.len();
-                let chunk = assemble(g, &meshes[offset..end]);
+                let chunk = assemble(g, &meshes[offset..end], 0);
                 offset = end;
                 chunk.mesh
             })
@@ -180,7 +190,7 @@ impl ChunkCache {
 }
 
 /// Assembles one group of shapes and their tessellated parts into a chunk.
-fn assemble(group: &[Item<'_>], parts: &[Mesh]) -> Chunk {
+fn assemble(group: &[Item<'_>], parts: &[Mesh], revision: u64) -> Chunk {
     let mut mesh = Mesh::default();
     for part in parts {
         let base = u32::try_from(mesh.vertices.len()).unwrap_or(u32::MAX);
@@ -194,6 +204,7 @@ fn assemble(group: &[Item<'_>], parts: &[Mesh]) -> Chunk {
         .collect();
     Chunk {
         key: group.iter().map(|i| (i.id, i.revision)).collect(),
+        revision,
         bounds: Aabb::from_points(&points),
         mesh,
     }
