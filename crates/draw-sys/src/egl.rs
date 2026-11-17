@@ -149,6 +149,8 @@ struct EglApi {
     destroy_surface: unsafe extern "C" fn(Ptr, Ptr) -> u32,
     make_current: unsafe extern "C" fn(Ptr, Ptr, Ptr, Ptr) -> u32,
     swap_buffers: unsafe extern "C" fn(Ptr, Ptr) -> u32,
+    // TEST: wayland_egl_context_renders_and_swaps
+    swap_interval: unsafe extern "C" fn(Ptr, Int) -> u32,
     // TEST: wayland_many_connections_in_sequence_and_threads
     terminate: unsafe extern "C" fn(Ptr) -> u32,
     // Declared last: the library must outlive the pointers above, and
@@ -179,6 +181,7 @@ impl EglApi {
                 destroy_surface: *lib.symbol("eglDestroySurface")?,
                 make_current: *lib.symbol("eglMakeCurrent")?,
                 swap_buffers: *lib.symbol("eglSwapBuffers")?,
+                swap_interval: *lib.symbol("eglSwapInterval")?,
                 terminate: *lib.symbol("eglTerminate")?,
                 _library: Library::open(library)?,
             }
@@ -234,9 +237,10 @@ impl EglApi {
     }
 
     /// Picks an OpenGL ES 3 config for `surface_type`; window configs ask
-    /// for 4x MSAA without framebuffer alpha first (matching `miniquad`'s
-    /// default) and fall back to the plain RGBA8 config.
-    fn config(&self, display: Ptr, surface_type: Int) -> Result<Ptr, ContextError> {
+    /// for `samples` MSAA without framebuffer alpha first when `samples > 1`
+    /// (matching `miniquad`'s default at `4`), then an opaque non-MSAA config,
+    /// and fall back to the plain RGBA8 config.
+    fn config(&self, display: Ptr, surface_type: Int, samples: Int) -> Result<Ptr, ContextError> {
         let window_msaa = [
             EGL_SURFACE_TYPE,
             surface_type,
@@ -251,7 +255,22 @@ impl EglApi {
             EGL_ALPHA_SIZE,
             0,
             EGL_SAMPLES,
-            4,
+            samples.max(2),
+            EGL_NONE,
+        ];
+        let window_opaque = [
+            EGL_SURFACE_TYPE,
+            surface_type,
+            EGL_RENDERABLE_TYPE,
+            EGL_OPENGL_ES3_BIT,
+            EGL_RED_SIZE,
+            8,
+            EGL_GREEN_SIZE,
+            8,
+            EGL_BLUE_SIZE,
+            8,
+            EGL_ALPHA_SIZE,
+            0,
             EGL_NONE,
         ];
         let plain = [
@@ -269,10 +288,14 @@ impl EglApi {
             8,
             EGL_NONE,
         ];
-        let candidates: [&[Int]; 2] = if surface_type == EGL_WINDOW_BIT {
-            [&window_msaa, &plain]
+        let candidates: [&[Int]; 3] = if surface_type == EGL_WINDOW_BIT {
+            if samples > 1 {
+                [&window_msaa, &window_opaque, &plain]
+            } else {
+                [&window_opaque, &plain, &[]]
+            }
         } else {
-            [&plain, &[]]
+            [&plain, &[], &[]]
         };
         for attributes in candidates {
             if attributes.is_empty() {
@@ -391,7 +414,7 @@ impl EglContext {
         })
     }
 
-    /// A context on a native window.
+    /// A context on a native window, requesting 4x MSAA.
     ///
     /// # Errors
     /// [`ContextError`] if EGL refuses the display, config or surface.
@@ -406,6 +429,26 @@ impl EglContext {
         display: *mut c_void,
         window: *mut c_void,
     ) -> Result<Self, ContextError> {
+        // TEST: egl_headless_context_makes_current
+        // SAFETY: caller's contract on `display` and `window`.
+        unsafe { Self::from_window_samples(platform, display, window, 4) }
+    }
+
+    /// A context on a native window requesting `samples` MSAA (`0` or `1`
+    /// for no multisampling).
+    ///
+    /// # Errors
+    /// [`ContextError`] if EGL refuses the display, config or surface.
+    ///
+    /// # Safety
+    /// Same as [`EglContext::from_window`].
+    // TEST: wayland_egl_context_renders_and_swaps
+    pub unsafe fn from_window_samples(
+        platform: Platform,
+        display: *mut c_void,
+        window: *mut c_void,
+        samples: i32,
+    ) -> Result<Self, ContextError> {
         let id = match platform {
             Platform::Wayland => EGL_PLATFORM_WAYLAND_KHR,
             Platform::X11 => EGL_PLATFORM_X11_KHR,
@@ -415,6 +458,7 @@ impl EglContext {
             id,
             display,
             EGL_WINDOW_BIT,
+            samples,
             |api, (display, config)| {
                 // TEST: egl_headless_context_makes_current
                 // SAFETY: the caller of `from_window` vouches for `window`
@@ -428,6 +472,14 @@ impl EglContext {
                 Ok(surface)
             },
         )
+    }
+
+    /// Sets `eglSwapInterval` on the display (best-effort; `0` lets the
+    /// caller pace frames via compositor callbacks).
+    pub fn set_swap_interval(&self, interval: i32) {
+        // TEST: wayland_egl_context_renders_and_swaps
+        // SAFETY: `display` is live and this context is current.
+        let _ = unsafe { (self.api.swap_interval)(self.display, interval) };
     }
 
     /// Builds a context on `platform`; `make_surface` gives its surface
@@ -446,7 +498,7 @@ impl EglContext {
         } else {
             EGL_PBUFFER_BIT
         };
-        Self::build_with(library, platform, native, surface_type, make_surface)
+        Self::build_with(library, platform, native, surface_type, 0, make_surface)
     }
 
     fn build_with<F>(
@@ -454,6 +506,7 @@ impl EglContext {
         platform: u32,
         native: Ptr,
         surface_type: Int,
+        samples: Int,
         make_surface: F,
     ) -> Result<Self, ContextError>
     where
@@ -462,7 +515,7 @@ impl EglContext {
         let api = EglApi::load(library)?;
         let display = api.display(platform, native)?;
         let terminate = platform == EGL_PLATFORM_WAYLAND_KHR;
-        let config = match api.config(display, surface_type) {
+        let config = match api.config(display, surface_type, samples) {
             Ok(config) => config,
             Err(error) => {
                 api.terminate_if(terminate, display);

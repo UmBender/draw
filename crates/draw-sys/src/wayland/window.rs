@@ -321,12 +321,23 @@ impl Window<Configured> {
         unsafe { self.objects.attach(buffer, x, y) };
     }
 
-    /// Opens an OpenGL ES 3.0 context on the window; it is made current.
+    /// Opens an OpenGL ES 3.0 context on the window with 4x MSAA; it is
+    /// made current.
     ///
     /// # Errors
     /// [`WaylandError::Context`] if EGL refuses, [`WaylandError::NoObject`]
     /// if there is no `wl_egl_window`.
     pub fn open_gl(self) -> Result<Window<Mapped>, WaylandError> {
+        self.open_gl_samples(4)
+    }
+
+    /// Opens an OpenGL ES 3.0 context on the window requesting `samples`
+    /// MSAA (`0` or `1` for no multisampling); it is made current.
+    ///
+    /// # Errors
+    /// [`WaylandError::Context`] if EGL refuses, [`WaylandError::NoObject`]
+    /// if there is no `wl_egl_window`.
+    pub fn open_gl_samples(self, samples: i32) -> Result<Window<Mapped>, WaylandError> {
         let shared = Rc::clone(&self.objects.shared);
         let scale = shared.scale();
         let (width, height) = shared.win.size.get();
@@ -350,10 +361,12 @@ impl Window<Configured> {
         // SAFETY: `display` and `ptr` are a live `wl_display*` and
         // `wl_egl_window*`; the context is dropped before `native` (field
         // order of `GlPart`), and the display outlives both (`Rc`).
-        let context =
-            unsafe { EglContext::from_window(Platform::Wayland, shared.display.cast(), ptr) }
-                .map_err(WaylandError::Context)?;
+        let context = unsafe {
+            EglContext::from_window_samples(Platform::Wayland, shared.display.cast(), ptr, samples)
+        }
+        .map_err(WaylandError::Context)?;
         context.make_current().map_err(WaylandError::Context)?;
+        context.set_swap_interval(0);
         let o = &self.objects;
         // TEST: wayland_output_scale_is_an_integer
         // SAFETY: the surface is live.

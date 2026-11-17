@@ -71,11 +71,25 @@ impl WaylandPlatform {
     /// # Errors
     /// [`WaylandError`] from the connection, the window or the context.
     pub fn connect(socket: Option<&Path>, title: &str, app_id: &str) -> Result<Self, WaylandError> {
+        Self::connect_with(socket, title, app_id, 4)
+    }
+
+    /// Connects like [`WaylandPlatform::connect`], requesting `samples`
+    /// MSAA on the window surface (`0` or `1` disables multisampling).
+    ///
+    /// # Errors
+    /// [`WaylandError`] from the connection, the window or the context.
+    pub fn connect_with(
+        socket: Option<&Path>,
+        title: &str,
+        app_id: &str,
+        samples: i32,
+    ) -> Result<Self, WaylandError> {
         let connection = Connection::connect(socket)?;
         let window = connection
             .create_window(title, app_id)?
             .wait_configure()?
-            .open_gl()?;
+            .open_gl_samples(samples)?;
         window.swap().map_err(WaylandError::Context)?;
         connection.shared.roundtrip()?;
         window.apply_configure();

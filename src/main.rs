@@ -167,7 +167,20 @@ fn main() {
 /// Runs the app over the own Wayland backend and the OpenGL ES Gpu
 /// (T171, ADR-T171-1).
 fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choice) {
-    let platform = match WaylandPlatform::connect(None, "draw", app::WM_CLASS) {
+    // `--renderer retained` already anti-aliases every world shape via
+    // feathered edges (`FEATHERED_FRAGMENT_SOURCE`), so window MSAA is
+    // redundant and multiplies zoomed-in fill-rate cost.
+    let window_samples = if options.renderer == options::Renderer::Retained {
+        0
+    } else {
+        options.msaa_samples
+    };
+    let opened = if window_samples == 4 {
+        WaylandPlatform::connect(None, "draw", app::WM_CLASS)
+    } else {
+        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples)
+    };
+    let platform = match opened {
         Ok(platform) => platform,
         Err(problem) => {
             eprintln!("draw: Wayland window: {problem}");

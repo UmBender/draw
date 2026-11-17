@@ -275,3 +275,14 @@ fn wayland_idle_skips_swap_and_wakes_on_scheduled_update() {
     block_on(platform.next_idle());
     assert!(started.elapsed() < Duration::from_millis(50));
 }
+
+#[test]
+fn wayland_platform_connect_with_zero_msaa_swaps_cleanly() {
+    let sway = Sway::start();
+    let mut platform =
+        WaylandPlatform::connect_with(Some(&sway.socket), "T172 test", "draw-test", 0).unwrap();
+
+    block_on(platform.next_frame());
+
+    assert!(!platform.frame_pending());
+}
