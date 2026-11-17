@@ -1192,9 +1192,10 @@ impl<G: Gpu> CachedFrame<G> {
     ) -> Option<(Redraw, Duration)> {
         self.wake = false;
         if let Some(mut scene) = self.retained.take() {
-            let result = self.present_retained(ctx, editor, &mut scene, viewport, dpi, trail);
+            let result =
+                self.present_retained(ctx, editor, &mut scene, viewport, dpi, dirty, trail);
             self.retained = Some(scene);
-            return Some(result);
+            return result;
         }
         let size = physical_size(viewport, dpi);
         let overlay = editor.overlay();
@@ -1303,11 +1304,33 @@ impl<G: Gpu> CachedFrame<G> {
         scene: &mut RetainedScene,
         viewport: Vec2,
         dpi: f32,
+        dirty: bool,
         trail: &[Segment],
-    ) -> (Redraw, Duration) {
+    ) -> Option<(Redraw, Duration)> {
         let started = Instant::now();
         let overlay = editor.overlay();
         let camera = *editor.camera();
+        // The same plan as the layer path, so a frame woken by a mouse
+        // move over an unchanged document is not logged as a re-render.
+        let key = LayerKey {
+            revision: editor.document_revision(),
+            len: editor.document().len(),
+            camera,
+            size: physical_size(viewport, dpi),
+            hidden: overlay.hidden.clone(),
+            underlay: editor.helpers().grid_snap,
+        };
+        let planned = plan_redraw(
+            self.key.as_ref(),
+            &key,
+            editor.document_base_revision(),
+            dirty,
+        );
+        let redraw = match planned {
+            Redraw::Append { .. } => Redraw::Full,
+            other => other,
+        };
+        self.key = Some(key);
         let _ = render::begin_text_frame();
         render::take_text_stats();
         let minimap = editor.minimap();
@@ -1321,12 +1344,15 @@ impl<G: Gpu> CachedFrame<G> {
         draw_overlay(ctx, editor, &overlay, viewport);
         draw_laser(ctx, trail);
         self.draw_minimap(ctx, minimap.as_ref(), overview.as_ref(), &camera, viewport);
+        if redraw == Redraw::None {
+            return None;
+        }
         let elapsed = started.elapsed();
         if self.timed {
             let shapes = editor.document().len();
-            eprintln!("{}", frame_log_line(Redraw::Full, elapsed, None, shapes));
+            eprintln!("{}", frame_log_line(redraw, elapsed, None, shapes));
         }
-        (Redraw::Full, elapsed)
+        Some((redraw, elapsed))
     }
 
     /// The window's part of the document layer, read back as RGBA rows from

@@ -66,6 +66,7 @@ Debugging (for troubleshooting only):\n  \
   --skip-preflight     Skip the check for a display and libraries\n  \
   --backend <name>     Window backend on Linux: wayland or x11\n  \
   --platform <name>    Window and GL layer: macroquad (default) or native (X11 only)\n  \
+  --renderer <name>    Document drawing: layers (default) or retained (experimental)\n  \
   --msaa <n>           Anti-aliasing samples: off, 2, 4 (default), 8\n  \
   --tablet <mode>      Pen mode: auto (default), on, off",
         version_text()
