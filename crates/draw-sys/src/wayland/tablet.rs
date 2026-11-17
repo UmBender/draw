@@ -12,7 +12,8 @@ use crate::platform::BackendEvent;
 use crate::wayland::client::Proxy;
 use crate::wayland::connection::{Shared, shared_of};
 use crate::wayland::generated::tablet_v2::{
-    zwp_tablet_manager_v2, zwp_tablet_pad_v2, zwp_tablet_seat_v2, zwp_tablet_tool_v2, zwp_tablet_v2,
+    zwp_tablet_manager_v2, zwp_tablet_pad_group_v2, zwp_tablet_pad_v2, zwp_tablet_seat_v2,
+    zwp_tablet_tool_v2, zwp_tablet_v2,
 };
 use crate::wayland::pen::Pens;
 
@@ -25,6 +26,8 @@ pub(crate) const MANAGER_VERSION: u32 = 1;
 pub(crate) struct TabletState {
     pub manager: Cell<*mut Proxy>,
     seat: Cell<*mut Proxy>,
+    tablets: RefCell<Vec<usize>>,
+    pads: RefCell<Vec<usize>>,
     pens: RefCell<Pens>,
 }
 
@@ -33,6 +36,8 @@ impl Default for TabletState {
         Self {
             manager: Cell::new(null_mut()),
             seat: Cell::new(null_mut()),
+            tablets: RefCell::new(Vec::new()),
+            pads: RefCell::new(Vec::new()),
             pens: RefCell::new(Pens::default()),
         }
     }
@@ -76,6 +81,16 @@ impl TabletState {
             // SAFETY: the ids are live tool proxies, destroyed once here.
             unsafe { zwp_tablet_tool_v2::destroy(c, id as *mut Proxy) };
         }
+        for id in self.tablets.borrow_mut().drain(..) {
+            // TEST: wayland_tablet_manager_is_bound_without_tablets
+            // SAFETY: the ids are live tablet proxies, destroyed once here.
+            unsafe { zwp_tablet_v2::destroy(c, id as *mut Proxy) };
+        }
+        for id in self.pads.borrow_mut().drain(..) {
+            // TEST: wayland_tablet_manager_is_bound_without_tablets
+            // SAFETY: the ids are live pad proxies, destroyed once here.
+            unsafe { zwp_tablet_pad_v2::destroy(c, id as *mut Proxy) };
+        }
         let seat = self.seat.replace(null_mut());
         if !seat.is_null() {
             // TEST: wayland_tablet_manager_is_bound_without_tablets
@@ -95,9 +110,32 @@ extern "C" fn on_tablet_added(data: *mut c_void, _seat: *mut Proxy, tablet: *mut
     // TEST: wayland_tablet_manager_is_bound_without_tablets
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
     let shared = unsafe { shared_of(data) };
-    // The tablets themselves are not used: only their tools.
+    // Keep `zwp_tablet_v2` alive while connected: `zwp_tablet_tool_v2.proximity_in`
+    // passes a non-nullable `tablet` object and compositors skip proximity
+    // events if the client destroyed it.
+    shared
+        .input
+        .tablet
+        .tablets
+        .borrow_mut()
+        .push(tablet as usize);
     // TEST: wayland_tablet_manager_is_bound_without_tablets
-    // SAFETY: `tablet` is the live proxy this event created.
+    // SAFETY: `tablet` is the live proxy this event created; `data` outlives it.
+    unsafe { zwp_tablet_v2::add_listener(&shared.client, tablet, &TABLET_LISTENER, data) };
+}
+
+extern "C" fn on_tablet_removed(data: *mut c_void, tablet: *mut Proxy) {
+    // TEST: wayland_tablet_manager_is_bound_without_tablets
+    // SAFETY: libwayland passes the data pointer given to `add_listener`.
+    let shared = unsafe { shared_of(data) };
+    shared
+        .input
+        .tablet
+        .tablets
+        .borrow_mut()
+        .retain(|id| *id != tablet as usize);
+    // TEST: wayland_tablet_manager_is_bound_without_tablets
+    // SAFETY: `tablet` is live and destroyed once, after `removed`.
     unsafe { zwp_tablet_v2::destroy(&shared.client, tablet) };
 }
 
@@ -105,8 +143,33 @@ extern "C" fn on_pad_added(data: *mut c_void, _seat: *mut Proxy, pad: *mut Proxy
     // TEST: wayland_tablet_manager_is_bound_without_tablets
     // SAFETY: libwayland passes the data pointer given to `add_listener`.
     let shared = unsafe { shared_of(data) };
+    shared.input.tablet.pads.borrow_mut().push(pad as usize);
     // TEST: wayland_tablet_manager_is_bound_without_tablets
-    // SAFETY: `pad` is the live proxy this event created.
+    // SAFETY: `pad` is the live proxy this event created; `data` outlives it.
+    unsafe { zwp_tablet_pad_v2::add_listener(&shared.client, pad, &PAD_LISTENER, data) };
+}
+
+extern "C" fn on_pad_group(data: *mut c_void, _pad: *mut Proxy, group: *mut Proxy) {
+    // TEST: wayland_tablet_manager_is_bound_without_tablets
+    // SAFETY: libwayland passes the data pointer given to `add_listener`.
+    let shared = unsafe { shared_of(data) };
+    // TEST: wayland_tablet_manager_is_bound_without_tablets
+    // SAFETY: `group` is the live proxy this event created.
+    unsafe { zwp_tablet_pad_group_v2::destroy(&shared.client, group) };
+}
+
+extern "C" fn on_pad_removed(data: *mut c_void, pad: *mut Proxy) {
+    // TEST: wayland_tablet_manager_is_bound_without_tablets
+    // SAFETY: libwayland passes the data pointer given to `add_listener`.
+    let shared = unsafe { shared_of(data) };
+    shared
+        .input
+        .tablet
+        .pads
+        .borrow_mut()
+        .retain(|id| *id != pad as usize);
+    // TEST: wayland_tablet_manager_is_bound_without_tablets
+    // SAFETY: `pad` is live and destroyed once, after `removed`.
     unsafe { zwp_tablet_pad_v2::destroy(&shared.client, pad) };
 }
 
@@ -216,6 +279,17 @@ static SEAT_LISTENER: zwp_tablet_seat_v2::Listener = zwp_tablet_seat_v2::Listene
     tablet_added: on_tablet_added,
     tool_added: on_tool_added,
     pad_added: on_pad_added,
+};
+
+static TABLET_LISTENER: zwp_tablet_v2::Listener = zwp_tablet_v2::Listener {
+    removed: on_tablet_removed,
+    ..zwp_tablet_v2::IGNORE
+};
+
+static PAD_LISTENER: zwp_tablet_pad_v2::Listener = zwp_tablet_pad_v2::Listener {
+    group: on_pad_group,
+    removed: on_pad_removed,
+    ..zwp_tablet_pad_v2::IGNORE
 };
 
 static TOOL_LISTENER: zwp_tablet_tool_v2::Listener = zwp_tablet_tool_v2::Listener {
