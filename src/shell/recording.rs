@@ -1,10 +1,10 @@
 //! Recording and null interpreters of [`Gpu`] and [`Platform`]
 //! (ADR-T140-1): tests run the shell with them, with no window.
 
-use std::collections::VecDeque;
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 use std::future::{Future, Ready, ready};
-
-use std::collections::HashMap;
+use std::rc::Rc;
 
 use draw_gfx::gpu::{
     CommandList, CommandOf, Filter, Gpu, GpuError, PipelineDesc, TargetDesc, TextureDesc, Vertex,
@@ -119,6 +119,7 @@ fn check_rect(rect: [u32; 4], rgba: &[u8]) -> Result<(), GpuError> {
 #[derive(Debug, Clone, Default)]
 pub struct RecordingGpu {
     calls: Vec<GpuCall>,
+    shared: Rc<RefCell<Vec<GpuCall>>>,
     handles: Handles,
     /// Size of every texture and target, for `read_texture`.
     sizes: Sizes,
@@ -153,7 +154,19 @@ impl RecordingGpu {
 
     /// Removes and returns the calls made so far.
     pub fn take_calls(&mut self) -> Vec<GpuCall> {
+        self.shared.borrow_mut().clear();
         std::mem::take(&mut self.calls)
+    }
+
+    /// A shared view of recorded calls (for tests that move `self` into `app::run`).
+    #[must_use]
+    pub fn calls_handle(&self) -> Rc<RefCell<Vec<GpuCall>>> {
+        Rc::clone(&self.shared)
+    }
+
+    fn record(&mut self, call: GpuCall) {
+        self.shared.borrow_mut().push(call.clone());
+        self.calls.push(call);
     }
 }
 
@@ -165,7 +178,7 @@ impl Gpu for RecordingGpu {
 
     fn create_buffer(&mut self, vertices: &[Vertex], indices: &[u32]) -> Result<Handle, GpuError> {
         let handle = self.handles.next();
-        self.calls.push(GpuCall::CreateBuffer {
+        self.record(GpuCall::CreateBuffer {
             handle,
             vertices: vertices.to_vec(),
             indices: indices.to_vec(),
@@ -177,7 +190,7 @@ impl Gpu for RecordingGpu {
         check_pixels(&desc, rgba)?;
         let handle = self.handles.next();
         self.sizes.insert(handle, (desc.width, desc.height));
-        self.calls.push(GpuCall::CreateTexture { handle, desc });
+        self.record(GpuCall::CreateTexture { handle, desc });
         Ok(handle)
     }
 
@@ -188,7 +201,7 @@ impl Gpu for RecordingGpu {
         rgba: &[u8],
     ) -> Result<(), GpuError> {
         check_rect(rect, rgba)?;
-        self.calls.push(GpuCall::WriteTexture {
+        self.record(GpuCall::WriteTexture {
             texture: *texture,
             rect,
         });
@@ -201,7 +214,7 @@ impl Gpu for RecordingGpu {
         }
         let handle = self.handles.next();
         self.sizes.insert(handle, (desc.width, desc.height));
-        self.calls.push(GpuCall::CreateTarget { handle, desc });
+        self.record(GpuCall::CreateTarget { handle, desc });
         Ok(handle)
     }
 
@@ -209,7 +222,7 @@ impl Gpu for RecordingGpu {
         if !self.sizes.contains_key(texture) {
             return Err(GpuError::UnknownHandle);
         }
-        self.calls.push(GpuCall::SetFilter {
+        self.record(GpuCall::SetFilter {
             texture: *texture,
             filter,
         });
@@ -218,7 +231,7 @@ impl Gpu for RecordingGpu {
 
     fn read_texture(&mut self, texture: &Handle) -> Result<Vec<u8>, GpuError> {
         let pixels = blank_pixels(&self.sizes, *texture)?;
-        self.calls.push(GpuCall::ReadTexture { texture: *texture });
+        self.record(GpuCall::ReadTexture { texture: *texture });
         Ok(pixels)
     }
 
@@ -228,12 +241,12 @@ impl Gpu for RecordingGpu {
 
     fn pipeline(&mut self, desc: PipelineDesc) -> Handle {
         let handle = self.handles.next();
-        self.calls.push(GpuCall::Pipeline { handle, desc });
+        self.record(GpuCall::Pipeline { handle, desc });
         handle
     }
 
     fn submit(&mut self, list: &CommandList<Self>) -> Result<(), GpuError> {
-        self.calls.push(GpuCall::Submit {
+        self.record(GpuCall::Submit {
             commands: list.commands().to_vec(),
         });
         Ok(())
@@ -320,6 +333,8 @@ pub enum PlatformCall {
     ScheduleUpdate,
     /// `next_frame`.
     NextFrame,
+    /// `next_idle`.
+    NextIdle,
 }
 
 /// A [`Platform`] fed by the test: it replays queued events and keeps every
@@ -330,6 +345,8 @@ pub struct RecordingPlatform {
     events: VecDeque<RawEvent>,
     clipboard: Option<String>,
     calls: Vec<PlatformCall>,
+    skips_idle_swap: bool,
+    paused: bool,
 }
 
 impl RecordingPlatform {
@@ -341,7 +358,19 @@ impl RecordingPlatform {
             events: VecDeque::new(),
             clipboard: None,
             calls: Vec::new(),
+            skips_idle_swap: false,
+            paused: false,
         }
+    }
+
+    /// Configures whether [`Platform::skips_idle_swap`] returns `true`.
+    pub fn set_skips_idle_swap(&mut self, skip: bool) {
+        self.skips_idle_swap = skip;
+    }
+
+    /// Configures whether [`Platform::paused`] returns `true`.
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
     }
 
     /// Queues `event` for the next poll.
@@ -394,8 +423,22 @@ impl Platform for RecordingPlatform {
         self.calls.push(PlatformCall::ScheduleUpdate);
     }
 
+    fn skips_idle_swap(&self) -> bool {
+        self.skips_idle_swap
+    }
+
+    fn paused(&self) -> bool {
+        self.paused
+    }
+
     fn next_frame(&mut self) -> impl Future<Output = ()> {
         self.calls.push(PlatformCall::NextFrame);
+        let done: Ready<()> = ready(());
+        done
+    }
+
+    fn next_idle(&mut self) -> impl Future<Output = ()> {
+        self.calls.push(PlatformCall::NextIdle);
         let done: Ready<()> = ready(());
         done
     }

@@ -734,40 +734,79 @@ pub async fn run<P: Platform, G: Gpu>(
             &mut svg_writes,
             &mut save_path,
         );
-        let skip_idle = platform.skips_idle_swap()
-            && !export_pending
-            && input.hooks.is_none()
-            && svg_writes.is_empty();
-        frame.idle = if skip_idle {
-            IdlePolicy::Skip
-        } else {
-            IdlePolicy::Draw
-        };
-        let presented = frame.present(&mut ctx, &editor, viewport, dpi, dirty, &laser.trail);
+        let presented = present_turn(
+            &mut platform,
+            &mut ctx,
+            &editor,
+            &mut frame,
+            &mut export_pending,
+            &svg_writes,
+            viewport,
+            dpi,
+            dirty,
+            &laser,
+            &mut collector,
+            &mut recorder,
+            had_input,
+            &mut autosaver,
+            dump_asked,
+            input.hooks.as_mut(),
+        )
+        .await;
+        let _ = presented;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn present_turn<P: Platform, G: Gpu, T>(
+    platform: &mut P,
+    ctx: &mut RenderCtx<G>,
+    editor: &Editor,
+    frame: &mut CachedFrame<G>,
+    export_pending: &mut bool,
+    svg_writes: &[T],
+    viewport: Vec2,
+    dpi: f32,
+    dirty: bool,
+    laser: &LaserLayer,
+    collector: &mut Collector,
+    recorder: &mut FrameRecorder,
+    had_input: bool,
+    autosaver: &mut Autosaver,
+    dump_asked: bool,
+    hooks: Option<&mut e2e::Hooks>,
+) -> Option<(Redraw, Duration)> {
+    let skip_idle =
+        platform.skips_idle_swap() && !*export_pending && hooks.is_none() && svg_writes.is_empty();
+    frame.idle = if skip_idle {
+        IdlePolicy::Skip
+    } else {
+        IdlePolicy::Draw
+    };
+    let paused = platform.paused();
+    let presented = if paused {
+        frame.rerender |= dirty;
+        None
+    } else {
+        let presented = frame.present(ctx, editor, viewport, dpi, dirty, &laser.trail);
         if frame.wake {
             platform.schedule_update();
         }
         // A layer that lost glyphs is drawn again first (ADR-T92-2).
-        if export_pending && !frame.rerender {
-            export_pending = false;
-            export_view(&mut ctx, &frame);
+        if *export_pending && !frame.rerender {
+            *export_pending = false;
+            export_view(ctx, frame);
         }
-        recorder.end(&mut collector, &editor, presented, dump_asked);
-        // On input only, so idle stays at 0 % (ADR-T94-1).
-        if had_input {
-            autosaver.on_input(&editor, Instant::now());
-        }
-        let idle = skip_idle && presented.is_none() && !frame.wake && !laser.fading();
-        finish_frame(
-            &mut platform,
-            &frame,
-            presented,
-            &editor,
-            input.hooks.as_mut(),
-            idle,
-        )
-        .await;
+        presented
+    };
+    recorder.end(collector, editor, presented, dump_asked);
+    // On input only, so idle stays at 0 % (ADR-T94-1).
+    if had_input {
+        autosaver.on_input(editor, Instant::now());
     }
+    let idle = paused || (skip_idle && presented.is_none() && !frame.wake && !laser.fading());
+    finish_frame(platform, frame, presented, editor, hooks, idle).await;
+    presented
 }
 
 async fn finish_frame<P: Platform, G: Gpu>(
@@ -1904,6 +1943,12 @@ mod tests {
         fn schedule_update(&mut self) {
             self.inner.schedule_update();
         }
+        fn skips_idle_swap(&self) -> bool {
+            self.inner.skips_idle_swap()
+        }
+        fn paused(&self) -> bool {
+            self.inner.paused()
+        }
         fn next_frame(&mut self) -> impl std::future::Future<Output = ()> {
             let stop = self.left == 0;
             self.left = self.left.saturating_sub(1);
@@ -1915,6 +1960,9 @@ mod tests {
                     std::future::pending::<()>().await;
                 }
             }
+        }
+        fn next_idle(&mut self) -> impl std::future::Future<Output = ()> {
+            self.next_frame()
         }
     }
 
@@ -1961,6 +2009,107 @@ mod tests {
 
         // Assert
         assert_eq!(polled, Poll::Pending);
+        assert_eq!(frames.get(), 3);
+    }
+
+    #[test]
+    fn no_redraw_without_input() {
+        use crate::shell::recording::{GpuCall, RecordingGpu, RecordingPlatform};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange: one initial frame with Tab, then 4 idle frames with no input.
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+        let mut inner = RecordingPlatform::new(metrics);
+        inner.set_skips_idle_swap(true);
+        inner.queue(RawEvent::Key {
+            key: draw_sys::platform::RawKey::Tab,
+            mods: draw_sys::platform::RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let gpu = RecordingGpu::default();
+        let calls_gpu = gpu.calls_handle();
+        let platform = StopAfter {
+            inner,
+            left: 5,
+            frames: std::rc::Rc::clone(&frames),
+        };
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            gpu,
+            Options::default(),
+            Backend::X11,
+            tablet::detect(crate::shell::options::TabletMode::Off)
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(run.as_mut().poll(&mut cx), Poll::Pending);
+
+        // Assert: only the first frame submits GPU commands (layer target +
+        // window blit = 2 submits); frames 2..5 emit zero GPU submits.
+        let submits = calls_gpu
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call, GpuCall::Submit { .. }))
+            .count();
+        assert_eq!(submits, 2);
+        assert_eq!(frames.get(), 5);
+    }
+
+    #[test]
+    fn paused_window_draws_nothing() {
+        use crate::shell::recording::{GpuCall, RecordingGpu, RecordingPlatform};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange: window starts paused/hidden, even with input queued.
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+        let mut inner = RecordingPlatform::new(metrics);
+        inner.set_paused(true);
+        inner.queue(RawEvent::Key {
+            key: draw_sys::platform::RawKey::Tab,
+            mods: draw_sys::platform::RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let gpu = RecordingGpu::default();
+        let calls_gpu = gpu.calls_handle();
+        let platform = StopAfter {
+            inner,
+            left: 3,
+            frames: std::rc::Rc::clone(&frames),
+        };
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            gpu,
+            Options::default(),
+            Backend::X11,
+            tablet::detect(crate::shell::options::TabletMode::Off)
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(run.as_mut().poll(&mut cx), Poll::Pending);
+
+        // Assert: zero GPU submits while paused.
+        let submits = calls_gpu
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call, GpuCall::Submit { .. }))
+            .count();
+        assert_eq!(submits, 0);
         assert_eq!(frames.get(), 3);
     }
 

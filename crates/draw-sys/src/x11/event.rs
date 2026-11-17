@@ -13,10 +13,15 @@ const BUTTON_RELEASE: i32 = 5;
 const MOTION_NOTIFY: i32 = 6;
 const FOCUS_IN: i32 = 9;
 const FOCUS_OUT: i32 = 10;
+const VISIBILITY_NOTIFY: i32 = 15;
+const UNMAP_NOTIFY: i32 = 18;
+const MAP_NOTIFY: i32 = 19;
 /// `GenericEvent`: its first field (the type) is 35.
 pub const GENERIC_EVENT: i32 = 35;
 const CONFIGURE_NOTIFY: i32 = 22;
 const CLIENT_MESSAGE: i32 = 33;
+/// `VisibilityFullyObscured` in `<X11/X.h>`.
+const VISIBILITY_FULLY_OBSCURED: i32 = 2;
 
 /// An X event reduced to what the window part reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +69,13 @@ pub enum XEvent {
     },
     /// `FocusIn` (`true`) or `FocusOut`.
     Focus(bool),
+    /// `MapNotify` (`true`) or `UnmapNotify`.
+    Mapped(bool),
+    /// `VisibilityNotify`: whether the window is fully obscured.
+    Visibility {
+        /// `true` when `VisibilityFullyObscured`.
+        obscured: bool,
+    },
     /// `GenericEvent`: the extension opcode and event type; the data is
     /// fetched from the display.
     Generic {
@@ -118,6 +130,10 @@ fn decode_known(raw: &[u8], kind: i32) -> Option<XEvent> {
             y: read_i32(raw, 68)?,
         }),
         FOCUS_IN | FOCUS_OUT => Some(XEvent::Focus(kind == FOCUS_IN)),
+        UNMAP_NOTIFY | MAP_NOTIFY => Some(XEvent::Mapped(kind == MAP_NOTIFY)),
+        VISIBILITY_NOTIFY => Some(XEvent::Visibility {
+            obscured: read_i32(raw, 40)? == VISIBILITY_FULLY_OBSCURED,
+        }),
         GENERIC_EVENT => Some(XEvent::Generic {
             extension: read_i32(raw, 32)?,
             evtype: read_i32(raw, 36)?,
@@ -152,4 +168,29 @@ pub fn is_close(event: XEvent, atoms: CloseAtoms) -> bool {
         XEvent::ClientMessage { message_type, first_long }
             if message_type == atoms.protocols && first_long == atoms.delete_window
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn raw_event(kind: i32) -> [u8; EVENT_BYTES] {
+        let mut raw = [0u8; EVENT_BYTES];
+        raw[0..4].copy_from_slice(&kind.to_ne_bytes());
+        raw
+    }
+
+    #[test]
+    fn x11_unmap_and_visibility_pause_the_window() {
+        assert_eq!(decode(&raw_event(UNMAP_NOTIFY)), XEvent::Mapped(false));
+        assert_eq!(decode(&raw_event(MAP_NOTIFY)), XEvent::Mapped(true));
+
+        let mut obscured = raw_event(VISIBILITY_NOTIFY);
+        obscured[40..44].copy_from_slice(&VISIBILITY_FULLY_OBSCURED.to_ne_bytes());
+        assert_eq!(decode(&obscured), XEvent::Visibility { obscured: true });
+
+        let mut visible = raw_event(VISIBILITY_NOTIFY);
+        visible[40..44].copy_from_slice(&0i32.to_ne_bytes());
+        assert_eq!(decode(&visible), XEvent::Visibility { obscured: false });
+    }
 }

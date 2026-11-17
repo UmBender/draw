@@ -115,6 +115,23 @@ impl GlContext for SharedGl {
 ///
 /// Field order is drop order: the context goes before the window, the
 /// window before the display connection it holds.
+/// Whether the window is currently hidden by unmap or full obscuration.
+#[derive(Debug, Clone, Copy)]
+struct Visibility {
+    mapped: bool,
+    obscured: bool,
+}
+
+impl Visibility {
+    fn paused(self) -> bool {
+        !self.mapped || self.obscured
+    }
+}
+
+/// An X11 window with its GL context.
+///
+/// Field order is drop order: the context goes before the window, the
+/// window before the display connection it holds.
 #[derive(Debug)]
 pub struct X11Platform {
     gl: Rc<GlSurface>,
@@ -122,6 +139,7 @@ pub struct X11Platform {
     size: Rc<Cell<(u32, u32)>>,
     scale: f32,
     close: bool,
+    visibility: Visibility,
     update_scheduled: bool,
     keys: KeyTracker,
     pen: PenTracker,
@@ -174,6 +192,10 @@ impl X11Platform {
             size: Rc::new(Cell::new((width.max(1), height.max(1)))),
             scale: scale_from_dpi(dpi),
             close: false,
+            visibility: Visibility {
+                mapped: true,
+                obscured: false,
+            },
             update_scheduled: false,
         })
     }
@@ -518,6 +540,12 @@ impl Platform for X11Platform {
                     }
                     out.push(RawEvent::Focus(focus));
                 }
+                XEvent::Mapped(mapped) => {
+                    self.visibility.mapped = mapped;
+                }
+                XEvent::Visibility { obscured } => {
+                    self.visibility.obscured = obscured;
+                }
                 XEvent::Generic { .. } => {
                     if let Some(raw) = fetched.raw {
                         let conn = self.window.conn();
@@ -554,19 +582,38 @@ impl Platform for X11Platform {
         self.update_scheduled = true;
     }
 
+    fn skips_idle_swap(&self) -> bool {
+        true
+    }
+
+    fn paused(&self) -> bool {
+        self.visibility.paused()
+    }
+
     fn next_frame(&mut self) -> impl Future<Output = ()> {
         // A failed swap (a lost window) is seen by the next `poll`.
         let _ = self.gl.swap_buffers();
-        let deadline = Instant::now() + FRAME_WAIT;
-        while !self.update_scheduled
+        if !self.update_scheduled
             && self.stash.is_empty()
             && !self.window.has_pending()
             && signal::peek().is_none()
-            && Instant::now() < deadline
         {
-            std::thread::sleep(Duration::from_millis(1));
+            let ms = i32::try_from(FRAME_WAIT.as_millis()).unwrap_or(16);
+            self.window.wait_events(ms, signal::wake_fd());
         }
         self.update_scheduled = false;
+        ready(())
+    }
+
+    fn next_idle(&mut self) -> impl Future<Output = ()> {
+        if !std::mem::take(&mut self.update_scheduled)
+            && self.stash.is_empty()
+            && self.outgoing.is_empty()
+            && !self.window.has_pending()
+            && signal::peek().is_none()
+        {
+            self.window.wait_events(-1, signal::wake_fd());
+        }
         ready(())
     }
 }

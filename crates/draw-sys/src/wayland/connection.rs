@@ -85,6 +85,8 @@ pub(crate) struct WinState {
     pub size: Cell<(i32, i32)>,
     /// The compositor asked the window to close.
     pub close: Cell<bool>,
+    /// The compositor marked the toplevel `suspended` (T147 AC-2).
+    pub suspended: Cell<bool>,
     /// A frame callback is outstanding.
     pub frame_pending: Cell<bool>,
     /// The outputs the surface is on, as proxy addresses.
@@ -214,6 +216,17 @@ impl Shared {
     /// Reads what the compositor sent (waiting up to `timeout_ms`) and
     /// handles it.
     pub(crate) fn dispatch(&self, timeout_ms: i32) -> Result<(), WaylandError> {
+        self.dispatch_with_wake(timeout_ms, None)
+    }
+
+    /// Reads what the compositor sent (waiting up to `timeout_ms`, or
+    /// indefinitely for `-1`) and also wakes immediately if `wake_fd`
+    /// becomes readable.
+    pub(crate) fn dispatch_with_wake(
+        &self,
+        timeout_ms: i32,
+        wake_fd: Option<i32>,
+    ) -> Result<(), WaylandError> {
         let c = &self.client;
         loop {
             // TEST: wayland_connect_binds_the_globals
@@ -227,17 +240,26 @@ impl Shared {
         // TEST: wayland_connect_binds_the_globals
         // SAFETY: `display` is live while `self` is.
         let _ = unsafe { (c.display_flush)(self.display) };
-        let mut fd = PollFd {
-            // TEST: wayland_connect_binds_the_globals
-            // SAFETY: `display` is live while `self` is.
-            fd: unsafe { (c.display_get_fd)(self.display) },
-            events: POLLIN,
-            revents: 0,
-        };
         // TEST: wayland_connect_binds_the_globals
-        // SAFETY: one valid `pollfd` that lives through the call.
-        let ready = unsafe { poll(&raw mut fd, 1, timeout_ms) };
-        if ready > 0 && fd.revents & POLLIN != 0 {
+        // SAFETY: `display` is live while `self` is.
+        let display_fd = unsafe { (c.display_get_fd)(self.display) };
+        let mut fds = [
+            PollFd {
+                fd: display_fd,
+                events: POLLIN,
+                revents: 0,
+            },
+            PollFd {
+                fd: wake_fd.unwrap_or(-1),
+                events: POLLIN,
+                revents: 0,
+            },
+        ];
+        let nfds = if wake_fd.is_some() { 2 } else { 1 };
+        // TEST: wayland_connect_binds_the_globals
+        // SAFETY: `fds[..nfds]` is valid and lives through the call.
+        let ready = unsafe { poll(fds.as_mut_ptr(), nfds, timeout_ms) };
+        if ready > 0 && fds[0].revents & POLLIN != 0 {
             // TEST: wayland_connect_binds_the_globals
             // SAFETY: `prepare_read` succeeded above and is paired once.
             if unsafe { (c.display_read_events)(self.display) } < 0 {
