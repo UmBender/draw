@@ -53,16 +53,18 @@ pub fn chunks(vertices: &[Vertex], indices: &[u32]) -> Result<Vec<Chunk>, GpuErr
         vertices: Vec::new(),
         indices: Vec::new(),
     };
-    let mut local: HashMap<u32, u16> = HashMap::new();
+    let mut local: Vec<(u32, u16)> = vec![(0, 0); vertices.len()];
+    let mut epoch = 1u32;
     let (triangles, _) = indices.as_chunks::<3>();
     for triangle in triangles {
         if triangle.iter().any(|&i| i as usize >= vertices.len()) {
             return Err(backend("index out of range"));
         }
         let [a, b, c] = *triangle;
-        let mut fresh = usize::from(!local.contains_key(&a));
-        fresh += usize::from(b != a && !local.contains_key(&b));
-        fresh += usize::from(c != a && c != b && !local.contains_key(&c));
+        let seen = |local: &[(u32, u16)], epoch: u32, idx: u32| local[idx as usize].0 == epoch;
+        let mut fresh = usize::from(!seen(&local, epoch, a));
+        fresh += usize::from(b != a && !seen(&local, epoch, b));
+        fresh += usize::from(c != a && c != b && !seen(&local, epoch, c));
         let full = chunk.vertices.len() + fresh > CHUNK_MAX_VERTICES
             || chunk.indices.len() + 3 > CHUNK_MAX_INDICES;
         if full && !chunk.indices.is_empty() {
@@ -73,16 +75,22 @@ pub fn chunks(vertices: &[Vertex], indices: &[u32]) -> Result<Vec<Chunk>, GpuErr
                     indices: Vec::new(),
                 },
             ));
-            local.clear();
+            if epoch == u32::MAX {
+                local.fill((0, 0));
+                epoch = 1;
+            } else {
+                epoch += 1;
+            }
         }
         for &i in triangle {
-            let slot = if let Some(&slot) = local.get(&i) {
-                slot
+            let entry = &mut local[i as usize];
+            let slot = if entry.0 == epoch {
+                entry.1
             } else {
                 let slot =
                     u16::try_from(chunk.vertices.len()).map_err(|_| backend("chunk too large"))?;
                 chunk.vertices.push(vertices[i as usize]);
-                local.insert(i, slot);
+                *entry = (epoch, slot);
                 slot
             };
             chunk.indices.push(slot);
