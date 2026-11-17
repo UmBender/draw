@@ -286,3 +286,30 @@ fn wayland_platform_connect_with_zero_msaa_swaps_cleanly() {
 
     assert!(!platform.frame_pending());
 }
+
+#[test]
+fn wayland_idle_sleeps_until_wakeup() {
+    let sway = Sway::start();
+    let mut platform = platform(&sway);
+    block_on(platform.next_frame());
+    assert!(draw_sys::x11::signal::install_quit());
+
+    // A quit signal wakes `next_idle` instead of polling on a 100 ms timer;
+    // before the fix, `next_idle` sleeps in 100 ms chunks and returns early
+    // on `IDLE_WAIT` without signal wakeups.
+    let started = std::time::Instant::now();
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(30));
+        unsafe {
+            libc_raise(15);
+        }
+    });
+    block_on(platform.next_idle());
+    let _ = draw_sys::x11::signal::take();
+    assert!(started.elapsed() < Duration::from_millis(80));
+}
+
+unsafe extern "C" {
+    #[link_name = "raise"]
+    fn libc_raise(sig: i32) -> i32;
+}

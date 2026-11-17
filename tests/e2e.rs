@@ -1885,6 +1885,66 @@ fn e2e_every_case() {
     assert!(failures.is_empty(), "failed cases: {failures:?}");
 }
 
+#[test]
+#[ignore = "needs the private session of scripts/e2e.sh"]
+fn e2e_idle_cpu_is_near_zero() {
+    if std::env::var_os("DRAW_E2E_CASE").is_some() {
+        return;
+    }
+    let session = Session::join().unwrap_or_else(|err| panic!("{err}"));
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let run = manifest.join("target/e2e/_idle_cpu");
+    let _ = std::fs::remove_dir_all(&run);
+    let home = run.join("home");
+    let state = run.join("state");
+    for dir in [&home, &state] {
+        std::fs::create_dir_all(dir).unwrap_or_else(|err| panic!("{}: {err}", dir.display()));
+    }
+    let mut command = session.tool(env!("CARGO_BIN_EXE_draw"));
+    command
+        .env("HOME", &home)
+        .env("XDG_STATE_HOME", &state)
+        .env("LIBGL_ALWAYS_SOFTWARE", "1")
+        .args(["--log", "info", "--tablet", "off"]);
+    let platform = std::env::var("DRAW_E2E_PLATFORM").ok();
+    command.args(platform_args(platform.as_deref()));
+    let mut child = command.spawn().unwrap_or_else(|err| panic!("draw: {err}"));
+    session
+        .wait_for_window(&mut child)
+        .unwrap_or_else(|err| panic!("{err}"));
+    std::thread::sleep(Duration::from_millis(250));
+    let before = proc_cpu_ticks(child.id()).unwrap_or_else(|err| panic!("{err}"));
+    std::thread::sleep(Duration::from_millis(1000));
+    let after = proc_cpu_ticks(child.id()).unwrap_or_else(|err| panic!("{err}"));
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(&run);
+    let delta = after.saturating_sub(before);
+    // At 100 Hz USER_HZ, <= 5 ticks over 1 second is <= 5% CPU (idle is ~0-1 tick).
+    assert!(delta <= 5, "idle CPU too high: {delta} ticks over 1s");
+}
+
+fn proc_cpu_ticks(pid: u32) -> Result<u64, String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).map_err(|e| e.to_string())?;
+    let after_comm = stat
+        .rsplit_once(") ")
+        .ok_or_else(|| "malformed /proc/pid/stat".to_owned())?
+        .1;
+    let fields: Vec<&str> = after_comm.split_whitespace().collect();
+    // After ') ', index 0 is state (field 3), so utime (field 14) is 11 and stime (field 15) is 12.
+    let utime: u64 = fields
+        .get(11)
+        .ok_or_else(|| "missing utime".to_owned())?
+        .parse()
+        .map_err(|e: std::num::ParseIntError| e.to_string())?;
+    let stime: u64 = fields
+        .get(12)
+        .ok_or_else(|| "missing stime".to_owned())?
+        .parse()
+        .map_err(|e: std::num::ParseIntError| e.to_string())?;
+    Ok(utime + stime)
+}
+
 // ---- Self-tests: no display needed ---------------------------------------
 
 #[cfg(test)]

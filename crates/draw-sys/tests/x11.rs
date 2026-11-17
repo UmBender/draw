@@ -202,3 +202,15 @@ fn x11_platform_schedule_update_ends_the_wait() {
     assert!(scheduled < Duration::from_millis(8), "{scheduled:?}");
     assert!(idle >= Duration::from_millis(8), "{idle:?}");
 }
+
+#[test]
+fn x11_idle_skips_swap_and_wakes_on_scheduled_update() {
+    let server = xvfb::Xvfb::start();
+    let mut platform = open(&server, GlBackend::Glx);
+    assert!(platform.skips_idle_swap());
+
+    platform.schedule_update();
+    let started = Instant::now();
+    block_on(platform.next_idle());
+    assert!(started.elapsed() < Duration::from_millis(20));
+}

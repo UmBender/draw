@@ -1965,6 +1965,106 @@ mod tests {
     }
 
     #[test]
+    fn no_redraw_without_input() {
+        use crate::shell::recording::{GpuCall, PlatformCall, RecordingGpu, RecordingPlatform};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange: one initial frame with Tab, then 4 idle frames with no input.
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+        let mut inner = RecordingPlatform::new(metrics);
+        inner.set_skips_idle_swap(true);
+        inner.queue(RawEvent::Key {
+            key: draw_sys::platform::RawKey::Tab,
+            mods: draw_sys::platform::RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let gpu = RecordingGpu::default();
+        let calls_gpu = gpu.calls_handle();
+        let platform = StopAfter {
+            inner,
+            left: 5,
+            frames: std::rc::Rc::clone(&frames),
+        };
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            gpu,
+            Options::default(),
+            Backend::X11,
+            tablet::detect(crate::shell::options::TabletMode::Off)
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(run.as_mut().poll(&mut cx), Poll::Pending);
+
+        // Assert: only the first frame submits GPU commands; idle frames wait in NextIdle.
+        let submits = calls_gpu
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call, GpuCall::Submit { .. }))
+            .count();
+        assert_eq!(submits, 1);
+        assert_eq!(frames.get(), 5);
+    }
+
+    #[test]
+    fn paused_window_draws_nothing() {
+        use crate::shell::recording::{GpuCall, RecordingGpu, RecordingPlatform};
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange: window starts paused/hidden, even with input queued.
+        let metrics = WindowMetrics {
+            width: 640.0,
+            height: 480.0,
+            scale: 1.0,
+        };
+        let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+        let mut inner = RecordingPlatform::new(metrics);
+        inner.set_paused(true);
+        inner.queue(RawEvent::Key {
+            key: draw_sys::platform::RawKey::Tab,
+            mods: draw_sys::platform::RawMods::default(),
+            down: true,
+            repeat: false,
+        });
+        let gpu = RecordingGpu::default();
+        let calls_gpu = gpu.calls_handle();
+        let platform = StopAfter {
+            inner,
+            left: 3,
+            frames: std::rc::Rc::clone(&frames),
+        };
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            gpu,
+            Options::default(),
+            Backend::X11,
+            tablet::detect(crate::shell::options::TabletMode::Off)
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(run.as_mut().poll(&mut cx), Poll::Pending);
+
+        // Assert: zero GPU submits while paused.
+        let submits = calls_gpu
+            .borrow()
+            .iter()
+            .filter(|call| matches!(call, GpuCall::Submit { .. }))
+            .count();
+        assert_eq!(submits, 0);
+        assert_eq!(frames.get(), 3);
+    }
+
+    #[test]
     fn window_conf_sets_wm_class() {
         // Arrange / Act
         let conf = Conf::from(window_conf(Backend::X11));
