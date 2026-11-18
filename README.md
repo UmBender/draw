@@ -137,6 +137,49 @@ environment.systemPackages = [ inputs.draw.packages.${pkgs.system}.default ];
 test tools. `scripts/nix-check.sh` builds and checks the flake in a
 `nixos/nix` container with podman.
 
+### Install on Arch Linux (AUR)
+
+Arch Linux and Arch-based distributions can build from `packaging/aur/PKGBUILD`
+or install from the AUR once published:
+
+```sh
+yay -S draw
+# or
+paru -S draw
+```
+
+`scripts/aur-check.sh` validates the `PKGBUILD` in an Arch Linux container
+with podman.
+
+### Install on Fedora (COPR)
+
+Fedora users can install from a self-hosted COPR repository built from
+`packaging/rpm/draw.spec`:
+
+```sh
+sudo dnf copr enable UmBender/draw
+sudo dnf install draw
+```
+
+`scripts/copr-check.sh` builds and tests the RPM from a vendored offline
+archive in a Fedora container with podman.
+
+### Install via Flatpak
+
+Install the single-file bundle from GitHub Releases:
+
+```sh
+flatpak install --user ./draw-<version>-x86_64.flatpak
+```
+
+Or add the self-hosted Flatpak repository (`scripts/flatpak-repo.sh` exports
+the static OSTree repository and `draw.flatpakrepo` descriptor):
+
+```sh
+flatpak remote-add --user --if-not-exists draw https://umbender.github.io/draw/flatpak/draw.flatpakrepo
+flatpak install --user draw io.github.UmBender.draw
+```
+
 ### Build from source
 
 Requirements:

@@ -1,0 +1,7 @@
+[Flatpak Repo]
+Title=draw
+Url=https://umbender.github.io/draw/flatpak/
+Homepage=https://github.com/UmBender/draw
+Comment=Self-hosted Flatpak repository for draw (io.github.UmBender.draw)
+Description=Minimal, fast, keyboard-first scratch canvas for competitive programming
+Icon=https://umbender.github.io/draw/flatpak/io.github.UmBender.draw.svg

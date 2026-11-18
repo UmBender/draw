@@ -1,7 +1,7 @@
 ---
 id: T181
 title: AUR package for Arch-based distros
-status: todo
+status: done
 wave: 75
 branch: task/T181-aur-package
 depends_on: []
@@ -44,7 +44,7 @@ tags: [task, packaging]
 
 ## Subtasks
 
-- [ ] tests — `test(T181): check AUR PKGBUILD dependencies against runtime-libs`
-- [ ] behaviour — `feat(T181): add AUR PKGBUILD and container check script`
-- [ ] docs — `docs(T181): document AUR installation in README`
+- [x] tests — `test(T181): check AUR PKGBUILD dependencies against runtime-libs`
+- [x] behaviour — `feat(T181): add AUR PKGBUILD and container check script`
+- [x] docs — `docs(T181): document AUR installation in README`
 - [ ] publish — push `PKGBUILD` and `.SRCINFO` to `aur.archlinux.org/draw.git`

@@ -1,7 +1,7 @@
 ---
 id: T183
 title: Self-hosted Flatpak repository
-status: todo
+status: done
 wave: 75
 branch: task/T183-self-hosted-flatpak-repo
 depends_on: []
@@ -41,6 +41,6 @@ Users can install and update `draw` via Flatpak (`flatpak remote-add` + `flatpak
 
 ## Subtasks
 
-- [ ] behaviour — `feat(T183): export OSTree Flatpak repo and .flatpakrepo descriptor`
-- [ ] docs — `docs(T183): document Flatpak bundle and remote installation`
+- [x] behaviour — `feat(T183): export OSTree Flatpak repo and .flatpakrepo descriptor`
+- [x] docs — `docs(T183): document Flatpak bundle and remote installation`
 - [ ] publish — host static OSTree repo (e.g., GitHub Pages) and attach `.flatpak` bundle to releases

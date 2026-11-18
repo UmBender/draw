@@ -376,3 +376,81 @@ fn readme_has_nixos_install_section() {
         assert!(readme.contains(needle), "README lacks {needle}");
     }
 }
+
+#[test]
+fn aur_pkgbuild_matches_version_and_runtime_libs() {
+    let cargo = read("Cargo.toml");
+    let version = cargo
+        .lines()
+        .find_map(|line| line.strip_prefix("version = \""))
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or_else(|| panic!("version in Cargo.toml"));
+
+    let pkgbuild = read("packaging/aur/PKGBUILD");
+    let srcinfo = read("packaging/aur/.SRCINFO");
+    assert!(
+        pkgbuild.contains(&format!("pkgver={version}")),
+        "PKGBUILD pkgver drifted from {version}"
+    );
+    assert!(
+        srcinfo.contains(&format!("pkgver = {version}")),
+        ".SRCINFO pkgver drifted from {version}"
+    );
+    for pkg in ["libx11", "libxi", "libxkbcommon", "libglvnd", "wayland"] {
+        assert!(
+            pkgbuild.contains(&format!("'{pkg}'")),
+            "PKGBUILD depends lacks {pkg}"
+        );
+        assert!(
+            srcinfo.contains(&format!("depends = {pkg}")),
+            ".SRCINFO depends lacks {pkg}"
+        );
+    }
+}
+
+#[test]
+fn fedora_spec_matches_version_and_runtime_libs() {
+    let cargo = read("Cargo.toml");
+    let version = cargo
+        .lines()
+        .find_map(|line| line.strip_prefix("version = \""))
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or_else(|| panic!("version in Cargo.toml"));
+
+    let spec = read("packaging/rpm/draw.spec");
+    assert!(
+        spec.contains(&format!("Version:        {version}")),
+        "draw.spec Version drifted from {version}"
+    );
+    for pkg in declared(|lib| &lib.fedora) {
+        assert!(
+            spec.contains(&format!("Requires:       {pkg}"))
+                || spec.contains(&format!("Recommends:     {pkg}")),
+            "draw.spec lacks {pkg}"
+        );
+    }
+}
+
+#[test]
+fn flatpak_repo_descriptor_matches_app_id() {
+    let repo = read("packaging/flatpak/draw.flatpakrepo");
+    assert!(repo.contains("[Flatpak Repo]"));
+    assert!(repo.contains("io.github.UmBender.draw"));
+    assert!(repo.contains("Url=https://"));
+}
+
+#[test]
+fn readme_has_aur_copr_and_flatpak_sections() {
+    let readme = read("README.md");
+    for needle in [
+        "### Install on Arch Linux (AUR)",
+        "yay -S draw",
+        "### Install on Fedora (COPR)",
+        "dnf copr enable",
+        "### Install via Flatpak",
+        "flatpak remote-add",
+        "draw.flatpakrepo",
+    ] {
+        assert!(readme.contains(needle), "README lacks {needle}");
+    }
+}

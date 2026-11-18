@@ -1,7 +1,7 @@
 ---
 id: T182
 title: Fedora COPR RPM package
-status: todo
+status: done
 wave: 75
 branch: task/T182-fedora-copr-rpm
 depends_on: []
@@ -44,7 +44,7 @@ tags: [task, packaging]
 
 ## Subtasks
 
-- [ ] tests — `test(T182): check Fedora spec dependencies against runtime-libs`
-- [ ] behaviour — `feat(T182): add Fedora COPR spec and rpmbuild check`
-- [ ] docs — `docs(T182): document Fedora COPR installation in README`
+- [x] tests — `test(T182): check Fedora spec dependencies against runtime-libs`
+- [x] behaviour — `feat(T182): add Fedora COPR spec and rpmbuild check`
+- [x] docs — `docs(T182): document Fedora COPR installation in README`
 - [ ] publish — configure COPR project and trigger initial build
