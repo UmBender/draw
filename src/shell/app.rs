@@ -200,6 +200,36 @@ pub const MAX_LAYER_SIDE: u32 = 8192;
 /// the cached layer instead of re-rendering it (ADR-T26-3).
 pub const REUSE_ABOVE: Duration = Duration::from_millis(8);
 
+/// Frame duration at or above which live preview drops feathered
+/// anti-aliasing to protect responsiveness.
+pub const PREVIEW_AA_DISABLE_ABOVE: Duration = Duration::from_millis(16);
+
+/// Frame duration below which live preview re-enables feathered
+/// anti-aliasing after a slow frame.
+pub const PREVIEW_AA_ENABLE_BELOW: Duration = Duration::from_millis(8);
+
+/// Live preview anti-aliasing mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewAa {
+    /// Feathered per-fragment anti-aliasing (`Blend::AlphaFeathered`).
+    Feathered,
+    /// Non-feathered fallback used when frame times exceed budget.
+    Fast,
+}
+
+/// Updates whether live preview uses feathered anti-aliasing from the most
+/// recent measured frame duration, using hysteresis so it does not flicker
+/// around the threshold.
+#[must_use]
+pub fn next_preview_aa(current: PreviewAa, last_frame: Option<Duration>) -> PreviewAa {
+    match last_frame {
+        None => PreviewAa::Feathered,
+        Some(elapsed) if elapsed >= PREVIEW_AA_DISABLE_ABOVE => PreviewAa::Fast,
+        Some(elapsed) if elapsed < PREVIEW_AA_ENABLE_BELOW => PreviewAa::Feathered,
+        Some(_) => current,
+    }
+}
+
 /// Turns [`Redraw::Moved`] into [`Redraw::Full`] while re-rendering is cheap:
 /// the `last_full` re-render took less than [`REUSE_ABOVE`] or was never
 /// measured. Any other plan is returned unchanged.
@@ -1169,6 +1199,8 @@ struct CachedFrame<G: Gpu> {
     changed_at: Instant,
     /// CPU time of the last full re-render (ADR-T26-3).
     last_full: Option<Duration>,
+    /// Whether live preview shapes currently use feathered anti-aliasing.
+    preview_aa: PreviewAa,
     /// MSAA samples per pixel for new targets.
     samples: i32,
     /// Whether every re-render logs its time (`DRAW_FRAME_TIMES`).
@@ -1200,6 +1232,7 @@ impl<G: Gpu> CachedFrame<G> {
             last_camera: None,
             changed_at: Instant::now(),
             last_full: None,
+            preview_aa: PreviewAa::Feathered,
             samples,
             timed,
             rerender: false,
@@ -1305,7 +1338,7 @@ impl<G: Gpu> CachedFrame<G> {
         }
         let dest = blit_rect(&cached.camera, &camera, self.layer);
         blit_layer(ctx, document, &mut self.filter, blit_filter(redraw), dest);
-        draw_overlay(ctx, editor, &overlay, viewport);
+        draw_overlay(ctx, editor, &overlay, viewport, self.preview_aa);
         draw_laser(ctx, trail);
         self.draw_minimap(ctx, minimap.as_ref(), overview.as_ref(), &camera, viewport);
         if rerender_after_overflow(render::text_overflowed(), cleared) {
@@ -1319,6 +1352,7 @@ impl<G: Gpu> CachedFrame<G> {
             return None;
         }
         let elapsed = started.elapsed();
+        self.preview_aa = next_preview_aa(self.preview_aa, Some(elapsed));
         if self.timed {
             let shapes = editor.document().len();
             let text = (text != TextStats::default()).then_some(text);
@@ -1402,7 +1436,7 @@ impl<G: Gpu> CachedFrame<G> {
         self.key = Some(key);
         ctx.clear_window(hex_color(theme::CANVAS));
         draw_scene(ctx, &camera, viewport);
-        draw_overlay(ctx, editor, &overlay, viewport);
+        draw_overlay(ctx, editor, &overlay, viewport, self.preview_aa);
         draw_laser(ctx, trail);
         self.draw_minimap(ctx, minimap.as_ref(), overview.as_ref(), &camera, viewport);
         if rerender_after_overflow(render::text_overflowed(), cleared) {
@@ -1414,6 +1448,7 @@ impl<G: Gpu> CachedFrame<G> {
             return None;
         }
         let elapsed = started.elapsed();
+        self.preview_aa = next_preview_aa(self.preview_aa, Some(elapsed));
         if self.timed {
             let shapes = editor.document().len();
             let text = (text != TextStats::default()).then_some(text);
@@ -1601,6 +1636,7 @@ fn draw_overlay<G: Gpu>(
     editor: &Editor,
     overlay: &Overlay,
     viewport: Vec2,
+    preview_aa: PreviewAa,
 ) {
     let camera = editor.camera();
     // The open text block shows its source, formulas untypeset (ADR-T30-1).
@@ -1613,6 +1649,8 @@ fn draw_overlay<G: Gpu>(
     for shape in &overlay.shapes {
         if editing.as_ref() == Some(shape) {
             ctx.draw_source_preview(shape, camera, on_fill);
+        } else if preview_aa == PreviewAa::Feathered {
+            ctx.draw_feathered_preview(shape, camera);
         } else {
             ctx.draw_preview(shape, camera);
         }
@@ -2427,6 +2465,30 @@ mod tests {
                 assert_eq!(reuse_if_slow(redraw, last), redraw, "{redraw:?} {last:?}");
             }
         }
+    }
+
+    #[test]
+    fn preview_aa_stays_on_until_slow_then_recovers_with_hysteresis() {
+        assert_eq!(
+            next_preview_aa(PreviewAa::Feathered, None),
+            PreviewAa::Feathered
+        );
+        assert_eq!(
+            next_preview_aa(PreviewAa::Feathered, Some(Duration::from_millis(12))),
+            PreviewAa::Feathered
+        );
+        assert_eq!(
+            next_preview_aa(PreviewAa::Feathered, Some(PREVIEW_AA_DISABLE_ABOVE)),
+            PreviewAa::Fast
+        );
+        assert_eq!(
+            next_preview_aa(PreviewAa::Fast, Some(Duration::from_millis(12))),
+            PreviewAa::Fast
+        );
+        assert_eq!(
+            next_preview_aa(PreviewAa::Fast, Some(Duration::from_millis(7))),
+            PreviewAa::Feathered
+        );
     }
 
     // ---- T26 AC-2 settle ----------------------------------------------------

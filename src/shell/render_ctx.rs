@@ -568,6 +568,38 @@ mod tests {
         assert_eq!(pipelines, 1);
     }
 
+    #[test]
+    fn feathered_preview_uses_feathered_pipeline() {
+        let mut ctx = ctx();
+        let style = stroke().style();
+        let rect = Shape::Rect {
+            a: Vec2::new(10.0, 10.0),
+            b: Vec2::new(50.0, 40.0),
+            style,
+            fill: None,
+            label: None,
+            text: None,
+        };
+        let ellipse = Shape::Ellipse {
+            a: Vec2::new(10.0, 10.0),
+            b: Vec2::new(50.0, 40.0),
+            style,
+            fill: None,
+            label: None,
+            text: None,
+        };
+
+        ctx.draw_feathered_preview(&stroke(), &Camera::default());
+        ctx.draw_feathered_preview(&rect, &Camera::default());
+        ctx.draw_feathered_preview(&ellipse, &Camera::default());
+
+        let calls = ctx.gpu_mut().take_calls();
+        assert!(calls.iter().any(|call| matches!(
+            call,
+            GpuCall::Pipeline { desc, .. } if desc.blend == Blend::AlphaFeathered
+        )));
+    }
+
     /// The production source (above `#[cfg(test)]`) of `src/shell/<name>`.
     fn shell_production(name: &str) -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

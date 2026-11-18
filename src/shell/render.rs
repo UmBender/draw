@@ -11,7 +11,10 @@
 //! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1, ADR-T32-1,
 //! ADR-T32-2).
 
-use draw_gfx::gpu::{Color, Command, CommandList, CommandOf, Geometry, Gpu, Vertex, View};
+use draw_gfx::gpu::{
+    Camera as GfxCamera, Color, Command, CommandList, CommandOf, Geometry, Gpu, Vertex, View,
+};
+use draw_gfx::tessellate::tessellate_at;
 use draw_gfx::text::{GlyphEntry, GlyphSource};
 
 use std::cell::{Cell, RefCell};
@@ -1148,6 +1151,25 @@ impl<G: Gpu> RenderCtx<G> {
         batch.finish();
     }
 
+    /// Draws the shape being created with feathered anti-aliased edges,
+    /// falling back to [`Self::draw_preview`] for text blocks.
+    pub fn draw_feathered_preview(&mut self, shape: &Shape, camera: &Camera) {
+        if !shape.is_finite() {
+            return;
+        }
+        if matches!(shape, Shape::Text { .. }) {
+            self.draw_preview(shape, camera);
+            return;
+        }
+        let mesh = tessellate_at(shape, camera.zoom());
+        let gfx_camera = GfxCamera {
+            origin: [camera.offset().x, camera.offset().y],
+            scale: camera.zoom(),
+        };
+        self.draw_world(gfx_camera, &[&mesh]);
+        draw_shape_annotations(self, shape, camera);
+    }
+
     /// Draws the text block being edited as typed, formulas as source
     /// (ADR-T30-1), in the background colour when it sits `on_fill` of a
     /// shape or cell (ADR-T31-1); any other shape as
@@ -1230,6 +1252,54 @@ pub fn selection_handle_rect(center: Vec2) -> Aabb {
 
 /// Adds one shape to `batch` (its labels are drawn right away, after a
 /// flush); non-finite shapes are skipped.
+/// Draws labels, cell texts and grid axes on top of a feathered preview
+/// when the shape carries any.
+fn draw_shape_annotations<G: Gpu>(ctx: &mut RenderCtx<G>, shape: &Shape, camera: &Camera) {
+    let style = shape.style();
+    let color = color_of(style.color);
+    let to_screen = |p: Vec2| camera.world_to_screen(p);
+    match shape {
+        Shape::Rect { a, b, fill, .. } | Shape::Ellipse { a, b, fill, .. } => {
+            let label = shown_label(shape);
+            if label.is_none() && shape.placed_texts().is_empty() {
+                return;
+            }
+            let rect = Aabb::from_corners(to_screen(*a), to_screen(*b));
+            let ellipse = matches!(shape, Shape::Ellipse { .. });
+            let mut batch = Batch::new(CtxSink::new(ctx));
+            draw_label(&mut batch, label, rect, ellipse, label_color(*fill, color));
+            draw_shape_texts(&mut batch, shape, camera, |_| label_color(*fill, color));
+            batch.finish();
+        }
+        Shape::Grid {
+            a,
+            b,
+            cols,
+            rows,
+            axes,
+            ..
+        } => {
+            if !*axes && shape.placed_texts().is_empty() {
+                return;
+            }
+            let (a, b) = (to_screen(*a), to_screen(*b));
+            let mut batch = Batch::new(CtxSink::new(ctx));
+            if *axes {
+                draw_axis_labels(&mut batch, a, b, *cols, *rows, color);
+            }
+            let cell_color = |p: Vec2| {
+                let filled = shape
+                    .grid_cell_at(p)
+                    .and_then(|(col, row)| shape.cell_fill(col, row));
+                label_color(filled, color)
+            };
+            draw_shape_texts(&mut batch, shape, camera, cell_color);
+            batch.finish();
+        }
+        Shape::Stroke { .. } | Shape::Line { .. } | Shape::Arrow { .. } | Shape::Text { .. } => {}
+    }
+}
+
 fn draw_shape<G: Gpu>(batch: &mut CtxBatch<'_, G>, shape: &Shape, camera: &Camera) {
     if !shape.is_finite() {
         return;
