@@ -8,17 +8,15 @@
 //! panel, that texture and the view frame on the window. The camera is
 //! not part of the key, so panning never re-renders the overview.
 
-use macroquad::color::Color;
-
 use crate::core::editor::Editor;
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::minimap::{Fit, Minimap};
 use crate::core::palette::palette;
 use crate::core::shape::{Shape, grid_cell_rect};
-use crate::shell::render::{Batch, CtxSink, MeshSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::render::{Batch, CtxSink, MeshSink, hex_color, hex_color_alpha, rgba_color};
 use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
-use draw_gfx::gpu::Gpu;
+use draw_gfx::gpu::{Color, Gpu};
 
 /// Content drawn smaller than this, in pixels on its longer side, gets a
 /// marker: the scaled-down overview can lose its lines.
@@ -125,7 +123,7 @@ const TEXT_BAR_ALPHA: u8 = 140;
 
 /// Adds the schematic of one finite `shape` to `batch`, through `image`.
 fn draw_schematic<S: MeshSink>(batch: &mut Batch<S>, shape: &Shape, image: &Fit) {
-    let color = to_mq_color(palette(shape.style().color));
+    let color = rgba_color(palette(shape.style().color));
     let bounds = image.rect_of(shape.bounds());
     if bounds.width().max(bounds.height()) < DOT_BELOW_PX {
         let half = Vec2::new(DOT_BELOW_PX * 0.5, DOT_BELOW_PX * 0.5);
@@ -143,7 +141,7 @@ fn draw_schematic<S: MeshSink>(batch: &mut Batch<S>, shape: &Shape, image: &Fit)
         Shape::Rect { a, b, fill, .. } => {
             let rect = Aabb::from_corners(image.point(*a), image.point(*b));
             if let Some(fill) = fill {
-                batch.rect(rect, to_mq_color(palette(*fill)));
+                batch.rect(rect, rgba_color(palette(*fill)));
             }
             outline(batch, rect, color);
         }
@@ -157,7 +155,7 @@ fn draw_schematic<S: MeshSink>(batch: &mut Batch<S>, shape: &Shape, image: &Fit)
                 })
                 .collect();
             if let Some(fill) = fill {
-                batch.fan(center, rim.iter().copied(), to_mq_color(palette(*fill)));
+                batch.fan(center, rim.iter().copied(), rgba_color(palette(*fill)));
             }
             batch.polyline(rim, LINE_PX, color);
         }
@@ -167,13 +165,13 @@ fn draw_schematic<S: MeshSink>(batch: &mut Batch<S>, shape: &Shape, image: &Fit)
             let (a, b) = (image.point(*a), image.point(*b));
             for fill in shape.cell_fills() {
                 let cell = grid_cell_rect(a, b, *cols, *rows, fill.col, fill.row);
-                batch.rect(cell, to_mq_color(palette(fill.color)));
+                batch.rect(cell, rgba_color(palette(fill.color)));
             }
             outline(batch, Aabb::from_corners(a, b), color);
         }
         Shape::Text { .. } => {
             let bar = palette(shape.style().color).faded(TEXT_BAR_ALPHA);
-            batch.rect(bounds, to_mq_color(bar));
+            batch.rect(bounds, rgba_color(bar));
         }
     }
 }

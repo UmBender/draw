@@ -246,8 +246,14 @@ fn cargo_has_no_miniquad_or_macroquad() {
     let lock = read("Cargo.lock");
 
     // Assert: ADR-T127-4 / T149 — miniquad and macroquad are gone.
-    assert!(!manifest.contains("macroquad"), "Cargo.toml still names macroquad");
-    assert!(!manifest.contains("miniquad"), "Cargo.toml still names miniquad");
+    assert!(
+        !manifest.contains("macroquad"),
+        "Cargo.toml still names macroquad"
+    );
+    assert!(
+        !manifest.contains("miniquad"),
+        "Cargo.toml still names miniquad"
+    );
     assert!(
         !Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("vendor/miniquad")

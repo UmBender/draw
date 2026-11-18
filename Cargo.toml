@@ -15,30 +15,19 @@ members = [
     "crates/draw-gfx",
     "crates/draw-sys",
 ]
-# The vendored miniquad is a [patch] below, not a member.
-exclude = ["vendor"]
 
 [dependencies]
-macroquad = "0.4"
 draw-types = { path = "crates/draw-types" }
 draw-core = { path = "crates/draw-core" }
 draw-gfx = { path = "crates/draw-gfx" }
 draw-sys = { path = "crates/draw-sys" }
-# Same version macroquad uses: no second copy (ADR-T32-1).
 fontdue = "0.9"
-# Same version macroquad uses: no second copy (ADR-T92-1).
 png = "0.17"
 # Same version fontdue uses: no second copy (ADR-T114-1).
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 proptest = "1"
-
-# miniquad 0.4.11 with pen tablet input: pressure on X11, zwp_tablet_v2
-# on Wayland (ADR-T35-1, vendor/miniquad/PATCHED.md). macroquad itself
-# stays the crates.io release.
-[patch.crates-io]
-miniquad = { path = "vendor/miniquad" }
 
 # The unsafe level of each crate is an attribute in its root, because a
 # workspace lint table cannot differ per crate (ADR-T132-1).
@@ -92,12 +81,12 @@ debug = "line-tables-only"
 
 # Packages built by scripts/package.sh from the staging tree of
 # packaging/build.sh (ADR-T27-2). `depends` and `requires` are the
-# `required` and `gl` packages of packaging/runtime-libs: miniquad loads
+# `required` and `gl` packages of packaging/runtime-libs: draw-sys loads
 # them with dlopen, so no tool can infer them (tests/packaging.rs).
 [package.metadata.deb]
 depends = "libx11-6, libxi6, libxkbcommon0, libgl1, libegl1"
 # Native Wayland, the default on Wayland sessions (ADR-T46-1).
-recommends = "libwayland-client0, libwayland-egl1, libdecor-0-0"
+recommends = "libwayland-client0, libwayland-egl1"
 maintainer = "Gustavo Bender <gustavo.benderr@gmail.com>"
 copyright = "Gustavo Bender"
 section = "graphics"
@@ -146,4 +135,3 @@ libglvnd-egl = "*"
 [package.metadata.generate-rpm.recommends]
 libwayland-client = "*"
 libwayland-egl = "*"
-libdecor = "*"

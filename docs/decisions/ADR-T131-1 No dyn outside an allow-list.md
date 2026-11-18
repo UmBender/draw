@@ -44,16 +44,6 @@ traits are objects).
 
 - `src/shell/export.rs` — `Error::source` returns `&(dyn Error + 'static)`; the std signature. Stays.
 - `src/shell/crash.rs` — the panic hook payload is `&(dyn Any + Send)`; the std signature. Stays.
-- `vendor/miniquad/src/fs.rs` — boxed callback. Removed by T149.
-- `vendor/miniquad/src/lib.rs` — `Context` and `EventHandler` objects. Removed by T149.
-- `vendor/miniquad/src/native.rs` — boxed clipboard and request callback. Removed by T149.
-- `vendor/miniquad/src/native/linux_wayland.rs` — boxed `EventHandler`. Removed by T149.
-- `vendor/miniquad/src/native/linux_x11.rs` — boxed `EventHandler`. Removed by T149.
-- `vendor/miniquad/src/native/windows.rs` — boxed `EventHandler`. Removed by T149.
-- `vendor/miniquad/src/native/macos.rs` — boxed `EventHandler`. Removed by T149.
-- `vendor/miniquad/src/native/ios.rs` — boxed `EventHandler`. Removed by T149.
-- `vendor/miniquad/src/native/android.rs` — boxed `EventHandler`. Removed by T149.
-- `vendor/miniquad/src/native/wasm.rs` — boxed `EventHandler`. Removed by T149.
 
 ## Alternatives considered
 

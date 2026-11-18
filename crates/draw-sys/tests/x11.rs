@@ -222,7 +222,7 @@ fn x11_idle_sleeps_until_wakeup() {
     // Drain initial map/expose/configure events first.
     std::thread::sleep(Duration::from_millis(50));
     platform.poll(&mut Vec::new());
-    assert!(draw_sys::x11::signal::install_quit());
+    assert!(draw_sys::signal::install_quit());
 
     let started = Instant::now();
     std::thread::spawn(|| {
@@ -234,7 +234,7 @@ fn x11_idle_sleeps_until_wakeup() {
     });
     block_on(platform.next_idle());
     let elapsed = started.elapsed();
-    let _ = draw_sys::x11::signal::take();
+    let _ = draw_sys::signal::take();
     assert!(
         elapsed >= Duration::from_millis(50) && elapsed < Duration::from_millis(200),
         "expected sleep until signal, got {elapsed:?}"

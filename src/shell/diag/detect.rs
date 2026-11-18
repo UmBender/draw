@@ -223,7 +223,7 @@ impl Limiter {
 mod tests {
     use super::*;
     use crate::shell::diag::event::{Anomaly, Event};
-    use crate::shell::platform_mq::keys::KeyCode;
+    use crate::shell::input_map::test_keys::KeyCode;
     use draw_sys::platform::Device;
     use std::time::Duration;
 

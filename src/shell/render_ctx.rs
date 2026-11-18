@@ -343,10 +343,7 @@ mod tests {
     use crate::shell::app::{MATH_FONT, TEXT_FONT};
     use crate::shell::glyphs::GlyphAtlas;
     use crate::shell::recording::{GpuCall, RecordingGpu};
-    use draw_gfx::gpu::{
-        Color as GfxColor, Command, CommandOf, Filter, Geometry, Gpu, TargetDesc, View,
-    };
-    use macroquad::color::WHITE;
+    use draw_gfx::gpu::{Color, Command, CommandOf, Filter, Geometry, Gpu, TargetDesc, View};
 
     const VIEW: View = View {
         width: 800.0,
@@ -478,7 +475,7 @@ mod tests {
         let mut ctx = ctx();
 
         // Act
-        ctx.draw_menu_label("Hi", 10.0, 20.0, 16, WHITE);
+        ctx.draw_menu_label("Hi", 10.0, 20.0, 16, Color::rgba(1.0, 1.0, 1.0, 1.0));
 
         // Assert
         let calls = ctx.gpu_mut().take_calls();
@@ -524,7 +521,7 @@ mod tests {
             width: 64.0,
             height: 64.0,
         };
-        let clear = Some(GfxColor::rgba(0.0, 0.0, 0.0, 1.0));
+        let clear = Some(Color::rgba(0.0, 0.0, 0.0, 1.0));
         ctx.gpu_mut().take_calls();
 
         // Act

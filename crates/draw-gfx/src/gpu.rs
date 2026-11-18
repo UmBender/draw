@@ -30,6 +30,40 @@ impl Color {
     pub const fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
+
+    /// A colour from its channels.
+    #[must_use]
+    pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self::rgba(r, g, b, a)
+    }
+
+    /// A colour from 8-bit channels.
+    #[must_use]
+    pub fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+        Self::rgba(
+            f32::from(r) / 255.0,
+            f32::from(g) / 255.0,
+            f32::from(b) / 255.0,
+            f32::from(a) / 255.0,
+        )
+    }
+}
+
+impl From<[u8; 4]> for Color {
+    fn from(val: [u8; 4]) -> Self {
+        Self::from_rgba(val[0], val[1], val[2], val[3])
+    }
+}
+
+impl From<Color> for [u8; 4] {
+    fn from(val: Color) -> Self {
+        [
+            (val.r * 255.0) as u8,
+            (val.g * 255.0) as u8,
+            (val.b * 255.0) as u8,
+            (val.a * 255.0) as u8,
+        ]
+    }
 }
 
 /// One mesh vertex: position in logical pixels, texture coordinate and

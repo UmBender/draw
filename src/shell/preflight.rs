@@ -1,7 +1,7 @@
 //! Startup preflight: checks for a display and the window-system
-//! libraries before miniquad opens the window (T27, ADR-T27-2).
+//! libraries before opening the window (T27, ADR-T27-2).
 //!
-//! miniquad loads its libraries with `dlopen` and panics when one is
+//! `draw-sys` loads its libraries with `dlopen` and fails when one is
 //! missing; this check runs first and turns that into one line naming the
 //! package to install. The decision ([`check`]) is a pure function over
 //! the environment and a library lookup; [`run`] feeds it the real ones.
@@ -745,7 +745,6 @@ libc.so.6            linked    glibc           libc6
         ] {
             assert!(has(soname, Role::Wayland), "{soname}");
         }
-        assert!(has("libdecor-0.so.0", Role::Optional));
         assert!(has("libxkbcommon.so.0", Role::Required));
         assert!(has("libEGL.so.1", Role::Gl));
         assert!(!libs.iter().any(|lib| lib.role == Role::Unused));

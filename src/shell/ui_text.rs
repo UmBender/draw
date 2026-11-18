@@ -14,8 +14,7 @@ use crate::shell::glyphs::{
 };
 use crate::shell::render::{Batch, MeshSink};
 use crate::shell::render_ctx::RenderCtx;
-use draw_gfx::gpu::{Gpu, Vertex};
-use macroquad::color::Color;
+use draw_gfx::gpu::{Color, Gpu, Vertex};
 use std::cell::OnceCell;
 
 /// A glyph quad with the atlas page it samples.

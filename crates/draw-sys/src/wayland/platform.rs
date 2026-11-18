@@ -240,7 +240,7 @@ impl Platform for WaylandPlatform {
         if std::mem::take(&mut self.update_scheduled)
             || self.window.close_requested()
             || self.connection.shared.input.has_events()
-            || crate::x11::signal::peek().is_some()
+            || crate::signal::peek().is_some()
         {
             return std::future::ready(());
         }
@@ -251,7 +251,7 @@ impl Platform for WaylandPlatform {
             } else {
                 -1
             };
-            let wake_fd = crate::x11::signal::wake_fd();
+            let wake_fd = crate::signal::wake_fd();
             if self
                 .connection
                 .shared
@@ -268,7 +268,7 @@ impl Platform for WaylandPlatform {
                 || self.window.close_requested()
                 || self.paused() != was_paused
                 || metrics(&self.window) != self.reported
-                || crate::x11::signal::peek().is_some()
+                || crate::signal::peek().is_some()
             {
                 break;
             }

@@ -1,6 +1,5 @@
-//! The macroquad layer: window, input translation, rendering and toolbar.
-//!
-//! The only part of the crate that depends on macroquad.
+//! The shell layer: window, input translation, rendering and toolbar over
+//! `draw-sys` and `draw-gfx`.
 
 pub mod app;
 pub mod autosave;
@@ -11,12 +10,10 @@ pub mod diag;
 pub mod export;
 pub mod file;
 pub mod glyphs;
-pub mod gpu_mq;
 pub mod gpu_native;
 pub mod input_map;
 pub mod minimap;
 pub mod options;
-pub mod platform_mq;
 pub mod preflight;
 pub mod recording;
 pub mod render;

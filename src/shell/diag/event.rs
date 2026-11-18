@@ -538,7 +538,7 @@ mod tests {
     use super::*;
     use crate::core::command::Tool;
     use crate::core::input::PointerButton;
-    use crate::shell::platform_mq::keys::KeyCode;
+    use crate::shell::input_map::test_keys::KeyCode;
     use draw_sys::platform::{BackendEvent, Device, RawMods as KeyMods};
 
     fn mods(shift: bool, ctrl: bool, alt: bool) -> KeyMods {

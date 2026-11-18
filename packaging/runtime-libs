@@ -29,7 +29,6 @@ libwayland-client.so.0   wayland   libwayland-client         libwayland-client0
 libwayland-egl.so.1      wayland   libwayland-egl            libwayland-egl1
 libxkbcommon.so.0        wayland   libxkbcommon              libxkbcommon0
 libEGL.so.1              wayland   libglvnd-egl              libegl1
-libdecor-0.so.0          optional  libdecor                  libdecor-0-0
 libc.so.6                linked    glibc                     libc6
 libm.so.6                linked    glibc                     libc6
 libdl.so.2               linked    glibc                     libc6

@@ -10,7 +10,8 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use draw_sys::platform::Platform;
-use draw_sys::x11::{GlBackend, X11Platform, signal};
+use draw_sys::signal;
+use draw_sys::x11::{GlBackend, X11Platform};
 
 fn send(signal: &str) {
     let pid = std::process::id().to_string();

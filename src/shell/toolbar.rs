@@ -8,18 +8,16 @@
 //! viewport; [`draw`] paints the strip with the theme tokens (ADR-0012),
 //! marking the active tool, colour and the helpers that are on with `accent`.
 
-use macroquad::color::Color;
-
 use crate::core::command::{Command, Tool};
 use crate::core::editor::{Editor, PAGE_COUNT};
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::input::InputEvent;
 use crate::core::palette::{ColorId, PALETTE_LEN, Rgba, palette};
-use crate::shell::render::{Batch, CtxSink, hex_color, hex_color_alpha, to_mq_color};
+use crate::shell::render::{Batch, CtxSink, hex_color, hex_color_alpha, rgba_color};
 use crate::shell::render_ctx::RenderCtx;
 use crate::shell::{ui_shapes, ui_text};
 use crate::theme;
-use draw_gfx::gpu::Gpu;
+use draw_gfx::gpu::{Color, Gpu};
 
 /// Side of a square button in pixels.
 pub const BUTTON_PX: f32 = 32.0;
@@ -376,7 +374,7 @@ pub fn draw<G: Gpu>(ctx: &mut RenderCtx<G>, editor: &Editor, viewport: Vec2) {
             }
             ButtonKind::Color(id) => {
                 let swatch = rect.expand(-SWATCH_INSET_PX);
-                ui_shapes::fill(ctx, swatch, SWATCH_RADIUS_PX, to_mq_color(palette(id)));
+                ui_shapes::fill(ctx, swatch, SWATCH_RADIUS_PX, rgba_color(palette(id)));
                 if editor.style().color == id {
                     let ring = swatch.expand(SWATCH_RING_GAP_PX);
                     ui_shapes::ring(ctx, ring, BUTTON_RADIUS_PX, OUTLINE_PX, accent);
@@ -570,9 +568,9 @@ fn draw_toggle<G: Gpu>(
 fn history_color(enabled: bool) -> Color {
     let text = Rgba::from_hex(theme::TOOLBAR_TEXT);
     if enabled {
-        to_mq_color(text)
+        rgba_color(text)
     } else {
-        to_mq_color(text.faded(theme::TOOLBAR_DISABLED_ALPHA))
+        rgba_color(text.faded(theme::TOOLBAR_DISABLED_ALPHA))
     }
 }
 

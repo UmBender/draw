@@ -48,7 +48,6 @@
           { soname = "libEGL.so.1"; pkg = libglvnd; }
           { soname = "libwayland-client.so.0"; pkg = wayland; }
           { soname = "libwayland-egl.so.1"; pkg = wayland; }
-          { soname = "libdecor-0.so.0"; pkg = libdecor; }
         ];
 
       libraryPath =

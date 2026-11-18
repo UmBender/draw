@@ -142,8 +142,7 @@ pub type ClosingWayland = Closing<draw_sys::wayland::WaylandPlatform>;
 
 /// A native platform ending the process in order when the window is closed
 /// or a quit signal arrives: the frame loop of the app has no exit of its
-/// own (the macroquad window ends it). The signal flag is the one of
-/// `draw_sys::x11::signal`, which does not depend on X11.
+/// own. The signal flag is the one of [`draw_sys::signal`].
 pub struct Closing<P: CloseRequest> {
     /// The wrapped platform.
     inner: P,
@@ -195,15 +194,15 @@ impl<P: CloseRequest> draw_sys::platform::Platform for Closing<P> {
 
     async fn next_frame(&mut self) {
         self.inner.next_frame().await;
-        if self.inner.close_requested() || draw_sys::x11::signal::peek().is_some() {
-            (self.on_close)(draw_sys::x11::signal::take());
+        if self.inner.close_requested() || draw_sys::signal::peek().is_some() {
+            (self.on_close)(draw_sys::signal::take());
         }
     }
 
     async fn next_idle(&mut self) {
         self.inner.next_idle().await;
-        if self.inner.close_requested() || draw_sys::x11::signal::peek().is_some() {
-            (self.on_close)(draw_sys::x11::signal::take());
+        if self.inner.close_requested() || draw_sys::signal::peek().is_some() {
+            (self.on_close)(draw_sys::signal::take());
         }
     }
 }
