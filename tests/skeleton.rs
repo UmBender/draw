@@ -34,11 +34,6 @@ fn all_modules_are_reachable() {
 }
 
 #[test]
-fn window_conf_has_expected_title_and_size() {
-    let conf = draw::shell::app::window_conf(draw::shell::backend::Backend::X11);
-
-    assert_eq!(conf.window_title, "draw");
-    assert_eq!((conf.window_width, conf.window_height), (1280, 800));
-    assert!(conf.window_resizable);
-    assert!(conf.high_dpi);
+fn wm_class_is_draw() {
+    assert_eq!(draw::shell::app::WM_CLASS, "draw");
 }

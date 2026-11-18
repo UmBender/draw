@@ -13,7 +13,6 @@ pub mod keys;
 pub mod pen;
 mod platform;
 pub mod selection;
-pub mod signal;
 mod xlib;
 
 pub use platform::{GlSurface, SharedGl, X11Platform};

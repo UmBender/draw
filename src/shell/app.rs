@@ -1,7 +1,7 @@
 //! Window configuration and the main loop.
 //!
-//! The loop follows ADR-T12-1: miniquad's blocking event loop sleeps until
-//! input arrives, raw events are replayed into an [`Collector`],
+//! The loop follows ADR-T12-1: the platform's blocking event loop sleeps until
+//! input arrives, raw events are replayed into a [`Collector`],
 //! routed past the toolbar into the [`Editor`]. The document is cached in a
 //! render target that is re-rendered (or appended to) only when its
 //! [`LayerKey`] changes (ADR-T24-1, ADR-T24-3); every woken frame blits it
@@ -10,13 +10,9 @@
 //! camera settles (ADR-T26-1). The embedded font is loaded at start-up
 //! (ADR-T29-1); an open text block's caret is part of the overlay.
 
-use macroquad::color::Color;
-use macroquad::conf::{Conf, UpdateTrigger};
-use macroquad::miniquad::conf::{Conf as WindowConf, Platform as WindowPlatform};
-use macroquad::miniquad::signal::{FatalSignal, QuitSignal};
-
-use draw_gfx::gpu::{Filter, Gpu, TargetDesc, View};
+use draw_gfx::gpu::{Color, Filter, Gpu, TargetDesc, View};
 use draw_sys::platform::{Platform, RawEvent, WindowMetrics};
+use draw_sys::signal::{FatalSignal, QuitSignal};
 
 use std::collections::HashSet;
 use std::io::Write as _;
@@ -57,7 +53,7 @@ use crate::shell::input_map::{
 use crate::shell::minimap::{self, OverviewKey};
 use crate::shell::options::{Options, Renderer};
 use crate::shell::render::{
-    self, Batch, CtxSink, TextStats, gfx_color, hex_color, hex_color_alpha, to_mq_color,
+    self, Batch, CtxSink, TextStats, hex_color, hex_color_alpha, rgba_color,
 };
 use crate::shell::render_ctx::RenderCtx;
 use crate::shell::retained::RetainedScene;
@@ -287,56 +283,6 @@ fn frame_target_desc(size: (u32, u32), samples: i32) -> TargetDesc {
     }
 }
 
-/// The window the app opens. `main` passes it to macroquad, which converts it
-/// into a [`Conf`] with the blocking event loop (ADR-T12-1).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WindowSettings {
-    /// Window title.
-    pub window_title: String,
-    /// Initial width in logical pixels.
-    pub window_width: i32,
-    /// Initial height in logical pixels.
-    pub window_height: i32,
-    /// Whether the user can resize the window.
-    pub window_resizable: bool,
-    /// Whether to render at the display's full resolution.
-    pub high_dpi: bool,
-    /// Window backend on Linux (ADR-T28-1).
-    pub backend: Backend,
-}
-
-impl From<WindowSettings> for Conf {
-    /// Blocking event loop woken by every kind of pointer and key input.
-    fn from(settings: WindowSettings) -> Self {
-        Self {
-            miniquad_conf: WindowConf {
-                window_title: settings.window_title,
-                window_width: settings.window_width,
-                window_height: settings.window_height,
-                window_resizable: settings.window_resizable,
-                high_dpi: settings.high_dpi,
-                platform: WindowPlatform {
-                    linux_backend: settings.backend.linux_backend(),
-                    blocking_event_loop: true,
-                    linux_wm_class: WM_CLASS,
-                    ..WindowPlatform::default()
-                },
-                ..WindowConf::default()
-            },
-            update_on: Some(UpdateTrigger {
-                key_down: true,
-                mouse_down: true,
-                mouse_up: true,
-                mouse_motion: true,
-                mouse_wheel: true,
-                specific_key: None,
-                touch: false,
-            }),
-            ..Conf::default()
-        }
-    }
-}
-
 /// The chord that writes a diagnostics dump, caught before the editor so
 /// it works in every mode (ADR-T47-1).
 pub const DUMP_CHORD: KeyChord = KeyChord::ctrl_shift(Key::L);
@@ -477,20 +423,6 @@ pub fn on_fatal_signal(signal: FatalSignal) {
             signal.name(),
             path.display()
         );
-    }
-}
-
-/// Window settings used by `main` for the chosen `backend` (ADR-T28-1,
-/// ADR-T46-1).
-#[must_use]
-pub fn window_conf(backend: Backend) -> WindowSettings {
-    WindowSettings {
-        window_title: "draw".to_owned(),
-        window_width: 1280,
-        window_height: 800,
-        window_resizable: true,
-        high_dpi: true,
-        backend,
     }
 }
 
@@ -1220,8 +1152,8 @@ enum IdlePolicy {
 
 /// The document layer: background, underlay and document shapes in a
 /// multisampled render target the size of the framebuffer plus a margin,
-/// which macroquad resolves into a plain texture (ADR-T15-1, ADR-T24-1,
-/// ADR-T26-1). The overlay is drawn on the window every frame (ADR-T24-2).
+/// resolved into a plain texture (ADR-T15-1, ADR-T24-1, ADR-T26-1). The
+/// overlay is drawn on the window every frame (ADR-T24-2).
 struct CachedFrame<G: Gpu> {
     /// The document layer.
     document: Option<G::Target>,
@@ -1368,7 +1300,7 @@ impl<G: Gpu> CachedFrame<G> {
         if redraw == Redraw::Moved {
             // The moved layer may not cover the window; wake again until the
             // camera settles (ADR-T26-1).
-            ctx.clear_window(gfx_color(hex_color(theme::CANVAS)));
+            ctx.clear_window(hex_color(theme::CANVAS));
             self.wake = true;
         }
         let dest = blit_rect(&cached.camera, &camera, self.layer);
@@ -1468,7 +1400,7 @@ impl<G: Gpu> CachedFrame<G> {
             }
         }
         self.key = Some(key);
-        ctx.clear_window(gfx_color(hex_color(theme::CANVAS)));
+        ctx.clear_window(hex_color(theme::CANVAS));
         draw_scene(ctx, &camera, viewport);
         draw_overlay(ctx, editor, &overlay, viewport);
         draw_laser(ctx, trail);
@@ -1634,7 +1566,7 @@ fn render_into<G: Gpu>(
         width: viewport.x,
         height: viewport.y,
     };
-    ctx.render_to(target, view, clear.map(gfx_color), draw);
+    ctx.render_to(target, view, clear, draw);
 }
 
 /// Draws the document layer through `camera` into a target of `viewport`
@@ -1694,7 +1626,7 @@ fn draw_overlay<G: Gpu>(
         let color = if on_fill {
             hex_color(theme::TEXT_ON_FILL)
         } else {
-            to_mq_color(palette(edit.style.color))
+            rgba_color(palette(edit.style.color))
         };
         let mut batch = Batch::new(CtxSink::new(ctx));
         batch.line(top, bottom, CARET_WIDTH_PX, color);
@@ -1816,8 +1748,7 @@ mod tests {
     use super::*;
     use crate::core::camera::{ZOOM_MAX, ZOOM_MIN};
     use crate::core::geom::approx_eq;
-    use macroquad::miniquad::conf::LinuxBackend;
-    use macroquad::miniquad::signal;
+    use draw_sys::signal;
     use proptest::prelude::*;
 
     #[test]
@@ -1979,8 +1910,6 @@ mod tests {
             scale: 1.0,
         };
         let frames = std::rc::Rc::new(std::cell::Cell::new(0));
-        // Tab hides the toolbar: its labels are measured with macroquad's
-        // font (kept until T149), which needs a macroquad context.
         let mut inner = RecordingPlatform::new(metrics);
         inner.queue(RawEvent::Key {
             key: draw_sys::platform::RawKey::Tab,
@@ -2114,52 +2043,8 @@ mod tests {
     }
 
     #[test]
-    fn window_conf_sets_wm_class() {
-        // Arrange / Act
-        let conf = Conf::from(window_conf(Backend::X11));
-
-        // Assert
-        assert_eq!(conf.miniquad_conf.platform.linux_wm_class, WM_CLASS);
+    fn wm_class_is_draw() {
         assert_eq!(WM_CLASS, "draw");
-    }
-
-    #[test]
-    fn window_settings_x11_is_x11_only_with_blocking_loop() {
-        // Arrange
-        let settings = WindowSettings {
-            backend: Backend::X11,
-            ..window_conf(Backend::X11)
-        };
-
-        // Act
-        let platform = Conf::from(settings).miniquad_conf.platform;
-
-        // Assert
-        assert_eq!(platform.linux_backend, LinuxBackend::X11Only);
-        assert!(platform.blocking_event_loop);
-        assert_eq!(platform.linux_wm_class, WM_CLASS);
-    }
-
-    #[test]
-    fn window_settings_wayland_keeps_blocking_loop() {
-        // Arrange
-        let settings = WindowSettings {
-            backend: Backend::Wayland,
-            ..window_conf(Backend::X11)
-        };
-
-        // Act
-        let conf = Conf::from(settings);
-
-        // Assert
-        let platform = &conf.miniquad_conf.platform;
-        assert_eq!(platform.linux_backend, LinuxBackend::WaylandWithX11Fallback);
-        assert!(platform.blocking_event_loop);
-        assert_eq!(platform.linux_wm_class, WM_CLASS);
-        assert!(
-            conf.update_on
-                .is_some_and(|on| on.mouse_motion && on.key_down)
-        );
     }
 
     #[test]

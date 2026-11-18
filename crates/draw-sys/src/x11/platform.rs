@@ -25,11 +25,11 @@ use super::selection::{
     Answer, INCR_THRESHOLD, IncrReceiver, IncrSender, IncrStep, Payload, Request, SelEvent,
     decode_selection,
 };
-use super::signal;
 use super::xlib::{
     Connection, Created, Fetched, Mapped, SelAtoms, VisualChoice, Window, open_context,
 };
 use super::{GlBackend, X11Error};
+use crate::signal;
 
 /// How long a read of another client's selection waits for each step.
 const READ_TIMEOUT: Duration = Duration::from_secs(1);

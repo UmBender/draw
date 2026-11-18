@@ -25,17 +25,6 @@ pub enum TabletMode {
     Off,
 }
 
-/// Which window, input and GL interpreters the app runs over
-/// (`--platform`, T178).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Platform {
-    /// macroquad's window, input and GL (the default until T149).
-    #[default]
-    Macroquad,
-    /// The own backends of `draw-sys` and `draw-gfx`.
-    Native,
-}
-
 /// How the document is drawn (`--renderer`, T172).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Renderer {
@@ -70,8 +59,6 @@ pub struct Options {
     /// The window backend, or the session's default when `None`
     /// (`--backend`).
     pub backend: Option<Backend>,
-    /// The interpreters the app runs over (`--platform`).
-    pub platform: Platform,
     /// Whether to skip the start-up check (`--skip-preflight`).
     pub skip_preflight: bool,
     /// Pen mode (`--tablet`).
@@ -95,7 +82,6 @@ impl Default for Options {
             msaa_samples: DEFAULT_MSAA_SAMPLES,
             frame_times: false,
             backend: None,
-            platform: Platform::Macroquad,
             skip_preflight: false,
             tablet: TabletMode::Auto,
             snapshot: None,
@@ -178,8 +164,8 @@ fn read(args: &[OsString]) -> Result<Options, String> {
                 });
                 rest.extend(value);
             }
-            "log" | "msaa" | "backend" | "platform" | "tablet" | "renderer" | "snapshot"
-            | "e2e-dump" | "e2e-idle" | "e2e-clipboard" => {
+            "log" | "msaa" | "backend" | "tablet" | "renderer" | "snapshot" | "e2e-dump"
+            | "e2e-idle" | "e2e-clipboard" => {
                 let value = inline
                     .or_else(|| words.next().cloned())
                     .ok_or_else(|| format!("`--{name}` needs a value"))?;
@@ -213,13 +199,6 @@ fn apply(options: &mut Options, name: &str, value: &OsString) -> Result<(), Stri
         }
         "backend" => {
             options.backend = Some(Backend::from_name(&text).ok_or_else(|| bad("wayland or x11"))?);
-        }
-        "platform" => {
-            options.platform = match text.trim().to_ascii_lowercase().as_str() {
-                "macroquad" => Platform::Macroquad,
-                "native" => Platform::Native,
-                _ => return Err(bad("macroquad or native")),
-            };
         }
         "tablet" => {
             options.tablet = match text.trim().to_ascii_lowercase().as_str() {

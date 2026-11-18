@@ -8,6 +8,9 @@ All notable changes to draw are listed here. The format follows
 
 ### Changed
 
+- Removed the vendored `miniquad` fork and `macroquad` dependency; `draw` now
+  runs exclusively on its own native `draw-sys` (Wayland and X11) and
+  `draw-gfx` (OpenGL ES 3.0) backends, and `--platform` is removed.
 - X11 is supported again: the deprecation notice and the planned removal
   are gone, and the README and the packages say so.
 - The release script `scripts/release.sh` runs the checks and the

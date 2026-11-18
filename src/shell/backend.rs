@@ -8,31 +8,19 @@
 
 use std::ffi::OsStr;
 
-use macroquad::miniquad::conf::LinuxBackend;
-
 /// Environment variable set in a Wayland session.
 pub const WAYLAND_DISPLAY_ENV: &str = "WAYLAND_DISPLAY";
 
-/// The window backend draw asks miniquad for.
+/// The window backend chosen at start-up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Backend {
     /// X11 only, through Xwayland on Wayland sessions.
     X11,
-    /// Native Wayland, falling back to X11 (the default on Wayland
-    /// sessions).
+    /// Native Wayland (the default on Wayland sessions).
     Wayland,
 }
 
 impl Backend {
-    /// The miniquad setting for this backend.
-    #[must_use]
-    pub fn linux_backend(self) -> LinuxBackend {
-        match self {
-            Self::X11 => LinuxBackend::X11Only,
-            Self::Wayland => LinuxBackend::WaylandWithX11Fallback,
-        }
-    }
-
     /// The backend called `name` (any case, trimmed), if there is one.
     #[must_use]
     pub fn from_name(name: &str) -> Option<Self> {
@@ -129,16 +117,6 @@ mod tests {
         assert_eq!(Backend::from_name("\tX11\n"), Some(Backend::X11));
         assert_eq!(Backend::from_name("wl"), None);
         assert_eq!(Backend::from_name(""), None);
-    }
-
-    #[test]
-    fn backend_linux_backend_maps_to_miniquad() {
-        // Arrange / Act / Assert
-        assert_eq!(Backend::X11.linux_backend(), LinuxBackend::X11Only);
-        assert_eq!(
-            Backend::Wayland.linux_backend(),
-            LinuxBackend::WaylandWithX11Fallback
-        );
     }
 
     #[test]

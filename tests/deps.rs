@@ -14,7 +14,6 @@ const OWN: [&str; 5] = CRATES;
 fn runtime_allowed(krate: &str) -> &'static [&'static str] {
     match krate {
         "draw" => &[
-            "macroquad",
             "fontdue",
             "png",
             "ttf-parser",

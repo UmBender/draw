@@ -7,7 +7,6 @@
 //! a frame of its own.
 
 use crate::shell::{ui_shapes, ui_text};
-use macroquad::color::Color;
 
 use crate::core::geom::{Aabb, Vec2};
 use crate::core::keymap::Topic;
@@ -15,7 +14,7 @@ use crate::core::sheet::Sheet;
 use crate::shell::render::{hex_color, hex_color_alpha};
 use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
-use draw_gfx::gpu::Gpu;
+use draw_gfx::gpu::{Color, Gpu};
 
 /// Widest the panel gets, in pixels.
 const PANEL_WIDTH_PX: f32 = 880.0;

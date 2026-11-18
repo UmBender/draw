@@ -14,8 +14,7 @@ use crate::shell::glyphs::{
 };
 use crate::shell::render::{Batch, MeshSink};
 use crate::shell::render_ctx::RenderCtx;
-use draw_gfx::gpu::{Gpu, Vertex};
-use macroquad::color::Color;
+use draw_gfx::gpu::{Color, Gpu, Vertex};
 use std::cell::OnceCell;
 
 /// A glyph quad with the atlas page it samples.
@@ -321,33 +320,12 @@ mod tests {
         }
     }
 
-    /// What stays until T149 removes macroquad: `(file, text on the line)`.
-    /// The list may only shrink; every entry names T149.
-    const MACROQUAD_ALLOWLIST: &[(&str, &str)] = &[
-        // T149: `Color` of the menus and the drawing.
-        ("app.rs", "macroquad::color::Color"),
-        ("command_palette.rs", "macroquad::color::Color"),
-        ("minimap.rs", "macroquad::color::Color"),
-        ("render.rs", "macroquad::color::Color"),
-        ("sheet.rs", "macroquad::color::Color"),
-        ("toolbar.rs", "macroquad::color::Color"),
-        ("ui_shapes.rs", "macroquad::color::Color"),
-        ("ui_text.rs", "macroquad::color::Color"),
-        // T149: `Vec2` of the macroquad vertices in the batch.
-        ("render.rs", "macroquad::math::Vec2"),
-        // T149: window config and signals.
-        ("app.rs", "macroquad::conf::"),
-        ("app.rs", "macroquad::miniquad::conf::"),
-        ("app.rs", "macroquad::miniquad::signal::"),
-        ("main.rs", "macroquad::miniquad::signal"),
-        ("main.rs", "macroquad::Window::from_config"),
-        // T149: `LinuxBackend`.
-        ("backend.rs", "macroquad::miniquad::conf::LinuxBackend"),
-    ];
+    /// No `macroquad::` or `miniquad::` path stays in production code (T149).
+    const MACROQUAD_ALLOWLIST: &[(&str, &str)] = &[];
 
     /// The lines of the Rust files of the shell and `main.rs` that name a
     /// macroquad or miniquad path outside tests and comments, as
-    /// `(file, line)`; the two interpreters are left out.
+    /// `(file, line)`.
     fn macroquad_lines() -> Vec<(String, String)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut paths = vec![root.join("main.rs")];
@@ -359,7 +337,7 @@ mod tests {
         for path in paths {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             let is_rust = path.extension().is_some_and(|ext| ext == "rs");
-            if !is_rust || name == "gpu_mq.rs" || name == "platform_mq.rs" {
+            if !is_rust {
                 continue;
             }
             let Ok(source) = std::fs::read_to_string(&path) else {

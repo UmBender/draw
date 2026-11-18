@@ -240,31 +240,33 @@ fn binary_limit_adr_amends_t29_1_and_names_what_bounds_size() {
 }
 
 #[test]
-fn cargo_patches_miniquad_with_the_vendored_copy() {
+fn cargo_has_no_miniquad_or_macroquad() {
     // Arrange
     let manifest = read("Cargo.toml");
     let lock = read("Cargo.lock");
-    let vendored = read("vendor/miniquad/Cargo.toml");
 
-    // Act
-    let patch = toml_table(&manifest, "patch.crates-io");
-
-    // Assert: ADR-T35-1 — the patch points at vendor/miniquad, which is
-    // 0.4.11 with its change list, and the lock file uses it (no source).
+    // Assert: ADR-T127-4 / T149 — miniquad and macroquad are gone.
     assert!(
-        patch
-            .iter()
-            .any(|line| line.starts_with("miniquad") && line.contains("vendor/miniquad")),
-        "{patch:?}"
+        !manifest.contains("macroquad"),
+        "Cargo.toml still names macroquad"
     );
-    assert!(vendored.contains("version = \"0.4.11\""));
-    assert!(read("vendor/miniquad/PATCHED.md").contains("ADR-T35-1"));
+    assert!(
+        !manifest.contains("miniquad"),
+        "Cargo.toml still names miniquad"
+    );
+    assert!(
+        !Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("vendor/miniquad")
+            .exists(),
+        "vendor/miniquad still exists"
+    );
     let entry: Vec<&str> = lock
         .split("[[package]]")
-        .filter(|block| block.contains("name = \"miniquad\""))
+        .filter(|block| {
+            block.contains("name = \"miniquad\"") || block.contains("name = \"macroquad\"")
+        })
         .collect();
-    assert_eq!(entry.len(), 1, "{entry:?}");
-    assert!(!entry[0].contains("source ="), "{}", entry[0]);
+    assert!(entry.is_empty(), "{entry:?}");
 }
 
 /// Sonames named by the flake: the quoted value of every `soname = "…"`.

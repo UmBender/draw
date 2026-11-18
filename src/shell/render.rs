@@ -1,23 +1,18 @@
-//! Draws shapes, previews and selection with macroquad.
+//! Draws shapes, previews and selection.
 //!
-//! Everything is drawn in **screen space** with macroquad's default camera:
-//! world points go through [`Camera::world_to_screen`] and widths through
-//! [`screen_width`] (ADR-T07-1). Off-screen shapes are culled by their
-//! bounding box (ADR-0006). Shapes are tessellated here into a [`Batch`] and
-//! submitted with one `draw_mesh` per few thousand indices instead of one
-//! `draw_*` call per triangle (ADR-T24-3). Grids and labels follow
+//! Everything is drawn in **screen space**: world points go through
+//! [`Camera::world_to_screen`] and widths through `screen_width`
+//! (ADR-T07-1). Off-screen shapes are culled by their bounding box
+//! (ADR-0006). Shapes are tessellated here into a [`Batch`] and
+//! submitted in bounded chunks (ADR-T24-3). Grids and labels follow
 //! ADR-T16-1. Text blocks and labels use the embedded monospaced font
 //! through the glyph atlas set with [`RenderCtx::set_glyph_atlas`], each glyph a quad
 //! in the same batch as the shapes at its
 //! [`text_layout`](crate::core::text_layout) cell (ADR-T29-1, ADR-T32-1,
 //! ADR-T32-2).
 
-use draw_gfx::gpu::{
-    Color as GfxColor, Command, CommandList, CommandOf, Geometry, Gpu, Vertex, View,
-};
+use draw_gfx::gpu::{Color, Command, CommandList, CommandOf, Geometry, Gpu, Vertex, View};
 use draw_gfx::text::{GlyphEntry, GlyphSource};
-use macroquad::color::Color;
-use macroquad::math::Vec2 as MqVec2;
 
 use std::cell::{Cell, RefCell};
 use std::time::{Duration, Instant};
@@ -36,16 +31,14 @@ use crate::core::tools::select;
 use crate::shell::glyphs::{
     GlyphAtlas, GlyphQuad, GlyphTextures, PAGE_SIDE, WHITE_UV, glyph_quad, glyph_scale, raster_px,
 };
-use crate::shell::gpu_mq::MqGpu;
 use crate::shell::render_ctx::RenderCtx;
 use crate::theme;
 
-/// Most vertices one [`Batch`] chunk holds; below macroquad's per-draw-call
-/// capacity of 10 000 (ADR-T24-3).
+/// Most vertices one [`Batch`] chunk holds (ADR-T24-3).
 pub const BATCH_MAX_VERTICES: usize = 4_800;
 
-/// Most indices one [`Batch`] chunk holds; below macroquad's per-draw-call
-/// capacity of 5 000 and a multiple of 6, so whole quads fit (ADR-T24-3).
+/// Most indices one [`Batch`] chunk holds, a multiple of 6 so whole quads
+/// fit (ADR-T24-3).
 pub const BATCH_MAX_INDICES: usize = 4_800;
 
 /// Where a [`Batch`] sends finished chunks.
@@ -56,19 +49,13 @@ pub trait MeshSink {
     fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>);
 }
 
-/// Sends chunks to the context of the `MqGpu` the loop owns.
-pub type MqSink<'c> = CtxSink<'c, MqGpu>;
-
-/// A [`Batch`] drawing through the loop's `MqGpu` context.
-pub type MqBatch<'c> = Batch<MqSink<'c>>;
-
 /// `draws` wrapped in one pass over `target` (`None`: the window) seen
 /// through `view`, cleared to `clear` first if given.
 #[must_use]
 pub fn wrap_pass<G: Gpu>(
     target: Option<G::Target>,
     view: View,
-    clear: Option<GfxColor>,
+    clear: Option<Color>,
     draws: Vec<CommandOf<G>>,
 ) -> CommandList<G> {
     let mut list = CommandList::new();
@@ -82,12 +69,6 @@ pub fn wrap_pass<G: Gpu>(
     }
     list.push(Command::EndPass);
     list
-}
-
-/// A macroquad colour as a `Gpu` clear colour.
-#[must_use]
-pub fn gfx_color(color: Color) -> GfxColor {
-    GfxColor::rgba(color.r, color.g, color.b, color.a)
 }
 
 /// The two triangles of `dest` showing a whole texture, tinted `tint`.
@@ -617,31 +598,24 @@ pub fn cull_rect(camera: &Camera, viewport: Vec2) -> Aabb {
         .expand(camera.world_len(CULL_MARGIN_PX))
 }
 
-/// Converts a core vector to a macroquad vector.
+/// Converts a palette colour to a GPU colour (channels in `0..=1`).
 #[must_use]
-pub fn to_mq(v: Vec2) -> MqVec2 {
-    MqVec2::new(v.x, v.y)
-}
-
-/// Converts a palette colour to a macroquad colour (channels in `0..=1`).
-#[must_use]
-pub fn to_mq_color(rgba: Rgba) -> Color {
+pub fn rgba_color(rgba: Rgba) -> Color {
     let [red, green, blue, alpha] = rgba.to_f32();
-    Color::new(red, green, blue, alpha)
+    Color::rgba(red, green, blue, alpha)
 }
 
-/// The macroquad colour of an opaque theme colour `0xRRGGBB`
-/// (`crate::theme`).
+/// The GPU colour of an opaque theme colour `0xRRGGBB` (`crate::theme`).
 #[must_use]
 pub fn hex_color(hex: u32) -> Color {
-    to_mq_color(Rgba::from_hex(hex))
+    rgba_color(Rgba::from_hex(hex))
 }
 
-/// The macroquad colour of a theme colour `0xRRGGBB` with opacity
-/// `alpha` (`crate::theme`).
+/// The GPU colour of a theme colour `0xRRGGBB` with opacity `alpha`
+/// (`crate::theme`).
 #[must_use]
 pub fn hex_color_alpha(hex: u32, alpha: u8) -> Color {
-    to_mq_color(Rgba::from_hex_alpha(hex, alpha))
+    rgba_color(Rgba::from_hex_alpha(hex, alpha))
 }
 
 /// `true` if a stroke `width_px` wide needs round joints, i.e. it is wider
@@ -1488,9 +1462,9 @@ fn draw_band<S: MeshSink>(batch: &mut Batch<S>, start: Vec2, end: Vec2, width: f
     batch.rect(Aabb::from_corners(start, end).expand(width * 0.5), color);
 }
 
-/// The macroquad colour of a palette entry.
+/// The GPU colour of a palette entry.
 fn color_of(id: ColorId) -> Color {
-    to_mq_color(palette(id))
+    rgba_color(palette(id))
 }
 
 /// Draws a polyline of world `points` (ADR-T24-4). A single point is a
@@ -1606,10 +1580,7 @@ mod tests {
     use crate::core::tex::{ACCENTS, Face, MINUS, Mark, SYMBOLS, calligraphic, italic};
     use crate::shell::recording::RecordingGpu;
     use crate::theme;
-    use draw_gfx::gpu::{
-        Blend, Command, CommandList, Geometry, Gpu, PipelineDesc, Vertex as GfxVertex, View,
-    };
-    use macroquad::models::Vertex;
+    use draw_gfx::gpu::{Blend, Command, CommandList, Geometry, Gpu, PipelineDesc, Vertex, View};
     use proptest::prelude::*;
 
     const EPS: f32 = 1e-4;
@@ -1627,33 +1598,16 @@ mod tests {
     /// Records every chunk a batch submits.
     #[derive(Default)]
     struct Recorder {
-        chunks: Vec<(Vec<Vertex>, Vec<u16>)>,
+        chunks: Vec<(Vec<Vertex>, Vec<u32>)>,
         /// The atlas page each chunk was bound to.
         pages: Vec<Option<u32>>,
     }
 
     impl MeshSink for Recorder {
-        fn draw(&mut self, vertices: &[GfxVertex], indices: &[u32], page: Option<u32>) {
-            self.chunks.push((
-                vertices.iter().map(mq_vertex).collect(),
-                indices.iter().map(|&i| i as u16).collect(),
-            ));
+        fn draw(&mut self, vertices: &[Vertex], indices: &[u32], page: Option<u32>) {
+            self.chunks.push((vertices.to_vec(), indices.to_vec()));
             self.pages.push(page);
         }
-    }
-
-    /// The macroquad vertex with `vertex`'s position, uv and colour bytes.
-    fn mq_vertex(vertex: &GfxVertex) -> Vertex {
-        let mut out = Vertex::new(
-            vertex.pos[0],
-            vertex.pos[1],
-            0.0,
-            vertex.uv[0],
-            vertex.uv[1],
-            Color::default(),
-        );
-        out.color = vertex.color;
-        out
     }
 
     // ---- T158 AC-1..AC-4 over the Gpu trait ----------------------------------
@@ -1863,7 +1817,7 @@ mod tests {
     const RED: Color = Color::new(1.0, 0.0, 0.0, 1.0);
 
     fn position(v: &Vertex) -> Vec2 {
-        Vec2::new(v.position.x, v.position.y)
+        Vec2::new(v.pos[0], v.pos[1])
     }
 
     #[test]
@@ -1958,7 +1912,7 @@ mod tests {
         let rec = batch.finish();
 
         // Assert
-        assert!(rec.chunks.is_empty());
+        assert_eq!(rec.chunks.len(), 0);
     }
 
     #[test]
@@ -2001,8 +1955,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_limits_fit_a_macroquad_draw_call() {
-        // macroquad clamps geometry at 10 000 vertices / 5 000 indices.
+    fn batch_limits_fit_bounded_chunks() {
         const {
             assert!(BATCH_MAX_VERTICES < 10_000);
             assert!(BATCH_MAX_INDICES < 5_000);
@@ -2019,7 +1972,7 @@ mod tests {
     }
 
     /// The single chunk a batch drew.
-    fn only_chunk(rec: &Recorder) -> &(Vec<Vertex>, Vec<u16>) {
+    fn only_chunk(rec: &Recorder) -> &(Vec<Vertex>, Vec<u32>) {
         assert_eq!(rec.chunks.len(), 1);
         &rec.chunks[0]
     }
@@ -2038,7 +1991,7 @@ mod tests {
         let rec = batch.finish();
 
         // Assert
-        assert!(rec.chunks.is_empty());
+        assert_eq!(rec.chunks.len(), 0);
     }
 
     #[test]
@@ -2293,7 +2246,7 @@ mod tests {
             for (vertices, indices) in &rec.chunks {
                 prop_assert!(!indices.is_empty());
                 prop_assert_eq!(indices.len() % 3, 0);
-                prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
+                prop_assert!(indices.iter().all(|&i| (i as usize) < vertices.len()));
                 prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
                 prop_assert!(indices.len() <= BATCH_MAX_INDICES);
             }
@@ -2310,7 +2263,7 @@ mod tests {
             for (vertices, indices) in &rec.chunks {
                 prop_assert!(!indices.is_empty());
                 prop_assert_eq!(indices.len() % 3, 0);
-                prop_assert!(indices.iter().all(|&i| usize::from(i) < vertices.len()));
+                prop_assert!(indices.iter().all(|&i| (i as usize) < vertices.len()));
                 prop_assert!(vertices.len() <= BATCH_MAX_VERTICES);
                 prop_assert!(indices.len() <= BATCH_MAX_INDICES);
                 prop_assert!(vertices.iter().all(|v| position(v).is_finite()));
@@ -2424,15 +2377,8 @@ mod tests {
     // AC-3
 
     #[test]
-    fn conversion_vec2_keeps_coordinates() {
-        let v = to_mq(Vec2::new(1.5, -2.25));
-        assert!(approx_eq(v.x, 1.5, EPS));
-        assert!(approx_eq(v.y, -2.25, EPS));
-    }
-
-    #[test]
     fn conversion_color_scales_channels() {
-        let c = to_mq_color(Rgba {
+        let c = rgba_color(Rgba {
             r: 255,
             g: 0,
             b: 51,
@@ -2446,7 +2392,7 @@ mod tests {
 
     #[test]
     fn conversion_palette_ink_is_opaque() {
-        let c = to_mq_color(palette(ColorId::INK));
+        let c = rgba_color(palette(ColorId::INK));
         assert!(approx_eq(c.a, 1.0, EPS));
     }
 
@@ -2758,7 +2704,7 @@ mod tests {
     }
 
     fn uv(v: &Vertex) -> Vec2 {
-        Vec2::new(v.uv.x, v.uv.y)
+        Vec2::new(v.uv[0], v.uv[1])
     }
 
     fn is_white(v: &Vertex) -> bool {
@@ -2941,11 +2887,11 @@ mod tests {
         let (vertices, _) = only_chunk(&rec);
         let left = vertices[4..8]
             .iter()
-            .map(|v| v.position.x)
+            .map(|v| v.pos[0])
             .fold(f32::INFINITY, f32::min);
         let bottom = vertices[4..8]
             .iter()
-            .map(|v| v.position.y)
+            .map(|v| v.pos[1])
             .fold(f32::NEG_INFINITY, f32::max);
         assert!(approx_eq(left, 10.0 + 12.0 + b.xmin, EPS), "{left}");
         assert!(approx_eq(bottom, 30.0 + 20.0 - b.ymin, EPS), "{bottom}");
@@ -2969,8 +2915,8 @@ mod tests {
         // Assert: the advance box is centred horizontally, the ink
         // vertically (as macroquad's measure_text centring did).
         let (vertices, _) = only_chunk(&rec);
-        let xs = vertices.iter().map(|v| v.position.x);
-        let ys: Vec<f32> = vertices.iter().map(|v| v.position.y).collect();
+        let xs = vertices.iter().map(|v| v.pos[0]);
+        let ys: Vec<f32> = vertices.iter().map(|v| v.pos[1]).collect();
         let left = xs.fold(f32::INFINITY, f32::min);
         assert!(
             approx_eq(left, 50.0 - seven.advance / 2.0 + seven.xmin, EPS),
@@ -3030,14 +2976,14 @@ mod tests {
 
     // ---- T51 AC-5 same pixels, AC-6 derived rules ---------------------------
 
-    /// The bytes macroquad puts in a vertex for `color`.
+    /// The vertex bytes for `color`.
     fn vertex_bytes(color: Color) -> [u8; 4] {
-        Vertex::new(0.0, 0.0, 0.0, 0.0, 0.0, color).color
+        color.into()
     }
 
     /// `hex` with its alpha scaled by `factor`, as before T51.
     fn old_faded(hex: u32, factor: f32) -> Color {
-        let mut color = to_mq_color(Rgba::from_hex(hex));
+        let mut color = rgba_color(Rgba::from_hex(hex));
         color.a *= factor;
         color
     }
@@ -3075,7 +3021,7 @@ mod tests {
 
         // Act
         let new =
-            to_mq_color(Rgba::from_hex(theme::TOOLBAR_TEXT).faded(theme::TOOLBAR_DISABLED_ALPHA));
+            rgba_color(Rgba::from_hex(theme::TOOLBAR_TEXT).faded(theme::TOOLBAR_DISABLED_ALPHA));
 
         // Assert
         assert_eq!(vertex_bytes(new), vertex_bytes(old));
@@ -3084,7 +3030,7 @@ mod tests {
     #[test]
     fn hex_color_is_opaque_theme_colour() {
         let c = hex_color(theme::CANVAS);
-        assert!(same_color(c, to_mq_color(Rgba::from_hex(0x0018_1616))));
+        assert!(same_color(c, rgba_color(Rgba::from_hex(0x0018_1616))));
     }
 
     #[test]

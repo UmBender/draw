@@ -570,11 +570,144 @@ impl Collector {
 }
 
 #[cfg(test)]
+#[allow(non_upper_case_globals)]
+pub(crate) mod test_keys {
+    use super::Collector;
+    use draw_sys::platform::{RawButton, RawEvent, RawKey, RawMods};
+
+    pub(crate) struct KeyCode;
+
+    impl KeyCode {
+        pub(crate) const A: RawKey = RawKey::Letter('A');
+        pub(crate) const B: RawKey = RawKey::Letter('B');
+        pub(crate) const C: RawKey = RawKey::Letter('C');
+        pub(crate) const D: RawKey = RawKey::Letter('D');
+        pub(crate) const E: RawKey = RawKey::Letter('E');
+        pub(crate) const F: RawKey = RawKey::Letter('F');
+        pub(crate) const G: RawKey = RawKey::Letter('G');
+        pub(crate) const H: RawKey = RawKey::Letter('H');
+        pub(crate) const I: RawKey = RawKey::Letter('I');
+        pub(crate) const J: RawKey = RawKey::Letter('J');
+        pub(crate) const K: RawKey = RawKey::Letter('K');
+        pub(crate) const L: RawKey = RawKey::Letter('L');
+        pub(crate) const M: RawKey = RawKey::Letter('M');
+        pub(crate) const N: RawKey = RawKey::Letter('N');
+        pub(crate) const O: RawKey = RawKey::Letter('O');
+        pub(crate) const P: RawKey = RawKey::Letter('P');
+        pub(crate) const Q: RawKey = RawKey::Letter('Q');
+        pub(crate) const R: RawKey = RawKey::Letter('R');
+        pub(crate) const S: RawKey = RawKey::Letter('S');
+        pub(crate) const T: RawKey = RawKey::Letter('T');
+        pub(crate) const U: RawKey = RawKey::Letter('U');
+        pub(crate) const V: RawKey = RawKey::Letter('V');
+        pub(crate) const W: RawKey = RawKey::Letter('W');
+        pub(crate) const X: RawKey = RawKey::Letter('X');
+        pub(crate) const Y: RawKey = RawKey::Letter('Y');
+        pub(crate) const Z: RawKey = RawKey::Letter('Z');
+        pub(crate) const Key0: RawKey = RawKey::Digit(0);
+        pub(crate) const Key1: RawKey = RawKey::Digit(1);
+        pub(crate) const Key2: RawKey = RawKey::Digit(2);
+        pub(crate) const Key3: RawKey = RawKey::Digit(3);
+        pub(crate) const Key4: RawKey = RawKey::Digit(4);
+        pub(crate) const Key5: RawKey = RawKey::Digit(5);
+        pub(crate) const Key6: RawKey = RawKey::Digit(6);
+        pub(crate) const Key7: RawKey = RawKey::Digit(7);
+        pub(crate) const Key8: RawKey = RawKey::Digit(8);
+        pub(crate) const Key9: RawKey = RawKey::Digit(9);
+        pub(crate) const Escape: RawKey = RawKey::Escape;
+        pub(crate) const Space: RawKey = RawKey::Space;
+        pub(crate) const Tab: RawKey = RawKey::Tab;
+        pub(crate) const Backspace: RawKey = RawKey::Backspace;
+        pub(crate) const Delete: RawKey = RawKey::Delete;
+        pub(crate) const Enter: RawKey = RawKey::Enter;
+        pub(crate) const KpEnter: RawKey = RawKey::Enter;
+        pub(crate) const Home: RawKey = RawKey::Home;
+        pub(crate) const End: RawKey = RawKey::End;
+        pub(crate) const Left: RawKey = RawKey::ArrowLeft;
+        pub(crate) const Right: RawKey = RawKey::ArrowRight;
+        pub(crate) const Up: RawKey = RawKey::ArrowUp;
+        pub(crate) const Down: RawKey = RawKey::ArrowDown;
+        pub(crate) const LeftBracket: RawKey = RawKey::BracketLeft;
+        pub(crate) const RightBracket: RawKey = RawKey::BracketRight;
+        pub(crate) const LeftShift: RawKey = RawKey::LeftShift;
+        pub(crate) const LeftControl: RawKey = RawKey::LeftControl;
+        pub(crate) const RightControl: RawKey = RawKey::RightControl;
+        pub(crate) const LeftAlt: RawKey = RawKey::LeftAlt;
+        pub(crate) const Comma: RawKey = RawKey::Other(0x002c);
+        pub(crate) const Minus: RawKey = RawKey::Other(0x002d);
+        pub(crate) const GraveAccent: RawKey = RawKey::Other(0x0060);
+        pub(crate) const Kp1: RawKey = RawKey::Other(0xffb1);
+        pub(crate) const Kp7: RawKey = RawKey::Other(0xffb7);
+        pub(crate) const KpAdd: RawKey = RawKey::Other(0xffab);
+        pub(crate) const F1: RawKey = RawKey::Other(0xffbe);
+        pub(crate) const F5: RawKey = RawKey::Other(0xffc2);
+        pub(crate) const F6: RawKey = RawKey::Other(0xffc3);
+        pub(crate) const PrintScreen: RawKey = RawKey::Other(0xff61);
+        pub(crate) const LeftSuper: RawKey = RawKey::Other(0xffeb);
+        pub(crate) const Unknown: RawKey = RawKey::Other(0);
+    }
+
+    pub(crate) trait Drive {
+        fn mouse_motion_event(&mut self, x: f32, y: f32);
+        fn mouse_wheel_event(&mut self, dx: f32, dy: f32);
+        fn mouse_button_down_event(&mut self, button: RawButton, x: f32, y: f32);
+        fn mouse_button_up_event(&mut self, button: RawButton, x: f32, y: f32);
+        fn char_event(&mut self, ch: char, mods: RawMods, repeat: bool);
+        fn key_down_event(&mut self, key: RawKey, mods: RawMods, repeat: bool);
+        fn key_up_event(&mut self, key: RawKey, mods: RawMods);
+    }
+
+    impl Drive for Collector {
+        fn mouse_motion_event(&mut self, x: f32, y: f32) {
+            self.handle(RawEvent::PointerMove { x, y });
+        }
+        fn mouse_wheel_event(&mut self, dx: f32, dy: f32) {
+            self.handle(RawEvent::Wheel { dx, dy });
+        }
+        fn mouse_button_down_event(&mut self, button: RawButton, x: f32, y: f32) {
+            self.handle(RawEvent::Button {
+                button,
+                x,
+                y,
+                down: true,
+            });
+        }
+        fn mouse_button_up_event(&mut self, button: RawButton, x: f32, y: f32) {
+            self.handle(RawEvent::Button {
+                button,
+                x,
+                y,
+                down: false,
+            });
+        }
+        fn char_event(&mut self, ch: char, mods: RawMods, repeat: bool) {
+            self.handle(RawEvent::Char { ch, mods, repeat });
+        }
+        fn key_down_event(&mut self, key: RawKey, mods: RawMods, repeat: bool) {
+            self.handle(RawEvent::Key {
+                key,
+                mods,
+                down: true,
+                repeat,
+            });
+        }
+        fn key_up_event(&mut self, key: RawKey, mods: RawMods) {
+            self.handle(RawEvent::Key {
+                key,
+                mods,
+                down: false,
+                repeat: false,
+            });
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
+    use super::test_keys::{Drive, KeyCode};
     use super::*;
     use crate::core::geom::{Vec2, approx_eq};
     use crate::core::input::{InputEvent, Key, Modifiers, PointerButton};
-    use crate::shell::platform_mq::keys::{Drive, KeyCode};
     use draw_sys::platform::{RawButton as MouseButton, RawMods as KeyMods};
 
     const EPS: f32 = 1e-5;

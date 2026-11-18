@@ -36,8 +36,7 @@ use draw::shell::glyphs::GlyphAtlas;
 use draw::shell::render::{
     Batch, MeshSink, cull_rect, is_visible, prepare_text_block, push_text_block,
 };
-use draw_gfx::gpu::Vertex;
-use macroquad::color::WHITE;
+use draw_gfx::gpu::{Color, Vertex};
 
 /// Shapes in the benchmark document.
 const SHAPES: usize = 10_000;
@@ -648,7 +647,14 @@ fn perf_tessellate_10k_glyphs_is_under_1ms() {
                 } = shape
                 {
                     push_text_block(
-                        &mut batch, &atlas, *origin, text, *size, &camera, 1.0, WHITE,
+                        &mut batch,
+                        &atlas,
+                        *origin,
+                        text,
+                        *size,
+                        &camera,
+                        1.0,
+                        Color::rgba(1.0, 1.0, 1.0, 1.0),
                     );
                 }
             }
@@ -664,7 +670,14 @@ fn perf_tessellate_10k_glyphs_is_under_1ms() {
         } = shape
         {
             push_text_block(
-                &mut batch, &atlas, *origin, text, *size, &camera, 1.0, WHITE,
+                &mut batch,
+                &atlas,
+                *origin,
+                text,
+                *size,
+                &camera,
+                1.0,
+                Color::rgba(1.0, 1.0, 1.0, 1.0),
             );
         }
     }
@@ -857,7 +870,14 @@ fn perf_tessellate_200_formula_blocks_is_under_1ms() {
             } = shape
             {
                 push_text_block(
-                    &mut batch, &atlas, *origin, text, *size, &camera, 1.0, WHITE,
+                    &mut batch,
+                    &atlas,
+                    *origin,
+                    text,
+                    *size,
+                    &camera,
+                    1.0,
+                    Color::rgba(1.0, 1.0, 1.0, 1.0),
                 );
             }
         }

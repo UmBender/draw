@@ -15,9 +15,8 @@ use draw::shell::render::{
     label_raster, prepare_text_block, prepare_text_centered, push_text_block, push_text_centered,
     text_raster, warn_color,
 };
-use draw_gfx::gpu::Vertex;
+use draw_gfx::gpu::{Color, Vertex};
 use draw_gfx::text::{self, GlyphEntry, GlyphSource, TextCache, TextSpec};
-use macroquad::color::Color;
 
 const INK: Color = Color::new(0.1, 0.2, 0.3, 1.0);
 const ZOOMS: [f32; 3] = [0.25, 1.0, 4.0];

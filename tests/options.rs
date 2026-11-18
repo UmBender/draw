@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use draw::shell::autosave::{Launch, Which};
 use draw::shell::backend::Backend;
 use draw::shell::diag::Level;
-use draw::shell::options::{Options, Parsed, Platform, TabletMode, parse};
+use draw::shell::options::{Options, Parsed, TabletMode, parse};
 
 fn args(list: &[&str]) -> Vec<OsString> {
     list.iter().map(OsString::from).collect()
@@ -42,7 +42,6 @@ fn defaults_without_arguments() {
     assert_eq!(options.msaa_samples, 4);
     assert!(!options.frame_times);
     assert_eq!(options.backend, None);
-    assert_eq!(options.platform, Platform::Macroquad);
     assert!(!options.skip_preflight);
     assert_eq!(options.tablet, TabletMode::Auto);
     assert_eq!(options.snapshot, None);
@@ -105,17 +104,10 @@ fn backend_refuses_an_unknown_name() {
 }
 
 #[test]
-fn platform_takes_macroquad_and_native() {
-    assert_eq!(run(&["--platform", "native"]).platform, Platform::Native);
-    assert_eq!(run(&["--platform=macroquad"]).platform, Platform::Macroquad);
-}
-
-#[test]
-fn platform_refuses_an_unknown_name() {
-    let message = refused(&["--platform", "vulkan"]);
+fn platform_flag_is_refused_after_cutover() {
+    let message = refused(&["--platform", "native"]);
 
     assert!(message.contains("--platform"), "{message}");
-    assert!(message.contains("macroquad or native"), "{message}");
 }
 
 #[test]

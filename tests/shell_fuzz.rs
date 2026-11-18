@@ -4,10 +4,8 @@
 //! `cargo test` runs 256 cases; `PROPTEST_CASES=20000` is the nightly run.
 //! Shrunk failures go to `tests/shell_fuzz.proptest-regressions`.
 //!
-//! The toolbar starts hidden (Tab on the first frame): its labels are
-//! measured with macroquad's font until T149. The generator never makes
-//! Tab, and never the chords that write files (`Ctrl+S`, `Ctrl+E`, any
-//! Ctrl+Shift chord), so a session leaves the machine as it was.
+//! The generator never makes the chords that write files (`Ctrl+S`, `Ctrl+E`,
+//! any Ctrl+Shift chord), so a session leaves the machine as it was.
 
 use std::cell::RefCell;
 use std::future::Future;
@@ -105,17 +103,10 @@ impl Platform for Scripted {
     }
 }
 
-/// Runs `frames` of events (after the Tab that hides the toolbar) and
-/// returns what the platform saw.
+/// Runs `frames` of events and returns what the platform saw.
 fn run_session(frames: Vec<Vec<RawEvent>>) -> Stats {
     let stats = Rc::new(RefCell::new(Stats::default()));
-    let mut inner = RecordingPlatform::new(START);
-    inner.queue(RawEvent::Key {
-        key: RawKey::Tab,
-        mods: RawMods::default(),
-        down: true,
-        repeat: false,
-    });
+    let inner = RecordingPlatform::new(START);
     let count = frames.len();
     let platform = Scripted {
         inner,
@@ -141,13 +132,9 @@ fn run_session(frames: Vec<Vec<RawEvent>>) -> Stats {
 fn is_forbidden(event: &RawEvent) -> bool {
     match event {
         RawEvent::Key { key, mods, .. } => {
-            *key == RawKey::Tab
-                || (mods.ctrl && mods.shift)
-                || (mods.ctrl && matches!(key, RawKey::Letter('S' | 'E')))
+            mods.ctrl && (mods.shift || matches!(key, RawKey::Letter('S' | 'E')))
         }
-        // `?` opens the shortcut sheet, which measures text with
-        // macroquad's font (T149).
-        RawEvent::Char { ch, mods, .. } => *ch == '\t' || *ch == '?' || (mods.ctrl && mods.shift),
+        RawEvent::Char { mods, .. } => mods.ctrl && mods.shift,
         RawEvent::PointerMove { .. }
         | RawEvent::Button { .. }
         | RawEvent::Wheel { .. }

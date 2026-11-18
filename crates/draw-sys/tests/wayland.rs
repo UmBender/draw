@@ -289,7 +289,7 @@ fn wayland_idle_sleeps_until_wakeup() {
     let sway = Sway::start();
     let mut platform = platform(&sway);
     block_on(platform.next_frame());
-    assert!(draw_sys::x11::signal::install_quit());
+    assert!(draw_sys::signal::install_quit());
 
     // A quit signal wakes `next_idle` instead of polling on a 100 ms timer;
     // before the fix, `next_idle` sleeps in 100 ms chunks and returns early
@@ -303,7 +303,7 @@ fn wayland_idle_sleeps_until_wakeup() {
         }
     });
     block_on(platform.next_idle());
-    let _ = draw_sys::x11::signal::take();
+    let _ = draw_sys::signal::take();
     assert!(started.elapsed() < Duration::from_millis(80));
 }
 

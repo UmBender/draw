@@ -11,28 +11,14 @@ use std::task::{Context, Poll, Waker};
 use draw::shell::app;
 use draw::shell::backend::Backend;
 use draw::shell::diag::{self, Level};
-use draw::shell::gpu_mq::MqGpu;
 use draw::shell::gpu_native::{ClosingWayland, ClosingX11, WaylandGpu, X11Gpu};
-use draw::shell::options::{self, Parsed, Platform};
-use draw::shell::platform_mq::MqPlatform;
+use draw::shell::options::{self, Parsed};
 use draw::shell::{backend, tablet};
+use draw_sys::signal;
 use draw_sys::wayland::WaylandPlatform;
 use draw_sys::x11::{GlBackend, X11Platform};
-use macroquad::miniquad::signal;
 
-/// The pair of interpreters the app runs over; `main` matches on it.
-#[derive(Debug, Clone, Copy)]
-enum Runtime {
-    /// macroquad's window, input and GL.
-    Macroquad,
-    /// `WaylandPlatform` and the OpenGL ES Gpu of `draw-gfx` (`--platform
-    /// native` on a Wayland session, ADR-T171-1).
-    Wayland,
-    /// `X11Platform` and the OpenGL ES Gpu of `draw-gfx` (`--platform native`).
-    X11,
-}
-
-/// The window size in pixels of the native X11 window, as `window_conf`.
+/// The window size in pixels of the native X11 window.
 const NATIVE_SIZE: (u32, u32) = (1280, 800);
 
 /// Runs `future` to its end on this thread. The native platform's futures
@@ -68,7 +54,6 @@ Debugging (for troubleshooting only):\n  \
   --frame-times        Log how long each re-render takes\n  \
   --skip-preflight     Skip the check for a display and libraries\n  \
   --backend <name>     Window backend on Linux: wayland or x11\n  \
-  --platform <name>    Window and GL layer: macroquad (default) or native\n  \
   --renderer <name>    Document drawing: layers (default) or retained (experimental)\n  \
   --msaa <n>           Anti-aliasing samples: off, 2, 4 (default), 8\n  \
   --tablet <mode>      Pen mode: auto (default), on, off",
@@ -111,57 +96,46 @@ fn main() {
     if !signal::install_quit() {
         diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
     }
-    let runtime = match (options.platform, backend) {
-        (Platform::Macroquad, _) => Runtime::Macroquad,
-        (Platform::Native, Backend::X11) => Runtime::X11,
-        (Platform::Native, Backend::Wayland) => Runtime::Wayland,
-    };
-    match runtime {
+    match backend {
         // The own Wayland backend and the OpenGL ES Gpu (T171, ADR-T171-1).
-        Runtime::Wayland => run_wayland(options, backend, tablet),
+        Backend::Wayland => run_wayland(options, backend, tablet),
         // The own X11 backend and the OpenGL ES Gpu (T178, ADR-T178-1).
-        Runtime::X11 => {
-            let opened = X11Platform::open(
-                None,
-                "draw",
-                app::WM_CLASS,
-                NATIVE_SIZE.0,
-                NATIVE_SIZE.1,
-                GlBackend::Glx,
-            );
-            let platform = match opened {
-                Ok(platform) => platform,
-                Err(problem) => {
-                    eprintln!("draw: X11 window: {problem}");
-                    diag::log(Level::Error, &format!("x11: {problem}"));
-                    diag::finish("x11 window failed");
-                    std::process::exit(1);
-                }
-            };
-            let gpu = match X11Gpu::new(platform.share_gl()) {
-                Ok(gpu) => gpu,
-                Err(problem) => {
-                    eprintln!("draw: OpenGL: {problem}");
-                    diag::log(Level::Error, &format!("gl: {problem}"));
-                    diag::finish("gl failed");
-                    std::process::exit(1);
-                }
-            };
-            if !draw_sys::x11::signal::install_quit() {
-                diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
-            }
-            let platform = ClosingX11::new(platform, finish_native);
-            block_on(app::run(platform, gpu, options, backend, tablet));
-        }
-        // The window and the GPU exist only inside macroquad's loop, so the
-        // interpreters are made there.
-        Runtime::Macroquad => {
-            macroquad::Window::from_config(app::window_conf(backend), async move {
-                app::run(MqPlatform::open(), MqGpu::new(), options, backend, tablet).await;
-            });
-        }
+        Backend::X11 => run_x11(options, backend, tablet),
     }
     finish(signal::received());
+}
+
+/// Runs the app over the own X11 backend and the OpenGL ES Gpu
+/// (T178, ADR-T178-1).
+fn run_x11(options: options::Options, backend: Backend, tablet: tablet::Choice) {
+    let opened = X11Platform::open(
+        None,
+        "draw",
+        app::WM_CLASS,
+        NATIVE_SIZE.0,
+        NATIVE_SIZE.1,
+        GlBackend::Glx,
+    );
+    let platform = match opened {
+        Ok(platform) => platform,
+        Err(problem) => {
+            eprintln!("draw: X11 window: {problem}");
+            diag::log(Level::Error, &format!("x11: {problem}"));
+            diag::finish("x11 window failed");
+            std::process::exit(1);
+        }
+    };
+    let gpu = match X11Gpu::new(platform.share_gl()) {
+        Ok(gpu) => gpu,
+        Err(problem) => {
+            eprintln!("draw: OpenGL: {problem}");
+            diag::log(Level::Error, &format!("gl: {problem}"));
+            diag::finish("gl failed");
+            std::process::exit(1);
+        }
+    };
+    let platform = ClosingX11::new(platform, finish_native);
+    block_on(app::run(platform, gpu, options, backend, tablet));
 }
 
 /// Runs the app over the own Wayland backend and the OpenGL ES Gpu
@@ -198,9 +172,6 @@ fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choi
             std::process::exit(1);
         }
     };
-    if !draw_sys::x11::signal::install_quit() {
-        diag::log(Level::Warn, "signal: SIGINT/SIGTERM handler not installed");
-    }
     let platform = ClosingWayland::new(platform, finish_native);
     block_on(app::run(platform, gpu, options, backend, tablet));
 }
@@ -239,20 +210,20 @@ mod tests {
         let production = source.split("#[cfg(test)]").next().unwrap_or(source);
 
         for needed in [
-            "match runtime",
+            "match backend",
             "app::run(",
-            "MqPlatform::open()",
-            "MqGpu::new()",
             "X11Platform::open(",
             "X11Gpu::new(",
-            "Platform::Native",
+            "ClosingX11::new(",
             "WaylandPlatform::connect(",
             "WaylandGpu::new(",
             "ClosingWayland::new(",
         ] {
             assert!(production.contains(needed), "{needed} missing");
         }
-        assert!(!production.contains("run_on"), "run_on is still used");
+        for removed in ["run_on", "MqPlatform", "MqGpu", "macroquad", "miniquad"] {
+            assert!(!production.contains(removed), "{removed} is still used");
+        }
     }
 
     #[test]
@@ -265,13 +236,13 @@ mod tests {
             "--frame-times",
             "--skip-preflight",
             "--backend",
-            "--platform",
             "--msaa",
             "--tablet",
             "--recover",
         ] {
             assert!(text.contains(flag), "{flag} missing: {text}");
         }
+        assert!(!text.contains("--platform"), "{text}");
         assert!(!text.contains(OLD_PREFIX), "{text}");
         assert!(!text.contains("X11 only"), "{text}");
     }

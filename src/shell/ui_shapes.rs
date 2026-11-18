@@ -1,15 +1,14 @@
 //! Rounded rectangles and rings for the menus (ADR-T126-1).
 //!
-//! macroquad has no rounded rectangle. These are built from triangles that
-//! never overlap, so a translucent fill shows no seams where parts meet.
-//! The geometry is pure ([`rounded_fill`], [`rounded_ring`]); [`fill`] and
-//! [`ring`] only hand the triangles to macroquad.
+//! These are built from triangles that never overlap, so a translucent
+//! fill shows no seams where parts meet. The geometry is pure
+//! ([`rounded_fill`], [`rounded_ring`]); [`fill`] and [`ring`] draw the
+//! triangles through a [`RenderCtx`].
 
 use crate::core::geom::{Aabb, Vec2};
 use crate::shell::render::{Batch, CtxSink, MeshSink};
 use crate::shell::render_ctx::RenderCtx;
-use draw_gfx::gpu::Gpu;
-use macroquad::color::Color;
+use draw_gfx::gpu::{Color, Gpu};
 use std::f32::consts::FRAC_PI_2;
 
 /// Segments of the arc of one rounded corner.
