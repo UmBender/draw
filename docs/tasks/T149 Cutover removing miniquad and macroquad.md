@@ -1,7 +1,7 @@
 ---
 id: T149
 title: Cutover removing miniquad and macroquad
-status: in-progress
+status: done
 wave: 73
 branch: task/T149-cutover-remove-miniquad-and-macroquad
 depends_on: [T143, T144, T146, T147, T148, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171, T172, T173, T175, T176, T177, T178]
@@ -53,10 +53,16 @@ Follows [[ADR-T127-4 An own backend replaces miniquad and macroquad]], [[ADR-T12
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T149): specify the cutover`
-- [ ] tests — `test(T149): drop macroquad and miniquad from guards`
-- [ ] behaviour — `refactor(T149): remove miniquad and macroquad`
-- [ ] docs — `docs(T149): update the notes and the measurements`
+- [x] tests — `test(T149): drop macroquad and miniquad from guards`
+- [x] behaviour — `refactor(T149): remove miniquad and macroquad`
+- [x] docs — `docs(T149): update the notes and the measurements`
 
 ## Log
 
 - 2026-11-12 — written from [[2.0 Architecture proposal]] and the owner's decisions.
+- 2026-11-17 — cutover completed and verified:
+  - Deleted `vendor/miniquad`, `src/shell/gpu_mq.rs`, `src/shell/platform_mq.rs`, `macroquad` dependency, and `--platform`; moved quit + fatal signals into `crates/draw-sys/src/signal.rs`; updated `text-formula` screenshot goldens to `GlGpu` (`glBlendFuncSeparate` preserving `fontdue` coverage `1.47 px` vs `1.49 px`, fixing `macroquad`'s `glBlendFunc` alpha-hole darkening).
+  - `./scripts/check.sh --fuzz` passed (all unit/integration/guard tests, `compile-fail`, `docs`, and 48/48 `proptest` fuzz cases at 20 000 cases each).
+  - `./scripts/e2e.sh --backend all` passed on both Wayland (16/16 + `e2e_idle_cpu_is_near_zero`, 29.13s) and X11 (16/16 + `e2e_idle_cpu_is_near_zero`, 26.49s).
+  - `./scripts/release.sh --dry-run 1.6.0` exited 0; release binary `target/release/draw` is `2.3M`.
+  - Release microbenchmarks (`tests/perf.rs`): culling `296.687µs`, hit-test miss `394.458µs`, snap drag `970.309µs`, tessellate 10k glyphs `549.79µs`, autosave capture `1.924ms`.

@@ -9,9 +9,8 @@ away. There are no files to manage, nothing needs configuring, and every
 action has a single-key shortcut so your hands never leave the keyboard for
 long. If it crashes, `draw --recover` brings your drawing back.
 
-- **Never breaks during a contest** — few features, one dependency
-  ([macroquad](https://github.com/not-fl3/macroquad)), no `unsafe`, fuzzed
-  core.
+- **Never breaks during a contest** — few dependencies (`fontdue`, `png`,
+  `ttf-parser`), isolated `unsafe` only in `draw-sys`/`draw-gfx`, fuzzed core.
 - **Fast on weak hardware** — sleeps until you touch it (≈ 0 % CPU idle),
   redraws only what changed, stays smooth with thousands of shapes on an
   8th-gen i5 iGPU.
@@ -90,9 +89,9 @@ installed already:
 
 ```sh
 # Fedora / RHEL
-sudo dnf install libX11 libXi libxkbcommon libglvnd-glx libwayland-client libwayland-egl libdecor
+sudo dnf install libX11 libXi libxkbcommon libglvnd-glx libwayland-client libwayland-egl
 # Debian / Ubuntu
-sudo apt install libx11-6 libxi6 libxkbcommon0 libgl1 libwayland-client0 libwayland-egl1 libdecor-0-0
+sudo apt install libx11-6 libxi6 libxkbcommon0 libgl1 libwayland-client0 libwayland-egl1
 ```
 
 `SHA256SUMS` lists the checksum of every file; `draw.debug` holds the debug
@@ -152,8 +151,7 @@ Requirements:
   sudo apt install libx11-dev libxi-dev libgl1-mesa-dev
   ```
 
-- macOS and Windows build with no extra packages (macroquad supports them),
-  but the app is developed and validated on Linux.
+- Linux: the app is developed and validated on Linux (X11 and Wayland).
 
 ```sh
 git clone https://github.com/UmBender/draw.git
@@ -474,10 +472,8 @@ pub const INK: u32 = 0x1f1f28;
 
 ### Window backend
 
-On a Wayland session draw is a native Wayland app; if the connection to
-the compositor fails or its libraries are missing, it falls back to X11
-through XWayland. Without `libdecor` the window may have no title bar on
-GNOME.
+On a Wayland session draw is a native Wayland app; X11 can be selected
+explicitly with `--backend x11`.
 
 **X11 is supported**, both XWayland on Wayland sessions and plain X11
 sessions, and is not scheduled for removal. Native Wayland stays the
@@ -512,8 +508,7 @@ down to a quarter of it, a hard press up to twice. Mouse strokes and the
 other tools are unchanged. Pressure works on native Wayland, where the pen
 also draws and both barrel buttons pan and erase and the mouse is ignored
 while the pen hovers over the window, and on the X11 backend.
-Tilt, rotation and the eraser end of the pen are not used. draw ships a
-patched copy of its window library for this (`vendor/miniquad`).
+Tilt, rotation and the eraser end of the pen are not used.
 
 ## Limitations
 
@@ -535,11 +530,13 @@ patched copy of its window library for this (`vendor/miniquad`).
 ## Development
 
 ```text
-src/core/    pure logic (no macroquad): geometry, camera, shapes, document,
-             undo history, tools, snapping, keymap — unit-tested and fuzzed
-src/shell/   macroquad window, input translation, rendering, toolbar
-tests/       fuzz harness (proptest) and performance budgets
-docs/        Obsidian vault: architecture, decisions, features, tutorials
+crates/draw-core/  pure logic: geometry, camera, shapes, document, undo history,
+                   tools, snapping, keymap — unit-tested and fuzzed
+crates/draw-gfx/   retained renderer and OpenGL ES 3.0 backend over `Gpu`
+crates/draw-sys/   native Wayland and X11 window/input/GL backends
+src/shell/         app loop, input translation, rendering, toolbar
+tests/             fuzz harness (proptest), e2e suite and performance budgets
+docs/              Obsidian vault: architecture, decisions, features, tutorials
 ```
 
 The core consumes input events and exposes state; the shell only translates

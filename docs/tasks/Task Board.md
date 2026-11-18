@@ -588,7 +588,7 @@ flowchart TD
 | [[T146 Retained renderer in draw-gfx]] | done | T145, T135, T136, T153, T161 | `task/T146-retained-renderer-in-draw-gfx` |
 | [[T147 Frame pacing by the compositor and idle at zero]] | todo | T143, T144, T146 | `task/T147-frame-pacing-by-the-compositor-and-idle-` |
 | [[T148 Multithreaded tessellation, only with a measured gain]] | done | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
-| [[T149 Cutover removing miniquad and macroquad]] | todo | T127–T149, T152–T173, T175–T178 | `task/T149-cutover-remove-miniquad-and-macroquad` |
+| [[T149 Cutover removing miniquad and macroquad]] | done | T127–T149, T152–T173, T175–T178 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
 | [[T151 Release 2.0.0]] | todo | T127–T149, T152–T178 | `task/T151-release-2-0-0` |
 | [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
