@@ -1972,9 +1972,10 @@ impl Editor {
         self.tools.text.edit.take().is_some()
     }
 
-    /// The text block hit at world `p` (tolerance `tol`), if it is the
-    /// topmost shape there and the only selected one; also the only
-    /// selected shape if it can host text at `p` (ADR-T31-1, ADR-T52-1).
+    /// The only selected shape at world `p` (tolerance `tol`) if it can
+    /// host text at `p` (ADR-T31-1, ADR-T52-1). Free `Shape::Text` blocks
+    /// stay selected in `Tool::Select` so they keep their resize handles
+    /// and can be resized, moved or converted; `Tool::Text` re-opens them.
     fn selected_text_at(&self, p: Vec2, tol: f32) -> Option<ShapeId> {
         let &[selected] = self.view.selection.as_slice() else {
             return None;
@@ -1982,8 +1983,7 @@ impl Editor {
         match self.doc.topmost_where(|shape| shape.hit(p, tol)) {
             Some(id) if id == selected => {
                 let shape = self.doc.get(id)?;
-                let is_text = matches!(shape, Shape::Text { .. });
-                (is_text || shape.text_host_at(p).is_some()).then_some(id)
+                shape.text_host_at(p).is_some().then_some(id)
             }
             None => {
                 let shape = self.doc.get(selected)?;
@@ -4701,7 +4701,7 @@ mod tests {
     }
 
     #[test]
-    fn select_click_on_selected_block_reopens_it() {
+    fn select_click_on_selected_block_keeps_it_selected_with_handles() {
         // Arrange
         let mut ed = text_editor();
         place(&mut ed, 100.0, 100.0, "abcd");
@@ -4714,16 +4714,14 @@ mod tests {
         click(&mut ed, column_x(100.0, 1.0), 105.0);
 
         // Assert
-        let Some(edit) = ed.text_edit() else {
-            panic!("a click on the selected block edits it");
-        };
-        assert_eq!(edit.target(), Some(ids[0]));
-        assert_eq!(edit.caret(), 1);
+        assert!(ed.text_edit().is_none());
+        assert_eq!(ed.selection(), ids);
+        assert!(ed.selection_handles().is_some());
         assert_eq!(ed.tool(), Tool::Select);
     }
 
     #[test]
-    fn select_double_click_on_block_reopens_it() {
+    fn select_double_click_on_block_keeps_it_selected() {
         let mut ed = text_editor();
         place(&mut ed, 100.0, 100.0, "abcd");
         key(&mut ed, Key::Escape);
@@ -4732,7 +4730,9 @@ mod tests {
         click(&mut ed, 110.0, 105.0);
         click(&mut ed, 110.0, 105.0);
 
-        assert_eq!(editing(&ed).as_deref(), Some("abcd"));
+        assert!(ed.text_edit().is_none());
+        assert_eq!(ed.selection(), ids(&ed));
+        assert!(ed.selection_handles().is_some());
     }
 
     #[test]
@@ -6347,7 +6347,8 @@ mod tests {
         assert_eq!(ed.selection(), [id]);
         assert!(ed.text_edit().is_none());
 
-        // Act: a second click re-opens it.
+        // Act: re-open the block with the Text tool.
+        ed.apply(Command::SetTool(Tool::Text));
         click(&mut ed, 110.0, 60.0);
 
         // Assert: only the source box is left to outline.
@@ -6362,17 +6363,16 @@ mod tests {
 
     #[test]
     fn selection_bounds_after_text_edit_is_the_typeset_box() {
-        // Arrange: a formula block, re-opened with the Select tool.
+        // Arrange: a formula block, re-opened with the Text tool.
         let mut ed = text_editor();
         place(&mut ed, 100.0, 50.0, "asdf$\\frac{a}{b}x$");
         key(&mut ed, Key::Escape);
-        ed.apply(Command::SetTool(Tool::Select));
-        click(&mut ed, 110.0, 60.0);
         click(&mut ed, 110.0, 60.0);
         assert!(ed.text_edit().is_some());
 
         // Act
         key(&mut ed, Key::Escape);
+        ed.apply(Command::SelectAll);
 
         // Assert
         let (id, typeset) = shape_box(&ed, 0);

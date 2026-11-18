@@ -18,12 +18,12 @@ Regras das sintaxes suportadas pelo `draw`:
    - `u v` (aresta simples)
    - `u v tag` (aresta com peso/rótulo `tag`)
    - Também são aceitos `u-v` (não direcionada) e `u>v` (direcionada).
-   Use nomes simples para os vértices (números como `1`, `2` ou identificadores curtos como `a`, `b`, `s`, `u`, `t`).
+   Use para os vértices **apenas números inteiros não negativos** (`1`, `2`, `3`) ou **fórmulas curtas entre cifrões** (`$a$`, `$b$`, `$s$`, `$u$`, `$t$`). Não use letras soltas sem `$...$` (o parser rejeita `a b`, mas aceita `$a$ $b$` ou `1 2`). Pesos/rótulos de aresta também devem ser números ou `$...$`.
 
    Exemplo (Mermaid -> `draw`):
    dgraph:
-   a b 5
-   b c
+   $a$ $b$ 5
+   $b$ $c$
 
 2. Árvore de Segmentos (`segtree:`):
    Para uma árvore de segmentos de tamanho `N` (`1` a `100`), escreva em uma única linha:
