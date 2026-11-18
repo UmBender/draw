@@ -565,7 +565,7 @@ flowchart TD
 | [[T125 Six pages, one per row]] | done | T124 | `fix/six-pages` |
 | [[T126 Menu islands]] | done | T123, T125 | `task/T126-menu-islands` |
 | [[T118 Release 1.6.0]] | done | T53, T108, T112–T117, T119–T125 | `chore/release-1.6.0` |
-| [[T50 Version 2.0.0 refactor]] | in-progress | T46–T49, T51–T72, T118, T127–T178 | `task/T50-v2-refactor` |
+| [[T50 Version 2.0.0 refactor]] | done | T46–T49, T51–T72, T118, T127–T178 | `task/T50-v2-refactor` |
 | [[T127 2.0 audit and baseline]] | done | T118 | `task/T127-2-0-audit-and-baseline` |
 | [[T128 Keep X11 and revert the deprecation]] | done | T127 | `task/T128-keep-x11-revert-the-deprecation` |
 | [[T129 Release gate with end-to-end on X11 and Wayland]] | done | T127 | `task/T129-release-gate-with-end-to-end-on-x11-and-` |
@@ -590,7 +590,7 @@ flowchart TD
 | [[T148 Multithreaded tessellation, only with a measured gain]] | done | T146 | `task/T148-multithreaded-tessellation-only-with-a-m` |
 | [[T149 Cutover removing miniquad and macroquad]] | done | T127–T149, T152–T173, T175–T178 | `task/T149-cutover-remove-miniquad-and-macroquad` |
 | [[T150 Optional Vulkan backend for the Gpu trait]] | todo (optional) | T149 | `task/T150-optional-vulkan-backend-for-the-gpu-trai` |
-| [[T151 Release 2.0.0]] | todo | T127–T149, T152–T183 | `task/T151-release-2-0-0` |
+| [[T151 Release 2.0.0]] | done | T127–T149, T152–T183 | `task/T151-release-2-0-0` |
 | [[T152 Command line and DRAW_* variables audit]] | done | T128, T127 | `task/T152-command-line-and-draw-variables-audit` |
 | [[T153 Text and select as sub-automata]] | done | T136, T138 | `task/T153-text-and-select-as-sub-automata` |
 | [[T154 Environment variables to flags]] | done | T152, T129 | `task/T154-environment-variables-to-flags` |

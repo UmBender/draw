@@ -1,7 +1,7 @@
 ---
 id: T50
 title: Version 2.0.0 refactor
-status: in-progress
+status: done
 wave: 63
 branch: task/T50-v2-refactor
 depends_on: [T46, T47, T48, T49, T51, T52, T53, T118, T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T151, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171, T172, T173, T174, T175, T176, T177, T178]
@@ -154,7 +154,7 @@ child tasks; it does not implement code.
 **Cutover and release**
 
 - [x] [[T149 Cutover removing miniquad and macroquad]]
-- [ ] [[T151 Release 2.0.0]]
+- [x] [[T151 Release 2.0.0]]
 - [x] [[T174 Nix flake for NixOS]]
 - [x] [[T181 AUR package for Arch-based distros]]
 - [x] [[T182 Fedora COPR RPM package]]

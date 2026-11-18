@@ -1,7 +1,7 @@
 %global app_id io.github.UmBender.draw
 
 Name:           draw
-Version:        1.6.0
+Version:        2.0.0
 Release:        1%{?dist}
 Summary:        Minimal, fast, keyboard-first scratch canvas for competitive programming
 
@@ -62,5 +62,5 @@ done
 %{_datadir}/icons/hicolor/*/apps/%{app_id}.*
 
 %changelog
-* Wed Nov 18 2026 UmBender <https://github.com/UmBender/draw> - 1.6.0-1
-- Initial Fedora COPR RPM spec
+* Wed Nov 18 2026 UmBender <https://github.com/UmBender/draw> - 2.0.0-1
+- Release 2.0.0

@@ -6,12 +6,16 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-18
+
 ### Added
 
 - `draw --from-md FILE.md [OUT.draw]` converts Markdown notes into a `.draw`
   file without opening a window, keeping headings (by text size) and TeX
   formulas (`$...$` and `$$...$$` blocks), splitting pages on `---`, and
   stripping unsupported formatting.
+- Self-hosted packaging support for NixOS (flake), Arch Linux (AUR `PKGBUILD`),
+  Fedora COPR (`draw.spec`), and static Flatpak OSTree repositories.
 
 ### Changed
 
@@ -445,7 +449,8 @@ First release.
   frame reuse during pan and zoom, smooth with thousands of shapes on an
   8th-gen i5 iGPU (`DRAW_FRAME_TIMES=1` logs frame times).
 
-[Unreleased]: https://github.com/UmBender/draw/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/UmBender/draw/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/UmBender/draw/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/UmBender/draw/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/UmBender/draw/compare/v1.4.3...v1.5.0
 [1.4.3]: https://github.com/UmBender/draw/compare/v1.4.2...v1.4.3

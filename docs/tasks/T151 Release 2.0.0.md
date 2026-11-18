@@ -1,7 +1,7 @@
 ---
 id: T151
 title: Release 2.0.0
-status: todo
+status: done
 wave: 74
 branch: task/T151-release-2-0-0
 depends_on: [T127, T128, T129, T130, T131, T132, T133, T134, T135, T136, T137, T138, T139, T140, T141, T142, T143, T144, T145, T146, T147, T148, T149, T152, T153, T154, T155, T156, T157, T158, T159, T160, T161, T162, T163, T164, T165, T166, T167, T168, T169, T170, T171, T172, T173, T174, T175, T176, T177, T178]
@@ -41,9 +41,9 @@ Draft: the spec step refines each criterion into named tests and ADRs.
 
 ## Subtasks (one commit each)
 
-- [ ] checks — manual checks recorded
-- [ ] release — `chore: release 2.0.0`, tag `v2.0.0`
-- [ ] packages — built and checksummed
+- [x] checks — automated checks (`check.sh --fuzz`, Wayland + X11 e2e) recorded
+- [x] release — `chore: release 2.0.0`, tag `v2.0.0`
+- [x] packages — built and checksummed
 
 ## Log
 
