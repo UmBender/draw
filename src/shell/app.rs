@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use draw_core::machine::Effect;
+use draw_core::machine::{self, Effect, Input, Machine};
 
 use crate::core::camera::Camera;
 use crate::core::command::Tool;
@@ -527,7 +527,7 @@ fn input_collector(backend: Backend, tablet: &tablet::Choice) -> Collector {
 }
 
 /// What one frame's input phase found.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Gathered {
     /// What the platform reported for the window.
     metrics: WindowMetrics,
@@ -541,6 +541,8 @@ struct Gathered {
     dump_asked: bool,
     /// Input reached the editor (the idle frames have none).
     had_input: bool,
+    /// Effects queued by the control automaton during this frame's input.
+    effects: Vec<Effect>,
 }
 
 /// What the input phase keeps between frames.
@@ -548,6 +550,8 @@ struct Gathered {
 struct InputState {
     /// The events of the frame, reused so a frame does not allocate.
     raw: Vec<RawEvent>,
+    /// Effects accumulated while stepping the automaton during `gather_input`.
+    effects: Vec<Effect>,
     /// The end-to-end hooks; inert unless the suite gives its files
     /// (ADR-T75-1).
     hooks: Option<e2e::Hooks>,
@@ -567,8 +571,13 @@ fn gather_input<P: Platform>(
     let viewport = Vec2::new(metrics.width, metrics.height);
     let dpi = metrics.scale;
     let mut dirty = false;
+    state.effects.clear();
     if !viewport.approx_eq(editor.viewport(), RESIZE_EPS_PX) {
-        dirty |= editor.handle(InputEvent::Resize { size: viewport });
+        dirty |= step_editor(
+            editor,
+            InputEvent::Resize { size: viewport },
+            &mut state.effects,
+        );
     }
     collector.set_dpi(dpi);
     collector.set_now(Instant::now());
@@ -601,15 +610,15 @@ fn gather_input<P: Platform>(
         had_input = true;
         let editing = editor.text_edit().is_some();
         if wants_clipboard(&event, editing) {
-            dirty |= paste_clipboard(platform, editor, paste_event);
+            dirty |= paste_clipboard(platform, editor, paste_event, &mut state.effects);
         } else if wants_grid_clipboard(&event, editing) {
-            dirty |= paste_clipboard(platform, editor, paste_grid_event);
+            dirty |= paste_clipboard(platform, editor, paste_grid_event, &mut state.effects);
         } else if is_dump_chord(&event) {
             dump_asked = true;
         } else if is_snapshot_chord(&event) {
             report_snapshot(editor);
         } else {
-            dirty |= dispatch(editor, event);
+            dirty |= dispatch(editor, event, &mut state.effects);
         }
     }
     Gathered {
@@ -619,6 +628,7 @@ fn gather_input<P: Platform>(
         dirty,
         dump_asked,
         had_input,
+        effects: std::mem::take(&mut state.effects),
     }
 }
 
@@ -660,6 +670,7 @@ pub async fn run<P: Platform, G: Gpu>(
     let mut recorder = FrameRecorder::new(&editor);
     let mut input = InputState {
         raw: Vec::new(),
+        effects: Vec::new(),
         hooks: e2e::Hooks::from_files(&e2e_files),
     };
     let mut export_pending = false;
@@ -673,6 +684,7 @@ pub async fn run<P: Platform, G: Gpu>(
             mut dirty,
             dump_asked,
             had_input,
+            effects,
         } = gather_input(
             &mut platform,
             &mut collector,
@@ -680,7 +692,6 @@ pub async fn run<P: Platform, G: Gpu>(
             &mut input,
             &mut laser,
         );
-        let effects = editor.take_effects();
         export_pending = arm_export(export_pending, &effects, &editor, &mut frame);
         dirty |= laser.tick();
         if laser.fading() {
@@ -924,8 +935,10 @@ fn paste_clipboard<P: Platform>(
     platform: &mut P,
     editor: &mut Editor,
     paste: fn(Option<String>) -> Option<InputEvent>,
+    effects: &mut Vec<Effect>,
 ) -> bool {
-    let changed = paste(platform.clipboard_text()).is_some_and(|paste| dispatch(editor, paste));
+    let changed =
+        paste(platform.clipboard_text()).is_some_and(|paste| dispatch(editor, paste, effects));
     // The read may have queued input the loop would sleep on.
     platform.schedule_update();
     changed
@@ -1135,20 +1148,56 @@ impl FrameRecorder {
     }
 }
 
-/// Sends one event to the toolbar or the editor. Returns whether the view
-/// needs a redraw.
-fn dispatch(editor: &mut Editor, event: InputEvent) -> bool {
-    let flyout = editor.tool() == Tool::Grid;
-    let changed = match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
-        Route::Forward(event) => editor.handle(event),
-        Route::Apply(command) => editor.apply(command),
-        Route::Swallow => false,
-    };
-    // A key that refused to act says why (ADR-T84-1).
-    if let Some(notice) = editor.take_notice() {
-        diag::log(Level::Warn, &notice);
+/// Collects automaton `effects` into redraw flag, diagnostics, and shell queue.
+fn drain_machine_effects(step_effects: Vec<Effect>, out: &mut Vec<Effect>) -> bool {
+    let mut redraw = false;
+    for effect in step_effects {
+        match effect {
+            Effect::Redraw => redraw = true,
+            // A key that refused to act says why (ADR-T84-1).
+            Effect::Notify(notice) => diag::log(Level::Warn, &notice),
+            other @ (Effect::Save
+            | Effect::ExportPng
+            | Effect::ExportSvg
+            | Effect::CopyImage(_)
+            | Effect::Clipboard(_)
+            | Effect::Schedule(_)) => {
+                out.push(other);
+            }
+        }
     }
-    changed
+    redraw
+}
+
+/// Steps the control automaton with one `InputEvent`.
+fn step_editor(editor: &mut Editor, event: InputEvent, out: &mut Vec<Effect>) -> bool {
+    let machine = Machine::from_editor(std::mem::take(editor));
+    let (next, effects) = machine::step(machine, Input::from_event(event));
+    *editor = next.into_editor();
+    drain_machine_effects(effects, out)
+}
+
+/// Applies a shell/toolbar command through the control automaton.
+fn apply_editor(
+    editor: &mut Editor,
+    command: crate::core::command::Command,
+    out: &mut Vec<Effect>,
+) -> bool {
+    let mut machine = Machine::from_editor(std::mem::take(editor));
+    let effects = machine.apply(command);
+    *editor = machine.into_editor();
+    drain_machine_effects(effects, out)
+}
+
+/// Sends one event to the toolbar or the control automaton. Returns whether
+/// the view needs a redraw.
+fn dispatch(editor: &mut Editor, event: InputEvent, effects: &mut Vec<Effect>) -> bool {
+    let flyout = editor.tool() == Tool::Grid;
+    match toolbar::route(editor.toolbar_visible(), flyout, editor.viewport(), event) {
+        Route::Forward(event) => step_editor(editor, event, effects),
+        Route::Apply(command) => apply_editor(editor, command, effects),
+        Route::Swallow => false,
+    }
 }
 
 /// Current overlay, camera, pixel size and cache key for one frame.

@@ -103,59 +103,62 @@ child tasks; it does not implement code.
 
 **Audit and rails**
 
-- [ ] [[T127 2.0 audit and baseline]]
-- [ ] [[T128 Keep X11 and revert the deprecation]]
-- [ ] [[T129 Release gate with end-to-end on X11 and Wayland]]
-- [ ] [[T130 Coverage in CI with a ratchet]]
-- [ ] [[T131 No dynamic dispatch and stricter lints]]
-- [ ] [[T132 Workspace split with unsafe levels]]
+- [x] [[T127 2.0 audit and baseline]]
+- [x] [[T128 Keep X11 and revert the deprecation]]
+- [x] [[T129 Release gate with end-to-end on X11 and Wayland]]
+- [x] [[T130 Coverage in CI with a ratchet]]
+- [x] [[T131 No dynamic dispatch and stricter lints]]
+- [x] [[T132 Workspace split with unsafe levels]]
 
 **Types and the automaton**
 
-- [ ] [[T133 Typed units and ids]]
-- [ ] [[T134 The control automaton states, inputs and effects]]
-- [ ] [[T135 Automaton modal states, pages, camera and selection]]
-- [ ] [[T136 Automaton gestures and text editing per tool]]
-- [ ] [[T137 Automaton effects queue and time as an input]]
-- [ ] [[T138 Model-based tests of the automaton]]
-- [ ] [[T139 Split tex.rs into modules]]
+- [x] [[T133 Typed units and ids]]
+- [x] [[T134 The control automaton states, inputs and effects]]
+- [x] [[T135 Automaton modal states, pages, camera and selection]]
+- [x] [[T136 Automaton gestures and text editing per tool]]
+- [x] [[T137 Automaton effects queue and time as an input]]
+- [x] [[T138 Model-based tests of the automaton]]
+- [x] [[T139 Split tex.rs into modules]]
 
 **Platform traits and shell tests**
 
-- [ ] [[T140 Platform and Gpu traits with recording interpreters]]
+- [x] [[T140 Platform and Gpu traits with recording interpreters]]
 - [x] [[T141 Fuzz of the shell through the recording platform]]
 
 **Own backend**
 
-- [ ] [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]]
-- [ ] [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]]
-- [ ] [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]]
-  - [ ] [[T168 Wayland connection, window and protocol states]]
-  - [ ] [[T169 Wayland keyboard, pointer and seat]]
-  - [ ] [[T170 Wayland tablet and clipboard]]
-  - [ ] [[T171 Wayland platform in main and the e2e suite]]
-- [ ] [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]]
-  - [ ] [[T175 X11 connection, window and GLX context]]
-  - [ ] [[T176 X11 keyboard, pointer and XInput2 pressure]]
-  - [ ] [[T177 X11 selections and clean exit]]
-  - [ ] [[T178 X11 platform in main and the e2e suite]]
+- [x] [[T142 draw-sys foundation with dlopen, safe wrappers and the unsafe test set]]
+- [x] [[T145 OpenGL ES 3.0 context and loader (EGL and GLX)]]
+- [x] [[T143 Wayland backend with window, keyboard, pointer, tablet and clipboard]]
+  - [x] [[T168 Wayland connection, window and protocol states]]
+  - [x] [[T169 Wayland keyboard, pointer and seat]]
+  - [x] [[T170 Wayland tablet and clipboard]]
+  - [x] [[T171 Wayland platform in main and the e2e suite]]
+- [x] [[T144 X11 backend with window, keyboard, pointer, XInput2 pressure and selections]]
+  - [x] [[T175 X11 connection, window and GLX context]]
+  - [x] [[T176 X11 keyboard, pointer and XInput2 pressure]]
+  - [x] [[T177 X11 selections and clean exit]]
+  - [x] [[T178 X11 platform in main and the e2e suite]]
 
 **Renderer, pacing, threads**
 
-- [ ] [[T146 Retained renderer in draw-gfx]]
-- [ ] [[T173 Camera uniform and analytic anti-aliasing over Gpu]]
-- [ ] [[T179 Tessellator parity with the app's drawing]]
-- [ ] [[T180 Text and formulas on the retained path]]
-- [ ] [[T172 Retained renderer in the app]]
-- [ ] [[T147 Frame pacing by the compositor and idle at zero]]
-- [ ] [[T148 Multithreaded tessellation, only with a measured gain]]
-- [ ] [[T152 Command line and DRAW_* variables audit]]
+- [x] [[T146 Retained renderer in draw-gfx]]
+- [x] [[T173 Camera uniform and analytic anti-aliasing over Gpu]]
+- [x] [[T179 Tessellator parity with the app's drawing]]
+- [x] [[T180 Text and formulas on the retained path]]
+- [x] [[T172 Retained renderer in the app]]
+- [x] [[T147 Frame pacing by the compositor and idle at zero]]
+- [x] [[T148 Multithreaded tessellation, only with a measured gain]]
+- [x] [[T152 Command line and DRAW_* variables audit]]
 
 **Cutover and release**
 
-- [ ] [[T149 Cutover removing miniquad and macroquad]]
+- [x] [[T149 Cutover removing miniquad and macroquad]]
 - [ ] [[T151 Release 2.0.0]]
-- [ ] [[T174 Nix flake for NixOS]]
+- [x] [[T174 Nix flake for NixOS]]
+- [x] [[T181 AUR package for Arch-based distros]]
+- [x] [[T182 Fedora COPR RPM package]]
+- [x] [[T183 Self-hosted Flatpak repository]]
 
 **Optional**
 
@@ -179,3 +182,4 @@ Decided per child task.
 - 2026-11-12 — owner's decisions after the 1.6.0 release (see [[2.0 Architecture proposal]]): **X11 stays** (goal 1 above is reversed and the deprecation of T46 is reverted by a new ADR); the patched miniquad, and so macroquad, are replaced by a backend of our own; the release depends on the e2e suite; `unsafe` is allowed in confined modules with full unit, integration and regression tests per primitive; threads only with a measured gain; all the quality proposals are accepted; no dynamic dispatch where avoidable, with tagless final, GADT-like encodings and type states; the control engine is an automaton. Still no new features.
 - 2026-11-12 — owner: OpenGL ES 3.0 for 2.0.0 and a Vulkan backend as an **optional** child task, conditioned on a measurement (see *OpenGL or Vulkan* in [[2.0 Architecture proposal]]); the `Gpu` trait is designed for both.
 - 2026-11-12 — child tasks T127–T152 created after the owner approved the removal of macroquad with the miniquad and the `dlopen` of the C libraries. T150 (Vulkan) is optional and does not block T151.
+- 2026-11-18 — synced child-task checkboxes with actual `done` statuses (`T127`–`T149`, `T152`–`T183`), noted that `T128` keeps X11 alongside Wayland (reversing the 2026-11-02 Goal above), and wired `src/shell/app.rs` through `draw_core::machine::step` / `Machine::apply` (while keeping `Editor` inside `Machine` as the adapter until a future refactor). Only `T151 Release 2.0.0` remains before tagging `v2.0.0`.

@@ -63,6 +63,16 @@ impl Machine {
         self.editor
     }
 
+    /// Applies a shell/toolbar command to the machine and returns its effects.
+    pub fn apply(&mut self, command: crate::core::command::Command) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        if self.editor.apply(command) {
+            effects.push(Effect::Redraw);
+        }
+        collect_requests(&mut self.editor, &mut effects);
+        effects
+    }
+
     /// What the machine is doing with the input right now. Modal overlays
     /// come first because they capture every input.
     #[must_use]
