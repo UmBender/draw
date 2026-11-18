@@ -71,7 +71,10 @@ pub struct Options {
     pub renderer: Renderer,
     /// Whether to start from an autosave (`--recover [prev]`).
     pub launch: Launch,
-    /// The file to open.
+    /// A Markdown file to convert to `.draw` without opening a window
+    /// (`--from-md`).
+    pub from_md: Option<PathBuf>,
+    /// The file to open (or output `.draw` path with `--from-md`).
     pub file: Option<PathBuf>,
 }
 
@@ -88,6 +91,7 @@ impl Default for Options {
             e2e: E2eFiles::default(),
             renderer: Renderer::Layers,
             launch: Launch::Normal,
+            from_md: None,
             file: None,
         }
     }
@@ -164,8 +168,8 @@ fn read(args: &[OsString]) -> Result<Options, String> {
                 });
                 rest.extend(value);
             }
-            "log" | "msaa" | "backend" | "tablet" | "renderer" | "snapshot" | "e2e-dump"
-            | "e2e-idle" | "e2e-clipboard" => {
+            "log" | "msaa" | "backend" | "tablet" | "renderer" | "from-md" | "snapshot"
+            | "e2e-dump" | "e2e-idle" | "e2e-clipboard" => {
                 let value = inline
                     .or_else(|| words.next().cloned())
                     .ok_or_else(|| format!("`--{name}` needs a value"))?;
@@ -215,6 +219,7 @@ fn apply(options: &mut Options, name: &str, value: &OsString) -> Result<(), Stri
                 _ => return Err(bad("layers or retained")),
             };
         }
+        "from-md" => options.from_md = Some(PathBuf::from(value)),
         "snapshot" => options.snapshot = Some(PathBuf::from(value)),
         "e2e-dump" => options.e2e.dump = Some(PathBuf::from(value)),
         "e2e-idle" => options.e2e.idle = Some(PathBuf::from(value)),

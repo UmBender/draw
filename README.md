@@ -514,7 +514,9 @@ Tilt, rotation and the eraser end of the pen are not used.
 
 - Files are optional: `Ctrl+S` writes every page to `draw file.draw` (the
   file named on the command line) or to `~/draw-<date>-<time>.draw`, and
-  `draw file.draw` opens it; a missing file starts empty and the first
+  `draw file.draw` opens it; `draw --from-md notes.md [out.draw]` converts
+  Markdown notes (headings, `$...$` / `$$...$$` TeX, `---` page breaks)
+  into a `.draw` file. A missing file starts empty and the first
   `Ctrl+S` creates it. There is no file dialog, no undo history in the
   file, and files from newer versions or damaged ones are refused (never
   overwritten). Later versions keep reading today's files. `Ctrl+E`

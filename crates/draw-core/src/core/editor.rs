@@ -494,6 +494,13 @@ impl Editor {
         }
     }
 
+    /// Inserts `shape` directly into the current page without recording
+    /// undo history (for document builders such as Markdown import).
+    pub(crate) fn insert_shape(&mut self, shape: Shape) {
+        let tx = crate::core::document::tx_insert(&mut self.doc, [shape]);
+        let _ = self.doc.apply(&tx);
+    }
+
     /// This document as a [`DocFile`] (ADR-T108-1).
     #[must_use]
     pub fn file(&self) -> DocFile {

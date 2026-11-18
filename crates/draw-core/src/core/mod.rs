@@ -12,6 +12,7 @@ pub mod history;
 pub mod input;
 pub mod keymap;
 pub mod laser;
+pub mod markdown;
 pub mod math_metrics;
 pub mod minimap;
 pub mod numbering;

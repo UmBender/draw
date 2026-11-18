@@ -129,6 +129,9 @@ fn dyn_uses(source: &str) -> Vec<usize> {
 
 /// Every `.rs` file under `dir`, recursively.
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    if !dir.exists() {
+        return;
+    }
     let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
     for entry in entries {
         let path = entry

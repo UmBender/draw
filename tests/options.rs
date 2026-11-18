@@ -46,6 +46,7 @@ fn defaults_without_arguments() {
     assert_eq!(options.tablet, TabletMode::Auto);
     assert_eq!(options.snapshot, None);
     assert_eq!(options.launch, Launch::Normal);
+    assert_eq!(options.from_md, None);
     assert_eq!(options.file, None);
 }
 
@@ -101,6 +102,17 @@ fn backend_refuses_an_unknown_name() {
 
     assert!(message.contains("--backend"), "{message}");
     assert!(message.contains("mir"), "{message}");
+}
+
+#[test]
+fn from_md_takes_input_and_optional_output() {
+    let a = run(&["--from-md", "notes.md"]);
+    let b = run(&["--from-md=notes.md", "out.draw"]);
+
+    assert_eq!(a.from_md, Some(PathBuf::from("notes.md")));
+    assert_eq!(a.file, None);
+    assert_eq!(b.from_md, Some(PathBuf::from("notes.md")));
+    assert_eq!(b.file, Some(PathBuf::from("out.draw")));
 }
 
 #[test]

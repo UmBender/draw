@@ -44,8 +44,10 @@ fn help_text() -> String {
     format!(
         "{}\n\n\
 Usage: draw [FILE.draw] [OPTIONS]\n\
+       draw --from-md FILE.md [OUT.draw]\n\
        draw --help | --version\n\n\
 Options:\n  \
+  --from-md <file>  Convert a Markdown file to .draw and exit\n  \
   --recover [prev]  Open the last autosave (or the one before it)\n  \
   --help            Show this help\n  \
   --version         Show the version\n\n\
@@ -77,6 +79,13 @@ fn main() {
             std::process::exit(2);
         }
     };
+    if let Some(input) = options.from_md.as_deref() {
+        if let Err(problem) = convert_markdown(input, options.file.as_deref()) {
+            eprintln!("draw: {problem}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let backend = backend::choose(
         options.backend,
         std::env::var_os(backend::WAYLAND_DISPLAY_ENV).as_deref(),
@@ -103,6 +112,24 @@ fn main() {
         Backend::X11 => run_x11(options, backend, tablet),
     }
     finish(signal::received());
+}
+
+/// Converts a Markdown file at `input` into a `.draw` file at `output`
+/// (defaulting to `input` with a `.draw` extension).
+fn convert_markdown(
+    input: &std::path::Path,
+    output: Option<&std::path::Path>,
+) -> Result<(), String> {
+    let source =
+        std::fs::read_to_string(input).map_err(|err| format!("{}: {err}", input.display()))?;
+    let target = output.map_or_else(
+        || input.with_extension("draw"),
+        std::path::Path::to_path_buf,
+    );
+    let doc = draw::core::markdown::markdown_to_doc(&source);
+    std::fs::write(&target, doc.to_text()).map_err(|err| format!("{}: {err}", target.display()))?;
+    println!("{}", target.display());
+    Ok(())
 }
 
 /// Runs the app over the own X11 backend and the OpenGL ES Gpu

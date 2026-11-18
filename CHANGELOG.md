@@ -6,6 +6,13 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `draw --from-md FILE.md [OUT.draw]` converts Markdown notes into a `.draw`
+  file without opening a window, keeping headings (by text size) and TeX
+  formulas (`$...$` and `$$...$$` blocks), splitting pages on `---`, and
+  stripping unsupported formatting.
+
 ### Changed
 
 - Removed the vendored `miniquad` fork and `macroquad` dependency; `draw` now
