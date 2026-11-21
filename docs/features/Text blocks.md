@@ -31,7 +31,8 @@ back.
 | Delete | `Backspace`, `Delete` |
 | Paste text from another app | `Ctrl+V` while the block or shape text is open |
 | Throw the edit away | `Ctrl+Z` while typing |
-| Edit a block again | Text tool: click it · Select tool: double-click it (or click it when it is already selected) |
+| Edit a block again | Text tool: click it |
+| Select a block (to move, resize or convert it) | Select tool: one click on it shows its handles at once |
 | Text size | `[` / `]` before clicking (the stroke width ladder: 14–76 px) |
 | Bigger / smaller while typing | `Ctrl+]` / `Ctrl+[` (one step of the same ladder) |
 | Keep that size for the next blocks | automatic after `Ctrl+]` / `Ctrl+[`; `[` / `]` go back to the width size |
