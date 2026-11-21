@@ -6,6 +6,12 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- One click with the Select tool on a text block (or any shape) shows its
+  selection and resize handles at once; before, the handles only appeared
+  after a small drag, which got in the way of turning a block into a graph.
+
 ## [2.0.0] - 2026-11-18
 
 ### Added

@@ -1,8 +1,8 @@
 ---
 id: T184
 title: Select click shows the selection
-status: review
-wave: 61
+status: done
+wave: 75
 branch: fix/select-click-redraw
 depends_on: []
 adrs: []
@@ -63,3 +63,4 @@ A plain click with the Select tool (`V`) on a shape, a text block in particular,
 - 2026-11-21 — written from the owner's bug report; cause found by reading the press/release path and confirmed with a failing unit test.
 - 2026-11-21 — no e2e case: a screenshot case passed without the fix too. With the e2e hooks on, the app draws every idle frame (`skip_idle` is false), which hides the bug; only the desktop, which skips idle frames, shows it. The shell-loop test of AC-3 runs with idle frames skipped and fails without the fix.
 - 2026-11-21 — `Text blocks.md` still said the Select tool re-opens a block on a click; it has not since 2026-11-17. Fixed together with the select click rows. No tutorial: the change restores documented behaviour.
+- 2026-11-21 — confirmed by the owner in the app; merged into `main`, listed under Fixed for 2.0.1.

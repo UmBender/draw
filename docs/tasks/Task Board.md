@@ -434,6 +434,7 @@ flowchart TD
 | 72 | [[T148 Multithreaded tessellation, only with a measured gain]] · [[T170 Wayland tablet and clipboard]] · [[T172 Retained renderer in the app]] · [[T179 Tessellator parity with the app's drawing]] · [[T180 Text and formulas on the retained path]] · [[T173 Camera uniform and analytic anti-aliasing over Gpu]] · [[T174 Nix flake for NixOS]] · [[T177 X11 selections and clean exit]] · [[T152 Command line and DRAW_* variables audit]] · [[T154 Environment variables to flags]] |
 | 73 | [[T149 Cutover removing miniquad and macroquad]] · [[T171 Wayland platform in main and the e2e suite]] · [[T178 X11 platform in main and the e2e suite]] |
 | 74 | [[T150 Optional Vulkan backend for the Gpu trait]] · [[T151 Release 2.0.0]] |
+| 75 | [[T184 Select click shows the selection]] |
 
 ## Status
 
@@ -620,3 +621,4 @@ flowchart TD
 | [[T178 X11 platform in main and the e2e suite]] | done | T177 | `task/T178-x11-platform-in-main-and-the-e2e-suite` |
 | [[T179 Tessellator parity with the app's drawing]] | done | T146, T173 | `task/T179-tessellator-parity-with-the-app-s-draw` |
 | [[T180 Text and formulas on the retained path]] | done | T146, T173, T179 | `task/T180-text-and-formulas-on-the-retained-path` |
+| [[T184 Select click shows the selection]] | done | — | `fix/select-click-redraw` |
