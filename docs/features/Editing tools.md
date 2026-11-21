@@ -30,7 +30,7 @@ what the tools do with them.
 | Erase from any tool | right drag |
 | Bucket tool | `B`, then click inside a rectangle or ellipse |
 | Select tool | `V` |
-| Select the topmost shape under the pointer | click |
+| Select the topmost shape under the pointer | click (its handles show at once) |
 | Add / remove a shape from the selection | `Shift` + click |
 | Clear the selection | click on empty space (or `Esc`) |
 | Rubber-band select | drag on empty space (`Shift` adds to the selection) |
