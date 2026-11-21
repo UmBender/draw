@@ -296,7 +296,7 @@ fn regression_T184_select_click_shows_handles() {
     // Arrange: one unselected text block, the Select tool. The shell gets
     // the press and the release in different frames.
     let mut ed = load_fixture("regressions/T184-select-click-shows-handles");
-    assert!(ed.selection().is_empty());
+    assert_eq!(ed.selection(), []);
     let pos = Vec2::new(110.0, 120.0);
     let (button, mods) = (PointerButton::Left, Modifiers::NONE);
     ed.handle(InputEvent::PointerDown { pos, button, mods });

@@ -55,7 +55,7 @@ A plain click with the Select tool (`V`) on a shape, a text block in particular,
 - [x] spec — `docs(T184): specify select click redraw acceptance criteria`
 - [x] regression — `test(T184): add regression test for select click without handles`
 - [x] behaviour — `fix(T184): redraw when a gesture ends with the handles shown`
-- [ ] quality — `chore(T184): pass clippy and rustfmt` (skipped if nothing changes)
+- [x] quality — `chore(T184): pass clippy and rustfmt`
 - [ ] docs — `docs(T184): update the select click notes`
 
 ## Log
