@@ -1628,7 +1628,11 @@ impl Editor {
                 }
                 self.prune_selection();
                 let reopened = self.reopen_clicked_text(pos);
-                changed || reopened
+                // The handles are hidden while a gesture is in progress, so
+                // ending one that leaves them shown must redraw, even when a
+                // click picked its shape at the press already (T184).
+                let handles = self.selection_handles().is_some();
+                changed || reopened || handles
             }
             _ => false,
         }
