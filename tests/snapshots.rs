@@ -286,3 +286,28 @@ fn regression_T121_dgraph_loops_and_opposite_edges() {
         }
     }
 }
+
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T184_select_click_shows_handles() {
+    use draw::core::geom::Vec2;
+    use draw::core::input::{InputEvent, Modifiers, PointerButton};
+
+    // Arrange: one unselected text block, the Select tool. The shell gets
+    // the press and the release in different frames.
+    let mut ed = load_fixture("regressions/T184-select-click-shows-handles");
+    assert!(ed.selection().is_empty());
+    let pos = Vec2::new(110.0, 120.0);
+    let (button, mods) = (PointerButton::Left, Modifiers::NONE);
+    ed.handle(InputEvent::PointerDown { pos, button, mods });
+
+    // Act
+    let redraw = ed.handle(InputEvent::PointerUp { pos, button, mods });
+
+    // Assert: the block is selected, its handles are up, and the release
+    // asks for the frame that shows them.
+    assert_eq!(ed.selection().len(), 1);
+    assert!(ed.text_edit().is_none());
+    assert!(ed.selection_handles().is_some());
+    assert!(redraw, "the release must redraw so the selection shows");
+}

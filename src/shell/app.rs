@@ -2079,6 +2079,131 @@ mod tests {
         assert_eq!(frames.get(), 5);
     }
 
+    /// A platform that hands out one batch of events per frame and notes,
+    /// at the end of each frame, how many GPU calls were made so far. The
+    /// loop stays pending once the batches are used up.
+    struct PerFrame {
+        inner: crate::shell::recording::RecordingPlatform,
+        batches: std::collections::VecDeque<Vec<RawEvent>>,
+        gpu_calls: std::rc::Rc<std::cell::RefCell<Vec<crate::shell::recording::GpuCall>>>,
+        ends: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+    }
+
+    impl Platform for PerFrame {
+        fn poll(&mut self, out: &mut Vec<RawEvent>) {
+            self.inner.poll(out);
+        }
+        fn window(&mut self) -> WindowMetrics {
+            self.inner.window()
+        }
+        fn clipboard_text(&mut self) -> Option<String> {
+            self.inner.clipboard_text()
+        }
+        fn set_clipboard_text(&mut self, text: &str) {
+            self.inner.set_clipboard_text(text);
+        }
+        fn set_clipboard_png(&mut self, png: &[u8]) {
+            self.inner.set_clipboard_png(png);
+        }
+        fn schedule_update(&mut self) {
+            self.inner.schedule_update();
+        }
+        fn skips_idle_swap(&self) -> bool {
+            self.inner.skips_idle_swap()
+        }
+        fn paused(&self) -> bool {
+            self.inner.paused()
+        }
+        fn next_frame(&mut self) -> impl std::future::Future<Output = ()> {
+            self.ends.borrow_mut().push(self.gpu_calls.borrow().len());
+            let batch = self.batches.pop_front();
+            let stop = batch.is_none();
+            for event in batch.into_iter().flatten() {
+                self.inner.queue(event);
+            }
+            async move {
+                if stop {
+                    std::future::pending::<()>().await;
+                }
+            }
+        }
+        fn next_idle(&mut self) -> impl std::future::Future<Output = ()> {
+            self.next_frame()
+        }
+    }
+
+    #[test]
+    #[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+    fn regression_T184_select_click_release_draws_the_handles() {
+        use crate::shell::recording::{GpuCall, RecordingGpu, RecordingPlatform};
+        use draw_sys::platform::RawButton;
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        // Arrange: one unselected text block and the Select tool; idle
+        // frames are skipped as on the desktop, and the press and the
+        // release of the click come in different frames.
+        let metrics = WindowMetrics {
+            width: 800.0,
+            height: 600.0,
+            scale: 1.0,
+        };
+        let mut inner = RecordingPlatform::new(metrics);
+        inner.set_skips_idle_swap(true);
+        let (x, y) = (110.0, 120.0);
+        let button = |down| RawEvent::Button {
+            button: RawButton::Left,
+            x,
+            y,
+            down,
+        };
+        let gpu = RecordingGpu::default();
+        let gpu_calls = gpu.calls_handle();
+        let ends = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let platform = PerFrame {
+            inner,
+            batches: [
+                vec![RawEvent::PointerMove { x, y }, button(true)],
+                vec![button(false)],
+                Vec::new(),
+            ]
+            .into(),
+            gpu_calls: std::rc::Rc::clone(&gpu_calls),
+            ends: std::rc::Rc::clone(&ends),
+        };
+        let options = Options {
+            snapshot: Some(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("tests/snapshots/regressions/T184-select-click-shows-handles.snap"),
+            ),
+            ..Options::default()
+        };
+
+        // Act
+        let mut run = pin!(run(
+            platform,
+            gpu,
+            options,
+            Backend::X11,
+            tablet::detect(crate::shell::options::TabletMode::Off)
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert_eq!(run.as_mut().poll(&mut cx), Poll::Pending);
+
+        // Assert: frames are start, press, release, idle. The release
+        // frame submits, so the handles it shows reach the window.
+        let ends = ends.borrow();
+        assert_eq!(ends.len(), 4, "frame ends: {ends:?}");
+        let calls = gpu_calls.borrow();
+        let release = &calls[ends[1]..ends[2]];
+        assert!(
+            release
+                .iter()
+                .any(|call| matches!(call, GpuCall::Submit { .. })),
+            "the release frame must draw the selection handles"
+        );
+    }
+
     #[test]
     fn paused_window_draws_nothing() {
         use crate::shell::recording::{GpuCall, RecordingGpu, RecordingPlatform};

@@ -4749,6 +4749,40 @@ mod tests {
     }
 
     #[test]
+    fn select_click_release_redraws_to_show_handles() {
+        // Arrange: the shell presents press and release in separate frames,
+        // and the handles are hidden while the gesture is in progress.
+        let mut ed = text_editor();
+        place(&mut ed, 100.0, 100.0, "abcd");
+        key(&mut ed, Key::Escape);
+        ed.apply(Command::SetTool(Tool::Select));
+        down(&mut ed, PointerButton::Left, 110.0, 105.0);
+        assert!(ed.selection_handles().is_none());
+
+        // Act
+        let redraw = up(&mut ed, PointerButton::Left, 110.0, 105.0);
+
+        // Assert
+        assert_eq!(ed.selection(), ids(&ed));
+        assert!(ed.selection_handles().is_some());
+        assert!(redraw, "the release must redraw so the handles appear");
+    }
+
+    #[test]
+    fn select_click_on_rect_release_redraws_to_show_handles() {
+        let mut ed = shape_text_editor(vec![rect(0.0, 0.0, 200.0, 100.0)], Tool::Select);
+        let (x, y) = (0.0, 50.0);
+        let screen = ed.view.camera.world_to_screen(Vec2::new(x, y));
+        down(&mut ed, PointerButton::Left, screen.x, screen.y);
+
+        let redraw = up(&mut ed, PointerButton::Left, screen.x, screen.y);
+
+        assert_eq!(ed.selection().len(), 1);
+        assert!(ed.selection_handles().is_some());
+        assert!(redraw, "the release must redraw so the handles appear");
+    }
+
+    #[test]
     fn text_reedit_hides_original_while_editing() {
         // Arrange
         let mut ed = text_editor();

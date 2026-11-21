@@ -33,8 +33,8 @@ A plain click with the Select tool (`V`) on a shape, a text block in particular,
   Tests: `select_click_release_redraws_to_show_handles`, `select_click_on_rect_release_redraws_to_show_handles` (`core::editor`).
 - **AC-2** — Regression: from a snapshot with one unselected text block and the Select tool, a press then a release on the block selects it, shows the handles and the release reports a redraw.
   Test: `regression_T184_select_click_shows_handles` (`tests/snapshots.rs`), fixture `tests/snapshots/regressions/T184-select-click-shows-handles.snap`.
-- **AC-3** — In the running app, after `T`, typing, `Escape`, `V` and a click on the block, the window shows the selection outline and its four handles.
-  Test: e2e case `tests/e2e/regression-T184-select-click-shows-handles/` (screenshot).
+- **AC-3** — In the shell loop, with idle frames skipped as on the desktop and the press and the release in different frames, the release frame submits GPU work, so the handles reach the window.
+  Test: `regression_T184_select_click_release_draws_the_handles` (`shell::app`, over `RecordingPlatform` and `RecordingGpu`, started from the AC-2 fixture).
 
 ## Out of scope
 
@@ -46,14 +46,14 @@ A plain click with the Select tool (`V`) on a shape, a text block in particular,
 - `crates/draw-core/src/core/editor.rs`
 - `tests/snapshots.rs`
 - `tests/snapshots/regressions/T184-select-click-shows-handles.snap`
-- `tests/e2e/regression-T184-select-click-shows-handles/`
+- `src/shell/app.rs` (tests only)
 - `docs/features/Editing tools.md`, `docs/features/Text blocks.md` (the Select click rows)
 - this note
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T184): specify select click redraw acceptance criteria`
-- [ ] regression — `test(T184): add regression test for select click without handles`
+- [x] spec — `docs(T184): specify select click redraw acceptance criteria`
+- [x] regression — `test(T184): add regression test for select click without handles`
 - [ ] behaviour — `fix(T184): redraw when a gesture ends with the handles shown`
 - [ ] quality — `chore(T184): pass clippy and rustfmt` (skipped if nothing changes)
 - [ ] docs — `docs(T184): update the select click notes`
@@ -61,3 +61,4 @@ A plain click with the Select tool (`V`) on a shape, a text block in particular,
 ## Log
 
 - 2026-11-21 — written from the owner's bug report; cause found by reading the press/release path and confirmed with a failing unit test.
+- 2026-11-21 — no e2e case: a screenshot case passed without the fix too. With the e2e hooks on, the app draws every idle frame (`skip_idle` is false), which hides the bug; only the desktop, which skips idle frames, shows it. The shell-loop test of AC-3 runs with idle frames skipped and fails without the fix.
