@@ -119,7 +119,7 @@ programs the integration tests start.
 - [x] regression — `test(T194): read WM_CLASS with xprop in the X11 test`
 - [x] behaviour — `fix(T194): install x11-utils for xprop`
 - [x] regression — `test(T194): take the compile-fail rlibs from Cargo`
-- [ ] behaviour — `fix(T194): find rlibs through Cargo and record the coverage baseline`
+- [x] behaviour — `fix(T194): find rlibs through Cargo and record the coverage baseline`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 
