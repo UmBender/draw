@@ -422,7 +422,7 @@ fn emit_request(
 }
 
 /// A protocol file and the interfaces generated from it.
-const PROTOCOLS: [(&str, &str, &[&str]); 3] = [
+const PROTOCOLS: [(&str, &str, &[&str]); 4] = [
     (
         "wayland.xml",
         "wayland",
@@ -461,6 +461,11 @@ const PROTOCOLS: [(&str, &str, &[&str]); 3] = [
             "zwp_tablet_pad_v2",
         ],
     ),
+    (
+        "xdg-decoration-unstable-v1.xml",
+        "xdg_decoration",
+        &["zxdg_decoration_manager_v1", "zxdg_toplevel_decoration_v1"],
+    ),
 ];
 
 fn emit_file(xml_name: &str, interfaces: &[&Interface], known: &HashMap<String, String>) -> String {
@@ -497,7 +502,7 @@ fn generate(protocols: &Path) -> Vec<(String, String)> {
     }
     let mut files = vec![(
         "mod.rs".to_string(),
-        "//! Generated protocol code (ADR-T168-1), one module per protocol file.\n\npub mod tablet_v2;\npub mod wayland;\npub mod xdg_shell;\n".to_string(),
+        "//! Generated protocol code (ADR-T168-1), one module per protocol file.\n\npub mod tablet_v2;\npub mod wayland;\npub mod xdg_decoration;\npub mod xdg_shell;\n".to_string(),
     )];
     for (xml, module, list) in &parsed {
         let refs: Vec<&Interface> = list.iter().collect();

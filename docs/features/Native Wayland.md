@@ -2,7 +2,7 @@
 title: Native Wayland
 aliases: ["Native Wayland (experimental)"]
 task: "[[T46 Native Wayland by default and Xwayland deprecated]]"
-adrs: ["[[ADR-T28-1 Opt-in native Wayland backend]]", "[[ADR-T44-1 Wayland seat devices follow the announced capabilities]]", "[[ADR-T46-1 Native Wayland by default and X11 deprecated]]"]
+adrs: ["[[ADR-T28-1 Opt-in native Wayland backend]]", "[[ADR-T44-1 Wayland seat devices follow the announced capabilities]]", "[[ADR-T46-1 Native Wayland by default and X11 deprecated]]", "[[ADR-T185-1 Server-side decorations through xdg-decoration]]"]
 tutorial: "[[28 Choosing a window backend at startup]]"
 shortcuts: []
 tags: [feature]
@@ -67,11 +67,23 @@ compile) is ignored and the last good one stays, so draw keeps running and
 typing ([[T79 Wayland keyboard without a keymap]],
 [[ADR-T79-1 Ignore an unusable Wayland keymap]]).
 
+### Title bar and window size
+
+The window asks the compositor for server-side decorations through
+`zxdg_decoration_manager_v1`: KDE Plasma, sway, Hyprland and other
+wlroots compositors draw its title bar and frame. draw never draws its
+own. When the compositor lets a new window choose its size, it opens at
+1280×800 logical pixels, the size of the X11 window, so the whole
+toolbar fits ([[T185 Wayland title bar and window size]],
+[[ADR-T185-1 Server-side decorations through xdg-decoration]]).
+
 ## Limits
 
 - miniquad 0.4.11 has no fractional-scale support, so text may be no
   sharper than under Xwayland at 125 % / 150 %; `--backend x11` is
   the 1.x workaround (T46 AC-11).
-- Without `libdecor` the window may have no title bar on GNOME.
+- GNOME (Mutter) has no server-side decorations, so on native Wayland
+  the window has no title bar there; `draw --backend x11` gives one
+  (ADR-T185-1).
 - A fallback to X11 caused by missing libraries or a failed connection
   prints miniquad's line only.

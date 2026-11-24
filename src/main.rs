@@ -18,7 +18,8 @@ use draw_sys::signal;
 use draw_sys::wayland::WaylandPlatform;
 use draw_sys::x11::{GlBackend, X11Platform};
 
-/// The window size in pixels of the native X11 window.
+/// The size of the window: pixels on X11, logical pixels on Wayland when
+/// the compositor lets the window choose (T185).
 const NATIVE_SIZE: (u32, u32) = (1280, 800);
 
 /// Runs `future` to its end on this thread. The native platform's futures
@@ -176,11 +177,8 @@ fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choi
     } else {
         options.msaa_samples
     };
-    let opened = if window_samples == 4 {
-        WaylandPlatform::connect(None, "draw", app::WM_CLASS)
-    } else {
-        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples)
-    };
+    let opened =
+        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples, NATIVE_SIZE);
     let platform = match opened {
         Ok(platform) => platform,
         Err(problem) => {
@@ -242,7 +240,7 @@ mod tests {
             "X11Platform::open(",
             "X11Gpu::new(",
             "ClosingX11::new(",
-            "WaylandPlatform::connect(",
+            "WaylandPlatform::connect_with(",
             "WaylandGpu::new(",
             "ClosingWayland::new(",
         ] {
@@ -251,6 +249,21 @@ mod tests {
         for removed in ["run_on", "MqPlatform", "MqGpu", "macroquad", "miniquad"] {
             assert!(!production.contains(removed), "{removed} is still used");
         }
+    }
+
+    /// T185 AC-4: the Wayland window asks for the size of the X11 window,
+    /// tall enough for the whole toolbar.
+    #[test]
+    fn main_opens_wayland_at_the_native_size() {
+        let source = include_str!("main.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let Some((_, body)) = production.split_once("fn run_wayland(") else {
+            panic!("run_wayland missing");
+        };
+        let body = body.split("\nfn ").next().unwrap_or(body);
+
+        assert!(body.contains("NATIVE_SIZE"), "{body}");
+        assert!(!body.contains("WaylandPlatform::connect("), "{body}");
     }
 
     #[test]

@@ -13,10 +13,41 @@ use crate::egl::{ContextError, EglContext, GlContext, Platform};
 use crate::wayland::client::Proxy;
 use crate::wayland::connection::{Connection, Shared, TIMEOUT, WaylandError};
 use crate::wayland::generated::wayland::{wl_callback, wl_compositor, wl_surface};
+use crate::wayland::generated::xdg_decoration::{
+    zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
+};
 use crate::wayland::generated::xdg_shell::{xdg_surface, xdg_toplevel, xdg_wm_base};
 
 /// Size used when the compositor lets the client choose.
 const DEFAULT_SIZE: (i32, i32) = (640, 480);
+
+/// The decoration mode the compositor configured for the window
+/// (`zxdg_toplevel_decoration_v1.mode`, ADR-T185-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decoration {
+    /// The client draws its decorations: draw draws none, so the window
+    /// has no title bar.
+    ClientSide,
+    /// The compositor draws the title bar and the frame.
+    ServerSide,
+}
+
+impl Decoration {
+    /// The mode for a protocol value, `None` for an unknown one.
+    #[must_use]
+    pub fn from_protocol(mode: u32) -> Option<Self> {
+        match mode {
+            DECORATION_CLIENT_SIDE => Some(Self::ClientSide),
+            DECORATION_SERVER_SIDE => Some(Self::ServerSide),
+            _ => None,
+        }
+    }
+}
+
+/// `zxdg_toplevel_decoration_v1.mode.client_side`.
+const DECORATION_CLIENT_SIDE: u32 = 1;
+/// `zxdg_toplevel_decoration_v1.mode.server_side`.
+const DECORATION_SERVER_SIDE: u32 = 2;
 
 /// State: the objects exist, nothing is acked yet.
 #[derive(Debug)]
@@ -63,11 +94,22 @@ struct Objects {
     surface: *mut Proxy,
     xdg_surface: *mut Proxy,
     toplevel: *mut Proxy,
+    /// The toplevel's `zxdg_toplevel_decoration_v1`, null without a
+    /// decoration manager (ADR-T185-1).
+    decoration: *mut Proxy,
+    /// The logical size taken when a `configure` lets the client choose.
+    free_size: (i32, i32),
 }
 
 impl Drop for Objects {
     fn drop(&mut self) {
         let c = &self.shared.client;
+        if !self.decoration.is_null() {
+            // TEST: regression_T185_window_asks_for_server_side_decorations
+            // SAFETY: the decoration is live and destroyed once, here,
+            // before its toplevel, as the protocol requires.
+            unsafe { zxdg_toplevel_decoration_v1::destroy(c, self.decoration) };
+        }
         // TEST: wayland_window_configures_with_a_size
         // SAFETY: the three proxies are live and destroyed once, here, in
         // reverse order of creation (destructor requests).
@@ -150,6 +192,13 @@ extern "C" fn on_xdg_surface_configure(data: *mut c_void, _surface: *mut Proxy, 
     shared.win.serial.set(Some(serial));
 }
 
+extern "C" fn on_decoration_configure(data: *mut c_void, _decoration: *mut Proxy, mode: u32) {
+    // TEST: regression_T185_window_asks_for_server_side_decorations
+    // SAFETY: as in `on_toplevel_configure`.
+    let shared = unsafe { &*data.cast::<Shared>() };
+    shared.win.decoration.set(Decoration::from_protocol(mode));
+}
+
 extern "C" fn on_surface_enter(data: *mut c_void, _surface: *mut Proxy, output: *mut Proxy) {
     // TEST: wayland_output_scale_is_an_integer
     // SAFETY: as in `on_toplevel_configure`.
@@ -187,6 +236,10 @@ static TOPLEVEL_LISTENER: xdg_toplevel::Listener = xdg_toplevel::Listener {
     close: on_toplevel_close,
     ..xdg_toplevel::IGNORE
 };
+static DECORATION_LISTENER: zxdg_toplevel_decoration_v1::Listener =
+    zxdg_toplevel_decoration_v1::Listener {
+        configure: on_decoration_configure,
+    };
 static SURFACE_LISTENER: wl_surface::Listener = wl_surface::Listener {
     enter: on_surface_enter,
     leave: on_surface_leave,
@@ -218,6 +271,7 @@ impl Connection {
         let data = Rc::as_ptr(shared).cast_mut().cast::<c_void>();
         shared.win.serial.set(None);
         shared.win.close.set(false);
+        shared.win.decoration.set(None);
         shared.win.entered.borrow_mut().clear();
         // TEST: wayland_window_configures_with_a_size
         // SAFETY: the compositor proxy is live (bound in `connect`).
@@ -260,6 +314,7 @@ impl Connection {
             xdg_toplevel::set_title(c, toplevel, title.as_ptr());
             xdg_toplevel::set_app_id(c, toplevel, app_id.as_ptr());
         }
+        let decoration = ask_server_side(shared, toplevel, data);
         Ok(Window {
             state: Created,
             objects: Objects {
@@ -267,9 +322,38 @@ impl Connection {
                 surface,
                 xdg_surface: xdg,
                 toplevel,
+                decoration,
+                free_size: DEFAULT_SIZE,
             },
         })
     }
+}
+
+/// Creates the toplevel's decoration object and asks for server-side
+/// decorations, before the first commit as the protocol requires. Null
+/// when the compositor has no decoration manager (ADR-T185-1).
+fn ask_server_side(shared: &Shared, toplevel: *mut Proxy, data: *mut c_void) -> *mut Proxy {
+    let manager = shared.decoration_manager.get();
+    if manager.is_null() {
+        return std::ptr::null_mut();
+    }
+    let c = &shared.client;
+    // TEST: regression_T185_window_asks_for_server_side_decorations
+    // SAFETY: the manager and the toplevel are live proxies of this
+    // connection, and the toplevel has no buffer yet.
+    let decoration =
+        unsafe { zxdg_decoration_manager_v1::get_toplevel_decoration(c, manager, toplevel) };
+    if decoration.is_null() {
+        return decoration;
+    }
+    // TEST: regression_T185_window_asks_for_server_side_decorations
+    // SAFETY: `decoration` is live; `data` outlives it (it dies with the
+    // `Objects`, which hold the `Rc`).
+    unsafe {
+        zxdg_toplevel_decoration_v1::add_listener(c, decoration, &DECORATION_LISTENER, data);
+        zxdg_toplevel_decoration_v1::set_mode(c, decoration, DECORATION_SERVER_SIDE);
+    }
+    decoration
 }
 
 impl<S> Window<S> {
@@ -303,6 +387,13 @@ impl<S> Window<S> {
         self.objects.shared.win.suspended.get()
     }
 
+    /// The decoration mode the compositor configured, `None` before its
+    /// answer or when it has no decoration manager (ADR-T185-1).
+    #[must_use]
+    pub fn decoration(&self) -> Option<Decoration> {
+        self.objects.shared.win.decoration.get()
+    }
+
     fn next_state<T>(self, state: T) -> Window<T> {
         Window {
             state,
@@ -312,6 +403,15 @@ impl<S> Window<S> {
 }
 
 impl Window<Created> {
+    /// The logical size to take when the compositor lets the client
+    /// choose (a `0` side in `configure`), instead of 640×480. Sides
+    /// below 1 become 1.
+    #[must_use]
+    pub fn with_size(mut self, width: i32, height: i32) -> Self {
+        self.objects.free_size = (width.max(1), height.max(1));
+        self
+    }
+
     /// The first, bare commit that makes the compositor send `configure`.
     pub fn commit_initial(&self) {
         let o = &self.objects;
@@ -328,7 +428,7 @@ impl Window<Created> {
         // TEST: wayland_window_configures_with_a_size
         // SAFETY: the xdg surface is live while `self` is.
         unsafe { xdg_surface::ack_configure(&o.shared.client, o.xdg_surface, serial) };
-        o.shared.apply_pending_size(DEFAULT_SIZE);
+        o.shared.apply_pending_size(o.free_size);
         self.next_state(Configured)
     }
 
@@ -489,7 +589,7 @@ impl Window<Mapped> {
             // TEST: wayland_resize_event_follows_the_compositor
             // SAFETY: the xdg surface is live while `self` is.
             unsafe { xdg_surface::ack_configure(c, self.objects.xdg_surface, serial) };
-            shared.apply_pending_size(DEFAULT_SIZE);
+            shared.apply_pending_size(self.objects.free_size);
         }
         let (width, height) = shared.win.size.get();
         let scale = shared.scale();
@@ -560,6 +660,7 @@ impl Shared {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wayland::connection::WinState;
 
     #[test]
     fn wayland_toplevel_suspended_state_pauses_the_window() {
@@ -567,5 +668,20 @@ mod tests {
         assert!(!toplevel_states_suspended(&[4]));
         assert!(toplevel_states_suspended(&[9]));
         assert!(toplevel_states_suspended(&[4, 9]));
+    }
+
+    /// T185 AC-2: the `mode` values of `zxdg_toplevel_decoration_v1`.
+    #[test]
+    fn decoration_mode_maps_the_protocol_values() {
+        assert_eq!(Decoration::from_protocol(1), Some(Decoration::ClientSide));
+        assert_eq!(Decoration::from_protocol(2), Some(Decoration::ServerSide));
+        assert_eq!(Decoration::from_protocol(0), None);
+        assert_eq!(Decoration::from_protocol(3), None);
+    }
+
+    /// T185 AC-2: no mode before the compositor answers.
+    #[test]
+    fn decoration_is_unknown_before_any_configure() {
+        assert_eq!(WinState::default().decoration.get(), None);
     }
 }
