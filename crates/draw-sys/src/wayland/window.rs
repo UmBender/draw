@@ -568,4 +568,19 @@ mod tests {
         assert!(toplevel_states_suspended(&[9]));
         assert!(toplevel_states_suspended(&[4, 9]));
     }
+
+    /// T185 AC-2: the `mode` values of `zxdg_toplevel_decoration_v1`.
+    #[test]
+    fn decoration_mode_maps_the_protocol_values() {
+        assert_eq!(Decoration::from_protocol(1), Some(Decoration::ClientSide));
+        assert_eq!(Decoration::from_protocol(2), Some(Decoration::ServerSide));
+        assert_eq!(Decoration::from_protocol(0), None);
+        assert_eq!(Decoration::from_protocol(3), None);
+    }
+
+    /// T185 AC-2: no mode before the compositor answers.
+    #[test]
+    fn decoration_is_unknown_before_any_configure() {
+        assert_eq!(WinState::default().decoration.get(), None);
+    }
 }

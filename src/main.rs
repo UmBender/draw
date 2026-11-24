@@ -242,7 +242,7 @@ mod tests {
             "X11Platform::open(",
             "X11Gpu::new(",
             "ClosingX11::new(",
-            "WaylandPlatform::connect(",
+            "WaylandPlatform::connect_with(",
             "WaylandGpu::new(",
             "ClosingWayland::new(",
         ] {
@@ -251,6 +251,21 @@ mod tests {
         for removed in ["run_on", "MqPlatform", "MqGpu", "macroquad", "miniquad"] {
             assert!(!production.contains(removed), "{removed} is still used");
         }
+    }
+
+    /// T185 AC-4: the Wayland window asks for the size of the X11 window,
+    /// tall enough for the whole toolbar.
+    #[test]
+    fn main_opens_wayland_at_the_native_size() {
+        let source = include_str!("main.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        let Some((_, body)) = production.split_once("fn run_wayland(") else {
+            panic!("run_wayland missing");
+        };
+        let body = body.split("\nfn ").next().unwrap_or(body);
+
+        assert!(body.contains("NATIVE_SIZE"), "{body}");
+        assert!(!body.contains("WaylandPlatform::connect("), "{body}");
     }
 
     #[test]

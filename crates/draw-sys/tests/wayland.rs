@@ -14,7 +14,9 @@ use std::time::{Duration, Instant};
 
 use draw_sys::egl::GlContext;
 use draw_sys::platform::{Platform, RawEvent};
-use draw_sys::wayland::{Connection, WaylandError, WaylandPlatform};
+use draw_sys::wayland::{
+    Connection, Decoration, Mapped, WaylandError, WaylandPlatform, Window,
+};
 use sway::Sway;
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -277,7 +279,8 @@ fn wayland_idle_skips_swap_and_wakes_on_scheduled_update() {
 fn wayland_platform_connect_with_zero_msaa_swaps_cleanly() {
     let sway = Sway::start();
     let mut platform =
-        WaylandPlatform::connect_with(Some(&sway.socket), "T172 test", "draw-test", 0).unwrap();
+        WaylandPlatform::connect_with(Some(&sway.socket), "T172 test", "draw-test", 0, (640, 480))
+            .unwrap();
 
     block_on(platform.next_frame());
 
@@ -310,4 +313,56 @@ fn wayland_idle_sleeps_until_wakeup() {
 unsafe extern "C" {
     #[link_name = "raise"]
     fn libc_raise(sig: i32) -> i32;
+}
+
+/// Opens a mapped window with `T185` as title on `sway`'s connection.
+fn mapped_window(conn: &Connection) -> Window<Mapped> {
+    let window = conn
+        .create_window("T185", "draw-test")
+        .unwrap()
+        .wait_configure()
+        .unwrap()
+        .open_gl()
+        .unwrap();
+    window.swap().unwrap();
+    window
+}
+
+/// T185 AC-1: without `zxdg_decoration_manager_v1`, KWin treats the
+/// window as client-decorated and draws no title bar. The window asks for
+/// server-side decorations and the compositor's answer is kept.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T185_window_asks_for_server_side_decorations() {
+    let sway = Sway::start();
+    let conn = Connection::connect(Some(&sway.socket)).unwrap();
+    assert!(conn.has_global("zxdg_decoration_manager_v1"));
+
+    let window = mapped_window(&conn);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while window.decoration().is_none() {
+        assert!(Instant::now() < deadline, "no decoration configure");
+        conn.dispatch(Duration::from_millis(20)).unwrap();
+    }
+
+    assert_eq!(window.decoration(), Some(Decoration::ServerSide));
+}
+
+/// T185 AC-3: KWin and sway let a new window choose its size (a `0x0`
+/// configure); the window took 640x480 instead of the app's 1280x800, too
+/// short for the toolbar.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T185_window_opens_at_the_requested_size() {
+    let sway = Sway::start();
+    let conn = Connection::connect(Some(&sway.socket)).unwrap();
+
+    let window = conn
+        .create_window("T185", "draw-test")
+        .unwrap()
+        .with_size(1280, 800)
+        .wait_configure()
+        .unwrap();
+
+    assert_eq!(window.size(), (1280, 800));
 }

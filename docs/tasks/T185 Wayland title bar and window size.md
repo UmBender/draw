@@ -38,26 +38,28 @@ toolbar fits.
     gives X11 `NATIVE_SIZE` (1280×800) but gives Wayland no size.
 - The toolbar is laid out for 800 px of height (`islands_fit_the_default_window`).
   At 480 px the colour island crosses the bottom of the window.
-- Headless sway (the test compositor) treats a client without the protocol
-  as client-decorated (`"border": "csd"` in `swaymsg -t get_tree`), and it
-  answers `set_mode(server_side)` with `configure(server_side)` for a
-  tiled window. It lets an unmapped window choose its size (T168 Log).
+- Headless sway 1.11 (the test compositor) announces
+  `zxdg_decoration_manager_v1` and answers `set_mode(server_side)` with
+  `configure(server_side)`. Its `get_tree` does not show a client without
+  the protocol as `"border": "csd"`, tiled or floating, so the tests
+  check the mode the compositor configures, not the tree. Sway lets an
+  unmapped window choose its size (T168 Log).
 
 ## Spec
 
 Decision: [[ADR-T185-1 Server-side decorations through xdg-decoration]].
 
 - **AC-1** — Regression: on a compositor with `zxdg_decoration_manager_v1`,
-  the window asks for server-side decorations before its first commit, so
-  the compositor does not treat it as client-decorated.
+  the window asks for server-side decorations before its first commit, and
+  the compositor configures them: `Window::decoration()` is
+  `Some(Decoration::ServerSide)` once sway answers.
   Test: `regression_T185_window_asks_for_server_side_decorations`
-  (`crates/draw-sys/tests/wayland.rs`, headless sway, `swaymsg -t get_tree`).
-- **AC-2** — The mode the compositor configures is reported:
-  `Window::decoration()` is `Some(Decoration::ServerSide)` after sway's
-  answer, and `None` before any answer or without the manager.
-  Tests: `wayland_decoration_configure_reports_server_side`
-  (`tests/wayland.rs`), `decoration_mode_maps_the_protocol_values`
-  (unit test in `window.rs`).
+  (`crates/draw-sys/tests/wayland.rs`, headless sway).
+- **AC-2** — The `mode` values map to `Decoration` (`1` client-side, `2`
+  server-side, anything else unknown), and the mode is `None` before any
+  answer (and so stays `None` without the manager).
+  Tests: `decoration_mode_maps_the_protocol_values`,
+  `decoration_is_unknown_before_any_configure` (unit tests in `window.rs`).
 - **AC-3** — Regression: when the first `configure` lets the client choose,
   the window takes the size given with `Window::with_size`.
   Test: `regression_T185_window_opens_at_the_requested_size`
@@ -100,8 +102,8 @@ Decision: [[ADR-T185-1 Server-side decorations through xdg-decoration]].
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T185): specify Wayland title bar and size acceptance criteria`
-- [ ] regression — `test(T185): add regression tests for the Wayland title bar and size`
+- [x] spec — `docs(T185): specify Wayland title bar and size acceptance criteria`
+- [x] regression — `test(T185): add regression tests for the Wayland title bar and size`
 - [ ] models — `feat(T185): add the xdg-decoration protocol and the window size`
 - [ ] behaviour — `fix(T185): ask for server-side decorations and the native size`
 - [ ] quality — `chore(T185): pass clippy and rustfmt`
@@ -113,3 +115,10 @@ Decision: [[ADR-T185-1 Server-side decorations through xdg-decoration]].
   Plasma Wayland); cause found by reading `wayland/window.rs`,
   `wayland/connection.rs` and `main.rs`, and by comparing with miniquad's
   `window_conf` before T149.
+- 2026-11-24 — the first AC-1 test read `swaymsg -t get_tree` and passed
+  without the fix: sway 1.11 shows `"border": "none"` for the window, tiled
+  and floating. AC-1 now checks the configured decoration mode. The red
+  commit does not compile `tests/wayland.rs` and the `window.rs` unit tests
+  (new `Decoration`, `Window::with_size`, `Window::decoration` and the size
+  argument of `connect_with`), as in T168; the generator test and
+  `main_opens_wayland_at_the_native_size` fail at run time.
