@@ -87,10 +87,11 @@ impl WaylandPlatform {
         samples: i32,
         size: (u32, u32),
     ) -> Result<Self, WaylandError> {
-        let _ = size;
+        let side = |n: u32| i32::try_from(n).unwrap_or(i32::MAX);
         let connection = Connection::connect(socket)?;
         let window = connection
             .create_window(title, app_id)?
+            .with_size(side(size.0), side(size.1))
             .wait_configure()?
             .open_gl_samples(samples)?;
         window.swap().map_err(WaylandError::Context)?;

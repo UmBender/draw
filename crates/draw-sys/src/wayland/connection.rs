@@ -17,6 +17,7 @@ use crate::egl::ContextError;
 use crate::loader::LoadError;
 use crate::wayland::client::{Client, Proxy};
 use crate::wayland::generated::wayland::{wl_compositor, wl_output, wl_registry, wl_seat};
+use crate::wayland::generated::xdg_decoration::zxdg_decoration_manager_v1;
 use crate::wayland::generated::xdg_shell::xdg_wm_base;
 use crate::wayland::seat::{InputState, SEAT_LISTENER};
 use crate::wayland::window::Decoration;
@@ -344,6 +345,10 @@ impl Shared {
                     xdg_wm_base::VERSION,
                 ),
                 "wl_output" => (&raw const wl_output::INTERFACE, wl_output::VERSION),
+                "zxdg_decoration_manager_v1" if self.decoration_manager.get().is_null() => (
+                    &raw const zxdg_decoration_manager_v1::INTERFACE,
+                    zxdg_decoration_manager_v1::VERSION,
+                ),
                 // One seat: the first one announced (T169).
                 "wl_seat" if self.input.seat.get().is_null() => {
                     (&raw const wl_seat::INTERFACE, wl_seat::VERSION)
@@ -383,6 +388,7 @@ impl Shared {
                     unsafe { wl_seat::add_listener(c, proxy, &SEAT_LISTENER, data) };
                 }
                 "zwp_tablet_manager_v2" => self.input.tablet.manager.set(proxy),
+                "zxdg_decoration_manager_v1" => self.decoration_manager.set(proxy),
                 "wl_data_device_manager" => self.input.clipboard.set_manager(proxy, version),
                 _ => {
                     self.outputs.borrow_mut().push(Output { proxy, scale: 1 });
@@ -410,6 +416,12 @@ impl Drop for Shared {
             // TEST: wayland_connect_binds_the_globals
             // SAFETY: the output proxies are live and destroyed once, here.
             unsafe { (c.proxy_destroy)(output.proxy) };
+        }
+        if !self.decoration_manager.get().is_null() {
+            // TEST: regression_T185_window_asks_for_server_side_decorations
+            // SAFETY: live, destroyed once, here (a destructor request),
+            // after every window's decoration (the windows hold the `Rc`).
+            unsafe { zxdg_decoration_manager_v1::destroy(c, self.decoration_manager.get()) };
         }
         if !self.wm_base.get().is_null() {
             // TEST: wayland_connect_binds_the_globals

@@ -18,7 +18,8 @@ use draw_sys::signal;
 use draw_sys::wayland::WaylandPlatform;
 use draw_sys::x11::{GlBackend, X11Platform};
 
-/// The window size in pixels of the native X11 window.
+/// The size of the window: pixels on X11, logical pixels on Wayland when
+/// the compositor lets the window choose (T185).
 const NATIVE_SIZE: (u32, u32) = (1280, 800);
 
 /// Runs `future` to its end on this thread. The native platform's futures
@@ -176,11 +177,13 @@ fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choi
     } else {
         options.msaa_samples
     };
-    let opened = if window_samples == 4 {
-        WaylandPlatform::connect(None, "draw", app::WM_CLASS)
-    } else {
-        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples, (1280, 800))
-    };
+    let opened = WaylandPlatform::connect_with(
+        None,
+        "draw",
+        app::WM_CLASS,
+        window_samples,
+        NATIVE_SIZE,
+    );
     let platform = match opened {
         Ok(platform) => platform,
         Err(problem) => {
