@@ -72,7 +72,10 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
       - run: sudo apt-get update
-      - run: sudo apt-get install -y sway wtype grim libgl1-mesa-dri libegl1 libwayland-egl1 libwayland-cursor0 libxkbcommon0
+      # Wayland half: sway, wtype, grim. X11 half: Xvfb, xdotool and
+      # ImageMagick's import. Then the libraries of packaging/runtime-libs
+      # (tests/ci.rs checks both lists, T194).
+      - run: sudo apt-get install -y sway wtype grim xvfb xdotool imagemagick libx11-6 libxi6 libxkbcommon0 libgl1 libegl1 libglx-mesa0 libgl1-mesa-dri libwayland-client0 libwayland-egl1 libwayland-cursor0
       - run: scripts/e2e.sh
       # Snapshots, screenshots, diff images and draw.log of the failed cases.
       - if: failure()
