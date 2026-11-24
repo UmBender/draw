@@ -79,7 +79,7 @@ the canvas and the toolbar and redraws after maximising.
 
 - [x] spec — `docs(T195): specify the double-buffered GLX window`
 - [x] regression — `test(T195): add regression test for the single-buffered GLX window`
-- [ ] models — `feat(T195): add GlxContext::is_double_buffered`
+- [x] models — `feat(T195): add GlxContext::is_double_buffered`
 - [ ] behaviour — `fix(T195): ask GLX for a double-buffered window config`
 - [ ] quality — `chore(T195): pass clippy and rustfmt`
 - [ ] docs — `docs(T195): update the notes`
