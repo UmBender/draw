@@ -29,10 +29,12 @@ const GLX_CONTEXT_MINOR_VERSION_ARB: c_int = 0x2092;
 const GLX_CONTEXT_PROFILE_MASK_ARB: c_int = 0x9126;
 const GLX_CONTEXT_ES2_PROFILE_BIT_EXT: c_int = 0x4;
 
-/// The config of a window context. `Connection::glx_visual` creates the
-/// window on the visual of the first config this list matches, so the
-/// window and the context use the same list (T175, T195).
-pub(crate) const WINDOW_CONFIG: [c_int; 13] = [
+/// The config of a window context: RGBA8 and double-buffered. Mesa lists
+/// single-buffered configs first, and on one `glXSwapBuffers` shows
+/// nothing with a hardware driver (T195). `Connection::glx_visual`
+/// creates the window on the visual of the first config this list
+/// matches, so the window and the context use the same list (T175).
+pub(crate) const WINDOW_CONFIG: [c_int; 15] = [
     GLX_DRAWABLE_TYPE,
     GLX_WINDOW_BIT,
     GLX_RENDER_TYPE,
@@ -45,6 +47,8 @@ pub(crate) const WINDOW_CONFIG: [c_int; 13] = [
     8,
     GLX_ALPHA_SIZE,
     8,
+    GLX_DOUBLEBUFFER,
+    1,
     0,
 ];
 
@@ -276,7 +280,11 @@ impl GlxContext {
     where
         F: FnOnce(&GlxApi, Ptr) -> Result<Surface, ContextError>,
     {
-        debug_assert_eq!(wanted.last(), Some(&0), "zero terminated");
+        if wanted.last() != Some(&0) {
+            return Err(ContextError::Unsupported(
+                "a zero-terminated GLX config list",
+            ));
+        }
         let mut count: c_int = 0;
         // TEST: glx_pbuffer_context_makes_current_under_xvfb
         // SAFETY: `display` is live, `wanted` is zero terminated and `count`
@@ -349,7 +357,25 @@ impl GlxContext {
     /// # Errors
     /// [`ContextError::Call`] if GLX cannot read the attribute.
     pub fn is_double_buffered(&self) -> Result<bool, ContextError> {
-        todo!("T195 behaviour")
+        let mut value: c_int = 0;
+        // TEST: regression_T195_glx_window_config_is_double_buffered
+        // SAFETY: the display and config belong to `self` (a config lives as
+        // long as its display) and `value` is a valid out pointer.
+        let code = unsafe {
+            (self.api.get_fb_config_attrib)(
+                self.display,
+                self.config,
+                GLX_DOUBLEBUFFER,
+                &raw mut value,
+            )
+        };
+        if code != 0 {
+            return Err(ContextError::Call {
+                call: "glXGetFBConfigAttrib",
+                code,
+            });
+        }
+        Ok(value != 0)
     }
 }
 
