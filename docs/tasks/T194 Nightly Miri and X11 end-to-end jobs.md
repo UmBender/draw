@@ -113,7 +113,7 @@ programs the integration tests start.
 - [x] regression — `test(T194): add regression test for the CI jobs' programs`
 - [x] behaviour — `fix(T194): pass clippy 1.100 and install the test programs in CI`
 - [x] regression — `test(T194): check the test programs of every full test job`
-- [ ] behaviour — `fix(T194): install the test programs in the fuzz job and wl-clipboard`
+- [x] behaviour — `fix(T194): install the test programs in the fuzz job and wl-clipboard`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 
