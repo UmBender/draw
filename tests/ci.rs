@@ -308,6 +308,7 @@ fn package_of_test_program(program: &str) -> Option<&'static str> {
         "xdotool" => Some("xdotool"),
         "Xvfb" => Some("xvfb"),
         "wl-copy" | "wl-paste" => Some("wl-clipboard"),
+        "xprop" => Some("x11-utils"),
         other => panic!("add the Ubuntu package of `{other}` to package_of_test_program"),
     }
 }

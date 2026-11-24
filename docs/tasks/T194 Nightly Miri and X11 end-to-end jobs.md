@@ -99,6 +99,7 @@ programs the integration tests start.
 - `.github/workflows/ci.yml` (the `gates` and `coverage` jobs' packages)
 - `tests/ci.rs`
 - `crates/draw-sys/src/**/*.rs` (`cfg_attr(miri, ignore …)` lines on tests only)
+- `crates/draw-sys/tests/x11.rs` (`x11_window_has_title_and_class`)
 - the `map_unwrap_or` sites: `crates/draw-sys/src/wayland/clipboard.rs`,
   `crates/draw-core/src/core/document.rs`,
   `crates/draw-core/src/core/tools/shape_tool.rs`,
@@ -114,6 +115,8 @@ programs the integration tests start.
 - [x] behaviour — `fix(T194): pass clippy 1.100 and install the test programs in CI`
 - [x] regression — `test(T194): check the test programs of every full test job`
 - [x] behaviour — `fix(T194): install the test programs in the fuzz job and wl-clipboard`
+- [x] regression — `test(T194): read WM_CLASS with xprop in the X11 test`
+- [ ] behaviour — `fix(T194): install x11-utils for xprop`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 
@@ -135,3 +138,9 @@ No models step: no new type.
   the Nightly `fuzz` job failed on the GL tests because it installs no
   package at all. AC-5 now scans the `tool` helpers too and covers
   `fuzz`.
+- 2026-11-24 — third run (CI 45490508476, Nightly 45490509505): the
+  only failure left in `gates`, `coverage` and `fuzz` was
+  `x11_window_has_title_and_class`: `xdotool getwindowclassname`
+  (xdotool 3.20211022 on Fedora) does not exist in the xdotool of the
+  Ubuntu runners, which prints nothing. The test reads `WM_CLASS` with
+  `xprop` (package `x11-utils`) instead.

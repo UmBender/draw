@@ -62,6 +62,20 @@ fn wait_for(platform: &mut X11Platform, done: impl Fn(&X11Platform, &RawEvent) -
     false
 }
 
+/// The class of `WM_CLASS` (its second string) read with `xprop`:
+/// `xdotool getwindowclassname` is missing from the xdotool of Ubuntu's
+/// CI runners (T194).
+fn wm_class(server: &xvfb::Xvfb, id: &str) -> String {
+    let out = Command::new("xprop")
+        .env("DISPLAY", &server.display)
+        .args(["-id", id, "WM_CLASS"])
+        .output()
+        .unwrap_or_else(|e| panic!("xprop is required for the X11 tests: {e}"));
+    let text = String::from_utf8_lossy(&out.stdout);
+    // `WM_CLASS(STRING) = "instance", "class"`
+    text.split('"').nth(3).unwrap_or_default().to_owned()
+}
+
 #[test]
 fn x11_window_has_title_and_class() {
     let server = xvfb::Xvfb::start();
@@ -69,7 +83,7 @@ fn x11_window_has_title_and_class() {
     let id = platform.window_id().to_string();
 
     let title = xdotool(&server, &["getwindowname", &id]);
-    let class = xdotool(&server, &["getwindowclassname", &id]);
+    let class = wm_class(&server, &id);
 
     assert_eq!(title, "draw test");
     assert_eq!(class, "draw-test");
