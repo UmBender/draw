@@ -19,6 +19,7 @@ use crate::wayland::client::{Client, Proxy};
 use crate::wayland::generated::wayland::{wl_compositor, wl_output, wl_registry, wl_seat};
 use crate::wayland::generated::xdg_shell::xdg_wm_base;
 use crate::wayland::seat::{InputState, SEAT_LISTENER};
+use crate::wayland::window::Decoration;
 
 /// How long a blocking wait for the compositor lasts.
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(5);
@@ -87,6 +88,9 @@ pub(crate) struct WinState {
     pub close: Cell<bool>,
     /// The compositor marked the toplevel `suspended` (T147 AC-2).
     pub suspended: Cell<bool>,
+    /// The decoration mode the compositor configured, `None` before its
+    /// answer or without a decoration manager (ADR-T185-1).
+    pub decoration: Cell<Option<Decoration>>,
     /// A frame callback is outstanding.
     pub frame_pending: Cell<bool>,
     /// The outputs the surface is on, as proxy addresses.
@@ -105,6 +109,9 @@ pub(crate) struct Shared {
     globals: RefCell<Vec<Global>>,
     pub compositor: Cell<*mut Proxy>,
     pub wm_base: Cell<*mut Proxy>,
+    /// The `zxdg_decoration_manager_v1`, null when the compositor has none
+    /// (ADR-T185-1).
+    pub decoration_manager: Cell<*mut Proxy>,
     outputs: RefCell<Vec<Output>>,
     pub win: WinState,
     pub input: InputState,
@@ -465,6 +472,7 @@ impl Connection {
             globals: RefCell::new(Vec::new()),
             compositor: Cell::new(null_mut()),
             wm_base: Cell::new(null_mut()),
+            decoration_manager: Cell::new(null_mut()),
             outputs: RefCell::new(Vec::new()),
             win: WinState::default(),
             input: InputState::default(),

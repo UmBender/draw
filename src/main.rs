@@ -179,7 +179,7 @@ fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choi
     let opened = if window_samples == 4 {
         WaylandPlatform::connect(None, "draw", app::WM_CLASS)
     } else {
-        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples)
+        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples, (1280, 800))
     };
     let platform = match opened {
         Ok(platform) => platform,

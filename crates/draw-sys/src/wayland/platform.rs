@@ -70,11 +70,13 @@ impl WaylandPlatform {
     /// # Errors
     /// [`WaylandError`] from the connection, the window or the context.
     pub fn connect(socket: Option<&Path>, title: &str, app_id: &str) -> Result<Self, WaylandError> {
-        Self::connect_with(socket, title, app_id, 4)
+        Self::connect_with(socket, title, app_id, 4, (640, 480))
     }
 
     /// Connects like [`WaylandPlatform::connect`], requesting `samples`
-    /// MSAA on the window surface (`0` or `1` disables multisampling).
+    /// MSAA on the window surface (`0` or `1` disables multisampling) and
+    /// the logical `size` (width, height) for when the compositor lets the
+    /// window choose (T185).
     ///
     /// # Errors
     /// [`WaylandError`] from the connection, the window or the context.
@@ -83,7 +85,9 @@ impl WaylandPlatform {
         title: &str,
         app_id: &str,
         samples: i32,
+        size: (u32, u32),
     ) -> Result<Self, WaylandError> {
+        let _ = size;
         let connection = Connection::connect(socket)?;
         let window = connection
             .create_window(title, app_id)?

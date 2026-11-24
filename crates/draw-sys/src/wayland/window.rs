@@ -18,6 +18,26 @@ use crate::wayland::generated::xdg_shell::{xdg_surface, xdg_toplevel, xdg_wm_bas
 /// Size used when the compositor lets the client choose.
 const DEFAULT_SIZE: (i32, i32) = (640, 480);
 
+/// The decoration mode the compositor configured for the window
+/// (`zxdg_toplevel_decoration_v1.mode`, ADR-T185-1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decoration {
+    /// The client draws its decorations: draw draws none, so the window
+    /// has no title bar.
+    ClientSide,
+    /// The compositor draws the title bar and the frame.
+    ServerSide,
+}
+
+impl Decoration {
+    /// The mode for a protocol value, `None` for an unknown one.
+    #[must_use]
+    pub fn from_protocol(mode: u32) -> Option<Self> {
+        let _ = mode;
+        todo!("T185 behaviour")
+    }
+}
+
 /// State: the objects exist, nothing is acked yet.
 #[derive(Debug)]
 pub struct Created;
@@ -63,6 +83,11 @@ struct Objects {
     surface: *mut Proxy,
     xdg_surface: *mut Proxy,
     toplevel: *mut Proxy,
+    /// The toplevel's `zxdg_toplevel_decoration_v1`, null without a
+    /// decoration manager (ADR-T185-1).
+    decoration: *mut Proxy,
+    /// The logical size taken when a `configure` lets the client choose.
+    free_size: (i32, i32),
 }
 
 impl Drop for Objects {
@@ -267,6 +292,8 @@ impl Connection {
                 surface,
                 xdg_surface: xdg,
                 toplevel,
+                decoration: std::ptr::null_mut(),
+                free_size: DEFAULT_SIZE,
             },
         })
     }
@@ -303,6 +330,13 @@ impl<S> Window<S> {
         self.objects.shared.win.suspended.get()
     }
 
+    /// The decoration mode the compositor configured, `None` before its
+    /// answer or when it has no decoration manager (ADR-T185-1).
+    #[must_use]
+    pub fn decoration(&self) -> Option<Decoration> {
+        todo!("T185 behaviour")
+    }
+
     fn next_state<T>(self, state: T) -> Window<T> {
         Window {
             state,
@@ -312,6 +346,15 @@ impl<S> Window<S> {
 }
 
 impl Window<Created> {
+    /// The logical size to take when the compositor lets the client
+    /// choose (a `0` side in `configure`), instead of 640×480. Sides
+    /// below 1 become 1.
+    #[must_use]
+    pub fn with_size(self, width: i32, height: i32) -> Self {
+        let _ = (width, height);
+        todo!("T185 behaviour")
+    }
+
     /// The first, bare commit that makes the compositor send `configure`.
     pub fn commit_initial(&self) {
         let o = &self.objects;
