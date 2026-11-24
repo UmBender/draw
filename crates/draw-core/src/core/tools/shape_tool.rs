@@ -207,8 +207,7 @@ pub fn preview(state: &State, view: &ToolView<'_>) -> Overlay {
         guides: state
             .drag
             .as_ref()
-            .map(|drag| drag.guides.clone())
-            .unwrap_or_default(),
+            .map_or_default(|drag| drag.guides.clone()),
         ..Overlay::default()
     }
 }

@@ -109,7 +109,7 @@ programs the integration tests start.
 - [x] regression — `test(T194): add regression test for the e2e job's tools`
 - [x] behaviour — `fix(T194): install the X11 tools and skip FFI tests under Miri`
 - [x] regression — `test(T194): add regression test for the CI jobs' programs`
-- [ ] behaviour — `fix(T194): pass clippy 1.100 and install the test programs in CI`
+- [x] behaviour — `fix(T194): pass clippy 1.100 and install the test programs in CI`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 

@@ -734,14 +734,13 @@ pub fn tx_remove(doc: &Document, ids: &[ShapeId]) -> Transaction {
 #[must_use]
 pub fn tx_replace(doc: &Document, id: ShapeId, new: Shape) -> Transaction {
     doc.get(id)
-        .map(|before| {
+        .map_or_default(|before| {
             vec![Edit::Replace {
                 id,
                 before: before.clone(),
                 after: new,
             }]
         })
-        .unwrap_or_default()
         .into()
 }
 
@@ -1647,9 +1646,8 @@ mod tests {
                     1 => tx_remove(&doc, &chosen),
                     2 => chosen
                         .first()
-                        .map(|id| tx_replace(&doc, *id, line(5.5)))
-                        .unwrap_or_default(),
-                    _ => undo.pop().map(|tx| tx.inverse()).unwrap_or_default(),
+                        .map_or_default(|id| tx_replace(&doc, *id, line(5.5))),
+                    _ => undo.pop().map_or_default(|tx| tx.inverse()),
                 };
                 prop_assert_eq!(doc.apply(&tx), Ok(()));
                 if kind != 3 {

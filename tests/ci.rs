@@ -240,7 +240,7 @@ fn e2e_job_packages() -> Vec<String> {
     apt_packages(NIGHTLY, "e2e")
 }
 
-/// The programs the tests start with `Command::new("…")`, from the test
+/// The programs the tests start with `Command::new`, from the test
 /// sources of every crate.
 fn programs_started_by_tests() -> Vec<String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
