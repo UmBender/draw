@@ -1,7 +1,7 @@
 ---
 id: T185
 title: Wayland title bar and window size
-status: in-progress
+status: review
 wave: 76
 branch: fix/wayland-decorations-and-size
 depends_on: []
@@ -104,10 +104,10 @@ Decision: [[ADR-T185-1 Server-side decorations through xdg-decoration]].
 
 - [x] spec — `docs(T185): specify Wayland title bar and size acceptance criteria`
 - [x] regression — `test(T185): add regression tests for the Wayland title bar and size`
-- [ ] models — `feat(T185): add the xdg-decoration protocol and the window size`
-- [ ] behaviour — `fix(T185): ask for server-side decorations and the native size`
-- [ ] quality — `chore(T185): pass clippy and rustfmt`
-- [ ] docs — `docs(T185): update the native Wayland notes`
+- [x] models — `feat(T185): add the xdg-decoration protocol and the window size`
+- [x] behaviour — `fix(T185): ask for server-side decorations and the native size`
+- [x] quality — `chore(T185): pass clippy and rustfmt`
+- [x] docs — `docs(T185): update the native Wayland notes`
 
 ## Log
 
@@ -122,3 +122,20 @@ Decision: [[ADR-T185-1 Server-side decorations through xdg-decoration]].
   (new `Decoration`, `Window::with_size`, `Window::decoration` and the size
   argument of `connect_with`), as in T168; the generator test and
   `main_opens_wayland_at_the_native_size` fail at run time.
+- 2026-11-24 — fixed: `zxdg_decoration_manager_v1` is bound, the toplevel
+  decoration is created before the first commit with `set_mode(server_side)`
+  and destroyed before the toplevel; `Window::with_size` sets the size taken
+  on a `0×0` configure, and `main` passes `NATIVE_SIZE` through
+  `WaylandPlatform::connect_with` (which now takes a size; `connect` keeps
+  640×480). `scripts/check.sh` and `scripts/compile_fail.sh` green.
+- 2026-11-24 — checked on the owner's KDE Plasma Wayland session with
+  `WAYLAND_DEBUG=1 draw --backend wayland`: KWin answers
+  `zxdg_toplevel_decoration_v1.configure(2)` (server-side), sends
+  `xdg_toplevel.configure(0, 0)` first and then `configure(1280, 800)`.
+  Not yet looked at by the owner on screen.
+- 2026-11-24 — no e2e case: the e2e sway tiles the window over its output
+  and has `default_border none`, so neither bug shows in its screenshots;
+  the two `regression_T185_*` tests run on headless sway instead. No
+  tutorial: the change restores the 1.x behaviour. The rest of
+  `Native Wayland.md` still describes miniquad (stale since T149); only the
+  title bar and size lines are owned here.
