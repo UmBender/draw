@@ -224,15 +224,96 @@ fn nightly_uploads_fuzz_regressions_on_failure() {
     );
 }
 
-/// The words of the `apt-get install` lines of the Nightly `e2e` job.
-fn e2e_job_packages() -> Vec<String> {
-    let nightly = read(NIGHTLY);
-    let e2e = job(&nightly, "e2e");
-    values(&e2e, "run")
+/// The words of the `apt-get install` lines of job `name` in `workflow`.
+fn apt_packages(workflow: &str, name: &str) -> Vec<String> {
+    let text = read(workflow);
+    let lines = job(&text, name);
+    values(&lines, "run")
         .into_iter()
         .filter(|run| run.contains("apt-get install"))
         .flat_map(|run| run.split_whitespace().map(str::to_owned))
         .collect()
+}
+
+/// The words of the `apt-get install` lines of the Nightly `e2e` job.
+fn e2e_job_packages() -> Vec<String> {
+    apt_packages(NIGHTLY, "e2e")
+}
+
+/// The programs the tests start with `Command::new("…")`, from the test
+/// sources of every crate.
+fn programs_started_by_tests() -> Vec<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut dirs = vec![root.join("tests")];
+    let crates =
+        std::fs::read_dir(root.join("crates")).unwrap_or_else(|err| panic!("crates: {err}"));
+    dirs.extend(
+        crates
+            .filter_map(Result::ok)
+            .map(|e| e.path().join("tests")),
+    );
+    let mut programs = Vec::new();
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for path in entries.filter_map(Result::ok).map(|e| e.path()) {
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                programs.extend(
+                    text.split("Command::new(\"")
+                        .skip(1)
+                        .filter_map(|tail| tail.split('"').next())
+                        .map(str::to_owned),
+                );
+            }
+        }
+    }
+    programs.sort();
+    programs.dedup();
+    programs
+}
+
+/// The Ubuntu package of a program the tests start, `None` for programs
+/// every runner has.
+fn package_of_test_program(program: &str) -> Option<&'static str> {
+    match program {
+        "bash" | "sh" | "kill" | "sleep" | "true" => None,
+        "sway" | "swaymsg" => Some("sway"),
+        "wtype" => Some("wtype"),
+        "xclip" => Some("xclip"),
+        "xdotool" => Some("xdotool"),
+        "Xvfb" => Some("xvfb"),
+        other => panic!("add the Ubuntu package of `{other}` to package_of_test_program"),
+    }
+}
+
+/// T194: the `gates` and `coverage` jobs run the integration tests of
+/// `draw-sys`, which start sway and Xvfb and fail, never skip, without
+/// them; the jobs installed only Xvfb.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T194_ci_test_jobs_install_every_test_program() {
+    // Arrange
+    let programs = programs_started_by_tests();
+    assert!(programs.iter().any(|p| p == "sway"), "{programs:?}");
+
+    for name in ["gates", "coverage"] {
+        // Act
+        let packages = apt_packages(CI, name);
+
+        // Assert
+        for program in &programs {
+            if let Some(package) = package_of_test_program(program) {
+                assert!(
+                    packages.iter().any(|p| p == package),
+                    "{name}: {program} needs {package}, missing from {packages:?}"
+                );
+            }
+        }
+    }
 }
 
 /// The Ubuntu package that provides an e2e tool.
