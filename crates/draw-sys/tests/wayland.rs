@@ -14,9 +14,7 @@ use std::time::{Duration, Instant};
 
 use draw_sys::egl::GlContext;
 use draw_sys::platform::{Platform, RawEvent};
-use draw_sys::wayland::{
-    Connection, Decoration, Mapped, WaylandError, WaylandPlatform, Window,
-};
+use draw_sys::wayland::{Connection, Decoration, Mapped, WaylandError, WaylandPlatform, Window};
 use sway::Sway;
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -328,7 +326,7 @@ fn mapped_window(conn: &Connection) -> Window<Mapped> {
     window
 }
 
-/// T185 AC-1: without `zxdg_decoration_manager_v1`, KWin treats the
+/// T185 AC-1: without `zxdg_decoration_manager_v1`, `KWin` treats the
 /// window as client-decorated and draws no title bar. The window asks for
 /// server-side decorations and the compositor's answer is kept.
 #[test]
@@ -348,7 +346,7 @@ fn regression_T185_window_asks_for_server_side_decorations() {
     assert_eq!(window.decoration(), Some(Decoration::ServerSide));
 }
 
-/// T185 AC-3: KWin and sway let a new window choose its size (a `0x0`
+/// T185 AC-3: `KWin` and sway let a new window choose its size (a `0x0`
 /// configure); the window took 640x480 instead of the app's 1280x800, too
 /// short for the toolbar.
 #[test]

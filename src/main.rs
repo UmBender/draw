@@ -177,13 +177,8 @@ fn run_wayland(options: options::Options, backend: Backend, tablet: tablet::Choi
     } else {
         options.msaa_samples
     };
-    let opened = WaylandPlatform::connect_with(
-        None,
-        "draw",
-        app::WM_CLASS,
-        window_samples,
-        NATIVE_SIZE,
-    );
+    let opened =
+        WaylandPlatform::connect_with(None, "draw", app::WM_CLASS, window_samples, NATIVE_SIZE);
     let platform = match opened {
         Ok(platform) => platform,
         Err(problem) => {
