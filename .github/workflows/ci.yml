@@ -37,7 +37,7 @@ jobs:
       # The draw-sys integration tests start sway, wtype, xclip, xdotool,
       # wl-copy and Xvfb and fail without them (tests/ci.rs checks the
       # list, T194).
-      - run: sudo apt-get update && sudo apt-get install -y sway wtype xclip xdotool xvfb wl-clipboard libx11-6 libxi6 libxkbcommon0 libgl1 libegl1 libglx-mesa0 libgl1-mesa-dri libwayland-client0 libwayland-egl1
+      - run: sudo apt-get update && sudo apt-get install -y sway wtype xclip xdotool xvfb wl-clipboard x11-utils libx11-6 libxi6 libxkbcommon0 libgl1 libegl1 libglx-mesa0 libgl1-mesa-dri libwayland-client0 libwayland-egl1
       - run: scripts/check.sh
 
   # Line coverage per module may not fall, and a rise must be recorded in
@@ -57,7 +57,7 @@ jobs:
       # The draw-sys integration tests start sway, wtype, xclip, xdotool,
       # wl-copy and Xvfb and fail without them (tests/ci.rs checks the
       # list, T194).
-      - run: sudo apt-get update && sudo apt-get install -y sway wtype xclip xdotool xvfb wl-clipboard libx11-6 libxi6 libxkbcommon0 libgl1 libegl1 libglx-mesa0 libgl1-mesa-dri libwayland-client0 libwayland-egl1
+      - run: sudo apt-get update && sudo apt-get install -y sway wtype xclip xdotool xvfb wl-clipboard x11-utils libx11-6 libxi6 libxkbcommon0 libgl1 libegl1 libglx-mesa0 libgl1-mesa-dri libwayland-client0 libwayland-egl1
       - run: cargo install cargo-llvm-cov --locked
       - run: bash scripts/coverage.sh
 

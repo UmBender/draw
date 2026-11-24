@@ -116,7 +116,7 @@ programs the integration tests start.
 - [x] regression — `test(T194): check the test programs of every full test job`
 - [x] behaviour — `fix(T194): install the test programs in the fuzz job and wl-clipboard`
 - [x] regression — `test(T194): read WM_CLASS with xprop in the X11 test`
-- [ ] behaviour — `fix(T194): install x11-utils for xprop`
+- [x] behaviour — `fix(T194): install x11-utils for xprop`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 
