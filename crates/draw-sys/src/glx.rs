@@ -364,3 +364,28 @@ impl Drop for GlxContext {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T195 AC-2: the window list asks for a double buffer and RGBA8.
+    #[test]
+    fn window_config_asks_for_a_double_buffer() {
+        let pairs: Vec<(c_int, c_int)> = WINDOW_CONFIG
+            .chunks(2)
+            .filter(|pair| pair.len() == 2)
+            .map(|pair| (pair[0], pair[1]))
+            .collect();
+
+        assert_eq!(WINDOW_CONFIG.last(), Some(&0));
+        assert!(pairs.contains(&(GLX_DOUBLEBUFFER, 1)), "{pairs:?}");
+        assert!(
+            pairs.contains(&(GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT)),
+            "{pairs:?}"
+        );
+        for size in [GLX_RED_SIZE, GLX_GREEN_SIZE, GLX_BLUE_SIZE, GLX_ALPHA_SIZE] {
+            assert!(pairs.contains(&(size, 8)), "{size}: {pairs:?}");
+        }
+    }
+}
