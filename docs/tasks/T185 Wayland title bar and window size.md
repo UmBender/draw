@@ -1,7 +1,7 @@
 ---
 id: T185
 title: Wayland title bar and window size
-status: review
+status: done
 wave: 76
 branch: fix/wayland-decorations-and-size
 depends_on: []
@@ -139,3 +139,6 @@ Decision: [[ADR-T185-1 Server-side decorations through xdg-decoration]].
   tutorial: the change restores the 1.x behaviour. The rest of
   `Native Wayland.md` still describes miniquad (stale since T149); only the
   title bar and size lines are owned here.
+- 2026-11-24 — confirmed by the owner in the app on KDE Plasma Wayland
+  (title bar and the whole toolbar); merged into `main`, listed under Fixed
+  for 2.0.1.

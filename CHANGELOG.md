@@ -11,6 +11,10 @@ All notable changes to draw are listed here. The format follows
 - One click with the Select tool on a text block (or any shape) shows its
   selection and resize handles at once; before, the handles only appeared
   after a small drag, which got in the way of turning a block into a graph.
+- On native Wayland the window has its title bar and frame again on KDE
+  Plasma, sway, Hyprland and other compositors that draw decorations, and
+  it opens at 1280×800 like on X11, so the whole toolbar fits; since 2.0.0
+  it had no title bar and opened at 640×480, cutting off the colours.
 
 ## [2.0.0] - 2026-11-18
 

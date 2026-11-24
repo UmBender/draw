@@ -435,6 +435,7 @@ flowchart TD
 | 73 | [[T149 Cutover removing miniquad and macroquad]] · [[T171 Wayland platform in main and the e2e suite]] · [[T178 X11 platform in main and the e2e suite]] |
 | 74 | [[T150 Optional Vulkan backend for the Gpu trait]] · [[T151 Release 2.0.0]] |
 | 75 | [[T184 Select click shows the selection]] |
+| 76 | [[T185 Wayland title bar and window size]] |
 
 ## Status
 
@@ -622,3 +623,4 @@ flowchart TD
 | [[T179 Tessellator parity with the app's drawing]] | done | T146, T173 | `task/T179-tessellator-parity-with-the-app-s-draw` |
 | [[T180 Text and formulas on the retained path]] | done | T146, T173, T179 | `task/T180-text-and-formulas-on-the-retained-path` |
 | [[T184 Select click shows the selection]] | done | — | `fix/select-click-redraw` |
+| [[T185 Wayland title bar and window size]] | done | — | `fix/wayland-decorations-and-size` |

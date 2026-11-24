@@ -187,3 +187,4 @@ bottom, at integration time. Rules: [[Decision Protocol]].
 | 176 | [[ADR-T179-2 Parity metric against the screen-space drawing]] | accepted | decision | T179-1, T173-1 | — |
 | 177 | [[ADR-T180-1 Retained text chunks keyed by raster step]] | accepted | decision | T179-1 | — |
 | 178 | [[ADR-T171-1 Wayland platform hands out a shared GL handle]] | accepted | decision | T178-1, T145-1 | — |
+| 179 | [[ADR-T185-1 Server-side decorations through xdg-decoration]] | accepted | decision | T168-1 | — |
