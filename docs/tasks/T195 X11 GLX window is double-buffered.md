@@ -1,7 +1,7 @@
 ---
 id: T195
 title: X11 GLX window is double-buffered
-status: in-progress
+status: review
 wave: 77
 branch: fix/x11-glx-double-buffer
 depends_on: []
@@ -81,10 +81,20 @@ the canvas and the toolbar and redraws after maximising.
 - [x] regression — `test(T195): add regression test for the single-buffered GLX window`
 - [x] models — `feat(T195): add GlxContext::is_double_buffered`
 - [x] behaviour — `fix(T195): ask GLX for a double-buffered window config`
-- [ ] quality — `chore(T195): pass clippy and rustfmt`
-- [ ] docs — `docs(T195): update the notes`
+- [x] quality — `chore(T195): pass clippy and rustfmt` (nothing to change, no commit)
+- [x] docs — `docs(T195): update the notes`
 
 ## Log
 
 - 2026-11-24 — written from the owner's screenshots of `--backend x11`;
   cause found with a GLX config probe and confirmed by a temporary patch.
+- 2026-11-24 — fixed: one `WINDOW_CONFIG` list with `GLX_DOUBLEBUFFER`
+  for the window's visual and the context; `GlxContext::is_double_buffered`
+  reads the config back. Without the new pair the regression test reads
+  `Ok(false)` on Xvfb (checked by removing it for one run). `check.sh`
+  green; `rustfmt` and clippy had nothing to change.
+- 2026-11-24 — checked in the owner's session: the release build with
+  `--backend x11` draws the canvas and the toolbar on the hardware path,
+  and after a resize to 1600×950 the whole window is drawn (the page
+  switcher appears). Not yet looked at by the owner on screen. No
+  feature note or tutorial: the change restores documented behaviour.
