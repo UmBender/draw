@@ -240,8 +240,30 @@ fn e2e_job_packages() -> Vec<String> {
     apt_packages(NIGHTLY, "e2e")
 }
 
-/// The programs the tests start with `Command::new`, from the test
-/// sources of every crate.
+/// The first string literal of each call `name(…)` in `text`, where
+/// `name` is a whole word: `tool(sway, "wl-paste")` gives `wl-paste`.
+fn literal_args(text: &str, name: &str) -> Vec<String> {
+    let call = format!("{name}(");
+    text.match_indices(&call)
+        .filter(|(at, _)| {
+            text[..*at]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+        })
+        .filter_map(|(at, _)| {
+            let args = text[at + call.len()..].split(')').next()?;
+            let (_, rest) = args.split_once('"')?;
+            rest.split('"').next().map(str::to_owned)
+        })
+        .collect()
+}
+
+/// The programs the tests start, from the test sources of every crate:
+/// literal `Command::new` names and those passed to the `tool` helpers
+/// (`tool(sway, "wl-paste")`, `.tool("wl-copy")`). `tests/e2e.rs` is left
+/// out: it runs only under `scripts/e2e.sh`, whose tools
+/// `regression_T194_nightly_e2e_installs_every_e2e_tool` checks.
 fn programs_started_by_tests() -> Vec<String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut dirs = vec![root.join("tests")];
@@ -260,14 +282,12 @@ fn programs_started_by_tests() -> Vec<String> {
         for path in entries.filter_map(Result::ok).map(|e| e.path()) {
             if path.is_dir() {
                 dirs.push(path);
-            } else if path.extension().is_some_and(|e| e == "rs") {
+            } else if path.extension().is_some_and(|e| e == "rs")
+                && path != root.join("tests/e2e.rs")
+            {
                 let text = std::fs::read_to_string(&path).unwrap_or_default();
-                programs.extend(
-                    text.split("Command::new(\"")
-                        .skip(1)
-                        .filter_map(|tail| tail.split('"').next())
-                        .map(str::to_owned),
-                );
+                programs.extend(literal_args(&text, "Command::new"));
+                programs.extend(literal_args(&text, "tool"));
             }
         }
     }
@@ -281,28 +301,32 @@ fn programs_started_by_tests() -> Vec<String> {
 fn package_of_test_program(program: &str) -> Option<&'static str> {
     match program {
         "bash" | "sh" | "kill" | "sleep" | "true" => None,
+        built if built.starts_with("CARGO_BIN_EXE_") => None,
         "sway" | "swaymsg" => Some("sway"),
         "wtype" => Some("wtype"),
         "xclip" => Some("xclip"),
         "xdotool" => Some("xdotool"),
         "Xvfb" => Some("xvfb"),
+        "wl-copy" | "wl-paste" => Some("wl-clipboard"),
         other => panic!("add the Ubuntu package of `{other}` to package_of_test_program"),
     }
 }
 
-/// T194: the `gates` and `coverage` jobs run the integration tests of
-/// `draw-sys`, which start sway and Xvfb and fail, never skip, without
-/// them; the jobs installed only Xvfb.
+/// T194: the jobs that run every test (`gates` and `coverage` of CI,
+/// `fuzz` of the Nightly through `check.sh --fuzz`) need the programs the
+/// `draw-sys` integration tests start; those fail, never skip, without
+/// them. The jobs installed only Xvfb, or nothing.
 #[test]
 #[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
 fn regression_T194_ci_test_jobs_install_every_test_program() {
     // Arrange
     let programs = programs_started_by_tests();
     assert!(programs.iter().any(|p| p == "sway"), "{programs:?}");
+    assert!(programs.iter().any(|p| p == "wl-paste"), "{programs:?}");
 
-    for name in ["gates", "coverage"] {
+    for (workflow, name) in [(CI, "gates"), (CI, "coverage"), (NIGHTLY, "fuzz")] {
         // Act
-        let packages = apt_packages(CI, name);
+        let packages = apt_packages(workflow, name);
 
         // Assert
         for program in &programs {

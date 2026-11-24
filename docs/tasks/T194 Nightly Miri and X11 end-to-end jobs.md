@@ -77,8 +77,10 @@ programs the integration tests start.
   `cargo +1.100.0 clippy --workspace --all-targets -- -D warnings`.
   Check: the `gates` job of CI and the `fuzz` job of the Nightly on this
   branch (red before), and the command locally.
-- **AC-5** — Regression: the `gates` and `coverage` jobs install a
-  package for every program the tests start with `Command::new`.
+- **AC-5** — Regression: the jobs that run every test (`gates` and
+  `coverage` of CI, `fuzz` of the Nightly, which runs `check.sh --fuzz`)
+  install a package for every program the tests start, by name in
+  `Command::new` or through the `tool` helpers (`wl-copy`, `wl-paste`).
   Test: `regression_T194_ci_test_jobs_install_every_test_program`
   (`tests/ci.rs`; a table maps each program to its Ubuntu package and
   fails on a program it does not know).
@@ -110,6 +112,8 @@ programs the integration tests start.
 - [x] behaviour — `fix(T194): install the X11 tools and skip FFI tests under Miri`
 - [x] regression — `test(T194): add regression test for the CI jobs' programs`
 - [x] behaviour — `fix(T194): pass clippy 1.100 and install the test programs in CI`
+- [x] regression — `test(T194): check the test programs of every full test job`
+- [ ] behaviour — `fix(T194): install the test programs in the fuzz job and wl-clipboard`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 
@@ -124,3 +128,10 @@ No models step: no new type.
   `fuzz` red on clippy 1.100. The CI run of `main` (45482247657) was red
   on the same clippy lint and on sway missing in `coverage`. Scope
   widened (Known facts), with AC-4 and AC-5.
+- 2026-11-24 — second CI run on the branch (45489008082, Nightly
+  45489008492): clippy passed; `gates` and `coverage` then failed on
+  `wl-copy`/`wl-paste` (the clipboard tests start them through a `tool`
+  helper, which the first scan of `Command::new` literals missed), and
+  the Nightly `fuzz` job failed on the GL tests because it installs no
+  package at all. AC-5 now scans the `tool` helpers too and covers
+  `fuzz`.
