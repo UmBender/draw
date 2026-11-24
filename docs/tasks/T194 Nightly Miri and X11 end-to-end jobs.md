@@ -73,7 +73,7 @@ half.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T194): specify the Nightly fixes`
-- [ ] regression — `test(T194): add regression test for the e2e job's tools`
+- [x] regression — `test(T194): add regression test for the e2e job's tools`
 - [ ] behaviour — `fix(T194): install the X11 tools and skip FFI tests under Miri`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`

@@ -224,6 +224,89 @@ fn nightly_uploads_fuzz_regressions_on_failure() {
     );
 }
 
+/// The words of the `apt-get install` lines of the Nightly `e2e` job.
+fn e2e_job_packages() -> Vec<String> {
+    let nightly = read(NIGHTLY);
+    let e2e = job(&nightly, "e2e");
+    values(&e2e, "run")
+        .into_iter()
+        .filter(|run| run.contains("apt-get install"))
+        .flat_map(|run| run.split_whitespace().map(str::to_owned))
+        .collect()
+}
+
+/// The Ubuntu package that provides an e2e tool.
+fn package_of_tool(tool: &str) -> &'static str {
+    match tool {
+        "sway" | "swaymsg" => "sway",
+        "wtype" => "wtype",
+        "grim" => "grim",
+        "Xvfb" => "xvfb",
+        "xdotool" => "xdotool",
+        "import" => "imagemagick",
+        other => panic!("add the Ubuntu package of `{other}` to package_of_tool"),
+    }
+}
+
+/// T194: the Wayland half of the suite passed, then `e2e.sh` stopped on
+/// `xdotool is not installed`: the job had no X11 tools.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T194_nightly_e2e_installs_every_e2e_tool() {
+    // Arrange
+    let script = read("scripts/e2e.sh");
+    let packages = e2e_job_packages();
+
+    // Act
+    let tools: Vec<&str> = script
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("need_tools "))
+        .flat_map(str::split_whitespace)
+        .collect();
+
+    // Assert
+    assert!(tools.contains(&"xdotool"), "{tools:?}");
+    for tool in tools {
+        let package = package_of_tool(tool);
+        assert!(
+            packages.iter().any(|p| p == package),
+            "{tool}: {package} missing from {packages:?}"
+        );
+    }
+}
+
+/// T194: the X11 run needs the libraries the X11 backend loads.
+#[test]
+fn nightly_e2e_installs_the_runtime_libraries() {
+    // Arrange
+    let libs = read("packaging/runtime-libs");
+    let packages = e2e_job_packages();
+
+    // Act
+    let needed: Vec<&str> = libs
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            match fields.as_slice() {
+                [_, role, _, debian] if ["required", "gl", "wayland"].contains(role) => {
+                    Some(*debian)
+                }
+                _ => None,
+            }
+        })
+        .collect();
+
+    // Assert
+    assert!(needed.contains(&"libx11-6"), "{needed:?}");
+    for package in needed {
+        assert!(
+            packages.iter().any(|p| p == package),
+            "{package} missing from {packages:?}"
+        );
+    }
+}
+
 #[test]
 fn workflow_actions_are_pinned_to_full_sha() {
     for path in [CI, NIGHTLY] {
