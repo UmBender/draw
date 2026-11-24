@@ -353,6 +353,14 @@ flowchart TD
   T154 --> T151
   T127 --> T152
   T128 --> T152
+  T186[T186 CRLF in draw files]
+  T187[T187 Windows ADRs + seams] --> T188[T188 Win32 window]
+  T188 --> T189[T189 Direct3D 11 Gpu]
+  T188 --> T190[T190 Windows keyboard + pointer]
+  T190 --> T191[T191 Windows pen + clipboard]
+  T189 --> T192[T192 Windows in main + e2e]
+  T191 --> T192
+  T192 --> T193[T193 Windows installer + signing]
 ```
 
 ## Waves (tasks in one wave run in parallel)
@@ -436,6 +444,12 @@ flowchart TD
 | 74 | [[T150 Optional Vulkan backend for the Gpu trait]] · [[T151 Release 2.0.0]] |
 | 75 | [[T184 Select click shows the selection]] |
 | 76 | [[T185 Wayland title bar and window size]] |
+| 77 | [[T186 CRLF line endings in draw files]] · [[T187 Windows ADRs and portable seams]] |
+| 78 | [[T188 Win32 window thread and message loop]] |
+| 79 | [[T189 Direct3D 11 Gpu]] · [[T190 Windows keyboard and pointer]] |
+| 80 | [[T191 Windows pen and clipboard]] |
+| 81 | [[T192 Windows platform in main and the e2e suite]] |
+| 82 | [[T193 Windows installer, signing and packages]] |
 
 ## Status
 
@@ -624,3 +638,11 @@ flowchart TD
 | [[T180 Text and formulas on the retained path]] | done | T146, T173, T179 | `task/T180-text-and-formulas-on-the-retained-path` |
 | [[T184 Select click shows the selection]] | done | — | `fix/select-click-redraw` |
 | [[T185 Wayland title bar and window size]] | done | — | `fix/wayland-decorations-and-size` |
+| [[T186 CRLF line endings in draw files]] | ready | — | `fix/draw-file-crlf` |
+| [[T187 Windows ADRs and portable seams]] | ready | — | `task/T187-windows-adrs-and-portable-seams` |
+| [[T188 Win32 window thread and message loop]] | todo | T187 | `task/T188-win32-window-thread-and-message-loop` |
+| [[T189 Direct3D 11 Gpu]] | todo | T188 | `task/T189-direct3d-11-gpu` |
+| [[T190 Windows keyboard and pointer]] | todo | T188 | `task/T190-windows-keyboard-and-pointer` |
+| [[T191 Windows pen and clipboard]] | todo | T190 | `task/T191-windows-pen-and-clipboard` |
+| [[T192 Windows platform in main and the e2e suite]] | todo | T189, T191 | `task/T192-windows-platform-in-main-and-the-e2e-suite` |
+| [[T193 Windows installer, signing and packages]] | todo | T192 | `task/T193-windows-installer-signing-and-packages` |

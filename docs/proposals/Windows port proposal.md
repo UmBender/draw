@@ -1,7 +1,7 @@
 ---
 tags: [proposal, architecture]
 task: ""
-status: proposed
+status: decided
 date: 2026-11-24
 ---
 
@@ -9,9 +9,9 @@ date: 2026-11-24
 
 Written after the owner's request of 2026-11-24: port draw to Windows,
 using the **fastest and safest** solutions available, even where that
-breaks decisions taken when only Linux was planned. Nothing here is
-decided: the spec step of an epic task turns each section into ADRs and
-child tasks. Line counts are *measured* on `main` at 2.0.0 + T185; sizes
+breaks decisions taken when only Linux was planned. The owner's answers
+are in §8a; the tasks are T186–T193 (§7), and the spec step of
+[[T187 Windows ADRs and portable seams]] turns §3 into ADRs. Line counts are *measured* on `main` at 2.0.0 + T185; sizes
 of new code are estimates and say so.
 
 ## 1. Goals and limits
@@ -311,7 +311,19 @@ port waits.
   Linux-only.
 - **Integration tests on Windows** (the 2.0 §5 set): create and close a
   real window, inject input with `SendInput`, change DPI, round-trip the
-  clipboard, resize the swap chain, recover from a forced device removal.
+  clipboard, resize the swap chain, map device removal to recovery.
+- **The pen without a tablet.** `CreateSyntheticPointerDevice(PT_PEN)`
+  and `InjectSyntheticPointerInput` (Windows 10 1809 and later) inject
+  pen samples with pressure, so CI proves the pen path; nobody on the
+  project has a tablet on Windows (§8a).
+- **Where Windows tests run.** Linux cannot run them: the red and green
+  states of a Windows task are shown by the Windows CI job on its
+  branch, so task branches are pushed to GitHub (§8a, answer 7). The
+  Windows clippy of `check.sh` catches compile errors before that.
+- **Manual checks by a tester.** The owner's friend runs CI builds on
+  their own Windows machine (no tablet): window, DPI, keyboard layout,
+  clipboard, installer, file association, SmartScreen. Each task lists
+  the manual checks to send.
 - **Render parity.** The same command lists rendered by D3D11 on WARP
   and by GL on llvmpipe, compared with a tolerance, next to
   `tests/tessellator_parity.rs` and `tests/text_parity.rs`. Every
@@ -329,16 +341,38 @@ port waits.
 
 ## 5. Packaging and distribution
 
-- **Portable zip**: `draw.exe`, licences, README and CHANGELOG (fonts
-  are embedded).
-- **winget** and **Scoop** manifests pointing at the zip of the GitHub
-  release.
+- **Installer from the first release** (§8a): a **per-user MSI** built
+  with WiX. It installs to `%LOCALAPPDATA%\Programs\draw` with no
+  administrator prompt, adds the Start menu entry and associates `.draw`
+  files (a ProgId under `HKCU\Software\Classes`, icon, `open` verb
+  `"draw.exe" "%1"`), and uninstalls cleanly. MSIX was not chosen: it
+  redirects `%LOCALAPPDATA%` writes into the package, which moves the
+  autosave and crash dump away from the paths the docs give, and it is
+  harder to debug. WiX's licence terms are checked in the spec step of
+  [[T193 Windows installer, signing and packages]].
+- **Portable zip** next to it: `draw.exe`, licences, README and
+  CHANGELOG (fonts are embedded), for Scoop and for people who do not
+  install.
+- **winget** (the MSI) and **Scoop** (the zip) manifests pointing at the
+  GitHub release.
 - **Icon** in `draw.exe` from the existing artwork: an `.ico` and a
-  `.rc` compiled by `rc.exe` from `build.rs`.
-- An **installer** (MSI with WiX, or MSIX, which needs signing) would add
-  the Start menu entry and the `.draw` file association: owner decision.
-- **Code signing**: an unsigned `draw.exe` shows a SmartScreen warning
-  and draws more antivirus false positives: owner decision.
+  `.rc` compiled by `rc.exe` from `build.rs` (skipped when not building
+  on Windows, so the Linux clippy still runs).
+- **Signed from the first release** (§8a): `draw.exe` and the MSI, in
+  the release workflow, never on a developer machine. The route, checked
+  on 2026-11-24:
+  - Microsoft's Azure Artifact Signing (formerly Trusted Signing) takes
+    individual developers only in the USA and Canada, so it is not open
+    to the owner;
+  - **SignPath Foundation** (proposed) signs open-source projects for
+    free from GitHub Actions, with the key in an HSM; the certificate is
+    issued to SignPath Foundation, so Windows shows it as the publisher,
+    and it asks for MFA on GitHub and SignPath and an OSI licence (draw
+    is MIT);
+  - the fallback is an OV certificate from a commercial CA with cloud
+    signing, which shows the owner's name, for a yearly fee.
+  A signature does not remove the SmartScreen warning at once:
+  reputation builds with downloads.
 
 ## 6. Decisions this breaks or amends
 
@@ -364,16 +398,18 @@ file format (apart from §3.11), every Linux backend.
 
 Each task ships green. Linux stays releasable throughout.
 
-| # | Task | Done when |
-|---|------|-----------|
-| 1 | CRLF in `.draw` files (§3.11) | Regression test green on Linux; independent of the rest |
-| 2 | ADRs and portable seams: Linux modules behind `cfg`, `shell::paths`, per-OS `Backend`, Windows clippy in `check.sh`, Windows CI job running the pure tests | `draw-core` and `draw-gfx` tests pass on the Windows runner; Linux unchanged |
-| 3 | Win32 window thread, message loop, manifest, DPI, close and end-session (`Platform` window part) | A window opens, resizes and closes in integration tests |
-| 4 | D3D11 `Gpu`: device, WARP fallback, flip-model waitable swap chain, buffers, textures, targets, MSAA resolve, read-back, HLSL with the offline check, device-loss recovery | Parity tests against the GL goldens pass on WARP |
-| 5 | Keyboard and pointer: decoders, AltGr, repeat, wheel units | Pure decoder tests on Linux, injection tests on Windows |
-| 6 | Pen (`WM_POINTER` with history and pressure) and clipboard (text, PNG, DIBV5) | Pen pressure in a stroke, copy and paste round trip |
-| 7 | `main` wiring, subsystem and console attach, crash filter and minidump, Windows e2e harness, release gate | The e2e suite passes on Windows in CI |
-| 8 | Packaging: hardened MSVC build, PDB split, zip, winget, Scoop, icon | A tagged release publishes the zip and the manifests |
+| Task | Wave | Depends on | Done when |
+|------|------|------------|-----------|
+| [[T186 CRLF line endings in draw files]] (§3.11) | 77 | — | Regression test green on Linux; independent of the rest |
+| [[T187 Windows ADRs and portable seams]]: ADRs, Linux modules behind `cfg`, `shell::paths`, per-OS `Backend`, `.gitattributes`, Windows clippy in `check.sh`, Windows CI job | 77 | — | The portable tests pass on the Windows runner; Linux unchanged |
+| [[T188 Win32 window thread and message loop]]: window thread, DPI, close, end of session (`Platform` window part) | 78 | T187 | A window opens, resizes and closes in integration tests |
+| [[T189 Direct3D 11 Gpu]]: device, WARP fallback, flip-model waitable swap chain, resources, MSAA resolve, read-back, offline HLSL, device loss | 79 | T188 | Parity with the GL goldens on WARP |
+| [[T190 Windows keyboard and pointer]]: decoders, AltGr, repeat, wheel | 79 | T188 | Pure tests on Linux, injection tests on Windows |
+| [[T191 Windows pen and clipboard]]: `WM_POINTER` pen with history and pressure, text, PNG and DIBV5 | 80 | T190 | Synthetic pen stroke with pressure; clipboard round trip |
+| [[T192 Windows platform in main and the e2e suite]]: `main`, subsystem and console, crash filter, manifest, preflight, e2e harness, release gate | 81 | T189, T191 | The e2e suite passes on Windows in CI |
+| [[T193 Windows installer, signing and packages]]: hardened build, per-user MSI with the association, zip, signing, winget, Scoop | 82 | T192 | A tagged release publishes signed packages |
+
+Windows on ARM has no task yet (§8a).
 
 Size, as engineering judgement: the Windows platform about 3k lines, the
 D3D11 `Gpu` about 1.5k, shell and process changes under 1k, plus the
@@ -394,6 +430,30 @@ plus the GL `Gpu` again.
 5. **Windows on ARM**: later (proposed), or with the first release.
 6. **Oldest Windows**: 10 version 1809 (proposed; costs nothing), or
    Windows 11 only.
+
+## 8a. Owner's decisions (2026-11-24)
+
+1. **Hardware**: the port is for a friend of the owner, who tests on
+   their own Windows machine and has no tablet: the pen is proven by injected
+   synthetic pen input in CI (§4), not by hand.
+2. **Saves and exports** go to `Documents\draw`, as proposed.
+3. **Installer with the `.draw` association from the first release**:
+   the per-user MSI of §5.
+4. **Signed from the first release**: route of §5, SignPath Foundation
+   proposed.
+5. **Windows on ARM later**: no task now.
+6. **Oldest Windows: 10 version 1809**, as proposed.
+
+7. **Task branches are pushed to `origin`** (answered the same day):
+   Windows tests run only on the Windows CI job, so each Windows task
+   pushes its branch for its red and green states, the batch runner
+   included.
+
+Still open:
+
+8. **Signing account.** SignPath Foundation needs an application by the
+   owner (or the owner picks the paid OV certificate) before
+   [[T193 Windows installer, signing and packages]] can finish.
 
 ## 9. Risks, stated plainly
 
