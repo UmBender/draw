@@ -413,6 +413,34 @@ fn nightly_e2e_installs_the_runtime_libraries() {
     }
 }
 
+/// T194: Cargo 1.100 moved the intermediate files out of
+/// `target/debug/deps` (the build-dir layout), so `compile_fail.sh` could
+/// not find the rlibs it named by hand; it takes them from Cargo's
+/// artifact messages instead.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T194_compile_fail_takes_rlibs_from_cargo() {
+    // Arrange
+    let script = read("scripts/compile_fail.sh");
+
+    // Act
+    let code: Vec<&str> = script
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect();
+
+    // Assert
+    assert!(
+        !code.iter().any(|line| line.contains("target/debug/deps")),
+        "{code:?}"
+    );
+    assert!(
+        code.iter()
+            .any(|line| line.contains("--message-format=json")),
+        "{code:?}"
+    );
+}
+
 #[test]
 fn workflow_actions_are_pinned_to_full_sha() {
     for path in [CI, NIGHTLY] {

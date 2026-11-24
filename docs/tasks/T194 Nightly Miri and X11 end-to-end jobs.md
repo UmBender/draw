@@ -100,6 +100,7 @@ programs the integration tests start.
 - `tests/ci.rs`
 - `crates/draw-sys/src/**/*.rs` (`cfg_attr(miri, ignore …)` lines on tests only)
 - `crates/draw-sys/tests/x11.rs` (`x11_window_has_title_and_class`)
+- `scripts/compile_fail.sh`, `coverage-baseline.toml`
 - the `map_unwrap_or` sites: `crates/draw-sys/src/wayland/clipboard.rs`,
   `crates/draw-core/src/core/document.rs`,
   `crates/draw-core/src/core/tools/shape_tool.rs`,
@@ -117,6 +118,8 @@ programs the integration tests start.
 - [x] behaviour — `fix(T194): install the test programs in the fuzz job and wl-clipboard`
 - [x] regression — `test(T194): read WM_CLASS with xprop in the X11 test`
 - [x] behaviour — `fix(T194): install x11-utils for xprop`
+- [x] regression — `test(T194): take the compile-fail rlibs from Cargo`
+- [ ] behaviour — `fix(T194): find rlibs through Cargo and record the coverage baseline`
 - [ ] quality — `chore(T194): pass clippy and rustfmt`
 - [ ] docs — `docs(T194): update the notes`
 
@@ -144,3 +147,15 @@ No models step: no new type.
   (xdotool 3.20211022 on Fedora) does not exist in the xdotool of the
   Ubuntu runners, which prints nothing. The test reads `WM_CLASS` with
   `xprop` (package `x11-utils`) instead.
+- 2026-11-24 — fourth run (CI 45492184466, Nightly 45492184615): every
+  test passed. Left: (1) the `compile-fail` gate of `check.sh` stopped on
+  `ls target/debug/deps/libdraw_types-*.rlib`: Cargo 1.100 puts the
+  intermediate files under `target/debug/build/<package>/<hash>/out/`
+  (the build-dir layout) and has no `deps/` any more; reproduced in a
+  scratch worktree with `RUSTUP_TOOLCHAIN=1.100.0`. The script now takes
+  the rlib paths from `cargo build --message-format=json`; it passes with
+  1.99 and 1.100. (2) the coverage ratchet: `coverage-baseline.toml`
+  has only `core` and `shell` (T127), while the workspace split added
+  `gpu`, `machine`, `wayland` and `x11`, and `shell` rose from 80.2 to
+  90.7; the job had been red since then, so nobody recorded them. The
+  baseline takes the values of this CI run.
