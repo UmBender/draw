@@ -1,7 +1,7 @@
 %global app_id io.github.UmBender.draw
 
 Name:           draw
-Version:        2.0.0
+Version:        2.0.1
 Release:        1%{?dist}
 Summary:        Minimal, fast, keyboard-first scratch canvas for competitive programming
 
@@ -62,5 +62,8 @@ done
 %{_datadir}/icons/hicolor/*/apps/%{app_id}.*
 
 %changelog
+* Wed Nov 25 2026 UmBender <https://github.com/UmBender/draw> - 2.0.1-1
+- Release 2.0.1
+
 * Wed Nov 18 2026 UmBender <https://github.com/UmBender/draw> - 2.0.0-1
 - Release 2.0.0

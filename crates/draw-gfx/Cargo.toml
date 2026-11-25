@@ -1,6 +1,6 @@
 [package]
 name = "draw-gfx"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2024"
 rust-version = "1.99"
 description = "Retained renderer of draw over an abstract GPU (ADR-T132-1)"

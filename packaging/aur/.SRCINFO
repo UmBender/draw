@@ -1,6 +1,6 @@
 pkgbase = draw
 	pkgdesc = Minimal, fast, keyboard-first scratch canvas for competitive programming
-	pkgver = 2.0.0
+	pkgver = 2.0.1
 	pkgrel = 1
 	url = https://github.com/UmBender/draw
 	arch = x86_64
@@ -15,7 +15,7 @@ pkgbase = draw
 	depends = libglvnd
 	depends = wayland
 	optdepends = libdecor: client-side window decorations on Wayland compositors without SSD
-	source = draw-2.0.0.tar.gz::https://github.com/UmBender/draw/archive/refs/tags/v2.0.0.tar.gz
+	source = draw-2.0.1.tar.gz::https://github.com/UmBender/draw/archive/refs/tags/v2.0.1.tar.gz
 	sha256sums = SKIP
 
 pkgname = draw
