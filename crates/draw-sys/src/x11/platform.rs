@@ -15,7 +15,7 @@ use crate::glx::GlxContext;
 use crate::platform::{Platform, RawEvent, WindowMetrics};
 
 use super::dpi::{resolve_dpi, scale_from_dpi, window_metrics};
-use super::event::{XEvent, decode, is_close};
+use super::event::{CloseAtoms, XEvent, decode, is_close};
 use super::keys::{
     KeyTracker, button_from_x, char_from_keysym, group_of, key_from_keysym, level_for,
     mods_from_state, wheel_delta,
@@ -497,6 +497,75 @@ impl X11Platform {
     pub fn close_requested(&self) -> bool {
         self.close
     }
+
+    /// Drops queued events that [`Self::poll`] ignores and leaves the first
+    /// event it acts on at the front of `self.stash`.
+    fn has_actionable_event(&mut self) -> bool {
+        while let Some(fetched) = self.next_fetched() {
+            let actionable = event_is_actionable(
+                &fetched.bytes,
+                fetched.raw.is_some(),
+                self.window.close_atoms(),
+                self.size.get(),
+                self.visibility,
+                &self.outgoing,
+            );
+            if actionable {
+                self.stash.push_front(fetched);
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Whether [`X11Platform::poll`] acts on an event (emits a `RawEvent`,
+/// updates state, or serves a selection transfer). Events `poll` ignores
+/// must not end an idle [`X11Platform::next_frame`] wait.
+fn event_is_actionable(
+    bytes: &[u8],
+    has_raw: bool,
+    atoms: CloseAtoms,
+    size: (u32, u32),
+    visibility: Visibility,
+    outgoing: &[Outgoing],
+) -> bool {
+    if let Some(selection) = decode_selection(bytes) {
+        return match selection {
+            SelEvent::Request(_) | SelEvent::Clear { .. } => true,
+            SelEvent::Property {
+                window,
+                atom,
+                deleted: true,
+            } => outgoing
+                .iter()
+                .any(|o| o.requestor == window && o.property == atom),
+            SelEvent::Property { .. } | SelEvent::Notify { .. } => false,
+        };
+    }
+    let event = decode(bytes);
+    if is_close(event, atoms) {
+        return true;
+    }
+    match event {
+        XEvent::Configure { width, height } => {
+            width > 0 && height > 0 && (width, height) != size
+        }
+        XEvent::Key { .. }
+        | XEvent::Button { .. }
+        | XEvent::Motion { .. }
+        | XEvent::Focus(_) => true,
+        XEvent::Mapped(mapped) => mapped != visibility.mapped,
+        XEvent::Visibility { obscured } => obscured != visibility.obscured,
+        XEvent::Generic { .. } => has_raw,
+        XEvent::ClientMessage { .. } | XEvent::Other(_) => false,
+    }
+}
+
+/// Rounds a positive remaining wait up to milliseconds for `poll(2)`,
+/// avoiding a zero-timeout busy loop in the final sub-millisecond.
+fn wait_timeout_ms(remaining: Duration) -> i32 {
+    i32::try_from(remaining.as_nanos().div_ceil(1_000_000)).unwrap_or(i32::MAX)
 }
 
 impl Platform for X11Platform {
@@ -593,15 +662,20 @@ impl Platform for X11Platform {
     fn next_frame(&mut self) -> impl Future<Output = ()> {
         // A failed swap (a lost window) is seen by the next `poll`.
         let _ = self.gl.swap_buffers();
-        if !self.update_scheduled
-            && self.stash.is_empty()
-            && !self.window.has_pending()
-            && signal::peek().is_none()
-        {
-            let ms = i32::try_from(FRAME_WAIT.as_millis()).unwrap_or(16);
-            self.window.wait_events(ms, signal::wake_fd());
+        if !std::mem::take(&mut self.update_scheduled) {
+            let deadline = Instant::now() + FRAME_WAIT;
+            loop {
+                if signal::peek().is_some() || self.has_actionable_event() {
+                    break;
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    break;
+                }
+                self.window
+                    .wait_events(wait_timeout_ms(remaining), signal::wake_fd());
+            }
         }
-        self.update_scheduled = false;
         ready(())
     }
 
