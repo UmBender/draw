@@ -78,6 +78,7 @@
       "Bash(curl *)",
       "Bash(wget *)",
       "Bash(*claude *)",
+      "Bash(*agy *)",
       "Bash(*.batch/state*)",
       "Bash(*.batch/queue*)",
       "Bash(*batch.sh*)"

@@ -17,18 +17,20 @@ session (`unattended.md`). The order and bases are in `.batch/queue`.
 ## Prerequisites (done by the owner before `run`)
 
 - [ ] System packages: <e.g. `sudo dnf install sway grim wtype` or none>
-- [ ] Logged in to Claude Code (`claude` works), network up.
+- [ ] Logged in to Claude Code (`claude` works) and, for agy tasks, to
+      Antigravity (`agy -p hi` works); network up.
 - [ ] Working tree clean on `main`.
 - [ ] `batch.sh check` green.
 
 ## Order
 
-| # | Task | Base | Depends on | Expected | Risk of blocking |
-|---|------|------|------------|----------|------------------|
-| 1 | T… | main | — | <size> | <low/medium/high: why> |
+| # | Task | Base | Depends on | Agent / model / effort | Expected | Risk of blocking |
+|---|------|------|------------|------------------------|----------|------------------|
+| 1 | T… | main | — | claude sonnet medium | <size> | <low/medium/high: why> |
 
 ## T… <title>
 
+- **Agent / model / effort:** <choice and why>
 - **Owner decisions:** <answers to the questions asked in the plan phase>
 - **Recommended defaults** for choices likely to come up: <…>
 - **Commands and tools** beyond the base allowlist: <command → why>
