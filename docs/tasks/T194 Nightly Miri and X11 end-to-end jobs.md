@@ -100,7 +100,7 @@ programs the integration tests start.
 - `tests/ci.rs`
 - `crates/draw-sys/src/**/*.rs` (`cfg_attr(miri, ignore …)` lines on tests only)
 - `crates/draw-sys/tests/x11.rs` (`x11_window_has_title_and_class`)
-- `scripts/compile_fail.sh`, `coverage-baseline.toml`
+- `scripts/compile_fail.sh`, `coverage-baseline.toml`, `crates/draw-sys/tests/x11_selection.rs` (`xclip_own`)
 - the `map_unwrap_or` sites: `crates/draw-sys/src/wayland/clipboard.rs`,
   `crates/draw-core/src/core/document.rs`,
   `crates/draw-core/src/core/tools/shape_tool.rs`,
@@ -159,3 +159,13 @@ No models step: no new type.
   `gpu`, `machine`, `wayland` and `x11`, and `shell` rose from 80.2 to
   90.7; the job had been red since then, so nobody recorded them. The
   baseline takes the values of this CI run.
+- 2026-11-24 — fifth run: CI green on rerun (45495468999); the Nightly
+  `fuzz` job failed once on `x11_reads_primary_set_by_xclip`, and earlier
+  runs on `x11_reads_large_png_by_incr` (both `None`). Cause: `xclip -i`
+  forks and its parent exits before the child flushes
+  `SetSelectionOwner`, so `xclip_own` returned before the selection had an
+  owner. It now waits until `xclip -o -t TARGETS` answers (0/8 failures
+  locally). Left for a follow-up task: `x11_platform_schedule_update_ends_the_wait`
+  failed once on CI (idle frame 5 ms < 8 ms): an X event, probably from
+  the swap, ends the 16 ms wait early; a 100 ms drain did not fix it
+  locally (1/8).
