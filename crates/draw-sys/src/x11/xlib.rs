@@ -16,7 +16,7 @@ use crate::glx::GlxContext;
 use crate::loader::Library;
 
 use super::event::{CloseAtoms, EVENT_BYTES, XEvent, decode};
-use super::pen::PressureAxis;
+use super::pen::{DeviceProbe, XI_VERSION, probe_valuators, raw_source};
 use super::platform::GlSurface;
 use super::selection::{MAX_INCOMING, Request, TargetKind};
 use super::{GlBackend, X11Error};
@@ -325,6 +325,7 @@ struct XiRawHead {
 
 const XI_RAW_MOTION: i32 = 17;
 const XI_VALUATOR_CLASS: c_int = 2;
+const XI_ALL_DEVICES: c_int = 0;
 const XI_ALL_MASTER_DEVICES: c_int = 1;
 
 /// The `libXi` functions, present when `XInput2` 2.0 is.
@@ -467,8 +468,8 @@ impl XiApi {
             opcode,
             _libxi: lib,
         };
-        let (mut major, mut minor) = (2, 0);
-        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        let (mut major, mut minor) = XI_VERSION;
+        // TEST: regression_t196_raw_motion_arrives_during_button_grab
         // SAFETY: `display` is live and the version pointers are valid.
         let status = unsafe { (xi.query_version)(display, &raw mut major, &raw mut minor) };
         (status == 0).then_some(xi)
@@ -532,18 +533,23 @@ impl Connection {
                 raw = unsafe {
                     let head = &*data;
                     let len = usize::try_from(head.mask_len).unwrap_or(0);
-                    (!head.mask.is_null() && !head.values.is_null()).then(|| {
+                    if !head.mask.is_null()
+                        && !head.values.is_null()
+                        && let Some(source) = raw_source(head.deviceid, head.sourceid)
+                    {
                         let mask = std::slice::from_raw_parts(head.mask, len).to_vec();
                         let count: usize = mask.iter().map(|b| b.count_ones() as usize).sum();
                         let values = (0..count)
                             .map(|i| std::ptr::read_unaligned(head.values.add(i)))
                             .collect();
-                        XiRaw {
-                            source: head.sourceid,
+                        Some(XiRaw {
+                            source,
                             mask,
                             values,
-                        }
-                    })
+                        })
+                    } else {
+                        None
+                    }
                 };
             }
         }
@@ -593,30 +599,49 @@ impl Connection {
         u32::try_from(sym).unwrap_or(0)
     }
 
-    /// The `Abs Pressure` axis of `device`, `None` if it is not a pen.
-    pub(super) fn pressure_axis(&self, device: i32) -> Option<PressureAxis> {
-        let xi = self.xi.as_ref()?;
-        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
-        // SAFETY: `display` is live and the name is NUL terminated.
-        let label = unsafe { (self.api.intern_atom)(self.display, c"Abs Pressure".as_ptr(), 1) };
-        if label == 0 {
+    /// Probes every `XInput2` device for an `Abs Pressure` valuator.
+    pub(super) fn probe_all_devices(&self) -> Vec<DeviceProbe> {
+        self.probe_devices(XI_ALL_DEVICES)
+    }
+
+    /// Probes a single `XInput2` `device` (`>= 2`) for an `Abs Pressure`
+    /// valuator.
+    pub(super) fn probe_device(&self, device: i32) -> Option<DeviceProbe> {
+        if device <= 1 {
             return None;
         }
+        self.probe_devices(device).into_iter().next()
+    }
+
+    fn probe_devices(&self, device: i32) -> Vec<DeviceProbe> {
+        let Some(xi) = self.xi.as_ref() else {
+            return Vec::new();
+        };
+        let label = self.atom(c"Abs Pressure");
         let mut count: c_int = 0;
-        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // TEST: x11_startup_queues_debug_lines_for_valuator_devices
         // SAFETY: `display` is live and `count` is a valid out pointer.
         let info = unsafe { (xi.query_device)(self.display, device, &raw mut count) };
         if info.is_null() {
-            return None;
+            return Vec::new();
         }
-        let mut found = None;
+        let mut probes = Vec::new();
         for d in 0..usize::try_from(count).unwrap_or(0) {
-            // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+            // TEST: x11_startup_queues_debug_lines_for_valuator_devices
             // SAFETY: `info` holds `count` device infos, each with
             // `num_classes` class pointers; a class of the valuator kind is
-            // an `XIValuatorClassInfo`. They stay valid until the free below.
-            unsafe {
+            // an `XIValuatorClassInfo` and `name`, if non-null, is a
+            // NUL-terminated string. All stay valid until the free below.
+            let (id, name, axes) = unsafe {
                 let device_info = &*info.add(d);
+                let name = if device_info.name.is_null() {
+                    String::new()
+                } else {
+                    CStr::from_ptr(device_info.name)
+                        .to_string_lossy()
+                        .into_owned()
+                };
+                let mut axes = Vec::new();
                 for c in 0..usize::try_from(device_info.num_classes).unwrap_or(0) {
                     let class = *device_info.classes.add(c);
                     if class.is_null() || (*class).kind != XI_VALUATOR_CLASS {
@@ -626,20 +651,16 @@ impl Connection {
                     // buffer with natural alignment.
                     #[allow(clippy::cast_ptr_alignment)]
                     let valuator = &*class.cast::<XiValuatorClass>();
-                    if valuator.label == label {
-                        found = Some(PressureAxis {
-                            number: valuator.number,
-                            min: valuator.min,
-                            max: valuator.max,
-                        });
-                    }
+                    axes.push((valuator.number, valuator.label, valuator.min, valuator.max));
                 }
-            }
+                (device_info.deviceid, name, axes)
+            };
+            probes.push(probe_valuators(id, name, label, &axes));
         }
-        // TEST: x11_xi2_raw_motion_from_xtest_is_not_a_pen
+        // TEST: x11_startup_queues_debug_lines_for_valuator_devices
         // SAFETY: `info` came from `XIQueryDevice` and is freed once.
         unsafe { (xi.free_device_info)(info) };
-        found
+        probes
     }
 
     /// The raw `Display*`, valid while `self` lives.

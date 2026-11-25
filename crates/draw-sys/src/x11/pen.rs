@@ -2,6 +2,12 @@
 
 use crate::platform::RawEvent;
 
+/// `XInput2` version negotiated with `XIQueryVersion` (T196).
+///
+/// `XInput2` 2.1 delivers `XI_RawMotion` even while a button press holds an
+/// implicit passive pointer grab; 2.0 suppresses raw motion during grabs.
+pub const XI_VERSION: (i32, i32) = (2, 1);
+
 /// The `Abs Pressure` valuator of a pen device.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PressureAxis {
@@ -11,6 +17,79 @@ pub struct PressureAxis {
     pub min: f64,
     /// The largest value the device reports.
     pub max: f64,
+}
+
+/// What an `XInput2` device probe found for pen pressure (T196 AC-2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeviceProbe {
+    /// The `XInput2` device id.
+    pub id: i32,
+    /// The device name reported by `XIQueryDevice`.
+    pub name: String,
+    /// Number of valuator classes on the device.
+    pub valuators: usize,
+    /// The `Abs Pressure` axis, if the device has one.
+    pub pressure: Option<PressureAxis>,
+}
+
+/// Resolves the source device id of an `XIRawEvent`.
+///
+/// Prefers `source_id` (the physical slave device); falls back to
+/// `device_id` when `source_id` is unset (`<= 1`). Returns `None` if
+/// neither names a concrete device (`0` is `XIAllDevices`, `1` is
+/// `XIAllMasterDevices`).
+#[must_use]
+pub const fn raw_source(device_id: i32, source_id: i32) -> Option<i32> {
+    if source_id > 1 {
+        Some(source_id)
+    } else if device_id > 1 {
+        Some(device_id)
+    } else {
+        None
+    }
+}
+
+/// Builds a [`DeviceProbe`] from a device's `(number, label, min, max)`
+/// valuators and the interned `Abs Pressure` atom.
+#[must_use]
+pub fn probe_valuators(
+    id: i32,
+    name: String,
+    pressure_atom: u64,
+    axes: &[(i32, u64, f64, f64)],
+) -> DeviceProbe {
+    let pressure = (pressure_atom != 0)
+        .then(|| {
+            axes.iter()
+                .rfind(|&&(_, label, _, _)| label == pressure_atom)
+                .map(|&(number, _, min, max)| PressureAxis { number, min, max })
+        })
+        .flatten();
+    DeviceProbe {
+        id,
+        name,
+        valuators: axes.len(),
+        pressure,
+    }
+}
+
+/// Formats a `--log debug` line for `probe`, or `None` for devices
+/// without valuators (T196 AC-2).
+#[must_use]
+pub fn probe_log_line(probe: &DeviceProbe) -> Option<String> {
+    if let Some(axis) = probe.pressure {
+        Some(format!(
+            "x11 pen: device {} {:?} pressure axis {} range {}..{}",
+            probe.id, probe.name, axis.number, axis.min, axis.max
+        ))
+    } else if probe.valuators > 0 {
+        Some(format!(
+            "x11 pen: device {} {:?} has {} valuators, no Abs Pressure",
+            probe.id, probe.name, probe.valuators
+        ))
+    } else {
+        None
+    }
 }
 
 /// The value of valuator `number` in a raw event, `None` if it did not

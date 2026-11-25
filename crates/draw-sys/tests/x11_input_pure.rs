@@ -10,7 +10,10 @@ use draw_sys::x11::keys::{
     KeyTracker, button_from_x, char_from_keysym, group_of, key_from_keysym, level_for,
     mods_from_state, wheel_delta,
 };
-use draw_sys::x11::pen::{PenTracker, PressureAxis, normalise, valuator};
+use draw_sys::x11::pen::{
+    DeviceProbe, PenTracker, PressureAxis, XI_VERSION, normalise, probe_log_line, probe_valuators,
+    raw_source, valuator,
+};
 
 fn event_of(kind: i32) -> [u8; EVENT_BYTES] {
     let mut raw = [0u8; EVENT_BYTES];
@@ -378,6 +381,148 @@ fn regression_t35_pressure_sample_precedes_press_and_release() {
         pen.sample(10.0, 20.0),
         Some(RawEvent::Tablet { pressure, .. }) if pressure.abs() < 1e-6
     ));
+}
+
+#[test]
+fn regression_t196_xwayland_pen_pressure_follows_the_valuator() {
+    // An Xwayland tablet stylus exposes Abs Pressure on axis 2 in 0..65535.
+    const ABS_X: u64 = 100;
+    const ABS_Y: u64 = 101;
+    const ABS_PRESSURE: u64 = 102;
+    const ABS_TILT_X: u64 = 103;
+    const ABS_TILT_Y: u64 = 104;
+    const ABS_WHEEL: u64 = 105;
+
+    // Arrange: XInput 2.1+ is needed so XI_RawMotion keeps arriving while
+    // a button press holds an implicit pointer grab.
+    assert!(XI_VERSION.0 > 2 || (XI_VERSION.0 == 2 && XI_VERSION.1 >= 1));
+
+    let probe = probe_valuators(
+        14,
+        "xwayland-tablet stylus".to_owned(),
+        ABS_PRESSURE,
+        &[
+            (0, ABS_X, 0.0, 65535.0),
+            (1, ABS_Y, 0.0, 65535.0),
+            (2, ABS_PRESSURE, 0.0, 65535.0),
+            (3, ABS_TILT_X, -64.0, 63.0),
+            (4, ABS_TILT_Y, -64.0, 63.0),
+            (5, ABS_WHEEL, -900.0, 899.0),
+        ],
+    );
+    assert_eq!(probe.valuators, 6);
+    assert_eq!(
+        probe.pressure,
+        Some(PressureAxis {
+            number: 2,
+            min: 0.0,
+            max: 65535.0,
+        })
+    );
+
+    // Raw events selected on masters carry the slave id in sourceid; a 0
+    // sourceid falls back to deviceid and never yields XIAllDevices (0).
+    let stylus = raw_source(2, 14).unwrap();
+    assert_eq!(stylus, 14);
+    assert_eq!(raw_source(2, 0), Some(2));
+    assert_eq!(raw_source(0, 0), None);
+
+    // Act & Assert: hover (0), light press (1/4), motion without pressure
+    // bit (keeps 1/4), hard press (full), then mouse clears pressure.
+    let mut pen = PenTracker::default();
+    pen.raw_event(stylus, probe.pressure, &[0b0000_0111], &[100.0, 200.0, 0.0]);
+    assert!(matches!(
+        pen.sample(100.0, 200.0),
+        Some(RawEvent::Tablet { pressure, .. }) if pressure.abs() < 1e-6
+    ));
+
+    pen.raw_event(
+        stylus,
+        probe.pressure,
+        &[0b0000_0111],
+        &[105.0, 205.0, 16383.75],
+    );
+    assert!(matches!(
+        pen.sample(105.0, 205.0),
+        Some(RawEvent::Tablet { x, y, pressure })
+            if (x - 105.0).abs() < 1e-6
+                && (y - 205.0).abs() < 1e-6
+                && (pressure - 0.25).abs() < 1e-4
+    ));
+
+    pen.raw_event(stylus, probe.pressure, &[0b0000_0011], &[110.0, 210.0]);
+    assert!(matches!(
+        pen.sample(110.0, 210.0),
+        Some(RawEvent::Tablet { pressure, .. }) if (pressure - 0.25).abs() < 1e-4
+    ));
+
+    pen.raw_event(stylus, probe.pressure, &[0b0000_0100], &[65535.0]);
+    assert!(matches!(
+        pen.sample(115.0, 215.0),
+        Some(RawEvent::Tablet { pressure, .. }) if (pressure - 1.0).abs() < 1e-6
+    ));
+
+    let mouse = raw_source(2, 4).unwrap();
+    pen.raw_event(mouse, None, &[0b0000_0011], &[120.0, 220.0]);
+    assert_eq!(pen.sample(120.0, 220.0), None);
+}
+
+#[test]
+fn pen_probe_log_line_names_pen_axis_and_range() {
+    // Arrange
+    let probe = DeviceProbe {
+        id: 14,
+        name: "xwayland-tablet stylus".to_owned(),
+        valuators: 6,
+        pressure: Some(PressureAxis {
+            number: 2,
+            min: 0.0,
+            max: 65535.0,
+        }),
+    };
+
+    // Act
+    let line = probe_log_line(&probe).unwrap();
+
+    // Assert
+    assert!(line.contains("14"), "{line}");
+    assert!(line.contains("xwayland-tablet stylus"), "{line}");
+    assert!(line.contains("axis 2"), "{line}");
+    assert!(line.contains("0..65535"), "{line}");
+}
+
+#[test]
+fn pen_probe_log_line_notes_valuators_without_pressure() {
+    // Arrange
+    let probe = DeviceProbe {
+        id: 4,
+        name: "xwayland-pointer".to_owned(),
+        valuators: 4,
+        pressure: None,
+    };
+
+    // Act
+    let line = probe_log_line(&probe).unwrap();
+
+    // Assert
+    assert!(line.contains('4'), "{line}");
+    assert!(line.contains("xwayland-pointer"), "{line}");
+    assert!(line.contains("4 valuators"), "{line}");
+    assert!(line.contains("no Abs Pressure"), "{line}");
+}
+
+#[test]
+fn pen_probe_log_line_skips_devices_without_valuators() {
+    // Arrange
+    let probe = DeviceProbe {
+        id: 3,
+        name: "Virtual core keyboard".to_owned(),
+        valuators: 0,
+        pressure: None,
+    };
+
+    // Act & Assert
+    assert_eq!(probe_log_line(&probe), None);
 }
 
 // ---- fuzz ----

@@ -66,13 +66,14 @@ Tap slop: [[T34 Pen tablet input]]. Pressure and native Wayland:
 - `shell::app::run` builds the editor with `with_tap_slop(16)` in pen mode;
   `shell::toolbar::pen_badge` is where the badge is drawn.
 
-- **Pressure** (T35) comes from a patched miniquad in `vendor/miniquad`
-  ([[ADR-T35-1 Vendored miniquad with a pen tablet patch]]). On X11 it reads
-  the pen's `Abs Pressure` valuator from the raw XInput 2 events; on
-  Wayland it binds `zwp_tablet_v2` and turns tool frames into pointer
-  events. Before each pen pointer event it queues a `miniquad::pen`
-  sample; `shell::input_map::Collector` pairs samples with events by
-  position and emits `InputEvent::Pressure`.
+- **Pressure** (T35, T176, T196) on X11 reads the pen's `Abs Pressure`
+  valuator from `XI_RawMotion` events after negotiating XInput 2.1 (so
+  raw motion keeps arriving during the implicit pointer grab of a button
+  press) and logs each valuator device's pressure axis and range under
+  `--log debug`; on Wayland it binds `zwp_tablet_v2` and turns tool
+  frames into pointer events. Before each pen pointer event the backend
+  emits `RawEvent::Tablet`; `shell::input_map::Collector` pairs samples
+  with events by position and emits `InputEvent::Pressure`.
 - Hyprland also copies the pen onto `wl_pointer`; the copy before each
   tip-down stole the press's sample, so native Wayland strokes had no
   pressure until T40. While a tool is in proximity the Wayland backend
