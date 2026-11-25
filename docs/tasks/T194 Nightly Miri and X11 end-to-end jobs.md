@@ -1,7 +1,7 @@
 ---
 id: T194
 title: Nightly Miri and X11 end-to-end jobs
-status: in-progress
+status: review
 wave: 77
 branch: fix/nightly-miri-and-x11-e2e
 depends_on: []
@@ -120,8 +120,8 @@ programs the integration tests start.
 - [x] behaviour — `fix(T194): install x11-utils for xprop`
 - [x] regression — `test(T194): take the compile-fail rlibs from Cargo`
 - [x] behaviour — `fix(T194): find rlibs through Cargo and record the coverage baseline`
-- [ ] quality — `chore(T194): pass clippy and rustfmt`
-- [ ] docs — `docs(T194): update the notes`
+- [x] quality — `chore(T194): pass clippy and rustfmt` (nothing to change, no commit)
+- [x] docs — `docs(T194): update the notes`
 
 No models step: no new type.
 
