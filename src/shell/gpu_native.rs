@@ -13,6 +13,8 @@ use draw_gfx::gpu::{
 use draw_sys::egl::GlContext;
 use draw_sys::platform::Platform;
 
+use crate::shell::diag::{self, Level};
+
 /// A shared GL handle that knows the current size of its window in pixels.
 pub trait WindowSize: GlContext + Clone {
     /// The size of the window in physical pixels.
@@ -121,11 +123,20 @@ impl<C: WindowSize> Gpu for SizedGpu<C> {
 pub trait CloseRequest: Platform {
     /// Whether the window manager or compositor asked the window to close.
     fn close_requested(&self) -> bool;
+
+    /// Pops the next backend debug line for the diagnostics log, if any.
+    fn take_debug_log(&mut self) -> Option<String> {
+        None
+    }
 }
 
 impl CloseRequest for draw_sys::x11::X11Platform {
     fn close_requested(&self) -> bool {
         Self::close_requested(self)
+    }
+
+    fn take_debug_log(&mut self) -> Option<String> {
+        Self::take_debug_log(self)
     }
 }
 
@@ -154,7 +165,10 @@ pub struct Closing<P: CloseRequest> {
 impl<P: CloseRequest> Closing<P> {
     /// Wraps `inner`; `on_close` ends the process.
     #[must_use]
-    pub fn new(inner: P, on_close: fn(Option<i32>)) -> Self {
+    pub fn new(mut inner: P, on_close: fn(Option<i32>)) -> Self {
+        while let Some(line) = inner.take_debug_log() {
+            diag::log(Level::Debug, &line);
+        }
         Self { inner, on_close }
     }
 }
@@ -162,6 +176,9 @@ impl<P: CloseRequest> Closing<P> {
 impl<P: CloseRequest> draw_sys::platform::Platform for Closing<P> {
     fn poll(&mut self, out: &mut Vec<draw_sys::platform::RawEvent>) {
         self.inner.poll(out);
+        while let Some(line) = self.inner.take_debug_log() {
+            diag::log(Level::Debug, &line);
+        }
     }
 
     fn window(&mut self) -> draw_sys::platform::WindowMetrics {

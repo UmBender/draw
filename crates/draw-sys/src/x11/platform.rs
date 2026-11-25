@@ -4,7 +4,7 @@
 //! (T176); selections come with T177 and until then the clipboard is empty.
 
 use std::cell::Cell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::c_void;
 use std::future::{Future, ready};
 use std::rc::Rc;
@@ -20,7 +20,7 @@ use super::keys::{
     KeyTracker, button_from_x, char_from_keysym, group_of, key_from_keysym, level_for,
     mods_from_state, wheel_delta,
 };
-use super::pen::{PenTracker, PressureAxis};
+use super::pen::{PenTracker, PressureAxis, probe_log_line};
 use super::selection::{
     Answer, INCR_THRESHOLD, IncrReceiver, IncrSender, IncrStep, Payload, Request, SelEvent,
     decode_selection,
@@ -144,6 +144,9 @@ pub struct X11Platform {
     keys: KeyTracker,
     pen: PenTracker,
     axes: HashMap<i32, Option<PressureAxis>>,
+    logged_devices: HashSet<i32>,
+    debug_logs: VecDeque<String>,
+    raw_motions: u64,
     atoms: SelAtoms,
     owned: HashMap<u64, Payload>,
     outgoing: Vec<Outgoing>,
@@ -177,6 +180,14 @@ impl X11Platform {
         let gl = open_context(&conn, created.id(), backend)?;
         let window = created.map();
         conn.select_raw_motion();
+        let mut logged_devices = HashSet::new();
+        let mut debug_logs = VecDeque::new();
+        for probe in conn.probe_all_devices() {
+            logged_devices.insert(probe.id);
+            if let Some(line) = probe_log_line(&probe) {
+                debug_logs.push_back(line);
+            }
+        }
         let atoms = conn.sel_atoms();
         Ok(Self {
             atoms,
@@ -187,6 +198,9 @@ impl X11Platform {
             keys: KeyTracker::default(),
             pen: PenTracker::default(),
             axes: HashMap::new(),
+            logged_devices,
+            debug_logs,
+            raw_motions: 0,
             gl: Rc::new(gl),
             window,
             size: Rc::new(Cell::new((width.max(1), height.max(1)))),
@@ -229,6 +243,17 @@ impl X11Platform {
     #[must_use]
     pub fn pen_supported(&self) -> bool {
         self.window.conn().has_xi()
+    }
+
+    /// Number of `XInput2` raw motion events received so far.
+    #[must_use]
+    pub fn raw_motion_count(&self) -> u64 {
+        self.raw_motions
+    }
+
+    /// Pops the next queued `--log debug` diagnostic line, if any.
+    pub fn take_debug_log(&mut self) -> Option<String> {
+        self.debug_logs.pop_front()
     }
 
     fn key(&mut self, out: &mut Vec<RawEvent>, down: bool, keycode: u32, state: u32) {
@@ -548,11 +573,21 @@ impl Platform for X11Platform {
                 }
                 XEvent::Generic { .. } => {
                     if let Some(raw) = fetched.raw {
-                        let conn = self.window.conn();
-                        let axis = *self
-                            .axes
-                            .entry(raw.source)
-                            .or_insert_with(|| conn.pressure_axis(raw.source));
+                        self.raw_motions = self.raw_motions.saturating_add(1);
+                        let axis = if let Some(&cached) = self.axes.get(&raw.source) {
+                            cached
+                        } else {
+                            let probe = self.window.conn().probe_device(raw.source);
+                            let axis = probe.as_ref().and_then(|p| p.pressure);
+                            if let Some(probe) = probe
+                                && self.logged_devices.insert(probe.id)
+                                && let Some(line) = probe_log_line(&probe)
+                            {
+                                self.debug_logs.push_back(line);
+                            }
+                            self.axes.insert(raw.source, axis);
+                            axis
+                        };
                         self.pen.raw_event(raw.source, axis, &raw.mask, &raw.values);
                     }
                 }
