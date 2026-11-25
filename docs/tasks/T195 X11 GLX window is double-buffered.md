@@ -1,7 +1,7 @@
 ---
 id: T195
 title: X11 GLX window is double-buffered
-status: review
+status: done
 wave: 77
 branch: fix/x11-glx-double-buffer
 depends_on: []
@@ -98,3 +98,4 @@ the canvas and the toolbar and redraws after maximising.
   and after a resize to 1600×950 the whole window is drawn (the page
   switcher appears). Not yet looked at by the owner on screen. No
   feature note or tutorial: the change restores documented behaviour.
+- 2026-11-24 — merged into `main` with the owner's go-ahead, listed under Fixed for 2.0.1.

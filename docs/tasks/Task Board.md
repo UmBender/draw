@@ -444,7 +444,7 @@ flowchart TD
 | 74 | [[T150 Optional Vulkan backend for the Gpu trait]] · [[T151 Release 2.0.0]] |
 | 75 | [[T184 Select click shows the selection]] |
 | 76 | [[T185 Wayland title bar and window size]] |
-| 77 | [[T186 CRLF line endings in draw files]] · [[T187 Windows ADRs and portable seams]] |
+| 77 | [[T186 CRLF line endings in draw files]] · [[T187 Windows ADRs and portable seams]] · [[T194 Nightly Miri and X11 end-to-end jobs]] · [[T195 X11 GLX window is double-buffered]] |
 | 78 | [[T188 Win32 window thread and message loop]] |
 | 79 | [[T189 Direct3D 11 Gpu]] · [[T190 Windows keyboard and pointer]] |
 | 80 | [[T191 Windows pen and clipboard]] |
@@ -646,3 +646,5 @@ flowchart TD
 | [[T191 Windows pen and clipboard]] | todo | T190 | `task/T191-windows-pen-and-clipboard` |
 | [[T192 Windows platform in main and the e2e suite]] | todo | T189, T191 | `task/T192-windows-platform-in-main-and-the-e2e-suite` |
 | [[T193 Windows installer, signing and packages]] | todo | T192 | `task/T193-windows-installer-signing-and-packages` |
+| [[T194 Nightly Miri and X11 end-to-end jobs]] | done | — | `fix/nightly-miri-and-x11-e2e` |
+| [[T195 X11 GLX window is double-buffered]] | done | — | `fix/x11-glx-double-buffer` |

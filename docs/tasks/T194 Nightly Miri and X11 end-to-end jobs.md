@@ -1,7 +1,7 @@
 ---
 id: T194
 title: Nightly Miri and X11 end-to-end jobs
-status: review
+status: done
 wave: 77
 branch: fix/nightly-miri-and-x11-e2e
 depends_on: []
@@ -169,3 +169,4 @@ No models step: no new type.
   failed once on CI (idle frame 5 ms < 8 ms): an X event, probably from
   the swap, ends the 16 ms wait early; a 100 ms drain did not fix it
   locally (1/8).
+- 2026-11-24 — CI and Nightly green on `23225db`; merged into `main`.

@@ -15,6 +15,9 @@ All notable changes to draw are listed here. The format follows
   Plasma, sway, Hyprland and other compositors that draw decorations, and
   it opens at 1280×800 like on X11, so the whole toolbar fits; since 2.0.0
   it had no title bar and opened at 640×480, cutting off the colours.
+- On X11 with a hardware GPU (`--backend x11`, Xwayland or Xorg) the window
+  shows the canvas and the toolbar and redraws after a resize; since 2.0.0
+  it stayed black because GLX picked a single-buffered config.
 
 ## [2.0.0] - 2026-11-18
 
