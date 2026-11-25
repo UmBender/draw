@@ -63,7 +63,7 @@ pub fn default_path(home: &Path, unix_secs: u64, attempt: u32) -> PathBuf {
 /// The I/O error of the first step that failed; the temporary file is
 /// removed.
 pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    let mut name = path.file_name().map(OsString::from).unwrap_or_default();
+    let mut name = path.file_name().map_or_default(OsString::from);
     let call = CALLS.fetch_add(1, Ordering::Relaxed);
     name.push(format!(".{}.{call}.tmp", std::process::id()));
     let temporary = path.with_file_name(name);

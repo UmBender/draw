@@ -9841,8 +9841,7 @@ mod tests {
     /// The descriptions of the palette's rows.
     fn palette_rows(ed: &Editor) -> Vec<&'static str> {
         ed.palette()
-            .map(|p| p.rows().map(|(_, _, description)| description).collect())
-            .unwrap_or_default()
+            .map_or_default(|p| p.rows().map(|(_, _, description)| description).collect())
     }
 
     #[test]

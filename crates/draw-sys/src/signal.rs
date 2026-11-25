@@ -413,6 +413,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call sigaltstack or sigaction")]
     fn fatal_signal_hook_is_installed() {
         assert_eq!(std::mem::size_of::<SigAction>(), 152);
         assert_eq!(std::mem::size_of::<StackT>(), 24);

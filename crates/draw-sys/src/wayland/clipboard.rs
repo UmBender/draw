@@ -159,8 +159,7 @@ impl ClipboardState {
             .borrow()
             .iter()
             .find(|(id, _)| *id == offer as usize)
-            .map(|(_, mimes)| mimes.clone())
-            .unwrap_or_default()
+            .map_or_default(|(_, mimes)| mimes.clone())
     }
 
     /// The clipboard's text: the process's own copy, or what the current

@@ -1,6 +1,12 @@
 # Line coverage per module in percent (scripts/coverage.sh, T130).
 # CI fails when a module falls or rises by more than 0.5 points.
-# Measured by T127 (docs/architecture/2.0 baseline.md); refresh with
+# Measured by T127 (docs/architecture/2.0 baseline.md); refreshed by T194
+# from CI run 45492184466, the first green-tests run since the workspace
+# split added the crates' modules. Refresh with
 # `scripts/coverage.sh --update` after raising coverage.
-core = 98.6
-shell = 80.2
+core = 98.2
+gpu = 88.5
+machine = 96.2
+shell = 90.7
+wayland = 74.0
+x11 = 90.3

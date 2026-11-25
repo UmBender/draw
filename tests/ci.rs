@@ -224,6 +224,223 @@ fn nightly_uploads_fuzz_regressions_on_failure() {
     );
 }
 
+/// The words of the `apt-get install` lines of job `name` in `workflow`.
+fn apt_packages(workflow: &str, name: &str) -> Vec<String> {
+    let text = read(workflow);
+    let lines = job(&text, name);
+    values(&lines, "run")
+        .into_iter()
+        .filter(|run| run.contains("apt-get install"))
+        .flat_map(|run| run.split_whitespace().map(str::to_owned))
+        .collect()
+}
+
+/// The words of the `apt-get install` lines of the Nightly `e2e` job.
+fn e2e_job_packages() -> Vec<String> {
+    apt_packages(NIGHTLY, "e2e")
+}
+
+/// The first string literal of each call `name(…)` in `text`, where
+/// `name` is a whole word: `tool(sway, "wl-paste")` gives `wl-paste`.
+fn literal_args(text: &str, name: &str) -> Vec<String> {
+    let call = format!("{name}(");
+    text.match_indices(&call)
+        .filter(|(at, _)| {
+            text[..*at]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+        })
+        .filter_map(|(at, _)| {
+            let args = text[at + call.len()..].split(')').next()?;
+            let (_, rest) = args.split_once('"')?;
+            rest.split('"').next().map(str::to_owned)
+        })
+        .collect()
+}
+
+/// The programs the tests start, from the test sources of every crate:
+/// literal `Command::new` names and those passed to the `tool` helpers
+/// (`tool(sway, "wl-paste")`, `.tool("wl-copy")`). `tests/e2e.rs` is left
+/// out: it runs only under `scripts/e2e.sh`, whose tools
+/// `regression_T194_nightly_e2e_installs_every_e2e_tool` checks.
+fn programs_started_by_tests() -> Vec<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut dirs = vec![root.join("tests")];
+    let crates =
+        std::fs::read_dir(root.join("crates")).unwrap_or_else(|err| panic!("crates: {err}"));
+    dirs.extend(
+        crates
+            .filter_map(Result::ok)
+            .map(|e| e.path().join("tests")),
+    );
+    let mut programs = Vec::new();
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for path in entries.filter_map(Result::ok).map(|e| e.path()) {
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs")
+                && path != root.join("tests/e2e.rs")
+            {
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                programs.extend(literal_args(&text, "Command::new"));
+                programs.extend(literal_args(&text, "tool"));
+            }
+        }
+    }
+    programs.sort();
+    programs.dedup();
+    programs
+}
+
+/// The Ubuntu package of a program the tests start, `None` for programs
+/// every runner has.
+fn package_of_test_program(program: &str) -> Option<&'static str> {
+    match program {
+        "bash" | "sh" | "kill" | "sleep" | "true" => None,
+        built if built.starts_with("CARGO_BIN_EXE_") => None,
+        "sway" | "swaymsg" => Some("sway"),
+        "wtype" => Some("wtype"),
+        "xclip" => Some("xclip"),
+        "xdotool" => Some("xdotool"),
+        "Xvfb" => Some("xvfb"),
+        "wl-copy" | "wl-paste" => Some("wl-clipboard"),
+        "xprop" => Some("x11-utils"),
+        other => panic!("add the Ubuntu package of `{other}` to package_of_test_program"),
+    }
+}
+
+/// T194: the jobs that run every test (`gates` and `coverage` of CI,
+/// `fuzz` of the Nightly through `check.sh --fuzz`) need the programs the
+/// `draw-sys` integration tests start; those fail, never skip, without
+/// them. The jobs installed only Xvfb, or nothing.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T194_ci_test_jobs_install_every_test_program() {
+    // Arrange
+    let programs = programs_started_by_tests();
+    assert!(programs.iter().any(|p| p == "sway"), "{programs:?}");
+    assert!(programs.iter().any(|p| p == "wl-paste"), "{programs:?}");
+
+    for (workflow, name) in [(CI, "gates"), (CI, "coverage"), (NIGHTLY, "fuzz")] {
+        // Act
+        let packages = apt_packages(workflow, name);
+
+        // Assert
+        for program in &programs {
+            if let Some(package) = package_of_test_program(program) {
+                assert!(
+                    packages.iter().any(|p| p == package),
+                    "{name}: {program} needs {package}, missing from {packages:?}"
+                );
+            }
+        }
+    }
+}
+
+/// The Ubuntu package that provides an e2e tool.
+fn package_of_tool(tool: &str) -> &'static str {
+    match tool {
+        "sway" | "swaymsg" => "sway",
+        "wtype" => "wtype",
+        "grim" => "grim",
+        "Xvfb" => "xvfb",
+        "xdotool" => "xdotool",
+        "import" => "imagemagick",
+        other => panic!("add the Ubuntu package of `{other}` to package_of_tool"),
+    }
+}
+
+/// T194: the Wayland half of the suite passed, then `e2e.sh` stopped on
+/// `xdotool is not installed`: the job had no X11 tools.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T194_nightly_e2e_installs_every_e2e_tool() {
+    // Arrange
+    let script = read("scripts/e2e.sh");
+    let packages = e2e_job_packages();
+
+    // Act
+    let tools: Vec<&str> = script
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("need_tools "))
+        .flat_map(str::split_whitespace)
+        .collect();
+
+    // Assert
+    assert!(tools.contains(&"xdotool"), "{tools:?}");
+    for tool in tools {
+        let package = package_of_tool(tool);
+        assert!(
+            packages.iter().any(|p| p == package),
+            "{tool}: {package} missing from {packages:?}"
+        );
+    }
+}
+
+/// T194: the X11 run needs the libraries the X11 backend loads.
+#[test]
+fn nightly_e2e_installs_the_runtime_libraries() {
+    // Arrange
+    let libs = read("packaging/runtime-libs");
+    let packages = e2e_job_packages();
+
+    // Act
+    let needed: Vec<&str> = libs
+        .lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            match fields.as_slice() {
+                [_, role, _, debian] if ["required", "gl", "wayland"].contains(role) => {
+                    Some(*debian)
+                }
+                _ => None,
+            }
+        })
+        .collect();
+
+    // Assert
+    assert!(needed.contains(&"libx11-6"), "{needed:?}");
+    for package in needed {
+        assert!(
+            packages.iter().any(|p| p == package),
+            "{package} missing from {packages:?}"
+        );
+    }
+}
+
+/// T194: Cargo 1.100 moved the intermediate files out of
+/// `target/debug/deps` (the build-dir layout), so `compile_fail.sh` could
+/// not find the rlibs it named by hand; it takes them from Cargo's
+/// artifact messages instead.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T194_compile_fail_takes_rlibs_from_cargo() {
+    // Arrange
+    let script = read("scripts/compile_fail.sh");
+
+    // Act
+    let code: Vec<&str> = script
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect();
+
+    // Assert
+    assert!(
+        !code.iter().any(|line| line.contains("target/debug/deps")),
+        "{code:?}"
+    );
+    assert!(
+        code.iter()
+            .any(|line| line.contains("--message-format=json")),
+        "{code:?}"
+    );
+}
+
 #[test]
 fn workflow_actions_are_pinned_to_full_sha() {
     for path in [CI, NIGHTLY] {

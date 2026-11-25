@@ -81,8 +81,26 @@ fn xclip_own(server: &xvfb::Xvfb, selection: &str, target: &str, data: &[u8]) {
         stdin.write_all(&data).unwrap();
     });
     writer.join().unwrap();
-    // The parent exits once the forked owner holds the selection.
     assert!(child.wait().unwrap().success());
+    // The parent exits right after the fork, but the forked owner sends its
+    // `SetSelectionOwner` only when it first flushes: wait until the
+    // selection answers, or a read can race it and get nothing (T194).
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let owned = Command::new("xclip")
+            .env("DISPLAY", &server.display)
+            .args(["-o", "-selection", selection, "-t", "TARGETS"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap_or_else(|e| panic!("xclip is required for the X11 tests: {e}"))
+            .success();
+        if owned {
+            return;
+        }
+        assert!(Instant::now() < deadline, "xclip never owned {selection}");
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[test]
