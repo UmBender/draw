@@ -617,3 +617,197 @@ impl Platform for X11Platform {
         ready(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::x11::event::{CloseAtoms, EVENT_BYTES, GENERIC_EVENT};
+
+    fn raw_event(kind: i32) -> [u8; EVENT_BYTES] {
+        let mut raw = [0u8; EVENT_BYTES];
+        raw[0..4].copy_from_slice(&kind.to_ne_bytes());
+        raw
+    }
+
+    fn configure(width: i32, height: i32) -> [u8; EVENT_BYTES] {
+        let mut raw = raw_event(22);
+        raw[56..60].copy_from_slice(&width.to_ne_bytes());
+        raw[60..64].copy_from_slice(&height.to_ne_bytes());
+        raw
+    }
+
+    fn client_message(message_type: u64, first_long: u64) -> [u8; EVENT_BYTES] {
+        let mut raw = raw_event(33);
+        raw[40..48].copy_from_slice(&message_type.to_ne_bytes());
+        raw[56..64].copy_from_slice(&first_long.to_ne_bytes());
+        raw
+    }
+
+    fn property_notify(window: u64, atom: u64, deleted: bool) -> [u8; EVENT_BYTES] {
+        let mut raw = raw_event(28);
+        raw[32..40].copy_from_slice(&window.to_ne_bytes());
+        raw[40..48].copy_from_slice(&atom.to_ne_bytes());
+        raw[56..60].copy_from_slice(&i32::from(deleted).to_ne_bytes());
+        raw
+    }
+
+    #[test]
+    fn event_is_actionable_ignores_non_poll_events_and_keeps_real_input() {
+        let atoms = CloseAtoms {
+            protocols: 10,
+            delete_window: 20,
+        };
+        let size = (200, 120);
+        let vis = Visibility {
+            mapped: true,
+            obscured: false,
+        };
+        let outgoing = vec![Outgoing {
+            requestor: 77,
+            property: 88,
+            ty: 99,
+            sender: IncrSender::new(Vec::new()),
+        }];
+
+        // Ignored events: Expose, GraphicsExpose, NoExpose, MappingNotify,
+        // extension events (ShmCompletion), non-XI GenericEvent (Present),
+        // non-close ClientMessage, same-size/zero Configure, unchanged
+        // Map/Visibility, SelectionNotify, and unrelated PropertyNotify.
+        for kind in [12, 13, 14, 34, 65] {
+            assert!(
+                !event_is_actionable(&raw_event(kind), false, atoms, size, vis, &outgoing),
+                "event kind {kind} should be ignored"
+            );
+        }
+        assert!(!event_is_actionable(
+            &raw_event(GENERIC_EVENT),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &client_message(10, 21),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &configure(200, 120),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &configure(0, 120),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &raw_event(19), // MapNotify when already mapped
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &raw_event(15), // VisibilityNotify(Unobscured) when already unobscured
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &raw_event(31), // SelectionNotify
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &property_notify(77, 88, false),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(!event_is_actionable(
+            &property_notify(77, 99, true),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+
+        // Actionable events: keys, buttons, motion, focus, resize, close,
+        // visibility/map changes, XI_RawMotion, selection request/clear,
+        // and active INCR PropertyNotify(deleted).
+        for kind in [2, 3, 4, 5, 6, 9, 10, 18, 29, 30] {
+            assert!(
+                event_is_actionable(&raw_event(kind), false, atoms, size, vis, &outgoing),
+                "event kind {kind} should wake next_frame"
+            );
+        }
+        assert!(event_is_actionable(
+            &configure(300, 120),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(event_is_actionable(
+            &client_message(10, 20),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        let mut obscured = raw_event(15);
+        obscured[40..44].copy_from_slice(&2i32.to_ne_bytes());
+        assert!(event_is_actionable(
+            &obscured, false, atoms, size, vis, &outgoing
+        ));
+        assert!(event_is_actionable(
+            &raw_event(GENERIC_EVENT),
+            true,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+        assert!(event_is_actionable(
+            &property_notify(77, 88, true),
+            false,
+            atoms,
+            size,
+            vis,
+            &outgoing
+        ));
+    }
+
+    #[test]
+    fn wait_timeout_ms_rounds_positive_durations_up_to_milliseconds() {
+        assert_eq!(wait_timeout_ms(Duration::ZERO), 0);
+        assert_eq!(wait_timeout_ms(Duration::from_nanos(1)), 1);
+        assert_eq!(wait_timeout_ms(Duration::from_micros(500)), 1);
+        assert_eq!(wait_timeout_ms(Duration::from_millis(1)), 1);
+        assert_eq!(wait_timeout_ms(Duration::from_micros(15_001)), 16);
+        assert_eq!(wait_timeout_ms(Duration::from_millis(16)), 16);
+        assert_eq!(wait_timeout_ms(Duration::MAX), i32::MAX);
+    }
+}
