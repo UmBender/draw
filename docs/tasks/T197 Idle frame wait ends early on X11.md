@@ -1,7 +1,7 @@
 ---
 id: T197
 title: Idle frame wait ends early on X11
-status: in-progress
+status: review
 wave: 78
 branch: fix/x11-idle-frame-wait
 depends_on: []
@@ -80,11 +80,11 @@ run.
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T197): specify the idle frame wait`
-- [ ] regression — `test(T197): add regression test for the early idle wake`
-- [ ] behaviour — `fix(T197): keep swap events from ending the idle wait`
-- [ ] quality — `chore(T197): pass clippy and rustfmt`
-- [ ] docs — `docs(T197): update the notes`
+- [x] spec — `docs(T197): specify the idle frame wait`
+- [x] regression — `test(T197): add regression test for the early idle wake`
+- [x] behaviour — `fix(T197): keep swap events from ending the idle wait`
+- [x] quality — `chore(T197): pass clippy and rustfmt`
+- [x] docs — `docs(T197): update the notes`
 
 No models step: no new public type.
 
@@ -98,3 +98,12 @@ No models step: no new public type.
   `x11_idle_sleeps_until_wakeup` raising `SIGTERM` concurrently. Fixed
   scope covers both the platform's ignored-event wait loop (owner
   decision) and isolating the signal test in `tests/x11.rs`.
+- 2026-11-24 — implemented `event_is_actionable`, `has_actionable_event`,
+  and `wait_timeout_ms` in `crates/draw-sys/src/x11/platform.rs` so
+  `X11Platform::next_frame` drops ignored X11 events and waits out the
+  remaining `FRAME_WAIT` measured with `Instant`, keeping `next_idle`
+  unchanged; isolated `x11_idle_sleeps_until_wakeup` in
+  `crates/draw-sys/tests/x11.rs` with an `RwLock` and joined its signal
+  thread.
+- 2026-11-24 — verified `scripts/repeat.sh 20 cargo test -p draw-sys --test x11`
+  (20/20 green) and `scripts/check.sh` (all checks passed).
