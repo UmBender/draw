@@ -9,12 +9,26 @@ mod xvfb;
 use std::future::Future;
 use std::pin::pin;
 use std::process::Command;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
 use draw_sys::egl::GlContext;
 use draw_sys::platform::{Platform, RawEvent};
 use draw_sys::x11::{GlBackend, GlSurface, X11Error, X11Platform, send_close_request};
+
+/// `x11_idle_sleeps_until_wakeup` installs the process-wide `SIGTERM` handler
+/// and raises `SIGTERM`; hold a shared guard in tests that wait or poll on
+/// `X11Platform` so that signal cannot wake them early (T197).
+static SIGNAL_LOCK: RwLock<()> = RwLock::new(());
+
+fn shared_signal_guard() -> RwLockReadGuard<'static, ()> {
+    SIGNAL_LOCK.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn exclusive_signal_guard() -> RwLockWriteGuard<'static, ()> {
+    SIGNAL_LOCK.write().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn open(server: &xvfb::Xvfb, backend: GlBackend) -> X11Platform {
     X11Platform::open(
@@ -146,6 +160,7 @@ fn x11_missing_display_is_an_error_value() {
 
 #[test]
 fn x11_resize_by_xdotool_reaches_window_metrics() {
+    let _guard = shared_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     let id = platform.window_id().to_string();
@@ -164,6 +179,7 @@ fn x11_resize_by_xdotool_reaches_window_metrics() {
 
 #[test]
 fn x11_wm_close_sets_close_requested() {
+    let _guard = shared_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     assert!(!platform.close_requested());
@@ -182,6 +198,7 @@ fn x11_wm_close_sets_close_requested() {
 
 #[test]
 fn x11_platform_poll_reports_the_resize() {
+    let _guard = shared_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     let id = platform.window_id().to_string();
@@ -197,6 +214,7 @@ fn x11_platform_poll_reports_the_resize() {
 
 #[test]
 fn x11_platform_input_and_clipboard_return_nothing() {
+    let _guard = shared_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     let mut events = Vec::new();
@@ -214,6 +232,7 @@ fn x11_platform_input_and_clipboard_return_nothing() {
 
 #[test]
 fn x11_platform_schedule_update_ends_the_wait() {
+    let _guard = shared_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     // The events of the map are not what this test waits for.
@@ -232,8 +251,112 @@ fn x11_platform_schedule_update_ends_the_wait() {
     assert!(idle >= Duration::from_millis(8), "{idle:?}");
 }
 
+/// T197: events that `X11Platform::poll` ignores (`Expose`, `PropertyNotify`
+/// outside `INCR`, same-size `ConfigureNotify`, swap side-effect events) must
+/// not end `next_frame`'s idle wait early.
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T197_ignored_events_do_not_end_the_idle_wait() {
+    let _guard = shared_signal_guard();
+    let server = xvfb::Xvfb::start();
+    let mut platform = open(&server, GlBackend::Glx);
+    let id = platform.window_id().to_string();
+    // Initial map/expose/property events sit pending in the X queue.
+    std::thread::sleep(Duration::from_millis(50));
+
+    let started = Instant::now();
+    block_on(platform.next_frame());
+    let with_expose = started.elapsed();
+    assert!(
+        with_expose >= Duration::from_millis(8),
+        "pending Expose/PropertyNotify ended next_frame early: {with_expose:?}"
+    );
+    platform.poll(&mut Vec::new());
+
+    // Queue ignored events explicitly: a PropertyNotify and a same-size ConfigureNotify.
+    let status = Command::new("xprop")
+        .env("DISPLAY", &server.display)
+        .args([
+            "-id",
+            &id,
+            "-f",
+            "_DRAW_TEST_NOISE",
+            "8s",
+            "-set",
+            "_DRAW_TEST_NOISE",
+            "ping",
+        ])
+        .status()
+        .unwrap_or_else(|e| panic!("xprop is required for the X11 tests: {e}"));
+    assert!(status.success());
+    let _ = xdotool(&server, &["windowmove", &id, "10", "10"]);
+    std::thread::sleep(Duration::from_millis(20));
+
+    let started = Instant::now();
+    block_on(platform.next_frame());
+    let with_noise = started.elapsed();
+    assert!(
+        with_noise >= Duration::from_millis(8),
+        "ignored PropertyNotify/ConfigureNotify ended next_frame early: {with_noise:?}"
+    );
+
+    // Also deliver an ignored event while `next_frame` is sleeping.
+    let display = server.display.clone();
+    let win_id = id.clone();
+    let sender = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(2));
+        let _ = Command::new("xprop")
+            .env("DISPLAY", &display)
+            .args([
+                "-id",
+                &win_id,
+                "-f",
+                "_DRAW_TEST_NOISE",
+                "8s",
+                "-set",
+                "_DRAW_TEST_NOISE",
+                "mid",
+            ])
+            .status();
+    });
+    let started = Instant::now();
+    block_on(platform.next_frame());
+    let mid_wait = started.elapsed();
+    let _ = sender.join();
+    assert!(
+        mid_wait >= Duration::from_millis(8),
+        "mid-wait ignored PropertyNotify ended next_frame early: {mid_wait:?}"
+    );
+}
+
+#[test]
+fn x11_next_frame_wakes_immediately_on_actionable_event_without_dropping_it() {
+    let _guard = shared_signal_guard();
+    let server = xvfb::Xvfb::start();
+    let mut platform = open(&server, GlBackend::Glx);
+    std::thread::sleep(Duration::from_millis(50));
+    platform.poll(&mut Vec::new());
+
+    send_close_request(Some(&server.display), platform.window_id()).unwrap();
+    let started = Instant::now();
+    block_on(platform.next_frame());
+    let elapsed = started.elapsed();
+    let mut events = Vec::new();
+    platform.poll(&mut events);
+
+    assert!(
+        elapsed < Duration::from_millis(8),
+        "WM_DELETE_WINDOW should wake next_frame immediately, got {elapsed:?}"
+    );
+    assert!(
+        platform.close_requested(),
+        "next_frame dropped the pending WM_DELETE_WINDOW event"
+    );
+}
+
 #[test]
 fn x11_idle_skips_swap_and_wakes_on_scheduled_update() {
+    let _guard = shared_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     assert!(platform.skips_idle_swap());
@@ -246,6 +369,7 @@ fn x11_idle_skips_swap_and_wakes_on_scheduled_update() {
 
 #[test]
 fn x11_idle_sleeps_until_wakeup() {
+    let _guard = exclusive_signal_guard();
     let server = xvfb::Xvfb::start();
     let mut platform = open(&server, GlBackend::Glx);
     // Drain initial map/expose/configure events first.
@@ -254,7 +378,7 @@ fn x11_idle_sleeps_until_wakeup() {
     assert!(draw_sys::signal::install_quit());
 
     let started = Instant::now();
-    std::thread::spawn(|| {
+    let sender = std::thread::spawn(|| {
         std::thread::sleep(Duration::from_millis(60));
         // SAFETY: `SIGTERM` (15) has our `install_quit` async-signal-safe handler installed.
         unsafe {
@@ -263,6 +387,7 @@ fn x11_idle_sleeps_until_wakeup() {
     });
     block_on(platform.next_idle());
     let elapsed = started.elapsed();
+    let _ = sender.join();
     let _ = draw_sys::signal::take();
     assert!(
         elapsed >= Duration::from_millis(50) && elapsed < Duration::from_millis(200),
