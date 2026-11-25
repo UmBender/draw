@@ -548,13 +548,10 @@ fn event_is_actionable(
         return true;
     }
     match event {
-        XEvent::Configure { width, height } => {
-            width > 0 && height > 0 && (width, height) != size
+        XEvent::Configure { width, height } => width > 0 && height > 0 && (width, height) != size,
+        XEvent::Key { .. } | XEvent::Button { .. } | XEvent::Motion { .. } | XEvent::Focus(_) => {
+            true
         }
-        XEvent::Key { .. }
-        | XEvent::Button { .. }
-        | XEvent::Motion { .. }
-        | XEvent::Focus(_) => true,
         XEvent::Mapped(mapped) => mapped != visibility.mapped,
         XEvent::Visibility { obscured } => obscured != visibility.obscured,
         XEvent::Generic { .. } => has_raw,
@@ -742,6 +739,9 @@ mod tests {
             ty: 99,
             sender: IncrSender::new(Vec::new()),
         }];
+        let actionable = |bytes: &[u8], has_raw: bool| {
+            event_is_actionable(bytes, has_raw, atoms, size, vis, &outgoing)
+        };
 
         // Ignored events: Expose, GraphicsExpose, NoExpose, MappingNotify,
         // extension events (ShmCompletion), non-XI GenericEvent (Present),
@@ -749,129 +749,36 @@ mod tests {
         // Map/Visibility, SelectionNotify, and unrelated PropertyNotify.
         for kind in [12, 13, 14, 34, 65] {
             assert!(
-                !event_is_actionable(&raw_event(kind), false, atoms, size, vis, &outgoing),
+                !actionable(&raw_event(kind), false),
                 "event kind {kind} should be ignored"
             );
         }
-        assert!(!event_is_actionable(
-            &raw_event(GENERIC_EVENT),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &client_message(10, 21),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &configure(200, 120),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &configure(0, 120),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &raw_event(19), // MapNotify when already mapped
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &raw_event(15), // VisibilityNotify(Unobscured) when already unobscured
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &raw_event(31), // SelectionNotify
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &property_notify(77, 88, false),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(!event_is_actionable(
-            &property_notify(77, 99, true),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
+        assert!(!actionable(&raw_event(GENERIC_EVENT), false));
+        assert!(!actionable(&client_message(10, 21), false));
+        assert!(!actionable(&configure(200, 120), false));
+        assert!(!actionable(&configure(0, 120), false));
+        assert!(!actionable(&raw_event(19), false)); // MapNotify when already mapped
+        assert!(!actionable(&raw_event(15), false)); // VisibilityNotify(Unobscured) when unobscured
+        assert!(!actionable(&raw_event(31), false)); // SelectionNotify
+        assert!(!actionable(&property_notify(77, 88, false), false));
+        assert!(!actionable(&property_notify(77, 99, true), false));
 
         // Actionable events: keys, buttons, motion, focus, resize, close,
         // visibility/map changes, XI_RawMotion, selection request/clear,
         // and active INCR PropertyNotify(deleted).
         for kind in [2, 3, 4, 5, 6, 9, 10, 18, 29, 30] {
             assert!(
-                event_is_actionable(&raw_event(kind), false, atoms, size, vis, &outgoing),
+                actionable(&raw_event(kind), false),
                 "event kind {kind} should wake next_frame"
             );
         }
-        assert!(event_is_actionable(
-            &configure(300, 120),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(event_is_actionable(
-            &client_message(10, 20),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
+        assert!(actionable(&configure(300, 120), false));
+        assert!(actionable(&client_message(10, 20), false));
         let mut obscured = raw_event(15);
         obscured[40..44].copy_from_slice(&2i32.to_ne_bytes());
-        assert!(event_is_actionable(
-            &obscured, false, atoms, size, vis, &outgoing
-        ));
-        assert!(event_is_actionable(
-            &raw_event(GENERIC_EVENT),
-            true,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
-        assert!(event_is_actionable(
-            &property_notify(77, 88, true),
-            false,
-            atoms,
-            size,
-            vis,
-            &outgoing
-        ));
+        assert!(actionable(&obscured, false));
+        assert!(actionable(&raw_event(GENERIC_EVENT), true));
+        assert!(actionable(&property_notify(77, 88, true), false));
     }
 
     #[test]
