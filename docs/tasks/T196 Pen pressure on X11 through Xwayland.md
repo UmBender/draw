@@ -1,7 +1,7 @@
 ---
 id: T196
 title: Pen pressure on X11 through Xwayland
-status: in-progress
+status: review
 wave: 78
 branch: fix/x11-pen-pressure-xwayland
 depends_on: []
@@ -122,10 +122,10 @@ existing T176 design.
 ## Subtasks (one commit each)
 
 - [x] spec — `docs(T196): specify X11 pen pressure under Xwayland`
-- [ ] regression — `test(T196): add regression test for constant X11 pen pressure`
-- [ ] behaviour — `fix(T196): read the pen pressure under Xwayland`
-- [ ] quality — `chore(T196): pass clippy and rustfmt`
-- [ ] docs — `docs(T196): update the notes`
+- [x] regression — `test(T196): add regression test for constant X11 pen pressure`
+- [x] behaviour — `fix(T196): read the pen pressure under Xwayland`
+- [x] quality — `chore(T196): pass clippy and rustfmt`
+- [x] docs — `docs(T196): update the notes`
 
 ## Log
 
@@ -139,3 +139,11 @@ existing T176 design.
   (`Closing::new` and `Closing::poll`) as the logging call site permitted
   by `.batch/plan.md`, and use lowercase `regression_t196_...` test names
   to satisfy Rust's `non_snake_case` lint.
+- 2026-11-24 — implemented the fix (`XI_VERSION = (2, 1)`, intern
+  `"Abs Pressure"` with `only_if_exists = 0`, `raw_source` guard against
+  `XIAllDevices`, pure `DeviceProbe`/`probe_valuators`/`probe_log_line`,
+  and `--log debug` forwarding). `scripts/unsafe-tests.sh` (including
+  Miri) and `scripts/check.sh` are green. Manual check left for the
+  owner: `draw --backend x11 --log debug` on KDE Plasma Wayland with the
+  Huion 420 (confirm the log lists the pen's pressure axis and light vs
+  hard strokes differ in width). Status → review.
