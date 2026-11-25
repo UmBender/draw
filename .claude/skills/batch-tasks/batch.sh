@@ -370,7 +370,16 @@ session() { # session ID BASE MODE(start|resume) REASON → exit code; output in
             --mode accept-edits --settings "$B/agy-settings.json")
         [[ -n $sid ]] && args+=(--conversation "$sid")
         timeout --kill-after=60 "$TASK_TIMEOUT" "$AGY_BIN" "${args[@]}" -p "$prompt" \
-            >"$raw" 2>"$err" </dev/null
+            >"$raw" 2>"$err" </dev/null &
+        local pid=$! new_sid=""
+        # Save the conversation id as soon as agy prints it, so a runner
+        # killed mid-session (crash, reboot) resumes the same conversation.
+        while kill -0 "$pid" 2>/dev/null; do
+            new_sid=$(grep -m1 '"event":"init"' "$raw" 2>/dev/null | jq -r '.conversation_id // empty' 2>/dev/null)
+            [[ -n $new_sid ]] && { set_state "$id" session "$new_sid"; break; }
+            sleep 2
+        done
+        wait "$pid"
         local rc=$?
         grep '"event":"result"' "$raw" 2>/dev/null | tail -1 | jq '.result' >"$out" 2>/dev/null
         sid=$(grep -m1 '"event":"init"' "$raw" 2>/dev/null | jq -r '.conversation_id // empty' 2>/dev/null)
