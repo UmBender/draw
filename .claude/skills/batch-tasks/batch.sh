@@ -297,13 +297,16 @@ agy_settings() { # writes .batch/agy-settings.json from .batch/settings.json
 }
 
 denied_commands() { # denied_commands STREAMFILE: what was refused, on one line
-    # A refusal ends the turn, so it is the last tool call; the result names
-    # only the kind of action (denied_actions).
+    # The result names only the kind of action (denied_actions). The refused
+    # call carries a permission error; a soft denial may carry none, and then
+    # it is the last tool call (parallel calls are cut off with the turn).
     grep -q '"denied_actions":\[{' "$1" 2>/dev/null || return 0
-    grep '"step_update"' "$1" |
-        jq -r '.step_update | select(.step_type == "tool")
-               | .tool_info.parameters.CommandLine // .tool_info.parameters.TargetFile // .tool_name' 2>/dev/null |
-        tail -1 | tr '\n\r' '  ' | cut -c1-300
+    local calls refused
+    calls=$(grep '"step_update"' "$1" | jq -c '.step_update | select(.step_type == "tool" and .state != "ACTIVE")' 2>/dev/null)
+    refused=$(jq -r 'select(.tool_info.error.message // "" | test("permission|denied"; "i"))
+                     | .tool_info.parameters.CommandLine // .tool_info.parameters.TargetFile // ((.tool_name // "") + " " + (.tool_info.parameters.Path // ""))' <<<"$calls" 2>/dev/null)
+    [[ -n $refused ]] || refused=$(jq -r '.tool_info.parameters.CommandLine // .tool_info.parameters.TargetFile // ((.tool_name // "") + " " + (.tool_info.parameters.Path // ""))' <<<"$calls" 2>/dev/null | tail -1)
+    printf '%s' "$refused" | tr '\n\r' '; ' | cut -c1-300
 }
 
 wait_until_available() { # wait_until_available LOGFILE...: no cap
@@ -344,7 +347,7 @@ prompt_resume() { # prompt_resume ID BASE REASON
 
 session() { # session ID BASE MODE(start|resume) REASON → exit code; output in logs
     local id=$1 base=$2 mode=$3 reason=$4 sid n out err raw prompt
-    n=$(($(ls "$B/logs/$id"-*.json 2>/dev/null | wc -l) + 1))
+    n=$(($(ls "$B/logs/$id"-*.json "$B/logs/$id"-*.jsonl 2>/dev/null | sed 's/\.jsonl\?$//' | sort -u | wc -l) + 1))
     out="$B/logs/$id-$n.json"
     err="$B/logs/$id-$n.err"
     mkdir -p "$B/logs" "$B/out"
