@@ -385,10 +385,6 @@ fn regression_t35_pressure_sample_precedes_press_and_release() {
 
 #[test]
 fn regression_t196_xwayland_pen_pressure_follows_the_valuator() {
-    // Arrange: XInput 2.1+ is needed so XI_RawMotion keeps arriving while
-    // a button press holds an implicit pointer grab.
-    assert!(XI_VERSION.0 > 2 || (XI_VERSION.0 == 2 && XI_VERSION.1 >= 1));
-
     // An Xwayland tablet stylus exposes Abs Pressure on axis 2 in 0..65535.
     const ABS_X: u64 = 100;
     const ABS_Y: u64 = 101;
@@ -396,6 +392,10 @@ fn regression_t196_xwayland_pen_pressure_follows_the_valuator() {
     const ABS_TILT_X: u64 = 103;
     const ABS_TILT_Y: u64 = 104;
     const ABS_WHEEL: u64 = 105;
+
+    // Arrange: XInput 2.1+ is needed so XI_RawMotion keeps arriving while
+    // a button press holds an implicit pointer grab.
+    assert!(XI_VERSION.0 > 2 || (XI_VERSION.0 == 2 && XI_VERSION.1 >= 1));
 
     let probe = probe_valuators(
         14,
