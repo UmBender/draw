@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 
 use draw_sys::egl::GlContext;
 use draw_sys::platform::{Platform, RawEvent};
-use draw_sys::x11::{GlBackend, X11Error, X11Platform, send_close_request};
+use draw_sys::x11::{GlBackend, GlSurface, X11Error, X11Platform, send_close_request};
 
 fn open(server: &xvfb::Xvfb, backend: GlBackend) -> X11Platform {
     X11Platform::open(
@@ -109,6 +109,21 @@ fn x11_glx_context_clears_and_swaps() {
     }
 
     assert_eq!(gl.swap_buffers(), Ok(()));
+}
+
+/// T195: GLX took the first RGBA8 config, single-buffered on Mesa, so
+/// `glXSwapBuffers` showed nothing on a hardware GPU (black window).
+#[test]
+#[allow(non_snake_case)] // `regression_<ID>_<slug>` (Workflow)
+fn regression_T195_glx_window_config_is_double_buffered() {
+    let server = xvfb::Xvfb::start();
+    let platform = open(&server, GlBackend::Glx);
+
+    let GlSurface::Glx(context) = platform.gl() else {
+        panic!("asked for GLX");
+    };
+
+    assert_eq!(context.is_double_buffered(), Ok(true));
 }
 
 #[test]

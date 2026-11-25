@@ -106,15 +106,6 @@ impl SelAtoms {
 /// Key press and release, button press and release, pointer motion, focus.
 const INPUT_MASK: c_long = 1 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 6 | 1 << 21;
 
-const GLX_RED_SIZE: c_int = 8;
-const GLX_GREEN_SIZE: c_int = 9;
-const GLX_BLUE_SIZE: c_int = 10;
-const GLX_ALPHA_SIZE: c_int = 11;
-const GLX_DRAWABLE_TYPE: c_int = 0x8010;
-const GLX_RENDER_TYPE: c_int = 0x8011;
-const GLX_RGBA_BIT: c_int = 1;
-const GLX_WINDOW_BIT: c_int = 1;
-
 /// Set by the error handler: an X request failed.
 static X_ERROR: AtomicBool = AtomicBool::new(false);
 
@@ -900,21 +891,7 @@ impl Connection {
         type Choose = unsafe extern "C" fn(Ptr, c_int, *const c_int, *mut c_int) -> *mut Ptr;
         type VisualOf = unsafe extern "C" fn(Ptr, Ptr) -> *mut VisualInfo;
         let gl = Library::open("libGL.so.1")?;
-        let wanted = [
-            GLX_DRAWABLE_TYPE,
-            GLX_WINDOW_BIT,
-            GLX_RENDER_TYPE,
-            GLX_RGBA_BIT,
-            GLX_RED_SIZE,
-            8,
-            GLX_GREEN_SIZE,
-            8,
-            GLX_BLUE_SIZE,
-            8,
-            GLX_ALPHA_SIZE,
-            8,
-            0,
-        ];
+        let wanted = crate::glx::WINDOW_CONFIG;
         let mut count: c_int = 0;
         // TEST: x11_glx_context_clears_and_swaps
         // SAFETY: the types are the GLX 1.3 prototypes of the names.

@@ -16,6 +16,7 @@ const GLX_RED_SIZE: c_int = 8;
 const GLX_GREEN_SIZE: c_int = 9;
 const GLX_BLUE_SIZE: c_int = 10;
 const GLX_ALPHA_SIZE: c_int = 11;
+const GLX_DOUBLEBUFFER: c_int = 5;
 const GLX_DRAWABLE_TYPE: c_int = 0x8010;
 const GLX_RENDER_TYPE: c_int = 0x8011;
 const GLX_RGBA_BIT: c_int = 1;
@@ -27,6 +28,46 @@ const GLX_CONTEXT_MAJOR_VERSION_ARB: c_int = 0x2091;
 const GLX_CONTEXT_MINOR_VERSION_ARB: c_int = 0x2092;
 const GLX_CONTEXT_PROFILE_MASK_ARB: c_int = 0x9126;
 const GLX_CONTEXT_ES2_PROFILE_BIT_EXT: c_int = 0x4;
+
+/// The config of a window context: RGBA8 and double-buffered. Mesa lists
+/// single-buffered configs first, and on one `glXSwapBuffers` shows
+/// nothing with a hardware driver (T195). `Connection::glx_visual`
+/// creates the window on the visual of the first config this list
+/// matches, so the window and the context use the same list (T175).
+pub(crate) const WINDOW_CONFIG: [c_int; 15] = [
+    GLX_DRAWABLE_TYPE,
+    GLX_WINDOW_BIT,
+    GLX_RENDER_TYPE,
+    GLX_RGBA_BIT,
+    GLX_RED_SIZE,
+    8,
+    GLX_GREEN_SIZE,
+    8,
+    GLX_BLUE_SIZE,
+    8,
+    GLX_ALPHA_SIZE,
+    8,
+    GLX_DOUBLEBUFFER,
+    1,
+    0,
+];
+
+/// The config of a pbuffer context: RGBA8 (a pbuffer has no back buffer).
+const PBUFFER_CONFIG: [c_int; 13] = [
+    GLX_DRAWABLE_TYPE,
+    GLX_PBUFFER_BIT,
+    GLX_RENDER_TYPE,
+    GLX_RGBA_BIT,
+    GLX_RED_SIZE,
+    8,
+    GLX_GREEN_SIZE,
+    8,
+    GLX_BLUE_SIZE,
+    8,
+    GLX_ALPHA_SIZE,
+    8,
+    0,
+];
 
 // TEST: glx_pbuffer_context_makes_current_under_xvfb
 type CreateContextAttribs = unsafe extern "C" fn(Ptr, Ptr, Ptr, c_int, *const c_int) -> Ptr;
@@ -52,6 +93,7 @@ struct GlxApi {
     // TEST: glx_pbuffer_context_makes_current_under_xvfb
     swap_buffers: unsafe extern "C" fn(Ptr, c_ulong),
     get_proc_address: unsafe extern "C" fn(*const u8) -> *const c_void,
+    get_fb_config_attrib: unsafe extern "C" fn(Ptr, Ptr, c_int, *mut c_int) -> c_int,
     // Declared last: the libraries outlive the pointers above.
     _libgl: Library,
     _libx11: Library,
@@ -80,6 +122,7 @@ impl GlxApi {
                 make_context_current: *gl.symbol("glXMakeContextCurrent")?,
                 swap_buffers: *gl.symbol("glXSwapBuffers")?,
                 get_proc_address: *gl.symbol("glXGetProcAddressARB")?,
+                get_fb_config_attrib: *gl.symbol("glXGetFBConfigAttrib")?,
                 _libgl: Library::open("libGL.so.1")?,
                 _libx11: Library::open("libX11.so.6")?,
             }
@@ -108,6 +151,8 @@ impl Surface {
 pub struct GlxContext {
     api: GlxApi,
     display: Ptr,
+    /// The config of the context and its surface; owned by the display.
+    config: Ptr,
     context: Ptr,
     surface: Surface,
     /// Whether `Drop` closes `display` (a pbuffer context opened it).
@@ -146,7 +191,7 @@ impl GlxContext {
             height.cast_signed(),
             0,
         ];
-        Self::build(api, display, GLX_PBUFFER_BIT, true, |api, config| {
+        Self::build(api, display, &PBUFFER_CONFIG, true, |api, config| {
             // TEST: glx_pbuffer_context_makes_current_under_xvfb
             // SAFETY: `display` and `config` are live and the attribute list
             // is zero terminated.
@@ -174,7 +219,7 @@ impl GlxContext {
             return Err(ContextError::NoDisplay);
         }
         let api = GlxApi::load()?;
-        Self::build(api, display, GLX_WINDOW_BIT, false, |api, config| {
+        Self::build(api, display, &WINDOW_CONFIG, false, |api, config| {
             // TEST: glx_pbuffer_context_makes_current_under_xvfb
             // SAFETY: the caller of `from_window` vouches for `display` and
             // `window`; `config` is live.
@@ -188,25 +233,26 @@ impl GlxContext {
         })
     }
 
-    /// Chooses a config of `drawable` type, makes the surface and an
-    /// OpenGL ES 3.0 context, and makes it current. On failure the display
-    /// is closed if `owns_display`.
+    /// Chooses the first config matching `wanted`, makes the surface and
+    /// an OpenGL ES 3.0 context, and makes it current. On failure the
+    /// display is closed if `owns_display`.
     fn build<F>(
         api: GlxApi,
         display: Ptr,
-        drawable: c_int,
+        wanted: &[c_int],
         owns_display: bool,
         make_surface: F,
     ) -> Result<Self, ContextError>
     where
         F: FnOnce(&GlxApi, Ptr) -> Result<Surface, ContextError>,
     {
-        let result = Self::build_inner(&api, display, drawable, make_surface);
+        let result = Self::build_inner(&api, display, wanted, make_surface);
         match result {
-            Ok((context, surface)) => {
+            Ok((config, context, surface)) => {
                 let made = Self {
                     api,
                     display,
+                    config,
                     context,
                     surface,
                     owns_display,
@@ -228,27 +274,17 @@ impl GlxContext {
     fn build_inner<F>(
         api: &GlxApi,
         display: Ptr,
-        drawable: c_int,
+        wanted: &[c_int],
         make_surface: F,
-    ) -> Result<(Ptr, Surface), ContextError>
+    ) -> Result<(Ptr, Ptr, Surface), ContextError>
     where
         F: FnOnce(&GlxApi, Ptr) -> Result<Surface, ContextError>,
     {
-        let wanted = [
-            GLX_DRAWABLE_TYPE,
-            drawable,
-            GLX_RENDER_TYPE,
-            GLX_RGBA_BIT,
-            GLX_RED_SIZE,
-            8,
-            GLX_GREEN_SIZE,
-            8,
-            GLX_BLUE_SIZE,
-            8,
-            GLX_ALPHA_SIZE,
-            8,
-            0,
-        ];
+        if wanted.last() != Some(&0) {
+            return Err(ContextError::Unsupported(
+                "a zero-terminated GLX config list",
+            ));
+        }
         let mut count: c_int = 0;
         // TEST: glx_pbuffer_context_makes_current_under_xvfb
         // SAFETY: `display` is live, `wanted` is zero terminated and `count`
@@ -270,7 +306,7 @@ impl GlxContext {
         };
         let context = Self::es_context(api, display, config)?;
         match make_surface(api, config) {
-            Ok(surface) => Ok((context, surface)),
+            Ok(surface) => Ok((config, context, surface)),
             Err(error) => {
                 // TEST: glx_pbuffer_context_makes_current_under_xvfb
                 // SAFETY: `context` was just created on `display`.
@@ -310,6 +346,36 @@ impl GlxContext {
             return Err(ContextError::Unsupported("an OpenGL ES 3.0 GLX context"));
         }
         Ok(context)
+    }
+}
+
+impl GlxContext {
+    /// Whether the context's config has a back buffer
+    /// (`GLX_DOUBLEBUFFER`): a window needs one, or `glXSwapBuffers` shows
+    /// nothing on hardware drivers (T195).
+    ///
+    /// # Errors
+    /// [`ContextError::Call`] if GLX cannot read the attribute.
+    pub fn is_double_buffered(&self) -> Result<bool, ContextError> {
+        let mut value: c_int = 0;
+        // TEST: regression_T195_glx_window_config_is_double_buffered
+        // SAFETY: the display and config belong to `self` (a config lives as
+        // long as its display) and `value` is a valid out pointer.
+        let code = unsafe {
+            (self.api.get_fb_config_attrib)(
+                self.display,
+                self.config,
+                GLX_DOUBLEBUFFER,
+                &raw mut value,
+            )
+        };
+        if code != 0 {
+            return Err(ContextError::Call {
+                call: "glXGetFBConfigAttrib",
+                code,
+            });
+        }
+        Ok(value != 0)
     }
 }
 
@@ -361,6 +427,31 @@ impl Drop for GlxContext {
             if self.owns_display {
                 let _ = (self.api.x_close_display)(self.display);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T195 AC-2: the window list asks for a double buffer and RGBA8.
+    #[test]
+    fn window_config_asks_for_a_double_buffer() {
+        let pairs: Vec<(c_int, c_int)> = WINDOW_CONFIG
+            .chunks(2)
+            .filter(|pair| pair.len() == 2)
+            .map(|pair| (pair[0], pair[1]))
+            .collect();
+
+        assert_eq!(WINDOW_CONFIG.last(), Some(&0));
+        assert!(pairs.contains(&(GLX_DOUBLEBUFFER, 1)), "{pairs:?}");
+        assert!(
+            pairs.contains(&(GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT)),
+            "{pairs:?}"
+        );
+        for size in [GLX_RED_SIZE, GLX_GREEN_SIZE, GLX_BLUE_SIZE, GLX_ALPHA_SIZE] {
+            assert!(pairs.contains(&(size, 8)), "{size}: {pairs:?}");
         }
     }
 }
