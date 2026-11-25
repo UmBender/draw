@@ -1,7 +1,7 @@
 ---
 id: T197
 title: Idle frame wait ends early on X11
-status: review
+status: done
 wave: 78
 branch: fix/x11-idle-frame-wait
 depends_on: []
@@ -107,3 +107,4 @@ No models step: no new public type.
   thread.
 - 2026-11-24 — verified `scripts/repeat.sh 20 cargo test -p draw-sys --test x11`
   (20/20 green) and `scripts/check.sh` (all checks passed).
+- 2026-11-25 — merged into `main` with the owner's go-ahead, listed under Fixed for 2.0.1.

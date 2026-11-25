@@ -1,7 +1,7 @@
 ---
 id: T196
 title: Pen pressure on X11 through Xwayland
-status: review
+status: done
 wave: 78
 branch: fix/x11-pen-pressure-xwayland
 depends_on: []
@@ -147,3 +147,4 @@ existing T176 design.
   owner: `draw --backend x11 --log debug` on KDE Plasma Wayland with the
   Huion 420 (confirm the log lists the pen's pressure axis and light vs
   hard strokes differ in width). Status → review.
+- 2026-11-25 — merged into `main` with the owner's go-ahead, listed under Fixed for 2.0.1. The manual pen check on KDE Wayland (`--log debug`, light and hard strokes) is still the owner's.

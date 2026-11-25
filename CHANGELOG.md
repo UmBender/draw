@@ -18,6 +18,12 @@ All notable changes to draw are listed here. The format follows
 - On X11 with a hardware GPU (`--backend x11`, Xwayland or Xorg) the window
   shows the canvas and the toolbar and redraws after a resize; since 2.0.0
   it stayed black because GLX picked a single-buffered config.
+- On X11 (`--backend x11`, also under Xwayland) a pen stroke follows the
+  pen pressure again; it was drawn as a thin line of one width because
+  raw motion stopped while the pen touched the tablet. `--log debug` names
+  each pen device and its pressure axis.
+- On X11 an idle frame waits its full 16 ms instead of waking early on
+  events the app ignores, such as the ones a buffer swap causes.
 
 ## [2.0.0] - 2026-11-18
 

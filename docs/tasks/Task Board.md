@@ -648,5 +648,5 @@ flowchart TD
 | [[T193 Windows installer, signing and packages]] | todo | T192 | `task/T193-windows-installer-signing-and-packages` |
 | [[T194 Nightly Miri and X11 end-to-end jobs]] | done | — | `fix/nightly-miri-and-x11-e2e` |
 | [[T195 X11 GLX window is double-buffered]] | done | — | `fix/x11-glx-double-buffer` |
-| [[T196 Pen pressure on X11 through Xwayland]] | ready | — | `fix/x11-pen-pressure-xwayland` |
-| [[T197 Idle frame wait ends early on X11]] | ready | — | `fix/x11-idle-frame-wait` |
+| [[T196 Pen pressure on X11 through Xwayland]] | done | — | `fix/x11-pen-pressure-xwayland` |
+| [[T197 Idle frame wait ends early on X11]] | done | — | `fix/x11-idle-frame-wait` |
