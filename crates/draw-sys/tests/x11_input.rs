@@ -247,3 +247,52 @@ fn x11_xi2_raw_motion_from_xtest_is_not_a_pen() {
     );
     assert!(events.iter().all(|e| !matches!(e, RawEvent::Tablet { .. })));
 }
+
+#[test]
+fn regression_t196_raw_motion_arrives_during_button_grab() {
+    // Arrange: a button press activates an X11 implicit passive pointer grab.
+    // With XInput 2.0, XI_RawMotion stops during the grab (pinning pen
+    // pressure at its hover value for the whole stroke); XInput 2.1 keeps
+    // delivering raw motion while the button is held.
+    let server = xvfb::Xvfb::start();
+    let mut platform = focused(&server);
+    assert!(platform.pen_supported());
+    xdotool(&server, &["mousemove", "10", "10"]);
+    collect(&mut platform, Duration::from_millis(150));
+
+    // Act: hold button 1 and drag.
+    xdotool(&server, &["mousedown", "1"]);
+    collect(&mut platform, Duration::from_millis(100));
+    let before = platform.raw_motion_count();
+    xdotool(&server, &["mousemove", "40", "45"]);
+    xdotool(&server, &["mousemove", "60", "65"]);
+    collect(&mut platform, Duration::from_millis(200));
+    xdotool(&server, &["mouseup", "1"]);
+    collect(&mut platform, Duration::from_millis(100));
+
+    // Assert: raw motion kept arriving during the grab.
+    assert!(
+        platform.raw_motion_count() > before,
+        "XI_RawMotion stopped during button 1 grab (before={before}, after={})",
+        platform.raw_motion_count()
+    );
+}
+
+#[test]
+fn x11_startup_queues_debug_lines_for_valuator_devices() {
+    // Arrange & Act: opening the platform probes all XInput2 devices.
+    let server = xvfb::Xvfb::start();
+    let mut platform = open(&server);
+    let mut lines = Vec::new();
+    while let Some(line) = platform.take_debug_log() {
+        lines.push(line);
+    }
+
+    // Assert: Xvfb exposes pointer valuators without Abs Pressure.
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.contains("valuators") && line.contains("no Abs Pressure")),
+        "expected a debug line for Xvfb's valuator devices, got: {lines:?}"
+    );
+}
