@@ -1,7 +1,7 @@
 ---
 id: T198
 title: Raw motion in the X11 tests on the Ubuntu runners
-status: in-progress
+status: done
 wave: 79
 branch: fix/x11-raw-motion-xdotool
 depends_on: []
@@ -94,3 +94,5 @@ No models step: no new type.
   `coverage` job failed only on the ratchet, `x11` rose from 90.3 to
   95.7 because the raw motion paths now run on the runners. The
   baseline takes that value (the others moved by 0.1).
+- 2026-11-27 — CI green on `47673d0` (45933016302); merged into `main`
+  for 2.0.2.

@@ -6,6 +6,13 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The X11 input tests get raw pointer motion on the Ubuntu CI runners as
+  well, so the checks of a release pass there again; 2.0.1 was tagged
+  while CI and the Nightly were red on the pen pressure test alone. No
+  change to the app itself.
+
 ## [2.0.1] - 2026-11-25
 
 ### Fixed

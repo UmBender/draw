@@ -446,7 +446,7 @@ flowchart TD
 | 76 | [[T185 Wayland title bar and window size]] |
 | 77 | [[T186 CRLF line endings in draw files]] · [[T187 Windows ADRs and portable seams]] · [[T194 Nightly Miri and X11 end-to-end jobs]] · [[T195 X11 GLX window is double-buffered]] |
 | 78 | [[T188 Win32 window thread and message loop]] · [[T196 Pen pressure on X11 through Xwayland]] · [[T197 Idle frame wait ends early on X11]] |
-| 79 | [[T189 Direct3D 11 Gpu]] · [[T190 Windows keyboard and pointer]] |
+| 79 | [[T189 Direct3D 11 Gpu]] · [[T190 Windows keyboard and pointer]] · [[T198 Raw motion in the X11 tests on the Ubuntu runners]] |
 | 80 | [[T191 Windows pen and clipboard]] |
 | 81 | [[T192 Windows platform in main and the e2e suite]] |
 | 82 | [[T193 Windows installer, signing and packages]] |
@@ -650,3 +650,4 @@ flowchart TD
 | [[T195 X11 GLX window is double-buffered]] | done | — | `fix/x11-glx-double-buffer` |
 | [[T196 Pen pressure on X11 through Xwayland]] | done | — | `fix/x11-pen-pressure-xwayland` |
 | [[T197 Idle frame wait ends early on X11]] | done | — | `fix/x11-idle-frame-wait` |
+| [[T198 Raw motion in the X11 tests on the Ubuntu runners]] | done | — | `fix/x11-raw-motion-xdotool` |
