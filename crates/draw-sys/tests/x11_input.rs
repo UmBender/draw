@@ -33,6 +33,15 @@ fn xdotool(server: &xvfb::Xvfb, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
+/// Moves the pointer by `(dx, dy)` with `XTest` relative motion, which
+/// makes `XI_RawMotion` on every xdotool version; the absolute `mousemove`
+/// of xdotool 3.20160805 (Ubuntu runners) warps the pointer and makes none
+/// (T198).
+fn move_by(server: &xvfb::Xvfb, dx: i32, dy: i32) {
+    let (dx, dy) = (dx.to_string(), dy.to_string());
+    xdotool(server, &["mousemove_relative", "--", &dx, &dy]);
+}
+
 /// Opens a window that has the keyboard focus, with its map events drained.
 fn focused(server: &xvfb::Xvfb) -> X11Platform {
     let mut platform = open(server);
@@ -237,7 +246,7 @@ fn x11_xi2_raw_motion_from_xtest_is_not_a_pen() {
     assert!(platform.pen_supported());
 
     xdotool(&server, &["mousemove", "5", "6"]);
-    xdotool(&server, &["mousemove", "25", "26"]);
+    move_by(&server, 20, 20);
     let events = collect(&mut platform, Duration::from_millis(300));
 
     assert!(
@@ -246,6 +255,11 @@ fn x11_xi2_raw_motion_from_xtest_is_not_a_pen() {
             .any(|e| matches!(e, RawEvent::PointerMove { .. }))
     );
     assert!(events.iter().all(|e| !matches!(e, RawEvent::Tablet { .. })));
+    // T198: without raw motion the test checks nothing.
+    assert!(
+        platform.raw_motion_count() > 0,
+        "no XI_RawMotion from the XTEST pointer"
+    );
 }
 
 #[test]
@@ -258,14 +272,17 @@ fn regression_t196_raw_motion_arrives_during_button_grab() {
     let mut platform = focused(&server);
     assert!(platform.pen_supported());
     xdotool(&server, &["mousemove", "10", "10"]);
+    move_by(&server, 5, 5);
     collect(&mut platform, Duration::from_millis(150));
 
     // Act: hold button 1 and drag.
     xdotool(&server, &["mousedown", "1"]);
     collect(&mut platform, Duration::from_millis(100));
     let before = platform.raw_motion_count();
-    xdotool(&server, &["mousemove", "40", "45"]);
-    xdotool(&server, &["mousemove", "60", "65"]);
+    // T198: raw motion must arrive before the grab, or the test is moot.
+    assert!(before > 0, "no XI_RawMotion before the button press");
+    move_by(&server, 25, 30);
+    move_by(&server, 20, 15);
     collect(&mut platform, Duration::from_millis(200));
     xdotool(&server, &["mouseup", "1"]);
     collect(&mut platform, Duration::from_millis(100));
