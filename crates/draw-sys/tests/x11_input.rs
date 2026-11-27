@@ -33,9 +33,9 @@ fn xdotool(server: &xvfb::Xvfb, args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
-/// Moves the pointer by `(dx, dy)` with XTest relative motion, which makes
-/// `XI_RawMotion` on every xdotool version; the absolute `mousemove` of
-/// xdotool 3.20160805 (Ubuntu runners) warps the pointer and makes none
+/// Moves the pointer by `(dx, dy)` with `XTest` relative motion, which
+/// makes `XI_RawMotion` on every xdotool version; the absolute `mousemove`
+/// of xdotool 3.20160805 (Ubuntu runners) warps the pointer and makes none
 /// (T198).
 fn move_by(server: &xvfb::Xvfb, dx: i32, dy: i32) {
     let (dx, dy) = (dx.to_string(), dy.to_string());
