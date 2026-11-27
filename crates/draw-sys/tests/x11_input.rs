@@ -246,6 +246,11 @@ fn x11_xi2_raw_motion_from_xtest_is_not_a_pen() {
             .any(|e| matches!(e, RawEvent::PointerMove { .. }))
     );
     assert!(events.iter().all(|e| !matches!(e, RawEvent::Tablet { .. })));
+    // T198: without raw motion the test checks nothing.
+    assert!(
+        platform.raw_motion_count() > 0,
+        "no XI_RawMotion from the XTEST pointer"
+    );
 }
 
 #[test]
@@ -264,6 +269,8 @@ fn regression_t196_raw_motion_arrives_during_button_grab() {
     xdotool(&server, &["mousedown", "1"]);
     collect(&mut platform, Duration::from_millis(100));
     let before = platform.raw_motion_count();
+    // T198: raw motion must arrive before the grab, or the test is moot.
+    assert!(before > 0, "no XI_RawMotion before the button press");
     xdotool(&server, &["mousemove", "40", "45"]);
     xdotool(&server, &["mousemove", "60", "65"]);
     collect(&mut platform, Duration::from_millis(200));
