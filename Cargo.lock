@@ -73,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "draw"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "draw-core",
  "draw-gfx",
@@ -87,7 +87,7 @@ dependencies = [
 
 [[package]]
 name = "draw-core"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "draw-types",
  "fontdue",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "draw-gfx"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "draw-core",
  "draw-sys",
@@ -108,11 +108,11 @@ dependencies = [
 
 [[package]]
 name = "draw-sys"
-version = "2.0.1"
+version = "2.0.2"
 
 [[package]]
 name = "draw-types"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "proptest",
 ]

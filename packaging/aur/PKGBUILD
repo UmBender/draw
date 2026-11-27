@@ -1,6 +1,6 @@
 # Maintainer: UmBender <https://github.com/UmBender/draw>
 pkgname=draw
-pkgver=2.0.1
+pkgver=2.0.2
 pkgrel=1
 pkgdesc="Minimal, fast, keyboard-first scratch canvas for competitive programming"
 arch=('x86_64' 'aarch64')

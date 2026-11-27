@@ -1,6 +1,6 @@
 [package]
 name = "draw-core"
-version = "2.0.1"
+version = "2.0.2"
 edition = "2024"
 rust-version = "1.99"
 description = "Pure editing logic of draw: no window, no GPU (ADR-T132-1)"

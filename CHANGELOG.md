@@ -6,6 +6,8 @@ All notable changes to draw are listed here. The format follows
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-11-27
+
 ### Fixed
 
 - The X11 input tests get raw pointer motion on the Ubuntu CI runners as
@@ -477,7 +479,8 @@ First release.
   frame reuse during pan and zoom, smooth with thousands of shapes on an
   8th-gen i5 iGPU (`DRAW_FRAME_TIMES=1` logs frame times).
 
-[Unreleased]: https://github.com/UmBender/draw/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/UmBender/draw/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/UmBender/draw/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/UmBender/draw/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/UmBender/draw/compare/v1.6.0...v2.0.0
 [1.6.0]: https://github.com/UmBender/draw/compare/v1.5.0...v1.6.0
