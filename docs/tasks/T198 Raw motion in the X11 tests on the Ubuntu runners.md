@@ -67,15 +67,17 @@ raw motion it is about.
 ## Files owned
 
 - `crates/draw-sys/tests/x11_input.rs`
+- `coverage-baseline.toml` (`x11`)
 - this note
 
 ## Subtasks (one commit each)
 
-- [ ] spec — `docs(T198): specify raw motion in the X11 tests`
-- [ ] regression — `test(T198): require raw motion in the X11 raw motion tests`
-- [ ] behaviour — `fix(T198): move the pointer with XTest in the raw motion tests`
-- [ ] quality — `chore(T198): pass clippy and rustfmt`
-- [ ] docs — `docs(T198): update the notes`
+- [x] spec — `docs(T198): specify raw motion in the X11 tests`
+- [x] regression — `test(T198): require raw motion in the X11 raw motion tests`
+- [x] behaviour — `fix(T198): move the pointer with XTest in the raw motion tests`
+- [x] quality — `chore(T198): pass clippy and rustfmt`
+- [x] behaviour — `fix(T198): record the x11 coverage the raw motion tests reach`
+- [x] docs — `docs(T198): update the notes`
 
 No models step: no new type.
 
@@ -83,3 +85,12 @@ No models step: no new type.
 
 - 2026-11-26 — written from the failed CI of `v2.0.1` and the Nightly,
   at the owner's request, so that 2.0.2 passes the Nightly.
+- 2026-11-26 — AC-1: both tests red in `ubuntu:26.04` with the new
+  asserts. AC-2: `x11_input` green on Fedora (`scripts/repeat.sh 20`,
+  20/20) and in `ubuntu:26.04` (20/20 runs of the raw motion tests);
+  `scripts/check.sh` green.
+- 2026-11-27 — branch on CI (45929163015) and the Nightly run by hand
+  (45929163265): every test passed and the Nightly was green; the
+  `coverage` job failed only on the ratchet, `x11` rose from 90.3 to
+  95.7 because the raw motion paths now run on the runners. The
+  baseline takes that value (the others moved by 0.1).
